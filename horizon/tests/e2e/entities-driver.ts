@@ -1,5 +1,7 @@
 import type { Page } from '@playwright/test';
 import type { EntitiesReport, RoomPoint } from '../../src/debug-hook';
+import { ENTITY_REGISTRY_KEY } from '../../src/entities/registry';
+import { type QuaternionLike, rotate } from '../../src/xr/ray';
 import { debugState, frames } from './app-driver';
 import { expect } from './fixtures';
 
@@ -16,8 +18,8 @@ import { expect } from './fixtures';
  * one pose of the hand, and the hand is then moved by the difference.
  */
 
-/** `hologram`'s registry key and shape, spelled out: Playwright cannot import the app's TypeScript at run time. */
-export const REGISTRY_KEY = 'jarvis.horizon.entities';
+/** Where the app keeps its registry of entities (`src/entities/registry.ts`). */
+export const REGISTRY_KEY = ENTITY_REGISTRY_KEY;
 
 /** Where the emulator keeps the persistent anchors it hands out. */
 export const EMULATED_ANCHORS_KEY = '@immersive-web-emulation-runtime/persistent-anchors';
@@ -31,21 +33,14 @@ export interface Origin {
 
 export const NO_ORIGIN: Origin = { x: 0, z: 0, yawDegrees: 0 };
 
-export interface Quaternion {
-  x: number;
-  y: number;
-  z: number;
-  w: number;
-}
-
 /** A turn of `degrees` about the unit axis `axis`. */
-export function turn(axis: RoomPoint, degrees: number): Quaternion {
+export function turn(axis: RoomPoint, degrees: number): QuaternionLike {
   const half = (degrees * Math.PI) / 360;
   return { x: axis.x * Math.sin(half), y: axis.y * Math.sin(half), z: axis.z * Math.sin(half), w: Math.cos(half) };
 }
 
 /** `second` after `first`, as one turn. */
-export function then(first: Quaternion, second: Quaternion): Quaternion {
+export function then(first: QuaternionLike, second: QuaternionLike): QuaternionLike {
   return {
     w: second.w * first.w - second.x * first.x - second.y * first.y - second.z * first.z,
     x: second.w * first.x + second.x * first.w + second.y * first.z - second.z * first.y,
@@ -54,21 +49,8 @@ export function then(first: Quaternion, second: Quaternion): Quaternion {
   };
 }
 
-/** `vector` turned by `rotation`. */
-export function rotate(vector: RoomPoint, rotation: Quaternion): RoomPoint {
-  const { x, y, z, w } = rotation;
-  const tx = 2 * (y * vector.z - z * vector.y);
-  const ty = 2 * (z * vector.x - x * vector.z);
-  const tz = 2 * (x * vector.y - y * vector.x);
-  return {
-    x: vector.x + w * tx + (y * tz - z * ty),
-    y: vector.y + w * ty + (z * tx - x * tz),
-    z: vector.z + w * tz + (x * ty - y * tx),
-  };
-}
-
 /** The turn that takes the unit direction `from` onto the unit direction `to`. */
-export function turnBetween(from: RoomPoint, to: RoomPoint): Quaternion {
+export function turnBetween(from: RoomPoint, to: RoomPoint): QuaternionLike {
   const axis = { x: from.y * to.z - from.z * to.y, y: from.z * to.x - from.x * to.z, z: from.x * to.y - from.y * to.x };
   const length = Math.hypot(axis.x, axis.y, axis.z);
   const cosine = Math.max(-1, Math.min(1, from.x * to.x + from.y * to.y + from.z * to.z));
@@ -76,7 +58,7 @@ export function turnBetween(from: RoomPoint, to: RoomPoint): Quaternion {
   return turn({ x: axis.x / length, y: axis.y / length, z: axis.z / length }, (Math.acos(cosine) * 180) / Math.PI);
 }
 
-function yaw(origin: Origin): Quaternion {
+function yaw(origin: Origin): QuaternionLike {
   return turn({ x: 0, y: 1, z: 0 }, origin.yawDegrees);
 }
 
@@ -143,18 +125,26 @@ export async function lookAt(page: Page, target: RoomPoint) {
     const heading = Math.atan2(-x, -z);
     const pitch = Math.atan2(y, Math.hypot(x, z));
     // Heading about the vertical, then pitch about the head's own x.
-    const headingHalf = heading / 2;
-    const pitchHalf = pitch / 2;
-    const cy = Math.cos(headingHalf);
-    const sy = Math.sin(headingHalf);
-    const cx = Math.cos(pitchHalf);
-    const sx = Math.sin(pitchHalf);
-    device.quaternion.set(cy * sx, sy * cx, -sy * sx, cy * cx);
+    const headingCosine = Math.cos(heading / 2);
+    const headingSine = Math.sin(heading / 2);
+    const pitchCosine = Math.cos(pitch / 2);
+    const pitchSine = Math.sin(pitch / 2);
+    device.quaternion.set(
+      headingCosine * pitchSine,
+      headingSine * pitchCosine,
+      -headingSine * pitchSine,
+      headingCosine * pitchCosine,
+    );
   }, target);
 }
 
 /** Holds a controller at `position` turned by `rotation`, both in the emulator's space. */
-export async function holdController(page: Page, hand: 'left' | 'right', position: RoomPoint, rotation: Quaternion) {
+export async function holdController(
+  page: Page,
+  hand: 'left' | 'right',
+  position: RoomPoint,
+  rotation: QuaternionLike,
+) {
   await page.evaluate(
     ({ hand, position, rotation }) => {
       const controller = window.__xrHarness?.device.controllers[hand];
@@ -218,7 +208,7 @@ export async function useInput(page: Page, mode: 'hand' | 'controller') {
 
 export interface HandPose {
   position: RoomPoint;
-  rotation: Quaternion;
+  rotation: QuaternionLike;
   /** The emulator's `default` (relaxed), `point` or `pinch`. */
   pose?: 'default' | 'point' | 'pinch';
   /** 0 open to 1 pinched. */
@@ -302,7 +292,7 @@ export async function pointHandAt(
   target: RoomPoint,
   origin: Origin,
 ) {
-  let rotation: Quaternion = { x: 0, y: 0, z: 0, w: 1 };
+  let rotation: QuaternionLike = { x: 0, y: 0, z: 0, w: 1 };
   for (let attempt = 0; attempt < 3; attempt++) {
     await holdHand(page, hand, { position, rotation, pose: 'point', pinch: 0 });
     await frames(page, 3);

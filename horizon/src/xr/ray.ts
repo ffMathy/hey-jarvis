@@ -41,13 +41,13 @@ export interface Ray {
  */
 export function rotate(vector: Vector3Like, rotation: QuaternionLike): Vector3Like {
   const { x, y, z, w } = rotation;
-  const tx = 2 * (y * vector.z - z * vector.y);
-  const ty = 2 * (z * vector.x - x * vector.z);
-  const tz = 2 * (x * vector.y - y * vector.x);
+  const twiceCrossX = 2 * (y * vector.z - z * vector.y);
+  const twiceCrossY = 2 * (z * vector.x - x * vector.z);
+  const twiceCrossZ = 2 * (x * vector.y - y * vector.x);
   return {
-    x: vector.x + w * tx + (y * tz - z * ty),
-    y: vector.y + w * ty + (z * tx - x * tz),
-    z: vector.z + w * tz + (x * ty - y * tx),
+    x: vector.x + w * twiceCrossX + (y * twiceCrossZ - z * twiceCrossY),
+    y: vector.y + w * twiceCrossY + (z * twiceCrossX - x * twiceCrossZ),
+    z: vector.z + w * twiceCrossZ + (x * twiceCrossY - y * twiceCrossX),
   };
 }
 
