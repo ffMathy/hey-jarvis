@@ -53,6 +53,7 @@ import {
   recordEntities,
   unplaceEntity,
   unusedAnchors,
+  usedAnchors,
 } from '../entities/registry';
 import { createRoomAnchors, type DropResult } from '../entities/room-anchors';
 import { createCoronas } from '../hologram3d/corona';
@@ -239,6 +240,15 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
     if (uuids.length > 0) store.update((registry) => uuids.reduce<EntityRegistry>(forgetAnchor, registry));
   }
 
+  /**
+   * Gives `uuids`' persistent handles back to the headset, and forgets each one only once the
+   * headset has let go of it: one it refused stays in the registry, to be given back next session,
+   * rather than using one of the origin's eight with nothing left that knows its handle.
+   */
+  function releaseAnchors(uuids: readonly string[]) {
+    if (uuids.length > 0) void anchors.release(uuids).then(forgetAnchors);
+  }
+
   /** Writes down what became of a drop: on its anchor, waiting for one, or not kept. */
   function keep(result: DropResult) {
     if (result.kind === 'pending') {
@@ -258,7 +268,9 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
   function settleAnchors(frame: EntitiesFrame) {
     if (!restored) {
       restored = true;
-      forgetAnchors(anchors.restore(store.registry, time));
+      forgetAnchors(anchors.restore(usedAnchors(store.registry), time));
+      // Left over from a session that ended before the headset let go of them, or refused to.
+      releaseAnchors(unusedAnchors(store.registry));
     }
     for (const settled of anchors.update(frame.frame, frame.space, time)) {
       // Taken back into the drawer, or dropped again, while its anchor was being made.
@@ -480,10 +492,9 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
     slots = [];
     pressedButton.clear();
     tokens.set([], { x: 0, y: 0, z: 0 });
-    // The handles no placement uses any more go back to the origin's eight.
-    const unused = unusedAnchors(store.registry);
-    anchors.release(unused);
-    forgetAnchors(unused);
+    // The handles no placement uses any more go back to the origin's eight. The room ends the
+    // session only after this (`reduceApp`), so the headset is asked while it can still answer.
+    releaseAnchors(unusedAnchors(store.registry));
     store.flush();
   }
 

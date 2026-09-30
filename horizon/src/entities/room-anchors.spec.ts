@@ -43,14 +43,18 @@ class FakeAnchor implements PersistentAnchorLike<string> {
 /** A session with the handles it lists, restoring each when the test says so. */
 class FakeSession implements PersistentAnchorSession<string> {
   readonly restoring = new Map<string, { resolve: (anchor: FakeAnchor) => void; reject: () => void }>();
+  /** Every handle it was asked to delete, whether it did or not. */
   readonly deleted: string[] = [];
+  /** The handles it will not delete. */
+  readonly refused = new Set<string>();
   constructor(readonly persistentAnchors: string[]) {}
   restorePersistentAnchor = (uuid: string) =>
     new Promise<PersistentAnchorLike<string>>((resolve, reject) => {
       this.restoring.set(uuid, { resolve, reject: () => reject(new Error('InvalidStateError')) });
     });
-  deletePersistentAnchor = async (uuid: string) => {
+  deletePersistentAnchor?: (uuid: string) => Promise<void> = async (uuid: string) => {
     this.deleted.push(uuid);
+    if (this.refused.has(uuid)) throw new Error('InvalidStateError');
   };
 }
 
@@ -94,7 +98,7 @@ async function restored(uuids: string[], poses: Float32Array[]) {
   const session = new FakeSession(uuids);
   const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
   const registry = registryWith(uuids);
-  expect(anchors.restore(registry, 0)).toEqual([]);
+  expect(anchors.restore(uuids, 0)).toEqual([]);
   const frame = new FakeFrame();
   uuids.forEach((uuid, index) => {
     session.restoring.get(uuid)?.resolve(new FakeAnchor(`space-${uuid}`));
@@ -116,7 +120,7 @@ describe('restoring', () => {
   it('restores the handles the headset lists, and gives back the ones it does not', async () => {
     const session = new FakeSession([A]);
     const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
-    expect(anchors.restore(registryWith([A, B]), 0)).toEqual([B]);
+    expect(anchors.restore([A, B], 0)).toEqual([B]);
     expect([...session.restoring.keys()]).toEqual([A]);
     expect(anchors.status(0).anchors).toEqual({ [A]: 'restoring', [B]: 'missing' });
   });
@@ -124,7 +128,7 @@ describe('restoring', () => {
   it('follows a restored anchor from unlocated to located and back', async () => {
     const session = new FakeSession([A]);
     const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
-    anchors.restore(registryWith([A]), 0);
+    anchors.restore([A], 0);
     session.restoring.get(A)?.resolve(new FakeAnchor('space-a'));
     await settle();
     const frame = new FakeFrame();
@@ -141,7 +145,7 @@ describe('restoring', () => {
   it('says so when the headset will not restore one', async () => {
     const session = new FakeSession([A]);
     const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
-    anchors.restore(registryWith([A]), 0);
+    anchors.restore([A], 0);
     session.restoring.get(A)?.reject();
     await settle();
     expect(anchors.status(0).anchors[A]).toBe('failed');
@@ -149,14 +153,14 @@ describe('restoring', () => {
 
   it('forgets nothing on a session with no persistent anchors, which may only lack the feature', () => {
     const anchors = createRoomAnchors<string, Vector3Like>({}, (position) => ({ ...position }));
-    expect(anchors.restore(registryWith([A]), 0)).toEqual([]);
+    expect(anchors.restore([A], 0)).toEqual([]);
     expect(anchors.status(0).anchors).toEqual({ [A]: 'unsupported' });
   });
 
   it(`counts an anchor never located in ${NOT_FOUND_AFTER_SECONDS} s as not found in this room`, async () => {
     const session = new FakeSession([A]);
     const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
-    anchors.restore(registryWith([A]), 100);
+    anchors.restore([A], 100);
     expect(anchors.status(100 + NOT_FOUND_AFTER_SECONDS - 1).notFound).toEqual([]);
     expect(anchors.status(100 + NOT_FOUND_AFTER_SECONDS).notFound).toEqual([A]);
   });
@@ -171,7 +175,7 @@ describe('restoring', () => {
   it('gives back an anchor released while it was being restored', async () => {
     const session = new FakeSession([A]);
     const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
-    anchors.restore(registryWith([A]), 0);
+    anchors.restore([A], 0);
     anchors.release([A]);
     const anchor = new FakeAnchor('space-a');
     session.restoring.get(A)?.resolve(anchor);
@@ -372,7 +376,7 @@ describe('the anchor budget', () => {
     const session = new FakeSession([]);
     const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
     const registry = registryWith(uuids);
-    expect(anchors.restore(registry, 0)).toEqual(uuids);
+    expect(anchors.restore(uuids, 0)).toEqual(uuids);
     const frame = new FakeFrame();
     anchors.update(frame, 'local-floor', 0);
     expect(anchors.drop(frame, 'local-floor', 'light.kitchen', { x: 0, y: 0, z: 0 }, registry, 1).kind).toBe('pending');
@@ -388,10 +392,34 @@ describe("WebXR's own types", () => {
 describe('release', () => {
   it('gives back the persistent handle and stops following the anchor', async () => {
     const { anchors, session, frame } = await restored([A], [poseFromQuaternion({ x: 0, y: 0, z: 0 }, LEVEL)]);
-    anchors.release([A]);
+    const released = anchors.release([A]);
+    // Asked at once, while the session that is being closed is still live to be asked.
     expect(session.deleted).toEqual([A]);
+    expect(await released).toEqual([A]);
     anchors.update(frame, 'local-floor', 1);
     expect(anchors.positionOf({ anchor: A, offset: [0, 0, 0], placedAt: 0 })).toBeUndefined();
     expect(anchors.status(1).anchors).toEqual({});
+  });
+
+  it('says which handles the headset let go of, leaving out one it refused, so that one is kept to try again', async () => {
+    const { anchors, session } = await restored([A, B], []);
+    session.refused.add(B);
+    expect(await anchors.release([A, B])).toEqual([A]);
+    expect(session.deleted).toEqual([A, B]);
+  });
+
+  it('counts a handle the headset refuses because it no longer lists it as given back', async () => {
+    const session = new FakeSession([A]);
+    session.refused.add(B);
+    const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
+    expect(await anchors.release([B])).toEqual([B]);
+    expect(session.deleted).toEqual([B]);
+  });
+
+  it('gives back nothing on a session that cannot delete a handle, which a later one can', async () => {
+    const session = new FakeSession([A]);
+    session.deletePersistentAnchor = undefined;
+    const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
+    expect(await anchors.release([A])).toEqual([]);
   });
 });

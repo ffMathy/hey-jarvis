@@ -744,11 +744,17 @@ export function viewChanges(before: AppView, after: AppView): AppEffect[] {
  * Commands the event gave come first, then whatever the change in what the room shows implies —
  * panels, the hologram's visibility, the frame rate and whether the wake word is armed — worked out
  * by comparing the view before and after, so no handler has to remember them.
+ *
+ * Ending the session comes after all of it. What the room stops showing may still have something to
+ * give back to the session — placing things deletes the persistent anchors no placement uses as it
+ * closes — and a session that has already ended may refuse.
  */
 export function reduceApp(model: AppModel, event: AppEvent, now: number): AppStep {
   const transition = tidy(handle(model, event, now));
+  const ending = transition.commands.filter((effect) => effect.type === 'exit-xr');
+  const commands = transition.commands.filter((effect) => effect.type !== 'exit-xr');
   return {
     model: transition.model,
-    effects: [...transition.commands, ...viewChanges(viewOf(model), viewOf(transition.model))],
+    effects: [...commands, ...viewChanges(viewOf(model), viewOf(transition.model)), ...ending],
   };
 }

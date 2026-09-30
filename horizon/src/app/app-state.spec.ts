@@ -700,8 +700,8 @@ describe('sample mode', () => {
       expect(room.send({ type: 'select', hold: 'short', target: 'him' })).toEqual([]);
       expect(room.send({ type: 'presence-gone' })).toEqual([
         { type: 'stop-sample' },
-        { type: 'exit-xr' },
         { type: 'hologram', state: 'hidden' },
+        { type: 'exit-xr' },
       ]);
       expect(room.send({ type: 'session-ended' })).toEqual([{ type: 'return-to-page' }]);
     }
@@ -878,7 +878,7 @@ describe('placing things', () => {
       expect(room.view.wakeArmed).toBe(false);
     });
 
-    it('closes the room when it is done, having nothing to wait for', () => {
+    it('closes the room when it is done, having nothing to wait for — once placing things has let go', () => {
       for (const event of [
         { type: 'dismiss-button' },
         { type: 'edit-button' },
@@ -886,11 +886,13 @@ describe('placing things', () => {
       ] satisfies AppEvent[]) {
         const room = new Room({ kind: 'absent' });
         room.send({ type: 'entered', mode: 'placement' });
+        // Placing things gives back the anchors no placement uses as it stops, which an ended
+        // session would refuse: the session is ended last.
         expect(room.send(event)).toEqual([
           { type: 'consume-held-selects' },
-          { type: 'exit-xr' },
           { type: 'hide-panel', panel: 'guide' },
           { type: 'editing', active: false },
+          { type: 'exit-xr' },
         ]);
         expect(room.scene).toEqual({ kind: 'outside' });
         // Nothing to hang up, no microphone and no sample to stop: only the page to bring back.

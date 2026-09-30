@@ -22,6 +22,7 @@ import {
   serialiseEntityRegistry,
   unplaceEntity,
   unusedAnchors,
+  usedAnchors,
   WRITE_DELAY_MILLISECONDS,
 } from './registry';
 
@@ -192,6 +193,7 @@ describe('placing', () => {
       placedAt: 2,
     });
     expect(unusedAnchors(moved)).toEqual([ANCHOR]);
+    expect(usedAnchors(moved)).toEqual([OTHER_ANCHOR]);
   });
 
   it('unplaces back into the drawer, and leaves an unplaced one as it was', () => {

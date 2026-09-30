@@ -234,10 +234,24 @@ export function placedEntities(registry: EntityRegistry): KnownEntity[] {
   return Object.values(registry.entities).filter((entity) => placementStateOf(registry, entity.id) === 'placed');
 }
 
+/** Whether some placed entity is on each of the registry's anchors. */
+function anchorsInUse(registry: EntityRegistry): { anchor: string; used: boolean }[] {
+  const used = new Set(placedEntities(registry).map((entity) => entity.placement?.anchor));
+  return Object.keys(registry.anchors).map((anchor) => ({ anchor, used: used.has(anchor) }));
+}
+
+/** The anchors some placement uses: the ones worth restoring. */
+export function usedAnchors(registry: EntityRegistry): string[] {
+  return anchorsInUse(registry)
+    .filter((entry) => entry.used)
+    .map((entry) => entry.anchor);
+}
+
 /** The anchors no placement uses any more, whose persistent handles can be given back. */
 export function unusedAnchors(registry: EntityRegistry): string[] {
-  const used = new Set(placedEntities(registry).map((entity) => entity.placement?.anchor));
-  return Object.keys(registry.anchors).filter((anchor) => !used.has(anchor));
+  return anchorsInUse(registry)
+    .filter((entry) => !entry.used)
+    .map((entry) => entry.anchor);
 }
 
 /** One entry in the drawer. */

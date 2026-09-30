@@ -667,8 +667,11 @@ room closes and on `pagehide`. A placement is an offset in the space of one of a
 persistent anchors, because `local-floor` starts somewhere new every session: a drop reuses a
 located anchor within 2.5 m, otherwise makes a new one while the budget lasts, and falls back to
 the nearest. A handle the headset no longer lists makes its entities "lost", and the drawer asks for
-them again; an anchor no placement uses is given back when placing things ends. Until its anchor is
-located, an entity is not shown and cannot be pointed at: it may be in another room.
+them again. An anchor no placement uses is given back when placing things ends — before the session
+is ended, since an ended one may refuse (`reduceApp` puts `exit-xr` after every other effect) — and
+forgotten only once the headset has let go of it; one it refused stays in the registry and is given
+back at the start of the next session, which restores only the anchors placements use. Until its
+anchor is located, an entity is not shown and cannot be pointed at: it may be in another room.
 
 **The drawer** opens world-locked where sir faces, 0.42 m ahead and 0.3 m below the eyes, tilted to
 face them like a lectern: hands have to reach it, and a board that followed the gaze would move away

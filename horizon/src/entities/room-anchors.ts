@@ -21,11 +21,16 @@ import type { AnchorOffset, EntityPlacement, EntityRegistry } from './registry';
  * - **Created in the frame of the drop.** `XRFrame.createAnchor` only works on an active frame, and
  *   the handle comes later, so a drop onto a new anchor completes in a later {@link RoomAnchors.update}.
  *   Until then the entity stands where it was dropped.
- * - **Restored once per session.** Every handle the registry has that the session lists in
+ * - **Restored once per session.** Every handle a placement uses that the session lists in
  *   `persistentAnchors` is restored; one it does not list is gone for good (the site's data was
  *   cleared, or the headset forgot the room), and the caller forgets it, which leaves its
  *   entities as lost placements. Until an anchor is located, its entities are not shown and cannot be
  *   pointed at: they may simply be in another room.
+ * - **Given back while the session is live, and forgotten only once it has been.** A handle no
+ *   placement uses is deleted from the headset — which may refuse once the session has ended — and
+ *   {@link RoomAnchors.release} says which ones it let go of. The caller forgets only those, so a
+ *   refused one stays in the registry and is given back again at the start of the next session,
+ *   rather than using one of the origin's eight for good with nothing left that knows its handle.
  *
  * Generic over the space and transform types, like `xr/anchor-keeper.ts`, so the tests can hand it
  * plain objects; in the app they are `XRSpace` and `XRRigidTransform`, and an `XRSession` and an
@@ -103,11 +108,11 @@ export interface RoomAnchorStatus {
 
 export interface RoomAnchors<Space, Transform> {
   /**
-   * Restores every anchor `registry` has that the headset still lists. Returns the handles it no
-   * longer lists, for the caller to forget — which leaves their entities lost. Call once, at the
-   * start of the session.
+   * Restores every anchor in `uuids` — the ones placements use — that the headset still lists.
+   * Returns the handles it no longer lists, for the caller to forget, which leaves their entities
+   * lost. Call once, at the start of the session.
    */
-  restore(registry: EntityRegistry, now: number): string[];
+  restore(uuids: readonly string[], now: number): string[];
   /**
    * Each frame, before anything asks where an entity is: re-reads every anchor's pose, and settles
    * the drops whose new anchors have been made — or have failed — since.
@@ -129,8 +134,12 @@ export interface RoomAnchors<Space, Transform> {
   positionOf(placement: EntityPlacement): Vector3Like | undefined;
   /** Where each drop still waiting on a new anchor was dropped, so it can be drawn there meanwhile. */
   pendingDrops(): { id: string; position: Vector3Like }[];
-  /** Gives back the persistent handles in `anchors` — ones no placement uses any more. */
-  release(anchors: readonly string[]): void;
+  /**
+   * Gives back the persistent handles in `anchors` — ones no placement uses any more — asking the
+   * headset at once, so call it while the session is live. Resolves with the handles the headset
+   * let go of, or no longer had: the ones the caller may forget.
+   */
+  release(anchors: readonly string[]): Promise<string[]>;
   status(now: number): RoomAnchorStatus;
 }
 
@@ -245,7 +254,7 @@ export function createRoomAnchors<Space, Transform>(
             // A drop that has been replaced meanwhile no longer wants the anchor, so its handle is
             // given back at once rather than left using one of the few the origin has.
             if (pending.includes(drop)) drop.anchor = uuid;
-            else release([uuid]);
+            else void release([uuid]);
           },
           () => {
             anchor.delete();
@@ -257,14 +266,38 @@ export function createRoomAnchors<Space, Transform>(
     );
   }
 
-  function release(anchors: readonly string[]) {
-    for (const uuid of anchors) {
+  /** Whether the headset still lists `uuid`; undefined when it cannot say. */
+  function listed(uuid: string): boolean | undefined {
+    try {
+      const handles = session.persistentAnchors;
+      return handles === undefined ? undefined : includes(handles, uuid);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Deletes `uuid` from the headset: resolves with whether it is gone now. */
+  function deleteHandle(uuid: string): Promise<boolean> {
+    const remove = session.deletePersistentAnchor;
+    if (remove === undefined) return Promise.resolve(false);
+    // A refusal for a handle the headset no longer lists is a handle already gone, which is what
+    // was wanted; one it still lists was refused for real, and is kept to be given back later.
+    const refused = () => listed(uuid) === false;
+    try {
+      return remove.call(session, uuid).then(() => true, refused);
+    } catch {
+      return Promise.resolve(refused());
+    }
+  }
+
+  function release(anchors: readonly string[]): Promise<string[]> {
+    const deletions = anchors.map((uuid) => {
       const entry = stored.get(uuid);
       stored.delete(uuid);
       entry?.anchor?.delete();
-      // A handle already gone is what was wanted, so a refusal is nothing to report.
-      session.deletePersistentAnchor?.(uuid).catch(() => undefined);
-    }
+      return deleteHandle(uuid).then((gone) => (gone ? [uuid] : []));
+    });
+    return Promise.all(deletions).then((released) => released.flat());
   }
 
   function readPoses(frame: RoomAnchorFrame<Space, Transform>, space: Space) {
@@ -292,7 +325,7 @@ export function createRoomAnchors<Space, Transform>(
     if (drop.anchor !== undefined && pose !== undefined) return placeOn(drop.anchor, pose, drop.id, drop.point);
     if (now - drop.droppedAt < NOT_FOUND_AFTER_SECONDS) return undefined;
     // The new anchor is not used after all, so its handle is given back rather than kept for nothing.
-    if (drop.anchor !== undefined) release([drop.anchor]);
+    if (drop.anchor !== undefined) void release([drop.anchor]);
     return placeOnNearest(drop.id, drop.point, 'The headset did not find the new anchor.');
   }
 
@@ -308,11 +341,11 @@ export function createRoomAnchors<Space, Transform>(
   }
 
   return {
-    restore(registry, now) {
-      const listed = session.persistentAnchors;
+    restore(uuids, now) {
+      const handles = session.persistentAnchors;
       const restorer = session.restorePersistentAnchor;
       const missing: string[] = [];
-      for (const uuid of Object.keys(registry.anchors)) {
+      for (const uuid of uuids) {
         if (stored.has(uuid)) continue;
         const entry: StoredAnchor<Space> = {
           state: 'unsupported',
@@ -321,8 +354,8 @@ export function createRoomAnchors<Space, Transform>(
           everLocated: false,
         };
         stored.set(uuid, entry);
-        if (listed === undefined || restorer === undefined) continue;
-        if (!includes(listed, uuid)) {
+        if (handles === undefined || restorer === undefined) continue;
+        if (!includes(handles, uuid)) {
           entry.state = 'missing';
           missing.push(uuid);
           continue;
