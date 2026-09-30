@@ -1100,13 +1100,35 @@ the models first.
   played offline, so its route through the panner and the echo signs are the unit
   tests'; `element-volume-probe.ts` checks the rule for the SDK's elements on real
   elements playing real streams.
-- **Slow frames.** SwiftShader draws the room at about eight frames a second while
-  he is away and about one and a half while he is there, and his clock moves at
-  most a tenth of a second a frame. A session gives up on a token after twenty
-  seconds, so the specs that keep him greeting do their work inside that. A
-  picture takes the emulator seconds, so a picture of an error panel, which is up
-  for six, counts only if the panel is still up once the picture is back —
-  otherwise the next failure is photographed.
+- **Slow frames, and the budgets the specs hold.** SwiftShader draws the room at
+  about eight frames a second while he is away and about one and a half while he
+  is there, half that on a loaded machine (a CI runner is no faster), and his clock
+  moves at most a tenth of a second a frame. Two of the app's budgets run on the
+  wall clock instead: the twenty seconds a summoning waits for its conversation,
+  and the six seconds at least that an error panel is up. The specs that keep him
+  greeting on a token that never comes, and the ones that photograph a panel (a
+  picture takes the emulator seconds), raced them, and lost whenever the machine
+  was busy: the scene went `failed` under a spec still waiting for its frames, or
+  the panel went while its picture was taken. So the page reads two seams once,
+  beside `?origin` (`src/test-seams.ts`), and `appPage()` in `app-driver.ts` opens
+  it holding them. `?deadline=never` hands the session an infinite deadline, which
+  arms no timer; `?errors=held` keeps the failed scene until a select or B, which
+  is how those specs dismiss it. Without them the page is exactly what a headset
+  runs, and the budgets themselves are the unit tests' (`jarvis-session.spec.ts` in
+  `hologram`, `app/app-state.spec.ts`).
+- **Why seams and not a faked clock.** `.scripts/render-demo.ts` films him on
+  `page.clock`, paused, stepping each frame itself. The specs cannot: the greeting
+  and the wake word run on real audio, which a paused clock does not hold, and every
+  spec would have to step the emulator's frames by hand around every wait. For the
+  same reason the greeting a spec keeps him in is served three minutes long
+  (`lengthenTheGreeting`), longer than a test may run: it plays on the wall clock.
+  Everything else is waited for by a condition — a frame count, a scene that holds,
+  an effect, his placement — and never by a scene that lasts only as long as a
+  two-second greeting.
+- **Frame times.** The harness writes down the time of every XR frame
+  (`window.__xrHarness.frameTimes`), and `fixtures.ts` reports each test's median
+  interval with its result and in the log, so a failure on a slow machine says how
+  slow it was. They are SwiftShader's on a CPU, and say nothing about a Quest's.
 - **Pictures.** The app specs photograph the view — waiting with the hint,
   arriving, greeting, both error panels, every sample mood, and the drawer, a
   carried and a placed token, the pointing reticle and a corona round a placed
@@ -1124,7 +1146,7 @@ the models first.
   middle of IWER's 90° view, half a Quest 3's 25, where the default 1280 by 720 has
   a quarter and makes every edge look four times as jagged as a headset would. The
   other specs keep the default: four times the pixels slows every SwiftShader
-  frame, and the ones that keep him greeting have twenty seconds to do their work in.
+  frame, and their pictures are for what is shown, not how finely.
 
 What IWER does not cover: projection layers (it only has `XRWebGLLayer`, so the
 path Quest actually composites is not exercised, and the four samples in its
