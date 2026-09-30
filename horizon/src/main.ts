@@ -171,13 +171,14 @@ function sharedRoomOptions(modules: RoomModules, onInside: () => void) {
     },
     // A new model for every room: the snapshots are in the session's own reference space, which
     // is gone with the session.
-    placement: createRoomPlacement<XRReferenceSpace>({
-      model: createRoomModelWorker(),
-      track: (referenceSpace) => createRoomTracker(referenceSpace),
-      now: () => performance.now(),
-      setTimeout: (callback, milliseconds) => window.setTimeout(callback, milliseconds),
-      clearTimeout: (handle) => window.clearTimeout(handle),
-    }),
+    createPlacement: () =>
+      createRoomPlacement<XRReferenceSpace>({
+        model: createRoomModelWorker(),
+        track: (referenceSpace) => createRoomTracker(referenceSpace),
+        now: () => performance.now(),
+        setTimeout: (callback, milliseconds) => window.setTimeout(callback, milliseconds),
+        clearTimeout: (handle) => window.clearTimeout(handle),
+      }),
     showHud: flags.has('debug'),
     debug,
     onInside,
