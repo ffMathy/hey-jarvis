@@ -145,8 +145,17 @@ export class RoutingProgress {
    * Whether the request said a photo is on its way that has not arrived (`awaitsPhoto` in
    * `planner.ts`). The closing report then has Jarvis tell sir to go ahead and wait for it, rather
    * than hang up while he takes it.
+   *
+   * Not for as long as the report lasts, though: a request that joined this one can be the photo
+   * itself, arriving before the rest of the work is done — and the report that says what it shows
+   * must not also say it has yet to come, and send sir back to the camera. See `followThePhotoWait`.
    */
   awaitsPhoto = false;
+  /**
+   * When the request last said a photo is on its way, so that a photo kept since can be told apart
+   * from one that was already waiting when he said it.
+   */
+  awaitsPhotoSince: number | undefined;
   /** Tasks that started something slow, which the caller has not been told about yet. */
   unannouncedSlowTaskIds: string[] = [];
   /** Every task that started something slow, so each is announced once. */
@@ -433,7 +442,7 @@ export interface RoutingSnapshot {
   waitingPhotos: PhotoToBringUp[];
   /** Photos this request showed Jarvis with nothing said, to ask what he would like done with. */
   photosToAskAbout: string[];
-  /** Whether the request said a photo is on its way, which Jarvis is to wait for. */
+  /** Whether the request said a photo is on its way that has not come yet, which Jarvis is to wait for. */
   awaitsPhoto: boolean;
   /** Tasks that have started something slow since the last poll. */
   newlySlow: string[];
@@ -465,7 +474,10 @@ export function buildSnapshot(progress: RoutingProgress): RoutingSnapshot {
     earlierQuestions: progress.earlierQuestions,
     waitingPhotos: progress.waitingPhotos,
     photosToAskAbout: progress.photosToAskAbout,
-    awaitsPhoto: progress.awaitsPhoto,
+    // Asked again here, and not only as requests are carried out: the photo can arrive before the
+    // phone's message about it is routed, and a report built in between would still send him back to
+    // the camera for it.
+    awaitsPhoto: progress.awaitsPhoto && !photoKeptSince(progress.awaitsPhotoSince),
     newlySlow,
     responseStyle: progress.responseStyle,
     ...(progress.conversationControl && { conversationControl: progress.conversationControl }),
@@ -1154,8 +1166,12 @@ async function addToRunningRequest(
   // Not for a running request superseded while this one was planned, which `carryOut` would not act
   // on either: nobody reads its report now.
   if (!signal.aborted) {
+    followThePhotoWait(running, decision);
     dismissPhotos(decision.dismissedPhotoIds);
-    running.awaitsPhoto ||= decision.awaitsPhoto === true;
+    // What the report brings up is settled again as this request's work ends, as `carryOut` settles it
+    // for one with work to run. The running request may have finished first, and taken a reminder about
+    // the very photo this one has just waved away.
+    bringUpEarlierQuestions(sessionId, running);
   }
   running.handle({ type: 'finished' });
 }
@@ -1164,6 +1180,38 @@ async function addToRunningRequest(
 function dismissPhotos(photoIds: readonly string[] = []): void {
   for (const photoId of photoIds) {
     dismissPhoto(photoId);
+  }
+}
+
+/**
+ * Whether a photo has been kept since `since` that nobody has looked at yet.
+ *
+ * Any photo, not only one the request named: the phone does not say which announcement a photo
+ * answers, and he has only the one camera button. One that was already waiting when he said another
+ * was on its way is kept before `since`, and does not end the wait.
+ */
+function photoKeptSince(since: number | undefined): boolean {
+  return since !== undefined && photosWaiting().some((photo) => photo.keptAt >= since);
+}
+
+/**
+ * Starts waiting for a photo a request says is on its way, or stops once one has come.
+ *
+ * A report requests share (see `join`) lasts until all of them are done, and the photo he announced
+ * can be one of them: "I'll send you a receipt, and what is the weather?", then the photo, looked at
+ * beside the weather still running. Its look is planned before it runs, so at that point the photo is
+ * still waiting, and was kept since he said it was coming: the wait is over, and the closing report
+ * ends on what the photo shows rather than on sending him back to the camera for it.
+ *
+ * Settled before the request's own dismissals are carried out, which stop a photo waiting: the photo
+ * he waves away can be the one he said was coming, and it has come all the same.
+ */
+function followThePhotoWait(progress: RoutingProgress, decision: RoutingDecision): void {
+  if (decision.awaitsPhoto === true) {
+    progress.awaitsPhoto = true;
+    progress.awaitsPhotoSince = Date.now();
+  } else if (photoKeptSince(progress.awaitsPhotoSince)) {
+    progress.awaitsPhoto = false;
   }
 }
 
@@ -1287,10 +1335,10 @@ async function carryOut(
   }
 
   const answered = takeAnsweredQuestions(answers);
+  followThePhotoWait(progress, decision);
   // Before the reminders are taken, so a photo he has just waved away is not asked about in the
   // very reply to his waving it away.
   dismissPhotos(dismissedPhotoIds);
-  progress.awaitsPhoto ||= decision.awaitsPhoto === true;
 
   if (chains.length === 0 && answered.length === 0) {
     finishWithNothingToRun(sessionId, progress, dismissedPhotoIds.length > 0 || decision.awaitsPhoto === true);

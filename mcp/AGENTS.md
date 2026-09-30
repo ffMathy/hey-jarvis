@@ -1147,6 +1147,12 @@ to the phone's own conversation. One that also asks sir something tells him to g
 question (`GO_AHEAD_BEFORE_ASKING`), and the question is still asked last. See **Hanging up when he
 goes quiet** in `elevenlabs/AGENTS.md`.
 
+The wait lasts only until a photo is kept after the request said one was coming
+(`followThePhotoWait` in `routing/controller.ts`, asked again whenever a report is built). The photo
+can arrive while the rest of the request still runs, and be looked at by a request joined to it, and
+the report that says what it shows must not also say it has yet to come and send sir back to the
+camera for it. A photo that was already waiting when he said another was on its way does not end it.
+
 **Questions for the user:**
 Some work cannot finish on what the request said. Questions come from two places, and
 `verticals/routing/questions.ts` keeps both kinds as an `OpenQuestion` until sir answers:
@@ -1190,10 +1196,13 @@ That is what rescues a question asked on a call he missed or in a push notificat
 brought up is left alone for 30 minutes (`QUESTION_REMINDER_INTERVAL_MS`), so a conversation hears
 it once rather than after every request, and a superseded request, one he is to be notified about or
 one he stopped brings nothing up, since nobody hears it in that report. Two requests sharing a report
-— one joined to the other as `adds` — each bring up what is due as their own work ends, and the
-report keeps what either took for as long as it still stands, so the second to finish does not wipe
-out the reminder the first one took. Open questions live in memory, so a restart forgets them while the
-suspended run stays in storage; the request then has to be made again.
+— one joined to the other as `adds` — each bring up what is due as their own work ends, one that only
+waves a photo away included, and the report keeps what either took for as long as it still stands:
+the second to finish does not wipe out the reminder the first one took, and drops one about a question
+it has answered or a photo it has waved away. `waiting-photos.spec.ts` holds the second request's plan
+back until the first has finished, which is the order that loses them. Open questions live in memory,
+so a restart forgets them while the suspended run stays in storage; the request then has to be made
+again.
 
 **A photo he sent that nobody has looked at yet** is brought up the same way (`takePhotosToBringUp`
 in `routing/waiting-photos.ts`, into `waitingPhotos` beside `earlierQuestions`): after the earlier

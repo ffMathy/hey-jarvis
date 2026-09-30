@@ -105,6 +105,33 @@ describe('looking at a photo', () => {
     expect(photosWaiting().map((photo) => photo.photoId)).toEqual(['photo1']);
   });
 
+  /**
+   * A look is stopped with the request that asked for it: one still in flight when sir talks over that
+   * request is working for a reply nobody will hear. So the reader is handed the request's own abort
+   * signal, which a provider gives up on when it fires — and nothing else in the suite would notice
+   * were that signal dropped, since the scripted readers never look at it.
+   */
+  it('hands the reader the signal the request that asked is stopped with', async () => {
+    const handedSignals: (AbortSignal | undefined)[] = [];
+    const { mastra } = await readerPlaying(({ options }) => {
+      handedSignals.push(options.abortSignal);
+      return { text: 'The total is 243.50 DKK.' };
+    });
+    keepPhoto(Buffer.from([0xff, 0xd8]), 'image/jpeg');
+    const request = new AbortController();
+
+    await executeTool(
+      lookAtPhoto,
+      { photoId: 'photo1', question: 'What is the total?' },
+      { mastra, abortSignal: request.signal },
+    );
+
+    expect(handedSignals).toHaveLength(1);
+    expect(handedSignals[0]?.aborted).toBe(false);
+    request.abort();
+    expect(handedSignals[0]?.aborted).toBe(true);
+  });
+
   it('marks nothing when there was no such photo to look at', async () => {
     const { mastra } = await readerAnswering('Anything.');
     keepPhoto(Buffer.from([0xff, 0xd8]), 'image/jpeg');

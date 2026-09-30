@@ -9,7 +9,8 @@
  * test of either half would miss. Then a photo sent with nothing said, from the message the voice agent
  * routes to the report that has Jarvis ask what sir would like done with it, and his answer to that; a
  * photo he says is on its way; a look he talks over; and, last of all, requests that join one still
- * running, as the routing classifier says they relate to it.
+ * running, as the routing classifier says they relate to it — with a question earlier work is waiting
+ * on beside the photos, since the report such requests share brings both up the same way.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
@@ -38,7 +39,7 @@ import {
 } from './completion-notice.js';
 import { DEFAULT_ROUTING_SESSION_ID, getRoutingRuntime, resetRoutingRuntime } from './controller.js';
 import { PLANNER_AGENT_ID } from './planner.js';
-import { QUESTION_REMINDER_INTERVAL_MS } from './questions.js';
+import { openAnsweredByQuestion, QUESTION_REMINDER_INTERVAL_MS } from './questions.js';
 import { forgetWaitingPhotoReminders, PHOTO_WAITING_GRACE_MS, takePhotosToBringUp } from './waiting-photos.js';
 import {
   FINISHED_REQUEST_INSTRUCTIONS,
@@ -155,8 +156,18 @@ const WEATHER = 'It is 8 degrees.';
 const LIGHTS_REQUEST = 'And turn on the kitchen lights.';
 const LIGHTS = 'The kitchen lights are on.';
 const DISMISSAL = "Answer to 'what would you like done with the photo?': nothing, never mind (photo photo1)";
+/** The same, said beside a request still running rather than in answer to being asked. */
+const WAVED_AWAY = 'And never mind that photo (photo photo1)';
 /** What he says before he sends a photo, which the voice agent is told to hold, and routes anyway. */
 const ANNOUNCEMENT = "I'll send you a receipt in a moment.";
+
+/** The task a question earlier work is waiting on belongs to, which is what Jarvis is told it is about. */
+const EARLIER_TASK = 'Push reminders for tasks';
+const EARLIER_QUESTION = 'Email, or a push notification?';
+/** Sir's answer to it, as the voice agent routes it. */
+const ANSWER_TO_EARLIER_QUESTION = 'A push notification, for the task reminders.';
+/** What the work that asked makes of his answer. */
+const ANSWER_DELIVERED = 'The task reminders will come as push notifications.';
 
 /** The weather, as the planner plans it. */
 const WEATHER_TASK = { id: 'weather', agentId: 'weather', prompt: WEATHER_REQUEST, needs: '' };
@@ -181,6 +192,7 @@ const LOOK = 'A Netto receipt for 36.95 DKK, for milk and rye bread; the items c
 function plan(fields: {
   responseStyle: string;
   tasks?: { id: string; agentId: string; prompt: string; needs: string }[];
+  answers?: { questionId: string; answer: string }[];
   dismissedPhotoIds?: string[];
   photosToAskAbout?: string[];
   awaitsPhoto?: boolean;
@@ -198,13 +210,27 @@ function plan(fields: {
 }
 
 /**
- * The planner: whatever a request about a photo asks for, then the errands, and nothing any agent can
- * do otherwise.
+ * The planner: whatever a request about a photo asks for, then an answer to the question earlier work
+ * is waiting on, then the errands, and nothing any agent can do otherwise.
  */
 function scriptedPlanner() {
   return createScriptedModel(
-    ({ transcript }) => photoPlan(transcript) ?? errandPlan(transcript) ?? plan({ responseStyle: 'conversation' }),
+    ({ transcript }) =>
+      photoPlan(transcript) ??
+      answerPlan(transcript) ??
+      errandPlan(transcript) ??
+      plan({ responseStyle: 'conversation' }),
   );
+}
+
+/** What the planner makes of his answer to the question earlier work is waiting on: that answer, and nothing to run. */
+function answerPlan(transcript: string) {
+  const questionId = transcript.match(/- id "(q\d+)", asked by coding: /)?.[1];
+  if (!questionId || !transcript.includes(ANSWER_TO_EARLIER_QUESTION)) {
+    return undefined;
+  }
+
+  return plan({ responseStyle: 'command', answers: [{ questionId, answer: ANSWER_TO_EARLIER_QUESTION }] });
 }
 
 /**
@@ -290,19 +316,36 @@ function scriptedVision() {
   });
 }
 
-/** A model that holds every reply back until `until` settles, so a request stays in flight. */
-function heldBack(model: ReturnType<typeof createScriptedModel>['model'], until: Promise<void>) {
+/**
+ * A model that holds back each reply `holdsBack` picks out by what the model was sent, until `until`
+ * settles, so the request it is part of stays in flight.
+ */
+function heldBackWhen(
+  model: ReturnType<typeof createScriptedModel>['model'],
+  holdsBack: (prompt: string) => boolean,
+  until: Promise<void>,
+) {
+  const waitIfHeldBack = async (options: Parameters<typeof model.doStream>[0]) => {
+    if (holdsBack(JSON.stringify(options.prompt))) {
+      await until;
+    }
+  };
   return {
     ...model,
     doStream: async (options: Parameters<typeof model.doStream>[0]) => {
-      await until;
+      await waitIfHeldBack(options);
       return model.doStream(options);
     },
     doGenerate: async (options: Parameters<typeof model.doGenerate>[0]) => {
-      await until;
+      await waitIfHeldBack(options);
       return model.doGenerate(options);
     },
   };
+}
+
+/** A model that holds every reply back until `until` settles. */
+function heldBack(model: ReturnType<typeof createScriptedModel>['model'], until: Promise<void>) {
+  return heldBackWhen(model, () => true, until);
 }
 
 /**
@@ -310,23 +353,7 @@ function heldBack(model: ReturnType<typeof createScriptedModel>['model'], until:
  * and the photo marked looked at with it — is done while the request is still in flight.
  */
 function heldBackAfterItsLook(model: ReturnType<typeof createScriptedModel>['model'], until: Promise<void>) {
-  const hasLooked = (options: Parameters<typeof model.doStream>[0]) =>
-    JSON.stringify(options.prompt).includes('"tool-result"');
-  return {
-    ...model,
-    doStream: async (options: Parameters<typeof model.doStream>[0]) => {
-      if (hasLooked(options)) {
-        await until;
-      }
-      return model.doStream(options);
-    },
-    doGenerate: async (options: Parameters<typeof model.doGenerate>[0]) => {
-      if (hasLooked(options)) {
-        await until;
-      }
-      return model.doGenerate(options);
-    },
-  };
+  return heldBackWhen(model, (prompt) => prompt.includes('"tool-result"'), until);
 }
 
 /** How the stand-ins for the models are set up for one test. */
@@ -335,6 +362,11 @@ interface SetUpOptions {
   weatherAnswersOnceThisSettles?: Promise<void>;
   /** Holds the vision agent's answer back, once it has looked, until this settles. */
   visionAnswersAfterItsLookOnceThisSettles?: Promise<void>;
+  /**
+   * Holds back the planner's plan for the one request that says `request`, until `until` settles, so
+   * the request running beside it can finish first.
+   */
+  planHeldBack?: { request: string; until: Promise<void> };
   /** Makes the photo reader fail, as an unreachable model would. */
   readerFails?: boolean;
 }
@@ -346,9 +378,13 @@ interface SetUpOptions {
 async function setUp({
   weatherAnswersOnceThisSettles = Promise.resolve(),
   visionAnswersAfterItsLookOnceThisSettles = Promise.resolve(),
+  planHeldBack,
   readerFails = false,
 }: SetUpOptions = {}) {
   const planner = scriptedPlanner();
+  const plannerModel = planHeldBack
+    ? heldBackWhen(planner.model, (prompt) => prompt.includes(planHeldBack.request), planHeldBack.until)
+    : planner.model;
   const weather = createScriptedModel(() => ({ text: WEATHER }));
   const lights = createScriptedModel(() => ({ text: LIGHTS }));
   const reader = createScriptedModel(() => {
@@ -363,7 +399,7 @@ async function setUp({
     logger: false,
     workflows: { routePromptWorkflow, getNextInstructionsWorkflow },
     agents: {
-      [PLANNER_AGENT_ID]: await scriptedAgent(PLANNER_AGENT_ID, planner.model),
+      [PLANNER_AGENT_ID]: await scriptedAgent(PLANNER_AGENT_ID, plannerModel),
       weather: await scriptedAgent('weather', heldBack(weather.model, weatherAnswersOnceThisSettles)),
       internetOfThings: await scriptedAgent('internetOfThings', lights.model),
       vision: await scriptedAgent(
@@ -680,6 +716,106 @@ describe('a photo he says he is about to send, when the request reaches routing 
     expect(reply.instructions).toContain('Last of all, tell him in a few words to go ahead with the camera button');
     expect(reply.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
   }, 60_000);
+
+  /*
+   * The photo can come while the rest of the request still runs, and be looked at as a request joined
+   * to it. The report the two share then says what the photo shows — and before the wait was ever
+   * ended, went on to say it had not arrived and to send him back to the camera button for it. Whether
+   * a report says that is the snapshot's `awaitsPhoto`, which is what these read.
+   */
+
+  it('is waited for no longer once it has come and been looked at beside the rest of the request', async () => {
+    const weather = heldUntilReleased();
+    await setUp({ weatherAnswersOnceThisSettles: weather.held });
+    setRoutingClassifierForTest(classifierRelating('adds'));
+
+    await route(`${ANNOUNCEMENT} ${WEATHER_REQUEST}`);
+    await untilWorkIsUnderWay();
+    expect((await pollNow()).awaitsPhoto).toBe(true);
+    photoSent(0);
+    await route(barePhoto('photo1'));
+    await until(() => findPhoto('photo1')?.lookedAt !== undefined);
+    weather.release();
+    const reply = await closingReport();
+
+    expect(reply.completedTaskResults).toEqual(
+      expect.arrayContaining([
+        { id: 'weather', result: WEATHER },
+        { id: 'look', result: LOOK },
+      ]),
+    );
+    expect(reply.questionsForUser?.map((question) => question.id)).toEqual(['photo1']);
+    expect((await pollNow()).awaitsPhoto).toBe(false);
+  }, 60_000);
+
+  it('is waited for no longer once it has come with what he wanted of it, beside the rest of the request', async () => {
+    const weather = heldUntilReleased();
+    await setUp({ weatherAnswersOnceThisSettles: weather.held });
+    setRoutingClassifierForTest(classifierRelating('adds'));
+
+    await route(`${ANNOUNCEMENT} ${WEATHER_REQUEST}`);
+    await untilWorkIsUnderWay();
+    photoSent(0);
+    await route(totalOfPhoto('photo1'));
+    await until(() => findPhoto('photo1')?.lookedAt !== undefined);
+    weather.release();
+    const reply = await closingReport();
+
+    expect(reply.completedTaskResults).toEqual(
+      expect.arrayContaining([
+        { id: 'weather', result: WEATHER },
+        { id: 'total', result: LOOK },
+      ]),
+    );
+    expect(reply.questionsForUser).toBeUndefined();
+    // The hang-up any finished request ends on, not a wait for the photo that has just been read.
+    expect(reply.instructions).toContain(FINISHED_REQUEST_INSTRUCTIONS);
+    expect((await pollNow()).awaitsPhoto).toBe(false);
+  }, 60_000);
+
+  it('is waited for no longer once it has come, though he then waves it away beside the rest of the request', async () => {
+    const weather = heldUntilReleased();
+    await setUp({ weatherAnswersOnceThisSettles: weather.held });
+    setRoutingClassifierForTest(classifierRelating('adds'));
+
+    await route(`${ANNOUNCEMENT} ${WEATHER_REQUEST}`);
+    await untilWorkIsUnderWay();
+    photoSent(0);
+    await route(WAVED_AWAY);
+    await until(() => photosWaiting().length === 0);
+    weather.release();
+    const reply = await closingReport();
+
+    expect(reply.completedTaskResults).toEqual([{ id: 'weather', result: WEATHER }]);
+    expect(reply.instructions).toContain(FINISHED_REQUEST_INSTRUCTIONS);
+    expect((await pollNow()).awaitsPhoto).toBe(false);
+  }, 60_000);
+
+  it('is waited for no longer once it has come, though the message saying so has yet to be routed', async () => {
+    const weather = heldUntilReleased();
+    await setUp({ weatherAnswersOnceThisSettles: weather.held });
+
+    await route(`${ANNOUNCEMENT} ${WEATHER_REQUEST}`);
+    await untilWorkIsUnderWay();
+    photoSent(0);
+    weather.release();
+    const reply = await closingReport();
+
+    expect(reply.completedTaskResults).toEqual([{ id: 'weather', result: WEATHER }]);
+    expect(reply.instructions).toContain(FINISHED_REQUEST_INSTRUCTIONS);
+    expect((await pollNow()).awaitsPhoto).toBe(false);
+  }, 60_000);
+
+  it('is still waited for when the only photo waiting was sent before he said another was coming', async () => {
+    await setUp();
+    photoSent(10_000);
+
+    const reply = await say(`${ANNOUNCEMENT} ${WEATHER_REQUEST}`);
+
+    expect(reply.completedTaskResults).toEqual([{ id: 'weather', result: WEATHER }]);
+    expect(reply.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
+    expect((await pollNow()).awaitsPhoto).toBe(true);
+  }, 60_000);
 });
 
 /**
@@ -832,7 +968,7 @@ describe('a waiting photo, and a request joined to a running one', () => {
 
     await route(WEATHER_REQUEST);
     await untilWorkIsUnderWay();
-    await route('And never mind that photo (photo photo1)');
+    await route(WAVED_AWAY);
     await until(() => photosWaiting().length === 0);
     weather.release();
     const reply = await closingReport();
@@ -843,5 +979,111 @@ describe('a waiting photo, and a request joined to a running one', () => {
     expect(reply.instructions).toContain('Give him the answer in one short sentence');
     expect(reply.instructions).not.toContain('"Done, sir." is enough');
     expect(photosWaiting()).toEqual([]);
+  }, 60_000);
+
+  it('is not asked about once he waves it away, though the running request finished first and took its reminder', async () => {
+    const weather = heldUntilReleased();
+    const dismissal = heldUntilReleased();
+    await setUp({
+      weatherAnswersOnceThisSettles: weather.held,
+      planHeldBack: { request: WAVED_AWAY, until: dismissal.held },
+    });
+    setRoutingClassifierForTest(classifierRelating('adds'));
+    photoSent(2 * 60_000);
+
+    await route(WEATHER_REQUEST);
+    await untilWorkIsUnderWay();
+    await route(WAVED_AWAY);
+    // The weather finishes while the dismissal is still being planned, and brings the photo up as it does.
+    weather.release();
+    await until(async () => (await pollNow()).waitingPhotos.length > 0);
+    expect((await pollNow()).waitingPhotos.map((photo) => photo.id)).toEqual(['photo1']);
+    dismissal.release();
+    const reply = await closingReport();
+
+    expect(reply.completedTaskResults).toEqual([{ id: 'weather', result: WEATHER }]);
+    expect(reply.questionsForUser).toBeUndefined();
+    expect(photosWaiting()).toEqual([]);
+  }, 60_000);
+});
+
+/** Opens a question earlier work is waiting on, as a coding session that stopped to ask would. */
+function openEarlierQuestion(): void {
+  openAnsweredByQuestion({
+    taskId: EARLIER_TASK,
+    agentId: 'coding',
+    question: EARLIER_QUESTION,
+    deliverAnswer: async () => ANSWER_DELIVERED,
+  });
+}
+
+/** What a poll would bring up right now from the questions earlier work is waiting on, by id. */
+async function earlierQuestionIdsNow(): Promise<string[]> {
+  return (await pollNow()).earlierQuestions.map((question) => question.id);
+}
+
+/**
+ * A question earlier work is waiting on, in the report two joined requests share. Each brings up what
+ * is due as its own work ends, and the first to finish marks the question brought up: the second must
+ * not wipe the reminder out of the report, nor keep one it has itself answered. The weather finishes
+ * first, while the request joined to it is still being planned.
+ */
+describe('a question earlier work is waiting on, and a request joined to a running one', () => {
+  useFreshRoutingRuntime();
+
+  it('is brought up once in the report both share, though the first to finish took its reminder', async () => {
+    const weather = heldUntilReleased();
+    const lights = heldUntilReleased();
+    await setUp({
+      weatherAnswersOnceThisSettles: weather.held,
+      planHeldBack: { request: LIGHTS_REQUEST, until: lights.held },
+    });
+    setRoutingClassifierForTest(classifierRelating('adds'));
+    openEarlierQuestion();
+
+    await route(WEATHER_REQUEST);
+    await untilWorkIsUnderWay();
+    await route(LIGHTS_REQUEST);
+    weather.release();
+    await until(async () => (await earlierQuestionIdsNow()).length > 0);
+    expect(await earlierQuestionIdsNow()).toEqual(['q1']);
+    lights.release();
+    const reply = await closingReport();
+
+    expect(reply.completedTaskResults).toEqual(
+      expect.arrayContaining([
+        { id: 'weather', result: WEATHER },
+        { id: 'lights', result: LIGHTS },
+      ]),
+    );
+    expect(reply.questionsForUser).toEqual([{ id: EARLIER_TASK, question: EARLIER_QUESTION }]);
+  }, 60_000);
+
+  it('is dropped from that report once the request joined to the running one answers it', async () => {
+    const weather = heldUntilReleased();
+    const answer = heldUntilReleased();
+    await setUp({
+      weatherAnswersOnceThisSettles: weather.held,
+      planHeldBack: { request: ANSWER_TO_EARLIER_QUESTION, until: answer.held },
+    });
+    setRoutingClassifierForTest(classifierRelating('adds'));
+    openEarlierQuestion();
+
+    await route(WEATHER_REQUEST);
+    await untilWorkIsUnderWay();
+    await route(ANSWER_TO_EARLIER_QUESTION);
+    weather.release();
+    await until(async () => (await earlierQuestionIdsNow()).length > 0);
+    expect(await earlierQuestionIdsNow()).toEqual(['q1']);
+    answer.release();
+    const reply = await closingReport();
+
+    expect(reply.completedTaskResults).toEqual(
+      expect.arrayContaining([
+        { id: 'weather', result: WEATHER },
+        { id: EARLIER_TASK, result: ANSWER_DELIVERED },
+      ]),
+    );
+    expect(reply.questionsForUser).toBeUndefined();
   }, 60_000);
 });
