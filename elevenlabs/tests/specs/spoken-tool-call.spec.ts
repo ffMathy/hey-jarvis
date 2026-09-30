@@ -44,7 +44,7 @@ describe('findSpokenToolCallsInText', () => {
       '[sighs] Naturally, sir. Let me see what trivial engagements await you.',
       '[dry] It is 21:53, sir. Riveting.',
       'Your calendar shows two engagements: standup at 9am and a design review at 2pm.',
-      '[amused] You want me to check the weather? How delightfully pedestrian.',
+      '[sceptical] You want me to check the weather? How very pedestrian.',
       'Copenhagen is a temperate 15°C with a modest 20% chance of rain, sir.',
       'I am Jarvis, sir. [dry] Surely we have met.',
       'The route (scenic = the long way) would take an hour, sir.',

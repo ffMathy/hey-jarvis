@@ -1,5 +1,26 @@
 # Changelog
 
+## [4.16.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.16.0...root-v4.16.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **elevenlabs:** ground jarvis's tone and always trust sir's request ([#921](https://github.com/ffMathy/hey-jarvis/issues/921)) ([c38759d](https://github.com/ffMathy/hey-jarvis/commit/c38759da11a6dfa190823c31a4765a2bbf88f07f))
+
+## [4.16.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.15.1...root-v4.16.0) (2026-09-29)
+
+
+### Features
+
+* **mcp:** add code-based rules for the state change reactor ([#918](https://github.com/ffMathy/hey-jarvis/issues/918)) ([bf6dd6d](https://github.com/ffMathy/hey-jarvis/commit/bf6dd6d3741d774d4f86e4b61ce75214c6f3b5a1))
+* **mcp:** feed android notifications into synapse ([#913](https://github.com/ffMathy/hey-jarvis/issues/913)) ([9eeb117](https://github.com/ffMathy/hey-jarvis/commit/9eeb1172b4db28d90c32a202607e88275880cb91))
+* **mcp:** monitor home assistant over its websocket api ([#914](https://github.com/ffMathy/hey-jarvis/issues/914)) ([e7ae14d](https://github.com/ffMathy/hey-jarvis/commit/e7ae14d2e385ef81189fd53783479f294023f198))
+
+
+### Bug Fixes
+
+* **mcp:** host visualize pages on the mcp server for 24 hours ([#920](https://github.com/ffMathy/hey-jarvis/issues/920)) ([8442bfe](https://github.com/ffMathy/hey-jarvis/commit/8442bfef8051e9251806c77899d80f3883e678a9))
+
 ## [4.15.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.15.0...root-v4.15.1) (2026-09-29)
 
 

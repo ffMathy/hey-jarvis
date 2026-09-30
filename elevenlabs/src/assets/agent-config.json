@@ -64,8 +64,8 @@
           "description": "Deadpan delivery for witty observations"
         },
         {
-          "tag": "amused",
-          "description": "Finding humor in the user's request"
+          "tag": "sceptical",
+          "description": "Friendly, laid-back scepticism in place of amusement"
         },
         {
           "tag": "whispers",
@@ -76,8 +76,8 @@
           "description": "Reluctance or questioning wisdom of request"
         },
         {
-          "tag": "laughing",
-          "description": "Genuine amusement at absurdity"
+          "tag": "sardonic",
+          "description": "Quiet sarcasm; the usual answer to anything funny"
         },
         {
           "tag": "matter-of-factly",
