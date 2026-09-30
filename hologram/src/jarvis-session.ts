@@ -160,6 +160,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
   const halfDuplexMayJudge = dependencies.halfDuplexMayJudge ?? (() => true);
   const offlineProblem = dependencies.offlineProblem;
   const deadlineProblem = dependencies.deadlineProblem ?? (() => DEADLINE_PROBLEM);
+  const giveUpConnectingAfterMs = dependencies.giveUpConnectingAfterMs ?? GIVE_UP_CONNECTING_AFTER_MS;
   const findRoom = dependencies.findRoom ?? (() => undefined);
   const followVoice = dependencies.followAgentVoice;
   const removeOrphanedAudio = dependencies.removeOrphanedAudio;
@@ -840,9 +841,13 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     }));
   };
 
-  /** Arms the deadline and asks for what to dial with. */
+  /** Arms the deadline, unless it is told to wait for ever, and asks for what to dial with. */
   const reachOut = (current: Attempt<Timer>) => {
-    current.deadline = schedule(() => giveUp(current), GIVE_UP_CONNECTING_AFTER_MS);
+    // Never handed to the timer when it is not finite: a browser runs a timer of `Infinity` at
+    // once, which would give up on the conversation the moment it was asked for.
+    if (Number.isFinite(giveUpConnectingAfterMs)) {
+      current.deadline = schedule(() => giveUp(current), giveUpConnectingAfterMs);
+    }
     requestCredential(current).then(
       (credential) => {
         if (isCurrent(current)) {

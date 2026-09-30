@@ -72,7 +72,9 @@ export function createFakeClock() {
     now: () => time,
     setTimeout: (callback: () => void, milliseconds: number) => {
       const handle = nextHandle++;
-      timers.set(handle, { at: time + milliseconds, callback });
+      // As a browser does it: a delay that is not a finite number, `Infinity` among them, is none.
+      // A fake that waited for ever instead would pass a session that only fails on a real page.
+      timers.set(handle, { at: time + (Number.isFinite(milliseconds) ? milliseconds : 0), callback });
       return handle;
     },
     clearTimeout: (handle: number) => {

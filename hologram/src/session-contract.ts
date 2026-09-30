@@ -347,6 +347,14 @@ export interface JarvisSessionDependencies<Timer> {
   /** What the deadline says when it gives up, asked at that moment; `DEADLINE_PROBLEM` when left out. */
   deadlineProblem?: () => string;
   /**
+   * How long a summoning waits for its conversation to open before giving up, in milliseconds:
+   * `GIVE_UP_CONNECTING_AFTER_MS` when left out, which is what the phone, the watch and the headset
+   * all run with. `Number.POSITIVE_INFINITY` never gives up. Only the headset's browser tests ask
+   * for that (`?deadline=never`): they keep him greeting on a token that never comes while an
+   * emulator draws a frame a second or slower, and no fixed wait is long enough on every machine.
+   */
+  giveUpConnectingAfterMs?: number;
+  /**
    * The audio the call runs in, on a device that has to switch into it before the greeting (see
    * {@link CallAudio}). Let go once nothing uses it: at once when no conversation was dialled, and
    * otherwise once the conversation has finished ending.

@@ -157,6 +157,15 @@ first, and for three seconds after that move while the echo canceller settles.
 reported, after the session has dealt with it, so the headset can watch for his
 voice coming back through the microphone.
 
+`giveUpConnectingAfterMs` sets the deadline, `GIVE_UP_CONNECTING_AFTER_MS` when
+left out, and no device sets it. Only the headset's browser tests pass it,
+`Infinity` from `?deadline=never`, because they keep him greeting on a token that
+never comes while an emulator draws a frame a second or slower, and the shared
+twenty seconds raced them on a slow machine (see "The browser tests" in
+`horizon/AGENTS.md`). An infinite wait arms no timer at all: a browser runs a
+timer of `Infinity` at once, and the specs' fake clock does the same, so a session
+that handed it over would fail in their hands as it would on a page.
+
 Its specs are the headset's (`jarvis-session.spec.ts`,
 `jarvis-session-conversation.spec.ts`, set up the way the headset sets it up) and
 the phone's and the watch's (`jarvis-session-devices.spec.ts`), all driven by the
