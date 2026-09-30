@@ -52,6 +52,11 @@ export interface HeadsetSessionOptions {
    * room that lights up what he works on and says what sir points at. Without it, nothing.
    */
   deviceContext?: string;
+  /**
+   * How long a summoning waits for its conversation to open, when not the session's own deadline:
+   * only ever `Infinity`, from the browser tests' `?deadline=never` (`test-seams.ts`).
+   */
+  giveUpConnectingAfterMs?: number;
 }
 
 /** As much of the spatial voice as a conversation reaches for. */
@@ -121,8 +126,9 @@ function eventsFor(events: JarvisSessionEvents, voice: HeadsetVoice | undefined)
  * what it watches for its echo passed on, and the half-duplex fallback told to wait while it is
  * spatial. And the SDK's orphaned `<audio>` elements swept away after a dropped call
  * (`orphaned-audio.ts`), because this page stays open for hours of summonings. The room's events
- * (`onAffected` among them) and what it tells the agent about the device (`deviceContext`) pass
- * through as the room hands them over.
+ * (`onAffected` among them), what it tells the agent about the device (`deviceContext`) and the
+ * deadline the browser tests hold open (`giveUpConnectingAfterMs`) pass through as the room hands
+ * them over.
  */
 export function headsetSessionDependencies({
   audioContext,

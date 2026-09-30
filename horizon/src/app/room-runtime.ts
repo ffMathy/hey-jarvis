@@ -86,6 +86,8 @@ export interface RoomOptions {
   showHud?: boolean;
   /** Sample mode's frame-rate readout, which a room opened to be filmed (`?film`) goes without. */
   showReadout?: boolean;
+  /** Keeps an error panel up until it is dismissed: the browser tests' `?errors=held` (`test-seams.ts`). */
+  holdErrors?: boolean;
   /**
    * What the other modules can add to the HUD that the room cannot see itself: the microphone's
    * permission and track, the AudioContexts' states.
@@ -304,6 +306,7 @@ function startRoom(
     mode: options.mode,
     canType: stage.session.isSystemKeyboardSupported === true,
     readout: options.showReadout,
+    holdErrors: options.holdErrors,
   });
 }
 

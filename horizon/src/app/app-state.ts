@@ -39,7 +39,9 @@ import type { Ray } from '../xr/ray';
  * **Failures** are never silent and never permanent. The problem is shown on a panel at his spot
  * for as long as it takes to read (at least six seconds), or until a select, and then he leaves
  * and the wake word is armed again — so one bad summon never leaves the room deaf. The problem is
- * also handed back to the 2D page, which shows it after the room is closed.
+ * also handed back to the 2D page, which shows it after the room is closed. A room the browser
+ * tests open with `?errors=held` keeps the panel up until the select (see `test-seams.ts`): the
+ * emulator can take longer over a picture of it than it takes to read.
  *
  * **The wake word is armed again only once he has been quiet for two seconds.** His voice comes
  * out of the headset's own speakers, a few centimetres from its microphones; armed while the tail
@@ -182,6 +184,12 @@ export interface AppModel {
    * 0.0 ms — which says nothing about him or about a headset.
    */
   showsReadout: boolean;
+  /**
+   * Whether an error panel stays up until a select or B dismisses it, rather than for as long as it
+   * takes to read. Only in a room the browser tests open with `?errors=held` (`test-seams.ts`),
+   * whose pictures of the panel can take the emulator longer than the panel is up.
+   */
+  holdsErrors: boolean;
 }
 
 /** A select, already told apart by how long it was held and what its ray hit. */
@@ -201,6 +209,8 @@ export type AppEvent =
       canType?: boolean;
       /** Whether sample mode shows its frame-rate readout; shown unless this says otherwise. */
       readout?: boolean;
+      /** Whether an error panel stays up until it is dismissed; only for as long as it takes to read unless this says so. */
+      holdErrors?: boolean;
     }
   | { type: 'wake' }
   | SelectEvent
@@ -298,6 +308,7 @@ export function initialAppModel(wake: WakeReadiness = { kind: 'absent' }): AppMo
     pendingProblem: undefined,
     toast: undefined,
     showsReadout: true,
+    holdsErrors: false,
   };
 }
 
@@ -378,6 +389,7 @@ function onEntered(model: AppModel, event: Extract<AppEvent, { type: 'entered' }
     mode: event.mode,
     canType: event.canType ?? false,
     showsReadout: event.readout ?? true,
+    holdsErrors: event.holdErrors ?? false,
     scene: { kind: 'waiting' },
   };
   if (event.mode === 'sample') {
@@ -496,7 +508,10 @@ function onSessionPhase(model: AppModel, phase: SessionPhase, now: number): Tran
   if (model.scene.kind !== 'present') return stay(model);
   if (phase === 'failed') {
     const problem = model.pendingProblem ?? UNEXPLAINED_FAILURE;
-    const until = now + Math.max(SHORTEST_ERROR_MS, readingMilliseconds(problem));
+    // Held, no tick ever reaches the moment it would go: only a select or B ends it.
+    const until = model.holdsErrors
+      ? Number.POSITIVE_INFINITY
+      : now + Math.max(SHORTEST_ERROR_MS, readingMilliseconds(problem));
     return go(
       model,
       { scene: { kind: 'failed', problem, until }, pendingProblem: undefined },

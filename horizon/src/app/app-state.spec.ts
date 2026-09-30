@@ -362,6 +362,33 @@ describe('failures', () => {
     }
   });
 
+  it('keeps the problem up until it is dismissed in a room that holds errors, and only there', () => {
+    const held = new Room();
+    held.send({ type: 'entered', mode: 'conversation', holdErrors: true });
+    held.send({ type: 'wake' });
+    held.send({ type: 'placed' });
+    held.send({ type: 'session-phase', phase: 'greeting' });
+    held.send({ type: 'problem', message: 'ElevenLabs rejected the API key. Check it in the settings.' });
+    held.send({ type: 'session-phase', phase: 'failed' });
+    // An hour of ticks, which no emulator's picture of the panel takes.
+    for (let second = 0; second < 3600; second += 1) expect(held.after(1000)).toEqual([]);
+    expect(held.view.panels.error).toEqual(['ElevenLabs rejected the API key. Check it in the settings.']);
+    expect(held.view.wakeArmed).toBe(false);
+
+    expect(types(held.send({ type: 'select', hold: 'short', target: 'him' }))).toEqual([
+      'hologram',
+      'hide-panel',
+      'arm-wake',
+    ]);
+    held.send({ type: 'presence-gone' });
+    held.send({ type: 'session-ended' });
+
+    // Every room decides afresh: the next one, entered without saying so, takes it down on time.
+    held.inConversation('greeting');
+    held.send({ type: 'session-phase', phase: 'failed' });
+    expect(held.scene).toEqual({ kind: 'failed', problem: UNEXPLAINED_FAILURE, until: held.now + SHORTEST_ERROR_MS });
+  });
+
   it('ignores the wake word and later phases while the problem is up', () => {
     const room = new Room().inConversation('greeting');
     room.send({ type: 'session-phase', phase: 'failed' });

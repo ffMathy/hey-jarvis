@@ -71,7 +71,10 @@ listening, a status line saying why and what to do about it.
   echo canceller of its own, to hear what that does; `?film` is for recordings,
   and leaves sample mode's frame-rate readout out (see "The demo video");
   `?origin=x,z,yawDegrees` moves the room's space from where the headset put it,
-  for the browser tests only (`xr/origin-offset.ts`).
+  for the browser tests only (`xr/origin-offset.ts`), as are `?deadline=never`,
+  which keeps a summoning waiting for a conversation that never opens, and
+  `?errors=held`, which keeps an error panel up until a select or B
+  (`test-seams.ts`; see "The browser tests").
 
 ## What is in here
 
@@ -80,6 +83,7 @@ index.html                 the 2D page: settings, the walk to the room, the mode
 preview.html               the desktop preview (src/preview/)
 src/main.ts                chooses the parts, wires the page to the room, owns the Enter tap
 src/debug-hook.ts          window.__jarvis, what the browser tests read (see below)
+src/test-seams.ts          ?deadline=never and ?errors=held, the clocks the browser tests hold (see below)
 src/page/                  the 2D page: settings, preparations, the microphone step
 src/app/                   the room's state machine, its runtime, the ports, sample mode, placement's adapter,
                            the entities controller

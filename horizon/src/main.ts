@@ -10,6 +10,7 @@ import { type RoomOutcome, startPage } from './page/page';
 import type { PreparationTask } from './page/preparation';
 import type { KeyValueStorage } from './page/settings';
 import { loadVoiceFromWhereHeStands } from './page/voice-setting';
+import { readTestSeams } from './test-seams';
 import type { Diagnostics } from './ui3d/debug-hud';
 import {
   createWakeEngine,
@@ -48,11 +49,15 @@ import { canEnterRoom, requestRoomSession } from './xr/room-session';
  * `?film` is for recordings: sample mode goes without its frame-rate readout, which in the demo
  * video (`.scripts/render-demo.ts`, shot on a faked clock) would only report that clock, and
  * `?origin=x,z,yawDegrees` moves the room's space from where the headset put it, which only the
- * browser tests want (`xr/origin-offset.ts`).
+ * browser tests want (`xr/origin-offset.ts`). They alone want two more, because the emulator draws
+ * too slowly to race the budgets they hold (`test-seams.ts`): `?deadline=never`, the session never
+ * giving up on a conversation that has not opened, and `?errors=held`, an error panel staying up
+ * until it is dismissed.
  */
 
 const debug = publishDebugState(initialDebugState());
 const flags = new URLSearchParams(window.location.search);
+const seams = readTestSeams(flags);
 const assetBase = new URL('./', document.baseURI);
 
 const roomLoading = Promise.all([
@@ -214,6 +219,7 @@ function sharedRoomOptions(modules: RoomModules, onInside: () => void) {
     // Every room remembers where sir put things: the registry and the anchors outlive the session.
     entityStorage: browserStorage,
     origin: parseOriginOffset(flags.get('origin')),
+    holdErrors: seams.holdErrors,
     debug,
     onInside,
   } satisfies Omit<RoomOptions, 'mode'>;
@@ -288,6 +294,7 @@ async function openConversationRoom(
           events,
           voice,
           deviceContext: conversation.HEADSET_DEVICE_CONTEXT,
+          giveUpConnectingAfterMs: seams.giveUpConnectingAfterMs,
         }),
       stopMicrophone,
       diagnostics: flags.has('debug') ? roomDiagnostics : undefined,

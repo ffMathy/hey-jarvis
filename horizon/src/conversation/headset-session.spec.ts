@@ -81,6 +81,15 @@ describe('the headset’s session', () => {
     expect(HEADSET_DEVICE_CONTEXT).toContain('headset');
     expect(HEADSET_DEVICE_CONTEXT).toContain('pointing at');
   });
+
+  it('waits for a conversation on the session’s own deadline, unless the room holds it open', () => {
+    // Left to the session, which gives up after GIVE_UP_CONNECTING_AFTER_MS on every device.
+    expect(dependencies.giveUpConnectingAfterMs).toBeUndefined();
+
+    const held = headsetSessionDependencies(optionsWith({ giveUpConnectingAfterMs: Number.POSITIVE_INFINITY }));
+
+    expect(held.giveUpConnectingAfterMs).toBe(Number.POSITIVE_INFINITY);
+  });
 });
 
 describe('what the room hears of what he is working on', () => {
