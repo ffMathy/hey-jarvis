@@ -270,6 +270,12 @@ export function createFakeCallAudio({ startsAtOnce = true }: { startsAtOnce?: bo
 
 /** A conversation the SDK hands over, recording what the session does with it. */
 export interface FakeConversation extends SessionConversation {
+  /**
+   * What `getId()` answers: `conv_fake1` for the first dial, `conv_fake2` for the second and so on,
+   * so a spec can tell one summoning's conversation from the next. Set it before `connect()` to be
+   * what the session reads, since the session reads it once, when the conversation is handed over.
+   */
+  id: string;
   muting: boolean[];
   sent: string[];
   /** What the agent was told without a turn being taken. */
@@ -305,7 +311,10 @@ export interface FakeDial {
   agentHangsUp(): void;
 }
 
-function createFakeDial(options: SessionOptions): { dial: FakeDial; promise: Promise<SessionConversation> } {
+function createFakeDial(
+  options: SessionOptions,
+  dialNumber: number,
+): { dial: FakeDial; promise: Promise<SessionConversation> } {
   const started = deferred<SessionConversation>();
   let status = 'connecting';
   let slowEnding = false;
@@ -334,6 +343,7 @@ function createFakeDial(options: SessionOptions): { dial: FakeDial; promise: Pro
   };
 
   const conversation: FakeConversation = {
+    id: `conv_fake${dialNumber}`,
     muting: [],
     sent: [],
     contextualUpdates: [],
@@ -366,6 +376,7 @@ function createFakeDial(options: SessionOptions): { dial: FakeDial; promise: Pro
     sendUserActivity: () => {
       conversation.userActivity++;
     },
+    getId: () => conversation.id,
     getInputVolume: () => conversation.inputVolume,
     getOutputVolume: () => conversation.outputVolume,
     getOutputByteFrequencyData: () => new Uint8Array(1024).fill(40),
@@ -406,7 +417,7 @@ function createFakeDial(options: SessionOptions): { dial: FakeDial; promise: Pro
 export function createFakeSdk() {
   const dials: FakeDial[] = [];
   const startSession: StartSession = (options) => {
-    const { dial, promise } = createFakeDial(options);
+    const { dial, promise } = createFakeDial(options, dials.length + 1);
     dials.push(dial);
     return promise;
   };
@@ -525,7 +536,7 @@ export function createHarness(
   let pushReaders: ((readers: JarvisVoiceReaders | undefined) => void) | undefined;
   let followsStopped = 0;
 
-  const dependencies: JarvisSessionDependencies<number> = {
+  const session = createJarvisSession({
     settings: { apiKey: 'sk_a-secret-key', agentId: 'agent_01jz0123456789' },
     participantName: HEADSET_PARTICIPANT_NAME,
     startSession: sdk.startSession,
@@ -548,12 +559,8 @@ export function createHarness(
     removeOrphanedAudio: () => {
       orphanSweeps++;
     },
-  };
-  // Copied as they are rather than spread, so an override that is a getter stays one and is read
-  // when the session reads it — which is how `useJarvisSession` hands over what it re-reads.
-  const session = createJarvisSession(
-    Object.defineProperties(dependencies, Object.getOwnPropertyDescriptors(overrides)),
-  );
+    ...overrides,
+  });
 
   return {
     session,

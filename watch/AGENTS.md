@@ -106,13 +106,6 @@ call itself, with its `turnTimeout` of three seconds and its `end_call` tool; th
 client tool for it. To the watch it is the agent hanging up: the network is let go and he stays on
 the screen until the wrist drops.
 
-**He can't be shown anything here.** The agent's `openCamera` client tool is the phone's, and the
-agent only calls it where a device has said it has a camera, which the watch never does. It is
-answered anyway, with `NO_CAMERA_HERE` from `hologram`: the session does that on any device that
-hands it no client tools of its own, and the watch hands it none. Unanswered, the SDK would answer
-with an error in its own words, which gives the agent nothing to tell sir; this answer tells it to
-suggest the phone instead.
-
 **On the watch's own speaker he is at 90% of the call volume.** Everything he says there is call audio, and full call volume from a wrist carries across a room. `modules/jarvis-volume` lowers `STREAM_VOICE_CALL` to 90% of its maximum before the greeting, in the watch's own volume steps, rounded down so a five-step scale really comes down one step. It only ever lowers the volume: a wearer who set it lower keeps their setting.
 
 Two things differ from the phone, both deliberate:

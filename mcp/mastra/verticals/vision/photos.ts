@@ -9,15 +9,16 @@ import { randomBytes } from 'node:crypto';
  * and every agent it plans run, so the agent that looks at a photo finds it here. Studio's process
  * (`mastra dev`, port 4111) has a store of its own that nothing ever fills.
  *
- * **A photo arrives through a slot, and a slot takes one.** The phone knows no address of this
- * server (see "Configuration" in `mobile/AGENTS.md`), so it is handed one per photo:
- * `preparePhotoUpload` opens a slot with 128 random bits for a name, hands the agent the URL of it,
- * and the first body sent there — within {@link UPLOAD_SLOT_MS} — is the photo. The one secret the
- * phone does hold, the photo upload key (`upload-key.ts`), is checked in front of the slot; the slot
- * is what ties a photo to the request it was asked for, and what keeps the number of them bounded.
- * It is claimed *before* its body is read, which is what keeps a stranger from making this process
- * buffer uploads it will only refuse: a request without the key, or for a slot that does not exist,
- * is turned away with nothing read, and a slot is read from once.
+ * **A photo arrives through a slot, and a slot takes one.** When sir taps the camera button, the
+ * phone asks this server for a slot (`POST /api/photos/slots` in `api/routes.ts`), sending the id of
+ * the ElevenLabs conversation it is in; the slot is opened only once ElevenLabs says that
+ * conversation is live on Jarvis's agent (`live-conversation.ts`). The slot is named by 128 random
+ * bits, handed straight back to the phone, and the first body sent there — within
+ * {@link UPLOAD_SLOT_MS} — is the photo. That name is the upload's only protection: the phone holds
+ * no key, and the name never passes through anyone but this server and the phone. A slot is what
+ * keeps the number of photos in flight bounded, and it is claimed *before* its body is read, which
+ * is what keeps a stranger from making this process buffer uploads it will only refuse: a request
+ * for a slot that does not exist is turned away with nothing read, and a slot is read from once.
  *
  * **Everything is bounded**, because the Pi this runs on has two gigabytes for two processes: at
  * most {@link MAX_OPEN_SLOTS} slots and {@link MAX_KEPT_PHOTOS} photos of at most
@@ -25,15 +26,21 @@ import { randomBytes } from 'node:crypto';
  * Pruning happens whenever the store is touched rather than on a timer, as the other short-lived
  * state in this server does.
  *
- * **A photo nobody has looked at yet is waiting** ({@link photosWaiting}). Sir can take one and
- * say nothing about it, or the conversation that sent it can end before anything asks — so a photo
- * is not tied to the conversation it arrived in. Routing shows every waiting photo to the planner, and
- * brings one up in a later reply to ask what he would like done with it (`routing/waiting-photos.ts`);
- * `lookAtPhoto` is what stops it waiting ({@link markPhotoLookedAt}), and so does sir saying he wants
- * nothing done with it ({@link dismissPhoto}).
+ * **A photo nobody has looked at yet is waiting** ({@link photosWaiting}). The conversation that
+ * sent one is told about it by the phone and looks at it straight away, whether sir said what it is
+ * for or not — but that conversation can end before the phone gets to tell it, or the look can
+ * fail, so a photo is not tied to the conversation it arrived in. Routing shows every waiting photo
+ * to the planner, and brings one up in a later reply to ask what he would like done with it
+ * (`routing/waiting-photos.ts`); `lookAtPhoto` is what stops it waiting ({@link markPhotoLookedAt}),
+ * and so does sir saying he wants nothing done with it ({@link dismissPhoto}).
  */
 
-/** How long a slot waits for its photo: the camera, the shot and the upload all fit inside it. */
+/**
+ * How long a slot waits for its photo: the camera, the shot and the upload all fit inside it.
+ *
+ * The phone asks for its slot the moment sir taps the button, while the conversation is certainly
+ * live, so this is also how long he has to frame the shot.
+ */
 export const UPLOAD_SLOT_MS = 5 * 60_000;
 
 /** How long a photo is kept, so a follow-up question about it still finds it. */
@@ -131,7 +138,7 @@ export function openUploadSlot(now = Date.now()): { uploadToken: string; expires
   prune(now);
   makeRoom(openSlots, MAX_OPEN_SLOTS);
 
-  // 128 bits, URL-safe: 22 characters nobody can guess, and with the upload key what lets a photo in.
+  // 128 bits, URL-safe: 22 characters nobody can guess, and all that lets a photo in.
   const uploadToken = randomBytes(16).toString('base64url');
   const expiresAt = now + UPLOAD_SLOT_MS;
   openSlots.set(uploadToken, expiresAt);

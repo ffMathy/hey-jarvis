@@ -1,18 +1,19 @@
 import express, { type NextFunction, type Request, type Response, type Router } from 'express';
-import type { ZodTypeAny } from 'zod';
+import { type ZodTypeAny, z } from 'zod';
 import { extractErrorMessage } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import type { AnyWorkflow, AnyWorkflowResult } from '../../utils/workflows/workflow-factory.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
 import {
+  type ConversationVerdict,
+  checkLiveConversation,
   claimUploadSlot,
-  configuredPhotoUploadKey,
-  holdsPhotoUploadKey,
   KEEP_PHOTO_MS,
   keepPhoto,
+  type LiveConversationCheck,
   MAX_PHOTO_BYTES,
+  openUploadSlot,
   PHOTO_MEDIA_TYPES,
-  PHOTO_UPLOAD_PATH,
   type PhotoMediaType,
 } from '../vision/index.js';
 
@@ -159,11 +160,27 @@ export function registerWorkflowApi(router: Router, config: WorkflowApiConfig): 
   return config.path;
 }
 
+/** Where photos go: the slot endpoint and every upload are under this path. */
+export const PHOTO_UPLOAD_PATH = '/api/photos';
+
 /**
- * Where a photo is sent: `PHOTO_UPLOAD_PATH` and the token of the slot it was minted for.
+ * Where sir's phone asks for somewhere to send a photo, with the id of the conversation it is in.
  *
- * Spelled out rather than built from `PHOTO_UPLOAD_PATH`, so that it can be found as it is: the
- * phone's check of an upload URL (`camera-answers.ts` in `mobile`) is pinned to this line.
+ * Under {@link PHOTO_UPLOAD_PATH} on purpose: that is the one path Cloudflare Access lets the phone
+ * through without a service token (see "MCP Server Access" in `mcp/AGENTS.md`), and the one the MCP
+ * server's JSON parser leaves alone. Spelled out rather than built, so that it can be found as it
+ * is: the phone posts to this exact path.
+ */
+export const PHOTO_SLOTS_ROUTE = '/api/photos/slots';
+
+/**
+ * Where a photo is sent: {@link PHOTO_UPLOAD_PATH} and the token of the slot it was opened for.
+ *
+ * Spelled out rather than built from {@link PHOTO_UPLOAD_PATH}, so that it can be found as it is.
+ * The phone only sends to an `uploadPath` that matches `^/api/photos/[A-Za-z0-9_-]{22}$`
+ * (`photo-upload.ts` in `mobile`), appended to the server address in its own settings, so the path
+ * and the token's shape (`openUploadSlot` in `vision/photos.ts`) must stay as they are. A token is
+ * 22 characters, so it can never be `slots`.
  */
 export const PHOTO_UPLOAD_ROUTE = '/api/photos/:uploadToken';
 
@@ -174,66 +191,126 @@ function photoMediaType(contentType: string | undefined): PhotoMediaType | undef
 }
 
 /**
- * Lets the browser build send a photo from the origin it is served from.
+ * Lets the browser build ask for a slot and send a photo from the origin it is served from.
  *
- * Any origin, because what authorises an upload is written into the request by the phone itself —
- * the key in `Authorization`, the slot's token in the path — rather than anything a browser attaches
- * on its own: there are no cookies for a wildcard to expose, and a page on another origin that knows
- * neither can send nothing. `Authorization` has to be named here, since a browser sends that header
- * across origins only when the preflight allows it; the phone's browser build is served from GitHub
- * Pages rather than from this server.
+ * Any origin, because what lets a request through is written into it by the phone itself — the
+ * conversation id in the slot request's body, the slot's token in the upload's path — rather than
+ * anything a browser attaches on its own: there are no cookies for a wildcard to expose, and a page
+ * on another origin that knows neither gets nothing. `Content-Type` has to be named, since a browser
+ * sends `application/json` or `image/jpeg` across origins only when the preflight allows it; the
+ * phone's browser build is served from GitHub Pages rather than from this server.
  */
 function allowAnyOrigin(_request: Request, response: Response, next: NextFunction): void {
   response.set({
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'PUT, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'PUT, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Max-Age': '600',
   });
   next();
 }
 
-/** The realm a refused upload is told to authenticate for, so a client can tell this refusal apart. */
-const PHOTO_UPLOAD_REALM = 'jarvis-photos';
+/** Answers a browser's preflight, which asks only which methods and headers may follow. */
+function answerPreflight(_request: Request, response: Response): void {
+  response.sendStatus(204);
+}
+
+/** What the phone sends to ask for a slot. */
+const slotRequestSchema = z.object({ conversationId: z.string() });
+
+/** How each way a slot can be refused is answered, by what the conversation check found. */
+const SLOT_REFUSALS: Record<Exclude<ConversationVerdict, 'live'>, { status: number; message: string }> = {
+  malformed: {
+    status: 400,
+    message: 'Send the id of the conversation the photo is for, as {"conversationId": "conv_…"}.',
+  },
+  'not-live': { status: 403, message: 'That is not a conversation in progress with Jarvis.' },
+  'too-many-checks': {
+    status: 429,
+    message: 'Too many photo slots have been asked for in the last minute. Try again in a moment.',
+  },
+  unverifiable: { status: 502, message: 'ElevenLabs could not confirm the conversation just now.' },
+  'switched-off': { status: 503, message: 'Photo uploads are switched off on this server.' },
+};
+
+/** Answers a slot request that was refused, in the JSON envelope every answer here uses. */
+function refuseSlot(response: Response, verdict: Exclude<ConversationVerdict, 'live'>): void {
+  const { status, message } = SLOT_REFUSALS[verdict];
+  response.status(status).json({ success: false, message } satisfies WorkflowApiResponse);
+}
+
+/** Parses a slot request's body, and refuses one over a kilobyte without buffering it. */
+const parseSlotRequest = express.json({ limit: '1kb' });
 
 /**
- * Turns an upload away before anything else is looked at, unless it carries the photo upload key.
+ * Reads the slot request's body: JSON, and at most a kilobyte.
  *
- * **Ahead of the slot, and without touching it.** A slot is spent once it is claimed, so a request
- * without the key must never reach {@link claimSlotBeforeReading}: otherwise anyone who saw an upload
- * URL could not use it, but could still make sure sir's phone could not either. Checked here, a
- * request without the key costs two hashes and leaves the slot for the phone.
- *
- * **Fails closed.** A server with no key configured takes no photos (`503`) rather than taking them
- * from anyone. The header is read and compared, never logged (see `vision/upload-key.ts`).
+ * Its own parser rather than the server's, which skips everything under {@link PHOTO_UPLOAD_PATH}
+ * (see `mcp-server.ts`): the request is open to anyone, and `{"conversationId": "conv_…"}` is a few
+ * dozen bytes, so a stranger's hundred kilobytes are refused rather than read. A body the parser
+ * refuses — too large, not JSON — is answered like any other that names no conversation, in the
+ * envelope the phone reads, rather than by the server's error handler.
  */
-function requirePhotoUploadKey(request: Request, response: Response, next: NextFunction): void {
-  const expectedKey = configuredPhotoUploadKey();
-  if (!expectedKey) {
-    response.status(503).json({
-      success: false,
-      message: 'Photo uploads are switched off on this server.',
-    } satisfies WorkflowApiResponse);
-    return;
-  }
+function readSlotRequest(request: Request, response: Response, next: NextFunction): void {
+  parseSlotRequest(request, response, (error?: unknown) => {
+    if (error !== undefined) {
+      refuseSlot(response, 'malformed');
+      return;
+    }
+    next();
+  });
+}
 
-  if (!holdsPhotoUploadKey(request.headers.authorization, expectedKey)) {
-    response
-      .status(401)
-      .set('WWW-Authenticate', `Bearer realm="${PHOTO_UPLOAD_REALM}"`)
-      .json({ success: false, message: 'This upload needs the photo upload key.' } satisfies WorkflowApiResponse);
-    return;
-  }
+/**
+ * Opens a slot for one photo, once the conversation the phone named is confirmed live on Jarvis's
+ * agent (see `vision/live-conversation.ts`).
+ *
+ * The slot's token goes straight back to the phone, which is what makes it enough on its own to
+ * guard the upload: it never passes through ElevenLabs or anyone else. It is never logged, and
+ * neither is the conversation it was opened for.
+ */
+function openSlotForLiveConversation(
+  isLiveJarvisConversation: LiveConversationCheck,
+): (request: Request, response: Response, next: NextFunction) => void {
+  return (request, response, next) => {
+    void (async (): Promise<void> => {
+      try {
+        const slotRequest = slotRequestSchema.safeParse(request.body);
+        if (!slotRequest.success) {
+          refuseSlot(response, 'malformed');
+          return;
+        }
 
-  next();
+        const verdict = await isLiveJarvisConversation(slotRequest.data.conversationId);
+        if (verdict !== 'live') {
+          refuseSlot(response, verdict);
+          return;
+        }
+
+        const { uploadToken, expiresAt } = openUploadSlot();
+        logger.info('[API] Photo slot opened', { expiresAt: new Date(expiresAt).toISOString() });
+        response.status(201).json({
+          success: true,
+          message: 'Photo slot opened',
+          data: {
+            uploadToken,
+            uploadPath: `${PHOTO_UPLOAD_PATH}/${uploadToken}`,
+            expiresAt: new Date(expiresAt).toISOString(),
+          },
+        } satisfies WorkflowApiResponse);
+      } catch (error: unknown) {
+        next(error);
+      }
+    })();
+  };
 }
 
 /**
  * Turns an upload away before a byte of it is read, unless it is an image for a live slot.
  *
  * **The order is the protection.** This path has to be reachable without Cloudflare Access — the
- * phone holds no Access service token — so anyone can send to it, and even a request with the key
- * is read only once it is known to be wanted. A body parser in front of this would read a
+ * phone holds no Access service token — and it asks for no key, so anyone can send to it, and what
+ * is sent is read only once it is known to be wanted. A body parser in front of this would read a
  * stranger's ten megabytes into memory before refusing them, and a few hundred of those at once are
  * the Pi's memory, and with it the process every other part of Jarvis runs in. Checked first, a
  * guessed token costs one map lookup, and a slot is read from once.
@@ -283,37 +360,59 @@ function keepUploadedPhoto(request: Request, response: Response): void {
   } satisfies WorkflowApiResponse);
 }
 
+/** An upload token where the request log would show one: under the photo path, and not `slots`. */
+const UPLOAD_TOKEN_IN_PATH = new RegExp(`^(${PHOTO_UPLOAD_PATH}/)(?!slots(?:[/?#]|$))[^/?#]+`);
+
 /**
  * The request's path, with an upload token taken out, for logging.
  *
- * A token is a key to one slot for a few minutes, and a log is read by more people than that.
+ * A token is the key to one slot for a few minutes — the only one the upload asks for — and a log
+ * is read by more people than that. The slot endpoint's own path is left readable: it names no slot.
  */
 export function withoutUploadToken(url: string): string {
-  return url.replace(new RegExp(`^(${PHOTO_UPLOAD_PATH}/)[^/?#]+`), '$1…');
+  return url.replace(UPLOAD_TOKEN_IN_PATH, '$1…');
 }
 
 /**
- * Registers the endpoint sir's phone sends a photo to. See `vision/upload-key.ts` for the key it
- * has to carry, `vision/photos.ts` for the slot a photo comes in through, and `preparePhotoUpload`
- * for where its URL comes from.
+ * Registers the endpoint sir's phone asks for a photo slot at. See `vision/live-conversation.ts` for
+ * the check in front of it, and `vision/photos.ts` for the slot.
  *
- * The preflight asks for no key: a browser sends `OPTIONS` without the headers it is asking about,
- * so it could not carry one, and it answers nothing but which headers may follow.
+ * Answers in the JSON envelope every route here uses: `201` with `{ uploadToken, uploadPath,
+ * expiresAt }`, or `400` for a body that names no conversation id, `403` for a conversation that is
+ * not live on Jarvis's agent, `429` once the minute's checks are spent, `502` when ElevenLabs could
+ * not confirm it, and `503` when this server has no ElevenLabs key or agent to check with.
+ *
+ * @param isLiveJarvisConversation - The check to ask; the process's own unless a spec hands it a fake
+ * @returns The registered path, for logging
+ */
+export function registerPhotoSlotApi(
+  router: Router,
+  isLiveJarvisConversation: LiveConversationCheck = checkLiveConversation,
+): string {
+  router.options(PHOTO_SLOTS_ROUTE, allowAnyOrigin, answerPreflight);
+  router.post(
+    PHOTO_SLOTS_ROUTE,
+    allowAnyOrigin,
+    readSlotRequest,
+    openSlotForLiveConversation(isLiveJarvisConversation),
+  );
+  logger.info('[API] Registered photo slot endpoint', { method: 'POST', path: PHOTO_SLOTS_ROUTE });
+  return PHOTO_SLOTS_ROUTE;
+}
+
+/**
+ * Registers the endpoint sir's phone sends a photo to, at the path a slot was opened with. See
+ * `vision/photos.ts` for the slot a photo comes in through, and {@link registerPhotoSlotApi} for
+ * where the slot comes from.
+ *
+ * It asks for no key: the slot's token in the path is what lets a photo in (see
+ * `vision/live-conversation.ts` for why that is enough).
  *
  * @returns The registered path, for logging
  */
 export function registerPhotoUploadApi(router: Router): string {
-  router.options(PHOTO_UPLOAD_ROUTE, allowAnyOrigin, (_request: Request, response: Response) => {
-    response.sendStatus(204);
-  });
-  router.put(
-    PHOTO_UPLOAD_ROUTE,
-    allowAnyOrigin,
-    requirePhotoUploadKey,
-    claimSlotBeforeReading,
-    readPhoto,
-    keepUploadedPhoto,
-  );
+  router.options(PHOTO_UPLOAD_ROUTE, allowAnyOrigin, answerPreflight);
+  router.put(PHOTO_UPLOAD_ROUTE, allowAnyOrigin, claimSlotBeforeReading, readPhoto, keepUploadedPhoto);
   logger.info('[API] Registered photo upload endpoint', { method: 'PUT', path: PHOTO_UPLOAD_ROUTE });
   return PHOTO_UPLOAD_ROUTE;
 }
@@ -324,16 +423,23 @@ export interface RegisteredApiRoute {
   path: string;
 }
 
+/** What the API routes need from outside themselves, so a spec can stand in for it. */
+export interface ApiRouteDependencies {
+  /** Asks whether the conversation a photo slot is for is live on Jarvis's agent. */
+  isLiveJarvisConversation?: LiveConversationCheck;
+}
+
 /**
  * Registers all API routes on the provided Express router.
  * The workflow routes are intended to be called from Home Assistant via REST calls; the photo
- * route by sir's phone, with a URL the voice agent had minted for it and the photo upload key from
- * its settings.
+ * routes by sir's phone — the slot request with the id of the conversation it is in, and the upload
+ * with the path that request answered with.
  *
  * @param router - The Express router to register routes on
+ * @param dependencies - Stand-ins for what the routes ask outside this process, for specs
  * @returns Every registered route, for logging purposes
  */
-export function registerApiRoutes(router: Router): RegisteredApiRoute[] {
+export function registerApiRoutes(router: Router, dependencies: ApiRouteDependencies = {}): RegisteredApiRoute[] {
   const registeredRoutes: RegisteredApiRoute[] = [];
 
   // Shopping List API - triggers shoppingListWorkflow
@@ -346,7 +452,11 @@ export function registerApiRoutes(router: Router): RegisteredApiRoute[] {
     }),
   });
 
-  // Photos sir shows Jarvis with his phone's camera
+  // Photos sir sends Jarvis with his phone's camera button: a slot first, then the photo
+  registeredRoutes.push({
+    method: 'POST',
+    path: registerPhotoSlotApi(router, dependencies.isLiveJarvisConversation),
+  });
   registeredRoutes.push({ method: 'PUT', path: registerPhotoUploadApi(router) });
 
   // Add more workflow APIs here as needed:

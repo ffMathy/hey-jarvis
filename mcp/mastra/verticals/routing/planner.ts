@@ -61,6 +61,12 @@ export { PLANNER_AGENT_ID };
  * `dismissedPhotoIds` is the one reply about a waiting photo that is not work: "nothing, never
  * mind". Without it such a reply planned no task and no answer, and the empty plan was reported to
  * sir as a request no agent could handle. Required and empty-when-absent, like `answers`.
+ *
+ * `photosToAskAbout` is a photo sir sent with nothing said. The vision agent looks at it like any
+ * other, and then Jarvis has to do what every other finished request forbids him — ask sir something
+ * — so the plan says which photos he is to ask about, and the closing report turns each into a
+ * question of this request's own (see `buildClosingReport` in `workflows.ts`). Required and
+ * empty-when-absent, like the others.
  */
 /**
  * How long, and in what voice, Jarvis should answer a request.
@@ -115,6 +121,9 @@ const planSchema = z.object({
   dismissedPhotoIds: z
     .array(z.string())
     .describe('The ids of listed photos the user wants nothing done with, if any; empty otherwise'),
+  photosToAskAbout: z
+    .array(z.string())
+    .describe('The ids of photos this request shows Jarvis without saying what to do with them; empty otherwise'),
 });
 
 export { planSchema };
@@ -178,10 +187,12 @@ Sometimes work started earlier — an agent on an earlier request, or a coding s
 - A request can answer a question and ask for something else at the same time; plan the something else as usual
 - If the request answers none of them, or none are listed, leave \`answers\` empty. Never answer a question on the user's behalf, and never treat a new request as an answer just because a question is waiting
 
-# Photos nobody has looked at yet
-The user can show Jarvis something with his phone's camera. Photos he has sent that nobody has looked at yet are listed after the request, each by its id and how long ago he sent it. Jarvis may have asked him what he would like done with one, so the request can be his reply ("Answer to 'what would you like done with the photo?': add everything on it to the shopping list").
+# Photos
+The user can send Jarvis a photo with the camera button on his phone. Photos he has sent that nobody has looked at yet are listed after the request, each by its id and how long ago he sent it — including one he has only just sent. Jarvis may have asked him what he would like done with one, so the request can be his reply ("Answer to 'what would you like done with the photo?': add everything on it to the shopping list").
 
-- If the request says what to do with one of them, or asks about a photo he sent, plan it as ordinary tasks: the \`vision\` agent looks at the photo, and its prompt names the photo the way a request does — "(photo photo3)" — beside what to find out from it. Any task that acts on what the photo shows needs that task
+- If the request says what to do with one of them, or asks about a photo he sent, plan it as ordinary tasks: the \`vision\` agent looks at the photo, and its prompt names the photo the way a request does — "(photo photo3)" — beside what to find out from it. Any task that acts on what the photo shows needs that task. Leave \`photosToAskAbout\` empty: he has said what he wants
+- If the request is a photo he sent without saying what he wants — "He sent a photo without saying what he wants: look at it and say what it shows (photo photo3)" — plan one \`vision\` task that looks at it and says what it shows and what could be done with it: the items and amounts on it, dates, names, numbers or any text worth acting on. Put its id in \`photosToAskAbout\`, and Jarvis will ask him what he would like done with it once he has said what it shows. Plan nothing else for it: what to do with it is his to say
+- A photo he says he is about to send — "I'll send you a receipt" — has not arrived: plan nothing for it, since there is nothing to look at yet
 - "The photo", "the picture" or "it" means the one listed when there is one, and the one sent last when there are several
 - A photo is never a waiting question: never put one in \`answers\`, even when the request replies to being asked about it
 - If he wants nothing done with one — "nothing", "never mind", "I was only testing" — put its id in \`dismissedPhotoIds\` and write no task for it: it stops waiting, and he is not asked about it again. Only for a photo he said so about; otherwise leave \`dismissedPhotoIds\` empty
@@ -194,7 +205,7 @@ Set \`responseStyle\` to how Jarvis should answer once the plan has run. Ask whe
 - \`briefing\` — it asks for several facts or a summary: the calendar for the week, new emails, research, a recipe, a status report
 - \`conversation\` — it is open-ended: an opinion, advice, planning something together, chat
 
-When a request mixes kinds, pick the one that needs the most words — a command and a lookup together is a \`lookup\`; anything with a briefing in it is a \`briefing\`. An answer to a waiting question takes the style of the work it resumes. A request that only dismisses photos is a \`command\`. With no tasks at all otherwise, use \`conversation\`.
+When a request mixes kinds, pick the one that needs the most words — a command and a lookup together is a \`lookup\`; anything with a briefing in it is a \`briefing\`. An answer to a waiting question takes the style of the work it resumes. A request that only dismisses photos is a \`command\`, and a photo he sent without saying what he wants is a \`lookup\`. With no tasks at all otherwise, use \`conversation\`.
 
 # Critical rules
 - If no agent can handle part of the request, leave it out rather than misassigning it
@@ -291,13 +302,15 @@ export function plannerPrompt(
 }
 
 /**
- * Asks the planner for a plan: the chains it runs as, any answers the request gave, and any waiting
- * photos it said sir wants nothing done with.
+ * Asks the planner for a plan: the chains it runs as, any answers the request gave, any waiting
+ * photos it said sir wants nothing done with, and any it said he sent without saying what for.
  *
  * A waiting photo is shown to the planner but never answered: sir's reply about one is a request
  * of its own, planned as work on the photo, so an answer naming a photo's id is dropped below with
  * any other id that names no open question. Only a reply that he wants nothing done with it is not
- * work, and that comes back as a dismissal instead.
+ * work, and that comes back as a dismissal instead. A photo sent with nothing said is work — the
+ * vision agent looks at it — and comes back in `photosToAskAbout` too, so that Jarvis asks what he
+ * would like done with it once he has said what it shows.
  */
 export async function planDelegations(
   planner: Agent,
@@ -308,6 +321,7 @@ export async function planDelegations(
   chains: PlannedChain[];
   answers: PlannedAnswer[];
   dismissedPhotoIds: string[];
+  photosToAskAbout: string[];
   responseStyle: ResponseStyle;
 }> {
   const response = await planner.generate(plannerPrompt(userQuery, openQuestions, waitingPhotos), {
@@ -329,11 +343,17 @@ export async function planDelegations(
   // still let an otherwise empty plan pass for one that did something.
   const waitingIds = new Set(waitingPhotos.map((photo) => photo.photoId));
   const dismissedPhotoIds = [...new Set(plan.dismissedPhotoIds)].filter((photoId) => waitingIds.has(photoId));
+  // Likewise, and never one he has just waved away: a photo he wants nothing done with is not one to
+  // ask him about.
+  const photosToAskAbout = [...new Set(plan.photosToAskAbout)].filter(
+    (photoId) => waitingIds.has(photoId) && !dismissedPhotoIds.includes(photoId),
+  );
 
   return {
     chains: chainsFromTasks(plan.tasks, await getRoutableAgentIds()),
     answers,
     dismissedPhotoIds,
+    photosToAskAbout,
     responseStyle: plan.responseStyle,
   };
 }

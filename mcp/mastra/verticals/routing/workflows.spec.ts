@@ -23,6 +23,7 @@ import {
 import type { OpenQuestion } from './questions.js';
 import type { PhotoToBringUp } from './waiting-photos.js';
 import {
+  askWhatToDoWithPhoto,
   FINISHED_REQUEST_INSTRUCTIONS,
   getNextInstructionsWorkflow,
   resetPollDeadlineForTest,
@@ -516,6 +517,118 @@ describe('a request made while a photo he sent is waiting on him', () => {
     );
     expect(allDone.instructions).toStartWith('All tasks have completed');
     expect(allDone.questionsForUser).toBeUndefined();
+  });
+});
+
+/**
+ * A photo sir sent with nothing said. The request is the look at it, and once Jarvis has said what it
+ * shows he has to ask what sir would like done with it — the one question no work is suspended on —
+ * and wait, where every other finished request has him stop and hang up if nothing more is said.
+ * Which photos those are is the planner's to say (`photosToAskAbout`); this is what Jarvis is handed.
+ */
+describe('a request that showed him a photo with nothing said', () => {
+  const LOOK = 'A Netto receipt for 36.95 DKK, for milk and rye bread.';
+  const EARLIER: OpenQuestion = {
+    id: 'q7',
+    taskId: 'Push reminders for tasks',
+    agentId: 'coding',
+    question: 'Should the reminder go out by email, or as a push notification?',
+    deliverAnswer: async () => 'Passed on.',
+  };
+  /** A reminder about a photo that has been waiting, as `waiting-photos.ts` words one. */
+  function waitingReminder(photoId: string): PhotoToBringUp {
+    return {
+      id: photoId,
+      question: `Sir sent you a photo 4 minutes ago (${photoId}) that nobody has looked at yet: ask him what he would like done with it.`,
+    };
+  }
+
+  it('is asked in the words routing gives it, by the photo’s id', () => {
+    expect(askWhatToDoWithPhoto('photo3')).toBe(
+      'Now that you have told him what photo3 shows, ask him what he would like done with it.',
+    );
+  });
+
+  it('says what the photo shows, then asks what he would like done with it, and waits for the answer', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'look at the photo he sent', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'vision', LOOK);
+    progress.photosToAskAbout = ['photo3'];
+    endPlanRun(progress);
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.completedTaskResults).toEqual([{ id: 'vision', result: LOOK }]);
+    expect(closing.questionsForUser).toEqual([{ id: 'photo3', question: askWhatToDoWithPhoto('photo3') }]);
+    // This request's own question: its result first, then the question, asked last.
+    expect(closing.instructions).toStartWith('Part of this request cannot go on until the user answers a question');
+    expect(closing.instructions).toContain('Tell him whatever he has not heard yet');
+    expect(closing.instructions).toContain(
+      'ask him the question — briefly, in your own voice, as the last thing you say',
+    );
+    // And his answer comes back naming the photo, "nothing" included.
+    expect(closing.instructions).toContain('"(photo photo3)"');
+    expect(closing.instructions).toContain('That includes wanting nothing done with it');
+    // Not the hang-up that ends every other finished request, which would close the line under it.
+    expect(closing.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
+    expect(closing.instructions).toContain('end_call');
+  });
+
+  it('asks it last of all: after earlier work, waiting photos and this request’s own questions', async () => {
+    await runWorkflow(routePromptWorkflow, {
+      userQuery: 'remind me before tasks are due, and the photo',
+      async: false,
+    });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    suspendDelegation(DEFAULT_ROUTING_SESSION_ID, startDelegation(DEFAULT_ROUTING_SESSION_ID, 'coding'), 'How early?');
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'vision', LOOK);
+    progress.earlierQuestions = [EARLIER];
+    progress.waitingPhotos = [waitingReminder('photo2')];
+    progress.photosToAskAbout = ['photo3'];
+    endPlanRun(progress);
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.questionsForUser).toEqual([
+      { id: EARLIER.taskId, question: EARLIER.question },
+      waitingReminder('photo2'),
+      { id: 'coding', question: 'How early?' },
+      { id: 'photo3', question: askWhatToDoWithPhoto('photo3') },
+    ]);
+    expect(closing.instructions).toContain('If there is more than one, ask them together');
+  });
+
+  it('asks about a photo once, as this request’s own, when it is also one waiting to be brought up', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'look at the photo he sent', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'vision', LOOK);
+    progress.waitingPhotos = [waitingReminder('photo3')];
+    progress.photosToAskAbout = ['photo3'];
+    endPlanRun(progress);
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.questionsForUser).toEqual([{ id: 'photo3', question: askWhatToDoWithPhoto('photo3') }]);
+  });
+
+  it('asks nothing about it when the request failed, and leaves a reminder for it standing', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'look at the photo he sent', async: false });
+    const failed = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    failed.photosToAskAbout = ['photo3'];
+    failed.fail('the plan could not be registered');
+    const afterFailure = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(afterFailure.questionsForUser).toBeUndefined();
+    expect(afterFailure.instructions).toContain(FINISHED_REQUEST_INSTRUCTIONS);
+
+    await runWorkflow(routePromptWorkflow, { userQuery: 'look at the photo he sent', async: false });
+    const failedWithReminder = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    failedWithReminder.photosToAskAbout = ['photo3'];
+    failedWithReminder.waitingPhotos = [waitingReminder('photo3')];
+    failedWithReminder.fail('the plan could not be registered');
+    const withReminder = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(withReminder.questionsForUser).toEqual([waitingReminder('photo3')]);
   });
 });
 

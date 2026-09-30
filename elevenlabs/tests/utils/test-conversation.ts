@@ -7,12 +7,7 @@ import {
   describeMessageOrder,
   findLookupPromisesBeforeRouting,
 } from './acknowledgement-timing';
-import {
-  type ClientToolAnswerer,
-  type ConversationStrategy,
-  clientToolNamesIn,
-  type ServerMessage,
-} from './conversation-strategy';
+import type { ConversationStrategy, ServerMessage } from './conversation-strategy';
 import { ElevenLabsConversationStrategy } from './elevenlabs-conversation-strategy';
 import { describeRoutingLoop, readRoutingLoop } from './routing-loop';
 import { findSpokenToolCalls } from './spoken-tool-call';
@@ -21,8 +16,6 @@ export interface ConversationOptions {
   agentId: string;
   apiKey?: string;
   googleApiKey?: string;
-  /** Answers client tool calls as the device would. See `ElevenLabsConversationOptions`. */
-  answerClientToolCall?: ClientToolAnswerer;
 }
 
 /**
@@ -50,7 +43,6 @@ export class TestConversation {
     this.strategy = new ElevenLabsConversationStrategy({
       agentId: options.agentId,
       apiKey,
-      answerClientToolCall: options.answerClientToolCall,
     });
   }
 
@@ -62,7 +54,10 @@ export class TestConversation {
     return await this.strategy.sendMessage(text);
   }
 
-  /** Tells the agent something about the device without starting a turn, as the phone does. */
+  /**
+   * Tells the agent something without starting a turn, as the phone does when it connects and when
+   * sir opens or closes its camera.
+   */
   async sendContextualUpdate(text: string): Promise<void> {
     await this.strategy.sendContextualUpdate(text);
   }
@@ -99,7 +94,6 @@ export class TestConversation {
       .map((message, index) => `  ${index + 1}. ${message.mcp_tool_call.tool_name} (${message.mcp_tool_call.state})`);
 
     const systemToolCalls = this.getInvokedSystemToolNames();
-    const clientToolCalls = this.getInvokedClientToolNames();
     const spokenToolCalls = findSpokenToolCalls(messages);
     const lookupPromises = findLookupPromisesBeforeRouting(messages);
 
@@ -120,7 +114,6 @@ export class TestConversation {
       `   was routed, so the question does not arise)`,
       '',
       `System tools the agent invoked: ${systemToolCalls.length > 0 ? systemToolCalls.join(', ') : 'none'}`,
-      `Client tools the agent invoked on the device: ${clientToolCalls.length > 0 ? clientToolCalls.join(', ') : 'none'}`,
       `Tool names spoken aloud by the agent: ${spokenToolCalls.length > 0 ? spokenToolCalls.join('; ') : 'none'}`,
       `Lookups the agent announced before routing: ${lookupPromises.length > 0 ? lookupPromises.join('; ') : 'none'}`,
       '',
@@ -138,14 +131,6 @@ export class TestConversation {
     return this.getMessages()
       .filter((message) => message.type === 'agent_tool_response')
       .map((message) => message.agent_tool_response.tool_name);
-  }
-
-  /**
-   * Names of the client tools the agent invoked — `openCamera`, the only one it has — which the
-   * device answers rather than a server, so they arrive as `client_tool_call` events.
-   */
-  getInvokedClientToolNames(): string[] {
-    return clientToolNamesIn(this.getMessages());
   }
 
   /**

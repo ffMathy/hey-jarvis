@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, it } from 'bun:test';
 import { describeMessageOrder } from '../utils/acknowledgement-timing.js';
-import type { ClientToolCall, ServerMessage } from '../utils/conversation-strategy.js';
+import type { ServerMessage } from '../utils/conversation-strategy.js';
 import { assertMcpServerConnected } from '../utils/mcp-connection.js';
 import { isRouteToolName } from '../utils/routing-loop.js';
 import { findSpokenToolCalls } from '../utils/spoken-tool-call.js';
@@ -14,99 +14,70 @@ import {
 } from '../utils/test-environment.js';
 
 /**
- * Showing Jarvis Something
+ * Photos From His Phone
  *
- * Sir shows Jarvis a photo in three calls, and only on a device that has said it has a camera:
- * `preparePhotoUpload` on the MCP server mints somewhere for the photo to go, `openCamera` on the
- * phone takes it and answers with its id, and `routePromptWorkflow` is asked about it by that id —
- * "(photo photo1)" — so the planner can send it to the agent that can see.
+ * Sir sends Jarvis a photo with the camera button on his phone, and the agent has no part in taking
+ * it: the phone asks the MCP server for an upload slot, uploads the photo, and then tells the agent
+ * it has arrived in a message of its own — "I've sent you a photo (photo photo1)." What the agent
+ * does own is what it says and routes around that message, in either order sir goes about it:
  *
- * The phone is stood in for by the test: it says it has a camera the way the phone does, and
- * answers `openCamera` the way the phone does once Mastra has filed a photo. No photo is really
- * taken or sent, so whatever the routed request comes back with, it is not a receipt's total.
+ * - Tell first, then send. "I'll send you a receipt, what's the total?" routes nothing, because
+ *   there is nothing to look at yet. Once the photo's message is in, the question goes to
+ *   `routePromptWorkflow` with the photo named by its id, which is how the planner knows to send it
+ *   to the agent that can see.
+ * - Send first. The photo's message alone has the agent route a look at it at once, by its id.
  *
- * What the calls were, in what order and with what in them is read off the connection and
- * asserted outright. The evaluator is only asked what cannot be read that way: whether Jarvis
- * spoke as though he could see a photo he cannot.
+ * On a device that has said nothing of a camera button — the watch, the Voice speaker, a telephone
+ * call — the same announcement is not routed either: sir is told to send the photo from his phone.
+ *
+ * The test stands in for the phone, sending its contextual updates and its message word for word.
+ * No photo is really uploaded, so there is no photo1 for the vision agent to find, and whatever the
+ * routed request comes back with, it is not a receipt's total.
+ *
+ * What was routed, and when, is read off the connection and asserted outright. The evaluator is only
+ * asked what cannot be read that way: what Jarvis said.
  */
 
 const CONVERSATION_TIMEOUT_MS = 90000;
 
 /**
- * How long the photo's routing call may take to surface once the agent has gone quiet. It is the
- * third call in a row, the first two of them round trips of their own.
+ * How long the photo's routing call may take to surface once the phone's message is in. It is the
+ * first call of the turn, so this is only the margin for ElevenLabs reporting it late.
  */
-const TOOL_CALL_TIMEOUT_MS = 90000;
+const TOOL_CALL_TIMEOUT_MS = 30000;
 
 /**
- * How long to wait before concluding that the camera was *not* asked for. An absence only means
- * something once a call has had time to appear, and there is no event to wait for.
+ * How long to wait before concluding that nothing was routed. An absence only means something once
+ * a call has had time to appear, and there is no event to wait for.
  */
-const NO_TOOL_CALL_GRACE_MS = 20000;
+const NO_ROUTE_GRACE_MS = 20000;
 
 /**
- * What the phone tells the agent once it is connected. Spelled `CAMERA_ON_THIS_DEVICE` in
- * `mobile/src/camera-answers.ts`, and copied here because this package imports nothing of the
- * phone's: if the two drift, this spec goes on testing a sentence the phone no longer sends.
+ * What the phone tells the agent once connected, when it knows a Jarvis server to send photos to.
+ * Spelled `CAMERA_BUTTON_HERE` in `mobile/src/photo-messages.ts`, and copied here because this
+ * package imports nothing of the phone's: if the two drift, this spec goes on testing a sentence the
+ * phone no longer sends. The same goes for the two below.
  */
-const CAMERA_ON_THIS_DEVICE =
-  "This conversation is on sir's phone, which has a camera: preparePhotoUpload and then openCamera work here.";
+const CAMERA_BUTTON_HERE =
+  "This device is sir's phone, and it has a camera button beside you: he can send you photos with it.";
 
-/** The client tool that takes the photo, spelled `OPEN_CAMERA_TOOL` in `hologram/src/camera-request.ts`. */
-const OPEN_CAMERA_TOOL = 'openCamera';
+/** What the phone tells the agent the moment sir taps the camera button: `CAMERA_OPENED` there. */
+const CAMERA_OPENED = 'Sir has opened the camera on his phone to send you a photo.';
 
-/** The photo's id in the answer below, and what every question about it has to carry. */
+/** The photo's id in the message below. */
 const PHOTO_ID = 'photo1';
 
-/**
- * What the phone answers `openCamera` with once sir has taken the photo and Mastra has filed it:
- * `photoShown('photo1')` in `mobile/src/camera-answers.ts`, copied for the same reason as above.
- */
-const PHOTO_SHOWN = JSON.stringify({
-  photoId: PHOTO_ID,
-  instructions:
-    'Sir has taken the photo, filed as photo1. If he has already said what he wants done with it, call routePromptWorkflow now with that and "(photo photo1)" — for example "What is the total on this receipt? (photo photo1)". If he has not, ask him in a few words what he would like done with it, and route his answer the same way — even if it is that he wants nothing done with it, which is what lets the photo go. Name the photo that way in every later question about it, and if something he asked before this is still unanswered, ask it in the same call. Having asked, wait for his answer as you would after any question: he may take a moment to decide. If he never answers, leave the photo be: it is kept, and you will be reminded to ask him about it later.',
-});
-
-/** A request that can only be answered by looking at something. */
-const RECEIPT_REQUEST = "What's the total on this receipt?";
+/** How every request routed about the photo has to name it, as the planner reads a photo's name. */
+const PHOTO_NAME = `(photo ${PHOTO_ID})`;
 
 /**
- * An upload URL as Mastra mints them, and as the phone insists on before sending a photo anywhere:
- * `UPLOAD_URL` in `mobile/src/camera-answers.ts`, unanchored here because it is looked for inside
- * the relayed result rather than matched against a string on its own.
+ * The message the phone sends in sir's name once the photo is filed: `photoSent('photo1')` there. It
+ * is a message rather than a contextual update because it is meant to start the agent's turn.
  */
-const UPLOAD_URL = /https:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?\/api\/photos\/[A-Za-z0-9_-]{16,64}/;
+const PHOTO_SENT = `I've sent you a photo ${PHOTO_NAME}.`;
 
-/** `preparePhotoUpload`, matched loosely: ElevenLabs prefixes MCP tool names with its integration's id. */
-function isPreparePhotoUploadToolName(toolName: string): boolean {
-  return /preparephotoupload/i.test(toolName);
-}
-
-/** The phone, as far as this spec needs one: a photo for `openCamera`, and nothing for any other tool. */
-function answerAsThePhone(call: ClientToolCall): string | undefined {
-  return call.tool_name === OPEN_CAMERA_TOOL ? PHOTO_SHOWN : undefined;
-}
-
-/**
- * Where the upload URL reached the device: the first `preparePhotoUpload` that succeeded, which is
- * the event the phone reads the URL out of. -1 if there was none.
- */
-function findOfferedUpload(messages: ServerMessage[]): number {
-  return messages.findIndex(
-    (message) =>
-      message.type === 'mcp_tool_call' &&
-      message.mcp_tool_call.state === 'success' &&
-      isPreparePhotoUploadToolName(message.mcp_tool_call.tool_name),
-  );
-}
-
-/** Where the agent first asked the device for the camera. -1 if it never did. */
-function findCameraCall(messages: ServerMessage[]): number {
-  return messages.findIndex(
-    (message) => message.type === 'client_tool_call' && message.client_tool_call.tool_name === OPEN_CAMERA_TOOL,
-  );
-}
+/** Sir saying what he wants from a photo before it exists. */
+const RECEIPT_ANNOUNCED = "I'll send you a receipt. What's the total?";
 
 /** What each `routePromptWorkflow` call was asked, once per event ElevenLabs reported for it. */
 function routedQueries(messages: ServerMessage[]): string[] {
@@ -123,7 +94,7 @@ function routedQueries(messages: ServerMessage[]): string[] {
 }
 
 function asksAboutThePhoto(messages: ServerMessage[]): boolean {
-  return routedQueries(messages).some((query) => query.includes(PHOTO_ID));
+  return routedQueries(messages).some((query) => query.includes(PHOTO_NAME));
 }
 
 /** Polls until the conversation shows what the test is waiting for, or the window closes. */
@@ -149,7 +120,38 @@ function assertConversation(conversation: TestConversation, holds: boolean, fail
   );
 }
 
-describe('Showing Jarvis Something', () => {
+/** Waits out the grace period, then fails the attempt if anything at all was routed. */
+async function assertNothingRouted(conversation: TestConversation, failure: string): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, NO_ROUTE_GRACE_MS));
+  const queries = routedQueries(conversation.getMessages());
+  assertConversation(conversation, queries.length === 0, `${failure} Queries routed: ${JSON.stringify(queries)}.`);
+}
+
+/** Fails the attempt unless the photo was routed by its name, and its name was never said aloud. */
+async function assertPhotoRouted(conversation: TestConversation): Promise<void> {
+  await waitForConversation(conversation, asksAboutThePhoto, TOOL_CALL_TIMEOUT_MS);
+
+  assertConversation(
+    conversation,
+    asksAboutThePhoto(conversation.getMessages()),
+    `No routePromptWorkflow call named the photo as "${PHOTO_NAME}". Queries routed: ` +
+      `${JSON.stringify(routedQueries(conversation.getMessages()))}.`,
+  );
+  const spokenToolCalls = findSpokenToolCalls(conversation.getMessages());
+  assertConversation(
+    conversation,
+    spokenToolCalls.length === 0,
+    `The agent said machinery aloud: ${spokenToolCalls.join('; ')}.`,
+  );
+}
+
+/** What the evaluator is told about the photo the test never really sent. */
+const NO_REAL_PHOTO =
+  'The phone in this test is simulated and no photo was really uploaded, so a routed answer saying ' +
+  'the photo cannot be found, and the agent passing that on, is expected and does not count against it. ' +
+  `The user message "${PHOTO_SENT}" is the phone announcing the photo, not something sir typed.`;
+
+describe('Photos From His Phone', () => {
   // Non-null assertion safe here because beforeAll throws if these are undefined
   const agentId = process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID!;
   const apiKey = process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
@@ -161,60 +163,57 @@ describe('Showing Jarvis Something', () => {
   afterAll(stopTestEnvironment);
 
   it(
-    'takes the photo on a phone that has a camera, and asks about it by its id',
+    'holds a question about a photo still to come, then routes it with the photo by its id',
     async () => {
       await withConversationRetry(
-        () => new TestConversation({ agentId, apiKey, googleApiKey, answerClientToolCall: answerAsThePhone }),
+        () => new TestConversation({ agentId, apiKey, googleApiKey }),
         async (conversation) => {
           await conversation.connect();
-          await conversation.sendContextualUpdate(CAMERA_ON_THIS_DEVICE);
-          await conversation.sendMessage(RECEIPT_REQUEST);
+          await conversation.sendContextualUpdate(CAMERA_BUTTON_HERE);
+          await conversation.sendMessage(RECEIPT_ANNOUNCED);
 
           assertMcpServerConnected(conversation.getMessages());
-          await waitForConversation(conversation, asksAboutThePhoto, TOOL_CALL_TIMEOUT_MS);
+          // Routed now, a question about "this receipt" would have the vision agent look at whatever
+          // photo came last — possibly one from another conversation altogether.
+          await assertNothingRouted(conversation, 'The agent routed the question before the photo had arrived.');
 
-          const messages = conversation.getMessages();
-          const offeredAt = findOfferedUpload(messages);
-          const cameraAt = findCameraCall(messages);
-
-          assertConversation(
-            conversation,
-            offeredAt !== -1,
-            'preparePhotoUpload never came back successfully, so the phone would have had nowhere to send the photo.',
-          );
-          const offer = messages[offeredAt];
-          assertConversation(
-            conversation,
-            offer?.type === 'mcp_tool_call' && UPLOAD_URL.test(JSON.stringify(offer.mcp_tool_call.result)),
-            'The relayed preparePhotoUpload result carried no upload URL the phone would accept, so the phone ' +
-              'could not have sent the photo anywhere.',
-          );
-          assertConversation(
-            conversation,
-            cameraAt > offeredAt,
-            cameraAt === -1
-              ? 'The agent never called openCamera after preparePhotoUpload.'
-              : 'The agent called openCamera before preparePhotoUpload had answered, when the phone had no URL yet.',
-          );
-          assertConversation(
-            conversation,
-            asksAboutThePhoto(conversation.getMessages()),
-            `No routePromptWorkflow call named the photo as "${PHOTO_ID}". Queries routed: ` +
-              `${JSON.stringify(routedQueries(conversation.getMessages()))}.`,
-          );
-          const spokenToolCalls = findSpokenToolCalls(conversation.getMessages());
-          assertConversation(
-            conversation,
-            spokenToolCalls.length === 0,
-            `The agent said tool names aloud: ${spokenToolCalls.join('; ')}.`,
-          );
+          await conversation.sendContextualUpdate(CAMERA_OPENED);
+          await conversation.sendMessage(PHOTO_SENT);
+          await assertPhotoRouted(conversation);
 
           await conversation.assertCriteria(
-            'The agent never spoke as though it could see the photo itself. It did not state a total, an ' +
-              'amount or anything else about the receipt that no tool result gave it, and it did not ask sir ' +
-              'which receipt he meant. The phone in this test is simulated and no photo was really uploaded, so ' +
-              'a routed answer saying the photo cannot be found, and the agent passing that on, is expected ' +
-              'and does not count against it.',
+            'Before the photo arrived, the agent told sir in a few words to go ahead and send it with the ' +
+              'camera button, and said nothing about what the receipt shows. Once the photo arrived, it passed ' +
+              'on his question about the total rather than asking him what he wanted done with the photo. It ' +
+              'never spoke as though it could see the photo itself: it stated no total, amount or anything else ' +
+              `about the receipt that no tool result gave it. ${NO_REAL_PHOTO}`,
+            0.9,
+          );
+        },
+      );
+    },
+    (CONVERSATION_TIMEOUT_MS + NO_ROUTE_GRACE_MS + TOOL_CALL_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
+  );
+
+  it(
+    'has a photo sent with nothing said looked at straight away, by its id',
+    async () => {
+      await withConversationRetry(
+        () => new TestConversation({ agentId, apiKey, googleApiKey }),
+        async (conversation) => {
+          await conversation.connect();
+          await conversation.sendContextualUpdate(CAMERA_BUTTON_HERE);
+          await conversation.sendContextualUpdate(CAMERA_OPENED);
+          await conversation.sendMessage(PHOTO_SENT);
+
+          assertMcpServerConnected(conversation.getMessages());
+          await assertPhotoRouted(conversation);
+
+          await conversation.assertCriteria(
+            'The agent had the photo looked at as soon as it arrived, rather than first asking sir what he ' +
+              'wanted, and invented no task for it that sir never asked for. It never spoke as though it ' +
+              'could see the photo itself: it described nothing in it that no tool result gave it. Asking sir ' +
+              `what he would like done with the photo, once it had said what the photo shows, is expected. ${NO_REAL_PHOTO}`,
             0.9,
           );
         },
@@ -224,38 +223,27 @@ describe('Showing Jarvis Something', () => {
   );
 
   it(
-    'never asks for the camera where no device has said it has one',
+    'sends sir to his phone where no device has said it has a camera button',
     async () => {
       await withConversationRetry(
-        // No answers: a stray openCamera is left waiting, as on a device without the tool.
         () => new TestConversation({ agentId, apiKey, googleApiKey }),
         async (conversation) => {
           await conversation.connect();
-          // The watch, the Voice speaker and a telephone call say nothing about a camera, and are
-          // the same agent: this is what the photo request sounds like from any of them.
-          await conversation.sendMessage(RECEIPT_REQUEST);
+          // The watch, the Voice speaker and a telephone call say nothing about a camera button, and
+          // are the same agent: this is what the announcement sounds like from any of them.
+          await conversation.sendMessage(RECEIPT_ANNOUNCED);
 
           assertMcpServerConnected(conversation.getMessages());
-          await new Promise((resolve) => setTimeout(resolve, NO_TOOL_CALL_GRACE_MS));
-
-          const photoToolCalls = [
-            ...(await conversation.getCalledToolNames()).filter(isPreparePhotoUploadToolName),
-            ...conversation.getInvokedClientToolNames().filter((toolName) => toolName === OPEN_CAMERA_TOOL),
-          ];
-          assertConversation(
-            conversation,
-            photoToolCalls.length === 0,
-            `The agent reached for the camera with no device having said it has one: ${photoToolCalls.join(', ')}.`,
-          );
+          await assertNothingRouted(conversation, 'The agent routed a photo no device here can send.');
 
           await conversation.assertCriteria(
-            'The agent did not pretend to be looking at a receipt: it did not state a total, an amount or ' +
-              'anything else about one that no tool result gave it.',
+            'The agent told sir to send the photo from his phone, and did not pretend to be looking at a ' +
+              'receipt: it stated no total, amount or anything else about one that no tool result gave it.',
             0.9,
           );
         },
       );
     },
-    (CONVERSATION_TIMEOUT_MS + NO_TOOL_CALL_GRACE_MS) * MAX_CONVERSATION_RETRIES,
+    (CONVERSATION_TIMEOUT_MS + NO_ROUTE_GRACE_MS) * MAX_CONVERSATION_RETRIES,
   );
 });

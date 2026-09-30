@@ -7,13 +7,7 @@ export {
   LOOKUP_PROMISE_PATTERNS,
   stripAudioTags,
 } from './acknowledgement-timing';
-export {
-  type ClientToolAnswerer,
-  type ClientToolCall,
-  clientToolNamesIn,
-  mcpToolNamesIn,
-  transcriptOf,
-} from './conversation-strategy';
+export { mcpToolNamesIn, transcriptOf } from './conversation-strategy';
 export {
   type ElevenLabsConversationOptions,
   ElevenLabsConversationStrategy,

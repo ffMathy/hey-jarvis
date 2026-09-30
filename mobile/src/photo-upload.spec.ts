@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'bun:test';
-import { sendPhoto } from './photo-upload';
+import { openPhotoSlot, sendPhoto } from './photo-upload';
 
-const UPLOAD_URL = 'https://jarvis.example.com/api/photos/abcdefghijklmnopqrstuv';
+/** The Jarvis server as sir typed it into the settings screen. */
+const SERVER = 'https://jarvis.example.com';
+
+const CONVERSATION_ID = 'conv_01jz8k3b4c5d6e7f';
+
+/** A slot's path as the server hands it back: the upload route and 22 characters of token. */
+const UPLOAD_PATH = '/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ';
+
+const PHOTO = new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], { type: 'image/jpeg' });
 
 /** A server that answers every request the same way, and remembers what it was sent. */
 function createServer(respond: () => Promise<Response>) {
@@ -13,150 +21,240 @@ function createServer(respond: () => Promise<Response>) {
   return { send, requests };
 }
 
-function mastraAnswer(body: unknown, status = 201): Promise<Response> {
+/** An answer in the Jarvis server's own JSON envelope. */
+function serverAnswer(body: unknown, status = 201): Promise<Response> {
   return Promise.resolve(
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
   );
 }
 
-const PHOTO = new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], { type: 'image/jpeg' });
-
-/** The photo upload key, as sir typed it into the settings screen. */
-const PHOTO_UPLOAD_KEY = 'u8Jq-2vN_x9P!rT4sK7w';
-
-/** Sends {@link PHOTO} to {@link UPLOAD_URL} with {@link PHOTO_UPLOAD_KEY}, through the given server. */
-function sendTo(server: { send: (url: string, init: RequestInit) => Promise<Response> }) {
-  return sendPhoto({
-    photo: PHOTO,
-    uploadUrl: UPLOAD_URL,
-    photoUploadKey: PHOTO_UPLOAD_KEY,
-    fetchImplementation: server.send,
-  });
+/** A page from something in front of the server — Cloudflare Access, or the tunnel. */
+function pageAnswer(status: number): Promise<Response> {
+  return Promise.resolve(new Response('<html>Cloudflare Access</html>', { status }));
 }
 
-describe('sending a photo to Mastra', () => {
-  it('puts the JPEG at the upload URL with the photo upload key, and nothing else', async () => {
-    const server = createServer(() =>
-      mastraAnswer({ success: true, message: 'Photo received', data: { photoId: 'photo3' } }),
-    );
+/** The server opening a slot, as it answers one. */
+const SLOT_OPENED = {
+  success: true,
+  message: 'Photo slot opened',
+  data: { uploadToken: 'Q2hhbmdlIG1lIHBsZWFzZQ', uploadPath: UPLOAD_PATH, expiresAt: '2026-09-30T12:05:00.000Z' },
+};
 
-    await sendTo(server);
+function askForASlot(server: { send: (url: string, init: RequestInit) => Promise<Response> }) {
+  return openPhotoSlot({ serverAddress: SERVER, conversationId: CONVERSATION_ID, fetchImplementation: server.send });
+}
+
+function sendTo(
+  server: { send: (url: string, init: RequestInit) => Promise<Response> },
+  uploadPath: string = UPLOAD_PATH,
+) {
+  return sendPhoto({ serverAddress: SERVER, uploadPath, photo: PHOTO, fetchImplementation: server.send });
+}
+
+describe('asking the Jarvis server for somewhere to send a photo', () => {
+  it('posts the conversation’s id to the slot route of the server sir named, and nothing else', async () => {
+    const server = createServer(() => serverAnswer(SLOT_OPENED));
+
+    await askForASlot(server);
 
     expect(server.requests).toHaveLength(1);
-    expect(server.requests[0]?.url).toBe(UPLOAD_URL);
-    expect(server.requests[0]?.init.method).toBe('PUT');
-    // The key as the server reads it: a bearer token, in the one header it looks in.
-    expect(server.requests[0]?.init.headers).toEqual({
-      'Content-Type': 'image/jpeg',
-      Authorization: `Bearer ${PHOTO_UPLOAD_KEY}`,
-    });
-    expect(server.requests[0]?.init.body).toBe(PHOTO);
+    expect(server.requests[0]?.url).toBe('https://jarvis.example.com/api/photos/slots');
+    expect(server.requests[0]?.init.method).toBe('POST');
+    expect(server.requests[0]?.init.headers).toEqual({ 'Content-Type': 'application/json' });
+    expect(JSON.parse(String(server.requests[0]?.init.body))).toEqual({ conversationId: CONVERSATION_ID });
   });
 
-  it('hands back the id Mastra filed it under', async () => {
-    const server = createServer(() => mastraAnswer({ success: true, message: 'ok', data: { photoId: 'photo3' } }));
+  it('hands back the path the server opened the slot at', async () => {
+    const server = createServer(() => serverAnswer(SLOT_OPENED));
 
-    expect(await sendTo(server)).toEqual({ photoId: 'photo3' });
+    expect(await askForASlot(server)).toEqual({ uploadPath: UPLOAD_PATH });
   });
 
-  it('says the key was refused when Mastra says so, since that is the one sir can fix', async () => {
+  it('takes no path but the upload route’s, however the server words it', async () => {
+    // The path decides where sir's photo goes, so anything that is not a slot on this server is not one.
+    for (const uploadPath of [
+      'https://elsewhere.example.com/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ',
+      '//elsewhere.example.com/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ',
+      '/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ/../../mcp',
+      '/api/photos/slots',
+      '/api/photos/short',
+      '/api/mcp/Q2hhbmdlIG1lIHBsZWFzZQ',
+    ]) {
+      const server = createServer(() => serverAnswer({ ...SLOT_OPENED, data: { ...SLOT_OPENED.data, uploadPath } }));
+
+      expect(await askForASlot(server), uploadPath).toEqual({
+        problem: 'unreachable',
+        description: 'The server answered with something that was not the Jarvis server.',
+      });
+    }
+  });
+
+  it('says the conversation could not be confirmed when the server says so', async () => {
     const server = createServer(() =>
-      mastraAnswer({ success: false, message: 'This upload needs the photo upload key.' }, 401),
+      serverAnswer({ success: false, message: 'That is not a conversation in progress with Jarvis.' }, 403),
     );
 
-    expect(await sendTo(server)).toEqual({
-      problem: "Jarvis's server refused the photo upload key. Check it in the app's settings.",
-      keyRefused: true,
+    expect(await askForASlot(server)).toEqual({
+      problem: 'notLive',
+      description: 'The server could not confirm the conversation as live on Jarvis’s agent.',
     });
   });
 
-  it('does not blame the key for a 401 that is not Mastra’s', async () => {
-    // Cloudflare Access turns requests away with a page of its own. Sending sir to change a key that
-    // was right would leave him with two problems.
-    const server = createServer(() => Promise.resolve(new Response('<html>Cloudflare Access</html>', { status: 401 })));
+  it('does not blame the conversation for a 403 that is not the server’s', async () => {
+    // Cloudflare Access turns requests away with a page of its own. Telling sir his conversation was
+    // not live would send him looking for a problem he does not have.
+    const server = createServer(() => pageAnswer(403));
 
-    expect(await sendTo(server)).toEqual({
-      problem: 'The server turned the photo away. Cloudflare Access may need a bypass for /api/photos.',
-      keyRefused: false,
+    expect(await askForASlot(server)).toEqual({
+      problem: 'unreachable',
+      description:
+        'Something in front of the Jarvis server answered 403. Cloudflare Access may need a bypass for /api/photos/*.',
     });
   });
 
-  it('does not blame the key for a 401 in any other JSON either', async () => {
-    const server = createServer(() => mastraAnswer({ error: 'unauthorized' }, 401));
-
-    expect(await sendTo(server)).toMatchObject({ keyRefused: false });
-  });
-
-  it('does not blame the key for Mastra refusing something else', async () => {
-    // The envelope alone is not the key: a 404 is a spent link whatever it is wrapped in.
-    const server = createServer(() => mastraAnswer({ success: false, message: 'expired' }, 404));
-
-    expect(await sendTo(server)).toMatchObject({ keyRefused: false });
-  });
-
-  it('says a server with no key of its own takes no photos', async () => {
+  it('says photo uploads are switched off when the server says so', async () => {
     const server = createServer(() =>
-      mastraAnswer({ success: false, message: 'Photo uploads are switched off on this server.' }, 503),
+      serverAnswer({ success: false, message: 'Photo uploads are switched off on this server.' }, 503),
     );
 
-    expect(await sendTo(server)).toEqual({
-      problem: 'Photo uploads are switched off on the server.',
-      keyRefused: false,
-    });
+    expect(await askForASlot(server)).toMatchObject({ problem: 'switchedOff' });
   });
 
-  it('does not take a sign-in page for a delivery, however much it says 200', async () => {
-    // Cloudflare Access answers a request it will not let through with a login page, as a 200.
-    const server = createServer(() =>
-      Promise.resolve(new Response('<html>Sign in with Cloudflare Access</html>', { status: 200 })),
-    );
+  it('does not take a 503 from the tunnel for the server switching photos off', async () => {
+    // What a tunnel says when the server behind it is down.
+    const server = createServer(() => pageAnswer(503));
 
-    expect(await sendTo(server)).toEqual({
-      problem: 'The server answered with something that was not Mastra.',
-      keyRefused: false,
-    });
+    expect(await askForASlot(server)).toMatchObject({ problem: 'unreachable' });
   });
 
-  it('does not take any JSON with a 200 for a delivery either', async () => {
-    const server = createServer(() => mastraAnswer({ success: true, data: { photoId: '../../etc/passwd' } }, 200));
+  it('counts every other refusal as a server that could not be reached', async () => {
+    for (const status of [400, 429, 500, 502]) {
+      const server = createServer(() => serverAnswer({ success: false, message: 'no' }, status));
 
-    expect(await sendTo(server)).toEqual({
-      problem: 'The server answered with something that was not Mastra.',
-      keyRefused: false,
-    });
+      expect(await askForASlot(server), String(status)).toEqual({
+        problem: 'unreachable',
+        description: `The Jarvis server answered ${status}.`,
+      });
+    }
   });
 
-  it('says an upload link was spent or stale, which is what a 404 from the upload path means', async () => {
-    const server = createServer(() => mastraAnswer({ success: false, message: 'expired' }, 404));
+  it('does not take a sign-in page for a slot, however much it says 200', async () => {
+    const server = createServer(() => pageAnswer(200));
 
-    expect(await sendTo(server)).toEqual({
-      problem: 'The upload link had expired or been used already.',
-      keyRefused: false,
-    });
-  });
-
-  it('names Cloudflare Access when the tunnel turns the photo away', async () => {
-    const server = createServer(() => Promise.resolve(new Response('<html>Forbidden</html>', { status: 403 })));
-
-    expect(await sendTo(server)).toEqual({
-      problem: 'The server turned the photo away. Cloudflare Access may need a bypass for /api/photos.',
-      keyRefused: false,
-    });
+    expect(await askForASlot(server)).toMatchObject({ problem: 'unreachable' });
   });
 
   it('answers rather than throws when the network is not there', async () => {
     const server = createServer(() => Promise.reject(new TypeError('Network request failed')));
 
-    expect(await sendTo(server)).toEqual({ problem: 'The server could not be reached.', keyRefused: false });
+    expect(await askForASlot(server)).toEqual({
+      problem: 'unreachable',
+      description: 'The Jarvis server could not be reached.',
+    });
+  });
+});
+
+describe('sending the photo to the slot', () => {
+  it('puts the JPEG at the slot’s path on the server sir named, with no key of any kind', async () => {
+    const server = createServer(() =>
+      serverAnswer({ success: true, message: 'Photo received', data: { photoId: 'photo3' } }),
+    );
+
+    await sendTo(server);
+
+    expect(server.requests).toHaveLength(1);
+    expect(server.requests[0]?.url).toBe(`${SERVER}${UPLOAD_PATH}`);
+    expect(server.requests[0]?.init.method).toBe('PUT');
+    // The slot's name in the path is all the upload asks for: no Authorization header, nothing else.
+    expect(server.requests[0]?.init.headers).toEqual({ 'Content-Type': 'image/jpeg' });
+    expect(server.requests[0]?.init.body).toBe(PHOTO);
   });
 
-  it('never puts the key in what it says went wrong', async () => {
-    // The problem is logged on the phone. A key in a log is a key in every bug report.
-    for (const status of [400, 401, 403, 404, 413, 500, 503]) {
-      const server = createServer(() => mastraAnswer({ success: false, message: PHOTO_UPLOAD_KEY }, status));
-      const delivery = await sendTo(server);
+  it('hands back the id the server filed it under', async () => {
+    const server = createServer(() => serverAnswer({ success: true, message: 'ok', data: { photoId: 'photo3' } }));
 
-      expect('problem' in delivery && delivery.problem).not.toContain(PHOTO_UPLOAD_KEY);
+    expect(await sendTo(server)).toEqual({ photoId: 'photo3' });
+  });
+
+  it('sends nothing to a path that is not a slot’s', async () => {
+    const server = createServer(() => serverAnswer({ success: true, message: 'ok', data: { photoId: 'photo3' } }));
+
+    expect(await sendTo(server, 'https://elsewhere.example.com/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ')).toMatchObject({
+      problem: 'unreachable',
+    });
+    expect(server.requests).toHaveLength(0);
+  });
+
+  it('says a photo too large for the server was too large', async () => {
+    const server = createServer(() => pageAnswer(413));
+
+    expect(await sendTo(server)).toEqual({
+      problem: 'tooLarge',
+      description: 'The photo was too large for the server.',
+    });
+  });
+
+  it('says a slot was spent or stale, which is what a 404 from the upload path means', async () => {
+    const server = createServer(() => serverAnswer({ success: false, message: 'expired' }, 404));
+
+    expect(await sendTo(server)).toEqual({
+      problem: 'unreachable',
+      description: 'The upload slot had expired or been used already.',
+    });
+  });
+
+  it('never calls a 403 from the upload path the conversation’s fault', async () => {
+    // The upload route checks only the slot, so a 403 is something in front of it, whatever it says.
+    const server = createServer(() => serverAnswer({ success: false, message: 'Forbidden' }, 403));
+
+    expect(await sendTo(server)).toMatchObject({ problem: 'unreachable' });
+  });
+
+  it('names Cloudflare Access when the tunnel turns the photo away', async () => {
+    const server = createServer(() => pageAnswer(403));
+
+    expect(await sendTo(server)).toEqual({
+      problem: 'unreachable',
+      description:
+        'Something in front of the Jarvis server answered 403. Cloudflare Access may need a bypass for /api/photos/*.',
+    });
+  });
+
+  it('does not take a sign-in page for a delivery, however much it says 200', async () => {
+    // Cloudflare Access answers a request it will not let through with a login page, as a 200.
+    const server = createServer(() => pageAnswer(200));
+
+    expect(await sendTo(server)).toEqual({
+      problem: 'unreachable',
+      description: 'The server answered with something that was not the Jarvis server.',
+    });
+  });
+
+  it('does not take any JSON with a 200 for a delivery either', async () => {
+    const server = createServer(() => serverAnswer({ success: true, data: { photoId: '../../etc/passwd' } }, 200));
+
+    expect(await sendTo(server)).toMatchObject({ problem: 'unreachable' });
+  });
+
+  it('answers rather than throws when the network is not there', async () => {
+    const server = createServer(() => Promise.reject(new TypeError('Network request failed')));
+
+    expect(await sendTo(server)).toEqual({
+      problem: 'unreachable',
+      description: 'The Jarvis server could not be reached.',
+    });
+  });
+
+  it('never repeats what the server said in what it says went wrong', async () => {
+    // The description is logged on the phone, and the problem is told to the agent: neither is the
+    // place for whatever a response happened to carry.
+    for (const status of [400, 403, 404, 413, 429, 500, 502, 503]) {
+      const said = `server-said-${status}`;
+      const server = createServer(() => serverAnswer({ success: false, message: said }, status));
+
+      for (const failure of [await askForASlot(server), await sendTo(server)]) {
+        expect(JSON.stringify(failure)).not.toContain(said);
+      }
     }
   });
 });

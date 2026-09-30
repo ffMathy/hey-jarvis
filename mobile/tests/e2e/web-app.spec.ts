@@ -110,8 +110,8 @@ async function walkToCredentials(page: Page): Promise<void> {
  * Walks the tour, fills in the two values and saves, leaving the app on the conversation screen.
  *
  * What says it arrived is the hologram, because that is all the conversation screen is now: no
- * title, no status line, and no button until there is a conversation to show a photo to. It opens
- * the conversation by itself, so there is nothing to press and nothing to read — see
+ * title, no status line, and no camera button until sir has told the phone where his Jarvis server
+ * is. It opens the conversation by itself, so there is nothing to press and nothing to read — see
  * `conversation-screen.tsx`.
  */
 async function configureElevenLabs(page: Page): Promise<void> {
@@ -709,28 +709,63 @@ test('says nothing to type into when no conversation was opened at all', async (
   await expect(page.getByTestId('typed-message')).toHaveCount(0);
 });
 
-/** Where Mastra would have Jarvis's photo sent. Answered by `page.route` below, and nowhere else. */
-const UPLOAD_URL = 'https://jarvis.example.test/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ';
+/** Sir's Jarvis server, as he would type it into the settings screen. Answered by `page.route` below, and nowhere else. */
+const JARVIS_SERVER = 'https://jarvis.example.test';
 
-/** The key Mastra asks for before it takes a photo, as sir would type it into the settings screen. */
-const PHOTO_UPLOAD_KEY = 'u8Jq-2vN_x9P!rT4sK7w';
+/** Where the server says to send a photo: its upload route, and a slot's 22-character token. */
+const UPLOAD_PATH = '/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ';
 
-/** Mastra taking the photo, and saying what it filed it as. */
-const PHOTO_RECEIVED = { status: 201, body: { success: true, message: 'Photo received', data: { photoId: 'photo7' } } };
+/** An answer from the Jarvis server, in its JSON envelope. */
+interface ServerAnswer {
+  status: number;
+  body: unknown;
+}
+
+/** The server opening a slot for the conversation, and saying where to send the photo. */
+const SLOT_OPENED: ServerAnswer = {
+  status: 201,
+  body: {
+    success: true,
+    message: 'Photo slot opened',
+    data: { uploadToken: 'Q2hhbmdlIG1lIHBsZWFzZQ', uploadPath: UPLOAD_PATH, expiresAt: '2026-09-30T12:05:00.000Z' },
+  },
+};
+
+/** The server refusing a slot: ElevenLabs does not know the conversation as one in progress on Jarvis's agent. */
+const NOT_LIVE: ServerAnswer = {
+  status: 403,
+  body: { success: false, message: 'That is not a conversation in progress with Jarvis.' },
+};
+
+/** The server taking the photo, and saying what it filed it as. */
+const PHOTO_RECEIVED: ServerAnswer = {
+  status: 201,
+  body: {
+    success: true,
+    message: 'Photo received',
+    data: { photoId: 'photo7', expiresAt: '2026-09-30T12:30:00.000Z' },
+  },
+};
+
+/** What the phone tells the agent once connected, when it can send photos. See `photo-messages.ts`. */
+const CAMERA_BUTTON_HERE =
+  "This device is sir's phone, and it has a camera button beside you: he can send you photos with it.";
+const CAMERA_OPENED = 'Sir has opened the camera on his phone to send you a photo.';
+const CAMERA_CLOSED = 'Sir closed the camera without sending a photo.';
 
 /**
- * Opens the settings screen from the conversation, types the photo upload key into it — or clears
- * it, given an empty one — and saves, leaving the app back on the conversation screen.
+ * Opens the settings screen from the conversation, types the Jarvis server's address into it — or
+ * clears it, given an empty one — and saves, leaving the app back on the conversation screen.
  *
  * The settings screen rather than the tour, because the tour does not ask for it: photos are
  * something to add once Jarvis works. See `settings-screen.tsx`.
  */
-async function savePhotoUploadKey(page: Page, photoUploadKey: string): Promise<void> {
+async function saveJarvisServer(page: Page, address: string): Promise<void> {
   await page.getByTestId('open-settings').click();
-  await page.getByTestId('photo-upload-key').fill(photoUploadKey);
+  await page.getByTestId('jarvis-server').fill(address);
   await page.getByTestId('save-settings').click();
   await expect(page.getByTestId('hologram')).toBeVisible();
-  await expect(page.getByTestId('photo-upload-key')).toHaveCount(0);
+  await expect(page.getByTestId('jarvis-server')).toHaveCount(0);
 }
 
 /** A one-pixel PNG: something the browser can decode, draw and re-encode as a JPEG like any photo. */
@@ -740,19 +775,18 @@ const ONE_PIXEL = Buffer.from(
 );
 
 /**
- * Plays ElevenLabs' side of a text-only conversation, and lets the test speak for the agent.
+ * Plays ElevenLabs' side of a text-only conversation, and keeps everything the page says on it.
  *
- * `answerAsJarvis` above answers what is typed; this one hands the socket to the test instead, so it
- * can send what only the agent sends — the relayed result of an MCP tool, and a client tool call —
- * and read back everything the page said. That is the whole of the camera's conversation with the
- * agent, and none of it needs a real one.
+ * `answerAsJarvis` above answers what is typed; this one answers nothing past the handshake, and
+ * hands the test every frame the page sent instead — the notes it keeps the agent up to date with,
+ * the turns it takes for sir, and the activity it reports while he frames a shot. That is the whole
+ * of the camera's conversation with the agent, and none of it needs a real one. The handshake gives
+ * the conversation its id, `conv_1`, which is the id the phone hands the Jarvis server for a slot.
  */
-async function speakForTheAgent(page: Page): Promise<{ heard: unknown[]; say: (frame: unknown) => void }> {
+async function listenAsTheAgent(page: Page): Promise<unknown[]> {
   const heard: unknown[] = [];
-  let socket: { send: (message: string) => void } | undefined;
 
   await page.routeWebSocket(/convai\/conversation/, (webSocket) => {
-    socket = webSocket;
     webSocket.onMessage((frame: string | Buffer) => {
       const event = JSON.parse(String(frame));
       heard.push(event);
@@ -771,67 +805,86 @@ async function speakForTheAgent(page: Page): Promise<{ heard: unknown[]; say: (f
     });
   });
 
-  return {
-    heard,
-    say: (frame) => {
-      if (!socket) {
-        throw new Error('The conversation has not opened its socket yet');
-      }
-      socket.send(JSON.stringify(frame));
-    },
-  };
+  return heard;
 }
 
-/** `preparePhotoUpload` answering, as ElevenLabs relays an MCP result to the client. */
-const UPLOAD_PREPARED = {
-  type: 'mcp_tool_call',
-  mcp_tool_call: {
-    service_id: 'jarvis',
-    tool_call_id: 'mcp_1',
-    tool_name: 'preparePhotoUpload',
-    parameters: {},
-    timestamp: '2026-09-28T12:00:00Z',
-    state: 'success',
-    result: [{ type: 'text', text: JSON.stringify({ uploadUrl: UPLOAD_URL, instructions: 'Now call openCamera.' }) }],
-  },
-};
+/** Whether a frame the page sent is of the given type. */
+function isOfType(event: unknown, type: string): boolean {
+  return typeof event === 'object' && event !== null && 'type' in event && event.type === type;
+}
 
-/** The agent asking to see something. */
-const OPEN_CAMERA = {
-  type: 'client_tool_call',
-  client_tool_call: { tool_name: 'openCamera', tool_call_id: 'call_1', parameters: {}, event_id: 1 },
-};
+/** What the page said in frames of one type — its contextual updates, or the turns it took for sir. */
+function textsOf(heard: unknown[], type: 'contextual_update' | 'user_message'): string[] {
+  return heard.flatMap((event) =>
+    isOfType(event, type) &&
+    typeof event === 'object' &&
+    event !== null &&
+    'text' in event &&
+    typeof event.text === 'string'
+      ? [event.text]
+      : [],
+  );
+}
 
-/** How many conversations the page has opened on the socket the test speaks for the agent on. */
+/** How many conversations the page has opened on the socket the test listens to. */
 function conversationsOpened(heard: unknown[]): number {
-  return heard.filter((event) => JSON.stringify(event).includes('"type":"conversation_initiation_client_data"')).length;
+  return heard.filter((event) => isOfType(event, 'conversation_initiation_client_data')).length;
 }
 
 /** What the page has said since it last opened a conversation: what the conversation now open heard. */
 function sinceTheLastConversationOpened(heard: unknown[]): unknown[] {
-  const opened = heard.findLastIndex((event) =>
-    JSON.stringify(event).includes('"type":"conversation_initiation_client_data"'),
-  );
+  const opened = heard.findLastIndex((event) => isOfType(event, 'conversation_initiation_client_data'));
   return heard.slice(opened + 1);
 }
 
+/** A request the Jarvis server was sent, as far as these tests read it. */
+interface ServerRequest {
+  method: string;
+  contentType: string | undefined;
+  authorization: string | undefined;
+  body: Buffer | null;
+}
+
+/** Answers every request to `url` with `answer`, and keeps what was sent. */
+async function answerForTheServer(page: Page, url: string, answer: ServerAnswer): Promise<ServerRequest[]> {
+  const requests: ServerRequest[] = [];
+  await page.route(url, async (route: Route) => {
+    const request = route.request();
+    requests.push({
+      method: request.method(),
+      contentType: request.headers()['content-type'],
+      authorization: request.headers().authorization,
+      body: request.postDataBuffer(),
+    });
+    await route.fulfill({
+      status: answer.status,
+      contentType: 'application/json',
+      headers: { 'access-control-allow-origin': '*' },
+      body: JSON.stringify(answer.body),
+    });
+  });
+  return requests;
+}
+
 /**
- * Opens a text-only conversation with a socket the test speaks for the agent on, and Mastra's upload
- * URL answered with `uploadAnswer` — having given the phone the photo upload key, unless
- * `photoUploadKey` is `undefined`.
+ * Opens a text-only conversation with a socket the test listens on as the agent, and sir's Jarvis
+ * server answering a slot request with `slotAnswer` and a photo with `uploadAnswer` — having told the
+ * phone where that server is, unless `serverAddress` is `undefined`.
  *
- * **The key is given the way sir would give it**: ElevenLabs set up on the tour, a conversation
- * opened without a camera, and the key saved on the settings screen while that conversation is still
- * connected. Going to the settings ends it, since the session is the conversation screen's, and the
- * screen opens another on coming back, built with the key (see `settings-screen.tsx`), so what this
- * returns is the second conversation, and `say` speaks on it.
+ * **The address is given the way sir would give it**: ElevenLabs set up on the tour, a conversation
+ * opened without a camera, and the address saved on the settings screen while that conversation is
+ * still connected. Going to the settings ends it, since the session is the conversation screen's, and
+ * the screen opens another on coming back, which knows the address (see `settings-screen.tsx`) — so
+ * what this returns is the second conversation, and everything after the last opening in `heard` is
+ * what it heard.
  */
 async function openAConversationToShowThingsTo(
   page: Page,
   {
-    photoUploadKey,
+    serverAddress,
+    slotAnswer = SLOT_OPENED,
     uploadAnswer = PHOTO_RECEIVED,
-  }: { photoUploadKey: string | undefined; uploadAnswer?: { status: number; body: unknown } },
+  }: { serverAddress: string | undefined; slotAnswer?: ServerAnswer; uploadAnswer?: ServerAnswer },
 ) {
   await refuseMicrophone(page);
   await page.route(SIGNED_URL_URL, async (route: Route) => {
@@ -839,305 +892,210 @@ async function openAConversationToShowThingsTo(
       signed_url: 'wss://api.elevenlabs.io/v1/convai/conversation?agent_id=x&conversation_signature=y',
     });
   });
-  const agent = await speakForTheAgent(page);
-
-  const uploads: {
-    method: string;
-    contentType: string | undefined;
-    authorization: string | undefined;
-    body: Buffer | null;
-  }[] = [];
-  await page.route(`${UPLOAD_URL}`, async (route: Route) => {
-    const request = route.request();
-    uploads.push({
-      method: request.method(),
-      contentType: request.headers()['content-type'],
-      authorization: request.headers().authorization,
-      body: request.postDataBuffer(),
-    });
-    await route.fulfill({
-      status: uploadAnswer.status,
-      contentType: 'application/json',
-      headers: { 'access-control-allow-origin': '*' },
-      body: JSON.stringify(uploadAnswer.body),
-    });
-  });
+  const heard = await listenAsTheAgent(page);
+  const slotRequests = await answerForTheServer(page, `${JARVIS_SERVER}/api/photos/slots`, slotAnswer);
+  const uploads = await answerForTheServer(page, `${JARVIS_SERVER}${UPLOAD_PATH}`, uploadAnswer);
 
   await page.goto('/');
   await configureElevenLabs(page);
   await expect(page.getByTestId('typed-message')).toBeEditable();
-  if (photoUploadKey !== undefined) {
-    await savePhotoUploadKey(page, photoUploadKey);
-    await expect.poll(() => conversationsOpened(agent.heard)).toBe(2);
+  if (serverAddress !== undefined) {
+    await saveJarvisServer(page, serverAddress);
+    await expect.poll(() => conversationsOpened(heard)).toBe(2);
     await expect(page.getByTestId('typed-message')).toBeEditable();
   }
 
-  return { ...agent, uploads };
+  return { heard, slotRequests, uploads };
+}
+
+/** Taps the camera button, and waits for the browser's file chooser it opens. */
+async function openTheCamera(page: Page) {
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByTestId('open-camera').click();
+  return chooser;
 }
 
 /** Taps the camera button and picks the photo in the browser's file chooser, as a phone's browser would take one. */
 async function showAPhoto(page: Page): Promise<void> {
-  const chooser = page.waitForEvent('filechooser');
-  await page.getByTestId('open-camera').click();
-  await (await chooser).setFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: ONE_PIXEL });
+  await (await openTheCamera(page)).setFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: ONE_PIXEL });
 }
 
-/** An answer the page gave one of the agent's client tool calls, as far as these tests read it. */
-interface ToolResult {
-  type: 'client_tool_result';
-  tool_call_id?: string;
-  result?: string;
-  is_error?: boolean;
-}
+test('tells Jarvis there is a camera button once a Jarvis server is set, and puts one beside him', async ({ page }) => {
+  const { heard } = await openAConversationToShowThingsTo(page, { serverAddress: JARVIS_SERVER });
 
-function isToolResult(event: unknown): event is ToolResult {
-  return typeof event === 'object' && event !== null && 'type' in event && event.type === 'client_tool_result';
-}
-
-/** The answers the page gave the agent's client tool calls. */
-function toolResults(heard: unknown[]): ToolResult[] {
-  return heard.filter(isToolResult);
-}
-
-/** Whether the page told the agent there is a camera here. */
-function toldOfACamera(heard: unknown[]): boolean {
-  return heard.some(
-    (event) =>
-      JSON.stringify(event).includes('"type":"contextual_update"') && JSON.stringify(event).includes('openCamera'),
-  );
-}
-
-test('tells Jarvis it has a camera, and puts one beside him', async ({ page }) => {
-  const { heard } = await openAConversationToShowThingsTo(page, { photoUploadKey: PHOTO_UPLOAD_KEY });
-
-  // The agent only asks for photos where a device has said it can take one.
-  await expect.poll(() => toldOfACamera(heard)).toBe(true);
+  // The conversation the tour landed on knew of no server, and was told of no button; the one that
+  // replaced it is told once — which is what lets the agent suggest the button, and nowhere else.
+  const beforeTheServer = heard.slice(0, heard.length - sinceTheLastConversationOpened(heard).length);
+  expect(textsOf(beforeTheServer, 'contextual_update')).not.toContain(CAMERA_BUTTON_HERE);
+  await expect
+    .poll(() => textsOf(sinceTheLastConversationOpened(heard), 'contextual_update'))
+    .toEqual([CAMERA_BUTTON_HERE]);
 
   // Faint, and there: the one thing on the screen besides him.
   await expect(page.getByTestId('open-camera')).toBeVisible();
   await expect(page.getByTestId('hologram')).toBeVisible();
 });
 
-test('opens a new conversation when the key is added during one, and gives that one the camera', async ({ page }) => {
-  // The key is saved while the conversation the tour landed on is still connected. That one was
-  // started without it, and its tool would have gone on answering that there is no key.
-  const { heard } = await openAConversationToShowThingsTo(page, { photoUploadKey: PHOTO_UPLOAD_KEY });
+test('offers no camera without a Jarvis server, and tells Jarvis of none', async ({ page }) => {
+  const { heard, slotRequests } = await openAConversationToShowThingsTo(page, { serverAddress: undefined });
 
-  // So it was hung up, and another opened in its place: the first heard nothing of a camera, and
-  // the second — built with the key — is told of one.
-  expect(conversationsOpened(heard)).toBe(2);
-  const beforeTheKey = heard.slice(0, heard.length - sinceTheLastConversationOpened(heard).length);
-  expect(toldOfACamera(beforeTheKey)).toBe(false);
-  await expect.poll(() => toldOfACamera(sinceTheLastConversationOpened(heard))).toBe(true);
-  await expect(page.getByTestId('open-camera')).toBeVisible();
+  // Nowhere to send a photo, so nothing beside him and nothing said about a button to the agent,
+  // whose prompt then knows photos cannot come from this device.
+  await expect(page.getByTestId('open-camera')).toHaveCount(0);
+  expect(textsOf(heard, 'contextual_update')).not.toContain(CAMERA_BUTTON_HERE);
+  expect(slotRequests).toHaveLength(0);
 });
 
-test('hangs up the conversation that had the key when it is cleared, and offers no camera in the next', async ({
-  page,
-}) => {
-  const { heard, say, uploads } = await openAConversationToShowThingsTo(page, { photoUploadKey: PHOTO_UPLOAD_KEY });
-  await expect.poll(() => toldOfACamera(heard)).toBe(true);
+test('takes the camera away from the next conversation when the Jarvis server is cleared', async ({ page }) => {
+  const { heard } = await openAConversationToShowThingsTo(page, { serverAddress: JARVIS_SERVER });
+  await expect.poll(() => textsOf(heard, 'contextual_update')).toContain(CAMERA_BUTTON_HERE);
 
-  // Cleared mid-conversation — because sir thinks it leaked, say. The conversation that was given it
-  // must not go on sending it.
-  await savePhotoUploadKey(page, '');
+  await saveJarvisServer(page, '');
   await expect.poll(() => conversationsOpened(heard)).toBe(3);
   await expect(page.getByTestId('typed-message')).toBeEditable();
 
-  say(UPLOAD_PREPARED);
-  say(OPEN_CAMERA);
-  await expect.poll(() => toolResults(heard).length).toBe(1);
-  expect(JSON.parse(toolResults(heard)[0]?.result ?? '{}').instructions).toContain(
-    'has not given this phone the photo upload key',
-  );
-  expect(toldOfACamera(sinceTheLastConversationOpened(heard))).toBe(false);
+  expect(textsOf(sinceTheLastConversationOpened(heard), 'contextual_update')).not.toContain(CAMERA_BUTTON_HERE);
   await expect(page.getByTestId('open-camera')).toHaveCount(0);
-  expect(uploads).toHaveLength(0);
 });
 
-test('sends the photo Jarvis asks for to where Mastra said, and tells him what it is called', async ({ page }) => {
-  // In the conversation that replaced the one the key was added during: see the test above.
-  const { heard, say, uploads } = await openAConversationToShowThingsTo(page, { photoUploadKey: PHOTO_UPLOAD_KEY });
+test('sends a photo to the Jarvis server when the camera button is tapped, and tells Jarvis its name', async ({
+  page,
+}) => {
+  const { heard, slotRequests, uploads } = await openAConversationToShowThingsTo(page, {
+    serverAddress: JARVIS_SERVER,
+  });
 
-  say(UPLOAD_PREPARED);
-  say(OPEN_CAMERA);
-
-  // A browser cannot open a picker by itself, so the button lights up and asks for the tap.
-  await expect(page.getByTestId('open-camera')).toHaveAttribute(
-    'aria-label',
-    'Jarvis wants to see something: open the camera',
-  );
   await showAPhoto(page);
 
-  // Sent once, as a JPEG, to exactly the URL the MCP result carried — with the key from the settings,
-  // which is what Mastra checks before it looks at anything else.
+  // The agent is told the camera is open, in the background, so it waits for the photo.
+  await expect.poll(() => textsOf(heard, 'contextual_update')).toContain(CAMERA_OPENED);
+
+  // A slot is asked for at the address sir typed, for this conversation — its id, and nothing else.
+  await expect.poll(() => slotRequests.length).toBe(1);
+  expect(slotRequests[0]?.method).toBe('POST');
+  expect(slotRequests[0]?.contentType).toBe('application/json');
+  expect(slotRequests[0]?.authorization).toBeUndefined();
+  expect(JSON.parse(String(slotRequests[0]?.body))).toEqual({ conversationId: 'conv_1' });
+
+  // The photo goes once, as a JPEG, to the slot's path on that same server — with no key of any kind.
   await expect.poll(() => uploads.length).toBe(1);
   expect(uploads[0]?.method).toBe('PUT');
   expect(uploads[0]?.contentType).toBe('image/jpeg');
-  expect(uploads[0]?.authorization).toBe(`Bearer ${PHOTO_UPLOAD_KEY}`);
+  expect(uploads[0]?.authorization).toBeUndefined();
   expect(uploads[0]?.body?.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
 
-  // And the agent is answered with the photo's id, as a result rather than an error.
-  await expect.poll(() => toolResults(heard).length).toBe(1);
-  const [answer] = toolResults(heard);
-  expect(answer?.tool_call_id).toBe('call_1');
-  expect(answer?.is_error).toBe(false);
-  expect(JSON.parse(answer?.result ?? '{}')).toMatchObject({ photoId: 'photo7' });
+  // And the agent is told what it was filed as, as sir's turn, after the note that the camera was open.
+  await expect.poll(() => textsOf(heard, 'user_message')).toEqual(["I've sent you a photo (photo photo7)."]);
+  const opened = heard.findIndex((event) => textsOf([event], 'contextual_update').includes(CAMERA_OPENED));
+  const sent = heard.findIndex((event) => isOfType(event, 'user_message'));
+  expect(opened).toBeLessThan(sent);
 });
 
-test('asks Jarvis to look when the camera button is tapped, and sends the photo when he does', async ({ page }) => {
-  const { heard, say, uploads } = await openAConversationToShowThingsTo(page, { photoUploadKey: PHOTO_UPLOAD_KEY });
+test('keeps the call alive while the camera is open, and says so when sir backs out', async ({ page }) => {
+  const { heard, slotRequests, uploads } = await openAConversationToShowThingsTo(page, {
+    serverAddress: JARVIS_SERVER,
+  });
+
+  const chooser = await openTheCamera(page);
+  await expect.poll(() => textsOf(heard, 'contextual_update')).toContain(CAMERA_OPENED);
+  // Someone framing a shot says nothing, and ElevenLabs ends a silent call: the page says he is there.
+  await expect.poll(() => heard.some((event) => isOfType(event, 'user_activity')), { timeout: 10_000 }).toBe(true);
+
+  // Backing out of the chooser, which a browser reports as `cancel`.
+  await chooser.element().dispatchEvent('cancel');
+
+  await expect.poll(() => textsOf(heard, 'contextual_update')).toContain(CAMERA_CLOSED);
+  // The slot was asked for at the tap, while the conversation was certainly live, and simply goes unused.
+  expect(slotRequests).toHaveLength(1);
+  expect(uploads).toHaveLength(0);
+  expect(textsOf(heard, 'user_message')).toEqual([]);
+  // And the button is back, for another go.
+  await expect(page.getByTestId('open-camera')).toBeVisible();
+});
+
+test('tells Jarvis the photo did not reach him when the server will not confirm the conversation', async ({ page }) => {
+  const { heard, slotRequests, uploads } = await openAConversationToShowThingsTo(page, {
+    serverAddress: JARVIS_SERVER,
+    slotAnswer: NOT_LIVE,
+  });
 
   await showAPhoto(page);
 
-  // The tap is a turn of sir's: it is what gets the agent to fetch somewhere to send the photo.
+  // Said as sir's turn, so Jarvis tells him out loud — with the phone's reason, not the server's words.
   await expect
-    .poll(() =>
-      heard.some(
-        (event) =>
-          JSON.stringify(event).includes('"type":"user_message"') &&
-          JSON.stringify(event).includes('preparePhotoUpload'),
-      ),
-    )
-    .toBe(true);
-  // Nothing is sent before Mastra has said where.
-  expect(uploads).toHaveLength(0);
-
-  say(UPLOAD_PREPARED);
-  say(OPEN_CAMERA);
-
-  // The photo was already taken, so the call is answered with it rather than opening the camera again.
-  await expect.poll(() => uploads.length).toBe(1);
-  expect(uploads[0]?.authorization).toBe(`Bearer ${PHOTO_UPLOAD_KEY}`);
-  await expect.poll(() => toolResults(heard).length).toBe(1);
-  expect(JSON.parse(toolResults(heard)[0]?.result ?? '{}')).toMatchObject({ photoId: 'photo7' });
-});
-
-test('never sends a photo anywhere the model names, only where Mastra said', async ({ page }) => {
-  const { heard, say, uploads } = await openAConversationToShowThingsTo(page, { photoUploadKey: PHOTO_UPLOAD_KEY });
-
-  // No MCP result, only a call with an address in it: the kind a prompt injection would write.
-  say({
-    type: 'client_tool_call',
-    client_tool_call: {
-      tool_name: 'openCamera',
-      tool_call_id: 'call_1',
-      parameters: { uploadUrl: 'https://elsewhere.example.test/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ' },
-      event_id: 1,
-    },
-  });
-
-  // The camera is not opened, and the agent is told to fetch somewhere first.
-  await expect.poll(() => toolResults(heard).length, { timeout: 10_000 }).toBe(1);
-  expect(JSON.parse(toolResults(heard)[0]?.result ?? '{}').instructions).toContain('preparePhotoUpload');
+    .poll(() => textsOf(heard, 'user_message'))
+    .toEqual(["The photo I took didn't reach you: this conversation could not be confirmed as live."]);
+  expect(slotRequests).toHaveLength(1);
   expect(uploads).toHaveLength(0);
 });
 
-test('offers no camera without a photo upload key, and sends Jarvis to the settings for one', async ({ page }) => {
-  const { heard, say, uploads } = await openAConversationToShowThingsTo(page, { photoUploadKey: undefined });
-
-  // Asked anyway, with somewhere to send the photo and all: the call is answered at once, and says
-  // where the key is added. Mastra would refuse anything this phone sent, so nothing is opened for it.
-  say(UPLOAD_PREPARED);
-  say(OPEN_CAMERA);
-  await expect.poll(() => toolResults(heard).length).toBe(1);
-  const [answer] = toolResults(heard);
-  expect(answer?.is_error).toBe(false);
-  const told = JSON.parse(answer?.result ?? '{}');
-  expect(told.instructions).toContain('has not given this phone the photo upload key');
-  expect(told.instructions).toContain("app's settings");
-  expect(told.photoId).toBeUndefined();
-
-  // Nothing told the agent there was a camera here — the conversation was up long before that call —
-  // and nothing beside him offers one, lit up or not.
-  expect(toldOfACamera(heard)).toBe(false);
-  await expect(page.getByTestId('open-camera')).toHaveCount(0);
-  expect(uploads).toHaveLength(0);
-});
-
-test('tells Jarvis when the server refuses the photo upload key', async ({ page }) => {
-  const { heard, say, uploads } = await openAConversationToShowThingsTo(page, {
-    photoUploadKey: PHOTO_UPLOAD_KEY,
-    // Mastra's own refusal: its envelope, with the key's status. Cloudflare's would not be this.
-    uploadAnswer: { status: 401, body: { success: false, message: 'This upload needs the photo upload key.' } },
-  });
-
-  say(UPLOAD_PREPARED);
-  say(OPEN_CAMERA);
-  await showAPhoto(page);
-
-  await expect.poll(() => uploads.length).toBe(1);
-  expect(uploads[0]?.authorization).toBe(`Bearer ${PHOTO_UPLOAD_KEY}`);
-
-  // Told apart from a photo that simply did not arrive: this one sir can fix, and trying again cannot.
-  await expect.poll(() => toolResults(heard).length).toBe(1);
-  const told = JSON.parse(toolResults(heard)[0]?.result ?? '{}');
-  expect(told.instructions).toContain("refused this phone's photo upload key");
-  expect(told.photoId).toBeUndefined();
-});
-
-test('refuses a photo upload key shorter than the server takes, and saves nothing', async ({ page }) => {
+test('refuses anything but a Jarvis server’s own https address, and saves nothing with it', async ({ page }) => {
   await page.goto('/');
   await configureElevenLabs(page);
 
   await page.getByTestId('open-settings').click();
-  // Named where it is kept, beside the API key, since the browser keeps it no better.
-  await expect(page.getByTestId('storage-note')).toContainText('photo upload key');
-  await expect(page.getByTestId('photo-upload-key')).toHaveValue('');
+  await expect(page.getByTestId('jarvis-server')).toHaveValue('');
+  // Not a secret, so the note on where secrets are kept says nothing of it.
+  await expect(page.getByTestId('storage-note')).not.toContainText('server');
 
   // A change to another field on the same screen, so "saves nothing" is something to check.
   await page.getByTestId('agent-id').fill('agent_changed');
-  await page.getByTestId('photo-upload-key').fill('too-short-key');
-  await page.getByTestId('save-settings').click();
-
-  await expect(page.getByTestId('settings-problem')).toContainText('at least 16 characters');
+  for (const { typed, problem } of [
+    { typed: 'http://jarvis.example.test', problem: 'has to start with https://' },
+    { typed: 'https://jarvis.example.test/api/photos', problem: 'with no path after it' },
+    { typed: 'https://sir:secret@jarvis.example.test', problem: 'no user name or password' },
+  ]) {
+    await page.getByTestId('jarvis-server').fill(typed);
+    await page.getByTestId('save-settings').click();
+    await expect(page.getByTestId('settings-problem')).toContainText(problem);
+  }
   // Still on the settings screen: a refused save must not fall through to the conversation.
-  await expect(page.getByTestId('photo-upload-key')).toBeVisible();
+  await expect(page.getByTestId('jarvis-server')).toBeVisible();
   await expect(page.getByTestId('hologram')).toHaveCount(0);
 
-  // Nothing was kept — not the key, and not the agent ID saved beside it.
+  // Nothing was kept — not the address, and not the agent ID saved beside it.
   await page.reload();
   await expect(page.getByTestId('hologram')).toBeVisible();
   await page.getByTestId('open-settings').click();
   await expect(page.getByTestId('agent-id')).toHaveValue(AGENT_ID);
-  await expect(page.getByTestId('photo-upload-key')).toHaveValue('');
+  await expect(page.getByTestId('jarvis-server')).toHaveValue('');
 
-  // And one long enough is kept, across a reload, like the rest of the settings.
-  await page.getByTestId('photo-upload-key').fill(PHOTO_UPLOAD_KEY);
+  // A bare host is kept as the origin it names, across a reload, like the rest of the settings.
+  await page.getByTestId('jarvis-server').fill('jarvis.example.test/');
   await page.getByTestId('save-settings').click();
   await expect(page.getByTestId('hologram')).toBeVisible();
   await page.reload();
   await page.getByTestId('open-settings').click();
-  await expect(page.getByTestId('photo-upload-key')).toHaveValue(PHOTO_UPLOAD_KEY);
+  await expect(page.getByTestId('jarvis-server')).toHaveValue(JARVIS_SERVER);
 });
 
-test('leaves a key that could not be read alone when the rest of the settings are saved', async ({ page }) => {
+test('leaves an address that could not be read alone when the rest of the settings are saved', async ({ page }) => {
   await page.goto('/');
   await configureElevenLabs(page);
-  await savePhotoUploadKey(page, PHOTO_UPLOAD_KEY);
+  await saveJarvisServer(page, JARVIS_SERVER);
 
-  // The store refusing to give the key up, as a keystore can in a window still coming up: it is
+  // The store refusing to give the address up, as a keystore can in a window still coming up: it is
   // there, and reading it throws. The settings screen can only start its field empty.
   await page.addInitScript(() => {
     const getItem = Storage.prototype.getItem;
     Storage.prototype.getItem = function (this: Storage, key: string) {
-      if (key === 'jarvis.photo-upload-key') {
-        throw new DOMException('The key cannot be read just now', 'SecurityError');
+      if (key === 'jarvis.server-address') {
+        throw new DOMException('The address cannot be read just now', 'SecurityError');
       }
       return getItem.call(this, key);
     };
   });
   await page.reload();
   await page.getByTestId('open-settings').click();
-  await expect(page.getByTestId('photo-upload-key')).toHaveValue('');
+  await expect(page.getByTestId('jarvis-server')).toHaveValue('');
 
   // Sir came to change the agent ID, and saves without touching the empty field.
   await page.getByTestId('agent-id').fill('agent_changed');
   await page.getByTestId('save-settings').click();
   await expect(page.getByTestId('hologram')).toBeVisible();
 
-  // The agent ID is saved, and the key that only failed to load is still there, not erased by the
-  // empty field that stood in for it. Read by name, which does not go through `getItem`.
+  // The agent ID is saved, and the address that only failed to load is still there, not erased by
+  // the empty field that stood in for it. Read by name, which does not go through `getItem`.
   const kept = await page.evaluate(() => {
     const readByName = (key: string): string | null => {
       const value: unknown = window.localStorage[key];
@@ -1145,9 +1103,9 @@ test('leaves a key that could not be read alone when the rest of the settings ar
     };
     return {
       settings: readByName('jarvis.elevenlabs-settings'),
-      photoUploadKey: readByName('jarvis.photo-upload-key'),
+      serverAddress: readByName('jarvis.server-address'),
     };
   });
   expect(JSON.parse(kept.settings ?? '{}')).toMatchObject({ agentId: 'agent_changed' });
-  expect(kept.photoUploadKey).toBe(PHOTO_UPLOAD_KEY);
+  expect(kept.serverAddress).toBe(JARVIS_SERVER);
 });

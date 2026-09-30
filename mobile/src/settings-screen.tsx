@@ -1,44 +1,44 @@
 import type { ElevenLabsSettings } from 'hologram';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { ElevenLabsFields } from './elevenlabs-fields';
-import type { PhotoUploadKeyChange } from './photo-upload-key';
+import type { JarvisServerAddressChange } from './jarvis-server';
 import { theme } from './theme';
 
 interface SettingsScreenProps {
   settings: ElevenLabsSettings | undefined;
-  /** The photo upload key as it was read, if one was. See `photo-upload-key.ts`. */
-  photoUploadKey: string | undefined;
-  /** Called once everything on the screen parses — with the photo upload key's change, if sir made one. */
-  onSave: (settings: ElevenLabsSettings, photoUploadKeyChange: PhotoUploadKeyChange | undefined) => void;
+  /** The Jarvis server's address as it was read, if one was. See `jarvis-server.ts`. */
+  serverAddress: string | undefined;
+  /** Called once everything on the screen parses — with the server address's change, if sir made one. */
+  onSave: (settings: ElevenLabsSettings, serverAddressChange: JarvisServerAddressChange | undefined) => void;
   onCancel: (() => void) | undefined;
   /** Opens sample mode. Only offered before the app is set up, when there is nothing else to look at. */
   onTrySample: (() => void) | undefined;
 }
 
 /**
- * Where the phone is told which Jarvis it talks to — and, if it is to show him photos, the key his
- * server asks for before it takes one.
+ * Where the phone is told which Jarvis it talks to — and, if it is to send him photos, where his
+ * Jarvis server is.
  *
  * Every value is typed in rather than compiled in. Shipping the API key inside
  * the app would put a live credential in every copy of the bundle.
  *
- * **The photo upload key is asked for here and not on the tour.** It is optional — without it
- * Jarvis works as he always did, with no camera — and it belongs to a server of sir's own, which
- * somebody meeting Jarvis for the first time does not have yet. Somebody who does comes back here
- * for it, which is also where the agent sends him when he asks for a photo it cannot have.
+ * **The Jarvis server is asked for here and not on the tour.** It is optional — without it Jarvis
+ * works as he always did, with no camera — and it is a server of sir's own, which somebody meeting
+ * Jarvis for the first time does not have yet. Somebody who does comes back here for it.
  *
- * **A changed key reaches the next conversation.** Holding the conversation screen to come here
+ * **A changed address reaches the next conversation.** Holding the conversation screen to come here
  * ends the conversation on it, since the session lasts only as long as its screen
- * (`useJarvisSession` in `hologram`), and the screen this returns to opens a new one, dialled with
- * the camera tool of the key as it is then — and told of a camera, or not, to match.
+ * (`useJarvisSession` in `hologram`), and the screen this returns to opens a new one — told of a
+ * camera button, or not, to match the address as it is then.
  *
  * **This is no longer the first thing a new install sees** — `onboarding-screen.tsx` is, and it
  * explains what an ElevenLabs agent is before asking for one. What is left here is the screen you
- * come back to: the same two fields with no tour around them, reached by holding the conversation
- * screen. It is also still where an install lands whose credentials have gone but whose tour has
- * been walked, which is why it keeps its own way into sample mode.
+ * come back to: the same two fields with no tour around them, and the Jarvis server's beside them,
+ * reached by holding the conversation screen. It is also still where an install lands whose
+ * credentials have gone but whose tour has been walked, which is why it keeps its own way into
+ * sample mode.
  */
-export function SettingsScreen({ settings, photoUploadKey, onSave, onCancel, onTrySample }: SettingsScreenProps) {
+export function SettingsScreen({ settings, serverAddress, onSave, onCancel, onTrySample }: SettingsScreenProps) {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>ElevenLabs</Text>
@@ -49,7 +49,7 @@ export function SettingsScreen({ settings, photoUploadKey, onSave, onCancel, onT
 
       <ElevenLabsFields
         settings={settings}
-        photos={{ storedKey: photoUploadKey }}
+        server={{ storedAddress: serverAddress }}
         submitLabel="Save"
         onSubmit={onSave}
       />

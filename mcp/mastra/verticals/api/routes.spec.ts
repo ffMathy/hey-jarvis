@@ -4,17 +4,20 @@ import type { Server } from 'http';
 import { z } from 'zod';
 import { createStep, createWorkflow, getWorkflowRuntime } from '../../utils/workflows/workflow-factory.js';
 import {
+  type ConversationVerdict,
   claimUploadSlot,
   findPhoto,
   forgetPhotos,
+  MAX_OPEN_SLOTS,
   MAX_PHOTO_BYTES,
   openUploadSlot,
-  PHOTO_UPLOAD_KEY_VARIABLE,
   UPLOAD_SLOT_MS,
 } from '../vision/index.js';
 import {
   createWorkflowApiHandler,
   extractWorkflowError,
+  PHOTO_SLOTS_ROUTE,
+  PHOTO_UPLOAD_PATH,
   PHOTO_UPLOAD_ROUTE,
   type RegisteredApiRoute,
   registerApiRoutes,
@@ -142,6 +145,20 @@ let registeredWorkflowPaths: string[];
 let registeredApiRoutes: RegisteredApiRoute[];
 let forwardedError: unknown;
 
+/**
+ * What the stand-in for the live-conversation check answers, and every id it was asked about.
+ *
+ * The check itself — ElevenLabs, its retries, its limits — is `vision/live-conversation.spec.ts`'s;
+ * what is tested here is how the route answers each thing it can find.
+ */
+let conversationVerdict: ConversationVerdict = 'live';
+const conversationsChecked: string[] = [];
+
+async function checkConversation(conversationId: string): Promise<ConversationVerdict> {
+  conversationsChecked.push(conversationId);
+  return conversationVerdict;
+}
+
 /** Errors the handler passes to `next` land here instead of Express's HTML page. */
 const ERROR_HANDLER_STATUS = 503;
 
@@ -166,7 +183,15 @@ async function readBody(response: Response) {
 
 beforeAll(async () => {
   const app = express();
-  app.use(express.json());
+  // As the MCP server does it (`mcp-server.ts`): JSON everywhere but the photo routes, which read
+  // their own bodies, if at all.
+  app.use((request, response, next) => {
+    if (request.path.startsWith(`${PHOTO_UPLOAD_PATH}/`)) {
+      next();
+    } else {
+      express.json()(request, response, next);
+    }
+  });
 
   const workflowRouter = express.Router();
   registeredWorkflowPaths = [
@@ -186,7 +211,7 @@ beforeAll(async () => {
   app.post('/api/unserialisable', createWorkflowApiHandler(unserialisableWorkflow));
 
   const productionRouter = express.Router();
-  registeredApiRoutes = registerApiRoutes(productionRouter);
+  registeredApiRoutes = registerApiRoutes(productionRouter, { isLiveJarvisConversation: checkConversation });
   app.use(productionRouter);
 
   app.use((error: unknown, _request: ExpressRequest, response: ExpressResponse, _next: NextFunction) => {
@@ -211,6 +236,8 @@ afterAll(() => {
 
 beforeEach(() => {
   forwardedError = undefined;
+  conversationVerdict = 'live';
+  conversationsChecked.length = 0;
 });
 
 describe('createWorkflowApiHandler', () => {
@@ -378,9 +405,10 @@ describe('registerWorkflowApi', () => {
 });
 
 describe('registerApiRoutes', () => {
-  it('registers exactly the shopping list endpoint and the photo upload', () => {
+  it('registers exactly the shopping list endpoint, the photo slots and the photo upload', () => {
     expect(registeredApiRoutes).toEqual([
       { method: 'POST', path: '/api/shopping-list' },
+      { method: 'POST', path: PHOTO_SLOTS_ROUTE },
       { method: 'PUT', path: PHOTO_UPLOAD_ROUTE },
     ]);
   });
@@ -452,61 +480,200 @@ describe('extractWorkflowError', () => {
   });
 });
 
-describe('the photo upload', () => {
-  /** A JPEG's first bytes, which is all the route looks at: it keeps what it is sent. */
-  const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+/** A JPEG's first bytes, which is all the upload route looks at: it keeps what it is sent. */
+const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
 
-  /** The key this server is configured with for these tests, and the one the phone sends. */
-  const PHOTO_UPLOAD_KEY = 'a-photo-upload-key-for-tests';
+/** A conversation id of the shape ElevenLabs gives one. */
+const CONVERSATION_ID = 'conv_01jz8k3b4c5d6e7f';
 
-  const environmentKeys = [PHOTO_UPLOAD_KEY_VARIABLE] as const;
-  const originalEnvironment = new Map(environmentKeys.map((key) => [key, process.env[key]]));
+/**
+ * Every photo request goes **on a connection of its own** (`keepalive: false`). These routes refuse
+ * most requests before reading them, and Bun's `fetch`, answered before it has finished sending a
+ * body, stops sending it and still puts the connection back to be reused. The server, which is owed
+ * the rest of that body, then took the next test's request as more of it, read what followed as a
+ * request line and answered `400` — which CI saw as the 413 test's answer, when the refused upload
+ * was the 3 MB one before it. A phone's HTTP client does not reuse a connection with a body half
+ * sent.
+ */
+function putPhotoWith(uploadToken: string, headers: Record<string, string>, body: Uint8Array<ArrayBuffer> = JPEG) {
+  return fetch(`${baseUrl}${PHOTO_UPLOAD_PATH}/${uploadToken}`, { method: 'PUT', headers, body, keepalive: false });
+}
 
-  /**
-   * Sends a JPEG with exactly these headers, for the tests about what a request has to carry.
-   *
-   * **Each on a connection of its own** (`keepalive: false`). The route refuses most uploads before
-   * reading them, and Bun's `fetch`, answered before it has finished sending a body, stops sending
-   * it and still puts the connection back to be reused. The server, which is owed the rest of that
-   * body, then took the next test's request as more of it, read what followed as a request line and
-   * answered `400` — which CI saw as the 413 test's answer, when the refused upload was the 3 MB one
-   * before it. A phone's HTTP client does not reuse a connection with a body half sent.
-   */
-  function putPhotoWith(uploadToken: string, headers: Record<string, string>, body: Uint8Array<ArrayBuffer> = JPEG) {
-    return fetch(`${baseUrl}/api/photos/${uploadToken}`, { method: 'PUT', headers, body, keepalive: false });
-  }
+/** Sends a photo as the phone does: a JPEG, and nothing else — no key, no credentials. */
+function putPhoto(uploadToken: string, body: Uint8Array<ArrayBuffer> = JPEG, contentType = 'image/jpeg') {
+  return putPhotoWith(uploadToken, { 'Content-Type': contentType }, body);
+}
 
-  /** Sends a photo as the phone does: with the key. */
-  function putPhoto(uploadToken: string, body: Uint8Array<ArrayBuffer> = JPEG, contentType = 'image/jpeg') {
-    return putPhotoWith(
-      uploadToken,
-      { 'Content-Type': contentType, Authorization: `Bearer ${PHOTO_UPLOAD_KEY}` },
-      body,
-    );
-  }
+/** Asks for a photo slot as the phone does, with this body sent as it is. */
+function postSlotRequest(body: string, contentType = 'application/json') {
+  return fetch(`${baseUrl}${PHOTO_SLOTS_ROUTE}`, {
+    method: 'POST',
+    headers: { 'Content-Type': contentType },
+    body,
+    keepalive: false,
+  });
+}
 
+/** Asks for a photo slot for this conversation. */
+function askForSlot(conversationId: string = CONVERSATION_ID) {
+  return postSlotRequest(JSON.stringify({ conversationId }));
+}
+
+/** What a slot request answers with once it is granted. */
+const openedSlotSchema = z.object({ uploadToken: z.string(), uploadPath: z.string(), expiresAt: z.string() });
+
+describe('a photo slot', () => {
   beforeEach(() => {
     forgetPhotos();
-    process.env[PHOTO_UPLOAD_KEY_VARIABLE] = PHOTO_UPLOAD_KEY;
   });
 
   afterEach(() => {
     // The store is the process's: a photo left here would be brought up by another file's requests.
     forgetPhotos();
-    for (const [key, value] of originalEnvironment) {
-      if (value === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = value;
-      }
-    }
   });
 
-  it('is the path the phone checks an upload URL against', () => {
+  it('is asked for at a path of its own, under the one Cloudflare Access lets the phone through', () => {
+    expect(PHOTO_SLOTS_ROUTE).toBe('/api/photos/slots');
+    expect(PHOTO_SLOTS_ROUTE.startsWith(`${PHOTO_UPLOAD_PATH}/`)).toBe(true);
+  });
+
+  it('is opened for a conversation live on Jarvis’s agent, and takes the photo at the path it gives', async () => {
+    const response = await askForSlot();
+
+    expect(response.status).toBe(201);
+    const body = await readBody(response);
+    expect(body.success).toBe(true);
+    const slot = openedSlotSchema.parse(body.data);
+    // The only upload path the phone will send to (`photo-upload.ts` in `mobile`).
+    expect(slot.uploadPath).toMatch(/^\/api\/photos\/[A-Za-z0-9_-]{22}$/);
+    expect(slot.uploadPath).toBe(`${PHOTO_UPLOAD_PATH}/${slot.uploadToken}`);
+    expect(conversationsChecked).toEqual([CONVERSATION_ID]);
+
+    const upload = await fetch(`${baseUrl}${slot.uploadPath}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'image/jpeg' },
+      body: JPEG,
+      keepalive: false,
+    });
+    expect(upload.status).toBe(201);
+    expect(findPhoto('photo1')?.data).toEqual(Buffer.from(JPEG));
+  });
+
+  it('says until when it is open', async () => {
+    const before = Date.now();
+    const slot = openedSlotSchema.parse((await readBody(await askForSlot())).data);
+    const after = Date.now();
+
+    const expiresAt = Date.parse(slot.expiresAt);
+    expect(expiresAt).toBeGreaterThanOrEqual(before + UPLOAD_SLOT_MS);
+    expect(expiresAt).toBeLessThanOrEqual(after + UPLOAD_SLOT_MS);
+  });
+
+  describe('refused', () => {
+    /**
+     * Every slot there is room for, opened first: a slot opened now would let go of the oldest to
+     * make room, so the oldest still being there afterwards is what says none was.
+     */
+    function fillEverySlot(): string[] {
+      return Array.from({ length: MAX_OPEN_SLOTS }, () => openUploadSlot().uploadToken);
+    }
+
+    const refusals: { verdict: Exclude<ConversationVerdict, 'live'>; status: number; message: string }[] = [
+      {
+        verdict: 'malformed',
+        status: 400,
+        message: 'Send the id of the conversation the photo is for, as {"conversationId": "conv_…"}.',
+      },
+      { verdict: 'not-live', status: 403, message: 'That is not a conversation in progress with Jarvis.' },
+      {
+        verdict: 'too-many-checks',
+        status: 429,
+        message: 'Too many photo slots have been asked for in the last minute. Try again in a moment.',
+      },
+      { verdict: 'unverifiable', status: 502, message: 'ElevenLabs could not confirm the conversation just now.' },
+      { verdict: 'switched-off', status: 503, message: 'Photo uploads are switched off on this server.' },
+    ];
+
+    for (const { verdict, status, message } of refusals) {
+      it(`with ${status} when the check finds it ${verdict}, and no slot is opened`, async () => {
+        const alreadyOpen = fillEverySlot();
+        conversationVerdict = verdict;
+
+        const response = await askForSlot();
+
+        expect(response.status).toBe(status);
+        // The same envelope as every other answer here, and nothing in it but the reason.
+        expect(await readBody(response)).toEqual({ success: false, message });
+        expect(claimUploadSlot(alreadyOpen[0] ?? '')).toBe(true);
+      });
+    }
+
+    it('with 400, without asking the check, when the body names no conversation', async () => {
+      // An empty JSON body is parsed as `{}`; a body that is not JSON at all is not parsed.
+      const bodies = ['{}', '{"conversationId": 42}', '["conv_01jz8k3b4c5d6e7f"]', ''];
+
+      for (const body of bodies) {
+        expect(await readBody(await postSlotRequest(body))).toEqual({
+          success: false,
+          message: 'Send the id of the conversation the photo is for, as {"conversationId": "conv_…"}.',
+        });
+      }
+      const plainText = await postSlotRequest(JSON.stringify({ conversationId: CONVERSATION_ID }), 'text/plain');
+      expect(plainText.status).toBe(400);
+      expect(conversationsChecked).toEqual([]);
+    });
+
+    it('with 400 too, in the same envelope, when the body is not JSON', async () => {
+      const response = await postSlotRequest('conversationId=conv_01jz8k3b4c5d6e7f');
+
+      expect(response.status).toBe(400);
+      expect(await readBody(response)).toEqual({
+        success: false,
+        message: 'Send the id of the conversation the photo is for, as {"conversationId": "conv_…"}.',
+      });
+      expect(forwardedError).toBeUndefined();
+      expect(conversationsChecked).toEqual([]);
+    });
+
+    it('without reading more than a kilobyte of what a stranger sends', async () => {
+      const response = await postSlotRequest(
+        JSON.stringify({ conversationId: CONVERSATION_ID, padding: 'x'.repeat(2048) }),
+      );
+
+      // Refused by the parser's limit — the id in it is never looked at — and answered as a body that
+      // names no conversation, rather than by the server's error handler.
+      expect(response.status).toBe(400);
+      expect(forwardedError).toBeUndefined();
+      expect(conversationsChecked).toEqual([]);
+    });
+  });
+
+  it('can be asked for by the browser build, from its own origin', async () => {
+    const preflight = await fetch(`${baseUrl}${PHOTO_SLOTS_ROUTE}`, { method: 'OPTIONS', keepalive: false });
+
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('access-control-allow-origin')).toBe('*');
+    expect(preflight.headers.get('access-control-allow-methods')).toContain('POST');
+    expect(preflight.headers.get('access-control-allow-headers')).toBe('Content-Type');
+    expect((await askForSlot()).headers.get('access-control-allow-origin')).toBe('*');
+  });
+});
+
+describe('the photo upload', () => {
+  beforeEach(() => {
+    forgetPhotos();
+  });
+
+  afterEach(() => {
+    // The store is the process's: a photo left here would be brought up by another file's requests.
+    forgetPhotos();
+  });
+
+  it('is sent to the path a slot was opened with', () => {
     expect(PHOTO_UPLOAD_ROUTE).toBe('/api/photos/:uploadToken');
   });
 
-  it('keeps a photo sent to a slot, and says what it is called now', async () => {
+  it('keeps a photo sent to a slot, with no key or credentials, and says what it is called now', async () => {
     const { uploadToken } = openUploadSlot();
 
     const response = await putPhoto(uploadToken);
@@ -539,12 +706,19 @@ describe('the photo upload', () => {
     expect(findPhoto(undefined)).toBeUndefined();
   });
 
+  it('is not the slot endpoint, whatever is sent to it', async () => {
+    // A token is 22 characters, so `slots` names no slot however it is sent.
+    expect((await putPhoto('slots')).status).toBe(404);
+    expect(findPhoto(undefined)).toBeUndefined();
+  });
+
   it('turns a stranger away before reading what they sent', async () => {
     // Larger than any photo is allowed to be. Read first, this would be refused as too large; that
     // it is refused as a slot that does not exist is what says nothing was read.
     const tooLarge = new Uint8Array(MAX_PHOTO_BYTES + 1);
 
     expect((await putPhoto('Q2hhbmdlIG1lIHBsZWFzZQ', tooLarge)).status).toBe(404);
+    expect(forwardedError).toBeUndefined();
   });
 
   it('refuses a photo larger than a photo can be, even for a live slot', async () => {
@@ -561,10 +735,12 @@ describe('the photo upload', () => {
     expect(findPhoto(undefined)).toBeUndefined();
   });
 
-  it('refuses anything that is not an image, without spending the slot', async () => {
+  it('refuses anything that is not an image, without reading it or spending the slot', async () => {
     const { uploadToken } = openUploadSlot();
 
     expect((await putPhoto(uploadToken, new TextEncoder().encode('{"a":1}'), 'application/json')).status).toBe(415);
+    expect((await putPhotoWith(uploadToken, {}, new Uint8Array(MAX_PHOTO_BYTES + 1))).status).toBe(415);
+    expect(forwardedError).toBeUndefined();
     expect((await putPhoto(uploadToken)).status).toBe(201);
   });
 
@@ -574,131 +750,29 @@ describe('the photo upload', () => {
     expect((await putPhoto(uploadToken, new Uint8Array(0))).status).toBe(415);
   });
 
-  it('lets the browser build send from its own origin, with the key in a header', async () => {
-    // A browser's preflight carries no key, so it must be answered without one.
-    delete process.env[PHOTO_UPLOAD_KEY_VARIABLE];
-
-    const preflight = await fetch(`${baseUrl}/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ`, { method: 'OPTIONS' });
+  it('lets the browser build send from its own origin, asking for no header but the type', async () => {
+    const preflight = await fetch(`${baseUrl}${PHOTO_UPLOAD_PATH}/Q2hhbmdlIG1lIHBsZWFzZQ`, {
+      method: 'OPTIONS',
+      keepalive: false,
+    });
 
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get('access-control-allow-origin')).toBe('*');
     expect(preflight.headers.get('access-control-allow-methods')).toContain('PUT');
-    expect(preflight.headers.get('access-control-allow-headers')).toContain('Content-Type');
-    expect(preflight.headers.get('access-control-allow-headers')).toContain('Authorization');
-
-    process.env[PHOTO_UPLOAD_KEY_VARIABLE] = PHOTO_UPLOAD_KEY;
+    // No `Authorization`: there is no key to send.
+    expect(preflight.headers.get('access-control-allow-headers')).toBe('Content-Type');
 
     const { uploadToken } = openUploadSlot();
     expect((await putPhoto(uploadToken)).headers.get('access-control-allow-origin')).toBe('*');
   });
 
-  describe('the photo upload key', () => {
-    /** What a refusal for want of the key looks like, whatever was missing from the request. */
-    async function expectKeyRefused(response: Response) {
-      expect(response.status).toBe(401);
-      expect(response.headers.get('www-authenticate')).toBe('Bearer realm="jarvis-photos"');
-      // The phone tells a refused key from Cloudflare's refusals by this envelope.
-      expect(await readBody(response)).toEqual({ success: false, message: 'This upload needs the photo upload key.' });
-    }
-
-    it('takes a photo that carries it, under the scheme in any case', async () => {
-      const { uploadToken } = openUploadSlot();
-
-      const response = await putPhotoWith(uploadToken, {
-        'Content-Type': 'image/jpeg',
-        Authorization: `bearer ${PHOTO_UPLOAD_KEY}`,
-      });
-
-      expect(response.status).toBe(201);
-      expect(findPhoto('photo1')?.data).toEqual(Buffer.from(JPEG));
-    });
-
-    it('turns away an upload without it, saying which key and how to send it', async () => {
-      const { uploadToken } = openUploadSlot();
-
-      await expectKeyRefused(await putPhotoWith(uploadToken, { 'Content-Type': 'image/jpeg' }));
-      expect(findPhoto(undefined)).toBeUndefined();
-    });
-
-    it('turns away the wrong key', async () => {
-      const { uploadToken } = openUploadSlot();
-
-      await expectKeyRefused(
-        await putPhotoWith(uploadToken, {
-          'Content-Type': 'image/jpeg',
-          Authorization: `Bearer ${PHOTO_UPLOAD_KEY.slice(0, -1)}X`,
-        }),
-      );
-      expect(findPhoto(undefined)).toBeUndefined();
-    });
-
-    it('turns away the right key under any scheme but Bearer', async () => {
-      const { uploadToken } = openUploadSlot();
-
-      await expectKeyRefused(
-        await putPhotoWith(uploadToken, { 'Content-Type': 'image/jpeg', Authorization: `Basic ${PHOTO_UPLOAD_KEY}` }),
-      );
-      await expectKeyRefused(
-        await putPhotoWith(uploadToken, { 'Content-Type': 'image/jpeg', Authorization: PHOTO_UPLOAD_KEY }),
-      );
-    });
-
-    it('leaves the slot for the phone when an upload without it is turned away', async () => {
-      // Otherwise anyone who saw the URL could not use it, but could still spend it before sir's phone.
-      const { uploadToken } = openUploadSlot();
-      await expectKeyRefused(await putPhotoWith(uploadToken, { 'Content-Type': 'image/jpeg' }));
-
-      const response = await putPhoto(uploadToken);
-
-      expect(response.status).toBe(201);
-      expect(findPhoto('photo1')?.data).toEqual(Buffer.from(JPEG));
-    });
-
-    it('is asked for before anything else about the request, and before a byte of it is read', async () => {
-      const { uploadToken } = openUploadSlot();
-
-      // Neither a body too large to be a photo nor one that is not an image is looked at first. Not
-      // JSON for the second: this test app parses JSON everywhere, which the MCP server does not.
-      await expectKeyRefused(
-        await putPhotoWith(uploadToken, { 'Content-Type': 'image/jpeg' }, new Uint8Array(MAX_PHOTO_BYTES + 1)),
-      );
-      await expectKeyRefused(await putPhotoWith(uploadToken, { 'Content-Type': 'text/plain' }));
-      expect(forwardedError).toBeUndefined();
-      expect(claimUploadSlot(uploadToken)).toBe(true);
-    });
-
-    it('switches uploads off, without touching a slot, when this server has no key', async () => {
-      delete process.env[PHOTO_UPLOAD_KEY_VARIABLE];
-      const { uploadToken } = openUploadSlot();
-
-      const response = await putPhoto(uploadToken);
-
-      expect(response.status).toBe(503);
-      expect(await readBody(response)).toEqual({
-        success: false,
-        message: 'Photo uploads are switched off on this server.',
-      });
-      expect(response.headers.get('www-authenticate')).toBeNull();
-      expect(findPhoto(undefined)).toBeUndefined();
-      expect(claimUploadSlot(uploadToken)).toBe(true);
-    });
-
-    it('counts a configured key that is too short as none', async () => {
-      process.env[PHOTO_UPLOAD_KEY_VARIABLE] = 'too-short';
-      const { uploadToken } = openUploadSlot();
-
-      const response = await putPhotoWith(uploadToken, {
-        'Content-Type': 'image/jpeg',
-        Authorization: 'Bearer too-short',
-      });
-
-      expect(response.status).toBe(503);
-    });
-  });
-
-  it('keeps upload tokens out of the request log', () => {
+  it('keeps upload tokens out of the request log, and leaves the slot endpoint readable', () => {
     expect(withoutUploadToken('/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ')).toBe('/api/photos/…');
     expect(withoutUploadToken('/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ?x=1')).toBe('/api/photos/…?x=1');
+    // A token may begin with the same letters; only the endpoint's own path is spared.
+    expect(withoutUploadToken('/api/photos/slotsQ2hhbmdlIG1lIHBs')).toBe('/api/photos/…');
+    expect(withoutUploadToken('/api/photos/slots')).toBe('/api/photos/slots');
+    expect(withoutUploadToken('/api/photos/slots?x=1')).toBe('/api/photos/slots?x=1');
     expect(withoutUploadToken('/api/shopping-list')).toBe('/api/shopping-list');
   });
 });

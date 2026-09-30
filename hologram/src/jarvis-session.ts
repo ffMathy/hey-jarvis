@@ -1,5 +1,4 @@
 import { type AgentTrackRoom, agentAudioTracks } from './agent-audio-track';
-import { NO_CAMERA_HERE, OPEN_CAMERA_TOOL } from './camera-request';
 import { GIVE_UP_CONNECTING_AFTER_MS, isLive } from './conversation-life';
 import { requestConversationToken, requestSignedConversationUrl } from './conversation-token';
 import { DEADLINE_PROBLEM, describeDisconnect, describeStartFailure, describeTokenFailure } from './failure-text';
@@ -8,7 +7,6 @@ import { createGreetingReaders } from './greeting-voice';
 import { createHalfDuplexDetector } from './half-duplex';
 import { flushQueuedAudio } from './queued-audio';
 import type {
-  ClientTools,
   JarvisSession,
   JarvisSessionDependencies,
   ProblemSource,
@@ -21,7 +19,7 @@ import type {
   SessionSnapshot,
   SummonOptions,
 } from './session-contract';
-import { createToolActivity, type MCPToolCallEvent } from './tool-activity';
+import { createToolActivity } from './tool-activity';
 import { createVadScoreKeeper } from './vad-score';
 import type { JarvisVoice, JarvisVoiceReaders, UserVoice } from './voice-contract';
 import {
@@ -39,8 +37,12 @@ import { type ConversationMessage, SAYING_NOTHING, type WrittenReply } from './w
  */
 const GREETING_CHECK_MS = 50;
 
-/** The client tools of a device that has no camera: the agent's one tool, answered with "there is none". */
-const NO_CAMERA: ClientTools = { [OPEN_CAMERA_TOOL]: () => NO_CAMERA_HERE };
+/**
+ * What an ElevenLabs conversation id looks like — the pattern the SDK itself looks for in a LiveKit
+ * room's name. Anything else the SDK may call a conversation (the room's name, or its own
+ * `room_<ms>`) is not one, and `liveConversationId` gives no id rather than that.
+ */
+const ELEVENLABS_CONVERSATION_ID = /^conv_[A-Za-z0-9]+$/;
 
 /**
  * How long after a dropped connection the page is swept a second time for the SDK's orphaned
@@ -105,6 +107,11 @@ interface Attempt<Timer> {
   /** Whether `startSession` has been called and has not yet resolved or rejected. */
   starting: boolean;
   conversation?: SessionConversation;
+  /**
+   * The conversation's id as the SDK gave it when the conversation was adopted, which is after the
+   * SDK has finished connecting and so final (see `JarvisSession.liveConversationId`).
+   */
+  conversationId?: string;
   room?: AgentTrackRoom;
   stopFollowing?: () => void;
   callAudio: CallAudioHolder;
@@ -545,6 +552,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
 
   const adopt = (current: Attempt<Timer>, conversation: SessionConversation) => {
     current.conversation = conversation;
+    current.conversationId = conversation.getId();
     current.microphoneMuted = false;
     if (current.callAudio === 'greeting') {
       // The conversation has the call's audio now, and its ending lets go of it.
@@ -652,15 +660,11 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     onVadScore: bound(current, ({ vadScore: score }: { vadScore: number }) => vadScore.heard(score)),
     onAgentToolRequest: bound(current, toolActivity.toolHandlers.onAgentToolRequest),
     onAgentToolResponse: bound(current, toolActivity.toolHandlers.onAgentToolResponse),
-    onMCPToolCall: bound(current, (event: MCPToolCallEvent) => {
-      toolActivity.toolHandlers.onMCPToolCall(event);
-      events.onMCPToolCall?.(event);
-    }),
+    onMCPToolCall: bound(current, toolActivity.toolHandlers.onMCPToolCall),
     onInterruption: bound(current, () => interrupted(current)),
     onMessage: bound(current, messageArrived),
     onError: bound(current, (message: string) => errorReported(current, message)),
     onDisconnect: bound(current, (ending: SessionEnding) => disconnected(current, ending)),
-    clientTools: dependencies.clientTools ?? NO_CAMERA,
   });
 
   const sessionOptions = (current: Attempt<Timer>, credential: Credential): SessionOptions => {
@@ -1081,6 +1085,18 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       } catch {
         // As above.
       }
+    },
+    liveConversationId: () => {
+      const current = openAttempt();
+      // Connected, as for a typed line: an attempt still dialling has no conversation to name yet,
+      // and one that has ended, or is ending, is not live — so its id is never given.
+      if (!current?.conversation || current.status !== 'connected') {
+        return undefined;
+      }
+      const { conversationId } = current;
+      return conversationId !== undefined && ELEVENLABS_CONVERSATION_ID.test(conversationId)
+        ? conversationId
+        : undefined;
     },
     setTyping: (next) => {
       typing = next;

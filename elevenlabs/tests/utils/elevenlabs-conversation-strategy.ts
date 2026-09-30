@@ -1,9 +1,6 @@
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { type Data, WebSocket } from 'ws';
 import {
-  type ClientToolAnswerer,
-  type ClientToolCall,
-  type ClientToolResultEvent,
   type ContextualUpdateEvent,
   type ConversationStrategy,
   mcpToolNamesIn,
@@ -48,11 +45,6 @@ const MAX_REPLY_WAIT_MS = 75_000;
 export interface ElevenLabsConversationOptions {
   agentId: string;
   apiKey: string;
-  /**
-   * Answers the agent's client tool calls as a device would — `openCamera` with a photo's id, say.
-   * Without one, every call is recorded and left unanswered, as a device without the tool leaves it.
-   */
-  answerClientToolCall?: ClientToolAnswerer;
 }
 
 /**
@@ -64,7 +56,6 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
   private client: ElevenLabsClient;
   private readonly agentId: string;
   private readonly apiKey: string;
-  private readonly answerClientToolCall?: ClientToolAnswerer;
   private messages: ServerMessage[] = [];
   private conversationId?: string;
   private shouldStop = false;
@@ -74,7 +65,6 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
   constructor(options: ElevenLabsConversationOptions) {
     this.agentId = options.agentId;
     this.apiKey = options.apiKey;
-    this.answerClientToolCall = options.answerClientToolCall;
     this.client = new ElevenLabsClient({ apiKey: this.apiKey });
   }
 
@@ -207,37 +197,11 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
         break;
       }
 
-      case 'client_tool_call': {
-        this.messages.push(message);
-        this._answerClientToolCall(message.client_tool_call);
-        break;
-      }
-
       default:
         // Store all raw messages
         this.messages.push(message);
         break;
     }
-  }
-
-  /**
-   * Answers a client tool call on the device's behalf, when the test asked for that. The answer is
-   * recorded beside the call, so the log shows what the agent was handed.
-   */
-  private _answerClientToolCall(call: ClientToolCall): void {
-    const result = this.answerClientToolCall?.(call);
-    if (result === undefined || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
-    const resultEvent: ClientToolResultEvent = {
-      type: 'client_tool_result',
-      tool_call_id: call.tool_call_id,
-      result,
-      is_error: false,
-    };
-    this.ws.send(JSON.stringify(resultEvent));
-    this.messages.push(resultEvent);
   }
 
   /** Background for the agent that starts no turn, so there is no reply to wait for. */

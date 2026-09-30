@@ -2,10 +2,14 @@
 
 export { storageRetentionWorkflow } from './retention-workflow.js';
 export {
+  type ApiRouteDependencies,
   createWorkflowApiHandler,
+  PHOTO_SLOTS_ROUTE,
+  PHOTO_UPLOAD_PATH,
   PHOTO_UPLOAD_ROUTE,
   type RegisteredApiRoute,
   registerApiRoutes,
+  registerPhotoSlotApi,
   registerPhotoUploadApi,
   registerWorkflowApi,
   withoutUploadToken,

@@ -17,7 +17,6 @@ import { Platform, Pressable, StyleSheet, Text, ToastAndroid, View } from 'react
 import { roomOfConversation } from './agent-audio-track';
 import { createAssistLaunchClaim } from './assist-link';
 import { CameraButton } from './camera-button';
-import { type CameraSessionOptions, useCameraTool } from './camera-tool';
 import { ConversationFrame, useConversationSheet } from './conversation-sheet';
 import { JarvisHologram } from './jarvis-hologram';
 import { followJarvisVoice, useJarvisVoice } from './jarvis-voice';
@@ -27,15 +26,16 @@ import { useSparkDensity } from './spark-density';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
 import { theme } from './theme';
 import { TypedMessageField } from './typed-message-field';
+import { usePhotoSending } from './use-photo-sending';
 import { WrittenReplyLine } from './written-reply-line';
 
 interface ConversationScreenProps {
   settings: ElevenLabsSettings;
   /**
-   * The key Mastra asks for before it takes a photo, or `undefined` when sir has not given this
-   * phone one — in which case there is no camera here at all. See `photo-upload-key.ts`.
+   * Sir's Jarvis server, where a photo is sent, or `undefined` when he has not given this phone one —
+   * in which case there is no camera here at all. See `jarvis-server.ts`.
    */
-  photoUploadKey: string | undefined;
+  serverAddress: string | undefined;
   onEditSettings: () => void;
   /**
    * Summoned by the assistant gesture on a phone: drawn in the bottom sheet sample mode uses, over
@@ -86,14 +86,14 @@ function showsTypedField({ canType, gone, textMode }: { canType: boolean; gone: 
 }
 
 /**
- * Whether the camera is beside him: while there is a conversation to show something to, and a photo
- * this phone could send to it — which takes the photo upload key. Not during the greeting, whose
+ * Whether the camera is beside him: while there is a conversation to send a photo into, and somewhere
+ * this phone could send it — which takes the Jarvis server's address. Not during the greeting, whose
  * microphone is still muted, and not while a phone is held in writing, where the keyboard has pushed
  * the field up to where the button would be.
  *
- * **And not while he is busy with something else**, unless it is him asking for it. Pressing it sends
- * a turn of its own, and a turn in the middle of one replaces it: a request still being worked on is
- * cancelled, and an answer still being spoken is cut off.
+ * **And not while he is busy with something else.** The photo arrives as a turn of sir's, and a turn
+ * in the middle of one replaces it: a request still being worked on is cancelled, and an answer still
+ * being spoken is cut off. Nor while the camera is open or a photo is on its way — one at a time.
  */
 function showsCameraButton({
   canSendPhotos,
@@ -104,7 +104,7 @@ function showsCameraButton({
   textMode,
   thinking,
   speaking,
-  wanted,
+  busy,
 }: {
   canSendPhotos: boolean;
   connected: boolean;
@@ -114,10 +114,10 @@ function showsCameraButton({
   textMode: boolean;
   thinking: boolean;
   speaking: boolean;
-  wanted: boolean;
+  busy: boolean;
 }) {
   const inFront = canSendPhotos && connected && !gone && settled && !greeting && !(ON_A_PHONE && textMode);
-  return inFront && (wanted || !(thinking || speaking));
+  return inFront && !(thinking || speaking || busy);
 }
 
 /**
@@ -154,9 +154,10 @@ function isUnderWay(phase: SessionPhase): boolean {
  * **The other is a camera, beside him, and it is faint.** Showing Jarvis a receipt or a label is
  * something you decide to do rather than something he can guess, so it needs a door — but only one
  * you can find, never one you have to read: a small outline at the sphere's lower right, at half
- * strength, there only while he is connected. He can also ask for it himself (`camera-tool.ts`), and
- * in a browser, where the camera cannot open without a tap, the button lighting up is how he asks. A
- * phone without the photo upload key has no door at all, since nothing it sent would be let in.
+ * strength, there only while he is connected and listening. It is the only way to show him anything:
+ * he cannot open the camera himself, only suggest the button (`use-photo-sending.ts`). A phone that
+ * has not been told where sir's Jarvis server is has no door at all, since there is nowhere to send
+ * what it would take.
  *
  * **On a phone it is there only when asked for.** It used to sit under him as an empty bar on
  * every summoning — something on the assistant's screen that was not him, for a keyboard nobody
@@ -198,7 +199,7 @@ function isUnderWay(phase: SessionPhase): boolean {
  */
 export function ConversationScreen({
   settings,
-  photoUploadKey,
+  serverAddress,
   onEditSettings,
   inSheet = false,
   inAssistantWindow = false,
@@ -237,14 +238,6 @@ export function ConversationScreen({
   }, []);
 
   /**
-   * The camera's hold on the session: its `openCamera` tool, and the MCP calls it takes its upload
-   * URL from. A ref because the camera is made below the session — it needs the conversation to
-   * speak into, as the conversation needs its tool to dial with — and the session asks for neither
-   * while rendering, only as it dials and as calls arrive, by when the camera has put them here.
-   */
-  const cameraInSession = useRef<CameraSessionOptions | undefined>(undefined);
-
-  /**
    * The conversation itself: hologram's session, which the headset and the watch hold too (see
    * `useJarvisSession` in `hologram/conversation`).
    *
@@ -254,8 +247,8 @@ export function ConversationScreen({
    * interruptions, the listening lattice's score. What this screen hands it is only what is this
    * app's: its name in the history, its own check that a room is a `Room` of the `livekit-client`
    * it bundles (`agent-audio-track.ts`), how it listens to his track (`jarvis-voice.ts`, natively on
-   * Android and through Web Audio in a browser), its text mode's rule for his written lines, and
-   * its camera.
+   * Android and through Web Audio in a browser), and its text mode's rule for his written lines. The
+   * camera is not among them: it only speaks into the conversation, below.
    */
   const conversation = useJarvisSession({
     settings,
@@ -265,26 +258,15 @@ export function ConversationScreen({
     captions: 'while-typing',
     onProblem: (message: string, source: ProblemSource) =>
       source === 'session' ? reportSessionFailure(message) : reportProblem(message),
-    // The camera's, made below: see `cameraInSession`.
-    get clientTools() {
-      return cameraInSession.current?.clientTools;
-    },
-    onMCPToolCall: (event) => cameraInSession.current?.onMCPToolCall(event),
   });
   const { phase, status, writtenReply, setTyping, summon, sendText, hangUp } = conversation;
 
-  /**
-   * The camera the agent may ask for with its `openCamera` client tool, and the faint button beside
-   * him that opens it from sir's side. See `camera-tool.ts`.
-   */
-  const { cameraSessionOptions, cameraBusy, cameraWanted, canSendPhotos, showJarvisSomething } = useCameraTool({
+  /** The faint camera beside him, and the photo it sends into this conversation. See `use-photo-sending.ts`. */
+  const { canSendPhotos, cameraBusy, sendJarvisAPhoto } = usePhotoSending({
     inAssistantWindow,
-    photoUploadKey,
+    serverAddress,
     conversation,
   });
-  useEffect(() => {
-    cameraInSession.current = cameraSessionOptions;
-  }, [cameraSessionOptions]);
   const textMode = conversation.typing;
   const liveVoice = useJarvisVoice(conversation.voice);
   const { frameRate, buildMilliseconds, particleShare, provenShare, startingShare } = useSparkDensity();
@@ -659,12 +641,10 @@ export function ConversationScreen({
           textMode,
           thinking: conversation.thinking,
           speaking: conversation.mode === 'speaking',
-          wanted: cameraWanted,
+          busy: cameraBusy,
         })}
         hologramSize={hologramSize}
-        wanted={cameraWanted}
-        busy={cameraBusy}
-        onPress={showJarvisSomething}
+        onPress={sendJarvisAPhoto}
       />
 
       {ON_A_PHONE ? null : (

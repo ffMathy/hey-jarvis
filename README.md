@@ -61,7 +61,7 @@ ESP32 Voice Hardware  ←→  Home Assistant  ←→  MCP Server (Mastra AI)  �
 
 | Project | Description |
 |---------|-------------|
-| [**mcp**](./mcp) | Mastra AI-powered MCP server with 15+ agents across 19 domains (weather, shopping, IoT, calendar, etc.) |
+| [**mcp**](./mcp) | Mastra AI-powered MCP server with 15+ agents across 20 domains (weather, shopping, IoT, calendar, etc.) |
 | [**elevenlabs**](./elevenlabs) | CLI for deploying and testing the ElevenLabs voice agent |
 | [**home-assistant-voice-firmware**](./home-assistant-voice-firmware) | ESPHome firmware for ESP32 voice devices with ElevenLabs streaming |
 | [**mobile**](./mobile) | Expo app that registers as the phone's default assistant, so the power button summons Jarvis |

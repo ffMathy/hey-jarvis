@@ -36,7 +36,7 @@ that rule.
 
 | Entry | Imports | What it holds |
 | --- | --- | --- |
-| `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the frame clock every device steps him on (`frame-clock.ts`) and the numbers it runs by (`frame-timing.ts`), the voice tracker, the simulated voices, sample mode's moods, the voices each mood hands the sphere (`sample-drive.ts`) and its readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the conversation itself: the session every device holds it in (`jarvis-session.ts`, its shapes in `session-contract.ts`), what its failures say (`failure-text.ts`), which of his lines it writes down (`written-caption.ts`), the headset's half-duplex fallback (`half-duplex.ts`), and the pieces it is built from — whether a conversation is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) — and the camera tool's name, with the answer a device without a camera gives (`camera-request.ts`) |
+| `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the frame clock every device steps him on (`frame-clock.ts`) and the numbers it runs by (`frame-timing.ts`), the voice tracker, the simulated voices, sample mode's moods, the voices each mood hands the sphere (`sample-drive.ts`) and its readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the conversation itself: the session every device holds it in (`jarvis-session.ts`, its shapes in `session-contract.ts`), what its failures say (`failure-text.ts`), which of his lines it writes down (`written-caption.ts`), the headset's half-duplex fallback (`half-duplex.ts`), and the pieces it is built from — whether a conversation is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) |
 | `hologram/react` | React, Reanimated, Skia | the Skia canvas and the frame callback that steps the frame clock |
 | `hologram/react/sample` | React, Reanimated — not Skia | sample mode's clock-made voice, mood toast and frame-rate readout, shared by the phone's sample screen and the watch's waiting screen |
 | `hologram/conversation` | React, `@elevenlabs/client`, `@livekit/react-native`'s audio session, hologram's own native greeting player (`expo-audio` in a browser) — not Skia | `useJarvisSession`, which hands the main entry's session the SDK, the greeting's player and the call's audio, and holds its snapshot for a screen |
@@ -275,25 +275,34 @@ The apps do not decide this. A finished request that is followed by quiet is end
 itself — its `turnTimeout` of 3 s and its `end_call` tool — so the phone and the watch register no
 client tool for it and see it as the agent hanging up.
 
-## He can be shown something
+## What the phone's camera button needs of it
 
-The agent's `openCamera` client tool (`OPEN_CAMERA_TOOL` in `camera-request.ts`) is how Jarvis is
-shown a photo, and only the phone has a camera — so taking it, sending it and everything the agent
-is told about it are the phone's (`mobile/src/camera-answers.ts`, and "Showing him something" in
-`mobile/AGENTS.md`). What is here is what every device shares: the tool's name, and the answer a
-device without a camera gives (`NO_CAMERA_HERE`).
+Only the phone can show Jarvis something: its camera button takes a photo and sends it to sir's own
+Jarvis server, and everything about that — the button, the upload, the notes and messages the agent
+is sent — is the phone's ("Showing him something" in `mobile/AGENTS.md`). The agent has no client
+tool for it, so no device answers one: the watch and the headset hold nothing for the camera at all.
+What the session gives the phone is general, and three things:
 
-**The session gives that answer itself.** A device that hands `createJarvisSession` no
-`clientTools` of its own dials with `openCamera` answered as `NO_CAMERA_HERE`, so the watch and the
-headset need nothing, and the phone hands over its camera instead (read at every dial). Answering
-matters: the SDK answers a tool nobody registered with an error in its own words, which gives the
-agent nothing to tell sir. The voice firmware, which holds no session, spells the same sentence, and
-`camera-request.spec.ts` holds the two together.
+- **The live conversation's id** (`liveConversationId()`, on `JarvisConversation` too). The server
+  opens an upload slot only for a conversation ElevenLabs says is in progress on Jarvis's agent, so
+  the phone sends it this id when sir taps the button. It is the SDK's own `getId()`, read once,
+  when the conversation is handed over — by then it is final on both transports: a socket takes it
+  from `conversation_initiation_metadata`, and WebRTC reads it out of the LiveKit room's name before
+  the start resolves. It is given only while the summoning under way is connected, so an ended
+  conversation's id never is, and only when it looks like an ElevenLabs id (`conv_…`): where a
+  room's name holds none, the SDK falls back to the name itself or a `room_<ms>` of its own making,
+  which the server could only refuse. It is a method rather than part of the snapshot because it is
+  read at the tap, and nothing on a screen is drawn from it.
+- **`sendContextualUpdate`**, a note the agent reads without a turn being taken: that this device
+  has a camera button, that sir has opened the camera, or that he closed it without a photo.
+- **`sendUserActivity`**, which says sir is still there while he frames a shot. A quiet call is
+  otherwise the agent's to end (see above), and nothing on the phone holds a turn open for him.
 
-The phone's camera needs two more things of the session, both general: every MCP tool call handed
-on once the session has read it for his thinking (`onMCPToolCall` in `JarvisSessionEvents`, which
-is where the phone takes the upload URL `preparePhotoUpload` mints), and `sendContextualUpdate` and
-`sendUserActivity`, to tell the agent it has a camera and that sir, framing a shot, is still there.
+The photo goes to the server, never through the session; what goes through it is the message that
+names the photo once it has arrived, or says why it did not, as a user message through `sendText`,
+which takes a turn so that Jarvis answers it at once. Each of these does nothing, and the id is
+`undefined`, unless the summoning under way is connected — `jarvis-session-conversation.spec.ts`
+pins the three above.
 
 ## Worklets
 

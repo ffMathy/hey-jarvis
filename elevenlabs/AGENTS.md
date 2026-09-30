@@ -118,7 +118,7 @@ The agent prompt in `src/assets/agent-prompt.md` defines:
   written "[end_call invoked]" is a stage direction, not a call, and leaves the
   line open
 - **When sir is silent**: see **Hanging up when he goes quiet** below
-- **Seeing through the phone's camera**: see **Showing Jarvis something** below
+- **Photos sir sends from his phone**: see **Showing Jarvis something** below
 
 Keep it short. The prompt is carried on every turn, so anything the agent does
 not need in order to decide its *next* utterance does not belong in it — that is
@@ -222,7 +222,9 @@ descriptions tell him what that means — after a finished request, `end_call` w
 the conversation waits on sir, `skip_turn`. Every finished request — answered, failed, or handed off
 to a notification — also ends with the routing loop's `FINISHED_REQUEST_INSTRUCTIONS`, which says
 the same and forbids ending on a question or an offer, since the line closes while he is still
-answering it. A request still waiting on him never carries it.
+answering it. A request still waiting on him never carries it. Nor is an open camera a finished
+request: while the phone says sir is framing a shot, silence gets `skip_turn` (see **Showing Jarvis
+something** below).
 
 That setting is agent-wide, so it is the one mechanism on every medium: the apps, the Voice speaker
 and a telephone call alike. `initialWaitTime: 30` keeps it from firing at the start of a session
@@ -250,93 +252,80 @@ there is how Jarvis once acknowledged the same request twice.
 
 ## Showing Jarvis something
 
-**Where the photo goes never passes through the model.** Sir shows Jarvis something in two tool
-calls. `preparePhotoUpload`, an MCP tool on the Mastra server, mints a single-use upload URL, and
-ElevenLabs relays that result to the client as an `mcp_tool_call` event, where the phone keeps it.
-Then **`openCamera`**, a client tool declared in `agent-config.json`, opens the camera, uploads to
-the kept URL and answers with the photo's id, which the agent hands `routePromptWorkflow` with sir's
-question as "(photo photo1)" — in the first call about it and every follow-up, which is how the
-planner knows to send it to the `vision` agent. Had the URL been a parameter, anything that can put
-words in the model's mouth — an email it summarised, the text on an earlier photo — could have sent
-the photo elsewhere, so `openCamera` takes none. The tool's name is spelled for the devices in
-`hologram/src/camera-request.ts`, and the phone's half of the contract is
-`mobile/src/camera-answers.ts`.
+**Sir sends the photo, and the agent takes no part in taking it.** The camera is a button on the
+phone, beside Jarvis, and the agent has no tool for it. The tap opens the camera and, in the same
+gesture, has the phone ask the MCP server for an upload slot, naming the conversation it is holding;
+the server checks with ElevenLabs that the conversation is live on Jarvis's agent before it opens one,
+and the phone then uploads the photo to it. The phone and the server settle between them where the
+photo goes, so nothing the model reads — an email it summarised, the text on an earlier photo — can
+send it anywhere else: no address ever passes through the conversation. The phone's half is
+"Showing him something" in `mobile/AGENTS.md`, and the server's is the Vision vertical in
+`mcp/AGENTS.md`.
 
-**It is the one thing the agent does without routing.** Everything else outside the conversation is
-behind `routePromptWorkflow`, and the prompt says so; the photo is the exception because the upload
-URL has to be ready the moment sir raises the camera, not after the planner has run. What the photo
-*shows* is routed like anything else.
+**What the agent hears of it is the phone's, sentence for sentence** (`mobile/src/photo-messages.ts`).
+Three are contextual updates, which start no turn: once connected, that this device is sir's phone
+with a camera button beside Jarvis, sent only when the phone knows a Jarvis server to send photos to;
+at the tap, that sir has opened the camera; and, should he back out, that he closed it without a
+photo. The other two are user messages in sir's name, because each is meant to start the agent's
+turn: "I've sent you a photo (photo photo3)." once the photo is filed, and "The photo I took didn't
+reach you: …" with a short reason when it was not. The first update is the one gate. The watch, the
+Voice speaker, a telephone call and a phone with no server set all share this agent and never send
+it, so the prompt has Jarvis tell sir to send the photo from his phone there, rather than point him at
+a button that is not in front of him.
 
-**A photo nobody asked about is not lost with the conversation.** The phone's answer to `openCamera`
-(`photoShown`) has the agent route the photo at once only when sir has said what he wants done with
-it; otherwise it asks him, and routes his answer — itself a request, "add everything on it to the
-shopping list" — with the photo's id like any other. "Nothing" is routed too: the planner dismisses
-the photo, so he is not asked about it again, and the request finishes rather than failing. Having
-asked, the agent waits for him as after any question of its own — `photoShown` carries no `end_call`
-line, because the three-second turn timeout would hang up while he is still deciding — and if he
-never answers, the photo stays with Mastra as one nobody has looked at. Routing then brings it up in
-the closing report of the next request it answers, in whichever conversation that is, the way it
-brings up earlier work still waiting on sir — and his reply is planned as work on the photo, or as
-dismissing it (`mcp/AGENTS.md`, "Vision" and "Routing"). A photo is only brought up once it has
-waited a minute unlooked-at, so the conversation that just sent it is not asked about it while still
-getting round to it; if sir answers the question with another request that runs past that minute,
-its report can ask again, as it would about any question he moved on from. None of this is in the
-prompt: it arrives in `instructions`, beside the rest of routing's run-time mechanics, when it
-applies.
+**Sir can go about it in either order.** Told first — "I'll send you a receipt, what's the
+total?" — Jarvis routes nothing: there is nothing to look at yet, and a look routed now would read
+whichever photo came last, possibly one from another conversation. He tells sir to go ahead with the
+camera button and waits; when the photo's message arrives, the question goes to `routePromptWorkflow`
+with "(photo photo3)" in it. Sent first, with nothing said, the message alone is routed as "He sent a
+photo without saying what he wants: look at it and say what it shows (photo photo3)". The planner
+puts that photo in `photosToAskAbout`, so routing's closing report has Jarvis say what it shows, then
+ask what sir would like done with it and wait for the answer rather than hang up. That question comes
+from routing's `instructions` and not from the prompt, because those outrank the prompt and would
+otherwise forbid ending on a question (`mcp/AGENTS.md`, "Routing"). Every later request about the
+photo names it by its id the same way, which is how the planner knows to send it to the `vision`
+agent. The prompt states each of these rules once, in its **Photos** section, and a photo's id joins
+the tool names and argument lists sir must never hear.
 
-**`openCamera` waits as long as ElevenLabs allows, and cannot be interrupted while it does** —
-`expectsResponse: true`, `responseTimeoutSecs: 120`, `interruptionMode: disable_during_tool` (with
-the deprecated `disableInterruptions` set to agree) — so the agent holds the turn while sir frames
-the shot, and the prompt counts an open camera as the conversation waiting on him rather than
-finished. Interruptions are off because sir talking while he frames the shot would otherwise cancel
-the pending call, and the photo's id would come back to a call the agent had already let go of.
-Every outcome the phone reports, a photo not taken included, comes back as a result carrying
-`instructions`, never as an error.
+**An open camera is sir thinking, not sir gone.** Nothing holds the agent's turn while he frames a
+shot, so the three-second turn timeout asks Jarvis to speak again. The prompt's **When Sir Is Silent**
+answers that with `skip_turn` and never `end_call` while a context update says the camera is open and
+neither the photo nor a word from sir has come since — even straight after a finished request, when
+the silence would otherwise mean he has what he came for. The phone also sends `user_activity` every
+five seconds while the camera is open or the photo is on its way, which is too seldom to hold off a
+three-second turn timeout, and which ElevenLabs does not document as holding off the 30-second
+`silenceEndCallTimeout`; the phone's timers stop while the app is behind the camera besides. So a long
+enough shot can still end the call — and the slot, opened at the tap, outlives it.
 
-**An error or a timeout from `openCamera` is not retried.** The prompt tells the agent to call a
-failed tool again at once, which is right for the routing tools and wrong here: on a device without
-the tool, each retry is two more minutes of silence, or another red toast. So the tool's own
-description says not to call it again and to tell sir the camera is not available — said there once,
-beside the tool it is about, rather than as an exception in the prompt.
+**A photo whose message never reached the agent is not lost.** The phone sends that message only into
+the conversation that opened the slot. If that conversation ended first, the photo stays with Mastra
+as one nobody has looked at, and routing brings it up in the closing report of the next request it
+answers, in whichever conversation that is, the way it brings up earlier work still waiting on sir
+(`mcp/AGENTS.md`, "Vision" and "Routing"). None of this is in the prompt: it arrives in
+`instructions`, beside the rest of routing's run-time mechanics, when it applies.
 
-**Only a device that says it has a camera is asked, and the prompt says so once.** The watch, the
-Voice speaker and telephone calls share this agent. The phone announces its camera in a contextual
-update once connected — but only once it holds the **photo upload key** the Mastra server asks for
-before it takes a photo (`HEY_JARVIS_PHOTO_UPLOAD_KEY` there, typed into the phone's settings); a
-phone without it says nothing, and is never asked. The gate is stated in the prompt's
-`preparePhotoUpload` entry alone.
-`openCamera` is only ever called when `preparePhotoUpload`'s instructions say to, so its entry and
-its description need no gate of their own, and repeating it there is how the two copies drift apart. The
-watch and the speaker still answer a stray `openCamera` with "no camera here", rather than leave the
-agent in two minutes of silence.
+**The agent has no client tools, and asks ElevenLabs to send none.** `clientEvents` keeps
+`mcp_tool_call` for the apps' thinking phase (`hologram/src/tool-activity.ts`), and because the
+integration specs read tool calls off the socket, `applyTestAgentOverrides` adds it to the test agent
+should the config ever drop it. The Voice speaker logs only an MCP result's tool name and state, since
+a result can hold an email summary.
 
-**`clientEvents` carries `mcp_tool_call` and `client_tool_call` for it.** The first is what delivers
-the URL, which means every client now receives MCP results — the speaker logs only their tool name
-and state, since a result can hold an email summary or that very URL. `applyTestAgentOverrides`
-still adds `mcp_tool_call` to the test agent should the config ever drop it, because the integration
-specs read tool calls off the socket.
-
-**What checks it.** `tests/specs/agent-config.spec.ts` pins the device's side of the contract — the
-tool's name, `expectsResponse`, the 120-second timeout, no parameters, `disable_during_tool`, and both
-client events — on every push, where the devices' own specs are cached by turbo until their package
-changes. `tests/specs/camera.integration.spec.ts` holds two live conversations with a stood-in phone:
-told the device has a camera, "What's the total on this receipt?" has to reach `preparePhotoUpload`,
-then `openCamera` after its URL is out, then `routePromptWorkflow` naming "photo1"; told nothing, the
-same request must reach for neither tool. And the routing LLM eval in
-`mcp/mastra/verticals/routing/workflows.llm-eval.integration.spec.ts` checks the planner's half:
-"(photo photo3)" goes to `vision` with the id in its prompt, and "add what is on this receipt to my
-shopping list" reads the photo before `shoppingList` in the same chain. Both evals need credentials
-and run only under `turbo test:integration`. The camera eval also needs the `Photo upload key` item
-in the `Jarvis` vault, which reaches the local MCP server as `HEY_JARVIS_PHOTO_UPLOAD_KEY` through
-`mcp/op.optional.env`: an optional reference that does not resolve is left out, and a server without
-the key answers `preparePhotoUpload` with `PHOTO_UPLOADS_SWITCHED_OFF` and no URL, which fails the
-eval. A pre-generated `mcp/op.env.local` has to be generated again to pick the key up.
+**What checks it.** `tests/specs/agent-config.spec.ts`, on every push: every client event is one
+ElevenLabs sends, `mcp_tool_call` is among them, and the agent declares no client tool, since no
+device answers one. `tests/specs/camera.integration.spec.ts` holds three live conversations with a
+stood-in phone. Told first, the question is routed nowhere until the photo's message is in, and then
+routed naming "(photo photo1)"; sent first, the photo is routed by that name at once; and where no
+device has said it has a camera button, the announcement is not routed at all. No photo is really
+uploaded, so the routed look finds nothing, and the evaluator is told to expect that. The routing
+evals in `mcp/mastra/verticals/routing/workflows.llm-eval.integration.spec.ts` check the planner's
+half: "(photo photo3)" goes to `vision` with the id in its prompt, and "add what is on this receipt to
+my shopping list" reads the photo before `shoppingList` in the same chain. Both need credentials and
+run only under `turbo test:integration`.
 
 **None of this reaches the live agent until a release deploys it.** `bunx turbo deploy` runs in the
 release workflow, and only when a releasable commit type (`feat`, `fix`, `perf`, `refactor`, `docs`)
-cuts a release — until then the phone offers a camera the agent has never heard of. And because that
-deploy strips unrecognised keys without a word, `tests/specs/agent-config.spec.ts` runs the
-hand-written client tools through the SDK's own serialiser, strictly, on every push.
+cuts a release. Until then the phone's camera button sends photos to an agent whose prompt has never
+heard of them.
 
 ## Contributing
 - **Update agent-prompt.md** for behavior changes

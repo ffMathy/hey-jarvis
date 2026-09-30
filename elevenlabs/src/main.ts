@@ -246,8 +246,8 @@ class ElevenLabsAgentManager {
 
       // The socket only carries the events an agent is configured to emit, and
       // the tests assert that MCP tools were called. The production config lists
-      // it too (the apps' thinking phase listens for it, and the phone reads its
-      // photo upload URL out of one), so this only guards a config that has lost it.
+      // it too (the apps' thinking phase listens for it), so this only guards a
+      // config that has lost it.
       const clientEvents = config.conversationConfig.conversation.clientEvents ?? [];
       if (!clientEvents.includes(ClientEvent.McpToolCall)) {
         config.conversationConfig.conversation.clientEvents = [...clientEvents, ClientEvent.McpToolCall];
@@ -260,13 +260,8 @@ class ElevenLabsAgentManager {
       config.conversationConfig.agent.prompt.mcpServerIds = [TEST_AGENT_MCP_SERVER_ID];
       console.log('🔧 Setting mcpServerIds to local tunnel MCP server for test agent');
 
-      // The client tool stays: `preparePhotoUpload` tells the agent to call `openCamera` next, and on an
-      // agent without it that instruction names a tool that does not exist -- which the camera eval
-      // would then measure instead of the agent's real behaviour.
-      config.conversationConfig.agent.prompt.tools = (config.conversationConfig.agent.prompt.tools ?? []).filter(
-        (tool) => tool.type === 'client',
-      );
-      console.log('🔧 Clearing all but the client tools for test agent');
+      config.conversationConfig.agent.prompt.tools = [];
+      console.log('🔧 Clearing tools array for test agent');
     }
 
     // Suffix agent name with " (test)" to distinguish from production

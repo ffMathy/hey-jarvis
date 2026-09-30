@@ -12,6 +12,7 @@ tests/
 │   ├── routing-orchestration.integration.spec.ts # live — needs credentials + tunnel
 │   ├── acknowledgement-timing.spec.ts            # offline
 │   ├── agent-config.spec.ts                      # offline
+│   ├── conversation-config-body.spec.ts          # offline
 │   ├── procedure-version-refs.spec.ts            # offline
 │   ├── routing-loop.spec.ts                      # offline
 │   ├── spoken-tool-call.spec.ts                  # offline
@@ -41,9 +42,8 @@ Test utility functions are located in `tests/utils/`:
 - `test-conversation.ts` - Conversation testing framework
 - `conversation-strategy.ts` - Base conversation strategy interface, the message log's
   types, and the transcript the evaluator reads
-- `elevenlabs-conversation-strategy.ts` - ElevenLabs WebSocket strategy. It can send a
-  contextual update, and answer client tool calls the way a device would when a test passes
-  `answerClientToolCall`; without one, client tool calls are recorded and left unanswered
+- `elevenlabs-conversation-strategy.ts` - ElevenLabs WebSocket strategy. Besides messages, it
+  can send a contextual update, background that starts no turn, as the phone does
 - `gemini-mastra-conversation-strategy.ts` - Gemini/Mastra evaluation strategy
 - `mcp-connection.ts` - Whether the agent actually reached its MCP server, so an
   eval never scores a conversation that had no tools to call
@@ -115,34 +115,33 @@ agent. ElevenLabs reads the agent's MCP tool list when the agent is updated, so
 deploying before the tunnel is up leaves the agent with no tools to call.
 
 `spoken-tool-call.spec.ts`, `acknowledgement-timing.spec.ts`, `routing-loop.spec.ts`,
-`retry-with-backoff.spec.ts`, `procedure-version-refs.spec.ts` and
-`agent-config.spec.ts` need none of this — they are pure logic and run offline, so
-they still give useful signal when the credentials or the tunnel are unavailable.
+`retry-with-backoff.spec.ts`, `procedure-version-refs.spec.ts`,
+`conversation-config-body.spec.ts` and `agent-config.spec.ts` need none of this — they
+are pure logic and run offline, so they still give useful signal when the credentials or
+the tunnel are unavailable.
 
-`agent-config.spec.ts` is the one that guards the deploy rather than a detector. The
-deploy runs only after a merge to `main`, strips any key the SDK does not recognise
-without a word, and sends an enum value it does not recognise on to ElevenLabs as
-written. So the spec runs the hand-written client tools in `agent-config.json` through
-the SDK's own serialiser with both set to fail — a snake_case key that would have
-vanished, or a misspelt enum value the deploy would have sent anyway, fails here on the
-push instead.
+`agent-config.spec.ts` guards the committed config rather than a detector. The deploy
+runs only after a merge to `main`, and the apps' own specs are cached by turbo until their
+package changes, so a change to `agent-config.json` alone is never run past them. The spec
+holds it to what the devices assume: every client event is one ElevenLabs sends,
+`mcp_tool_call` — which the apps' thinking phase follows — is among them, and the agent
+declares no client tool, since no device answers one.
 
 ## The camera eval
 
-`camera.integration.spec.ts` stands in for the phone. Told by a contextual update that the device
-has a camera — the sentence the phone sends — the agent has to take "What's the total on this
-receipt?" through `preparePhotoUpload`, then `openCamera` (which the test answers with a photo id,
-as the phone would), then `routePromptWorkflow` naming that id. Told nothing, the same request must
-reach for neither tool, as on the watch, the Voice speaker or a phone call. The order and content
-of the calls are asserted off the socket; the evaluator only judges whether Jarvis spoke as though
-he could see a photo he cannot. No photo is really uploaded, so the routed answer is never a real
-total.
+`camera.integration.spec.ts` stands in for the phone, sending the contextual updates and the message
+the phone sends, word for word. Sir sends a photo with the phone's camera button, never through the
+agent, so what is tested is what Jarvis routes around the phone's "I've sent you a photo (photo
+photo1)." in both orders sir can go about it. Told first — "I'll send you a receipt. What's the
+total?" — the agent must route nothing until the photo's message is in, then route the question
+naming "(photo photo1)". Sent first, with nothing said, the message alone must be routed at once by
+that name. And where no device has said it has a camera button, as on the watch, the Voice speaker or
+a phone call, the announcement must not be routed at all.
 
-It needs the `Photo upload key` item in the `Jarvis` vault as well as the usual credentials. The
-local MCP server reads it as `HEY_JARVIS_PHOTO_UPLOAD_KEY` through `mcp/op.optional.env`, which
-leaves out a reference that does not resolve; without it `preparePhotoUpload` answers
-`PHOTO_UPLOADS_SWITCHED_OFF` with no upload URL, and the eval fails on the URL it expects. A
-pre-generated `mcp/op.env.local` has to be generated again before it carries the key.
+What was routed, and when, is asserted off the socket, along with the photo's id never being said
+aloud; the evaluator judges what Jarvis said — sending sir to the camera button, or to his phone, and
+never speaking as though he could see a photo he cannot. No photo is really uploaded, so the routed
+look finds none and the answer is never a real total, and the criteria allow for that.
 
 ## The orchestration eval
 

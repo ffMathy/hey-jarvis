@@ -9,12 +9,11 @@ import { getMissingClaudeCodeHostVariables, isClaudeCodeHostConfigured } from '.
 import {
   getPublicAgents,
   PHOTO_UPLOAD_PATH,
-  preparePhotoUpload,
   registerApiRoutes,
   registerArtifactRoutes,
   registerShoppingTriggers,
   startHomeAssistantEventMonitor,
-  whyPhotoUploadsAreOff,
+  whyPhotoSlotsAreOff,
   withoutUploadToken,
 } from './verticals/index.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
@@ -31,9 +30,6 @@ export async function startMcpServer() {
     tools: {
       routePromptWorkflow: createInstructionsWorkflowTool(routePromptWorkflow),
       getNextInstructionsWorkflow: createSimplifiedWorkflowTool(getNextInstructionsWorkflow),
-      // Here rather than on the Mastra instance: the upload URL is built from the MCP request's own
-      // host, and the slot lives in this process, beside the photo route. See `vision/tools.ts`.
-      preparePhotoUpload,
     },
   });
 
@@ -46,9 +42,9 @@ export async function startMcpServer() {
   const app = express();
 
   // JSON body parsing middleware for API routes. Not the MCP endpoint and its subpaths, which read
-  // the raw body, and not the photo route, which is open to anyone and must turn a stranger away
-  // before reading anything they send (see `requirePhotoUploadKey` and `claimSlotBeforeReading` in
-  // `verticals/api/routes.ts`).
+  // the raw body, and not the photo routes, which are open to anyone: an upload must be turned away
+  // before anything a stranger sends is read (`claimSlotBeforeReading`), and a slot request reads
+  // its own body, a kilobyte at most (`readSlotRequest`) — both in `verticals/api/routes.ts`.
   app.use((req, res, next) => {
     if (req.path === mcpPath || req.path.startsWith(`${mcpPath}/`) || req.path.startsWith(`${PHOTO_UPLOAD_PATH}/`)) {
       next();
@@ -143,9 +139,10 @@ export async function startMcpServer() {
     );
   }
 
-  // The photo upload key is optional too, and without it no photo is taken in: say so once, and at
-  // most how long a key that is too short is — never the key itself
-  const photoUploadsOffBecause = whyPhotoUploadsAreOff();
+  // A photo slot is opened only for a conversation ElevenLabs confirms is live on Jarvis's agent, so
+  // without the ElevenLabs key or an agent id no photo is taken in: say so once, naming the missing
+  // variables — never a value
+  const photoUploadsOffBecause = whyPhotoSlotsAreOff();
   if (photoUploadsOffBecause) {
     console.warn(`⚠️ ${photoUploadsOffBecause}`);
   }

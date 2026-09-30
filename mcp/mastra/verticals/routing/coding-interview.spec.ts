@@ -64,6 +64,7 @@ function scriptedPlanner() {
           tasks: [],
           answers: [{ questionId: waitingQuestionId, answer: ANSWER }],
           dismissedPhotoIds: [],
+          photosToAskAbout: [],
         }),
       };
     }
@@ -75,12 +76,21 @@ function scriptedPlanner() {
           tasks: [{ id: 'feature', agentId: 'coding', prompt: FEATURE_REQUEST, needs: '' }],
           answers: [],
           dismissedPhotoIds: [],
+          photosToAskAbout: [],
         }),
       };
     }
 
     // Nothing any agent can do, and no answer to anything.
-    return { text: JSON.stringify({ responseStyle: 'conversation', tasks: [], answers: [], dismissedPhotoIds: [] }) };
+    return {
+      text: JSON.stringify({
+        responseStyle: 'conversation',
+        tasks: [],
+        answers: [],
+        dismissedPhotoIds: [],
+        photosToAskAbout: [],
+      }),
+    };
   });
 }
 

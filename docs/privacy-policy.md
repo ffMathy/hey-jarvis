@@ -1,7 +1,7 @@
 # Privacy Policy for Jarvis
 
 **Effective date: 17 September 2026**
-**Last updated: 28 September 2026**
+**Last updated: 30 September 2026**
 
 This Privacy Policy describes how the Jarvis application ("Jarvis", "the App") handles information.
 It applies to the Android application, the Wear OS application and the web version, all published
@@ -39,7 +39,7 @@ means:
 - device identifiers, advertising identifiers, or IP addresses;
 - location data of any kind, whether precise or approximate;
 - contacts, calendar entries, photographs, files, or messages. A photograph you choose to show your
-  assistant is sent to a service of your own, never to us — see [§4](#4-third-party-services);
+  assistant is sent to a server of your own, never to us — see [§4](#4-third-party-services);
 - usage analytics, telemetry, crash reports, diagnostics, or performance data;
 - cookies or similar tracking technologies used for tracking purposes.
 
@@ -58,7 +58,7 @@ never transmitted to us.**
 | --- | --- | --- |
 | Your ElevenLabs API key | To authenticate you to the voice service you have chosen to use | Android and Wear OS: the operating system's encrypted keystore (`expo-secure-store`). Web: your browser's `localStorage` |
 | Your ElevenLabs agent identifier | To know which assistant to connect you to | As above |
-| Your photo upload key, if you enter one | To prove to the service your assistant sends photographs to — such as your own server — that a photograph comes from you. Without one the App offers no camera | Android: the operating system's encrypted keystore, as the API key is. Web: your browser's `localStorage`. It is never sent to the Wear OS application |
+| Your Jarvis server's address, if you enter one | To know where to send a photograph after you tap the camera button. It is an address, not a password or key. Without one the App shows no camera button | Android: the operating system's encrypted keystore, beside the API key. Web: your browser's `localStorage`. It is never sent to the Wear OS application |
 | A remembered particle count | A display setting, so the animation opens at a quality your device has already sustained | As above |
 | The last photograph you showed your assistant | To send it (see [§4](#4-third-party-services)) | Android: the App's private cache, which no other app can read and which is never backed up, until the next photograph replaces it. Web: in memory only, until it is sent |
 
@@ -70,28 +70,44 @@ data for the page in your browser. The Developer has no copy of it and no means 
 ## 4. Third-party services
 
 The App is a client for **ElevenLabs**, a third-party conversational voice service. It is not usable
-until you supply your own ElevenLabs API key. The only other remote service it connects to is the one
-your ElevenLabs assistant names for a photograph, and only when you show it one (below).
+until you supply your own ElevenLabs API key. The only other remote service it connects to is your
+own **Jarvis server**, at the address you enter in the App's settings — only if you have entered
+one, and only when you tap the camera button to show your assistant a photograph (below). Without
+that address the App shows no camera button and connects to nothing but ElevenLabs.
 
 When, and only when, you hold a conversation:
 
 - audio captured from your microphone is transmitted to ElevenLabs in order to be understood;
 - text you type, where you use the text input instead of speaking, is transmitted to ElevenLabs;
 - the assistant's replies are received from ElevenLabs;
-- a photograph you take to show your assistant — after tapping the camera button, or agreeing when
-  the assistant asks to see something — is uploaded to the address your assistant supplied for it
-  during that conversation, and to nowhere else. That address belongs to a service you have
-  configured your assistant to use, such as your own server. The App never uploads a photograph you
-  did not just take — or, in the web version, pick — for this purpose, and cannot browse your photo
-  library by itself;
-- your photo upload key is sent with that photograph, to that same address, so the service can tell
-  the photograph is yours. It is sent only with a photograph, and never to ElevenLabs, to us, or
-  anywhere else. The App takes no photographs at all until you have entered one.
+- if you have entered a Jarvis server's address, short text notes about the camera button are added
+  to the conversation and so transmitted to ElevenLabs, so your assistant knows what you are doing:
+  that this device has a camera button, that you have opened or closed the camera, and that a
+  photograph has been sent — with the short name your Jarvis server gave it, such as "photo3" — or
+  could not be sent, and why. The photograph itself is never sent to ElevenLabs;
+- when you tap the camera button, the identifier of the ElevenLabs conversation you are holding is
+  sent to your Jarvis server, so that the server can confirm with ElevenLabs that the conversation is
+  live before it agrees to accept a photograph. That identifier names the one conversation, not you
+  or your device, and is sent only to your Jarvis server, and only when you tap the camera button;
+- a photograph you take after tapping the camera button is then uploaded to that same Jarvis server,
+  and to nowhere else. The upload carries no key, password or other credential: the server accepts
+  it only at a single-use address it has just handed the App for that one photograph. The App never
+  uploads a photograph you did not just take — or, in the web version, pick — for this purpose, and
+  cannot browse your photo library by itself.
 
-**That transmission is to ElevenLabs, not to us.** We neither receive, intercept, log nor retain any
-of it. What ElevenLabs does with it is governed by its own agreement with you and its own privacy
-policy, at <https://elevenlabs.io/privacy>. We are not a party to that relationship and we encourage
-you to read it.
+**Those transmissions are to ElevenLabs and to your own server, not to us.** We neither receive,
+intercept, log nor retain any of them. What ElevenLabs does with what it receives is governed by its
+own agreement with you and its own privacy policy, at <https://elevenlabs.io/privacy>. We are not a
+party to that relationship and we encourage you to read it.
+
+Your Jarvis server is one you run yourself: the Developer operates none and has no access to yours.
+As published alongside the App's source code, it keeps a photograph in its memory only — it never
+writes one to disk — and for at most 30 minutes, and confirms that a conversation is live by asking
+ElevenLabs about it with the ElevenLabs credentials you gave that server. What it does with a
+photograph in that time, such as showing it to the AI model it is configured to use, happens under
+your configuration and your credentials; the App is not a participant in it and the Developer has
+no visibility of it. What the server then tells your assistant about the photograph — what it shows,
+say — reaches ElevenLabs the way any of that server's answers do, as the next paragraph describes.
 
 If you have configured your ElevenLabs assistant to reach further services of your own — a home
 automation system, a calendar, or any other tool — those exchanges occur between ElevenLabs and those
@@ -104,7 +120,7 @@ Developer has no visibility of them.
 
 The App requests the following permissions, and uses each only for the stated purpose:
 
-- **No camera permission.** When you show your assistant something, the App asks your device's own
+- **No camera permission.** When you tap the camera button, the App asks your device's own
   camera app to take one photograph, which needs no permission of the App's own; the App cannot
   open the camera by itself, and never sees anything but the one photograph you took. In the web
   version, the browser's own file or camera picker is used in the same way.
@@ -114,7 +130,8 @@ The App requests the following permissions, and uses each only for the stated pu
   permission, the web version offers a text field instead, and the App remains usable.
 - **Audio settings (`MODIFY_AUDIO_SETTINGS`)** — to route the conversation to a connected headset
   rather than the device speaker.
-- **Network access (`INTERNET`, `ACCESS_NETWORK_STATE`)** — to reach ElevenLabs.
+- **Network access (`INTERNET`, `ACCESS_NETWORK_STATE`)** — to reach ElevenLabs and, if you have
+  entered its address, your Jarvis server.
 - **Wake lock (`WAKE_LOCK`)** — to keep the screen available during a conversation.
 
 ---
@@ -176,5 +193,6 @@ Questions about this Privacy Policy may be sent to:
 The declarations made in the Google Play Data Safety section for this App are consistent with this
 policy: no data is collected, and no data is shared with the Developer. Audio and text transmitted to
 ElevenLabs during a conversation are handled by ElevenLabs as a service you have chosen and
-authenticated to with your own key, and a photograph you show your assistant by the service your
-own assistant is configured to use.
+authenticated to with your own key; a photograph you show your assistant, and the identifier of the
+conversation you show it in, are handled by the Jarvis server of your own whose address you entered
+in the App.

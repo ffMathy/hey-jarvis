@@ -42,23 +42,14 @@ restarts and the LEDs go idle:
 The announcement window is timed on the device because ElevenLabs'
 `silence_end_call_timeout` is not an overridable setting.
 
-## What Is Meant for the Phone
+## MCP Tool Calls
 
-The speaker shares its agent with the phone, so it is sent some of the phone's traffic:
-
-- **`openCamera`** — the client tool the agent calls to see something through sir's
-  phone camera. The agent is told to ask only on a device that has said it has a
-  camera, and the speaker never says so. But the tool is configured with
-  `expects_response: true` and a 120 s timeout, so a call that did reach the speaker
-  and went unanswered would leave the conversation silent for two minutes. It is
-  answered at once with a `client_tool_result` (`is_error: false`) whose `result` is
-  `OPEN_CAMERA_NO_CAMERA_RESULT` — word for word `NO_CAMERA_HERE` in
-  `hologram/src/camera-request.ts`, the answer the watch gives too. Any other unknown
-  client tool is still logged and ignored.
-- **`mcp_tool_call`** — sent to every client because the phone reads the photo upload
-  URL out of one. It is logged at DEBUG by tool name and state only, never in full: a
-  result can carry an email summary, a calendar entry or that URL, and the
-  unknown-type fallback would have logged all of it at WARN.
+The speaker shares its agent with the apps, and the agent's client events include
+`mcp_tool_call` for them — the phone, the watch and the headset show Jarvis thinking
+while one runs — so the speaker is sent every MCP tool call too. It has no use for
+them, and it logs each at DEBUG by tool name and state only, never in full: a result
+can carry an email summary or a calendar entry, and the unknown-type fallback would
+have logged all of it at WARN.
 
 ## Wake Word Configuration
 

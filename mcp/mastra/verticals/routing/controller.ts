@@ -2,7 +2,7 @@ import type { Mastra } from '@mastra/core';
 import type { Agent } from '@mastra/core/agent';
 import { logger } from '../../utils/logger.js';
 import { isSlowTask } from '../../utils/slow-tasks.js';
-import { dismissPhoto, photosWaiting } from '../vision/photos.js';
+import { dismissPhoto, findPhoto, photosWaiting } from '../vision/photos.js';
 import { sendCompletionNotice } from './completion-notice.js';
 import { buildRoutingPlan, type PlannedChain, type RoutingPlan } from './plan.js';
 import { sweepOldRoutingPlans } from './plan-retention.js';
@@ -127,6 +127,16 @@ export class RoutingProgress {
    * earlier questions: what Jarvis asks about each, by photo id. See `waiting-photos.ts`.
    */
   waitingPhotos: PhotoToBringUp[] = [];
+  /**
+   * Photos this request showed Jarvis without saying what to do with them, by id: once he has said
+   * what each shows, the closing report has him ask sir what he would like done with it. See
+   * `photosToAskAbout` in `planner.ts`.
+   *
+   * Only those the request's own look got as far as reading, and only once its work is done (see
+   * `runRequest`): a photo whose reading failed has shown him nothing to tell sir about, and stays
+   * waiting instead, to be brought up like any other.
+   */
+  photosToAskAbout: string[] = [];
   /** Tasks that started something slow, which the caller has not been told about yet. */
   unannouncedSlowTaskIds: string[] = [];
   /** Every task that started something slow, so each is announced once. */
@@ -381,6 +391,8 @@ export interface RoutingSnapshot {
   earlierQuestions: OpenQuestion[];
   /** Photos nobody has looked at yet, to ask him about once the request is done. */
   waitingPhotos: PhotoToBringUp[];
+  /** Photos this request showed Jarvis with nothing said, to ask what he would like done with. */
+  photosToAskAbout: string[];
   /** Tasks that have started something slow since the last poll. */
   newlySlow: string[];
   /** How the planner said the request should be answered. */
@@ -408,6 +420,7 @@ export function buildSnapshot(progress: RoutingProgress): RoutingSnapshot {
     questions: progress.questions,
     earlierQuestions: progress.earlierQuestions,
     waitingPhotos: progress.waitingPhotos,
+    photosToAskAbout: progress.photosToAskAbout,
     newlySlow,
     responseStyle: progress.responseStyle,
     error: progress.error,
@@ -913,7 +926,8 @@ function takeAnsweredQuestions(answers: PlannedAnswer[]): { question: OpenQuesti
  * so doing it for a report nobody hears would silence the reminder for nothing.
  *
  * Taken once the request's own work is done, so a photo this request looked at is no longer
- * waiting by then, and is not asked about in the reply that answers what it showed.
+ * waiting by then, and is not brought up in the reply that answers what it showed — where a photo
+ * sent with nothing said is asked about instead as this request's own (`photosToAskAbout`).
  */
 function bringUpEarlierQuestions(sessionId: string, progress: RoutingProgress): void {
   if (progressBySessionId.get(sessionId) !== progress || progress.notifyWhenDone) {
@@ -937,7 +951,7 @@ async function runRequest(
 ): Promise<void> {
   // Every waiting photo, however recent: the grace before one is brought up only keeps Jarvis from
   // asking about a photo just sent, and the request that says what it is for is that very reply.
-  const { chains, answers, dismissedPhotoIds, responseStyle } = await planDelegations(
+  const { chains, answers, dismissedPhotoIds, photosToAskAbout, responseStyle } = await planDelegations(
     await resolvePlannerAgent(mastra),
     userQuery,
     listOpenQuestions(),
@@ -949,6 +963,7 @@ async function runRequest(
     chains: chains.length,
     answers: answers.length,
     dismissedPhotos: dismissedPhotoIds.length,
+    photosToAskAbout: photosToAskAbout.length,
     elapsedMs: progress.elapsedMs(),
   });
 
@@ -999,6 +1014,11 @@ async function runRequest(
     ),
     ...(chains.length > 0 ? [runPlan(mastra, sessionId, progress, userQuery, chains, signal)] : []),
   ]);
+
+  // Asked about only once the plan's look has read them -- which is also what keeps a photo from
+  // being asked about twice, here and as a waiting photo below: one that was read is no longer
+  // waiting, and one that was not is left to be brought up that way.
+  progress.photosToAskAbout = photosToAskAbout.filter((photoId) => findPhoto(photoId)?.lookedAt !== undefined);
 
   // Kept for the next request to answer -- unless this one was superseded, in which case its
   // closing report will never be read and sir will never hear what it asked. A request he is to

@@ -18,10 +18,10 @@ import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { useAnswerTheWatch } from './answer-the-watch';
 import { isAssistLaunch } from './assist-link';
 import { ConversationScreen } from './conversation-screen';
+import { type JarvisServerAddressChange, loadJarvisServerAddress, saveJarvisServerAddress } from './jarvis-server';
 import { firstOnboardingStep } from './onboarding';
 import { OnboardingScreen } from './onboarding-screen';
 import { hasWalkedOnboarding, rememberOnboardingWalked } from './onboarding-storage';
-import { loadPhotoUploadKey, type PhotoUploadKeyChange, savePhotoUploadKey } from './photo-upload-key';
 import { readTryingAgain } from './read-again';
 import { SampleScreen } from './sample-screen';
 import { SettingsScreen } from './settings-screen';
@@ -29,12 +29,12 @@ import { loadElevenLabsSettings, saveElevenLabsSettings } from './settings-stora
 import { theme } from './theme';
 
 /**
- * The photo upload key to use: the one read, or none — a key that still cannot be read after
- * `readTryingAgain` has tried is no key, so the camera stays off rather than guessing.
+ * The Jarvis server's address to use: the one read, or none — an address that still cannot be read
+ * after `readTryingAgain` has tried is no address, so the camera stays off rather than guessing.
  */
-async function readPhotoUploadKey(stillWanted: () => boolean): Promise<string | undefined> {
-  const stored = await readTryingAgain(loadPhotoUploadKey, stillWanted);
-  return stored?.kind === 'key' ? stored.key : undefined;
+async function readJarvisServerAddress(stillWanted: () => boolean): Promise<string | undefined> {
+  const stored = await readTryingAgain(loadJarvisServerAddress, stillWanted);
+  return stored?.kind === 'address' ? stored.address : undefined;
 }
 
 /** Which screen is showing. */
@@ -100,13 +100,13 @@ export interface AppProps {
 export function App({ summoned = false, showing }: AppProps) {
   const [settings, setSettings] = useState<ElevenLabsSettings | undefined>(undefined);
   /**
-   * The key Jarvis's server asks for before it takes a photo, if sir has given this phone one.
+   * Where sir's Jarvis server is, if he has told this phone: where the camera button sends a photo.
    *
    * Beside the settings rather than in them: it is not ElevenLabs', and the settings are what the
    * watch is handed (`useAnswerTheWatch` below), which has no camera to use it with. See
-   * `photo-upload-key.ts`.
+   * `jarvis-server.ts`.
    */
-  const [photoUploadKey, setPhotoUploadKey] = useState<string | undefined>(undefined);
+  const [serverAddress, setServerAddress] = useState<string | undefined>(undefined);
   /**
    * Whether the first-run tour is already behind this install.
    *
@@ -140,12 +140,12 @@ export function App({ summoned = false, showing }: AppProps) {
     const stillWanted = () => wanted;
     void (async () => {
       // Started here and awaited below: the tour flag is one read that never throws, and making
-      // it wait its turn behind the retries would hold the whole app on a spinner. The photo upload
-      // key is read beside the settings, and retried beside them, since the two fail together; it
-      // is read before the conversation opens, so the first one already knows whether there is a
-      // camera to offer.
+      // it wait its turn behind the retries would hold the whole app on a spinner. The Jarvis
+      // server's address is read beside the settings, and retried beside them, since the two fail
+      // together; it is read before the conversation opens, so the first one already knows whether
+      // there is a camera to offer.
       const walking = hasWalkedOnboarding();
-      const readingPhotoUploadKey = readPhotoUploadKey(stillWanted);
+      const readingServerAddress = readJarvisServerAddress(stillWanted);
 
       const stored = await readTryingAgain(loadElevenLabsSettings, stillWanted);
       if (stored?.kind === 'settings') {
@@ -153,10 +153,10 @@ export function App({ summoned = false, showing }: AppProps) {
       }
 
       const walked = await walking;
-      const storedPhotoUploadKey = await readingPhotoUploadKey;
+      const storedServerAddress = await readingServerAddress;
       if (wanted) {
         setHasWalkedTour(walked);
-        setPhotoUploadKey(storedPhotoUploadKey);
+        setServerAddress(storedServerAddress);
         setIsLoaded(true);
       }
     })();
@@ -166,15 +166,16 @@ export function App({ summoned = false, showing }: AppProps) {
   }, []);
 
   /**
-   * Reads the photo upload key again for every summoning after the first.
+   * Reads the Jarvis server's address again for every summoning after the first.
    *
    * **This window may not be where it was changed.** The assistant's window is kept between
-   * summonings, with its own copy of everything read when it was made, and the key is as often added
-   * in the app's own window — which is where sir goes when Jarvis tells him there is none. Read once,
-   * a key saved there never reached the window Jarvis is summoned into, and one cleared there went on
-   * being sent from it. A summoning is a new `showing` in the assistant's window and a new launch URL
-   * in the app's own, so either is read as one. The settings stay as they were read: this is about the
-   * key, whose absence the agent itself sends sir away to fix.
+   * summonings, with its own copy of everything read when it was made, and the address is as often
+   * set in the app's own window — the one the launcher opens, where the settings are most often
+   * reached. Read once, an address saved there never reached the window Jarvis is summoned into, and
+   * one cleared there went on being offered from it. A summoning is a new `showing` in the
+   * assistant's window and a new launch URL in the app's own, so either is read as one. The settings
+   * stay as they were read, as they always have: this is about the address, which only the camera
+   * uses.
    */
   const seenSummoning = useRef({ showing, launchUrl });
   useEffect(() => {
@@ -183,9 +184,9 @@ export function App({ summoned = false, showing }: AppProps) {
     }
     seenSummoning.current = { showing, launchUrl };
     let wanted = true;
-    void readPhotoUploadKey(() => wanted).then((storedPhotoUploadKey) => {
+    void readJarvisServerAddress(() => wanted).then((storedServerAddress) => {
       if (wanted) {
-        setPhotoUploadKey(storedPhotoUploadKey);
+        setServerAddress(storedServerAddress);
       }
     });
     return () => {
@@ -212,14 +213,17 @@ export function App({ summoned = false, showing }: AppProps) {
   };
 
   /**
-   * The settings screen saves the photo upload key with the rest, when sir changed it — and only
-   * then, so a key that could not be read is never overwritten by the empty field that stood in for
-   * it. The tour never asks for one.
+   * The settings screen saves the Jarvis server's address with the rest, when sir changed it — and
+   * only then, so an address that could not be read is never overwritten by the empty field that
+   * stood in for it. The tour never asks for one.
    */
-  const saveSettingsScreen = (saved: ElevenLabsSettings, photoUploadKeyChange: PhotoUploadKeyChange | undefined) => {
-    if (photoUploadKeyChange) {
-      setPhotoUploadKey(photoUploadKeyChange.key);
-      void savePhotoUploadKey(photoUploadKeyChange.key);
+  const saveSettingsScreen = (
+    saved: ElevenLabsSettings,
+    serverAddressChange: JarvisServerAddressChange | undefined,
+  ) => {
+    if (serverAddressChange) {
+      setServerAddress(serverAddressChange.address);
+      void saveJarvisServerAddress(serverAddressChange.address);
     }
     save(saved);
   };
@@ -275,7 +279,7 @@ export function App({ summoned = false, showing }: AppProps) {
         {screen === 'settings' ? (
           <SettingsScreen
             settings={settings}
-            photoUploadKey={photoUploadKey}
+            serverAddress={serverAddress}
             onSave={saveSettingsScreen}
             onCancel={settings ? () => setIsEditingSettings(false) : undefined}
             onTrySample={settings ? undefined : () => setIsSampling(true)}
@@ -284,7 +288,7 @@ export function App({ summoned = false, showing }: AppProps) {
         {screen === 'conversation' && settings ? (
           <ConversationScreen
             settings={settings}
-            photoUploadKey={photoUploadKey}
+            serverAddress={serverAddress}
             onEditSettings={() => setIsEditingSettings(true)}
             inSheet={conversationInSheet}
             inAssistantWindow={summoned}

@@ -2,12 +2,6 @@ import { returnFromTheCamera, takePhotoWithTheCameraApp } from '../modules/jarvi
 import type { TakePhoto } from './platform-contracts';
 
 /**
- * Whether the camera can come up without a tap. On a phone it can: the agent asking is enough to
- * put the camera app in front of sir. See `take-photo.web.ts` for the browser, where it cannot.
- */
-export const CAMERA_OPENS_WITHOUT_A_TAP = true;
-
-/**
  * Takes a photo with the phone's own camera app, and reads it back as a `Blob` to send.
  *
  * The native half does the photographing, the scaling and the turning upright, and leaves a JPEG in

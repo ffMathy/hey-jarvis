@@ -180,6 +180,7 @@ async function planWithAnswers(
     chains: chainsFromTasks(response.object.tasks, new Set(agents.map((agent) => agent.id))),
     answers: response.object.answers,
     dismissedPhotoIds: response.object.dismissedPhotoIds,
+    photosToAskAbout: response.object.photosToAskAbout,
   };
 }
 
@@ -217,6 +218,9 @@ const WAITING_QUESTION: OpenQuestion = {
 
 /** A photo sir sent four minutes ago that nobody has looked at, as the planner is shown it. */
 const WAITING_PHOTO: WaitingPhoto = { photoId: 'photo3', keptAt: Date.now() - 4 * 60_000 };
+
+/** A photo sir has only just sent, as the planner is shown it when the phone reports it. */
+const JUST_SENT_PHOTO: WaitingPhoto = { photoId: 'photo3', keptAt: Date.now() - 2_000 };
 
 const IOT_DESCRIPTION = `# Purpose
 Control and monitor Internet of Things (IoT) devices. Use this agent to **turn devices on/off**, **adjust settings**, **query device states**, **get user locations via their phones**, and **view historical changes**.
@@ -486,5 +490,71 @@ shoppingList in a chain of its own would be wrong: it would run without knowing 
     expect(dismissedPhotoIds).toEqual(['photo3']);
     expect(answers).toEqual([]);
     expect(chains).toEqual([]);
+  }, 120000);
+
+  // A photo sent with nothing said: the phone reports it, and the voice agent routes a look at it.
+  // Jarvis says what it shows and then asks what sir would like done with it, which only happens if
+  // the plan names the photo in `photosToAskAbout` (see `buildClosingReport` in `workflows.ts`).
+  it('looks at a photo sent with nothing said, and marks it to ask sir about', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    const userQuery = 'He sent a photo without saying what he wants: look at it and say what it shows (photo photo3)';
+    const { chains, answers, dismissedPhotoIds, photosToAskAbout } = await planWithAnswers(
+      userQuery,
+      [await getVisionAgent(), await getShoppingListAgent(), await createStandInAgent('weather', WEATHER_DESCRIPTION)],
+      [],
+      [JUST_SENT_PHOTO],
+    );
+
+    expect(photosToAskAbout).toEqual(['photo3']);
+    expect(answers).toEqual([]);
+    expect(dismissedPhotoIds).toEqual([]);
+    // Only the look: what to do with it is sir's to say.
+    expect(chains.flatMap((chain) => chain.delegations.map((delegation) => delegation.agentId))).toEqual(['vision']);
+    expect(chains[0]?.delegations[0]?.prompt).toContain('photo3');
+
+    await assertPlanCriteria(
+      chains,
+      userQuery,
+      `The user sent photo3 without saying what he wants done with it. The plan should:
+1. Delegate to vision once, with "photo3" in its prompt, to say what the photo shows and what in it could be acted on (items, amounts, dates or text)
+
+It must NOT delegate to shoppingList or any other agent that acts on the photo: nobody has said what to do with it yet.`,
+      0.8,
+    );
+  }, 120000);
+
+  it('asks nothing about a photo sir said what to do with when he sent it', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    const { photosToAskAbout } = await planWithAnswers(
+      'What is the total on this receipt? (photo photo3)',
+      [await getVisionAgent(), await getShoppingListAgent(), await createStandInAgent('weather', WEATHER_DESCRIPTION)],
+      [],
+      [JUST_SENT_PHOTO],
+    );
+
+    expect(photosToAskAbout).toEqual([]);
+  }, 120000);
+
+  // Sir says what he wants before he sends the photo. The voice agent is told to wait for it, but a
+  // request that slips through has nothing to look at yet, and must not look at an older photo.
+  it('plans nothing for a photo he says he is about to send', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    const { chains, photosToAskAbout } = await planWithAnswers("I'll send you a photo of a receipt in a moment", [
+      await getVisionAgent(),
+      await getShoppingListAgent(),
+      await createStandInAgent('weather', WEATHER_DESCRIPTION),
+    ]);
+
+    expect(chains).toEqual([]);
+    expect(photosToAskAbout).toEqual([]);
   }, 120000);
 });

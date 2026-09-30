@@ -7,7 +7,6 @@ import { DEADLINE_PROBLEM } from '../failure-text';
 import { createJarvisSession } from '../jarvis-session';
 import type {
   CaptionRule,
-  ClientTools,
   FollowAgentVoice,
   GreetingPlayer,
   ProblemSource,
@@ -15,7 +14,6 @@ import type {
   StartSession,
   SummonOptions,
 } from '../session-contract';
-import type { MCPToolCallEvent } from '../tool-activity';
 import type { UserVoice } from '../voice-contract';
 import { startCallAudio, stopCallAudio } from './call-audio';
 import { useGreetingPlayer } from './greeting-player';
@@ -40,10 +38,6 @@ export interface JarvisSessionOptions {
   untilOnline?: () => Promise<void>;
   /** Lets go of that network once the summoning is over. */
   leaveNetwork?: () => void;
-  /** Read at every dial: the agent's client tools as this device answers them. See `ClientTools`. */
-  clientTools?: ClientTools;
-  /** Told every MCP tool call the agent makes (the phone's camera takes its upload URL from one). */
-  onMCPToolCall?: (event: MCPToolCallEvent) => void;
 }
 
 /** Everything a screen draws from its conversation, and everything it can do to it. */
@@ -57,6 +51,8 @@ export interface JarvisConversation extends SessionSnapshot {
   setTyping(typing: boolean): void;
   sendContextualUpdate(text: string): void;
   sendUserActivity(): void;
+  /** The live conversation's ElevenLabs id, read when it is needed: see `JarvisSession.liveConversationId`. */
+  liveConversationId(): string | undefined;
 }
 
 /** `Conversation.startSession`, called as a plain function, which is all the SDK asks of it. */
@@ -129,10 +125,6 @@ export function useJarvisSession(options: JarvisSessionOptions): JarvisConversat
       greeting: latestOf(() => latestPlayer.current),
       events: {
         onProblem: (message, source) => latest.current.onProblem(message, source),
-        onMCPToolCall: (event) => latest.current.onMCPToolCall?.(event),
-      },
-      get clientTools() {
-        return latest.current.clientTools;
       },
       setTimeout: (callback: () => void, milliseconds: number) => setTimeout(callback, milliseconds),
       clearTimeout: (timer: ReturnType<typeof setTimeout>) => clearTimeout(timer),
@@ -161,6 +153,7 @@ export function useJarvisSession(options: JarvisSessionOptions): JarvisConversat
       setTyping: session.setTyping,
       sendContextualUpdate: session.sendContextualUpdate,
       sendUserActivity: session.sendUserActivity,
+      liveConversationId: session.liveConversationId,
     }),
     [session],
   );

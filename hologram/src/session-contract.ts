@@ -72,12 +72,6 @@ export interface JarvisSessionEvents {
    * what he has just said is his own voice coming back through the microphone.
    */
   onMessage?(message: ConversationMessage): void;
-  /**
-   * Every MCP tool call as the SDK reported it, once the session has read it for his thinking. For
-   * the phone's camera, which takes the address to send a photo to from `preparePhotoUpload`'s
-   * result rather than from anything the model says (see `mobile/src/camera-answers.ts`).
-   */
-  onMCPToolCall?(event: MCPToolCallEvent): void;
 }
 
 /** Whatever plays the recorded greeting. */
@@ -180,6 +174,19 @@ export interface JarvisSession {
   sendContextualUpdate(text: string): void;
   /** Says the user is still there without saying anything (sendUserActivity); ignored unless connected. */
   sendUserActivity(): void;
+  /**
+   * The ElevenLabs id of the conversation under way (`conv_…`), or `undefined` unless that
+   * summoning is connected. It is the SDK's own `getId()`, read once, when the conversation was
+   * handed over — by then it is final over either transport — and it is for the phone's camera
+   * button, which gives it to the Jarvis server so the server can ask ElevenLabs whether the
+   * conversation is really live before it opens a slot for a photo.
+   *
+   * Ask for it at the moment it is needed rather than keeping it: an ended conversation's id is
+   * never returned, and neither is anything that is not an ElevenLabs conversation id. Over WebRTC
+   * the SDK reads the id out of the LiveKit room's name, and where the name holds none it gives the
+   * name itself, or a `room_<ms>` of its own making — neither of which ElevenLabs would recognise.
+   */
+  liveConversationId(): string | undefined;
   readonly phase: SessionPhase;
   /** What the sphere follows: the greeting envelope while greeting, his live voice after, silence otherwise. */
   readonly voice: JarvisVoice;
@@ -206,6 +213,8 @@ export interface SessionConversation {
   sendUserMessage(text: string): void;
   sendContextualUpdate(text: string): void;
   sendUserActivity(): void;
+  /** The conversation's ElevenLabs id, as the SDK knows it (see {@link JarvisSession.liveConversationId}). */
+  getId(): string;
   getInputVolume(): number;
   getOutputVolume(): number;
   getOutputByteFrequencyData(): Uint8Array;
@@ -230,14 +239,6 @@ export interface ConnectionDelay {
   android: number;
 }
 
-/**
- * The agent's client tools, as a device answers them: each is handed whatever parameters the agent
- * sent, and answers with what the agent is told. A tool a device has no answer for, the SDK reports
- * through `onError` — so every device answers every client tool the agent has, if only to say it
- * cannot (`NO_CAMERA_HERE` in `camera-request.ts`).
- */
-export type ClientTools = Record<string, (parameters: unknown) => string | Promise<string>>;
-
 /** The callbacks the session dials with, whichever way it dials. */
 export interface SessionCallbacks {
   onConversationCreated: (conversation: SessionConversation) => void;
@@ -251,8 +252,6 @@ export interface SessionCallbacks {
   onMessage: (message: ConversationMessage) => void;
   onError: (message: string) => void;
   onDisconnect: (ending: SessionEnding) => void;
-  /** The agent's client tools, answered on this device. See {@link ClientTools}. */
-  clientTools: ClientTools;
 }
 
 /** A spoken conversation: a token for a WebRTC room. */
@@ -369,10 +368,4 @@ export interface JarvisSessionDependencies<Timer> {
   followAgentVoice?: FollowAgentVoice;
   /** Removes the SDK's `<audio>` elements a dropped connection leaves behind, where a page lives on. */
   removeOrphanedAudio?: () => void;
-  /**
-   * The agent's client tools as this device answers them, read at every dial. Left out, the answer
-   * of a device with no camera, since `openCamera` is the only client tool the agent has and only
-   * the phone has one to open (see `camera-request.ts`).
-   */
-  clientTools?: ClientTools;
 }

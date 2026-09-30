@@ -2,13 +2,6 @@ import { PHOTO_LONG_EDGE, PHOTO_QUALITY } from './photo-upload';
 import type { TakePhoto } from './platform-contracts';
 
 /**
- * Whether the camera can come up without a tap. In a browser it cannot: a file picker only opens
- * inside the gesture that asked for it, and a tool call from the agent is not a gesture. So when
- * Jarvis asks here, the camera button lights up and waits to be pressed. See `camera-tool.ts`.
- */
-export const CAMERA_OPENS_WITHOUT_A_TAP = false;
-
-/**
  * Takes a photo in a browser: the file picker, which a phone's browser opens on its camera
  * (`capture`) and a desktop's opens on its files — a receipt already on disk is as good to show him.
  *

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { READ_ATTEMPTS, readTryingAgain } from './read-again';
 
-/** Something kept in the keystore, the way `settings-storage.ts` and `photo-upload-key.ts` answer. */
-type Stored = { kind: 'key'; key: string } | { kind: 'nothing' } | { kind: 'unreadable' };
+/** Something kept in the keystore, the way `settings-storage.ts` and `jarvis-server.ts` answer. */
+type Stored = { kind: 'address'; address: string } | { kind: 'nothing' } | { kind: 'unreadable' };
 
 /** A read that answers each attempt in turn, and counts them. */
 function readAnswering(...answers: Stored[]) {
@@ -15,14 +15,14 @@ function readAnswering(...answers: Stored[]) {
   return { read, attempts: () => attempts };
 }
 
-const KEY: Stored = { kind: 'key', key: 'u8Jq-2vN_x9P!rT4sK7w' };
+const ADDRESS: Stored = { kind: 'address', address: 'https://jarvis.example.com' };
 const UNREADABLE: Stored = { kind: 'unreadable' };
 
 describe('reading something kept in the keystore', () => {
   it('answers with what was read the first time it can be read', async () => {
-    const { read, attempts } = readAnswering(KEY);
+    const { read, attempts } = readAnswering(ADDRESS);
 
-    expect(await readTryingAgain(read, () => true)).toEqual(KEY);
+    expect(await readTryingAgain(read, () => true)).toEqual(ADDRESS);
     expect(attempts()).toBe(1);
   });
 
@@ -34,9 +34,9 @@ describe('reading something kept in the keystore', () => {
   });
 
   it('tries again when the reading failed, which a window still coming up does', async () => {
-    const { read, attempts } = readAnswering(UNREADABLE, KEY);
+    const { read, attempts } = readAnswering(UNREADABLE, ADDRESS);
 
-    expect(await readTryingAgain(read, () => true)).toEqual(KEY);
+    expect(await readTryingAgain(read, () => true)).toEqual(ADDRESS);
     expect(attempts()).toBe(2);
   });
 

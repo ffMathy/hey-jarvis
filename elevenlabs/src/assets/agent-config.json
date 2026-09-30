@@ -108,8 +108,7 @@
         "agent_tool_response",
         "mcp_tool_call",
         "vad_score",
-        "agent_chat_response_part",
-        "client_tool_call"
+        "agent_chat_response_part"
       ],
       "fileInput": {
         "enabled": true,
@@ -348,26 +347,6 @@
             "params": {
               "systemToolType": "skip_turn"
             }
-          },
-          {
-            "type": "client",
-            "name": "openCamera",
-            "description": "Opens the camera on sir's phone and hands back the photo's id once he has taken it. Call it only when preparePhotoUpload's instructions say to. While it runs, the conversation is waiting on him. If it returns an error or times out, do not call it again: tell sir the camera is not available here.",
-            "responseTimeoutSecs": 120,
-            "disableInterruptions": true,
-            "interruptionMode": "disable_during_tool",
-            "forcePreToolSpeech": false,
-            "preToolSpeech": "auto",
-            "assignments": [],
-            "toolCallSoundBehavior": "auto",
-            "toolErrorHandlingMode": "passthrough",
-            "parameters": {
-              "type": "object",
-              "properties": {},
-              "required": []
-            },
-            "expectsResponse": true,
-            "executionMode": "post_tool_speech"
           }
         ]
       }

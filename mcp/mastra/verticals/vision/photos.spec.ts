@@ -34,7 +34,7 @@ describe('a slot for one photo', () => {
 
     expect(tokens.size).toBe(10);
     for (const token of tokens) {
-      // 128 bits as base64url: 22 characters the phone's upload URL check accepts.
+      // 128 bits as base64url: the 22 characters the phone's check of an upload path accepts.
       expect(token).toMatch(/^[A-Za-z0-9_-]{22}$/);
     }
   });

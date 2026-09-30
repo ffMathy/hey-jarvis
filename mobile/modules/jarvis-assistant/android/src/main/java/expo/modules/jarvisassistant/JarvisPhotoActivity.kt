@@ -46,12 +46,13 @@ import kotlin.math.min
  * written as a JPEG at {@link JPEG_QUALITY}, off the main thread.
  *
  * **Every request is answered, once, and never left hanging.** Whoever asked is waiting on a
- * promise, and the agent behind them on a tool call that gives up after two minutes. So a photo is
- * answered with nothing when sir goes back without one, when the camera app is missing, when a
- * newer request takes over ({@link awaitPhoto}), when this activity is torn down without an answer,
- * and when {@link GIVE_UP_AFTER_MS} passes with the camera still open — timed on the main looper,
- * because JavaScript's own timers stop while the app is behind the camera. Each request carries a
- * number ({@link REQUEST}) so an answer only ever reaches the request it is for.
+ * promise — the camera button, with the slot the Jarvis server opened for this photo running out
+ * behind it, and Jarvis told the camera is open. So a photo is answered with nothing when sir goes
+ * back without one, when the camera app is missing, when a newer request takes over
+ * ({@link awaitPhoto}), when this activity is torn down without an answer, and when
+ * {@link GIVE_UP_AFTER_MS} passes with the camera still open — timed on the main looper, because
+ * JavaScript's own timers stop while the app is behind the camera. Each request carries a number
+ * ({@link REQUEST}) so an answer only ever reaches the request it is for.
  *
  * **It survives being recreated under the camera** — a rotation, a change of theme — by starting the
  * camera only on a first creation and keeping the file it is writing to across the rest.
@@ -81,7 +82,7 @@ class JarvisPhotoActivity : Activity() {
     showing = WeakReference(this)
     deadline.postDelayed(giveUp, max(0L, GIVE_UP_AFTER_MS - (SystemClock.elapsedRealtime() - openedAt)))
     if (savedInstanceState == null) {
-      openCamera()
+      startTheCameraApp()
     }
   }
 
@@ -112,7 +113,7 @@ class JarvisPhotoActivity : Activity() {
     finishWith(null)
   }
 
-  private fun openCamera() {
+  private fun startTheCameraApp() {
     val directory = photoDirectory(this)
     // Whatever an earlier photo left here has been sent or given up on by now.
     directory.listFiles()?.forEach { it.delete() }
@@ -191,8 +192,10 @@ class JarvisPhotoActivity : Activity() {
     /**
      * How long the camera may stay open before the request is answered with nothing.
      *
-     * Ten seconds inside the two minutes the agent waits for `openCamera` (`responseTimeoutSecs`),
-     * so the answer reaches it while it is still listening.
+     * Well inside the five minutes the upload slot lives (`UPLOAD_SLOT_MS` in the Jarvis server's
+     * `vision/photos.ts`), which was opened when sir tapped the camera button: a photo taken at the
+     * last moment here still has time to be made ready and sent before its slot closes. A camera left
+     * open for longer than this is a phone put down rather than a shot being framed.
      */
     private const val GIVE_UP_AFTER_MS = 110_000L
 
@@ -218,8 +221,8 @@ class JarvisPhotoActivity : Activity() {
      * Says who to give the next photo to, and returns the number to start the activity with.
      *
      * A request already under way is abandoned: answered with nothing — its photo is not coming,
-     * and a promise nobody settles is a tool call the agent waits on for two minutes — and its
-     * camera closed, so two are never open at once.
+     * and a promise nobody settles is a camera button that never comes back — and its camera
+     * closed, so two are never open at once.
      */
     internal fun awaitPhoto(receive: (String?) -> Unit): Int {
       waiting?.second?.invoke(null)

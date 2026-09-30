@@ -62,11 +62,11 @@ mcp/
 │   │   ├── presence/        # Where the user is (shortcuts only)
 │   │   │   ├── shortcuts.ts
 │   │   │   └── index.ts
-│   │   ├── vision/          # Photos shown from the phone's camera, and the agents that read them
+│   │   ├── vision/          # Photos sent from the phone's camera button, and the agents that read them
 │   │   │   ├── agents.ts
+│   │   │   ├── live-conversation.ts # Asks ElevenLabs whether the phone's conversation is live, before a slot opens
 │   │   │   ├── photos.ts    # The in-memory store, its upload slots, and which photos are waiting
 │   │   │   ├── tools.ts
-│   │   │   ├── upload-key.ts # The key the phone sends with every photo
 │   │   │   └── index.ts
 │   │   └── reflection/      # The assistant's own errors and failed runs
 │   │       ├── agent.ts
@@ -415,35 +415,46 @@ companion-app notify service the [Notification Agent](#notification-agent) uses 
 - "Send that chart to my phone again"
 
 ### Vision Vertical
-Lets sir show Jarvis something with his phone's camera — a receipt, a label, a letter, a screen —
-and ask about it. The camera and the shot are the phone's (see "Showing him something" in
-`mobile/AGENTS.md`); what lives here is where the photo is kept and how an agent gets to see it.
+Lets sir send Jarvis a photo with the camera button on his phone — a receipt, a label, a letter, a
+screen — and ask about it, whether he says what he wants before he sends it or not at all. The camera
+and the shot are the phone's (see "Showing him something" in `mobile/AGENTS.md`); what lives here is
+the check that lets a phone send one, where the photo is kept, and how an agent gets to see it.
 
 **How a photo arrives:**
-1. The voice agent calls **`preparePhotoUpload`**, an MCP tool. It opens a *slot* for one photo
-   and answers with its URL, `https://<host>/api/photos/<token>`, where the token is 128 random
-   bits and the host is whichever one the MCP request came in on (`publicOrigin`, from
-   `X-Forwarded-Host`/`Host` and `X-Forwarded-Proto`) — nothing in this server is configured with
-   its own public hostname.
-2. ElevenLabs relays that result to the phone as an `mcp_tool_call` event, and the phone keeps the
-   URL. The model never passes it on: `openCamera`, the client tool the agent calls next, takes no
-   parameters, so a model talked into naming another address cannot send the photo anywhere.
-3. The phone `PUT`s the JPEG to the URL with the **photo upload key** from its settings, as
-   `Authorization: Bearer <key>`. The first body sent to a slot within five minutes, with the key, is
-   the photo; it answers `201` with `{ photoId }`, which `openCamera` hands back to the agent.
-4. The agent calls `routePromptWorkflow` with what sir wants done with it and `(photo <id>)` in it —
-   asking him first if he has not said — and the planner routes it to the vision agent.
+1. Sir taps the camera button, which the phone offers only once he has entered this server's
+   address under **Jarvis server** in its settings. In that same tap, while the conversation is
+   certainly live, the phone `POST`s `{ "conversationId": "conv_…" }` — the id of the ElevenLabs
+   conversation it is in — to **`/api/photos/slots`**.
+2. The server asks ElevenLabs whether that conversation is in progress on Jarvis's agent (**the
+   live-conversation check**, below). Only then does it open a *slot* for one photo and answer `201`
+   with `{ uploadToken, uploadPath: "/api/photos/<token>", expiresAt }`: the token is 128 random bits,
+   good for five minutes and for one photo.
+3. The phone `PUT`s the JPEG to `uploadPath`, appended to the address in its own settings — it never
+   sends to a URL from anywhere else — with no key and no credentials. The first body sent to a slot
+   is the photo; it answers `201` with `{ photoId }`.
+4. The phone tells the voice agent, as a message from sir that takes a turn: `I've sent you a photo
+   (photo photo3).` The agent routes it through `routePromptWorkflow` with `(photo photo3)` in it,
+   and the planner hands it to the vision agent. Both orders work:
+   - **Told first, then sent** — "I'll send you a receipt, what's the total?" — the agent routes
+     nothing until the photo arrives, then routes the question with the id in it: ordinary work on
+     the photo.
+   - **Sent first**, with nothing said — the agent routes `He sent a photo without saying what he
+     wants: look at it and say what it shows (photo photo3)`. The planner plans one vision task that
+     says what the photo shows and what in it could be acted on, and names the photo in
+     `photosToAskAbout`; the closing report then has Jarvis say what it shows, ask what sir would like
+     done with it, and wait for the answer (see **Questions for the user** under [Routing](#routing)).
 
-**A photo nobody has looked at is not lost with the conversation.** Sir can take one and say nothing,
-or hang up before saying what it was for. Until `lookAtPhoto` has a reading for it
-(`markPhotoLookedAt`), or sir says he wants nothing done with it (`dismissPhoto`), a photo is
-*waiting* (`photosWaiting` in `vision/photos.ts`), and routing picks it up from there
-(`routing/waiting-photos.ts` — routing depends on vision, never the other way):
+**A photo nobody has looked at is not lost with the conversation.** The conversation that sent a
+photo looks at it straight away, but that conversation can end before the phone gets to tell it —
+the phone's message goes into that conversation or nowhere — and the look can fail. Until
+`lookAtPhoto` has a reading for it (`markPhotoLookedAt`), or sir says he wants nothing done with it
+(`dismissPhoto`), a photo is *waiting* (`photosWaiting` in `vision/photos.ts`), and routing picks it
+up from there (`routing/waiting-photos.ts` — routing depends on vision, never the other way):
 - **The planner is shown every waiting photo**, after the request, by id and age (`- photo3, sent 4
-  minutes ago`). A request that says what to do with one is planned as work on it: the vision agent
-  reading `(photo photo3)`, and anything acting on what it shows chained after it. "The photo" means
-  the one listed, or the one sent last. A photo is never an `answers` entry, since nothing is
-  suspended on it; his reply is a request of its own.
+  minutes ago`), the one just sent included. A request that says what to do with one is planned as
+  work on it: the vision agent reading `(photo photo3)`, and anything acting on what it shows chained
+  after it. "The photo" means the one listed, or the one sent last. A photo is never an `answers`
+  entry, since nothing is suspended on it; his reply is a request of its own.
 - **"Nothing, never mind" dismisses it.** That reply is not work, and with nowhere to put it the
   planner used to return an empty plan, which was reported to sir as a request no agent could
   handle. The plan's `dismissedPhotoIds` (required, empty-when-absent, like `answers`) takes it
@@ -453,39 +464,53 @@ or hang up before saying what it was for. Until `lookAtPhoto` has a reading for 
 - **A later request's closing report brings it up**, in `questionsForUser` with the photo id as its
   id: `Sir sent you a photo 4 minutes ago (photo3) that nobody has looked at yet: ask him what he
   would like done with it.` Only once it has waited a minute unlooked-at (`PHOTO_WAITING_GRACE_MS`),
-  because the conversation that sent it routes it within seconds, and then left alone for
+  because the conversation that sent it routes a look at it within seconds, and then left alone for
   `QUESTION_REMINDER_INTERVAL_MS` like a question. A photo is kept for just as long, so in practice
-  it is brought up once. The grace is not tied to a conversation, which nothing here knows: if sir
-  answers "what would you like done with it?" with another request that runs past the minute, its
-  report asks again, as it would about any question he moved on from. See **Questions for the user**
-  under [Routing](#routing).
+  it is brought up once. The grace is not tied to a conversation, which nothing here knows: a photo
+  whose first look failed can be brought up again in the conversation that sent it, as any question
+  he moved on from would be. See **Questions for the user** under [Routing](#routing).
 - **Only a reading counts.** A reader that failed has told sir nothing about his photo, so it stays
-  waiting; a question about a photo that is not kept marks nothing.
+  waiting — and a photo sent with nothing said whose look failed is not asked about as one Jarvis
+  has described; a question about a photo that is not kept marks nothing.
 
-**The photo upload key** (`vision/upload-key.ts`) is a shared secret: `HEY_JARVIS_PHOTO_UPLOAD_KEY`
-on the server, and the same value typed into the phone's settings. It is there because the upload
-route has to bypass Cloudflare Access, and a slot's URL, however unguessable, is not a secret only the
-phone holds — this server writes it into an MCP result that ElevenLabs relays. The key is checked in
-front of the slot, not instead of it: the slot still binds a photo to the one request it was minted
-for and bounds what the process holds. Both sides **fail closed**. A server without a key (or with
-one under 16 characters, `MIN_PHOTO_UPLOAD_KEY_LENGTH`) takes no photos: `preparePhotoUpload`
-answers `PHOTO_UPLOADS_SWITCHED_OFF` and opens no slot, the route answers `503`, and
-`mcp-server.ts` logs one warning at startup saying why — naming the variable and, for a key that is
-too short, its length, never its value. A phone without a key never offers the camera. The key is
-compared in constant time (both sides hashed with SHA-256, then `timingSafeEqual`), and the
-`Authorization` header is never logged. The phone checks the same 16-character minimum, and a
-contract test in `mobile` reads it and the variable's name from `upload-key.ts`.
+**The live-conversation check** (`vision/live-conversation.ts`) is what stands in front of a slot.
+Both photo routes have to bypass Cloudflare Access, since the phone holds no Access service token,
+so anyone can ask for a slot; the phone proves it is in a conversation with Jarvis instead of
+holding a secret. The check:
+- **Refuses a malformed id before asking anything**: only `^conv_[A-Za-z0-9]{8,64}$` goes upstream.
+- **Asks ElevenLabs with a raw `fetch`**, not the SDK, which parses the whole transcript strictly and
+  has thrown on shapes it did not expect (elevenlabs-js issue #268): `GET
+  /v1/convai/conversations/{id}` with `HEY_JARVIS_ELEVENLABS_API_KEY` in `xi-api-key`, five seconds
+  at most, and a Zod schema of only `agent_id` and `status`. Live means `agent_id` is
+  `HEY_JARVIS_ELEVENLABS_AGENT_ID` or `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` — whichever are set,
+  neither preferred, unlike `initiatePhoneCall`, whose precedence would turn away every photo from
+  sir's phone on a server with the test agent configured — and `status` is `initiated` or
+  `in-progress`.
+- **Gives a call that has only just started a second chance.** Nothing documented says how soon one
+  can be looked up, so a `404` is asked again 1.5 seconds later, and then each agent's list is
+  searched (`?agent_id=…&page_size=100&call_start_after_unix=<now − 960>` with `processing`, `done`
+  and `failed` excluded; 960 is `maxDurationSeconds` and a minute).
+- **Fails closed.** A refused key (`401`/`403`), a rate limit, an ElevenLabs error, a timeout or a
+  body that cannot be read is *unverifiable*, and the slot is refused with `502`. A server without
+  the API key or either agent id refuses every slot with `503`, and `mcp-server.ts` logs one warning
+  at startup naming the missing variables (`whyPhotoSlotsAreOff`) — never a value.
+- **Is bounded**, since every check spends Jarvis's ElevenLabs quota: a conversation found live is
+  taken as live for a minute without asking again, and at most 30 checks a minute go upstream from
+  the whole process (beyond that, `429`). The body holds the whole transcript, emails and calendar
+  entries included, so it is never logged: at most the status and a refusal's `detail.code`, and
+  never the conversation id.
+
+**Its limits are deliberate.** It proves only that whoever asks knows the id of a conversation live
+on Jarvis's agent. A conversation id is not a secret — it is in ElevenLabs' history, and the SDK
+sends it unauthenticated to upload a file or leave feedback — a call that has just ended can read as
+live for a moment, and a live verdict is trusted for a minute. So the upload's protection is the
+slot's token, and that is enough on its own: 128 random bits, single-use, good for five minutes,
+claimed before a byte of the photo is read, and handed straight from this server to the phone. It
+used to travel through ElevenLabs, in the result of an MCP tool the voice agent called, and a
+separate upload key typed into the phone was needed because of it; now nothing but this server and
+the phone ever sees it, and there is no key.
 
 **Available Tools** (`vision/tools.ts`):
-- **`preparePhotoUpload`**: MCP-only — registered in `mcp-server.ts`, not on the Mastra instance,
-  because the URL is built from the MCP request and the slot lives in that process. The URL must stay
-  in the text channel of its result as well as the structured one, since that is what ElevenLabs
-  relays; it must never take the empty-text shape of `createInstructionsWorkflowTool`. It asks
-  whether there is a photo upload key *before* it looks at the host: without one, a slot could never
-  be filled, and the agent is told so rather than left to learn it from a refused upload. When the
-  agent asks for the photo, that is before the camera opens; when sir opens it himself from the
-  phone's button, the camera is already open when this is called — the phone shows the button on its
-  own key and cannot know the server has none — so he hears it after the shot.
 - **`lookAtPhoto`**: fetches the photo by id and shows it, beside the question, to the photo reader.
   The only way any agent here sees a photo, since a routed agent is handed text and nothing else.
   Its answer is the reading quoted as the photo's content, with the photo's age:
@@ -495,7 +520,10 @@ contract test in `mobile` reads it and the variable's name from `upload-key.ts`.
 **Agents** (`vision/agents.ts`):
 - **`vision`** is public, so the planner routes to it. It finds the id and the question in its
   prompt and calls `lookAtPhoto` once, at low thinking. A chain works like any other: "add what is
-  on this receipt to the shopping list" is this agent, then the shopping list agent.
+  on this receipt to the shopping list" is this agent, then the shopping list agent. Asked only what
+  a photo shows — one sent with nothing said — it says what it shows *and what in it could be acted
+  on*: items and prices, an amount due, a date, a name or number worth keeping, which is what Jarvis
+  needs to ask a useful question and to answer the ones sir asks back.
 - **`photoReader`** is not public and has no memory — a photo is never written into a thread. It
   treats text in a photo as something to report, never as instructions, because whoever made the
   thing photographed wrote it.
@@ -508,38 +536,41 @@ first, a photo kept for 30 minutes. An id is matched however a model wrote it ("
 old. Studio's process (`mastra dev`, 4111) has a store of its own that nothing fills, so photos can
 only be asked about through the MCP server.
 
-**The upload route** (`PUT /api/photos/:uploadToken`, `api/routes.ts`) is reachable by anyone —
-the phone holds no Cloudflare Access service token — so **nothing is read until the request has
-earned it**, in this order:
-1. `requirePhotoUploadKey`: no key configured is a `503` (`Photo uploads are switched off on this
-   server.`); a missing, wrong or non-`Bearer` `Authorization` header is a `401` (`This upload needs
-   the photo upload key.`) with `WWW-Authenticate: Bearer realm="jarvis-photos"`. Both are Mastra's
-   JSON envelope with `success: false`, which is how the phone tells a refused key from a Cloudflare
-   refusal. Neither touches the slot, so a request without the key cannot spend one before the
-   phone does.
-2. `claimSlotBeforeReading`: a wrong content type is a `415`, and an unknown or used token a `404`.
-3. Only then does `express.raw` read at most 3 MB.
+**The photo routes** (`api/routes.ts`) are reachable by anyone — the phone holds no Cloudflare Access
+service token — and both answer in the routes' JSON envelope (`success`, `message`, `data`):
+- **`POST /api/photos/slots`** (`PHOTO_SLOTS_ROUTE`) reads its own body, JSON of at most a kilobyte
+  (`readSlotRequest`), and answers `201` with the slot; `400` for a body without a well-formed
+  conversation id — one that is not JSON, or over a kilobyte, included — `403` for a conversation not
+  live on Jarvis's agent, `429` once the minute's checks are spent, `502` when ElevenLabs could not
+  confirm it, and `503` when this server cannot check at all. `registerApiRoutes(router, { isLiveJarvisConversation })` takes a stand-in for the check, which
+  is how `routes.spec.ts` covers each answer without ElevenLabs.
+- **`PUT /api/photos/:uploadToken`** (`PHOTO_UPLOAD_ROUTE`) asks for no key, and **reads nothing until
+  the request has earned it**, in this order:
+  1. `claimSlotBeforeReading`: a wrong content type is a `415`, and an unknown or used token a `404`
+     — the slot is claimed before anything else happens, so it is read from once.
+  2. Only then does `express.raw` read at most 3 MB.
 
-The JSON parser in `mcp-server.ts` skips the path for the same reason, and the request log writes
-it without its token (`withoutUploadToken`) and never with its headers. CORS allows any origin and
-the `Authorization` header: what authorises an upload is written into the request by the phone —
-the key and the token — rather than anything a browser attaches by itself, and the browser build is
-served from GitHub Pages. The `OPTIONS` preflight asks for no key, since a browser cannot send one
-with it.
+The JSON parser in `mcp-server.ts` skips everything under `/api/photos/` for the same reason, and the
+request log writes an upload's path without its token (`withoutUploadToken`, which leaves
+`/api/photos/slots` readable) and never with its headers or body. CORS allows any origin, `PUT`,
+`POST` and `OPTIONS`, and the `Content-Type` header: what lets a request through is written into it
+by the phone — the conversation id, the token — rather than anything a browser attaches by itself,
+and the browser build is served from GitHub Pages. Both paths answer an `OPTIONS` preflight.
 
-**Required Environment Variables:**
-- `HEY_JARVIS_PHOTO_UPLOAD_KEY` (optional): the photo upload key, at least 16 characters, resolved
-  from `op://Jarvis/Photo upload key/password` through `mcp/op.optional.env`. Without it the server
-  starts as usual and photo uploads are off. The phone accepts printable ASCII without spaces, so
-  generate it with letters, digits and symbols only.
+**Required Environment Variables:** none of its own. The check uses `HEY_JARVIS_ELEVENLABS_API_KEY`,
+which needs read access to the agents' conversation history, and at least one of
+`HEY_JARVIS_ELEVENLABS_AGENT_ID` and `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` — the same variables the
+phone vertical uses. Without them the server starts as usual and photo uploads are off.
 
-**Requirements:** a Cloudflare Access bypass for `/api/photos/*`, and the photo upload key on both
-the server and the phone — see [MCP Server Access](#mcp-server-access).
+**Requirements:** a Cloudflare Access bypass for `/api/photos/*`, and this server's address in the
+phone's settings under **Jarvis server** — see [MCP Server Access](#mcp-server-access).
 
 **Example Use Cases:**
-- "What's the total on this receipt?"
+- "I'll send you a receipt — what's the total?", then the photo
 - "What does this letter say I have to do?"
 - "Add everything on this receipt to the shopping list"
+- A photo with nothing said: "That's a Netto receipt for 36.95 kroner, sir, for milk and rye bread.
+  What would you like done with it?"
 
 ### Phone Vertical
 Provides outbound calling, texting and contact lookup, and feeds the phone's notifications to Synapse:
@@ -979,12 +1010,9 @@ Studio draws it and the run is persisted — and the work is written down before
 
 ### Routing
 The entry point for every voice request. Two MCP tools, deliberately: the voice model gets a
-small, fast surface, and everything else happens behind them.
-
-The one other tool on the MCP server is `preparePhotoUpload` (see [Vision Vertical](#vision-vertical)),
-and it is not a way round the planner: it answers a question about the conversation itself — where
-the phone can send a photo — which has to be ready by the time the photo is, and which no agent
-behind the planner could answer, since the URL is built from the MCP request.
+small, fast surface, and everything else happens behind them. A photo sir sends reaches Jarvis the
+same way, as a request naming it (see [Vision Vertical](#vision-vertical)); the phone opens its slot
+over the REST API, not through the voice model.
 
 **Workflows:**
 - **`routePromptWorkflow`**: starts a request and returns at once, with the session to poll
@@ -1020,8 +1048,9 @@ manner" every time, which is how "turn off the lights" earned a paragraph.
 **Ending the call:** every finished request — answered, failed, or handed to a notification — ends
 with `FINISHED_REQUEST_INSTRUCTIONS`: say nothing more, and if asked to speak again before sir has
 said anything, call `end_call` without a word. The agent's turn timeout is what asks him again.
-Nothing still waiting on sir carries it. See **Hanging up when he goes quiet** in
-`elevenlabs/AGENTS.md`.
+Nothing still waiting on sir carries it — a question the work stopped on, one from earlier, or what
+to do with a photo he sent without saying: those end on `askTheUserInstructions`, which asks last and
+waits. See **Hanging up when he goes quiet** in `elevenlabs/AGENTS.md`.
 
 **Questions for the user:**
 Some work cannot finish on what the request said. Questions come from two places, and
@@ -1077,6 +1106,20 @@ as it did. The difference is the reply: it is not an answer to hand back but a r
 planner, shown every waiting photo, plans as work on that photo — or, for "nothing", as dismissing it
 (`dismissedPhotoIds`), which the instructions ask to be routed like any other reply. See **A photo
 nobody has looked at is not lost with the conversation** under [Vision Vertical](#vision-vertical).
+
+**A photo he sent with nothing said** is asked about too, as this request's own question rather than
+one from earlier. The request is the look — `He sent a photo without saying what he wants: look at it
+and say what it shows (photo photo3)` — and the planner names the photo in `photosToAskAbout`
+(required, empty-when-absent, and only ever a photo it was shown and did not dismiss). Once the
+request's work is done, the controller keeps those whose look actually read them
+(`RoutingProgress.photosToAskAbout`), and the closing report adds one question per photo, last in
+`questionsForUser`, with the photo id as its id: `Now that you have told him what photo3 shows, ask
+him what he would like done with it.` (`askWhatToDoWithPhoto`). It is closed with
+`askTheUserInstructions` as a request waiting on him, photo wording included, so Jarvis speaks the
+result, asks, and waits — never `end_call`. A photo asked about that way is not also brought up as a
+waiting one, and a request that failed asks nothing about its photos: one whose look failed is still
+waiting, and is brought up later like any other. `waiting-photos.spec.ts` drives this end to end on
+scripted models, from the routed message to the report that asks.
 
 A reply given on a call or on the house speakers only reaches the work if the ElevenLabs agent
 routes it, so its prompt (`elevenlabs/src/assets/agent-prompt.md`) says a reply to a question the
@@ -2052,13 +2095,12 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **Google OAuth2 (Calendar, Tasks & Contacts)**: `HEY_JARVIS_GOOGLE_CLIENT_ID`, `HEY_JARVIS_GOOGLE_CLIENT_SECRET`, `HEY_JARVIS_GOOGLE_REFRESH_TOKEN` for accessing the Google Calendar, Tasks and People APIs (see [Google OAuth2 Setup](#google-oauth2-setup) below)
 - **Shopping (Bilka)**: `HEY_JARVIS_BILKA_EMAIL`, `HEY_JARVIS_BILKA_PASSWORD`, `HEY_JARVIS_BILKA_API_KEY` for authentication
 - **Shopping (Search)**: `HEY_JARVIS_ALGOLIA_API_KEY`, `HEY_JARVIS_ALGOLIA_APPLICATION_ID`, `HEY_JARVIS_BILKA_USER_TOKEN` for product search
-- **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI (test agent ID `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` takes precedence for phone calls)
+- **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI (test agent ID `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` takes precedence for phone calls). The key and the agent ids also confirm that the phone's conversation is live before a photo slot is opened — there either agent counts — so without them photo uploads are off (see [Vision Vertical](#vision-vertical))
 - **Recipes**: `HEY_JARVIS_VALDEMARSRO_API_KEY` for Danish recipe data
 - **GitHub**: `HEY_JARVIS_GITHUB_API_TOKEN` for GitHub API access (coding agent and error reporting processor)
 - **Claude Code sessions**: `HEY_JARVIS_CLAUDE_CODE_SSH_TARGET`, `HEY_JARVIS_CLAUDE_CODE_SSH_PRIVATE_KEY` to reach the host whose Docker Sandbox the coding vertical runs Claude Code in, and `HEY_JARVIS_CLAUDE_CODE_OAUTH_TOKEN` to bill it to the Claude subscription
 - **WiFi**: `HEY_JARVIS_WIFI_SSID`, `HEY_JARVIS_WIFI_PASSWORD` for Home Assistant Voice Firmware
 - **Notifications**: `HEY_JARVIS_PRIMARY_USER_PHONE_NUMBER` so Jarvis can call or text the primary user; optionally `HEY_JARVIS_PRIMARY_USER_NAME`, `HEY_JARVIS_PRIMARY_USER_PHONE_DEVICE`, `HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE` and `HEY_JARVIS_CAR_NAME` to pin down which person, phone and car the routing looks at
-- **Photos** (optional): `HEY_JARVIS_PHOTO_UPLOAD_KEY`, the key the phone sends with every photo it shows Jarvis, at least 16 characters, from `op://Jarvis/Photo upload key/password` through `mcp/op.optional.env`. Without it photo uploads are off (see [Vision Vertical](#vision-vertical))
 
 #### Development Setup
 1. **Install 1Password CLI**: Follow [1Password CLI installation guide](https://developer.1password.com/docs/cli/get-started/)
@@ -2635,41 +2677,39 @@ const PROVIDERS: OAuthProvider[] = [
 
 ## MCP Server Access
 
-The MCP server itself checks no credentials on port 4112, but for the photo upload key on the one
-path described below. What stands in front of it is the
+The MCP server itself checks no credentials on port 4112. What stands in front of it is the
 Cloudflare tunnel and its **Cloudflare Access** application: ElevenLabs and the integration tests
 present a service token (`CF-Access-Client-Id` / `CF-Access-Client-Secret`), and a browser signs in
 with an identity policy.
 
 **`/api/photos/*` must bypass Access**, as `/artifacts/*` must for the visualize vertical's pages
-(see [Visualize Vertical](#visualize-vertical-shortcuts)). The phone uploads photos there and cannot
-present an Access service token, so without a bypass Access answers every upload with its sign-in
-page, and the phone reports "The server turned the photo away". In Zero Trust → Access →
-Applications, add a self-hosted application for `<your MCP hostname>/api/photos/*` with a single
-**Bypass** policy (include: Everyone). It covers every method, which matters because the browser
-build sends a CORS preflight (`OPTIONS`) first.
+(see [Visualize Vertical](#visualize-vertical-shortcuts)). The phone asks for a photo slot there
+(`POST /api/photos/slots`) and sends the photo there (`PUT /api/photos/<token>`), and it cannot
+present an Access service token, so without a bypass Access answers both with its sign-in page, and
+the phone tells sir his photo did not reach Jarvis. In Zero Trust → Access → Applications, add a
+self-hosted application for `<your MCP hostname>/api/photos/*` with a single **Bypass** policy
+(include: Everyone). It covers both routes and every method, which matters because the browser build
+sends a CORS preflight (`OPTIONS`) before each.
 
-**The bypass opens a door that asks for a key.** This is the one path where the MCP server checks a
-credential itself: the **photo upload key**, which the phone sends as `Authorization: Bearer <key>`
-and the server compares with `HEY_JARVIS_PHOTO_UPLOAD_KEY`. Without the key an upload is a `401`,
-and a server with no key configured refuses every upload with a `503`. Behind the key is the
-capability in the path: a token of 128 random bits that `preparePhotoUpload` minted for one photo,
-good for five minutes, and claimed before a byte of the body is read (see
+**Behind the bypass are two checks, and no credential.** Opening a slot needs the id of a
+conversation that ElevenLabs, asked with this server's own API key, reports as in progress on
+Jarvis's agent; sending the photo needs the slot's token, 128 random bits handed straight to the
+phone, good for five minutes and one photo, and claimed before a byte of the body is read (see
 [Vision Vertical](#vision-vertical)). Nothing else under `/api` is reachable without Access.
 
-**Rolling the camera out** takes five steps, in this order:
-1. Create the 1Password item **`Photo upload key`** in the `Jarvis` vault, with a generated password
-   of at least 16 characters (letters, digits and symbols, no spaces) in its `password` field.
-   `mcp/op.optional.env` maps it to `HEY_JARVIS_PHOTO_UPLOAD_KEY`.
-2. Deploy the MCP server image with the vision vertical, and add the bypass above. The startup log
-   should not say `Photo uploads are off`.
-3. Enter the same key in the phone app's settings, under **Photos**. Until it has one, the phone
-   never offers the camera.
-4. Redeploy the ElevenLabs agent (`bunx turbo deploy --filter=elevenlabs`). It adds the `openCamera`
-   client tool and the `mcp_tool_call` client event; an agent that has `openCamera` before the server
-   has `preparePhotoUpload` can only fail to take a photo.
-5. In the ElevenLabs dashboard, check that `preparePhotoUpload` is allowed to run without approval
-   on the MCP server's tool approval policy, like the routing tools.
+**Rolling the camera out** takes these steps, in this order:
+1. Deploy the MCP server image with the vision vertical, and add the bypass above. The startup log
+   should not say `Photo uploads are off`; if it does, it names the ElevenLabs variable missing.
+2. Redeploy the ElevenLabs agent (`bunx turbo deploy --filter=elevenlabs`), so that its prompt knows
+   the phone's photo messages and it has no client tool for the camera. An agent deployed from an
+   earlier build of this feature expects to open the camera itself, through a tool this server no
+   longer publishes.
+3. In the ElevenLabs dashboard, leave nothing on the MCP server's tool approval policy but the two
+   tools it publishes, `routePromptWorkflow` and `getNextInstructionsWorkflow`.
+4. On the phone, enter this server's `https://` address under **Jarvis server** in the settings.
+   Until it has one, the phone offers no camera button.
+5. If a 1Password item was created in the `Jarvis` vault for the earlier build's upload key, delete
+   it: nothing reads it any more.
 
 ## Integration Capabilities
 

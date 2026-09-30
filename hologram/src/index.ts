@@ -18,7 +18,6 @@
  * `./conversation`, or in the app that has one.
  */
 export * from './agent-audio-track';
-export * from './camera-request';
 export * from './conversation-life';
 export * from './conversation-token';
 export * from './density-control';

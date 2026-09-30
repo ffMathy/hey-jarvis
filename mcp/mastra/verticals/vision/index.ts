@@ -1,6 +1,14 @@
 // Vision vertical exports
 export { getPhotoReaderAgent, getVisionAgent, PHOTO_READER_AGENT_ID } from './agents.js';
 export {
+  type ConversationVerdict,
+  checkLiveConversation,
+  createLiveConversationCheck,
+  type LiveConversationCheck,
+  type LiveConversationDependencies,
+  whyPhotoSlotsAreOff,
+} from './live-conversation.js';
+export {
   claimUploadSlot,
   dismissPhoto,
   findPhoto,
@@ -20,22 +28,4 @@ export {
   UPLOAD_SLOT_MS,
   type WaitingPhoto,
 } from './photos.js';
-export {
-  lookAtPhoto,
-  NO_PHOTO_TO_LOOK_AT,
-  OPEN_CAMERA_TOOL,
-  PHOTO_UPLOAD_PATH,
-  PHOTO_UPLOAD_READY,
-  PHOTO_UPLOAD_UNAVAILABLE,
-  PHOTO_UPLOADS_SWITCHED_OFF,
-  preparePhotoUpload,
-  publicOrigin,
-  visionTools,
-} from './tools.js';
-export {
-  configuredPhotoUploadKey,
-  holdsPhotoUploadKey,
-  MIN_PHOTO_UPLOAD_KEY_LENGTH,
-  PHOTO_UPLOAD_KEY_VARIABLE,
-  whyPhotoUploadsAreOff,
-} from './upload-key.js';
+export { lookAtPhoto, NO_PHOTO_TO_LOOK_AT, visionTools } from './tools.js';

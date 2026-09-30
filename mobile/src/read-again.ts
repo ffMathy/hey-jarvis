@@ -14,11 +14,12 @@ export const READ_AGAIN_MS = 200;
  * The two are not the same, and used to be answered the same way. A read that throws in the
  * assistant's own window — a surface the system has only just created, where a native module can
  * still be coming up — landed as "nothing configured", and a summoned Jarvis opened sample mode with
- * credentials sitting in the keystore the whole time. That is what the blank sheet was. The photo
- * upload key is read from the same keystore at the same moment, and its failed read took the camera
- * away in the same way. A handful of attempts a fifth of a second apart costs nothing and covers it.
+ * credentials sitting in the keystore the whole time. That is what the blank sheet was. The Jarvis
+ * server's address is read from the same keystore at the same moment, and a failed read of it would
+ * take the camera away in the same way. A handful of attempts a fifth of a second apart costs nothing
+ * and covers it.
  *
- * Whatever is read says which it was, as `settings-storage.ts` and `photo-upload-key.ts` both answer:
+ * Whatever is read says which it was, as `settings-storage.ts` and `jarvis-server.ts` both answer:
  * a `kind` of `'unreadable'` is tried again. What comes back is the first other answer, or
  * `undefined` when every attempt failed — or once nobody wants the answer any more.
  */

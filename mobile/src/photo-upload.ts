@@ -1,14 +1,29 @@
+import type { PhotoProblem } from './photo-messages';
+
 /**
- * Sending a photo to the upload URL Mastra minted, with the photo upload key, and reading back what
- * Mastra filed it as.
+ * Sending a photo to sir's Jarvis server: asking it for somewhere to send one, then sending it there,
+ * and reading back what the server filed it as.
  *
- * The key goes with the photo and only with the photo: to the one address Mastra minted for it, as
- * `Authorization: Bearer <key>`, which is what the server checks before it looks at anything else
- * (`photo-upload-key.ts` says why it asks). It is never logged, and never part of a problem.
+ * **Two requests, both to the address in the phone's own settings** (`jarvis-server.ts`):
  *
- * Imports nothing, and takes `fetch` as an argument, for the reason `conversation-token.ts` does:
- * every answer the server can give — and every way the network can fail — is a test with no device
- * and no server behind it.
+ * 1. `POST <server>/api/photos/slots` with the id of the conversation the photo is for. The server
+ *    asks ElevenLabs whether that conversation is in progress on Jarvis's agent, and only then opens a
+ *    slot for one photo, good for a few minutes, answering with the path to send it to.
+ * 2. `PUT <server><uploadPath>` with the JPEG. No key and no `Authorization` header: the slot's
+ *    unguessable name is what lets the photo in, and it came straight from the server to this phone.
+ *
+ * **The server names a path, never where to go.** Only a path of exactly the upload route's shape is
+ * used ({@link UPLOAD_PATH}), and it is put after the address sir typed — so nothing the server, or
+ * anything pretending to be it, answers can send his photo to another host.
+ *
+ * **Never throws, and never repeats the server.** Every way it can go wrong — no network, Cloudflare
+ * Access in the way, a conversation the server would not confirm — comes back as one of the phone's
+ * own {@link PhotoProblem}s, for the agent to tell sir, and a description in the phone's own words for
+ * its log. Nothing a response said is in either.
+ *
+ * Imports nothing but a type, and takes `fetch` as an argument, for the reason `conversation-token.ts`
+ * does: every answer the server can give, and every way the network can fail, is a test with no
+ * device and no server behind it.
  */
 
 /** The longest edge a photo is sent at, in pixels. Kept in step with `LONG_EDGE` in `JarvisPhotoActivity.kt`. */
@@ -18,119 +33,197 @@ export const PHOTO_LONG_EDGE = 1600;
 export const PHOTO_QUALITY = 0.85;
 
 /**
- * Where the photo went, or why it did not get there — and, if it did not, whether it was the key that
- * was turned away. That one is worth telling the agent apart from the rest, because it is the one sir
- * can fix, in the app's settings, and trying again will not.
+ * Where the phone asks for a slot, after the server's address. The server's `PHOTO_SLOTS_ROUTE`
+ * (`mcp/mastra/verticals/api/routes.ts`), which `photo-upload.contract.spec.ts` holds this to.
  */
-export type PhotoDelivery = { photoId: string } | { problem: string; keyRefused: boolean };
-
-/** As much of `fetch` as sending a photo takes. */
-type SendRequest = (url: string, init: RequestInit) => Promise<Response>;
+export const PHOTO_SLOTS_PATH = '/api/photos/slots';
 
 /**
- * The id Mastra filed the photo under, read from its answer without trusting its shape.
- *
- * **A 200 is not enough.** Cloudflare Access answers a request it will not let through with its own
- * sign-in page, and that page is a 200 — so a photo the tunnel turned away would otherwise read as
- * sent. Only Mastra's own envelope with an id in it counts.
+ * A path a photo may be sent to: the server's upload route and a slot's token — 22 URL-safe
+ * characters, which is sixteen random bytes as the server mints them. Anything else is refused,
+ * however much it looks like the server's.
  */
-function readPhotoId(payload: unknown): string | undefined {
+const UPLOAD_PATH = /^\/api\/photos\/[A-Za-z0-9_-]{22}$/;
+
+/** What went wrong, for the agent to say (`problem`) and for the phone's log (`description`). */
+export interface PhotoFailure {
+  problem: PhotoProblem;
+  description: string;
+}
+
+/** Somewhere to send the photo, or why there is not. */
+export type PhotoSlot = { uploadPath: string } | PhotoFailure;
+
+/** What the server filed the photo as, or why it did not get there. */
+export type PhotoDelivery = { photoId: string } | PhotoFailure;
+
+/** As much of `fetch` as a photo takes. */
+type SendRequest = (url: string, init: RequestInit) => Promise<Response>;
+
+/** The data in the Jarvis server's own JSON envelope, if this is one that says it succeeded. */
+function readSuccessData(payload: unknown): object | undefined {
   if (typeof payload !== 'object' || payload === null || !('success' in payload) || payload.success !== true) {
     return undefined;
   }
   if (!('data' in payload) || typeof payload.data !== 'object' || payload.data === null) {
     return undefined;
   }
+  return payload.data;
+}
 
-  const { data } = payload;
-  const photoId = 'photoId' in data ? data.photoId : undefined;
-  return typeof photoId === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(photoId) ? photoId : undefined;
+/** The response's JSON, or `undefined` if it had none. */
+async function readJson(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    return undefined;
+  }
 }
 
 /**
- * Whether a refusal is Mastra's own: its JSON envelope, saying it did not succeed.
+ * Whether a refusal is the Jarvis server's own: its JSON envelope, saying it did not succeed.
  *
- * **A 401 is not enough to blame the key.** Cloudflare Access turns requests away too, with a page
- * of its own rather than Mastra's envelope, and a phone told its key is wrong when the tunnel is what
- * stopped it would send sir to change a key that was right. Only the server that checks the key can
- * say the key was wrong.
+ * **A status alone is not enough to go on.** Cloudflare Access and the tunnel turn requests away too —
+ * with a `403` of their own, or a `502` or `503` when the server behind them is down — and a phone that
+ * read those as the server's answers would tell sir his conversation was not live, or his server had
+ * photos switched off, when neither was so.
  */
-async function isMastraRefusal(response: Response): Promise<boolean> {
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch {
-    return false;
-  }
+async function isServerRefusal(response: Response): Promise<boolean> {
+  const payload = await readJson(response);
   return typeof payload === 'object' && payload !== null && 'success' in payload && payload.success === false;
 }
 
+/** Nothing could be sent at all. */
+const UNREACHABLE: PhotoFailure = {
+  problem: 'unreachable',
+  description: 'The Jarvis server could not be reached.',
+};
+
 /**
- * Why a photo did not arrive, in words for sir's log rather than for the agent.
+ * Nothing came back that could be read as the server's, whatever the status said.
  *
- * The agent is only ever told that it did not — see `PHOTO_NOT_SENT` and `PHOTO_KEY_REFUSED` — and
- * never anything from the response, which is not the agent's to read.
+ * **A 200 is not enough.** Cloudflare Access answers a request it will not let through with its own
+ * sign-in page, and that page is a 200 — so a photo the tunnel turned away would otherwise read as sent.
  */
-function describeFailure(status: number, keyRefused: boolean): string {
-  if (keyRefused) {
-    return "Jarvis's server refused the photo upload key. Check it in the app's settings.";
-  }
-  if (status === 404) {
-    return 'The upload link had expired or been used already.';
-  }
-  if (status === 413) {
-    return 'The photo was too large for the server.';
-  }
-  if (status === 503) {
-    return 'Photo uploads are switched off on the server.';
-  }
-  if (status === 401 || status === 403) {
-    return 'The server turned the photo away. Cloudflare Access may need a bypass for /api/photos.';
-  }
-  return `The server answered ${status}.`;
+const NOT_THE_SERVER: PhotoFailure = {
+  problem: 'unreachable',
+  description: 'The server answered with something that was not the Jarvis server.',
+};
+
+/** A refusal that was not the server's own, which is where Cloudflare Access usually is. */
+function turnedAwayBefore(status: number): PhotoFailure {
+  return {
+    problem: 'unreachable',
+    description: `Something in front of the Jarvis server answered ${status}. Cloudflare Access may need a bypass for /api/photos/*.`,
+  };
 }
 
-/** Nothing came back that could be read as Mastra's, whatever the status said. */
-const NOT_MASTRA = { problem: 'The server answered with something that was not Mastra.', keyRefused: false };
+/**
+ * What a refused request means, by its status, by whose refusal it was, and by which of the two
+ * requests was refused.
+ *
+ * Only the slot request can be refused for the conversation: the upload route checks nothing but the
+ * slot's token, and answers a spent or unknown one with a 404 — so a 403 from it is always something
+ * in front of the server.
+ */
+async function readRefusal(response: Response, request: 'slot' | 'upload'): Promise<PhotoFailure> {
+  const { status } = response;
+  if (status === 413) {
+    return { problem: 'tooLarge', description: 'The photo was too large for the server.' };
+  }
+  if (!(await isServerRefusal(response))) {
+    return turnedAwayBefore(status);
+  }
+  if (status === 403 && request === 'slot') {
+    return {
+      problem: 'notLive',
+      description: 'The server could not confirm the conversation as live on Jarvis’s agent.',
+    };
+  }
+  if (status === 503) {
+    return { problem: 'switchedOff', description: 'Photo uploads are switched off on the server.' };
+  }
+  if (status === 404 && request === 'upload') {
+    return { problem: 'unreachable', description: 'The upload slot had expired or been used already.' };
+  }
+  return { problem: 'unreachable', description: `The Jarvis server answered ${status}.` };
+}
 
 /**
- * Sends the photo, as a JPEG with the photo upload key, and says what became of it. Never throws: a
- * photo that could not be sent is an outcome the agent is told about, not a failed conversation.
+ * Asks the Jarvis server for somewhere to send one photo, for the conversation under way. Never throws.
+ *
+ * Asked at the tap, while the conversation is certainly live — the call may drop while sir frames the
+ * shot, and the slot, which lives for minutes, outlives that.
  */
-export async function sendPhoto({
-  photo,
-  uploadUrl,
-  photoUploadKey,
+export async function openPhotoSlot({
+  serverAddress,
+  conversationId,
   fetchImplementation = fetch,
 }: {
-  photo: Blob;
-  uploadUrl: string;
-  photoUploadKey: string;
+  /** The server's origin, as `parseJarvisServerAddress` gives it. */
+  serverAddress: string;
+  /** The ElevenLabs id of the conversation under way, `conv_…`. */
+  conversationId: string;
   fetchImplementation?: SendRequest;
-}): Promise<PhotoDelivery> {
+}): Promise<PhotoSlot> {
   let response: Response;
   try {
-    response = await fetchImplementation(uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'image/jpeg', Authorization: `Bearer ${photoUploadKey}` },
-      body: photo,
+    response = await fetchImplementation(`${serverAddress}${PHOTO_SLOTS_PATH}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId }),
     });
   } catch {
-    return { problem: 'The server could not be reached.', keyRefused: false };
+    return UNREACHABLE;
   }
 
   if (!response.ok) {
-    const keyRefused = response.status === 401 && (await isMastraRefusal(response));
-    return { problem: describeFailure(response.status, keyRefused), keyRefused };
+    return readRefusal(response, 'slot');
   }
 
-  let payload: unknown;
+  const data = readSuccessData(await readJson(response));
+  const uploadPath = data && 'uploadPath' in data ? data.uploadPath : undefined;
+  return typeof uploadPath === 'string' && UPLOAD_PATH.test(uploadPath) ? { uploadPath } : NOT_THE_SERVER;
+}
+
+/**
+ * Sends the photo, as a JPEG and nothing else, to the slot the server opened for it, and says what
+ * became of it. Never throws: a photo that could not be sent is an outcome the agent is told about,
+ * not a failed conversation.
+ */
+export async function sendPhoto({
+  serverAddress,
+  uploadPath,
+  photo,
+  fetchImplementation = fetch,
+}: {
+  /** The server's origin, as `parseJarvisServerAddress` gives it. */
+  serverAddress: string;
+  /** The path {@link openPhotoSlot} read back, checked again here since it decides where the photo goes. */
+  uploadPath: string;
+  photo: Blob;
+  fetchImplementation?: SendRequest;
+}): Promise<PhotoDelivery> {
+  if (!UPLOAD_PATH.test(uploadPath)) {
+    return NOT_THE_SERVER;
+  }
+
+  let response: Response;
   try {
-    payload = await response.json();
+    response = await fetchImplementation(`${serverAddress}${uploadPath}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'image/jpeg' },
+      body: photo,
+    });
   } catch {
-    return NOT_MASTRA;
+    return UNREACHABLE;
   }
 
-  const photoId = readPhotoId(payload);
-  return photoId ? { photoId } : NOT_MASTRA;
+  if (!response.ok) {
+    return readRefusal(response, 'upload');
+  }
+
+  const data = readSuccessData(await readJson(response));
+  const photoId = data && 'photoId' in data ? data.photoId : undefined;
+  return typeof photoId === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(photoId) ? { photoId } : NOT_THE_SERVER;
 }

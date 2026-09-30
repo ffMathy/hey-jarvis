@@ -38,11 +38,11 @@
     "deploy:test": {
       "cache": false
     },
-    "hologram#test": {
-      "dependsOn": ["lint"],
-      "cache": false,
-      "outputs": []
-    },
+    // Never cached: the phone's contract specs read other packages' source as text — the Jarvis
+    // server's photo routes and routing planner (`photo-upload.contract.spec.ts`,
+    // `photo-messages.contract.spec.ts`), the agent's prompt, and the watch's half of the link
+    // (`watch-link.contract.spec.ts`) — none of which is a dependency of `mobile`, so none of it is in
+    // this task's hash, and a cache hit would replay a pass that the change it missed has broken.
     "mobile#test": {
       "dependsOn": ["lint"],
       "cache": false,

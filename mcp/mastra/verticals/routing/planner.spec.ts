@@ -5,7 +5,8 @@
  * What the model does with the instructions is the LLM eval's to judge; what is pinned here is the
  * contract around it: that every plan must carry a style, that only the four known ones are
  * accepted, and that the instructions describe each of them — and that waiting photos reach the
- * planner by id, with the rules for what to do about them, including letting one be.
+ * planner by id, with the rules for what to do about them, including letting one be, and asking sir
+ * about one he sent with nothing said.
  */
 
 import { describe, expect, it } from 'bun:test';
@@ -23,15 +24,29 @@ import type { OpenQuestion } from './questions.js';
 
 describe('responseStyle', () => {
   it('is required on every plan, so a request is never answered in no particular way', () => {
-    expect(planSchema.safeParse({ tasks: [], answers: [], dismissedPhotoIds: [] }).success).toBe(false);
+    expect(planSchema.safeParse({ tasks: [], answers: [], dismissedPhotoIds: [], photosToAskAbout: [] }).success).toBe(
+      false,
+    );
     expect(
-      planSchema.safeParse({ responseStyle: 'command', tasks: [], answers: [], dismissedPhotoIds: [] }).success,
+      planSchema.safeParse({
+        responseStyle: 'command',
+        tasks: [],
+        answers: [],
+        dismissedPhotoIds: [],
+        photosToAskAbout: [],
+      }).success,
     ).toBe(true);
   });
 
   it('accepts only the styles the closing instructions know how to speak', () => {
     expect(
-      planSchema.safeParse({ responseStyle: 'monologue', tasks: [], answers: [], dismissedPhotoIds: [] }).success,
+      planSchema.safeParse({
+        responseStyle: 'monologue',
+        tasks: [],
+        answers: [],
+        dismissedPhotoIds: [],
+        photosToAskAbout: [],
+      }).success,
     ).toBe(false);
   });
 
@@ -103,7 +118,8 @@ describe('photos nobody has looked at yet', () => {
   it('are explained to the planner: work on the photo, never an answer, and left alone otherwise', () => {
     const instructions = plannerInstructions([]);
 
-    expect(instructions).toContain('# Photos nobody has looked at yet');
+    expect(instructions).toContain('# Photos');
+    expect(instructions).toContain('including one he has only just sent');
     expect(instructions).toContain('plan it as ordinary tasks');
     expect(instructions).toContain('"(photo photo3)"');
     expect(instructions).toContain('Any task that acts on what the photo shows needs that task');
@@ -113,26 +129,28 @@ describe('photos nobody has looked at yet', () => {
   });
 });
 
+/** A planner on a scripted model that replies with this plan, whatever it is asked. */
+async function plannerReplying(plan: object) {
+  const scripted = createScriptedModel(() => ({ text: JSON.stringify(plan) }));
+  return createAgent({
+    id: PLANNER_AGENT_ID,
+    name: PLANNER_AGENT_ID,
+    instructions: 'You plan.',
+    model: scripted.model,
+    memory: undefined,
+  });
+}
+
 /**
  * "Nothing, never mind" about a waiting photo. It is not work, and it is not an answer — nothing is
  * suspended on a photo — so without a place of its own in the plan it came back empty, and an empty
  * plan is reported to sir as a request no agent could handle.
  */
 describe('a reply that he wants nothing done with a photo', () => {
-  /** A planner on a scripted model that replies with this plan, whatever it is asked. */
-  async function plannerReplying(plan: object) {
-    const scripted = createScriptedModel(() => ({ text: JSON.stringify(plan) }));
-    return createAgent({
-      id: PLANNER_AGENT_ID,
-      name: PLANNER_AGENT_ID,
-      instructions: 'You plan.',
-      model: scripted.model,
-      memory: undefined,
-    });
-  }
-
   it('has a place in every plan, empty when there is none, so the model never leaves it out', () => {
-    expect(planSchema.safeParse({ responseStyle: 'command', tasks: [], answers: [] }).success).toBe(false);
+    expect(
+      planSchema.safeParse({ responseStyle: 'command', tasks: [], answers: [], photosToAskAbout: [] }).success,
+    ).toBe(false);
   });
 
   it('is explained to the planner: dismiss the photo, write no task for it, and answer as a command', () => {
@@ -149,6 +167,7 @@ describe('a reply that he wants nothing done with a photo', () => {
       tasks: [],
       answers: [{ questionId: 'photo3', answer: 'Nothing, never mind.' }],
       dismissedPhotoIds: ['photo3', 'photo3', 'photo9'],
+      photosToAskAbout: [],
     });
 
     const plan = await planDelegations(
@@ -170,8 +189,104 @@ describe('a reply that he wants nothing done with a photo', () => {
       tasks: [],
       answers: [],
       dismissedPhotoIds: ['photo1'],
+      photosToAskAbout: [],
     });
 
     expect((await planDelegations(planner, 'Never mind.')).dismissedPhotoIds).toEqual([]);
+  });
+});
+
+/**
+ * A photo sir sent with nothing said. The phone tells the voice agent a photo has arrived, and with
+ * nothing to go on the agent routes a look at it; Jarvis then says what it shows and asks sir what
+ * he would like done with it — which a finished request otherwise forbids — so the plan has to say
+ * which photos he is to ask about (see `buildClosingReport` in `workflows.ts`).
+ */
+describe('a photo he sent without saying what he wants', () => {
+  const BARE_PHOTO = 'He sent a photo without saying what he wants: look at it and say what it shows (photo photo3)';
+
+  /** A look at the photo, as the planner is told to plan one. */
+  const LOOK = {
+    id: 'look',
+    agentId: 'vision',
+    prompt: 'Say what photo3 shows and what could be done with it (photo photo3).',
+    needs: '',
+  };
+
+  it('has a place in every plan, empty when there is none, so the model never leaves it out', () => {
+    expect(
+      planSchema.safeParse({ responseStyle: 'lookup', tasks: [], answers: [], dismissedPhotoIds: [] }).success,
+    ).toBe(false);
+  });
+
+  it('is explained to the planner: look at it, say what could be done with it, and let Jarvis ask', () => {
+    const instructions = plannerInstructions([]);
+
+    expect(instructions).toContain('the camera button on his phone');
+    expect(instructions).toContain(`"${BARE_PHOTO}"`);
+    expect(instructions).toContain(
+      'plan one `vision` task that looks at it and says what it shows and what could be done with it',
+    );
+    expect(instructions).toContain('Put its id in `photosToAskAbout`');
+    expect(instructions).toContain('Plan nothing else for it: what to do with it is his to say');
+    // A photo he has said what to do with needs no question afterwards.
+    expect(instructions).toContain('Leave `photosToAskAbout` empty: he has said what he wants');
+    expect(instructions).toContain('a photo he sent without saying what he wants is a `lookup`');
+  });
+
+  it('is not planned for before it arrives', () => {
+    expect(plannerInstructions([])).toContain(
+      'A photo he says he is about to send — "I\'ll send you a receipt" — has not arrived: plan nothing for it',
+    );
+  });
+
+  it('comes back for the photos the planner was shown, once each, beside the look', async () => {
+    const planner = await plannerReplying({
+      responseStyle: 'lookup',
+      tasks: [LOOK],
+      answers: [],
+      dismissedPhotoIds: [],
+      photosToAskAbout: ['photo3', 'photo3', 'photo9'],
+    });
+
+    const plan = await planDelegations(planner, BARE_PHOTO, [], [{ photoId: 'photo3', keptAt: Date.now() - 2_000 }]);
+
+    expect(plan.photosToAskAbout).toEqual(['photo3']);
+    expect(plan.chains.flatMap((chain) => chain.delegations.map((delegation) => delegation.agentId))).toEqual([
+      'vision',
+    ]);
+    expect(plan.responseStyle).toBe('lookup');
+  });
+
+  it('is never one he has just said he wants nothing done with', async () => {
+    const planner = await plannerReplying({
+      responseStyle: 'command',
+      tasks: [],
+      answers: [],
+      dismissedPhotoIds: ['photo3'],
+      photosToAskAbout: ['photo3'],
+    });
+
+    const plan = await planDelegations(
+      planner,
+      'Never mind that photo (photo photo3)',
+      [],
+      [{ photoId: 'photo3', keptAt: Date.now() - 2_000 }],
+    );
+
+    expect(plan.dismissedPhotoIds).toEqual(['photo3']);
+    expect(plan.photosToAskAbout).toEqual([]);
+  });
+
+  it('asks about nothing when no photo was shown', async () => {
+    const planner = await plannerReplying({
+      responseStyle: 'lookup',
+      tasks: [LOOK],
+      answers: [],
+      dismissedPhotoIds: [],
+      photosToAskAbout: ['photo3'],
+    });
+
+    expect((await planDelegations(planner, BARE_PHOTO)).photosToAskAbout).toEqual([]);
   });
 });

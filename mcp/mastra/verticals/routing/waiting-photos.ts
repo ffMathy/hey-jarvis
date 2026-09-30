@@ -4,12 +4,14 @@ import { QUESTION_REMINDER_INTERVAL_MS } from './questions.js';
 /**
  * Photos sir sent that nobody has looked at yet, brought up the way an open question is.
  *
- * A photo arrives in one conversation, and used to be looked at only if that same conversation went
- * on to ask about it: he could take one and say nothing, or hang up before saying what it was for,
- * and it sat in the store until it was let go of. Now a photo nobody has looked at is *waiting*
- * (`photosWaiting` in `vision/photos.ts`), and whatever request he makes next has it brought up in
- * its closing report, beside the questions earlier work is waiting on (see `takeQuestionsToBringUp`
- * in `questions.ts`) — so Jarvis asks what he would like done with it.
+ * A photo arrives in one conversation, and is looked at there as soon as the phone tells the voice
+ * agent it has arrived: to do what sir asked of it, or, if he said nothing, to say what it shows and
+ * ask what he would like done with it (`photosToAskAbout` in `planner.ts`). But the conversation can
+ * end before the phone gets to tell it, and the look can fail — and such a photo used to sit in the
+ * store until it was let go of. Now a photo nobody has looked at is *waiting* (`photosWaiting` in
+ * `vision/photos.ts`), and whatever request he makes next has it brought up in its closing report,
+ * beside the questions earlier work is waiting on (see `takeQuestionsToBringUp` in `questions.ts`) —
+ * so Jarvis asks what he would like done with it.
  *
  * His reply is not an answer to be handed back, as a question's is: "add everything on it to the
  * shopping list" is itself a request, so it is routed and planned like one. The planner is shown every
@@ -25,15 +27,14 @@ import { QUESTION_REMINDER_INTERVAL_MS } from './questions.js';
 /**
  * How long a photo has to have waited, unlooked-at, before it is brought up.
  *
- * The conversation that sent a photo routes it within seconds — straight away if sir has said what
- * it is for, or as soon as he answers being asked — so without this, a request that happened to
- * finish in between would ask him about the photo he had only just shown.
+ * The conversation that sent a photo routes a look at it within seconds of its arrival — to do what
+ * sir asked, or to say what it shows — so without this, a request that happened to finish in between
+ * would ask him about the photo he had only just shown.
  *
- * A grace, not a guarantee. Nothing here knows which conversation sent a photo, so if sir is asked
- * what it is for and asks for something else instead — a briefing that runs past the minute — that
- * request's report can bring the photo up again in the same conversation. That is the reminder doing
- * for a photo what it does for any question he moved on from, and the question is worded to read
- * that way.
+ * A grace, not a guarantee. Nothing here knows which conversation sent a photo, so one whose first
+ * look failed can be brought up again in the same conversation, by a request that finishes after
+ * the minute. That is the reminder doing for a photo what it does for any question he moved on from
+ * — nobody has looked at it yet — and the question is worded to read that way.
  */
 export const PHOTO_WAITING_GRACE_MS = 60_000;
 

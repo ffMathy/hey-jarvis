@@ -198,11 +198,17 @@ way round it. Two of them are already written:
 - **Data safety** — declare **no data collected and no data shared**, which is what the app does and
   what the policy says. Audio goes to ElevenLabs under your own key and never to us; there is no
   analytics, telemetry or crash-reporting library in the app at all. A photo shown to Jarvis goes
-  the same way: taken only when the user taps the camera or agrees to Jarvis asking, and uploaded
-  only to the server the user's own agent names, never to us. If Play's reviewers read either as
-  collection by the app, the answer that stays true is **Audio** and **Photos** collected — not
-  shared, not optional to the feature, for app functionality — and the policy's §4 already
-  describes both.
+  the same way: taken only when the user taps the camera button, which the app shows only once an
+  address has been typed into its optional Jarvis server field, and sent only to that server, which
+  is the user's own — never to us. The tap sends that server the id of the ElevenLabs conversation
+  in progress, which the server checks with ElevenLabs before it opens a slot for the photo; the
+  photo then goes to that slot with no key or other credential, and the server holds it in memory
+  for at most 30 minutes. ElevenLabs gets nothing new but the short text notes the phone adds to the
+  conversation ("I've sent you a photo", and the like) — never the photo. If Play's reviewers read
+  either as collection by the app, the answer that stays true is **Audio** and **Photos** collected
+  — not shared, not optional to the feature, for app functionality — and the policy's §4 already
+  describes both. The conversation id is neither a device nor a user identifier: it names one
+  conversation, and §4 describes it too.
 
 **The store listing's text** — the short description, the full description and the app-access answer
 — is in [`docs/play-listing.md`](./play-listing.md), written to Play's character limits and ready to

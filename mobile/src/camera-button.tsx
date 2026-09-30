@@ -21,20 +21,16 @@ interface CameraButtonProps {
   visible: boolean;
   /** The hologram's square, whose centre the sphere is drawn around. See `hologram-size.ts`. */
   hologramSize: number;
-  /** Whether Jarvis has asked for a photo and the camera is waiting on a tap to open. */
-  wanted: boolean;
-  /** Whether the camera is open, or its photo still on the way: nothing to press meanwhile. */
-  busy: boolean;
   onPress: () => void;
 }
 
 /**
  * The one thing on the conversation screen that is not him: a small camera beside the sphere.
  *
- * **Faint until it matters.** A muted outline at half strength, at the sphere's lower right, is
+ * **Faint until it is pressed.** A muted outline at half strength, at the sphere's lower right, is
  * something to find rather than something to read — the screen's argument is still that it has
- * nothing on it but him. It lights up in the accent colour when Jarvis has asked to see something
- * and the camera cannot open without a tap, which is only ever in a browser.
+ * nothing on it but him. It takes the accent colour only under a finger. Jarvis cannot light it up
+ * or open the camera himself: showing him something is sir's to decide, and this is the only way in.
  *
  * **Drawn from views, not an icon set or Skia.** No icon library is installed, and Skia may not be
  * touched on this screen before CanvasKit has loaded in a browser — which is the whole reason
@@ -44,7 +40,7 @@ interface CameraButtonProps {
  * he is drawn in is wider than the screen, and anything taking part in the layout would push him
  * off centre. The typed field and the problem line are placed the same way, for the same reason.
  */
-export function CameraButton({ visible, hologramSize, wanted, busy, onPress }: CameraButtonProps) {
+export function CameraButton({ visible, hologramSize, onPress }: CameraButtonProps) {
   if (!visible) {
     return null;
   }
@@ -55,9 +51,7 @@ export function CameraButton({ visible, hologramSize, wanted, busy, onPress }: C
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={wanted ? 'Jarvis wants to see something: open the camera' : 'Show Jarvis something'}
-      accessibilityState={{ disabled: busy }}
-      disabled={busy}
+      accessibilityLabel="Send Jarvis a photo"
       hitSlop={theme.spacing.small}
       onPress={onPress}
       style={[
@@ -65,12 +59,11 @@ export function CameraButton({ visible, hologramSize, wanted, busy, onPress }: C
         {
           marginLeft: fromTheMiddle - BUTTON_SIZE / 2,
           marginTop: fromTheMiddle - BUTTON_SIZE / 2,
-          opacity: wanted ? 1 : busy ? 0.25 : 0.5,
         },
       ]}
       testID="open-camera"
     >
-      {({ pressed }) => <CameraGlyph colour={wanted || pressed ? theme.colors.accent : theme.colors.mutedText} />}
+      {({ pressed }) => <CameraGlyph colour={pressed ? theme.colors.accent : theme.colors.mutedText} />}
     </Pressable>
   );
 }
@@ -96,6 +89,8 @@ const styles = StyleSheet.create({
     top: '50%',
     width: BUTTON_SIZE,
     height: BUTTON_SIZE,
+    // Half strength: something to find, not something to read.
+    opacity: 0.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
