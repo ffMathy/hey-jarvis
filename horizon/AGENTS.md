@@ -716,11 +716,11 @@ ElevenLabs prompt, the evals' copy of these sentences and the MCP routing workfl
 text, and fails if the device context, the pointing update or the `(pointing at "<name>", id <id>)`
 form they teach drift apart.
 
-**The corona** (`hologram3d/corona.ts`, drawn in his palette on his thinking scan's rhythm, never
-under 1.5° across) lights round a placed entity for at least 2.5 s after it is marked, is held while
-he is thinking for up to 25 s after the last mark, and fades over his leave time, or at once when
-the conversation ends. Sample mode's thinking mood lights every placed entity: the corona without a
-call, and a beat for the demo.
+**The corona** (`hologram3d/corona.ts`, drawn in his palette on his thinking scan's rhythm, its
+radius never under 1.5°, so never under 3° across) lights round a placed entity for at least 2.5 s
+after it is marked, is held while he is thinking for up to 25 s after the last mark, and fades over
+his leave time, or at once when the conversation ends. Sample mode's thinking mood lights every
+placed entity: the corona without a call, and a beat for the demo.
 
 **What the tests see:** `window.__jarvis.entities` — what is known, placed (with each anchor and
 where it is now), lit and pointed at, the context that would be sent, the drawer's slots and buttons

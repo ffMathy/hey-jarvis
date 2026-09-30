@@ -39,8 +39,8 @@ import { ALPHA_FROM_LIGHT } from './view-plane-quad';
  * each other does not matter. No depth test and no depth write: nothing in the room is drawn with
  * depth, and one behind a sofa should show through it rather than vanish.
  *
- * Never smaller than MIN_APPARENT_RADIUS_DEGREES across, so a lamp at the far end of a room still
- * reads, and its rim never thinner than his strokes' thinnest pixels. It fades out as the head comes
+ * Never smaller than MIN_APPARENT_RADIUS_DEGREES in radius — 1.5°, so 3° across — so a lamp at the
+ * far end of a room still reads, and its rim never thinner than his strokes' thinnest pixels. It fades out as the head comes
  * within 2.5 of its radii, as he does.
  */
 
