@@ -5,16 +5,16 @@ import {
   debugState,
   effectsSince,
   enterRoom,
-  frames,
   greetingPlays,
   insideLivingRoom,
+  photographError,
   roomReport,
   SAVED_SETTINGS,
   scene,
   untilListening,
   withSavedSettings,
 } from './app-driver';
-import { expect, photograph, test } from './fixtures';
+import { expect, test } from './fixtures';
 
 /**
  * "Hey Jarvis", said to the whole app in the emulated living room.
@@ -64,12 +64,9 @@ test('"Hey Jarvis" summons him into the room, and after a failed call it is list
   expect(requests[0]?.apiKey).toBe(SAVED_SETTINGS.apiKey);
 
   // Dialled after the greeting, into a socket that is closed on it.
-  await expect.poll(() => scene(page), { timeout: 60000 }).toBe('failed');
+  await expect.poll(() => scene(page), { timeout: 60000, intervals: [100] }).toBe('failed');
   expect((await roomReport(page)).view.panels.error).toEqual([NETWORK_PROBLEM]);
   const wakesBefore = (await debugState(page)).wakes;
-  // At once: the panel is up for six seconds, and a picture of him takes the emulator a few.
-  await frames(page, 1);
-  await photograph(page, testInfo, 'app-error-network.png');
 
   // Once it has been read he leaves, and the wake word is armed again — while he is still fading,
   // if his voice has been quiet long enough — and hears the clip come round: a new summons, which
@@ -81,5 +78,10 @@ test('"Hey Jarvis" summons him into the room, and after a failed call it is list
   // The engine passes a detection on only while it is armed, so a new one is the room listening again.
   await expect.poll(async () => (await debugState(page)).wakes, { timeout: 60000 }).toBeGreaterThan(wakesBefore);
   await expect.poll(() => scene(page), { timeout: 60000 }).toMatch(/^(placing|present:)/);
+
+  // That summons fails the same way, and so does every one after it while the clip plays: the
+  // picture of the panel is taken of whichever it is still up for.
+  const photographed = await photographError(page, testInfo, 'app-error-network.png', async () => undefined);
+  expect(photographed).toEqual([NETWORK_PROBLEM]);
   expect(problems).toEqual([]);
 });

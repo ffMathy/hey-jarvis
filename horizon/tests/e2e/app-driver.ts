@@ -1,6 +1,6 @@
-import type { Page, Route } from '@playwright/test';
+import type { Page, Route, TestInfo } from '@playwright/test';
 import type { JarvisDebugState, RoomPoint, RoomReport } from '../../src/debug-hook';
-import { expect } from './fixtures';
+import { expect, photograph } from './fixtures';
 
 /**
  * Driving the real app in the emulated Quest 3's living room: its page, the room's state through
@@ -200,6 +200,33 @@ export async function enterRoom(page: Page) {
 /** Waits until the wake engine is really listening, which is when the hint is shown. */
 export async function untilListening(page: Page) {
   await expect.poll(async () => (await roomReport(page)).view.panels.hint, { timeout: 90000 }).not.toBeNull();
+}
+
+/**
+ * Photographs the error panel as `name`, and returns what it said.
+ *
+ * The panel is up for six seconds, and the emulator can take several over a picture while he is
+ * drawn, so a picture is only known to show the panel if the panel is still up once the picture
+ * is back. When it is not, `failAgain` brings about the next failure and the picture is taken of
+ * that one, up to `attempts` times.
+ */
+export async function photographError(
+  page: Page,
+  testInfo: TestInfo,
+  name: string,
+  failAgain: () => Promise<void>,
+  attempts = 3,
+): Promise<readonly string[]> {
+  for (let attempt = 1; ; attempt += 1) {
+    await expect
+      .poll(async () => (await roomReport(page)).view.panels.error, { timeout: 120000, intervals: [100] })
+      .not.toBeNull();
+    await photograph(page, testInfo, name);
+    const lines = (await roomReport(page)).view.panels.error;
+    if (lines !== null) return lines;
+    if (attempt === attempts) throw new Error(`The error panel was gone every time before its picture was taken.`);
+    await failAgain();
+  }
 }
 
 /** The effects carried out since the last `marker` among the recent ones, or all of them without it. */

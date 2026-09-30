@@ -15,6 +15,7 @@ import {
   HAND,
   hologramPosition,
   insideLivingRoom,
+  photographError,
   pressB,
   roomReport,
   scene,
@@ -130,18 +131,23 @@ test('a select summons him; a key ElevenLabs rejects is said on a panel, and the
   // Summoned along the controller's ray, straight ahead.
   await aim(page, { x: HAND.x, y: HAND.y, z: HAND.z - 2 });
   await tap(page);
-  await expect.poll(() => scene(page), { timeout: 60000 }).toBe('failed');
+  await expect.poll(() => scene(page), { timeout: 60000, intervals: [100] }).toBe('failed');
   const failed = await roomReport(page);
-  // At once: the panel is up for six seconds, and a picture of him takes the emulator a few.
-  await frames(page, 1);
-  await photograph(page, testInfo, 'app-error-rejected-key.png');
+  const photographed = await photographError(page, testInfo, 'app-error-rejected-key.png', async () => {
+    await expect.poll(() => scene(page), { timeout: 60000 }).toBe('waiting');
+    await tap(page);
+  });
+  expect(photographed).toEqual([REJECTED_KEY]);
   expect(failed.view.panels.error).toEqual([REJECTED_KEY]);
   expect(failed.view.hologram).toBe('shown');
   expect(failed.view.wakeArmed).toBe(false);
   expect(failed.recentEffects).toEqual(expect.arrayContaining(['arrive', 'summon', 'remember-problem']));
-  expect(requests.map((request) => request.url.searchParams.get('participant_name'))).toEqual(['jarvis-horizon']);
-  expect(requests.map((request) => request.apiKey)).toEqual(['sk_room_test']);
-  expect(await greetingPlays(page)).toBe(1);
+  expect(new Set(requests.map((request) => request.url.searchParams.get('participant_name')))).toEqual(
+    new Set(['jarvis-horizon']),
+  );
+  expect(new Set(requests.map((request) => request.apiKey))).toEqual(new Set(['sk_room_test']));
+  // One greeting for every summon, however many it took to photograph the panel.
+  expect(await greetingPlays(page)).toBe(requests.length);
   const spot = await hologramPosition(page);
   const head = (await debugState(page)).headPositionAtPlacement;
   if (head === null) throw new Error('No head was recorded at placement.');
