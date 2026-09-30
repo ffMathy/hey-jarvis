@@ -29,7 +29,9 @@ WORKDIR /workspace
 # workspaces in #720 and were not added here, which broke the image from that
 # commit onwards; nothing caught it, because Turbo replays `mcp#build` from
 # cache when its inputs are untouched, and the release `deploy` job was failing
-# earlier for unrelated reasons and never reached the build at all.
+# earlier for unrelated reasons and never reached the build at all. `horizon`
+# joined later and drifted the same way, so `tests/dockerfile-workspaces.spec.ts`
+# now fails whenever a workspace is missing from this list.
 #
 # Their manifests are here only to satisfy that resolution. Installing them is
 # not free — they roughly double the dependency tree, from 1798 packages to
@@ -42,6 +44,7 @@ COPY home-assistant-voice-firmware/package.json ./home-assistant-voice-firmware/
 COPY hologram/package.json ./hologram/
 COPY mobile/package.json ./mobile/
 COPY watch/package.json ./watch/
+COPY horizon/package.json ./horizon/
 
 # --frozen-lockfile installs exactly what bun.lock pins and fails if anything
 # would have to be resolved fresh from the registry.
