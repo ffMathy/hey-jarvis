@@ -292,8 +292,8 @@ describe('dropping far from every anchor', () => {
     expect(anchors.update(frame, 'local-floor', 6)[0]).toMatchObject({ kind: 'placed', anchor: A });
   });
 
-  it(`falls back when the new anchor is not located within ${NOT_FOUND_AFTER_SECONDS} s`, async () => {
-    const { anchors, frame } = await farDrop();
+  it(`falls back when the new anchor is not located within ${NOT_FOUND_AFTER_SECONDS} s, and gives it back`, async () => {
+    const { anchors, frame, session } = await farDrop();
     const anchor = new FakeAnchor('space-new');
     frame.created[0]?.resolve(anchor);
     await settle();
@@ -304,6 +304,9 @@ describe('dropping far from every anchor', () => {
       kind: 'placed',
       anchor: A,
     });
+    expect(session.deleted).toEqual([B]);
+    expect(anchor.deleted).toBe(true);
+    expect(anchors.status(5 + NOT_FOUND_AFTER_SECONDS).anchors[B]).toBeUndefined();
   });
 
   it('fails when nothing can be anchored and no anchor is located here', async () => {

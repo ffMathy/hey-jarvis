@@ -291,6 +291,8 @@ export function createRoomAnchors<Space, Transform>(
     const pose = drop.anchor === undefined ? undefined : located(drop.anchor);
     if (drop.anchor !== undefined && pose !== undefined) return placeOn(drop.anchor, pose, drop.id, drop.point);
     if (now - drop.droppedAt < NOT_FOUND_AFTER_SECONDS) return undefined;
+    // The new anchor is not used after all, so its handle is given back rather than kept for nothing.
+    if (drop.anchor !== undefined) release([drop.anchor]);
     return placeOnNearest(drop.id, drop.point, 'The headset did not find the new anchor.');
   }
 
