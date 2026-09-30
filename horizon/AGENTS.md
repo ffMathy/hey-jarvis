@@ -56,7 +56,8 @@ listening, a status line saying why and what to do about it.
   the wake word without echo cancellation, noise suppression or gain control, to
   try on a headset whether it hears better that way; `?voice=spatial` plays his
   voice from where he stands even when the microphone says the headset has no
-  echo canceller of its own, to hear what that does.
+  echo canceller of its own, to hear what that does; `?film` is for recordings,
+  and leaves sample mode's frame-rate readout out (see "The demo video").
 
 ## What is in here
 
@@ -81,7 +82,8 @@ tests/e2e/                 Playwright: the emulated headset and room, and the sp
 .scripts/build.sh          vite build into ../dist/horizon
 .scripts/test.sh           bun test over every *.spec.ts outside tests/e2e
 .scripts/serve-dist.ts     serves the build under /hey-jarvis/horizon/ for the browser tests
-.scripts/render-demo.ts    renders the demo video (demo-shot.ts: the shot and camera; demo-encode.ts: the soundtrack and ffmpeg)
+.scripts/render-demo.ts    renders the demo video (demo-shot.ts: the shot and camera; demo-soundtrack.ts: his voice
+                           from where he stands; demo-encode.ts: where the greeting goes, and ffmpeg)
 ```
 
 ## Commands
@@ -680,10 +682,16 @@ CHROMIUM_EXECUTABLE_PATH works as it does for the browser tests.
 **The shot** (`demo-shot.ts`, pure, pinned by `demo-shot.spec.ts`): the real room, entered with a key,
 waiting with its hint, the head glancing so the hint is seen trailing the gaze; a cut, from the same
 pose, to sample mode — the real room cannot summon him without ElevenLabs — where he is placed 1.6 m
-ahead and arrives; a walk to arm's length (0.8 m, well outside his 2.5R fade), one full turn round him
-there while selects on him walk listening, thinking, idle and speaking, and a walk back to 1.9 m.
-The head moves in distance and bearing around his centre, each eased on overlapping windows so the
-walk curves rather than stops, with a bob that follows the steps taken, and always looks at his centre.
+ahead and arrives; a glance about 29° to the right and back while he greets, so he is on the left of
+the picture and heard from the left; a walk to arm's length (0.8 m, well outside his 2.5R fade), one
+full turn round him there while selects on him walk listening, thinking, idle and speaking, and a
+walk back to 1.9 m. The head moves in distance and bearing around his centre, each eased on
+overlapping windows so the walk curves rather than stops, with a bob that follows the steps taken,
+and looks at his centre but for that glance.
+
+**The page is opened with `?film`,** which leaves sample mode's frame-rate readout out
+(`app-state.ts`: `showsReadout`, from the `entered` event). Shot on the faked clock below, the readout
+would only ever say "30 fps · build 0.0 ms" under him. Everywhere else sample mode keeps its readout.
 
 **Smooth although SwiftShader is not.** `page.clock` fakes Date, performance and the timers; once the
 hint is up the clock is paused and `requestAnimationFrame` is replaced by a queue the script empties.
@@ -694,9 +702,19 @@ animation frames run on a 16 ms grid, two or three per video frame, which is why
 Placement answers from its worker on real time, and the script waits for it between frames, so he
 arrives on the same frame in every render.
 
-**The soundtrack** (`demo-encode.ts`): sample mode's speaking is the greeting's measurement repeated,
-so `assets/greeting.mp3` is laid under every stretch in which he speaks, on the same 3.14 s beat,
-cut where a select moves him on. No repeat starts in the fade out.
+**The soundtrack** (`demo-encode.ts` for where, `demo-soundtrack.ts` for how it sounds, both pinned
+by their specs): sample mode's speaking is the greeting's measurement repeated, so `assets/greeting.mp3`
+is laid under every stretch in which he speaks, on the same 3.14 s beat, cut where a select moves him
+on (with an 8 ms fade, so the cut does not click). No repeat starts in the fade out. It is heard from
+where he stands, as the app plays it: ffmpeg decodes the recording to mono floats at 48 kHz, and every
+5 ms of the film the camera path's head pose gives where he is relative to the head — the gains
+between are interpolated. Loudness is the app's own distance model (Web Audio's `inverse`, reference
+1 m, rolloff 0.5, from `spatial-voice.ts`: full within a metre, 1/1.3 at 1.6 m); direction is an
+equal-power pan by the sine of his angle off straight ahead, 0.6 wide (about 4 dB between the ears
+30° off), rather than an HRTF, which sounds like a fault on speakers. Straight ahead each ear gets
+exactly the distance gain, so while the head looks at him the film sounds as the app would, and only
+the glance leans him left. The recording, which peaks at −16 dBFS, is raised to peak at −3 dBFS
+within a metre. The two channels are written as a float WAV beside the frames and encoded as Opus.
 
 **What it leans on:** the page's buttons, IWER's device and controller, `window.__jarvis` (phase,
 scene, the hint panel, where he was placed and his radius) and the e2e harness. If a later IWER

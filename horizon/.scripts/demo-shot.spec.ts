@@ -7,6 +7,8 @@ import {
   DEFAULT_SECONDS,
   demoScript,
   FADE_STARTS_AT_RADII,
+  LOOK_AWAY_RADIANS,
+  LOOK_SETTLE_SECONDS,
   lookingAt,
   type Orientation,
   RETREAT_METRES,
@@ -45,6 +47,8 @@ describe('the demo script', () => {
     const script = demoScript();
     expect(script.seconds).toBe(DEFAULT_SECONDS);
     expect(script.hintSeconds).toBeLessThan(script.approach.start);
+    expect(script.glance.start).toBeGreaterThan(script.hintSeconds + LOOK_SETTLE_SECONDS);
+    expect(script.glance.end).toBeLessThan(script.orbit.start);
     expect(script.approach.start).toBeLessThan(script.orbit.start);
     expect(script.orbit.end).toBeLessThan(script.retreat.end);
     expect(script.retreat.end).toBeLessThan(script.seconds - script.fadeOutSeconds);
@@ -150,11 +154,28 @@ describe('the camera path', () => {
     }
   });
 
-  it('looks at his centre once it has settled on him, give or take a head’s drift', () => {
-    for (const seconds of frameTimes(script.seconds, placedAt + 1.5)) {
+  it('looks at his centre once it has settled on him, give or take a head’s drift, but for the glance', () => {
+    const glancing = (seconds: number) => seconds > script.glance.start && seconds < script.glance.end;
+    for (const seconds of frameTimes(script.seconds, placedAt + 1.5).filter((seconds) => !glancing(seconds))) {
       const head = after.headAt(seconds);
       expect(viewDirection(head.orientation).angleTo(towards(head.position, CENTRE))).toBeLessThan(0.03);
     }
+  });
+
+  it('glances away to the right and back while he greets, leaving him on the left of the view', () => {
+    const middle = (script.glance.start + script.glance.end) / 2;
+    const head = after.headAt(middle);
+    const { x, y, z, w } = head.orientation;
+    // His direction in the head's own frame, where +X is to its right and −Z ahead.
+    const seen = towards(head.position, CENTRE).applyQuaternion(new Quaternion(x, y, z, w).invert());
+    expect(seen.x).toBeLessThan(0);
+    expect(Math.atan2(-seen.x, -seen.z)).toBeCloseTo(-LOOK_AWAY_RADIANS, 1);
+    let widest = 0;
+    for (const seconds of frameTimes(script.glance.end, script.glance.start)) {
+      const turned = after.headAt(seconds);
+      widest = Math.max(widest, viewDirection(turned.orientation).angleTo(towards(turned.position, CENTRE)));
+    }
+    expect(widest).toBeLessThan(Math.abs(LOOK_AWAY_RADIANS) + 0.03);
   });
 
   it('points the controller straight at him, and holds none before he is there', () => {

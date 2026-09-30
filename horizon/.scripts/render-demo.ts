@@ -3,8 +3,10 @@
  * arriving, a walk up to him and once round him while he walks his moods, and a step back.
  *
  * It drives the real build in headless Chromium with the browser tests' emulated Quest 3 and
- * living room (`tests/e2e/`), photographs every frame, and encodes them with the greeting under
- * them into a WebM (VP9 and Opus).
+ * living room (`tests/e2e/`), photographs every frame, and encodes them into a WebM (VP9 and Opus)
+ * with the greeting under them, heard from where he stands as the filmed head moves
+ * (`demo-soundtrack.ts`). The page is opened with `?film`, so sample mode leaves out its
+ * frame-rate readout, which would only report the faked clock below.
  *
  * **Why it is smooth although the emulator is not.** SwiftShader draws the room at about a frame a
  * second while he is in it. So the page's clock is Playwright's fake one (`page.clock`: Date,
@@ -40,7 +42,15 @@ import config from '../playwright.config';
 import type { RoomPoint } from '../src/debug-hook';
 import { withSavedSettings } from '../tests/e2e/app-driver';
 import { bundle, keepOffline } from '../tests/e2e/fixtures';
-import { encodeArguments, findFfmpeg, greetingClips, runFfmpeg, type SpeakingSpan } from './demo-encode';
+import {
+  decodeMono,
+  encodeArguments,
+  findFfmpeg,
+  type GreetingClip,
+  greetingClips,
+  runFfmpeg,
+  type SpeakingSpan,
+} from './demo-encode';
 import {
   type CameraPath,
   createCameraPath,
@@ -51,6 +61,15 @@ import {
   type HeadStart,
   type Pose,
 } from './demo-shot';
+import {
+  filmLevel,
+  gainTimeline,
+  heardFrom,
+  type StereoGains,
+  spatialSoundtrack,
+  stereoGains,
+  wavFile,
+} from './demo-soundtrack';
 import { SITE_PREFIX } from './serve-dist';
 
 const HERE = import.meta.dir;
@@ -74,6 +93,9 @@ const PLACEMENT_TIMEOUT_MS = 30_000;
 
 /** How many times a select on him that did not change his mood is tried before the script moves on. */
 const SELECT_ATTEMPTS = 4;
+
+/** The soundtrack's sample rate: Opus's own, so nothing is resampled on the way into the encode. */
+const SOUNDTRACK_SAMPLE_RATE = 48_000;
 
 interface Options {
   out: string;
@@ -306,6 +328,8 @@ interface Render {
   segmentOrigin: { now: number; frame: number };
   /** The scene after every frame, by video time, for laying the greeting under him. */
   scenes: { seconds: number; scene: string | undefined }[];
+  /** Where he was placed, which his voice is heard from; undefined until he is. */
+  speaker: RoomPoint | undefined;
   /** When the first frame was photographed, for the estimate of how long the rest will take. */
   shootingSince: number;
 }
@@ -441,6 +465,7 @@ async function noticePlacement(render: Render, report: FrameReport, seconds: num
   if (!scene?.startsWith('sample:')) return false;
   const { centre, radius } = await debugPlacement(page);
   render.path = createCameraPath(render.script, render.start, { centre, radius, at: seconds });
+  render.speaker = centre;
   console.log(`He was placed at (${centre.x.toFixed(2)}, ${centre.y.toFixed(2)}, ${centre.z.toFixed(2)}).`);
   return true;
 }
@@ -475,6 +500,29 @@ function speakingSpans(scenes: Render['scenes'], seconds: number): SpeakingSpan[
   return spans;
 }
 
+/**
+ * Writes the film's soundtrack to `file`: the greeting at every clip, heard from where he was
+ * placed by the head the camera path moved, so his voice leans the way he is and fades as the
+ * head backs away, as the app's own panner would have it.
+ */
+async function writeSoundtrack(render: Render, ffmpeg: string, clips: GreetingClip[], file: string) {
+  const recording = await decodeMono(ffmpeg, RECORDING, SOUNDTRACK_SAMPLE_RATE);
+  const { speaker } = render;
+  const seconds = render.options.seconds;
+  // He only ever speaks once he has been placed, so an unplaced render has no clips to be heard.
+  const centred: StereoGains = { left: 1, right: 1 };
+  const timeline = gainTimeline(
+    (at) => (speaker === undefined ? centred : stereoGains(heardFrom(render.path.headAt(at), speaker))),
+    seconds,
+  );
+  const track = spatialSoundtrack(recording, clips, timeline, {
+    sampleRate: SOUNDTRACK_SAMPLE_RATE,
+    seconds,
+    level: filmLevel(recording),
+  });
+  await Bun.write(file, wavFile(track));
+}
+
 function prepareFramesDirectory(options: Options): string {
   if (options.frames === undefined) return mkdtempSync(path.join(tmpdir(), 'horizon-demo-'));
   mkdirSync(options.frames, { recursive: true });
@@ -496,7 +544,7 @@ async function openPage(browser: Browser, options: Options, port: number): Promi
   await page.addInitScript({ content: await bundle('xr-harness.ts') });
   await withSavedSettings(page);
   await page.clock.install();
-  await page.goto(`http://localhost:${port}${SITE_PREFIX}`);
+  await page.goto(`http://localhost:${port}${SITE_PREFIX}?film`);
   await page.evaluate(() => window.__xrHarness?.ready);
   await page.evaluate(
     (fovy) => {
@@ -552,6 +600,7 @@ async function main() {
       totalFrames,
       segmentOrigin: { now: 0, frame: 0 },
       scenes: [],
+      speaker: undefined,
       shootingSince: startedAt,
     };
     await shootWaitingRoom(render, cutFrame);
@@ -575,10 +624,12 @@ async function main() {
   console.log(
     `Encoding, with the greeting at ${clips.map((clip) => `${clip.start.toFixed(2)} s`).join(', ') || 'no point'}…`,
   );
+  const soundtrack = path.join(framesDirectory, 'soundtrack.wav');
+  await writeSoundtrack(render, ffmpeg, clips, soundtrack);
   mkdirSync(path.dirname(options.out), { recursive: true });
   await runFfmpeg(
     ffmpeg,
-    encodeArguments(path.join(framesDirectory, 'frame-%05d.png'), RECORDING, options.out, clips, {
+    encodeArguments(path.join(framesDirectory, 'frame-%05d.png'), soundtrack, options.out, {
       seconds: options.seconds,
       framesPerSecond: options.framesPerSecond,
       fadeInSeconds: script.fadeInSeconds,

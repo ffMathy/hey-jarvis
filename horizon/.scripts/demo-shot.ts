@@ -15,6 +15,9 @@ import type { RoomPoint } from '../src/debug-hook';
  *   to the left and back so the hint is seen trailing the gaze;
  * - **3.5 s** the cut to sample mode, from the same pose: he is placed 1.6 m ahead, arrives, and
  *   speaks (sample mode's speaking is the recorded greeting, repeated);
+ * - **5.8–8.4 s** a glance away to the right and back while he greets, so that for a moment he is
+ *   to the left of the view — the one stretch in which his voice, which the soundtrack places where
+ *   he stands (`demo-soundtrack.ts`), is heard from one side;
  * - **7.6–11.8 s** a walk up to arm's length;
  * - **11–27.5 s** one full turn around him at that distance, starting before the walk has quite
  *   ended so the path curves in rather than stopping, while selects on him walk his moods —
@@ -43,6 +46,8 @@ export interface DemoScript {
   seconds: number;
   /** How long the waiting room with its hint is shown before the cut to sample mode. */
   hintSeconds: number;
+  /** The glance away from him and back, before the walk has got going. */
+  glance: TimeWindow;
   approach: TimeWindow;
   orbit: TimeWindow;
   retreat: TimeWindow;
@@ -68,6 +73,7 @@ export function demoScript(seconds = DEFAULT_SECONDS): DemoScript {
   return {
     seconds,
     hintSeconds: at(3.5),
+    glance: window(5.8, 8.4),
     approach: window(7.6, 11.8),
     orbit: window(11, 27.5),
     retreat: window(27, 31.8),
@@ -123,10 +129,25 @@ const PLACEMENT_HIGHEST_METRES = 1.6;
 const PLACEMENT_DISTANCE_METRES = 1.6;
 
 /** How long the gaze takes to settle on his centre once he has been placed, in seconds. */
-const LOOK_SETTLE_SECONDS = 1.2;
+export const LOOK_SETTLE_SECONDS = 1.2;
 
 /** The glance while the room waits: how far to the left the head turns, in radians. */
 const GLANCE_RADIANS = 0.09;
+
+/**
+ * The glance away from him while he greets: how far the head turns, in radians (negative is to the
+ * right, which leaves him on the left of the view).
+ *
+ * About 29°: far enough that his voice is plainly heard from the left, near enough that he stays
+ * well inside the picture's 98° — a look at the room beside him, not a look away from him.
+ */
+export const LOOK_AWAY_RADIANS = -0.5;
+
+/**
+ * How much of the glance's window is spent turning away, and again turning back; the rest is held.
+ * The hold is placed on the second greeting, so its first words are heard from the side.
+ */
+const LOOK_AWAY_TURN_SHARE = 0.3;
 
 /** One step's length, for the walking bob: short, as steps are indoors around something. */
 const STRIDE_METRES = 0.34;
@@ -235,6 +256,24 @@ function breath(seconds: number): number {
   return BREATH_METRES * Math.sin(2 * Math.PI * BREATH_HERTZ * seconds);
 }
 
+/** How far the head has turned away from him at `seconds`, in radians about +Y. */
+function lookAwayAt(script: DemoScript, seconds: number): number {
+  const share = progress(script.glance, seconds);
+  const away = smootherstep(share / LOOK_AWAY_TURN_SHARE) * smootherstep((1 - share) / LOOK_AWAY_TURN_SHARE);
+  return LOOK_AWAY_RADIANS * away;
+}
+
+/** `target`, swung about the vertical through `eye` by `radians`: the same look, turned. */
+function turnedAbout(eye: RoomPoint, target: RoomPoint, radians: number): RoomPoint {
+  if (radians === 0) return target;
+  const cosine = Math.cos(radians);
+  const sine = Math.sin(radians);
+  const alongX = target.x - eye.x;
+  const alongZ = target.z - eye.z;
+  // A turn about +Y by a positive angle takes −Z towards −X: to the left, as yaw does here.
+  return point(eye.x + alongX * cosine + alongZ * sine, target.y, eye.z - alongX * sine + alongZ * cosine);
+}
+
 /**
  * The camera for `script`, starting at `start`, around `placement` once he has been placed.
  *
@@ -268,8 +307,13 @@ export function createCameraPath(script: DemoScript, start: HeadStart, placement
       headAt(seconds) {
         const eye = point(start.position.x, eyeHeight + breath(seconds), start.position.z);
         const sway = drift(seconds);
-        const target = lookAheadAt(seconds, eye);
-        return { position: eye, orientation: lookingAt(eye, point(target.x + sway.x, target.y + sway.y, target.z)) };
+        const ahead = lookAheadAt(seconds, eye);
+        const target = turnedAbout(
+          eye,
+          point(ahead.x + sway.x, ahead.y + sway.y, ahead.z),
+          lookAwayAt(script, seconds),
+        );
+        return { position: eye, orientation: lookingAt(eye, target) };
       },
       handAt: () => undefined,
     };
@@ -323,10 +367,14 @@ export function createCameraPath(script: DemoScript, start: HeadStart, placement
     const sway = drift(seconds);
     const settle = smootherstep((seconds - placedAt) / LOOK_SETTLE_SECONDS);
     const before = lookAheadAt(seconds, base);
-    const target = point(
-      before.x + (centre.x - before.x) * settle + sway.x,
-      before.y + (centre.y - before.y) * settle + sway.y,
-      before.z + (centre.z - before.z) * settle,
+    const target = turnedAbout(
+      base,
+      point(
+        before.x + (centre.x - before.x) * settle + sway.x,
+        before.y + (centre.y - before.y) * settle + sway.y,
+        before.z + (centre.z - before.z) * settle,
+      ),
+      lookAwayAt(script, seconds),
     );
 
     // The sway is sideways to where the head looks, so it is worked out from the look before it is applied.

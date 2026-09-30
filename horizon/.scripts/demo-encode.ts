@@ -3,8 +3,9 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 
 /**
- * Turning the demo's frames into a WebM: finding an ffmpeg that can, laying the greeting under
- * the frames where he says it, and the encode itself.
+ * Turning the demo's frames into a WebM: finding an ffmpeg that can, working out where the
+ * greeting goes under the frames, decoding it for the soundtrack (`demo-soundtrack.ts`), and the
+ * encode itself.
  */
 
 /** One stretch of video in which sample mode had him speaking, in video seconds. */
@@ -61,37 +62,26 @@ function seconds(value: number): string {
 }
 
 /**
- * The filter graph for the encode: the frames faded in and out as `[video]`, and the greeting's
- * clips laid on a silent track as `[audio]`.
+ * The filter graph for the encode: the frames faded in and out as `[video]`, and the soundtrack
+ * faded out with them as `[audio]`.
  *
- * The frames arrive as input 0 and the recording as input 1. Every clip is delayed to its start
- * and padded to the full length before they are mixed: ffmpeg's `amix` divides by the number of
- * inputs still playing, so inputs that ended at different times would change each other's
- * loudness as they dropped out. All the same length, the division is constant and `volume` undoes
- * it exactly — the clips never overlap, so nothing is summed that would clip.
+ * The frames arrive as input 0 and the soundtrack as input 1: a WAV exactly as long as the film,
+ * already mixed and placed (`demo-soundtrack.ts`), so all that is left to do to it is the ending.
  */
-export function filterGraph(clips: readonly GreetingClip[], timing: EncodeTiming): string {
-  const fadeOutStart = timing.seconds - timing.fadeOutSeconds;
+export function filterGraph(timing: EncodeTiming): string {
+  const fadeOutStart = seconds(timing.seconds - timing.fadeOutSeconds);
+  const fadeOut = seconds(timing.fadeOutSeconds);
   const video =
     `[0:v]fade=t=in:st=0:d=${seconds(timing.fadeInSeconds)},` +
-    `fade=t=out:st=${seconds(fadeOutStart)}:d=${seconds(timing.fadeOutSeconds)},format=yuv420p[video]`;
-  const ending = `atrim=duration=${seconds(timing.seconds)},afade=t=out:st=${seconds(fadeOutStart)}:d=${seconds(timing.fadeOutSeconds)}[audio]`;
-  if (clips.length === 0) {
-    return `${video};aevalsrc=0|0:c=stereo:s=48000:d=${seconds(timing.seconds)},${ending}`;
-  }
-  const labels = clips.map((_, index) => `greeting${index}`);
-  const split = `[1:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,asplit=${clips.length}${labels.map((label) => `[${label}]`).join('')}`;
-  const placed = clips.map((clip, index) => {
-    const delay = Math.round(clip.start * 1000);
-    return `[${labels[index]}]atrim=duration=${seconds(clip.duration)},adelay=${delay}|${delay},apad=whole_dur=${seconds(timing.seconds)}[clip${index}]`;
-  });
-  const mix = `${clips.map((_, index) => `[clip${index}]`).join('')}amix=inputs=${clips.length}:dropout_transition=0,volume=${clips.length},${ending}`;
-  return [video, split, ...placed, mix].join(';');
+    `fade=t=out:st=${fadeOutStart}:d=${fadeOut},format=yuv420p[video]`;
+  const audio = `[1:a]atrim=duration=${seconds(timing.seconds)},afade=t=out:st=${fadeOutStart}:d=${fadeOut}[audio]`;
+  return `${video};${audio}`;
 }
 
 /**
  * The ffmpeg arguments that encode `framePattern` (a printf pattern, as ffmpeg's image2 reads it)
- * and `recording` into `output`: VP9 at constant quality and Opus, at `timing.framesPerSecond`.
+ * and `soundtrack` (the WAV `demo-soundtrack.ts` writes) into `output`: VP9 at constant quality and
+ * Opus, at `timing.framesPerSecond`.
  *
  * VP9 in one pass with a quality target rather than a bitrate: the room is mostly still grey and
  * he is small bright detail, which a bitrate spreads badly and a quality target does not. `good`
@@ -99,9 +89,8 @@ export function filterGraph(clips: readonly GreetingClip[], timing: EncodeTiming
  */
 export function encodeArguments(
   framePattern: string,
-  recording: string,
+  soundtrack: string,
   output: string,
-  clips: readonly GreetingClip[],
   timing: EncodeTiming,
 ): string[] {
   return [
@@ -114,9 +103,9 @@ export function encodeArguments(
     '-i',
     framePattern,
     '-i',
-    recording,
+    soundtrack,
     '-filter_complex',
-    filterGraph(clips, timing),
+    filterGraph(timing),
     '-map',
     '[video]',
     '-map',
@@ -143,6 +132,37 @@ export function encodeArguments(
     seconds(timing.seconds),
     output,
   ];
+}
+
+/**
+ * The ffmpeg arguments that decode `recording` to one channel of raw 32-bit float samples at
+ * `sampleRate`, on standard output: a voice from one point in the room has one channel, and the
+ * soundtrack is worked out at the rate the Opus will be encoded at.
+ */
+export function decodeArguments(recording: string, sampleRate: number): string[] {
+  return [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-i',
+    recording,
+    '-ac',
+    '1',
+    '-ar',
+    String(sampleRate),
+    '-f',
+    'f32le',
+    'pipe:1',
+  ];
+}
+
+/** `recording`, decoded by `ffmpeg` to mono samples at `sampleRate` (see {@link decodeArguments}). */
+export async function decodeMono(ffmpeg: string, recording: string, sampleRate: number): Promise<Float32Array> {
+  const run = Bun.spawn([ffmpeg, ...decodeArguments(recording, sampleRate)], { stdout: 'pipe', stderr: 'pipe' });
+  const [bytes, said] = await Promise.all([new Response(run.stdout).arrayBuffer(), new Response(run.stderr).text()]);
+  const code = await run.exited;
+  if (code !== 0) throw new Error(`ffmpeg could not decode ${recording} (exit ${code}):\n${said}`);
+  return new Float32Array(bytes, 0, Math.floor(bytes.byteLength / Float32Array.BYTES_PER_ELEMENT));
 }
 
 /** Whether `ffmpeg` has both encoders the film needs. */
