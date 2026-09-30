@@ -17,7 +17,7 @@ import {
   routingQuestions,
 } from './classifier.js';
 import type { OpenQuestion } from './questions.js';
-import { RESPONSE_STYLES } from './response-styles.js';
+import { RESPONSE_STYLES, type ResponseStyle } from './response-styles.js';
 
 const AGENTS: RoutableAgentSummary[] = [
   { id: 'internetOfThings', description: 'Controls the lights, blinds and devices in the house' },
@@ -36,7 +36,7 @@ const WAITING_QUESTION: OpenQuestion = {
 function answers(overrides: {
   route?: string;
   confidence?: number;
-  style?: string;
+  style?: ResponseStyle;
   answersWaitingQuestion?: number;
 }): RoutingAnswers {
   const route = overrides.route ?? 'internetOfThings';

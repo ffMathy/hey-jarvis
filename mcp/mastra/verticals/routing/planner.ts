@@ -37,8 +37,7 @@ const PLANNER_AGENT_ID = 'routing-planner';
  */
 const PLANNER_MODEL = 'gemini-flash-lite-latest';
 
-export { PLANNER_AGENT_ID };
-export { RESPONSE_STYLES, type ResponseStyle };
+export { PLANNER_AGENT_ID, RESPONSE_STYLES, type ResponseStyle };
 
 /**
  * What the planner emits.

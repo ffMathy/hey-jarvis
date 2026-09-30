@@ -1,7 +1,7 @@
 import type { Classifier, ClassifierAnswers } from '@mastra/core/classifier';
 import { createClassifier } from '../../utils/index.js';
 import type { OpenQuestion } from './questions.js';
-import { RESPONSE_STYLE_DESCRIPTIONS, RESPONSE_STYLES, type ResponseStyle } from './response-styles.js';
+import { RESPONSE_STYLE_DESCRIPTIONS, type ResponseStyle } from './response-styles.js';
 
 /**
  * The fast path in front of the routing planner.
@@ -45,7 +45,13 @@ export interface RoutableAgentSummary {
 
 /** Built per call, because the waiting questions change between requests. */
 export function routingQuestions(agents: RoutableAgentSummary[], openQuestions: OpenQuestion[]) {
-  const agentCriteria = Object.fromEntries(agents.map((agent) => [agent.id, agent.description || null]));
+  // Keyed by whatever the agents are called, so the choice is any string and is checked against
+  // the routable ids when it is read (see `fastRouteFrom`).
+  const routeCriteria: Record<string, string | null> = {
+    ...Object.fromEntries(agents.map((agent) => [agent.id, agent.description || null])),
+    [SEVERAL]: 'More than one agent is needed, or one agent needs another agent to answer first',
+    [NONE]: 'No agent covers this request',
+  };
 
   return {
     route: {
@@ -55,11 +61,7 @@ export function routingQuestions(agents: RoutableAgentSummary[], openQuestions: 
         'exactly as it was said, knowing nothing else. Choose several when it asks for more than one thing that ' +
         'different agents cover, or when carrying it out needs something another agent would first have to look up ' +
         '-- "the weather where I am" needs the location before the weather. Choose none when no agent covers it.',
-      criteria: {
-        ...agentCriteria,
-        [SEVERAL]: 'More than one agent is needed, or one agent needs another agent to answer first',
-        [NONE]: 'No agent covers this request',
-      },
+      criteria: routeCriteria,
     },
     responseStyle: {
       type: 'choice' as const,
@@ -87,10 +89,6 @@ export interface FastRoute {
   responseStyle: ResponseStyle;
 }
 
-function isResponseStyle(value: string): value is ResponseStyle {
-  return (RESPONSE_STYLES as readonly string[]).includes(value);
-}
-
 /**
  * Reads the classifier's answers into a route, or into nothing when the planner should decide.
  *
@@ -113,8 +111,7 @@ export function fastRouteFrom(answers: RoutingAnswers, routableAgentIds: Readonl
     return undefined;
   }
 
-  const style = answers.responseStyle.choice;
-  return { agentId: choice, responseStyle: isResponseStyle(style) ? style : 'conversation' };
+  return { agentId: choice, responseStyle: answers.responseStyle.choice };
 }
 
 let routingClassifier: Classifier | undefined;
