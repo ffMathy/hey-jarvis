@@ -295,8 +295,11 @@ What the session gives the phone is general, and three things:
   read at the tap, and nothing on a screen is drawn from it.
 - **`sendContextualUpdate`**, a note the agent reads without a turn being taken: that this device
   has a camera button, that sir has opened the camera, or that he closed it without a photo.
-- **`sendUserActivity`**, which says sir is still there while he frames a shot. A quiet call is
-  otherwise the agent's to end (see above), and nothing on the phone holds a turn open for him.
+- **`sendUserActivity`**, which says sir is still there while he frames a shot. It holds nothing
+  open: a quiet call is still the agent's to end (see above), and ElevenLabs does not document user
+  activity as holding off either its turn timeout or its silence timeout. What keeps the agent from
+  hanging up on the camera is its own rule, that a photo it is waiting for gets `skip_turn` ("Hanging
+  up when he goes quiet" in `elevenlabs/AGENTS.md`).
 
 The photo goes to the server, never through the session; what goes through it is the message that
 names the photo once it has arrived, or says why it did not, as a user message through `sendText`,

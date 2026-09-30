@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, it } from 'bun:test';
 import { describeMessageOrder } from '../utils/acknowledgement-timing.js';
 import type { ServerMessage } from '../utils/conversation-strategy.js';
 import { assertMcpServerConnected } from '../utils/mcp-connection.js';
-import { isRouteToolName } from '../utils/routing-loop.js';
+import { isRouteToolName, readRoutingLoop } from '../utils/routing-loop.js';
 import { findSpokenToolCalls } from '../utils/spoken-tool-call.js';
 import { TestConversation } from '../utils/test-conversation.js';
 import {
@@ -29,6 +29,10 @@ import {
  *
  * On a device that has said nothing of a camera button — the watch, the Voice speaker, a telephone
  * call — the same announcement is not routed either: sir is told to send the photo from his phone.
+ *
+ * And a camera opened straight after a finished request is waited on. Three seconds into a silence
+ * ElevenLabs asks Jarvis to speak again, and after a finished request he hangs up without a word —
+ * unless he is waiting for a photo, which every statement of that rule makes the exception to.
  *
  * The test stands in for the phone, sending its contextual updates and its message word for word.
  * No photo is really uploaded, so there is no photo1 for the vision agent to find, and whatever the
@@ -78,6 +82,43 @@ const PHOTO_SENT = `I've sent you a photo ${PHOTO_NAME}.`;
 
 /** Sir saying what he wants from a photo before it exists. */
 const RECEIPT_ANNOUNCED = "I'll send you a receipt. What's the total?";
+
+/**
+ * A request answered in full and read-only, so its closing report ends in the instruction to hang up
+ * on the next silence — the one the open camera has to be the exception to.
+ */
+const FINISHED_REQUEST = "What's the weather like right now?";
+
+/** How long that request may take to reach its closing report and be answered. */
+const FINISHED_REQUEST_TIMEOUT_MS = 90000;
+
+/**
+ * How long sir frames the shot before the photo arrives: several of the agent's three-second turn
+ * timeouts, each of which asks Jarvis to speak again.
+ */
+const FRAMING_THE_SHOT_MS = 15000;
+
+/** `end_call`, the system tool that hangs up. */
+function isEndCallToolName(toolName: string): boolean {
+  return toolName.toLowerCase().includes('end_call');
+}
+
+/**
+ * Whether a routed request has been answered in full: its loop reached the closing report, and the
+ * agent has spoken since its last tool call.
+ */
+function answeredInFull(messages: ServerMessage[]): boolean {
+  let lastToolCall = -1;
+  let lastReply = -1;
+  for (const [index, message] of messages.entries()) {
+    if (message.type === 'mcp_tool_call') {
+      lastToolCall = index;
+    } else if (message.type === 'agent_response') {
+      lastReply = index;
+    }
+  }
+  return readRoutingLoop(messages).finished && lastReply > lastToolCall;
+}
 
 /** What each `routePromptWorkflow` call was asked, once per event ElevenLabs reported for it. */
 function routedQueries(messages: ServerMessage[]): string[] {
@@ -220,6 +261,45 @@ describe('Photos From His Phone', () => {
       );
     },
     (CONVERSATION_TIMEOUT_MS + TOOL_CALL_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
+  );
+
+  it(
+    'waits on a camera opened straight after a finished request, rather than hanging up',
+    async () => {
+      await withConversationRetry(
+        () => new TestConversation({ agentId, apiKey, googleApiKey }),
+        async (conversation) => {
+          await conversation.connect();
+          await conversation.sendContextualUpdate(CAMERA_BUTTON_HERE);
+
+          // Not awaited yet: a reply is waited on until the socket has been quiet for a while, and
+          // three seconds into that quiet a finished request is hung up on. Sir taps the camera as
+          // soon as the answer is in, which is when the phone shows the button again.
+          const answered = conversation.sendMessage(FINISHED_REQUEST);
+          await waitForConversation(conversation, answeredInFull, FINISHED_REQUEST_TIMEOUT_MS);
+
+          assertMcpServerConnected(conversation.getMessages());
+          assertConversation(
+            conversation,
+            answeredInFull(conversation.getMessages()),
+            'The request was never answered in full, so there was no finished request to open the camera after.',
+          );
+
+          await conversation.sendContextualUpdate(CAMERA_OPENED);
+          await new Promise((resolve) => setTimeout(resolve, FRAMING_THE_SHOT_MS));
+          await answered;
+
+          const hangUps = conversation.getInvokedSystemToolNames().filter(isEndCallToolName);
+          assertConversation(conversation, hangUps.length === 0, 'The agent hung up while sir had the camera open.');
+
+          // Still there, and still his: the photo he was framing is routed like any other.
+          await conversation.sendMessage(PHOTO_SENT);
+          await assertPhotoRouted(conversation);
+        },
+      );
+    },
+    (FINISHED_REQUEST_TIMEOUT_MS + FRAMING_THE_SHOT_MS + CONVERSATION_TIMEOUT_MS + TOOL_CALL_TIMEOUT_MS) *
+      MAX_CONVERSATION_RETRIES,
   );
 
   it(

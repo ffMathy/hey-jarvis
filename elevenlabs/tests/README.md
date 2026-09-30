@@ -53,8 +53,9 @@ Test utility functions are located in `tests/utils/`:
   reports contradict
 - `spoken-tool-call.ts` - Detects an agent reciting a tool call instead of making one
 - `test-environment.ts` - Brings the MCP server and tunnel up and down around a
-  spec file. Both halves live here because both spec files share the same ports,
-  so the teardown of one has to finish before the setup of the next begins. Also
+  spec file. Both halves live here because every live spec file (agent-prompt,
+  camera, routing-orchestration) shares the same ports, so the teardown of one has
+  to finish before the setup of the next begins. Also
   `withConversationRetry`, which holds a fresh conversation for each attempt
 - `acknowledgement-timing.ts` - Whether the user heard anything before the results,
   and whether he was told twice that he is being attended to
@@ -125,7 +126,10 @@ runs only after a merge to `main`, and the apps' own specs are cached by turbo u
 package changes, so a change to `agent-config.json` alone is never run past them. The spec
 holds it to what the devices assume: every client event is one ElevenLabs sends,
 `mcp_tool_call` — which the apps' thinking phase follows — is among them, and the agent
-declares no client tool, since no device answers one.
+declares no client tool, since no device answers one. It also holds the one exception to
+hanging up after a finished request — a photo sir said he would send, or has opened the camera
+for — to being stated wherever that rule is: in the prompt's **When Sir Is Silent**, and in
+both copies of the `skip_turn` and `end_call` descriptions, which must match each other.
 
 ## The camera eval
 
@@ -135,8 +139,11 @@ agent, so what is tested is what Jarvis routes around the phone's "I've sent you
 photo1)." in both orders sir can go about it. Told first — "I'll send you a receipt. What's the
 total?" — the agent must route nothing until the photo's message is in, then route the question
 naming "(photo photo1)". Sent first, with nothing said, the message alone must be routed at once by
-that name. And where no device has said it has a camera button, as on the watch, the Voice speaker or
-a phone call, the announcement must not be routed at all.
+that name. A camera opened straight after a finished request must be waited on: the request is
+answered in full, the camera's note follows at once, and several three-second turn timeouts later
+the agent must not have called `end_call`, and must still route the photo when its message comes. And
+where no device has said it has a camera button, as on the watch, the Voice speaker or a phone call,
+the announcement must not be routed at all.
 
 What was routed, and when, is asserted off the socket, along with the photo's id never being said
 aloud; the evaluator judges what Jarvis said — sending sir to the camera button, or to his phone, and

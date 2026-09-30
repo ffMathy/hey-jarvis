@@ -222,9 +222,9 @@ descriptions tell him what that means — after a finished request, `end_call` w
 the conversation waits on sir, `skip_turn`. Every finished request — answered, failed, or handed off
 to a notification — also ends with the routing loop's `FINISHED_REQUEST_INSTRUCTIONS`, which says
 the same and forbids ending on a question or an offer, since the line closes while he is still
-answering it. A request still waiting on him never carries it. Nor is an open camera a finished
-request: while the phone says sir is framing a shot, silence gets `skip_turn` (see **Showing Jarvis
-something** below).
+answering it. A request still waiting on him never carries it. The prompt, both descriptions and
+routing's instructions all make the same one exception: a photo Jarvis is waiting for, whose silence
+gets `skip_turn` even straight after a finished request (see **Showing Jarvis something** below).
 
 That setting is agent-wide, so it is the one mechanism on every medium: the apps, the Voice speaker
 and a telephone call alike. `initialWaitTime: 30` keeps it from firing at the start of a session
@@ -277,7 +277,11 @@ a button that is not in front of him.
 total?" — Jarvis routes nothing: there is nothing to look at yet, and a look routed now would read
 whichever photo came last, possibly one from another conversation. He tells sir to go ahead with the
 camera button and waits; when the photo's message arrives, the question goes to `routePromptWorkflow`
-with "(photo photo3)" in it. Sent first, with nothing said, the message alone is routed as "He sent a
+with "(photo photo3)" in it. Anything else asked in the same breath — "…and what's the weather?" — is
+routed at once, on its own, and answering it does not end the wait: what sir wants done with the photo
+goes with the photo. Should the agent route the announcement anyway, routing recognises it
+(`awaitsPhoto` in `planner.ts`) and has Jarvis invite the photo and wait, rather than report a request
+nothing could handle. Sent first, with nothing said, the message alone is routed as "He sent a
 photo without saying what he wants: look at it and say what it shows (photo photo3)". The planner
 puts that photo in `photosToAskAbout`, so routing's closing report has Jarvis say what it shows, then
 ask what sir would like done with it and wait for the answer rather than hang up. That question comes
@@ -287,15 +291,25 @@ photo names it by its id the same way, which is how the planner knows to send it
 agent. The prompt states each of these rules once, in its **Photos** section, and a photo's id joins
 the tool names and argument lists sir must never hear.
 
-**An open camera is sir thinking, not sir gone.** Nothing holds the agent's turn while he frames a
-shot, so the three-second turn timeout asks Jarvis to speak again. The prompt's **When Sir Is Silent**
-answers that with `skip_turn` and never `end_call` while a context update says the camera is open and
-neither the photo nor a word from sir has come since — even straight after a finished request, when
-the silence would otherwise mean he has what he came for. The phone also sends `user_activity` every
-five seconds while the camera is open or the photo is on its way, which is too seldom to hold off a
-three-second turn timeout, and which ElevenLabs does not document as holding off the 30-second
-`silenceEndCallTimeout`; the phone's timers stop while the app is behind the camera besides. So a long
-enough shot can still end the call — and the slot, opened at the tap, outlives it.
+**A photo on its way is sir busy, not sir gone.** Nothing holds the agent's turn while he frames a
+shot, so the three-second turn timeout asks Jarvis to speak again, and after a finished request the
+answer to that is to hang up. So Jarvis waits instead — `skip_turn`, never `end_call` — while he is
+waiting for a photo: sir said he would send one, or a context update says he has opened the camera on
+his phone, and neither the photo nor a word from sir has come since. That holds even straight after a
+finished request, when the silence would otherwise mean he has what he came for.
+
+The exception is written into every place that states the rule it breaks, in the same words: the
+prompt's **When Sir Is Silent**, both copies of the `skip_turn` and `end_call` descriptions in
+`agent-config.json` (under `builtInTools`, which the test agent keeps, and under `tools`), and
+routing's `FINISHED_REQUEST_INSTRUCTIONS`. It was once in the prompt alone, where the three that said
+to hang up outweighed it: routing's above all, since it arrives last and the prompt says to follow it
+literally. An exception stated in fewer places than the rule it breaks is outweighed the same way.
+
+The phone also sends `user_activity` every five seconds while the camera is open or the photo is on its
+way, which is too seldom to hold off a three-second turn timeout, and which ElevenLabs does not document
+as holding off the 30-second `silenceEndCallTimeout`; the phone's timers stop while the app is behind
+the camera besides. So a long enough shot can still end the call — and the slot, opened at the tap,
+outlives it.
 
 **A photo whose message never reached the agent is not lost.** The phone sends that message only into
 the conversation that opened the slot. If that conversation ended first, the photo stays with Mastra
@@ -312,15 +326,18 @@ a result can hold an email summary.
 
 **What checks it.** `tests/specs/agent-config.spec.ts`, on every push: every client event is one
 ElevenLabs sends, `mcp_tool_call` is among them, and the agent declares no client tool, since no
-device answers one. `tests/specs/camera.integration.spec.ts` holds three live conversations with a
-stood-in phone. Told first, the question is routed nowhere until the photo's message is in, and then
-routed naming "(photo photo1)"; sent first, the photo is routed by that name at once; and where no
+device answers one; and the waiting-for-a-photo exception is in the prompt's **When Sir Is Silent**
+and in the `skip_turn` and `end_call` descriptions, whose two copies each must match.
+`tests/specs/camera.integration.spec.ts` holds four live conversations with a stood-in phone. Told
+first, the question is routed nowhere until the photo's message is in, and then routed naming "(photo
+photo1)"; sent first, the photo is routed by that name at once; a camera opened straight after a
+finished request is waited on, with no `end_call`, and the photo that follows is routed; and where no
 device has said it has a camera button, the announcement is not routed at all. No photo is really
-uploaded, so the routed look finds nothing, and the evaluator is told to expect that. The routing
-evals in `mcp/mastra/verticals/routing/workflows.llm-eval.integration.spec.ts` check the planner's
-half: "(photo photo3)" goes to `vision` with the id in its prompt, and "add what is on this receipt to
-my shopping list" reads the photo before `shoppingList` in the same chain. Both need credentials and
-run only under `turbo test:integration`.
+uploaded, so the routed look finds nothing, and the evaluator is told to expect that. The routing evals
+in `mcp/mastra/verticals/routing/workflows.llm-eval.integration.spec.ts` check the planner's half:
+"(photo photo3)" goes to `vision` with the id in its prompt, and "add what is on this receipt to my
+shopping list" reads the photo before `shoppingList` in the same chain. Both need credentials and run
+only under `turbo test:integration`.
 
 **None of this reaches the live agent until a release deploys it.** `bunx turbo deploy` runs in the
 release workflow, and only when a releasable commit type (`feat`, `fix`, `perf`, `refactor`, `docs`)
