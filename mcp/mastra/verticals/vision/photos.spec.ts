@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import {
   claimUploadSlot,
   dismissPhoto,
@@ -19,6 +19,12 @@ import {
 const PHOTO = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
 
 beforeEach(() => {
+  forgetPhotos();
+});
+
+// The store is the process's, and every spec file runs in the same one: a photo left waiting here
+// would be brought up by the next file's routing requests.
+afterEach(() => {
   forgetPhotos();
 });
 

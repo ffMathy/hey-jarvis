@@ -55,6 +55,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // The store is the process's: a photo left waiting would be brought up by another file's requests.
+  forgetPhotos();
   for (const [key, value] of originalEnvironment) {
     if (value === undefined) {
       delete process.env[key];

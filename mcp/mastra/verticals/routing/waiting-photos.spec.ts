@@ -43,6 +43,14 @@ beforeEach(() => {
   forgetWaitingPhotoReminders();
 });
 
+// And after, since the store is the process's and every spec file shares it: a photo these tests
+// leave waiting past its grace was brought up in the next file's routing requests, whose closing
+// report then asked sir about it instead of closing (`coding-interview.spec.ts`, in CI's order).
+afterEach(() => {
+  forgetPhotos();
+  forgetWaitingPhotoReminders();
+});
+
 describe('a photo nobody has looked at yet', () => {
   it('is left alone while the conversation that sent it is still getting round to it', () => {
     keepPhoto(PHOTO, 'image/jpeg', SENT_AT);

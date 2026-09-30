@@ -482,6 +482,8 @@ describe('the photo upload', () => {
   });
 
   afterEach(() => {
+    // The store is the process's: a photo left here would be brought up by another file's requests.
+    forgetPhotos();
     for (const [key, value] of originalEnvironment) {
       if (value === undefined) {
         delete process.env[key];
@@ -533,7 +535,12 @@ describe('the photo upload', () => {
     // it is refused as a slot that does not exist is what says nothing was read.
     const tooLarge = new Uint8Array(MAX_PHOTO_BYTES + 1);
 
-    expect((await putPhoto('Q2hhbmdlIG1lIHBsZWFzZQ', tooLarge)).status).toBe(404);
+    const response = await putPhoto('Q2hhbmdlIG1lIHBsZWFzZQ', tooLarge);
+
+    expect(response.status).toBe(404);
+    // And the connection goes with the body nobody read, rather than having to take it all in
+    // before it could carry the next request.
+    expect(response.headers.get('connection')).toBe('close');
   });
 
   it('refuses a photo larger than a photo can be, even for a live slot', async () => {
@@ -541,9 +548,12 @@ describe('the photo upload', () => {
 
     const response = await putPhoto(uploadToken, new Uint8Array(MAX_PHOTO_BYTES + 1));
 
-    // The body parser's own refusal, forwarded to the error handler with its status.
-    expect(forwardedError).toMatchObject({ status: 413 });
-    expect(response.status).toBe(ERROR_HANDLER_STATUS);
+    // The body parser's own refusal, forwarded to the error handler with its status. Both at once,
+    // so that a failure says which of the route's answers came back instead.
+    expect({ status: response.status, forwarded: forwardedError }).toMatchObject({
+      status: ERROR_HANDLER_STATUS,
+      forwarded: { status: 413 },
+    });
     expect(findPhoto(undefined)).toBeUndefined();
   });
 

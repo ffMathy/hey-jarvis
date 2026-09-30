@@ -197,6 +197,18 @@ function allowAnyOrigin(_request: Request, response: Response, next: NextFunctio
 const PHOTO_UPLOAD_REALM = 'jarvis-photos';
 
 /**
+ * Turns an upload away without reading it, and closes the connection it came on.
+ *
+ * The refusals below answer before a byte of the photo is read, which is their whole point — but
+ * the bytes are still on their way. Kept open, the connection could carry nothing else until the
+ * rest of that body had been taken in, which is the very reading the refusal was there to spare.
+ * Closed, the body goes with it, and whatever is sent next comes on a connection of its own.
+ */
+function refuseUnread(response: Response, status: number, answer: WorkflowApiResponse): void {
+  response.status(status).set('Connection', 'close').json(answer);
+}
+
+/**
  * Turns an upload away before anything else is looked at, unless it carries the photo upload key.
  *
  * **Ahead of the slot, and without touching it.** A slot is spent once it is claimed, so a request
@@ -210,18 +222,13 @@ const PHOTO_UPLOAD_REALM = 'jarvis-photos';
 function requirePhotoUploadKey(request: Request, response: Response, next: NextFunction): void {
   const expectedKey = configuredPhotoUploadKey();
   if (!expectedKey) {
-    response.status(503).json({
-      success: false,
-      message: 'Photo uploads are switched off on this server.',
-    } satisfies WorkflowApiResponse);
+    refuseUnread(response, 503, { success: false, message: 'Photo uploads are switched off on this server.' });
     return;
   }
 
   if (!holdsPhotoUploadKey(request.headers.authorization, expectedKey)) {
-    response
-      .status(401)
-      .set('WWW-Authenticate', `Bearer realm="${PHOTO_UPLOAD_REALM}"`)
-      .json({ success: false, message: 'This upload needs the photo upload key.' } satisfies WorkflowApiResponse);
+    response.set('WWW-Authenticate', `Bearer realm="${PHOTO_UPLOAD_REALM}"`);
+    refuseUnread(response, 401, { success: false, message: 'This upload needs the photo upload key.' });
     return;
   }
 
@@ -240,19 +247,16 @@ function requirePhotoUploadKey(request: Request, response: Response, next: NextF
  */
 function claimSlotBeforeReading(request: Request, response: Response, next: NextFunction): void {
   if (!photoMediaType(request.headers['content-type'])) {
-    response.status(415).json({
+    refuseUnread(response, 415, {
       success: false,
       message: `Send the photo as one of ${PHOTO_MEDIA_TYPES.join(', ')}.`,
-    } satisfies WorkflowApiResponse);
+    });
     return;
   }
 
   const { uploadToken } = request.params;
   if (typeof uploadToken !== 'string' || !claimUploadSlot(uploadToken)) {
-    response.status(404).json({
-      success: false,
-      message: 'This upload link has expired or has been used already.',
-    } satisfies WorkflowApiResponse);
+    refuseUnread(response, 404, { success: false, message: 'This upload link has expired or has been used already.' });
     return;
   }
 
