@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defaultClientConditions, defineConfig } from 'vite';
 
 /**
  * Whether `log` is Vite noting that CanvasKit's loader asks for Node's `fs` and `path`.
@@ -25,6 +25,12 @@ export default defineConfig({
     // the app's copy; two copies of three would be two renderers' worth of state that
     // cannot see each other's objects.
     dedupe: ['livekit-client', 'three'],
+    // onnxruntime-web's wasm entry without its 14 MB wasm inlined into the bundle: with this
+    // condition it imports its glue from the `wasmPaths` the wake worker gives it — the site's
+    // own `vendor/`, where `turbo initialize` copies it — and runs the wasm the worker already
+    // downloaded for its progress bar. Setting `conditions` replaces Vite's defaults, so they
+    // are listed again after it.
+    conditions: ['onnxruntime-web-use-extern-wasm', ...defaultClientConditions],
   },
   worker: {
     // The wake word runs in a module worker, which is what a browser that has WebXR
