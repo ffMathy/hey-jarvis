@@ -68,6 +68,7 @@ describe('PhotoSpanFilter on a real trace', () => {
           inputs.push(JSON.stringify(event.exportedSpan.input ?? null));
         }
       },
+      flush: async () => {},
       shutdown: async () => {},
     };
     const reader = new Agent({
