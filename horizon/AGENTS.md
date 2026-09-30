@@ -704,9 +704,10 @@ the models first.
 - **Slow frames.** SwiftShader draws the room at about eight frames a second while
   he is away and about one and a half while he is there, and his clock moves at
   most a tenth of a second a frame. A session gives up on a token after twenty
-  seconds, so the specs that keep him greeting do their work inside that; a
-  picture takes the emulator seconds, so a panel that is up for six is
-  photographed the moment it appears.
+  seconds, so the specs that keep him greeting do their work inside that. A
+  picture takes the emulator seconds, so a picture of an error panel, which is up
+  for six, counts only if the panel is still up once the picture is back —
+  otherwise the next failure is photographed.
 - **Pictures.** The app specs photograph the view — waiting with the hint,
   arriving, greeting, both error panels and every sample mood — and the hologram
   specs every phase; each is attached to the report, and copied to
