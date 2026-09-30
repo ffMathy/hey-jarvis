@@ -124,6 +124,15 @@ function counters(overrides: Partial<WorkerCounters> = {}): WorkerCounters {
   };
 }
 
+/** A gate the test holds shut, so a call the engine awaits resolves only when the test says. */
+function gate() {
+  let open: () => void = () => undefined;
+  const promise = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { promise, open };
+}
+
 async function flush() {
   for (let turn = 0; turn < 10; turn++) await new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -134,6 +143,9 @@ function scenario(options: { permission?: MicrophonePermission } = {}) {
   const opened: FakeStream[] = [];
   const healths: WakeHealth[] = [];
   let permission: MicrophonePermission = options.permission ?? 'granted';
+  // Held shut by the test to keep a recovery waiting where the real one can wait for seconds.
+  let microphoneGate: Promise<void> | undefined;
+  let permissionGate: Promise<void> | undefined;
   let clock = 1000;
   let tick: (() => void) | undefined;
   const engine = assembleWakeEngine<FakeStream>({
@@ -151,11 +163,15 @@ function scenario(options: { permission?: MicrophonePermission } = {}) {
     },
     async openMicrophone(profile) {
       expect(profile).toBe('processed');
+      await microphoneGate;
       const stream = new FakeStream();
       opened.push(stream);
       return stream;
     },
-    microphonePermission: async () => permission,
+    microphonePermission: async () => {
+      await permissionGate;
+      return permission;
+    },
     now: () => clock,
     setInterval: (callback, milliseconds) => {
       expect(milliseconds).toBe(WATCHDOG_INTERVAL_MILLISECONDS);
@@ -187,6 +203,18 @@ function scenario(options: { permission?: MicrophonePermission } = {}) {
     },
     setPermission(next: MicrophonePermission) {
       permission = next;
+    },
+    /** Keeps every microphone the engine opens from arriving until the returned call. */
+    holdMicrophone() {
+      const held = gate();
+      microphoneGate = held.promise;
+      return held.open;
+    },
+    /** Keeps every permission read from answering until the returned call. */
+    holdPermission() {
+      const held = gate();
+      permissionGate = held.promise;
+      return held.open;
     },
     isWatching() {
       return tick !== undefined;
@@ -612,5 +640,118 @@ describe('stopping and disposing', () => {
     expect(context.worker().terminated).toBe(true);
     expect(context.graph().closed).toBe(true);
     await expect(context.engine.start(new FakeStream())).rejects.toThrow('disposed');
+  });
+
+  it('stops a microphone a recovery opens after stop, instead of keeping it', async () => {
+    const context = await listening();
+    const letMicrophoneThrough = context.holdMicrophone();
+    context.stream.track.end();
+    // The watchdog's recovery is now waiting for getUserMedia, which can take seconds.
+    await context.advance(WATCHDOG_INTERVAL_MILLISECONDS);
+    const listensBefore = context
+      .worker()
+      .types()
+      .filter((type) => type === 'listen').length;
+    context.engine.stop();
+    letMicrophoneThrough();
+    await flush();
+    expect(context.opened).toHaveLength(1);
+    expect(context.opened[0].track.stopped).toBe(true);
+    expect(context.graph().streams.at(-1)).toBeUndefined();
+    expect(
+      context
+        .worker()
+        .types()
+        .filter((type) => type === 'listen'),
+    ).toHaveLength(listensBefore);
+    expect(context.engine.health).toMatchObject({ state: 'ready', problem: WAKE_PROBLEMS.notStarted });
+  });
+
+  it('opens no microphone for a recovery that stop overtook while it read the permission', async () => {
+    const context = await listening();
+    const answerPermission = context.holdPermission();
+    const rebuilding = context.engine.rebuild();
+    await flush();
+    context.engine.stop();
+    answerPermission();
+    await rebuilding;
+    await flush();
+    expect(context.opened).toHaveLength(0);
+    expect(context.graphs).toHaveLength(1);
+    expect(context.engine.health).toMatchObject({ state: 'ready', problem: WAKE_PROBLEMS.notStarted });
+  });
+
+  it('makes no audio graph and opens no microphone for a recovery that dispose overtook', async () => {
+    const context = await listening();
+    const answerPermission = context.holdPermission();
+    context.stream.track.end();
+    await context.advance(WATCHDOG_INTERVAL_MILLISECONDS);
+    context.engine.dispose();
+    answerPermission();
+    await flush();
+    expect(context.opened).toHaveLength(0);
+    expect(context.graphs).toHaveLength(1);
+    expect(context.graph().closed).toBe(true);
+  });
+
+  it('lets a new start recover at once, while a recovery from before it is still waiting', async () => {
+    const context = await listening();
+    const letMicrophoneThrough = context.holdMicrophone();
+    context.stream.track.end();
+    await context.advance(WATCHDOG_INTERVAL_MILLISECONDS);
+    context.engine.stop();
+    const fresh = new FakeStream();
+    await context.engine.start(fresh);
+    fresh.track.end();
+    await context.advance(WATCHDOG_INTERVAL_MILLISECONDS);
+    letMicrophoneThrough();
+    await flush();
+    // One microphone for the old recovery, stopped as it arrived; one for the new, listened to.
+    expect(context.opened).toHaveLength(2);
+    expect(context.opened.filter((stream) => stream.track.stopped)).toHaveLength(1);
+    const kept = context.opened.find((stream) => !stream.track.stopped);
+    expect(context.graph().streams.at(-1)).toBe(kept);
+  });
+
+  it('forgets the last room’s failed recovery when it starts again', async () => {
+    const context = await listening();
+    context.graph().resumable = false;
+    context.graph().setState('interrupted');
+    await context.advance(WATCHDOG_INTERVAL_MILLISECONDS);
+    expect(context.engine.health).toMatchObject({ state: 'broken', needsGesture: true });
+    context.engine.stop();
+
+    // Long enough later for another attempt to be due, the next Enter tap: a gesture, so the
+    // context resumes, and a fresh stream.
+    await context.advance(2 * FIRST_RECOVERY_DELAY_MILLISECONDS);
+    context.graph().resumable = true;
+    const portsBefore = context.graph().ports.length;
+    await context.engine.start(new FakeStream());
+    expect(context.engine.health).toMatchObject({
+      state: 'ready',
+      problem: WAKE_PROBLEMS.starting,
+      needsGesture: false,
+    });
+    await context.advance(WATCHDOG_INTERVAL_MILLISECONDS);
+    expect(context.healths.at(-1)?.state).not.toBe('broken');
+    expect(context.opened).toHaveLength(0);
+    expect(context.graph().ports).toHaveLength(portsBefore + 1);
+  });
+
+  it('counts the recoveries in a row again from a new start, so it does not rebuild the graph', async () => {
+    const context = await listening({ permission: 'prompt' });
+    context.stream.track.end();
+    await context.advance(WATCHDOG_INTERVAL_MILLISECONDS);
+    await context.advance(FIRST_RECOVERY_DELAY_MILLISECONDS);
+    // Two failed attempts: the next in a row would close the context and build a new one.
+    expect(context.graphs).toHaveLength(1);
+    context.engine.stop();
+
+    const fresh = new FakeStream();
+    await context.engine.start(fresh);
+    fresh.track.end();
+    await context.advance(2 * FIRST_RECOVERY_DELAY_MILLISECONDS);
+    expect(context.graphs).toHaveLength(1);
+    expect(context.graph().closed).toBe(false);
   });
 });

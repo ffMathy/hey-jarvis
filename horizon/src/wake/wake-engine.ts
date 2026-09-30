@@ -118,6 +118,17 @@ export class GestureNeededError extends Error {
   }
 }
 
+/**
+ * A recovery that `start`, `stop` or `dispose` overtook while it waited: the listening it was
+ * for has ended, so it gives up quietly instead of acting on it or recording a verdict about it.
+ */
+class RecoveryOvertakenError extends Error {
+  constructor() {
+    super('The wake engine was stopped or started again during a recovery.');
+    this.name = 'RecoveryOvertakenError';
+  }
+}
+
 function describe(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
@@ -175,6 +186,12 @@ export function assembleWakeEngine<Stream extends WakeStream>(
   let armed = false;
   let recovery: { running: boolean; failure?: { problem: string; needsGesture: boolean } } = { running: false };
   let recovering: Promise<void> | undefined;
+  /**
+   * Bumped by every `start`, `stop` and `dispose`. A recovery notes it before its first await and
+   * checks it after each one, because the permission read, the resume and getUserMedia can each
+   * take seconds, and whatever it opens after the listening ended would never be stopped.
+   */
+  let listeningSession = 0;
   let lastRecoveryAt = Number.NEGATIVE_INFINITY;
   let recoveriesInARow = 0;
   let recoveries = 0;
@@ -389,6 +406,19 @@ export function assembleWakeEngine<Stream extends WakeStream>(
     watchTracks(next, true);
   }
 
+  /**
+   * Starts a new session of listening, or of not listening: a recovery still running gives up at
+   * its next await, and what the last session's recoveries found — a failure that needed a pinch,
+   * how many attempts there were in a row — is forgotten, since it was about another stream.
+   */
+  function beginListeningSession() {
+    listeningSession++;
+    recovering = undefined;
+    recovery = { running: false };
+    recoveriesInARow = 0;
+    lastRecoveryAt = Number.NEGATIVE_INFINITY;
+  }
+
   function createGraph() {
     graph?.close();
     const created = dependencies.createAudioGraph();
@@ -417,6 +447,7 @@ export function assembleWakeEngine<Stream extends WakeStream>(
     // counts as allowed by the user while the gesture that called this is still running.
     const current = graph === undefined || graph.state === 'closed' || graph.failed ? createGraph() : graph;
     if (current.state !== 'running') current.resume().catch(() => undefined);
+    beginListeningSession();
     useStream(next, false);
     listening = true;
     connecting = true;
@@ -432,6 +463,7 @@ export function assembleWakeEngine<Stream extends WakeStream>(
   }
 
   function stop() {
+    beginListeningSession();
     listening = false;
     graph?.listen(undefined);
     worker?.post({ type: 'unlisten' });
@@ -472,33 +504,62 @@ export function assembleWakeEngine<Stream extends WakeStream>(
     return { target: current, fresh: false };
   }
 
+  /** Whether `start`, `stop` or `dispose` has run since a recovery noted `session`. */
+  function overtaken(session: number) {
+    return disposed || session !== listeningSession;
+  }
+
+  function giveUpIfOvertaken(session: number) {
+    if (overtaken(session)) throw new RecoveryOvertakenError();
+  }
+
+  /** Gets the recovery's context running, or throws that it takes a gesture to. */
+  async function runGraph(target: WakeAudioGraph<Stream>, session: number) {
+    await target.ready;
+    giveUpIfOvertaken(session);
+    if (target.state !== 'running') await resumeWithin(target);
+    giveUpIfOvertaken(session);
+    if (target.state !== 'running') throw new GestureNeededError();
+  }
+
+  /** Opens the microphone again and makes it the engine's own stream. */
+  async function reopenMicrophone(session: number) {
+    const reopened = await dependencies.openMicrophone(dependencies.profile);
+    if (overtaken(session)) {
+      // Nobody else would ever stop a capture that arrives after the engine was told to stop,
+      // and it would keep the headset's microphone on while the user is back on the page.
+      for (const track of reopened.getTracks()) track.stop();
+      throw new RecoveryOvertakenError();
+    }
+    useStream(reopened, true);
+  }
+
   /**
    * Gets audio flowing again, in the plan's order: the permission, then the context, then the
    * microphone. `userInitiated` is whether this runs inside a gesture, where a prompt may show.
    */
-  async function recoverAudio(userInitiated: boolean) {
+  async function recoverAudio(userInitiated: boolean, session: number) {
     const permission = await dependencies.microphonePermission();
+    giveUpIfOvertaken(session);
     if (permission === 'denied') throw new Error(MICROPHONE_BLOCKED);
 
     const { target, fresh } = recoveryGraph();
     // A context that was running when this began was not the problem, so the capture was: a
     // track that ended, or a stream that stalled or went to exact zeros.
     const captureSuspect = !fresh && target.state === 'running';
-    await target.ready;
-    if (target.state !== 'running') await resumeWithin(target);
-    if (target.state !== 'running') throw new GestureNeededError();
+    await runGraph(target, session);
 
     const track = stream?.getAudioTracks()[0];
     if (track === undefined || track.readyState === 'ended' || captureSuspect) {
       // Opening the microphone without a gesture is fine once it is granted; a prompt is not,
       // and inside the room it could not even be shown.
       if (permission === 'prompt' && !userInitiated) throw new GestureNeededError();
-      useStream(await dependencies.openMicrophone(dependencies.profile), true);
+      await reopenMicrophone(session);
     }
     connect();
   }
 
-  async function runRecovery(userInitiated: boolean) {
+  async function runRecovery(userInitiated: boolean, session: number) {
     lastRecoveryAt = dependencies.now();
     recoveriesInARow++;
     recoveries++;
@@ -507,9 +568,13 @@ export function assembleWakeEngine<Stream extends WakeStream>(
     try {
       if (worker === undefined || models.phase === 'failed' || (listening && workerSilent())) restartWorker();
       await load();
-      if (listening) await recoverAudio(userInitiated);
+      giveUpIfOvertaken(session);
+      if (listening) await recoverAudio(userInitiated, session);
       recovery = { running: false };
     } catch (error) {
+      // An overtaken recovery's outcome is about listening that has ended; the session that
+      // overtook it has already reset what recovering means, and nobody is waiting on it.
+      if (overtaken(session)) return;
       recovery = {
         running: false,
         failure: { problem: describe(error), needsGesture: error instanceof GestureNeededError },
@@ -521,10 +586,13 @@ export function assembleWakeEngine<Stream extends WakeStream>(
   }
 
   function recover(userInitiated: boolean) {
-    recovering ??= runRecovery(userInitiated).finally(() => {
-      recovering = undefined;
+    if (recovering !== undefined) return recovering;
+    const running = runRecovery(userInitiated, listeningSession).finally(() => {
+      // A new session may have forgotten this recovery and begun another one meanwhile.
+      if (recovering === running) recovering = undefined;
     });
-    return recovering;
+    recovering = running;
+    return running;
   }
 
   return {
@@ -578,6 +646,7 @@ export function assembleWakeEngine<Stream extends WakeStream>(
     },
     dispose() {
       disposed = true;
+      beginListeningSession();
       stopWatchdog();
       listening = false;
       useStream(undefined, false);
