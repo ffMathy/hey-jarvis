@@ -8,6 +8,8 @@ import {
   type EntityRegistry,
   entityLabel,
   forgetAnchor,
+  hasAnchor,
+  knownEntity,
   MAX_ENTITIES_PER_MARK,
   MAX_ENTITY_ID_LENGTH,
   MAX_ENTITY_NAME_LENGTH,
@@ -22,6 +24,7 @@ import {
   serialiseEntityRegistry,
   unplaceEntity,
   unusedAnchors,
+  usedAnchors,
   WRITE_DELAY_MILLISECONDS,
 } from './registry';
 
@@ -192,6 +195,7 @@ describe('placing', () => {
       placedAt: 2,
     });
     expect(unusedAnchors(moved)).toEqual([ANCHOR]);
+    expect(usedAnchors(moved)).toEqual([OTHER_ANCHOR]);
   });
 
   it('unplaces back into the drawer, and leaves an unplaced one as it was', () => {
@@ -299,6 +303,83 @@ describe('parseEntityRegistry', () => {
         placement: { anchor: ANCHOR, offset: [1, 2, 3], placedAt: 3 },
       },
     });
+  });
+});
+
+describe('ids that are also the names of what every object has', () => {
+  // Model output may name anything; these are the keys a plain object would answer for itself.
+  const RESERVED = ['__proto__', 'constructor', 'toString', 'hasOwnProperty'];
+
+  it('records each as an entity of its own, named only as it was named', () => {
+    const registry = recordEntities(
+      EMPTY_REGISTRY,
+      RESERVED.map((id) => ({ id })),
+      5,
+    );
+    expect(Object.keys(registry.entities).sort()).toEqual([...RESERVED].sort());
+    for (const id of RESERVED) {
+      expect(knownEntity(registry, id)).toEqual({ id, firstMarkedAt: 5, lastMarkedAt: 5, marks: 1 });
+    }
+    expect(drawerEntries(registry).map((entry) => entry.label)).toEqual([...RESERVED].sort());
+    // Nothing leaks into the registry's own shape.
+    expect(Object.getPrototypeOf(registry.entities)).toBe(Object.prototype);
+    expect(Object.hasOwn(registry, 'marks')).toBe(false);
+  });
+
+  it('counts a second mark of one on the first', () => {
+    const once = recordEntities(EMPTY_REGISTRY, [{ id: '__proto__', name: 'Odd' }], 5);
+    const twice = recordEntities(once, [{ id: '__proto__' }], 6);
+    expect(knownEntity(twice, '__proto__')).toEqual({
+      id: '__proto__',
+      name: 'Odd',
+      firstMarkedAt: 5,
+      lastMarkedAt: 6,
+      marks: 2,
+    });
+  });
+
+  it('knows none of them before they are marked', () => {
+    const registry = withKitchen();
+    for (const id of RESERVED) {
+      expect(knownEntity(registry, id)).toBeUndefined();
+      expect(placementStateOf(registry, id)).toBeUndefined();
+      expect(placeEntity(registry, id, ANCHOR, [0, 0, 0], 1)).toBe(registry);
+      expect(unplaceEntity(registry, id)).toBe(registry);
+    }
+  });
+
+  it('places, moves and unplaces one, and forgets an anchor by such a handle', () => {
+    const marked = recordEntities(EMPTY_REGISTRY, [{ id: 'constructor' }], 5);
+    const placed = placeEntity(marked, 'constructor', '__proto__', [1, 2, 3], 6);
+    expect(placementStateOf(placed, 'constructor')).toBe('placed');
+    expect(hasAnchor(placed, '__proto__')).toBe(true);
+    expect(hasAnchor(placed, 'toString')).toBe(false);
+    expect(usedAnchors(placed)).toEqual(['__proto__']);
+    expect(placementStateOf(forgetAnchor(placed, '__proto__'), 'constructor')).toBe('lost');
+    expect(forgetAnchor(placed, 'toString')).toBe(placed);
+    expect(placementStateOf(unplaceEntity(placed, 'constructor'), 'constructor')).toBe('unplaced');
+  });
+
+  it('writes them out and reads them back', () => {
+    const marked = recordEntities(EMPTY_REGISTRY, [{ id: '__proto__', name: 'Odd' }, { id: 'constructor' }], 5);
+    const registry = placeEntity(marked, '__proto__', ANCHOR, [1, 2, 3], 6);
+    const text = serialiseEntityRegistry(registry);
+    expect(JSON.parse(text).entities).toHaveProperty(['__proto__', 'name'], 'Odd');
+    const again = parseEntityRegistry(text);
+    expect(serialiseEntityRegistry(again)).toBe(text);
+    expect(knownEntity(again, '__proto__')?.placement?.anchor).toBe(ANCHOR);
+    expect(knownEntity(again, 'constructor')?.name).toBeUndefined();
+  });
+
+  it('reads a stored handle or id of __proto__ as an entry, not as the prototype', () => {
+    const stored =
+      '{"version":1,"anchors":{"__proto__":{"createdAt":1}},' +
+      '"entities":{"__proto__":{"id":"__proto__","firstMarkedAt":1,"lastMarkedAt":2,"marks":1}}}';
+    const registry = parseEntityRegistry(stored);
+    expect(Object.keys(registry.anchors)).toEqual(['__proto__']);
+    expect(Object.keys(registry.entities)).toEqual(['__proto__']);
+    expect(Object.getPrototypeOf(registry.entities)).toBe(Object.prototype);
+    expect(knownEntity(registry, '__proto__')?.marks).toBe(1);
   });
 });
 

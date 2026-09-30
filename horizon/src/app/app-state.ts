@@ -1,4 +1,5 @@
 import { nextSampleMode, readingMilliseconds, SAMPLE_MODE_NAMES, SAMPLE_MODES, type SampleMode } from 'hologram';
+import { NOT_FOUND_AFTER_SECONDS } from '../entities/room-anchors';
 import type { Ray } from '../xr/ray';
 
 /**
@@ -16,13 +17,18 @@ import type { Ray } from '../xr/ray';
  * `leaving` while he shrinks away. Sample mode has a scene of its own, `sample`, walking the moods.
  * `editing` is sir placing the things Jarvis works on in the room (`src/entities/`): entered from
  * `waiting` with A or X or the button on the back of the wrist, or straight from the 2D page's
- * "Place entities", and left with B or Y, the same button again, or the drawer's Done.
+ * "Place entities", and left with B or Y, the same button again, or the drawer's Done. A room
+ * opened only to place things closes when it is left — but `keeping` first, for as long as a drop
+ * just let go is still waiting on the new anchor it will be kept on: closing the session then
+ * would lose the placement sir has just made, without a word.
  *
  * **Placing things never summons him or hangs up.** Taking a token is a pinch or a trigger pull,
  * and both are selects: while editing every select is the placing's own, and the state machine
  * ignores it. He can only be summoned from `waiting` and editing is entered only from there, so a
  * grab held for a second can never be read as the hold that hangs up. The wake word is disarmed
- * for as long as it lasts.
+ * for as long as it lasts. A select still held when editing ends — the trigger or pinch that
+ * pressed Done on its way down — is spent then, so its release in the waiting room that follows is
+ * not read as a summon.
  *
  * **Dismissing him** is voice first (the agent's own `end_call`), and otherwise a select held for
  * at least 0.8 s or the B/Y button — never a short select, because hands pinch by accident while
@@ -71,7 +77,9 @@ export type Scene =
   | { kind: 'failed'; problem: string; until: number }
   | { kind: 'leaving'; afterwards: 'wait' | 'exit' }
   | { kind: 'sample'; mode: SampleMode }
-  | { kind: 'editing' };
+  | { kind: 'editing' }
+  /** A room opened only to place things, closing once its last drop is kept — or at `until`. */
+  | { kind: 'keeping'; until: number };
 
 /**
  * What the wake engine last said about itself.
@@ -122,6 +130,20 @@ export const EDITING_GUIDE_LINES: readonly string[] = [
   'Done, B or Y when you have finished',
 ];
 
+/** What the same line says while a room opened only to place things waits to keep its last drop. */
+export const KEEPING_LINES: readonly string[] = ['Keeping what you placed…'];
+
+/**
+ * The longest a room opened only to place things stays open for a drop still being kept, in
+ * milliseconds.
+ *
+ * A drop waiting on a new anchor settles by itself within NOT_FOUND_AFTER_SECONDS of being let go
+ * — on the anchor, on the nearest other one, or refused — and Done comes after the drop, so this is
+ * never cut short; the second more is for the frame that settles it. The limit is for a room whose
+ * frames have stopped, where nothing would settle at all.
+ */
+export const KEEPING_LONGEST_MS = (NOT_FOUND_AFTER_SECONDS + 1) * 1000;
+
 export interface AppModel {
   scene: Scene;
   /** Fixed for one XR session; meaningless outside. */
@@ -137,6 +159,11 @@ export interface AppModel {
    * armed when it has, so it never hears him.
    */
   voiceQuiet: boolean;
+  /**
+   * Whether a drop sir let go is still waiting on the new anchor it will be kept on: a room opened
+   * only to place things does not close under it.
+   */
+  dropsSettling: boolean;
   /** Whether he has been summoned in this session: the hint only teaches, it does not nag. */
   summonedOnce: boolean;
   /** Whether this headset shows its system keyboard to an immersive page. */
@@ -193,6 +220,8 @@ export type AppEvent =
   | { type: 'wake-health'; readiness: WakeReadiness }
   /** Whether his voice has now been silent for {@link QUIET_BEFORE_ARMING_SECONDS}, sent when that changes. */
   | { type: 'voice-quiet'; quiet: boolean }
+  /** Whether a drop is still waiting on its new anchor, sent when that changes. */
+  | { type: 'drops-settling'; settling: boolean }
   | { type: 'keyboard-closed' }
   | { type: 'typed'; text: string };
 
@@ -232,6 +261,8 @@ export type AppEffect =
   | { type: 'hide-panel'; panel: PanelName }
   | { type: 'set-frame-rate'; target: 'lowest' | 'highest' }
   | { type: 'editing'; active: boolean }
+  /** Every select under way is spent: neither its hold nor its release is reported. */
+  | { type: 'consume-held-selects' }
   | { type: 'start-sample'; mode: SampleMode }
   | { type: 'cycle-sample'; mode: SampleMode }
   | { type: 'stop-sample' }
@@ -259,6 +290,7 @@ export function initialAppModel(wake: WakeReadiness = { kind: 'absent' }): AppMo
     wake,
     checkingWake: false,
     voiceQuiet: true,
+    dropsSettling: false,
     summonedOnce: false,
     canType: false,
     keyboardOpen: false,
@@ -320,10 +352,24 @@ function leaveToExit(model: AppModel): Transition {
 /**
  * Placing things is over: back to waiting for the wake word, or — in a room opened only to place
  * things, which has nothing to wait for — back to the page, at once, since there is nobody to fade.
+ *
+ * Whatever select is still held was the placing's: Done is pressed as a trigger or a pinch goes
+ * down, so it is spent here, before its release reaches a waiting room that would summon him.
+ *
+ * A room opened only to place things is kept open — `keeping` — while a drop is still waiting on
+ * its new anchor, since the frames that settle it stop with the session. A room with a
+ * conversation stays open anyway.
  */
-function leaveEditing(model: AppModel): Transition {
-  if (model.mode === 'placement') return go(model, { scene: { kind: 'outside' } }, { type: 'exit-xr' });
-  return go(model, { scene: { kind: 'waiting' } });
+function leaveEditing(model: AppModel, now: number): Transition {
+  const spend: AppEffect = { type: 'consume-held-selects' };
+  if (model.mode !== 'placement') return go(model, { scene: { kind: 'waiting' } }, spend);
+  if (model.dropsSettling) return go(model, { scene: { kind: 'keeping', until: now + KEEPING_LONGEST_MS } }, spend);
+  return closePlacement(model, spend);
+}
+
+/** The room opened only to place things closes: nothing to wait for, and nobody to fade. */
+function closePlacement(model: AppModel, ...commands: AppEffect[]): Transition {
+  return go(model, { scene: { kind: 'outside' } }, ...commands, { type: 'exit-xr' });
 }
 
 function onEntered(model: AppModel, event: Extract<AppEvent, { type: 'entered' }>): Transition {
@@ -403,7 +449,7 @@ function onSelect(model: AppModel, event: SelectEvent, now: number): Transition 
   }
 }
 
-function onDismissButton(model: AppModel): Transition {
+function onDismissButton(model: AppModel, now: number): Transition {
   if (!attending(model)) return stay(model);
   switch (model.scene.kind) {
     case 'present':
@@ -413,22 +459,28 @@ function onDismissButton(model: AppModel): Transition {
     case 'sample':
       return leaveToExit(model);
     case 'editing':
-      return leaveEditing(model);
+      return leaveEditing(model, now);
     default:
       return stay(model);
   }
 }
 
-function onEditButton(model: AppModel): Transition {
+function onEditButton(model: AppModel, now: number): Transition {
   if (!attending(model)) return stay(model);
   // Only from waiting: never over a conversation, a failure or sample mode's moods.
   if (model.scene.kind === 'waiting') return go(model, { scene: { kind: 'editing' } });
-  if (model.scene.kind === 'editing') return leaveEditing(model);
+  if (model.scene.kind === 'editing') return leaveEditing(model, now);
   return stay(model);
 }
 
-function onEditDone(model: AppModel): Transition {
-  return model.scene.kind === 'editing' && attending(model) ? leaveEditing(model) : stay(model);
+function onEditDone(model: AppModel, now: number): Transition {
+  return model.scene.kind === 'editing' && attending(model) ? leaveEditing(model, now) : stay(model);
+}
+
+function onDropsSettling(model: AppModel, settling: boolean): Transition {
+  if (settling === model.dropsSettling) return stay(model);
+  if (!settling && model.scene.kind === 'keeping') return closePlacement({ ...model, dropsSettling: false });
+  return go(model, { dropsSettling: settling });
 }
 
 function onPlaced(model: AppModel): Transition {
@@ -511,6 +563,7 @@ function blurredTooLong(model: AppModel, now: number): boolean {
 
 function onTick(model: AppModel, now: number): Transition {
   if (model.scene.kind === 'failed' && now >= model.scene.until) return leaveToWait(model);
+  if (model.scene.kind === 'keeping' && now >= model.scene.until) return closePlacement(model);
   if (model.toast !== undefined && now >= model.toast.until) return go(model, { toast: undefined });
   if (blurredTooLong(model, now)) {
     const changes: Partial<AppModel> = { blurredSince: undefined };
@@ -563,11 +616,13 @@ function handle(model: AppModel, event: AppEvent, now: number): Transition {
     case 'select':
       return onSelect(model, event, now);
     case 'dismiss-button':
-      return onDismissButton(model);
+      return onDismissButton(model, now);
     case 'edit-button':
-      return onEditButton(model);
+      return onEditButton(model, now);
     case 'edit-done':
-      return onEditDone(model);
+      return onEditDone(model, now);
+    case 'drops-settling':
+      return onDropsSettling(model, event.settling);
     case 'placed':
       return onPlaced(model);
     case 'session-phase':
@@ -646,7 +701,8 @@ function statusOf(model: AppModel): readonly string[] | null {
 }
 
 function guideOf(model: AppModel): readonly string[] | null {
-  return model.scene.kind === 'editing' ? EDITING_GUIDE_LINES : null;
+  if (model.scene.kind === 'editing') return EDITING_GUIDE_LINES;
+  return model.scene.kind === 'keeping' ? KEEPING_LINES : null;
 }
 
 function keyboardOf(model: AppModel): readonly string[] | null {
@@ -736,11 +792,17 @@ export function viewChanges(before: AppView, after: AppView): AppEffect[] {
  * Commands the event gave come first, then whatever the change in what the room shows implies —
  * panels, the hologram's visibility, the frame rate and whether the wake word is armed — worked out
  * by comparing the view before and after, so no handler has to remember them.
+ *
+ * Ending the session comes after all of it. What the room stops showing may still have something to
+ * give back to the session — placing things deletes the persistent anchors no placement uses as it
+ * closes — and a session that has already ended may refuse.
  */
 export function reduceApp(model: AppModel, event: AppEvent, now: number): AppStep {
   const transition = tidy(handle(model, event, now));
+  const ending = transition.commands.filter((effect) => effect.type === 'exit-xr');
+  const commands = transition.commands.filter((effect) => effect.type !== 'exit-xr');
   return {
     model: transition.model,
-    effects: [...transition.commands, ...viewChanges(viewOf(model), viewOf(transition.model))],
+    effects: [...commands, ...viewChanges(viewOf(model), viewOf(transition.model)), ...ending],
   };
 }

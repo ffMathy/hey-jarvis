@@ -216,11 +216,16 @@ after. The product rules pinned in `app-state.spec.ts`:
 - **Placing things (`editing`):** entered from `waiting` only — A/X, the wrist
   button — or straight from the page's **Place entities**, and left with B/Y, the
   same button again or the drawer's Done: back to waiting, or, in a room opened
-  only to place things, back to the page at once. Every select while editing is
+  only to place things, back to the page at once — unless a drop is still waiting
+  on its new anchor, when the room stays open (`keeping`, with "Keeping what you
+  placed…" on the guide line) until the drop settles, or 11 s at most, since the
+  frames that settle it stop with the session. Every select while editing is
   the placing's own, so a pinch never summons him, and since editing never opens
   over a call, a grab held for a second can never be read as the hold that hangs
-  up. The wake word is disarmed, the frame rate is the highest, and a guide line
-  says what to do.
+  up. A select still held as it closes — the trigger or pinch that pressed Done
+  on its way down — is spent (`consumeHeld` in `xr/select-gesture.ts`), so letting
+  it go in the waiting room does not summon him either. The wake word is
+  disarmed, the frame rate is the highest, and a guide line says what to do.
 
 **`app/room-runtime.ts` is where the parts meet.** It opens the stage, queues
 events so each step sees the model the previous one left, and carries out the
@@ -660,13 +665,22 @@ src/ui3d/entity-tokens.ts       the orbs, entity-labels.ts their names, pointing
 
 **The registry** (`jarvis.horizon.entities`, version 1) keeps every entity ever marked, at most
 300, and never forgets a placed one; every `markAffected` report is recorded whatever the room is
-doing. It is written half a second after a change, and at once when placing things ends, when the
+doing. An id is any string the model sent, `__proto__` and `constructor` included, so entries are
+read only as the object's own (`knownEntity`, `hasAnchor`) and defined, never assigned, even when
+parsed. It is written half a second after a change, and at once when placing things ends, when the
 room closes and on `pagehide`. A placement is an offset in the space of one of at most four
 persistent anchors, because `local-floor` starts somewhere new every session: a drop reuses a
 located anchor within 2.5 m, otherwise makes a new one while the budget lasts, and falls back to
-the nearest. A handle the headset no longer lists makes its entities "lost", and the drawer asks for
-them again; an anchor no placement uses is given back when placing things ends. Until its anchor is
-located, an entity is not shown and cannot be pointed at: it may be in another room.
+the nearest. A drop on a new anchor is kept at no offset from it, since the anchor was made at the
+spot; a recentre before that anchor is found (the stage's reset epoch, passed in every frame)
+leaves the drop's point naming a spot that has moved, so it is then kept on its own anchor or not
+at all, never on another by that point. A handle the headset no longer lists makes its entities
+"lost", and the drawer asks for them again. An anchor no placement uses is given back when placing
+things ends — before the session is ended, since an ended one may refuse (`reduceApp` puts
+`exit-xr` after every other effect) — and forgotten only once the headset has let go of it; one it
+refused stays in the registry and is given back at the start of the next session, which restores
+only the anchors placements use. Until its anchor is located, an entity is not shown and cannot be
+pointed at: it may be in another room.
 
 **The drawer** opens world-locked where sir faces, 0.42 m ahead and 0.3 m below the eyes, tilted to
 face them like a lectern: hands have to reach it, and a board that followed the gaze would move away
@@ -678,9 +692,11 @@ stands in the room. **Taking one** is a pinch (joint distance, 1.5 cm on and 3 c
 anything out of reach, a pinch or a trigger pull along the ray, after which it rides the ray to
 where the depth hit test meets a surface (the thumbstick pushes it out or pulls it in) until the
 next pinch or pull drops it. Let go in the room, it is dropped on the room anchors and written to
-the registry; let go on the drawer, it goes back in. Tokens are drawn in the accent, sir's colour,
-through walls, with names over the carried one and every placed one; no hand meshes, since
-passthrough shows the real hands (and three's hand models load from a CDN).
+the registry; let go on the drawer, it goes back in. A drop still waiting on a new anchor that is
+taken back, or dropped again, gives that anchor back — at once, or as soon as the headset hands out
+its handle (`RoomAnchors.cancel`) — since no placement would ever name it. Tokens are drawn in the
+accent, sir's colour, through walls, with names over the carried one and every placed one; no hand
+meshes, since passthrough shows the real hands (and three's hand models load from a CDN).
 
 **The wrist button**, for hands without a controller's A or X, stands off the back of a wrist
 raised as if to read a watch (the back towards the eyes within 40°, 0.15–0.7 m from them), and is
@@ -700,11 +716,11 @@ ElevenLabs prompt, the evals' copy of these sentences and the MCP routing workfl
 text, and fails if the device context, the pointing update or the `(pointing at "<name>", id <id>)`
 form they teach drift apart.
 
-**The corona** (`hologram3d/corona.ts`, drawn in his palette on his thinking scan's rhythm, never
-under 1.5° across) lights round a placed entity for at least 2.5 s after it is marked, is held while
-he is thinking for up to 25 s after the last mark, and fades over his leave time, or at once when
-the conversation ends. Sample mode's thinking mood lights every placed entity: the corona without a
-call, and a beat for the demo.
+**The corona** (`hologram3d/corona.ts`, drawn in his palette on his thinking scan's rhythm, its
+radius never under 1.5°, so never under 3° across) lights round a placed entity for at least 2.5 s
+after it is marked, is held while he is thinking for up to 25 s after the last mark, and fades over
+his leave time, or at once when the conversation ends. Sample mode's thinking mood lights every
+placed entity: the corona without a call, and a beat for the demo.
 
 **What the tests see:** `window.__jarvis.entities` — what is known, placed (with each anchor and
 where it is now), lit and pointed at, the context that would be sent, the drawer's slots and buttons
@@ -1019,15 +1035,18 @@ the models first.
   comes from (route, tier, reason, the probe, the setting, how the greeting is
   heard, and where the listener and the panner were last put), and the entities
   (see "Entities placed in the room").
-- **Placing things.** `app-entities.spec.ts` walks the whole feature in four
+- **Placing things.** `app-entities.spec.ts` walks the whole feature in five
   visits sharing one browser's `localStorage`, where both the registry and the
   emulator's persistent anchors live: **Place entities** and a controller's grip,
   Done; a new session opened with `?origin` moved and turned, where the entity must
   be found at the same spot of the room — the emulator's `local-floor` is its
   global space, so without a moved origin a position kept in `local-floor` would
   come back right for the wrong reason; a controller's ray and a pointing finger;
-  A, a pinch, B; the wrist button; and sample mode's thinking lighting a corona
-  round each placed entity. `entities-driver.ts` holds the emulated head, hands and
+  A, a pinch, B; the wrist button; Done pulled with the trigger in a room with a
+  conversation, held and let go without summoning him; sample mode's thinking
+  lighting a corona round each placed entity; and **Place entities** again, with a
+  drop far from every anchor and Done in the same frame, kept before the room
+  closes. `entities-driver.ts` holds the emulated head, hands and
   controllers, converts between the emulator's space and the room's, and measures
   where a hand pinches or a controller grips from the app's own report rather than
   copying the emulator's poses. `corona.spec.ts` photographs and measures the corona

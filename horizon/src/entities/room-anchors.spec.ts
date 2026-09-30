@@ -43,14 +43,18 @@ class FakeAnchor implements PersistentAnchorLike<string> {
 /** A session with the handles it lists, restoring each when the test says so. */
 class FakeSession implements PersistentAnchorSession<string> {
   readonly restoring = new Map<string, { resolve: (anchor: FakeAnchor) => void; reject: () => void }>();
+  /** Every handle it was asked to delete, whether it did or not. */
   readonly deleted: string[] = [];
+  /** The handles it will not delete. */
+  readonly refused = new Set<string>();
   constructor(readonly persistentAnchors: string[]) {}
   restorePersistentAnchor = (uuid: string) =>
     new Promise<PersistentAnchorLike<string>>((resolve, reject) => {
       this.restoring.set(uuid, { resolve, reject: () => reject(new Error('InvalidStateError')) });
     });
-  deletePersistentAnchor = async (uuid: string) => {
+  deletePersistentAnchor?: (uuid: string) => Promise<void> = async (uuid: string) => {
     this.deleted.push(uuid);
+    if (this.refused.has(uuid)) throw new Error('InvalidStateError');
   };
 }
 
@@ -94,7 +98,7 @@ async function restored(uuids: string[], poses: Float32Array[]) {
   const session = new FakeSession(uuids);
   const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
   const registry = registryWith(uuids);
-  expect(anchors.restore(registry, 0)).toEqual([]);
+  expect(anchors.restore(uuids, 0)).toEqual([]);
   const frame = new FakeFrame();
   uuids.forEach((uuid, index) => {
     session.restoring.get(uuid)?.resolve(new FakeAnchor(`space-${uuid}`));
@@ -102,7 +106,7 @@ async function restored(uuids: string[], poses: Float32Array[]) {
     if (pose !== undefined) frame.poses.set(`space-${uuid}`, pose);
   });
   await settle();
-  anchors.update(frame, 'local-floor', 0);
+  anchors.update(frame, 'local-floor', 0, 0);
   return { session, anchors, registry, frame };
 }
 
@@ -116,7 +120,7 @@ describe('restoring', () => {
   it('restores the handles the headset lists, and gives back the ones it does not', async () => {
     const session = new FakeSession([A]);
     const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
-    expect(anchors.restore(registryWith([A, B]), 0)).toEqual([B]);
+    expect(anchors.restore([A, B], 0)).toEqual([B]);
     expect([...session.restoring.keys()]).toEqual([A]);
     expect(anchors.status(0).anchors).toEqual({ [A]: 'restoring', [B]: 'missing' });
   });
@@ -124,24 +128,24 @@ describe('restoring', () => {
   it('follows a restored anchor from unlocated to located and back', async () => {
     const session = new FakeSession([A]);
     const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
-    anchors.restore(registryWith([A]), 0);
+    anchors.restore([A], 0);
     session.restoring.get(A)?.resolve(new FakeAnchor('space-a'));
     await settle();
     const frame = new FakeFrame();
-    anchors.update(frame, 'local-floor', 1);
+    anchors.update(frame, 'local-floor', 1, 0);
     expect(anchors.status(1).anchors[A]).toBe('unlocated');
     frame.poses.set('space-a', poseFromQuaternion({ x: 1, y: 0, z: -2 }, LEVEL));
-    anchors.update(frame, 'local-floor', 2);
+    anchors.update(frame, 'local-floor', 2, 0);
     expect(anchors.status(2).anchors[A]).toBe('located');
     frame.poses.delete('space-a');
-    anchors.update(frame, 'local-floor', 3);
+    anchors.update(frame, 'local-floor', 3, 0);
     expect(anchors.status(3).anchors[A]).toBe('unlocated');
   });
 
   it('says so when the headset will not restore one', async () => {
     const session = new FakeSession([A]);
     const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
-    anchors.restore(registryWith([A]), 0);
+    anchors.restore([A], 0);
     session.restoring.get(A)?.reject();
     await settle();
     expect(anchors.status(0).anchors[A]).toBe('failed');
@@ -149,14 +153,14 @@ describe('restoring', () => {
 
   it('forgets nothing on a session with no persistent anchors, which may only lack the feature', () => {
     const anchors = createRoomAnchors<string, Vector3Like>({}, (position) => ({ ...position }));
-    expect(anchors.restore(registryWith([A]), 0)).toEqual([]);
+    expect(anchors.restore([A], 0)).toEqual([]);
     expect(anchors.status(0).anchors).toEqual({ [A]: 'unsupported' });
   });
 
   it(`counts an anchor never located in ${NOT_FOUND_AFTER_SECONDS} s as not found in this room`, async () => {
     const session = new FakeSession([A]);
     const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
-    anchors.restore(registryWith([A]), 100);
+    anchors.restore([A], 100);
     expect(anchors.status(100 + NOT_FOUND_AFTER_SECONDS - 1).notFound).toEqual([]);
     expect(anchors.status(100 + NOT_FOUND_AFTER_SECONDS).notFound).toEqual([A]);
   });
@@ -164,14 +168,14 @@ describe('restoring', () => {
   it('never counts an anchor located once as not found', async () => {
     const { anchors, frame } = await restored([A], [poseFromQuaternion({ x: 0, y: 0, z: 0 }, LEVEL)]);
     frame.poses.clear();
-    anchors.update(frame, 'local-floor', 30);
+    anchors.update(frame, 'local-floor', 30, 0);
     expect(anchors.status(30).notFound).toEqual([]);
   });
 
   it('gives back an anchor released while it was being restored', async () => {
     const session = new FakeSession([A]);
     const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
-    anchors.restore(registryWith([A]), 0);
+    anchors.restore([A], 0);
     anchors.release([A]);
     const anchor = new FakeAnchor('space-a');
     session.restoring.get(A)?.resolve(anchor);
@@ -219,7 +223,7 @@ describe('dropping near an anchor', () => {
     const { anchors, frame } = await restored([A], [poseFromQuaternion({ x: 0, y: 0, z: 0 }, LEVEL)]);
     expect(anchors.positionOf({ anchor: B, offset: [0, 0, 0], placedAt: 0 })).toBeUndefined();
     frame.poses.clear();
-    anchors.update(frame, 'local-floor', 1);
+    anchors.update(frame, 'local-floor', 1, 0);
     expect(anchors.positionOf({ anchor: A, offset: [0, 0, 0], placedAt: 0 })).toBeUndefined();
   });
 });
@@ -245,13 +249,13 @@ describe('dropping far from every anchor', () => {
     const anchor = new FakeAnchor('space-new');
     frame.created[0]?.resolve(anchor);
     await settle();
-    expect(anchors.update(frame, 'local-floor', 6)).toEqual([]);
+    expect(anchors.update(frame, 'local-floor', 6, 0)).toEqual([]);
     anchor.handle?.resolve(B);
     await settle();
     // Handed out but not yet located: still waiting.
-    expect(anchors.update(frame, 'local-floor', 6)).toEqual([]);
+    expect(anchors.update(frame, 'local-floor', 6, 0)).toEqual([]);
     frame.poses.set('space-new', poseFromQuaternion(point, LEVEL));
-    const settled = anchors.update(frame, 'local-floor', 7);
+    const settled = anchors.update(frame, 'local-floor', 7, 0);
     expect(settled).toHaveLength(1);
     const [placed] = settled;
     if (placed?.kind !== 'placed') throw new Error('Expected a placement.');
@@ -269,7 +273,7 @@ describe('dropping far from every anchor', () => {
     anchor.handle?.reject();
     await settle();
     expect(anchor.deleted).toBe(true);
-    const [placed] = anchors.update(frame, 'local-floor', 6);
+    const [placed] = anchors.update(frame, 'local-floor', 6, 0);
     if (placed?.kind !== 'placed') throw new Error('Expected a placement.');
     expect(placed.anchor).toBe(A);
     expectPoint({ x: placed.offset[0], y: placed.offset[1], z: placed.offset[2] }, point);
@@ -282,14 +286,14 @@ describe('dropping far from every anchor', () => {
     frame.created[0]?.resolve(anchor);
     await settle();
     expect(anchor.deleted).toBe(true);
-    expect(anchors.update(frame, 'local-floor', 6)[0]).toMatchObject({ kind: 'placed', anchor: A });
+    expect(anchors.update(frame, 'local-floor', 6, 0)[0]).toMatchObject({ kind: 'placed', anchor: A });
   });
 
   it('falls back when the spot cannot be anchored', async () => {
     const { anchors, frame } = await farDrop();
     frame.created[0]?.reject();
     await settle();
-    expect(anchors.update(frame, 'local-floor', 6)[0]).toMatchObject({ kind: 'placed', anchor: A });
+    expect(anchors.update(frame, 'local-floor', 6, 0)[0]).toMatchObject({ kind: 'placed', anchor: A });
   });
 
   it(`falls back when the new anchor is not located within ${NOT_FOUND_AFTER_SECONDS} s, and gives it back`, async () => {
@@ -299,8 +303,8 @@ describe('dropping far from every anchor', () => {
     await settle();
     anchor.handle?.resolve(B);
     await settle();
-    expect(anchors.update(frame, 'local-floor', 5 + NOT_FOUND_AFTER_SECONDS - 1)).toEqual([]);
-    expect(anchors.update(frame, 'local-floor', 5 + NOT_FOUND_AFTER_SECONDS)[0]).toMatchObject({
+    expect(anchors.update(frame, 'local-floor', 5 + NOT_FOUND_AFTER_SECONDS - 1, 0)).toEqual([]);
+    expect(anchors.update(frame, 'local-floor', 5 + NOT_FOUND_AFTER_SECONDS, 0)[0]).toMatchObject({
       kind: 'placed',
       anchor: A,
     });
@@ -323,7 +327,7 @@ describe('dropping far from every anchor', () => {
       0,
     );
     expect(result.kind).toBe('pending');
-    const [settled] = anchors.update(frame, 'local-floor', 0);
+    const [settled] = anchors.update(frame, 'local-floor', 0, 0);
     expect(settled).toMatchObject({ kind: 'failed', id: 'inbox:work' });
   });
 
@@ -338,6 +342,131 @@ describe('dropping far from every anchor', () => {
     await settle();
     expect(session.deleted).toEqual([B]);
     expect(anchor.deleted).toBe(true);
+  });
+
+  it('gives back the new anchor of a drop replaced after its handle came, before it was located', async () => {
+    const { anchors, frame, session, registry } = await farDrop();
+    const anchor = new FakeAnchor('space-new');
+    frame.created[0]?.resolve(anchor);
+    await settle();
+    anchor.handle?.resolve(B);
+    await settle();
+    expect(anchors.status(6).anchors[B]).toBe('unlocated');
+    anchors.drop(frame, 'local-floor', 'light.kitchen', { x: 0.2, y: 0.5, z: 0.3 }, registry, 6);
+    await settle();
+    expect(session.deleted).toEqual([B]);
+    expect(anchor.deleted).toBe(true);
+    expect(anchors.status(6).anchors[B]).toBeUndefined();
+  });
+});
+
+describe('a recentre while a drop waits on its new anchor', () => {
+  /** A far drop at epoch 0 whose new anchor `B` has its handle, and whose room has since been recentred. */
+  async function recentredFarDrop() {
+    const setup = await restored([A], [poseFromQuaternion({ x: 0, y: 0, z: 0 }, LEVEL)]);
+    const point = { x: 0, y: 2.2, z: -4 };
+    setup.anchors.drop(setup.frame, 'local-floor', 'light.kitchen', point, setup.registry, 5);
+    const anchor = new FakeAnchor('space-new');
+    return { ...setup, point, anchor };
+  }
+
+  it('keeps it on its own new anchor at no offset, wherever the recentre moved that anchor', async () => {
+    const { anchors, frame, anchor } = await recentredFarDrop();
+    frame.created[0]?.resolve(anchor);
+    await settle();
+    anchor.handle?.resolve(B);
+    await settle();
+    // The same spot of the room, read in the recentred space: turned a quarter and moved.
+    frame.poses.set('space-new', poseFromQuaternion({ x: 3, y: 2.2, z: 1 }, QUARTER_TURN));
+    const [placed] = anchors.update(frame, 'local-floor', 6, 1);
+    expect(placed).toEqual({ kind: 'placed', id: 'light.kitchen', anchor: B, offset: [0, 0, 0] });
+  });
+
+  it('refuses to put it on another anchor by a point the recentre has moved', async () => {
+    const { anchors, frame } = await recentredFarDrop();
+    frame.created[0]?.reject();
+    await settle();
+    const [settled] = anchors.update(frame, 'local-floor', 6, 1);
+    expect(settled).toMatchObject({ kind: 'failed', id: 'light.kitchen' });
+  });
+
+  it('refuses it too when its new anchor is never found, and gives that anchor back', async () => {
+    const { anchors, frame, anchor, session } = await recentredFarDrop();
+    frame.created[0]?.resolve(anchor);
+    await settle();
+    anchor.handle?.resolve(B);
+    await settle();
+    const [settled] = anchors.update(frame, 'local-floor', 5 + NOT_FOUND_AFTER_SECONDS, 1);
+    expect(settled).toMatchObject({ kind: 'failed', id: 'light.kitchen' });
+    expect(session.deleted).toEqual([B]);
+  });
+
+  it('still falls back on the nearest anchor when there was no recentre', async () => {
+    const { anchors, frame, point } = await recentredFarDrop();
+    frame.created[0]?.reject();
+    await settle();
+    const [placed] = anchors.update(frame, 'local-floor', 6, 0);
+    if (placed?.kind !== 'placed') throw new Error('Expected a placement.');
+    expect(placed.anchor).toBe(A);
+    expectPoint({ x: placed.offset[0], y: placed.offset[1], z: placed.offset[2] }, point);
+  });
+
+  it('stops drawing it where it was dropped, which is somewhere else now', async () => {
+    const { anchors, frame, point } = await recentredFarDrop();
+    anchors.update(frame, 'local-floor', 5.5, 0);
+    expect(anchors.pendingDrops()).toEqual([{ id: 'light.kitchen', position: point }]);
+    anchors.update(frame, 'local-floor', 6, 1);
+    expect(anchors.pendingDrops()).toEqual([]);
+    expect(anchors.status(6).pending).toBe(1);
+  });
+});
+
+describe('taking back a drop still waiting on its anchor', () => {
+  async function farDrop() {
+    const setup = await restored([A], [poseFromQuaternion({ x: 0, y: 0, z: 0 }, LEVEL)]);
+    setup.anchors.drop(setup.frame, 'local-floor', 'light.kitchen', { x: 0, y: 2.2, z: -4 }, setup.registry, 5);
+    return setup;
+  }
+
+  it('forgets the drop, and gives its anchor back as soon as the headset hands out the handle', async () => {
+    const { anchors, frame, session } = await farDrop();
+    anchors.cancel('light.kitchen');
+    expect(anchors.pendingDrops()).toEqual([]);
+    expect(anchors.status(5).pending).toBe(0);
+    const anchor = new FakeAnchor('space-new');
+    frame.created[0]?.resolve(anchor);
+    await settle();
+    anchor.handle?.resolve(B);
+    await settle();
+    expect(session.deleted).toEqual([B]);
+    expect(anchor.deleted).toBe(true);
+    expect(anchors.status(6).anchors[B]).toBeUndefined();
+    expect(anchors.update(frame, 'local-floor', 6, 0)).toEqual([]);
+  });
+
+  it('gives its anchor back at once when the handle has already come', async () => {
+    const { anchors, frame, session } = await farDrop();
+    const anchor = new FakeAnchor('space-new');
+    frame.created[0]?.resolve(anchor);
+    await settle();
+    anchor.handle?.resolve(B);
+    await settle();
+    anchors.cancel('light.kitchen');
+    await settle();
+    expect(session.deleted).toEqual([B]);
+    expect(anchor.deleted).toBe(true);
+    // Located after all, it settles nothing: nobody is waiting for it.
+    frame.poses.set('space-new', poseFromQuaternion({ x: 0, y: 2.2, z: -4 }, LEVEL));
+    expect(anchors.update(frame, 'local-floor', 6, 0)).toEqual([]);
+    expect(anchors.status(6).anchors[B]).toBeUndefined();
+  });
+
+  it('leaves every other drop, and a drop never made, alone', async () => {
+    const { anchors, frame, registry } = await farDrop();
+    anchors.drop(frame, 'local-floor', 'inbox:work', { x: 0, y: 2.2, z: 4 }, registry, 5);
+    anchors.cancel('light.kitchen');
+    anchors.cancel('calendar:family');
+    expect(anchors.pendingDrops().map((drop) => drop.id)).toEqual(['inbox:work']);
   });
 });
 
@@ -372,9 +501,9 @@ describe('the anchor budget', () => {
     const session = new FakeSession([]);
     const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
     const registry = registryWith(uuids);
-    expect(anchors.restore(registry, 0)).toEqual(uuids);
+    expect(anchors.restore(uuids, 0)).toEqual(uuids);
     const frame = new FakeFrame();
-    anchors.update(frame, 'local-floor', 0);
+    anchors.update(frame, 'local-floor', 0, 0);
     expect(anchors.drop(frame, 'local-floor', 'light.kitchen', { x: 0, y: 0, z: 0 }, registry, 1).kind).toBe('pending');
   });
 });
@@ -388,10 +517,34 @@ describe("WebXR's own types", () => {
 describe('release', () => {
   it('gives back the persistent handle and stops following the anchor', async () => {
     const { anchors, session, frame } = await restored([A], [poseFromQuaternion({ x: 0, y: 0, z: 0 }, LEVEL)]);
-    anchors.release([A]);
+    const released = anchors.release([A]);
+    // Asked at once, while the session that is being closed is still live to be asked.
     expect(session.deleted).toEqual([A]);
-    anchors.update(frame, 'local-floor', 1);
+    expect(await released).toEqual([A]);
+    anchors.update(frame, 'local-floor', 1, 0);
     expect(anchors.positionOf({ anchor: A, offset: [0, 0, 0], placedAt: 0 })).toBeUndefined();
     expect(anchors.status(1).anchors).toEqual({});
+  });
+
+  it('says which handles the headset let go of, leaving out one it refused, so that one is kept to try again', async () => {
+    const { anchors, session } = await restored([A, B], []);
+    session.refused.add(B);
+    expect(await anchors.release([A, B])).toEqual([A]);
+    expect(session.deleted).toEqual([A, B]);
+  });
+
+  it('counts a handle the headset refuses because it no longer lists it as given back', async () => {
+    const session = new FakeSession([A]);
+    session.refused.add(B);
+    const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
+    expect(await anchors.release([B])).toEqual([B]);
+    expect(session.deleted).toEqual([B]);
+  });
+
+  it('gives back nothing on a session that cannot delete a handle, which a later one can', async () => {
+    const session = new FakeSession([A]);
+    session.deletePersistentAnchor = undefined;
+    const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
+    expect(await anchors.release([A])).toEqual([]);
   });
 });

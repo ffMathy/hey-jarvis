@@ -214,6 +214,8 @@ interface Room {
   lastReadiness: WakeReadiness | undefined;
   /** Whether his voice was quiet when the state machine was last told, which it starts out assuming. */
   lastQuiet: boolean;
+  /** Whether a drop was still settling when the state machine was last told; it starts out with none. */
+  lastSettling: boolean;
   queue: AppEvent[];
   dispatching: boolean;
   /** Set by `return-to-page`: the room is let go of once the step carrying it is done. */
@@ -266,6 +268,7 @@ function startRoom(
     lastReadout: 0,
     lastReadiness: undefined,
     lastQuiet: true,
+    lastSettling: false,
     queue: [],
     dispatching: false,
     returning: false,
@@ -480,6 +483,8 @@ function carryOutEffect(room: Room, effect: AppEffect) {
       return room.stage.setFrameRate(effect.target);
     case 'editing':
       return room.entities.setEditing(effect.active);
+    case 'consume-held-selects':
+      return room.input.consumeHeld();
     case 'start-sample':
     case 'cycle-sample':
       return sample.setMode(effect.mode);
@@ -594,6 +599,7 @@ function updateEntities(room: Room, tick: XrFrameTick) {
   const outcome = room.entities.update({
     frame: tick.frame,
     space: tick.referenceSpace,
+    epoch: tick.epoch,
     eye: tick.centreEye,
     time: tick.time / 1000,
     deltaSeconds: tick.deltaSeconds,
@@ -604,6 +610,11 @@ function updateEntities(room: Room, tick: XrFrameTick) {
     pretendWorking: scene.kind === 'sample' && scene.mode === 'thinking',
   });
   if (outcome.context !== undefined) room.conversation.sendContextualUpdate(outcome.context, POINTING_CONTEXT_ID);
+  // Before Done, which this very frame may also have pressed with the drop that is still settling.
+  if (outcome.settling !== room.lastSettling) {
+    room.lastSettling = outcome.settling;
+    dispatch(room, { type: 'drops-settling', settling: outcome.settling });
+  }
   if (outcome.editButton) dispatch(room, { type: 'edit-button' });
   if (outcome.done) dispatch(room, { type: 'edit-done' });
 }

@@ -30,6 +30,11 @@ export interface XrInput {
   onDismissButton(listener: (source: XRInputSource) => void): () => void;
   /** A or X went down: they open placing things in the room, and close it again. */
   onEditButton(listener: (source: XRInputSource) => void): () => void;
+  /**
+   * Spends every select under way, so neither its release nor the hold it would become is reported:
+   * the press has already done what it was for (`select-gesture.ts`).
+   */
+  consumeHeld(): void;
   dispose(): void;
 }
 
@@ -108,6 +113,9 @@ export function createXrInput(
     onEditButton(listener) {
       editListeners.add(listener);
       return () => editListeners.delete(listener);
+    },
+    consumeHeld() {
+      gestures.consumeHeld(seconds());
     },
     dispose() {
       session.removeEventListener('selectstart', onSelectStart);

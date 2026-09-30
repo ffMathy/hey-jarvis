@@ -47,12 +47,15 @@ import {
   type EntityRegistry,
   entityLabel,
   forgetAnchor,
+  hasAnchor,
+  knownEntity,
   placedEntities,
   placeEntity,
   placementStateOf,
   recordEntities,
   unplaceEntity,
   unusedAnchors,
+  usedAnchors,
 } from '../entities/registry';
 import { createRoomAnchors, type DropResult } from '../entities/room-anchors';
 import { createCoronas } from '../hologram3d/corona';
@@ -107,6 +110,8 @@ import { type CentreEye, pointAhead } from '../xr/viewer-pose';
 export interface EntitiesFrame {
   frame: XRFrame;
   space: XRReferenceSpace;
+  /** How many times `space` has been reset (recentred): a point from an earlier epoch has moved. */
+  epoch: number;
   eye: CentreEye;
   /** Seconds on the XR frame's clock. */
   time: number;
@@ -133,6 +138,11 @@ export interface EntitiesOutcome {
   editButton: boolean;
   /** The drawer's Done was pressed. */
   done: boolean;
+  /**
+   * Whether a drop is still waiting on the new anchor it will be kept on — which a room opened only
+   * to place things stays open for, since it settles in a later frame.
+   */
+  settling: boolean;
 }
 
 export interface RoomEntities {
@@ -227,7 +237,7 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
   let drawnCoronas: { id: string; level: number; position: Vector3Like }[] = [];
 
   function labelOf(id: string): string {
-    const entity = store.registry.entities[id];
+    const entity = knownEntity(store.registry, id);
     return entity === undefined ? id : entityLabel(entity);
   }
 
@@ -237,6 +247,15 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
 
   function forgetAnchors(uuids: readonly string[]) {
     if (uuids.length > 0) store.update((registry) => uuids.reduce<EntityRegistry>(forgetAnchor, registry));
+  }
+
+  /**
+   * Gives `uuids`' persistent handles back to the headset, and forgets each one only once the
+   * headset has let go of it: one it refused stays in the registry, to be given back next session,
+   * rather than using one of the origin's eight with nothing left that knows its handle.
+   */
+  function releaseAnchors(uuids: readonly string[]) {
+    if (uuids.length > 0) void anchors.release(uuids).then(forgetAnchors);
   }
 
   /** Writes down what became of a drop: on its anchor, waiting for one, or not kept. */
@@ -258,12 +277,26 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
   function settleAnchors(frame: EntitiesFrame) {
     if (!restored) {
       restored = true;
-      forgetAnchors(anchors.restore(store.registry, time));
+      forgetAnchors(anchors.restore(usedAnchors(store.registry), time));
+      // Left over from a session that ended before the headset let go of them, or refused to.
+      releaseAnchors(unusedAnchors(store.registry));
     }
-    for (const settled of anchors.update(frame.frame, frame.space, time)) {
-      // Taken back into the drawer, or dropped again, while its anchor was being made.
-      if (awaitingAnchor.has(settled.id)) keep(settled);
+    let kept = false;
+    for (const settled of anchors.update(frame.frame, frame.space, time, frame.epoch)) {
+      if (awaitingAnchor.has(settled.id)) {
+        keep(settled);
+        kept = true;
+        continue;
+      }
+      // Nobody waits for it any more, so an anchor no placement names — the one made for this drop —
+      // is given back rather than left holding one of the origin's eight with nothing to find it by.
+      if (settled.kind === 'placed' && !hasAnchor(store.registry, settled.anchor)) {
+        releaseAnchors([settled.anchor]);
+      }
     }
+    // Kept after placing things ended, which Done may do while a drop settles: moving an entity onto
+    // its new anchor may have left its old one unused, after the ending gave back what it could see.
+    if (kept && !editing) releaseAnchors(unusedAnchors(store.registry));
   }
 
   /** Where each placed entity is this frame: on its located anchor, or where it waits for one. */
@@ -355,7 +388,9 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
     if (event.kind === 'placed') {
       keep(anchors.drop(frame.frame, frame.space, event.id, event.position, store.registry, time));
     } else if (event.kind === 'unplaced') {
+      // Back in the drawer before its anchor was made: the drop, and the anchor on its way, are let go.
       awaitingAnchor.delete(event.id);
+      anchors.cancel(event.id);
       if (placementStateOf(store.registry, event.id) === 'unplaced') return;
       store.update((registry) => unplaceEntity(registry, event.id));
       say(`${labelOf(event.id)} is back in the drawer.`);
@@ -427,7 +462,7 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
 
   /** The entity `id` as the conversation is told about it: its id to act on, and its name to say. */
   function pointedEntity(id: string | undefined): PointedEntity | undefined {
-    const entity = id === undefined ? undefined : store.registry.entities[id];
+    const entity = id === undefined ? undefined : knownEntity(store.registry, id);
     if (entity === undefined) return undefined;
     return entity.name === undefined ? { id: entity.id } : { id: entity.id, name: entity.name };
   }
@@ -480,10 +515,9 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
     slots = [];
     pressedButton.clear();
     tokens.set([], { x: 0, y: 0, z: 0 });
-    // The handles no placement uses any more go back to the origin's eight.
-    const unused = unusedAnchors(store.registry);
-    anchors.release(unused);
-    forgetAnchors(unused);
+    // The handles no placement uses any more go back to the origin's eight. The room ends the
+    // session only after this (`reduceApp`), so the headset is asked while it can still answer.
+    releaseAnchors(unusedAnchors(store.registry));
     store.flush();
   }
 
@@ -539,7 +573,7 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
     update(frame) {
       time = frame.time;
       inputs = frame.inputs;
-      const outcome: EntitiesOutcome = { editButton: false, done: false };
+      const outcome: EntitiesOutcome = { editButton: false, done: false, settling: false };
       settleAnchors(frame);
       positions = locate();
       hands = readHands(hands, frame.inputs, frame.eye.position);
@@ -547,6 +581,7 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
       if (editing) edit(frame, outcome);
       else point(frame, outcome);
       light(frame);
+      outcome.settling = awaitingAnchor.size > 0;
       return outcome;
     },
     report() {
@@ -611,6 +646,9 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
       store.flush();
     },
     dispose() {
+      // Drops the session ended under: their anchors will never be written down, so they are given
+      // back — as far as a session that has ended still allows.
+      for (const id of awaitingAnchor) anchors.cancel(id);
       store.flush();
       drawer.dispose();
       tokens.dispose();

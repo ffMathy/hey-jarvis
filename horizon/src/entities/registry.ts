@@ -24,6 +24,12 @@ import type { KeyValueStorage } from '../page/settings';
  * nothing changed, so a caller can tell a change by identity. Both the id and the name are model
  * output, so they are cleaned again here however carefully the session cleaned them: the registry is
  * what outlives a bad call.
+ *
+ * Ids and handles key plain objects, so that the registry is its own JSON, and any string may be
+ * one — `__proto__` and `constructor` too. So an entry is only ever read as the object's own
+ * ({@link knownEntity}, {@link hasAnchor}), never through what every object inherits, and only ever
+ * written by defining it (a computed key in a literal, `Object.fromEntries`), never by assignment,
+ * which for `__proto__` would replace the object's prototype instead of adding an entry.
  */
 
 /** Where the registry is kept. */
@@ -131,6 +137,24 @@ export function cleanEntityReports(reports: readonly unknown[]): EntityReport[] 
   return [...byId.values()];
 }
 
+/**
+ * `record` with `key` set to `value`, as an entry of its own. A computed key in a literal defines
+ * the property, where an assignment of `__proto__` would replace the object's prototype instead.
+ */
+function withEntry<Value>(record: Readonly<Record<string, Value>>, key: string, value: Value): Record<string, Value> {
+  return { ...record, [key]: value };
+}
+
+/** The entity `id`, if it has been marked: an entry of the registry's own, never `constructor`'s. */
+export function knownEntity(registry: EntityRegistry, id: string): KnownEntity | undefined {
+  return Object.hasOwn(registry.entities, id) ? registry.entities[id] : undefined;
+}
+
+/** Whether the registry keeps the persistent anchor `anchor`. */
+export function hasAnchor(registry: EntityRegistry, anchor: string): boolean {
+  return Object.hasOwn(registry.anchors, anchor);
+}
+
 /** What to show for an entity: its name, or its id when it has none. */
 export function entityLabel(entity: { id: string; name?: string }): string {
   return entity.name ?? entity.id;
@@ -144,11 +168,11 @@ export function entityLabel(entity: { id: string; name?: string }): string {
 export function recordEntities(registry: EntityRegistry, reports: readonly unknown[], now: number): EntityRegistry {
   const cleaned = cleanEntityReports(reports);
   if (cleaned.length === 0) return registry;
-  const entities: Record<string, KnownEntity> = { ...registry.entities };
-  for (const report of cleaned) {
-    const known = entities[report.id];
+  // One report per id, so each is read against the registry as it was.
+  const marked = cleaned.map((report): [string, KnownEntity] => {
+    const known = knownEntity(registry, report.id);
     const name = report.name ?? known?.name;
-    entities[report.id] = {
+    const entity: KnownEntity = {
       ...known,
       id: report.id,
       ...(name === undefined ? {} : { name }),
@@ -156,8 +180,10 @@ export function recordEntities(registry: EntityRegistry, reports: readonly unkno
       lastMarkedAt: now,
       marks: (known?.marks ?? 0) + 1,
     };
-  }
-  return pruneEntities({ ...registry, entities });
+    return [report.id, entity];
+  });
+  // `Object.fromEntries` and spreading define each id as an entry of its own, `__proto__` too.
+  return pruneEntities({ ...registry, entities: { ...registry.entities, ...Object.fromEntries(marked) } });
 }
 
 /**
@@ -172,15 +198,15 @@ export function pruneEntities(registry: EntityRegistry, limit: number = MAX_KNOW
     .sort((first, second) => first.lastMarkedAt - second.lastMarkedAt);
   const excess = Math.min(forgettable.length, all.length - limit);
   if (excess <= 0) return registry;
-  const entities: Record<string, KnownEntity> = { ...registry.entities };
-  for (const entity of forgettable.slice(0, excess)) delete entities[entity.id];
+  const forgotten = new Set(forgettable.slice(0, excess).map((entity) => entity.id));
+  const entities = Object.fromEntries(Object.entries(registry.entities).filter(([id]) => !forgotten.has(id)));
   return { ...registry, entities };
 }
 
 /** Remembers a persistent anchor this app has just been given a handle for. */
 export function rememberAnchor(registry: EntityRegistry, anchor: string, now: number): EntityRegistry {
-  if (registry.anchors[anchor] !== undefined || cleanEntityId(anchor) !== anchor) return registry;
-  return { ...registry, anchors: { ...registry.anchors, [anchor]: { createdAt: now } } };
+  if (hasAnchor(registry, anchor) || cleanEntityId(anchor) !== anchor) return registry;
+  return { ...registry, anchors: withEntry(registry.anchors, anchor, { createdAt: now }) };
 }
 
 /**
@@ -194,20 +220,20 @@ export function placeEntity(
   offset: readonly [number, number, number],
   now: number,
 ): EntityRegistry {
-  const known = registry.entities[id];
+  const known = knownEntity(registry, id);
   if (known === undefined || !offset.every(isCoordinate)) return registry;
   const withAnchor = rememberAnchor(registry, anchor, now);
-  if (withAnchor.anchors[anchor] === undefined) return registry;
+  if (!hasAnchor(withAnchor, anchor)) return registry;
   const placement: EntityPlacement = { anchor, offset: [offset[0], offset[1], offset[2]], placedAt: now };
-  return { ...withAnchor, entities: { ...withAnchor.entities, [id]: { ...known, placement } } };
+  return { ...withAnchor, entities: withEntry(withAnchor.entities, id, { ...known, placement }) };
 }
 
 /** Takes an entity out of the room and back into the drawer. */
 export function unplaceEntity(registry: EntityRegistry, id: string): EntityRegistry {
-  const known = registry.entities[id];
+  const known = knownEntity(registry, id);
   if (known?.placement === undefined) return registry;
   const { placement: _removed, ...rest } = known;
-  return { ...registry, entities: { ...registry.entities, [id]: rest } };
+  return { ...registry, entities: withEntry(registry.entities, id, rest) };
 }
 
 /**
@@ -216,17 +242,17 @@ export function unplaceEntity(registry: EntityRegistry, id: string): EntityRegis
  * be placed again rather than quietly putting them back among the never-placed.
  */
 export function forgetAnchor(registry: EntityRegistry, anchor: string): EntityRegistry {
-  if (registry.anchors[anchor] === undefined) return registry;
-  const { [anchor]: _removed, ...anchors } = registry.anchors;
+  if (!hasAnchor(registry, anchor)) return registry;
+  const anchors = Object.fromEntries(Object.entries(registry.anchors).filter(([uuid]) => uuid !== anchor));
   return { ...registry, anchors };
 }
 
 /** Whether `id` is placed, unplaced, or lost with its anchor; undefined for an entity never marked. */
 export function placementStateOf(registry: EntityRegistry, id: string): PlacementState | undefined {
-  const known = registry.entities[id];
+  const known = knownEntity(registry, id);
   if (known === undefined) return undefined;
   if (known.placement === undefined) return 'unplaced';
-  return registry.anchors[known.placement.anchor] === undefined ? 'lost' : 'placed';
+  return hasAnchor(registry, known.placement.anchor) ? 'placed' : 'lost';
 }
 
 /** The entities placed on an anchor the registry still has. */
@@ -234,10 +260,24 @@ export function placedEntities(registry: EntityRegistry): KnownEntity[] {
   return Object.values(registry.entities).filter((entity) => placementStateOf(registry, entity.id) === 'placed');
 }
 
+/** Whether some placed entity is on each of the registry's anchors. */
+function anchorsInUse(registry: EntityRegistry): { anchor: string; used: boolean }[] {
+  const used = new Set(placedEntities(registry).map((entity) => entity.placement?.anchor));
+  return Object.keys(registry.anchors).map((anchor) => ({ anchor, used: used.has(anchor) }));
+}
+
+/** The anchors some placement uses: the ones worth restoring. */
+export function usedAnchors(registry: EntityRegistry): string[] {
+  return anchorsInUse(registry)
+    .filter((entry) => entry.used)
+    .map((entry) => entry.anchor);
+}
+
 /** The anchors no placement uses any more, whose persistent handles can be given back. */
 export function unusedAnchors(registry: EntityRegistry): string[] {
-  const used = new Set(placedEntities(registry).map((entity) => entity.placement?.anchor));
-  return Object.keys(registry.anchors).filter((anchor) => !used.has(anchor));
+  return anchorsInUse(registry)
+    .filter((entry) => !entry.used)
+    .map((entry) => entry.anchor);
 }
 
 /** One entry in the drawer. */
@@ -310,17 +350,21 @@ export function parseEntityRegistry(stored: string | null): EntityRegistry {
   if (!isRecord(value) || value.version !== 1 || !isRecord(value.entities) || !isRecord(value.anchors)) {
     return EMPTY_REGISTRY;
   }
-  const anchors: Record<string, RoomAnchorRecord> = {};
-  for (const [key, record] of Object.entries(value.anchors)) {
-    if (cleanEntityId(key) === key && isRecord(record) && isTime(record.createdAt)) {
-      anchors[key] = { createdAt: record.createdAt };
-    }
-  }
-  const entities: Record<string, KnownEntity> = {};
-  for (const [key, record] of Object.entries(value.entities)) {
-    const entity = parseEntity(key, record);
-    if (entity !== undefined) entities[key] = entity;
-  }
+  // Built with `Object.fromEntries`, never by assignment: a stored key of `__proto__` is an entry
+  // like any other, where assigning it would replace the object's prototype.
+  const anchors = Object.fromEntries(
+    Object.entries(value.anchors).flatMap(([key, record]): [string, RoomAnchorRecord][] =>
+      cleanEntityId(key) === key && isRecord(record) && isTime(record.createdAt)
+        ? [[key, { createdAt: record.createdAt }]]
+        : [],
+    ),
+  );
+  const entities = Object.fromEntries(
+    Object.entries(value.entities).flatMap(([key, record]): [string, KnownEntity][] => {
+      const entity = parseEntity(key, record);
+      return entity === undefined ? [] : [[key, entity]];
+    }),
+  );
   return pruneEntities({ version: 1, entities, anchors });
 }
 
