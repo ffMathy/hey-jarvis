@@ -24,12 +24,13 @@
  * Usage (from the repository root; `bunx turbo build --filter=horizon` first):
  *
  *   timeout 3600 bun horizon/.scripts/render-demo.ts [--out file.webm] [--seconds 36]
- *     [--size 1280x720] [--fps 30] [--fov 66] [--frames dir] [--keep-frames]
+ *     [--size 1280x720] [--fps 30] [--fov 66] [--frames dir] [--keep-frames] [--readme]
  *
  * `--seconds` stretches or squeezes the whole shot, so a short draft still has every beat. The
  * frames go to a temporary folder (or `--frames`) and are deleted once the encode succeeds, unless
- * `--keep-frames`. FFMPEG_PATH picks the ffmpeg; CHROMIUM_EXECUTABLE_PATH the browser, as for the
- * browser tests.
+ * `--keep-frames`. `--readme` also writes the README's copies beside the WebM — an animated WebP and
+ * a GIF behind it, since GitHub plays no video from a repository (see `readmeWebpArguments`).
+ * FFMPEG_PATH picks the ffmpeg; CHROMIUM_EXECUTABLE_PATH the browser, as for the browser tests.
  */
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -48,6 +49,9 @@ import {
   findFfmpeg,
   type GreetingClip,
   greetingClips,
+  readmeGifArguments,
+  readmeGifPaletteArguments,
+  readmeWebpArguments,
   runFfmpeg,
   type SpeakingSpan,
 } from './demo-encode';
@@ -106,6 +110,7 @@ interface Options {
   fieldOfViewDegrees: number;
   frames: string | undefined;
   keepFrames: boolean;
+  readme: boolean;
 }
 
 function readOptions(): Options {
@@ -119,6 +124,7 @@ function readOptions(): Options {
       fov: { type: 'string' },
       frames: { type: 'string' },
       'keep-frames': { type: 'boolean' },
+      readme: { type: 'boolean' },
     },
     strict: true,
   });
@@ -138,6 +144,7 @@ function readOptions(): Options {
     fieldOfViewDegrees: number(values.fov, DEFAULT_FIELD_OF_VIEW_DEGREES, 'fov'),
     frames: values.frames === undefined ? undefined : path.resolve(values.frames),
     keepFrames: values['keep-frames'] === true,
+    readme: values.readme === true,
   };
 }
 
@@ -636,6 +643,14 @@ async function main() {
       fadeOutSeconds: script.fadeOutSeconds,
     }),
   );
+  if (options.readme) {
+    const base = options.out.replace(/\.webm$/, '');
+    const palette = path.join(framesDirectory, 'readme-palette.png');
+    console.log('Writing the README copies…');
+    await runFfmpeg(ffmpeg, readmeWebpArguments(options.out, `${base}.webp`));
+    await runFfmpeg(ffmpeg, readmeGifPaletteArguments(options.out, palette));
+    await runFfmpeg(ffmpeg, readmeGifArguments(options.out, palette, `${base}.gif`));
+  }
   if (!options.keepFrames) rmSync(framesDirectory, { recursive: true, force: true });
   const total = (Date.now() - startedAt) / 1000;
   console.log(`Rendered in ${formatDuration(rendered)}, encoded in ${formatDuration(total - rendered)}.`);

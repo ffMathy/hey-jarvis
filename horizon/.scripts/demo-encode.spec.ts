@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'bun:test';
-import { decodeArguments, encodeArguments, filterGraph, greetingClips } from './demo-encode';
+import {
+  decodeArguments,
+  encodeArguments,
+  filterGraph,
+  greetingClips,
+  README_SHOWN_WIDTH,
+  readmeGifArguments,
+  readmeGifPaletteArguments,
+  readmeWebpArguments,
+} from './demo-encode';
 
 const TIMING = { seconds: 20, framesPerSecond: 30, fadeInSeconds: 0.5, fadeOutSeconds: 1 };
 
@@ -70,5 +79,27 @@ describe('decodeArguments', () => {
     expect(args[args.indexOf('-ar') + 1]).toBe('48000');
     expect(args[args.indexOf('-f') + 1]).toBe('f32le');
     expect(args.at(-1)).toBe('pipe:1');
+  });
+});
+
+describe('the README copies', () => {
+  it('makes an animated WebP from the film at twice the width the README shows it, without sound', () => {
+    const args = readmeWebpArguments('film.webm', 'film.webp');
+    expect(args).toContain('libwebp_anim');
+    expect(args).toContain(`scale=${README_SHOWN_WIDTH * 2}:-2:flags=lanczos`);
+    expect(args).toContain('-an');
+    expect(args.at(-1)).toBe('film.webp');
+  });
+
+  it('dithers the GIF against the one palette made from the same frames', () => {
+    const palette = readmeGifPaletteArguments('film.webm', 'palette.png');
+    const gif = readmeGifArguments('film.webm', 'palette.png', 'film.gif');
+    const paletteFilter = palette[palette.indexOf('-vf') + 1] ?? '';
+    const gifFilter = gif[gif.indexOf('-lavfi') + 1] ?? '';
+    // The same frames reach both, or the palette would be made for pictures the GIF never shows.
+    expect(gifFilter.startsWith(paletteFilter.replace(/,palettegen.*$/, ''))).toBe(true);
+    expect(palette.at(-1)).toBe('palette.png');
+    expect(gif).toContain('palette.png');
+    expect(gif.at(-1)).toBe('film.gif');
   });
 });

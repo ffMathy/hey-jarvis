@@ -135,6 +135,86 @@ export function encodeArguments(
 }
 
 /**
+ * How wide the README shows the film, in CSS pixels. The copies are made at twice that, as the phone's
+ * and the watch's clips are (`hologram/.scripts/render-showcase.ts`), so they stay sharp on a dense
+ * screen.
+ */
+export const README_SHOWN_WIDTH = 640;
+
+/** The GIF's frame rate and width: a GIF of a camera that never stops moving changes every pixel of
+ * every frame, so at the WebP's size it would pass GitHub's 100 MB limit. This one is 32 MB. */
+const README_GIF_FRAMES_PER_SECOND = 15;
+const README_GIF_WIDTH = README_SHOWN_WIDTH;
+
+/**
+ * The ffmpeg arguments for the README's copy of the film: an animated WebP, because GitHub plays no
+ * video from a repository — neither a `<video>` of a committed file nor one served from `raw` — and
+ * shows an animated image inline. The same quality as the phone's and the watch's clips (95, every
+ * frame kept), at compression level 4 rather than their 6: over this film's 36 s level 6 took
+ * seventeen minutes for 5% fewer bytes, where level 4 takes two. It has no sound, which is why the
+ * WebM is linked beside it.
+ */
+export function readmeWebpArguments(film: string, output: string): string[] {
+  return [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-i',
+    film,
+    '-vf',
+    `scale=${README_SHOWN_WIDTH * 2}:-2:flags=lanczos`,
+    '-c:v',
+    'libwebp_anim',
+    '-lossless',
+    '0',
+    '-q:v',
+    '95',
+    '-compression_level',
+    '4',
+    '-loop',
+    '0',
+    '-an',
+    output,
+  ];
+}
+
+/** The GIF behind the WebP, for anything that will not animate one: first its one palette… */
+export function readmeGifPaletteArguments(film: string, palette: string): string[] {
+  return [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-i',
+    film,
+    '-vf',
+    `fps=${README_GIF_FRAMES_PER_SECOND},scale=${README_GIF_WIDTH}:-2:flags=lanczos,palettegen=stats_mode=full:max_colors=255`,
+    palette,
+  ];
+}
+
+/** …then the GIF itself, dithered against that palette. */
+export function readmeGifArguments(film: string, palette: string, output: string): string[] {
+  return [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-i',
+    film,
+    '-i',
+    palette,
+    '-lavfi',
+    `fps=${README_GIF_FRAMES_PER_SECOND},scale=${README_GIF_WIDTH}:-2:flags=lanczos [x]; ` +
+      '[x][1:v] paletteuse=dither=sierra2_4a:diff_mode=rectangle',
+    '-loop',
+    '0',
+    output,
+  ];
+}
+
+/**
  * The ffmpeg arguments that decode `recording` to one channel of raw 32-bit float samples at
  * `sampleRate`, on standard output: a voice from one point in the room has one channel, and the
  * soundtrack is worked out at the rate the Opus will be encoded at.
