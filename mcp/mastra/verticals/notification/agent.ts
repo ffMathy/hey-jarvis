@@ -2,6 +2,7 @@ import type { Agent } from '@mastra/core/agent';
 import { createAgent } from '../../utils/agent-factory.js';
 import { getOllamaModelOrFallback } from '../../utils/providers/ollama-provider.js';
 import { lookupContact } from '../phone/contacts.js';
+import { ROUTINE_MESSAGES, URGENT_MESSAGES } from './classifier.js';
 import { notificationShortcuts } from './shortcuts.js';
 import { getPrimaryUserName } from './targets.js';
 import { notificationTools } from './tools.js';
@@ -49,8 +50,8 @@ When you were given a contact's name but no number, look it up with lookupContac
 - If nothing matches, say so. Never invent a number.
 
 **Working out urgency (isUrgent):**
-- URGENT: security alerts, intruders, fire or smoke, water leaks, medical situations, anything where a delay causes damage, and anything the requester explicitly calls urgent.
-- NOT URGENT: weather updates, shopping and delivery news, calendar reminders, routine status changes, anything informational. This is the default — treat a message as urgent only when waiting would actually cost something.
+- URGENT: ${URGENT_MESSAGES}.
+- NOT URGENT: ${ROUTINE_MESSAGES}. This is the default — treat a message as urgent only when waiting would actually cost something.
 
 **Writing the message:**
 - Write it to be spoken out loud, because it often will be. One or two sentences, no markdown, no emoji, no lists.
