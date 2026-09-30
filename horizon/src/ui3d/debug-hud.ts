@@ -82,6 +82,20 @@ export interface Diagnostics {
   frameMilliseconds?: number;
   /** `surface` is where CanvasKit draws: `webgl` or `cpu`. */
   hologram?: { cpuMilliseconds: number; density: number; canvasKitMilliseconds: number; surface?: string };
+  /** The things he works on, placed in the room (`app/room-entities.ts`). */
+  entities?: {
+    known: number;
+    placed: number;
+    /** Placed ones whose anchor is located this frame: the ones in this room. */
+    here: number;
+    anchorsLocated: number;
+    anchors: number;
+    /** What sir is pointing at, by name. */
+    pointed?: string;
+    lit: number;
+    /** Why the registry could not be written. */
+    problem?: string;
+  };
   webglExtensions?: readonly string[];
 }
 
@@ -180,6 +194,18 @@ function hologramLine(hologram: NonNullable<Diagnostics['hologram']>): string {
   return `hologram cpu ${fixed(cpuMilliseconds, 1)} ms  ${skia}  density ${fixed(density, 2)}`;
 }
 
+function entitiesLine(entities: NonNullable<Diagnostics['entities']>): string {
+  const parts = [
+    `entities ${entities.known} known`,
+    `${entities.placed} placed, ${entities.here} here`,
+    `anchors ${entities.anchorsLocated}/${entities.anchors} located`,
+    `lit ${entities.lit}`,
+  ];
+  if (entities.pointed !== undefined) parts.push(`pointing at ${entities.pointed}`);
+  if (entities.problem !== undefined) parts.push(entities.problem);
+  return parts.join('  ');
+}
+
 function extensionsLine(extensions: readonly string[]): string {
   return `gl ${extensions.length > 0 ? extensions.join(' ') : 'none of interest'}`;
 }
@@ -190,7 +216,8 @@ function featuresLine(features: readonly string[]): string {
 
 /** Everything known, as short lines; parts with nothing to report are left out. */
 export function describeDiagnostics(diagnostics: Diagnostics): string[] {
-  const { scene, wake, wakeAudio, conversation, voice, room, hologram, webglExtensions, xrFeatures } = diagnostics;
+  const { scene, wake, wakeAudio, conversation, voice, room, hologram, entities, webglExtensions, xrFeatures } =
+    diagnostics;
   return [
     scene === undefined ? undefined : `scene ${scene}`,
     visibilityLine(diagnostics),
@@ -200,6 +227,7 @@ export function describeDiagnostics(diagnostics: Diagnostics): string[] {
     ...(conversation === undefined ? [] : conversationLines(conversation)),
     voice === undefined ? undefined : voiceLine(voice),
     ...(room === undefined ? [] : roomLines(room)),
+    entities === undefined ? undefined : entitiesLine(entities),
     frameLine(diagnostics),
     hologram === undefined ? undefined : hologramLine(hologram),
     xrFeatures === undefined ? undefined : featuresLine(xrFeatures),

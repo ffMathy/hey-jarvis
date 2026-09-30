@@ -1,10 +1,14 @@
 import { describeFrameRate, PARTICLE_COUNT } from 'hologram';
 import { Group } from 'three';
 import { type JarvisDebugState, toRoomPoint } from '../debug-hook';
+import { POINTING_CONTEXT_ID } from '../entities/pointing';
+import type { KeyValueStorage } from '../page/settings';
 import { createDebugHud, type DebugHud, type Diagnostics, extensionsOfInterest } from '../ui3d/debug-hud';
 import { KEYBOARD_GLYPH_REACH_METRES } from '../ui3d/keyboard-glyph';
 import { type AnchorKeeper, createAnchorKeeper } from '../xr/anchor-keeper';
 import { createDepthProbeFan, type DepthProbeFan } from '../xr/depth-probes';
+import { createInputSnapshots, type InputSnapshots } from '../xr/input-snapshots';
+import type { OriginOffset } from '../xr/origin-offset';
 import { type Ray, raySphereDistance, type Vector3Like } from '../xr/ray';
 import { createSystemKeyboard, type SystemKeyboard } from '../xr/system-keyboard';
 import { type CentreEye, gazeOf, pointAhead } from '../xr/viewer-pose';
@@ -39,6 +43,7 @@ import {
   type WakePort,
 } from './ports';
 import { publishRoomDebugState } from './room-debug-hook';
+import { createRoomEntities, type RoomEntities } from './room-entities';
 import { createRoomPanels, type RoomPanels } from './room-panels';
 import { createSampleDriver, type SampleDriver } from './sample-driver';
 
@@ -55,6 +60,10 @@ import { createSampleDriver, type SampleDriver } from './sample-driver';
  * The parts that are other modules' come in through `ports.ts`, and `main.ts` chooses them: the
  * wake engine, the ElevenLabs session, the 3D hologram and the room model — or, in sample mode,
  * no wake engine and no session, with the moods driving him instead.
+ *
+ * The things Jarvis works on — marked by the agent, placed by sir, lit while Jarvis works on them,
+ * pointed at — have a controller of their own (`room-entities.ts`), which this feeds every frame
+ * and whose drawer, pointing and wrist button come back here as events and context updates.
  */
 
 export interface RoomOptions {
@@ -86,6 +95,10 @@ export interface RoomOptions {
   /** Called once the room is open and drawing. */
   onInside?: () => void;
   now?: () => number;
+  /** Where the things placed in the room are remembered: `localStorage` in the app, a map anywhere else. */
+  entityStorage?: KeyValueStorage;
+  /** `?origin`: the room's space moved, for the browser tests (see `xr/origin-offset.ts`). */
+  origin?: OriginOffset;
 }
 
 /** What the room hands back to the page. */
@@ -114,7 +127,7 @@ export async function runRoom(session: XRSession, options: RoomOptions): Promise
   let stage: XrStage | undefined;
   let hologram: HologramPort | undefined;
   try {
-    stage = await createXrStage(session);
+    stage = await createXrStage(session, { origin: options.origin });
     hologram = await options.createHologram(stage.renderer);
   } catch (error) {
     hologram?.dispose();
@@ -136,6 +149,17 @@ function fallbackPlacement(eye: CentreEye): PlacementLike {
     level: 'fallback',
     clearance: Number.POSITIVE_INFINITY,
     needsPointer: false,
+  };
+}
+
+/** Storage that forgets when the room closes, for a room given none to keep its placements in. */
+function forgetfulStorage(): KeyValueStorage {
+  const values = new Map<string, string>();
+  return {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => {
+      values.set(key, value);
+    },
   };
 }
 
@@ -172,6 +196,8 @@ interface Room {
   panels: RoomPanels;
   hud: DebugHud | undefined;
   input: XrInput;
+  inputs: InputSnapshots;
+  entities: RoomEntities;
   keyboard: SystemKeyboard;
   anchors: AnchorKeeper<XRSpace, XRRigidTransform>;
   depth: DepthProbeFan | undefined;
@@ -223,6 +249,8 @@ function startRoom(
     panels: createRoomPanels(),
     hud: options.showHud ? createDebugHud() : undefined,
     input: createXrInput(stage.session, stage.referenceSpace, now),
+    inputs: createInputSnapshots(stage.session),
+    entities: createRoomEntities({ session: stage.session, storage: options.entityStorage ?? forgetfulStorage() }),
     keyboard: createSystemKeyboard(document),
     anchors: createAnchorKeeper<XRSpace, XRRigidTransform>((position) => new XRRigidTransform(position)),
     depth: undefined,
@@ -251,8 +279,9 @@ function startRoom(
     resolve(room.outcome);
   };
 
-  stage.scene.add(holder, ...room.panels.objects);
+  stage.scene.add(holder, room.entities.object, ...room.panels.objects);
   if (room.hud !== undefined) stage.scene.add(room.hud.object);
+  publishEntities(room);
   room.conversation = options.createConversation?.(conversationEvents(room)) ?? createSilentConversation();
   void createDepthProbeFan(stage.session).then((fan) => {
     room.depth = fan;
@@ -268,9 +297,36 @@ function startRoom(
   });
 }
 
+/**
+ * Puts the entities' report on `window.__jarvis`, worked out whenever it is read rather than every
+ * frame: it is a dozen arrays, and nothing but the browser tests ever reads it.
+ */
+function publishEntities(room: Room) {
+  Object.defineProperty(room.options.debug, 'entities', {
+    get: () => room.entities.report(),
+    configurable: true,
+    enumerable: true,
+  });
+}
+
+/** Leaves the last report on `window.__jarvis` once the room has gone, as data rather than a getter. */
+function unpublishEntities(room: Room) {
+  Object.defineProperty(room.options.debug, 'entities', {
+    value: room.entities.report(),
+    configurable: true,
+    enumerable: true,
+    writable: true,
+  });
+}
+
 function conversationEvents(room: Room): ConversationEvents {
   return {
-    onPhase: (phase) => dispatch(room, { type: 'session-phase', phase }),
+    onPhase: (phase) => {
+      // Whatever held his coronas lit was his work for that conversation, which is over.
+      if (phase === 'ended' || phase === 'failed') room.entities.conversationEnded();
+      dispatch(room, { type: 'session-phase', phase });
+    },
+    onAffected: (entities) => room.entities.affected(entities),
     onProblem: (message) => dispatch(room, { type: 'problem', message }),
     onCaption: (text) => dispatch(room, { type: 'caption', text }),
     onDiagnostics: (diagnostics) => {
@@ -286,6 +342,7 @@ function subscribe(room: Room) {
   cleanups.push(stage.onVisibility((state) => dispatch(room, { type: 'visibility', state })));
   cleanups.push(room.input.onSelect((select) => onSelect(room, select.hold, select.ray)));
   cleanups.push(room.input.onDismissButton(() => dispatch(room, { type: 'dismiss-button' })));
+  cleanups.push(room.input.onEditButton(() => dispatch(room, { type: 'edit-button' })));
   cleanups.push(room.keyboard.onLine((text) => dispatch(room, { type: 'typed', text })));
   cleanups.push(room.keyboard.onClose(() => dispatch(room, { type: 'keyboard-closed' })));
   const wake = options.wake;
@@ -302,6 +359,10 @@ function subscribe(room: Room) {
   // panel's time and his voice going quiet are counted all the same.
   const ticking = setInterval(() => passTime(room), 1000);
   cleanups.push(() => clearInterval(ticking));
+  // A page put away mid-placement may never be shown again: what was placed is written at once.
+  const keepPlacements = () => room.entities.flush();
+  window.addEventListener('pagehide', keepPlacements);
+  cleanups.push(() => window.removeEventListener('pagehide', keepPlacements));
   void stage.ended.then(() => dispatch(room, { type: 'session-ended' }));
 }
 
@@ -417,6 +478,8 @@ function carryOutEffect(room: Room, effect: AppEffect) {
       return panels.hide(effect.panel);
     case 'set-frame-rate':
       return room.stage.setFrameRate(effect.target);
+    case 'editing':
+      return room.entities.setEditing(effect.active);
     case 'start-sample':
     case 'cycle-sample':
       return sample.setMode(effect.mode);
@@ -484,6 +547,9 @@ function release(room: Room) {
   if (room.released) return;
   room.released = true;
   room.input.dispose();
+  room.inputs.dispose();
+  unpublishEntities(room);
+  room.entities.dispose();
   room.keyboard.dispose();
   room.depth?.dispose();
   room.anchors.clear();
@@ -510,6 +576,7 @@ function onFrame(room: Room, tick: XrFrameTick) {
     room.anchors.place(tick.frame, tick.referenceSpace, room.pendingAnchor);
     room.pendingAnchor = undefined;
   }
+  updateEntities(room, tick);
   drawHologram(room, tick);
   const spot = room.hologramState === 'hidden' ? undefined : copyPoint(room.holder.position);
   // After the hologram has followed his anchor this frame, so his voice is where he is drawn.
@@ -519,6 +586,26 @@ function onFrame(room: Room, tick: XrFrameTick) {
   room.hud?.follow(tick.centreEye);
   refreshReadouts(room, tick);
   passTime(room);
+}
+
+/** The things placed in the room, for this frame; what they report back is acted on here. */
+function updateEntities(room: Room, tick: XrFrameTick) {
+  const { scene } = room.model;
+  const outcome = room.entities.update({
+    frame: tick.frame,
+    space: tick.referenceSpace,
+    eye: tick.centreEye,
+    time: tick.time / 1000,
+    deltaSeconds: tick.deltaSeconds,
+    inputs: room.inputs.read(tick.frame, tick.referenceSpace),
+    wristButton: scene.kind === 'waiting' || scene.kind === 'editing',
+    thinking: room.conversation.thinking,
+    live: room.conversation.phase === 'live',
+    pretendWorking: scene.kind === 'sample' && scene.mode === 'thinking',
+  });
+  if (outcome.context !== undefined) room.conversation.sendContextualUpdate(outcome.context, POINTING_CONTEXT_ID);
+  if (outcome.editButton) dispatch(room, { type: 'edit-button' });
+  if (outcome.done) dispatch(room, { type: 'edit-done' });
 }
 
 /** Starts the placement a summon asked for, against this frame's head, gaze and depth. */
@@ -638,6 +725,7 @@ function collectDiagnostics(room: Room): Diagnostics {
     },
     frameMilliseconds: room.meter.frameMilliseconds,
     hologram: room.hologram.diagnostics,
+    entities: room.entities.diagnostics(),
     webglExtensions: extensionsOfInterest(stage.renderer.getContext().getSupportedExtensions()),
     ...options.diagnostics?.(),
   };
