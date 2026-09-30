@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Page, Route, TestInfo } from '@playwright/test';
 import type { JarvisDebugState, RoomPoint, RoomReport } from '../../src/debug-hook';
 import { expect, photograph } from './fixtures';
@@ -158,6 +161,33 @@ export async function countGreetings(page: Page) {
 
 export async function greetingPlays(page: Page): Promise<number> {
   return page.evaluate(() => window.__greeting?.plays ?? 0);
+}
+
+/** The build the specs run against, as `serve-dist.ts` serves it. */
+const SITE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../dist/horizon');
+
+/** How many times over the greeting is played by the tests that need him to still be greeting. */
+const GREETING_REPEATS = 10;
+
+/** An MP3's ID3v2 tag, if it starts with one: ten bytes of header, then a syncsafe length. */
+function withoutId3Tag(recording: Buffer): Buffer {
+  if (recording.subarray(0, 3).toString('latin1') !== 'ID3') return recording;
+  const length = recording.subarray(6, 10).reduce((total, byte) => total * 128 + (byte & 0x7f), 0);
+  return recording.subarray(10 + length);
+}
+
+/**
+ * The built greeting, played {@link GREETING_REPEATS} times in a row, served in its place: about
+ * twenty seconds of him greeting, long enough for the emulator's slow frames to watch him do it.
+ */
+export async function lengthenTheGreeting(page: Page) {
+  const assets = path.join(SITE, 'assets');
+  const name = readdirSync(assets).find((file) => file.startsWith('greeting') && file.endsWith('.mp3'));
+  if (name === undefined) throw new Error('The build has no greeting.');
+  const recording = readFileSync(path.join(assets, name));
+  const frames = withoutId3Tag(recording);
+  const long = Buffer.concat([recording, ...Array.from({ length: GREETING_REPEATS - 1 }, () => frames)]);
+  await page.route(`**/assets/${name}`, (route) => route.fulfill({ body: long, contentType: 'audio/mpeg' }));
 }
 
 /** One request to the token endpoint, as ElevenLabs would have seen it. */
