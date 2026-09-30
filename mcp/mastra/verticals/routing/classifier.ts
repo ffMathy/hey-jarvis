@@ -267,6 +267,9 @@ export async function classifyRequest(
     state: userQuery,
     questions: routingQuestions(context),
     abortSignal,
+    // A failed call falls back to the planner, which is already running. Retrying would only
+    // hold back a request arriving while another runs, which waits for this answer.
+    maxRetries: 0,
   });
 
   return readClassification(answers, context);

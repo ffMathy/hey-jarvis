@@ -312,6 +312,8 @@ export async function runHomeCommand(
   const { answers } = await classifier.evaluate({
     state: command,
     questions: entityQuestions(command, service, entities),
+    // A failed call hands the request to the agent, so retrying would only delay that.
+    maxRetries: 0,
   });
   const chosen = entitiesFrom(answers, entities, minimumConfidence);
   if (!chosen) {
