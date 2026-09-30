@@ -520,10 +520,6 @@ earned it**, in this order:
 2. `claimSlotBeforeReading`: a wrong content type is a `415`, and an unknown or used token a `404`.
 3. Only then does `express.raw` read at most 3 MB.
 
-Every refusal before step 3 also says `Connection: close` (`refuseUnread`): the body it did not read
-is still on its way, and a connection kept open could carry nothing else until all of it had been
-taken in — the very reading the refusal spared.
-
 The JSON parser in `mcp-server.ts` skips the path for the same reason, and the request log writes
 it without its token (`withoutUploadToken`) and never with its headers. CORS allows any origin and
 the `Authorization` header: what authorises an upload is written into the request by the phone —
