@@ -17,6 +17,10 @@ export const SPOKEN_TOOL_CALL_PATTERNS: { pattern: RegExp; description: string }
   // tag as far as the voice is concerned, so the user hears nothing and stays on a
   // line that was never closed.
   { pattern: /end_call/i, description: 'the end_call tool name' },
+  // Lighting up what a request touches is the one call the instructions ask for *before* anything
+  // else, so it is the one most likely to be read out as the preamble to an answer. Written as one
+  // word it is nothing Jarvis would say; "affected" on its own is ordinary English.
+  { pattern: /markAffected/i, description: 'the markAffected tool name' },
   {
     // `something(argument=` — code, not speech. The opening bracket has to follow the
     // name with nothing in between, which is what separates it from the parenthetical

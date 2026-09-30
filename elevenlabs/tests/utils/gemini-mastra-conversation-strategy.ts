@@ -2,7 +2,13 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { Agent } from '@mastra/core/agent';
 import { readFile } from 'fs/promises';
 import { getPublicAgents } from 'mcp/mastra/mcp-server.js';
-import type { ConversationStrategy, ServerMessage, UserMessageEvent } from './conversation-strategy.js';
+import {
+  type ConversationStrategy,
+  latestContextualUpdates,
+  mcpToolNamesIn,
+  type ServerMessage,
+  transcriptOf,
+} from './conversation-strategy.js';
 
 /**
  * The model this strategy stands the agent up on.
@@ -54,6 +60,12 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
       });
 
       const agentPrompt = await this.readAgentPrompt();
+      // This stand-in keeps no memory between turns, so the background a device sent has to
+      // travel with every call — and the instructions are what every call carries. Only the
+      // latest update of each context goes, as ElevenLabs drops the ones it superseded.
+      const contextualUpdates = latestContextualUpdates(this.messages).map(
+        (update) => `Context update: ${update.text}`,
+      );
       const agentsArray = await getPublicAgents();
 
       // Convert agents array to Record<string, Agent>
@@ -76,7 +88,7 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
       this.agent = new Agent({
         id: 'jarvis',
         name: 'J.A.R.V.I.S.',
-        instructions: agentPrompt,
+        instructions: [agentPrompt, ...contextualUpdates].join('\n\n'),
         model: googleProvider(SIMULATION_MODEL),
         agents,
         tools,
@@ -145,6 +157,20 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
     }
 
     return responseText;
+  }
+
+  async sendContextualUpdate(text: string, contextId?: string): Promise<void> {
+    if (!this.isConnected) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+
+    this.messages.push(
+      contextId === undefined
+        ? { type: 'contextual_update', text }
+        : { type: 'contextual_update', text, context_id: contextId },
+    );
+    // Built again on the next turn, with the update in its instructions.
+    this.agent = undefined;
   }
 
   async sendMessage(text: string): Promise<string> {
@@ -228,27 +254,11 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
   }
 
   getCalledToolNames(): Promise<string[]> {
-    return Promise.resolve(
-      this.messages
-        .filter((message) => message.type === 'mcp_tool_call')
-        .map((message) => message.mcp_tool_call.tool_name),
-    );
+    return Promise.resolve(mcpToolNamesIn(this.messages));
   }
 
   getTranscriptText(): string {
-    return this.messages
-      .map((msg) => {
-        if (msg.type === 'user_message') {
-          return `> USER: ${(msg as UserMessageEvent).text}`;
-        } else if (msg.type === 'agent_response') {
-          return `> AGENT: ${msg.agent_response_event.agent_response.trim()}`;
-        } else if (msg.type === 'mcp_tool_call' && msg.mcp_tool_call.state === 'success') {
-          return `> TOOL: ${msg.mcp_tool_call.tool_name} → ${JSON.stringify(msg.mcp_tool_call.result)}`;
-        }
-        return '';
-      })
-      .filter((x) => !!x)
-      .join('\n');
+    return transcriptOf(this.messages);
   }
 
   async disconnect(): Promise<void> {

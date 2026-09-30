@@ -72,6 +72,33 @@ export function toProcedureVersionRefs(
   return versionRefs;
 }
 
+/**
+ * The client events the test agent has to emit, whatever the committed config lists.
+ *
+ * The socket only carries the events an agent is configured to emit, and the integration specs
+ * read two of them: `mcp_tool_call`, to see which MCP tools ran, and `client_tool_call`, to see
+ * the client tools the agent asked a device for, such as `markAffected`. The production config
+ * lists both too (the apps' thinking phase listens for the first, the headset answers the second),
+ * so this only guards a config that has lost one.
+ */
+export function toTestAgentClientEvents(clientEvents: readonly ClientEvent[] | undefined): ClientEvent[] {
+  const required = [ClientEvent.McpToolCall, ClientEvent.ClientToolCall];
+  const listed = clientEvents ?? [];
+  return [...listed, ...required.filter((clientEvent) => !listed.includes(clientEvent))];
+}
+
+/**
+ * The tools the test agent keeps: its client tools, and nothing else.
+ *
+ * The client tools stay because the routing loop names them. Its instructions tell the agent to
+ * call `markAffected` whenever a request touches something, and on an agent without it that
+ * instruction names a tool that does not exist, which the evals would then measure instead of the
+ * agent's real behaviour.
+ */
+export function toTestAgentTools<Tool extends { type: string }>(tools: readonly Tool[] | undefined): Tool[] {
+  return (tools ?? []).filter((tool) => tool.type === 'client');
+}
+
 class ElevenLabsAgentManager {
   private client: ElevenLabsClient;
 
@@ -244,15 +271,10 @@ class ElevenLabsAgentManager {
       config.conversationConfig.conversation.textOnly = true;
       console.log('🔧 Setting textOnly to true for test agent');
 
-      // The socket only carries the events an agent is configured to emit, and
-      // the tests assert that MCP tools were called. The production config lists
-      // it too (the apps' thinking phase listens for it), so this only guards a
-      // config that has lost it.
-      const clientEvents = config.conversationConfig.conversation.clientEvents ?? [];
-      if (!clientEvents.includes(ClientEvent.McpToolCall)) {
-        config.conversationConfig.conversation.clientEvents = [...clientEvents, ClientEvent.McpToolCall];
-        console.log('🔧 Adding mcp_tool_call to client events for test agent');
-      }
+      config.conversationConfig.conversation.clientEvents = toTestAgentClientEvents(
+        config.conversationConfig.conversation.clientEvents,
+      );
+      console.log('🔧 Making sure the test agent emits mcp_tool_call and client_tool_call');
     }
 
     // Replace MCP server IDs with local tunnel MCP server for testing
@@ -260,8 +282,8 @@ class ElevenLabsAgentManager {
       config.conversationConfig.agent.prompt.mcpServerIds = [TEST_AGENT_MCP_SERVER_ID];
       console.log('🔧 Setting mcpServerIds to local tunnel MCP server for test agent');
 
-      config.conversationConfig.agent.prompt.tools = [];
-      console.log('🔧 Clearing tools array for test agent');
+      config.conversationConfig.agent.prompt.tools = toTestAgentTools(config.conversationConfig.agent.prompt.tools);
+      console.log('🔧 Clearing all but the client tools for test agent');
     }
 
     // Suffix agent name with " (test)" to distinguish from production

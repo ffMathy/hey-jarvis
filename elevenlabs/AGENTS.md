@@ -118,6 +118,8 @@ The agent prompt in `src/assets/agent-prompt.md` defines:
   written "[end_call invoked]" is a stage direction, not a call, and leaves the
   line open
 - **When sir is silent**: see **Hanging up when he goes quiet** below
+- **On the headset**: `markAffected` lights up what a request touches, and "that" is what
+  sir points at — see **Lighting up what Jarvis works on** below
 
 Keep it short. The prompt is carried on every turn, so anything the agent does
 not need in order to decide its *next* utterance does not belong in it — that is
@@ -246,6 +248,63 @@ where they arrive exactly when they apply.
 
 State each such rule in one place only. Asking for the same line here *and*
 there is how Jarvis once acknowledged the same request twice.
+
+## Lighting up what Jarvis works on
+
+On sir's headset, whatever a request reads or changes lights up where he placed it in the room,
+and "that" means whatever he is pointing at. The agent's half of it is one client tool and two
+prompt entries.
+
+**`markAffected`** is a client tool in `src/assets/agent-config.json` that takes
+`{ entities: [{ id, name? }] }`. The id is opaque: it is whatever the agent that touched the thing
+reported — a Home Assistant light, an email inbox, a calendar — and nothing here or on the headset
+parses it. The name is only a label. Each setting is there for a reason, and
+`tests/specs/agent-config.spec.ts` pins all of them:
+
+- `expectsResponse: false`, because the Voice speaker and a telephone call never answer a client
+  tool, and a tool the agent waited on would stall it there for its whole timeout, mid-request.
+- `executionMode: immediate`, because the glow belongs to the work in progress. `post_tool_speech`
+  would wait for Jarvis to stop talking, which is usually the answer.
+- `preToolSpeech: off`, so there is no "marking the lights, sir".
+- `toolErrorHandlingMode: hide`, because a device without the tool answers with an error, and the
+  prompt's rule to repeat a failed call would otherwise loop on it.
+- `client_tool_call` is in `clientEvents`. An event missing from that list is not sent, whatever
+  the documentation implies: `agent_tool_request` and `mcp_tool_call` both stayed silent until they
+  were listed.
+
+Registering a client tool and sending a contextual update are not overrides, so neither needs the
+allow-list above. But a client tool the agent does not declare is never offered to the model,
+whatever a device registers.
+
+Each rule lives in exactly one place:
+
+- **When** to call it belongs to the routing loop. A poll whose `affectedEntities` carries anything
+  new says so in its `instructions` (`mcp/mastra/verticals/routing/workflows.ts`), and the prompt
+  says nothing about timing.
+- **Whether** this device can show it belongs to the prompt's `markAffected` entry. It is gated on
+  the exact sentence the headset sends under the context id `device` when it connects: "This
+  conversation is on sir's headset, which lights up what you are working on and tells you what he
+  is pointing at." Anywhere else the agent skips that step and follows the rest of the
+  instructions. `tests/utils/headset.ts` holds a copy of the sentence, and `headset.spec.ts` fails
+  if the prompt stops quoting it word for word.
+- **What** to pass belongs to the tool's parameter descriptions: the entities exactly as relayed.
+- **What "that" is** belongs to the pointing bullet in step 2 of the prompt. The headset sends
+  `Sir is pointing at "<name>" (<id>).` under the context id `pointing`, and clears it with
+  "Sir is not pointing at anything." under the same id. ElevenLabs drops a superseded update from
+  what the model sees, so only the current target is ever in front of it. The agent puts that
+  entity's name and id into the `routePromptWorkflow` query — "Is that on? (pointing at Kitchen
+  ceiling light, id light.kitchen_ceiling)" — and Mastra carries the id on to the agent that acts.
+
+The test agent keeps its client tools (`toTestAgentTools` in `src/main.ts`) and always emits
+`client_tool_call` and `mcp_tool_call` (`toTestAgentClientEvents`). The loop names `markAffected`,
+and an agent without it would be tested against an instruction it cannot follow.
+`tests/specs/headset.integration.spec.ts` holds the live evals, which only ever run by hand. Their
+requests are read-only, because the environment runs against the real house.
+
+Like every change to the agent, this reaches the live agent only on the next release deploy: the
+release workflow runs `bunx turbo deploy`, this package's deploy included, once a release has been
+cut. Until then the headset registers a tool the agent never calls, which is harmless, and its
+device context is background the agent has no rule for.
 
 ## Contributing
 - **Update agent-prompt.md** for behavior changes

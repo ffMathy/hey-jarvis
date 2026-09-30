@@ -23,6 +23,11 @@ describe('findSpokenToolCallsInText', () => {
       // followed by a bracketed note standing in for the tool it should have called.
       '[sounding like Jarvis from the Iron Man movies] As you wish, sir. Do try not to miss me too much. [end_call invoked]',
       '→ end_call',
+      // Lighting up what a request touches, read out as the preamble to the answer, as a stage
+      // direction, or recited with its arguments.
+      '[dry] Calling markAffected on the kitchen lights first, sir.',
+      '[markAffected] The kitchen ceiling light is on, sir.',
+      'markAffected(entities=[{"id": "light.kitchen_ceiling"}])',
       // A tool this codebase does not have. The generic shape still catches it, so a
       // renamed or newly added tool does not silently escape the net.
       'unknownFutureTool(someArgument="value")',
@@ -52,6 +57,9 @@ describe('findSpokenToolCallsInText', () => {
       // it is. A closing line belongs in the transcript; the call itself does not.
       'Ending the call now, sir. [dry] Do try not to miss me too much.',
       '[sighs] As you wish, sir. I shall end the call.',
+      // "Affected" and "mark" are ordinary words; only the tool's name, run together, is a call.
+      '[dry] The storm has not affected the kitchen lights, sir.',
+      '[matter-of-factly] I shall mark that down as affected by your optimism, sir.',
     ];
 
     for (const spoken of speech) {
@@ -64,7 +72,7 @@ describe('findSpokenToolCallsInText', () => {
 
 describe('findSpokenToolCalls', () => {
   function agentResponse(text: string): ServerMessage {
-    return { type: 'agent_response', agent_response_event: { agent_response: text } } as ServerMessage;
+    return { type: 'agent_response', agent_response_event: { agent_response: text } };
   }
 
   it('quotes the offending line so the failure can be read at a glance', () => {
@@ -93,10 +101,21 @@ describe('findSpokenToolCalls', () => {
   it('ignores everything that is not the agent speaking', () => {
     // A real tool call carries the tool's name too. Reading that as a recitation
     // would fail exactly the conversations that did the right thing.
-    const messages = [
-      { type: 'mcp_tool_call', mcp_tool_call: { tool_name: 'routePromptWorkflow', state: 'success', result: [] } },
+    const messages: ServerMessage[] = [
+      {
+        type: 'mcp_tool_call',
+        mcp_tool_call: { tool_name: 'routePromptWorkflow', tool_call_id: 'call-1', state: 'success', result: [] },
+      },
+      {
+        type: 'client_tool_call',
+        client_tool_call: {
+          tool_name: 'markAffected',
+          tool_call_id: 'call-2',
+          parameters: { entities: [{ id: 'light.kitchen_ceiling' }] },
+        },
+      },
       { type: 'user_message', text: 'call routePromptWorkflow for me' },
-    ] as unknown as ServerMessage[];
+    ];
 
     expect(findSpokenToolCalls(messages)).toEqual([]);
   });
