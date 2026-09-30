@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 import {
   AddEquation,
+  ConstantAlphaFactor,
+  ConstantColorFactor,
   CustomBlending,
   NoColorSpace,
-  OneFactor,
   OneMinusSrcAlphaFactor,
   OneMinusSrcColorFactor,
   Texture,
@@ -22,19 +23,26 @@ describe('the view-plane quad', () => {
     expect(size?.y).toBeCloseTo(VIEW_PLANE_SIDE_METRES, 6);
   });
 
-  it('Screens its light over the room, in colour and in alpha, without writing depth', () => {
-    const { material } = createViewPlaneQuad(1).mesh;
+  it('Screens its light over the room, in colour and in alpha, faded as one layer, without writing depth', () => {
+    const quad = createViewPlaneQuad(1);
+    const { material } = quad.mesh;
     expect(material.blending).toBe(CustomBlending);
     expect([material.blendEquation, material.blendSrc, material.blendDst]).toEqual([
       AddEquation,
-      OneFactor,
+      ConstantColorFactor,
       OneMinusSrcColorFactor,
     ]);
     expect([material.blendEquationAlpha, material.blendSrcAlpha, material.blendDstAlpha]).toEqual([
       AddEquation,
-      OneFactor,
+      ConstantAlphaFactor,
       OneMinusSrcAlphaFactor,
     ]);
+    // In full until it is told otherwise; then by the fade, with the picture's own fade undone.
+    const { blendColor } = material;
+    expect([blendColor.r, blendColor.g, blendColor.b, material.blendAlpha]).toEqual([1, 1, 1, 1]);
+    quad.setFade(0.4, 0.5);
+    expect([blendColor.r, blendColor.g, blendColor.b, material.blendAlpha]).toEqual([0.4, 0.4, 0.4, 0.4]);
+    expect(material.uniforms.pictureFade.value).toBe(0.5);
     expect(material.depthWrite).toBe(false);
     expect(material.uniforms.alphaFromLight.value).toBe(ALPHA_FROM_LIGHT);
   });

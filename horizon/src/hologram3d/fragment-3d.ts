@@ -10,7 +10,7 @@ import {
   LATTICE_PULSE,
   LATTICE_SPACING,
   LATTICE_STROKE_SHRINK,
-  latticeFragment,
+  latticeTarget,
   readFragment,
   readShellFragment,
   scanned,
@@ -111,16 +111,43 @@ export function latticeSpacing(state: HologramFrameState) {
 export const LATTICE_LAYER_SHARE = 0.816;
 
 /**
- * Where a fragment is while he listens: the phone's `latticeFragment` in the plane, and its depth
- * pulled the same share of the way into the nearest of the lattice's layers.
+ * How much larger than on the plane through his centre the centre eye sees something `depth`
+ * nearer to it, from `eyeDistance` away (both in the drawing's unit). 1 from infinitely far, which
+ * is the phone's flat projection; held short of the eye itself.
  */
-function onLattice(x: number, y: number, depth: number, id: number, state: HologramFrameState): Vector3Tuple {
+export function seenLarger(depth: number, eyeDistance: number) {
+  if (!Number.isFinite(eyeDistance)) return 1;
+  return eyeDistance / Math.max(eyeDistance - depth, 0.1 * eyeDistance);
+}
+
+/**
+ * Where a fragment is while he listens: the phone's lattice as the centre eye sees it, with its
+ * depth pulled the same share of the way into the nearest of the lattice's layers.
+ *
+ * The grid point is found for where the eye sees the fragment, and the fragment is then put where
+ * the eye would see it on that point from its layer's depth. So from the centre eye every layer's
+ * points line up behind one another and the lattice is the phone's knots, and in stereo or from
+ * another place the layers come apart into a crystal. Snapped in the plane instead, the layers
+ * seen in perspective smear each knot into a streak pointing at the centre. From infinitely far —
+ * the phone's view — this is `latticeFragment` exactly.
+ */
+function onLattice(
+  x: number,
+  y: number,
+  depth: number,
+  id: number,
+  state: HologramFrameState,
+  eyeDistance: number,
+): Vector3Tuple {
   const pull = state.hearing * LATTICE_PULL;
   if (pull <= 0.001) return [x, y, depth];
-  latticeFragment(x, y, id, state);
+  const seen = seenLarger(depth, eyeDistance);
+  const target = state.listened;
+  latticeTarget(x * seen, y * seen, id, state, target);
   const layer = latticeSpacing(state) * LATTICE_LAYER_SHARE;
   const snapped = Math.floor(depth / layer + 0.5) * layer;
-  return [state.listened[0], state.listened[1], depth + (snapped - depth) * pull];
+  const unseen = 1 / seenLarger(snapped, eyeDistance);
+  return [x + (target[0] * unseen - x) * pull, y + (target[1] * unseen - y) * pull, depth + (snapped - depth) * pull];
 }
 
 /**
@@ -189,6 +216,7 @@ export function placeBodyFragment(
   offset: number,
   state: HologramFrameState,
   basis: ViewBasis,
+  eyeDistance = Number.POSITIVE_INFINITY,
 ): PlacedFragment | null {
   const reading = state.reading;
   const strength = readFragment(body, offset, state, reading);
@@ -229,6 +257,7 @@ export function placeBodyFragment(
     depth * vortexScale(x, y, id, state),
     id,
     state,
+    eyeDistance,
   );
   // The thinking plane is level: how far down the world's vertical the fragment is.
   const litHere = lit * scanned(-intoBody(basis, latticeX, latticeY, latticeDepth)[1], state);
@@ -263,6 +292,7 @@ export function placeStreamFragment(
   offset: number,
   state: HologramFrameState,
   basis: ViewBasis,
+  eyeDistance = Number.POSITIVE_INFINITY,
 ): PlacedFragment | null {
   const strength = readShellFragment(stream, offset, state);
   if (strength <= 0) return null;
@@ -299,6 +329,7 @@ export function placeStreamFragment(
     depth * vortexScale(planeX, planeY, id, state),
     id,
     state,
+    eyeDistance,
   );
   // The tangent as the view plane sees it, pointing right as the phone's always does (it draws
   // the length along +x), and turned with the vortex's heading as the phone's direction is.

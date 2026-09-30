@@ -58,9 +58,7 @@ const VERTEX_SHADER = /* glsl */ `
 precision highp float;
 precision highp int;
 
-// How far the centre eye is from his centre, and one texel, both in the drawing's unit; and his
-// radius as a share of the square the target covers.
-uniform float eyeDistance;
+// One texel, in the drawing's unit, and his radius as a share of the square the target covers.
 uniform float texelUnits;
 uniform float radiusFraction;
 
@@ -81,7 +79,7 @@ void main() {
   }
   // Onto the plane through his centre as the centre eye sees it.
   float depth = dot(fragment.centre, viewFront);
-  float perspective = eyeDistance / max(eyeDistance - depth, 0.1 * eyeDistance);
+  float perspective = seenLarger(depth);
   vec2 centre = vec2(dot(fragment.centre, viewRight), -dot(fragment.centre, viewUp)) * perspective;
   vec2 axis = vec2(dot(fragment.axis, viewRight), -dot(fragment.axis, viewUp)) * perspective;
   float halfLength = length(axis);
@@ -123,7 +121,6 @@ void main() {
 `;
 
 export interface HaloUniforms {
-  eyeDistance: { value: number };
   texelUnits: { value: number };
   radiusFraction: { value: number };
 }
@@ -132,6 +129,9 @@ export interface HaloUnion {
   /** Coverage: the pinned group in the left half, the turning group in the right; R, G, B = dim, mid, bright. */
   texture: Texture;
   uniforms: HaloUniforms;
+  /** The instanced draw of every row's halo, in a scene of its own, and the target it draws into. */
+  mesh: Mesh<InstancedBufferGeometry, RawShaderMaterial>;
+  target: WebGLRenderTarget;
   /** Draws this frame's coverage. Call after the fragment uniforms are written and before the room is rendered. */
   render(renderer: WebGLRenderer): void;
   dispose(): void;
@@ -149,7 +149,6 @@ export function createHaloUnion(attributes: RowAttributes, fragmentUniforms: Fra
   });
   target.texture.colorSpace = NoColorSpace;
   const uniforms: HaloUniforms = {
-    eyeDistance: { value: 1000 },
     texelUnits: { value: 0.01 },
     radiusFraction: { value: 0.27 },
   };
@@ -182,6 +181,8 @@ export function createHaloUnion(attributes: RowAttributes, fragmentUniforms: Fra
 
   return {
     texture: target.texture,
+    mesh,
+    target,
     uniforms,
     render(renderer) {
       // Into a target of its own, with the headset's cameras out of the way — the pattern three's

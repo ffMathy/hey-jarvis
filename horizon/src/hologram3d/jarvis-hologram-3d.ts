@@ -17,6 +17,7 @@ import type { Vector3Tuple, ViewBasis } from './fragment-3d';
 import { createFragmentUniforms, writeFragmentUniforms } from './fragment-glsl';
 import { createFrameClock, type HologramDrive } from './frame-clock';
 import { createHaloUnion, HALO_TEXELS } from './halo-union';
+import { setLayerFade } from './layer-blending';
 import { createRowAttributes } from './row-geometry';
 import { createSparkleTexture } from './sparkle-texture';
 import {
@@ -87,10 +88,21 @@ export interface JarvisHologramOptions {
   drawingSize?: number;
 }
 
+/** Somewhere to build a 4×4 from a basis, made once rather than once a frame. */
+interface PlacementScratch {
+  matrix: Matrix4;
+  right: Vector3;
+  up: Vector3;
+  front: Vector3;
+}
+
 /** A 4×4 that stands a unit cube at `centre`, turned to `basis` and scaled by `scale`. */
-function placement(target: Matrix4, centre: Vector3, basis: ViewBasis, scale: number): Matrix4 {
-  const column = (vector: Vector3Tuple) => new Vector3(vector[0], vector[1], vector[2]).multiplyScalar(scale);
-  return target.makeBasis(column(basis.right), column(basis.up), column(basis.front)).setPosition(centre);
+function placement(scratch: PlacementScratch, centre: Vector3, basis: ViewBasis, scale: number): Matrix4 {
+  const { right, up, front } = scratch;
+  right.fromArray(basis.right).multiplyScalar(scale);
+  up.fromArray(basis.up).multiplyScalar(scale);
+  front.fromArray(basis.front).multiplyScalar(scale);
+  return scratch.matrix.makeBasis(right, up, front).setPosition(centre);
 }
 
 /**
@@ -126,8 +138,14 @@ export async function createJarvisHologram3D(
   object.add(quad.mesh, strokes.mesh);
 
   const centre = new Vector3();
+  const head = new Vector3();
   const toParent = new Matrix4();
-  const world = new Matrix4();
+  const scratch: PlacementScratch = {
+    matrix: new Matrix4(),
+    right: new Vector3(),
+    up: new Vector3(),
+    front: new Vector3(),
+  };
   let radius = HOLOGRAM_RADIUS_METRES;
   let alphaFactor = quad.mesh.material.uniforms.alphaFromLight.value;
   let mode: HologramMode = 'volumetric';
@@ -139,31 +157,36 @@ export async function createJarvisHologram3D(
   function hide() {
     quad.mesh.visible = false;
     strokes.mesh.visible = false;
+    diagnostics.canvasKitMilliseconds = 0;
   }
 
   function placeLocally(mesh: Object3D, basis: ViewBasis, scale: number) {
-    mesh.matrix.multiplyMatrices(toParent, placement(world, centre, basis, scale));
+    mesh.matrix.multiplyMatrices(toParent, placement(scratch, centre, basis, scale));
     mesh.matrixWorldNeedsUpdate = true;
   }
 
   function drawPicture(frame: HologramFrame, volumetric: boolean) {
     const started = performance.now();
     // Without the body when it is drawn on the GPU: at density 0 the drawing skips it and nothing else.
-    quad.showPicture(flat.draw({ ...frame, density: volumetric ? 0 : 1 }));
+    quad.showPicture(flat.draw({ ...frame, density: volumetric ? 0 : frame.density }));
     diagnostics.canvasKitMilliseconds = performance.now() - started;
   }
 
   function drawBody(state: HologramFrameState, basis: ViewBasis, bodyBasis: ViewBasis, distance: number, fade: number) {
     const drawnRadius = (radius * state.radius) / SPHERE_FRACTION;
-    writeFragmentUniforms(fragmentUniforms, state, inFrame(basis, bodyBasis), diagnostics.density);
-    halo.uniforms.eyeDistance.value = distance / drawnRadius;
+    writeFragmentUniforms(
+      fragmentUniforms,
+      state,
+      inFrame(basis, bodyBasis),
+      diagnostics.density,
+      distance / drawnRadius,
+    );
     halo.uniforms.radiusFraction.value = state.radius;
     halo.uniforms.texelUnits.value = 1 / (state.radius * HALO_TEXELS);
     halo.render(renderer);
-    quad.showHalo(halo.texture, state.glowGain, state.arrival);
+    quad.showHalo(halo.texture, state.glowGain);
     strokes.uniforms.unitMetres.value = drawnRadius;
-    strokes.uniforms.arrival.value = state.arrival;
-    strokes.uniforms.fade.value = fade;
+    setLayerFade(strokes.mesh.material, state.arrival * fade);
     placeLocally(strokes.mesh, bodyBasis, drawnRadius);
     strokes.mesh.visible = true;
   }
@@ -171,13 +194,13 @@ export async function createJarvisHologram3D(
   function draw(centreEye: PoseLike) {
     object.updateWorldMatrix(true, false);
     centre.setFromMatrixPosition(object.matrixWorld);
-    const head = centreEye.position;
+    head.set(centreEye.position.x, centreEye.position.y, centreEye.position.z);
     front ??= frontTowards(centre, head);
     view = viewBasisTowards(centre, head, view);
     const frame = clock.frame(diagnostics.density);
     lastFrame = frame;
     const state = analyseFrame(frame, 1, scene);
-    const distance = centre.distanceTo(new Vector3(head.x, head.y, head.z));
+    const distance = centre.distanceTo(head);
     const fade = closeRangeFade(distance, radius);
     if (state.arrival <= 0 || fade <= 0) {
       hide();
@@ -185,13 +208,14 @@ export async function createJarvisHologram3D(
     }
     toParent.copy(object.matrixWorld).invert();
     placeLocally(quad.mesh, view, radius / SPHERE_FRACTION);
-    quad.setFade(fade);
+    // The phone fades him as one layer while he arrives and leaves; so does every part here.
+    quad.setFade(state.arrival * fade, state.arrival);
     const volumetric = mode === 'volumetric';
     drawPicture(frame, volumetric);
     if (volumetric) {
       drawBody(state, view, bodyFrame(front), distance, fade);
     } else {
-      quad.showHalo(null, 0, 0);
+      quad.showHalo(null, 0);
       strokes.mesh.visible = false;
     }
   }

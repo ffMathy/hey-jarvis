@@ -11,6 +11,7 @@ import {
   type HologramFrameState,
   LATTICE_STROKE_SHRINK,
   latticeFragment,
+  latticeTarget,
   placeFragment,
   readFragment,
   readShellFragment,
@@ -25,6 +26,7 @@ import {
   type PlacedFragment,
   placeBodyFragment,
   placeStreamFragment,
+  seenLarger,
   type Vector3Tuple,
   type ViewBasis,
 } from './fragment-3d';
@@ -231,6 +233,32 @@ describe('a fragment in three dimensions, seen from the front', () => {
       const fromLayer = Math.abs(placed.centre[2] / layer - Math.round(placed.centre[2] / layer));
       expect(fromLayer).toBeLessThanOrEqual(0.5 * 0.12 + 1e-9);
     }
+  });
+
+  it('keeps the lattice’s knots knots as the centre eye sees them, 1.6 m away', () => {
+    const state = stateAt({ time: 12.3, hearing: 1, hearingLevel: 0 });
+    // A radius of 0.22 m at 1.6 m: the eye is about seven radii from his centre.
+    const eyeDistance = 1.6 / 0.22;
+    const spread = (distance: number) => {
+      // How far each fragment is seen from the grid point nearest where it is seen.
+      let total = 0;
+      let count = 0;
+      for (let offset = 0; offset < scene.body.length; offset += BODY_STRIDE * 3) {
+        const placed = placeBodyFragment(scene.body, offset, state, FRONT_VIEW, distance);
+        if (placed === null) continue;
+        const seen = seenLarger(placed.centre[2], eyeDistance);
+        const x = placed.plane[0] * seen;
+        const y = placed.plane[1] * seen;
+        const target = [0, 0];
+        latticeTarget(x, y, 0.5, state, target);
+        total += Math.hypot(x - target[0], y - target[1]);
+        count++;
+      }
+      return total / count;
+    };
+    // Snapped where the eye sees them, the layers line up behind one another; snapped in the plane,
+    // perspective pulls each knot out into a streak.
+    expect(spread(eyeDistance)).toBeLessThan(0.5 * spread(Number.POSITIVE_INFINITY));
   });
 });
 

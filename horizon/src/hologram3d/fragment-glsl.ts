@@ -66,6 +66,7 @@ export interface FragmentUniforms {
   viewRight: { value: [number, number, number] };
   viewUp: { value: [number, number, number] };
   viewFront: { value: [number, number, number] };
+  eyeDistance: { value: number };
 }
 
 export function createFragmentUniforms(): FragmentUniforms {
@@ -87,18 +88,27 @@ export function createFragmentUniforms(): FragmentUniforms {
     viewRight: { value: [1, 0, 0] },
     viewUp: { value: [0, 1, 0] },
     viewFront: { value: [0, 0, 1] },
+    eyeDistance: { value: ORTHOGRAPHIC_EYE_DISTANCE },
   };
 }
 
 /**
+ * How far away the eye is taken to be when it is infinitely far: far enough that nothing about him
+ * is seen larger by more than a part in ten thousand, and a number float32 holds.
+ */
+export const ORTHOGRAPHIC_EYE_DISTANCE = 1e5;
+
+/**
  * Writes this frame's state into the uniforms. `density` is the share of the rows to draw — the
- * headset's own, not the frame's, since the frame CanvasKit draws has none of the body in it.
+ * headset's own, not the frame's, since the frame CanvasKit draws has none of the body in it —
+ * and `eyeDistance` how far the centre eye is from his centre, in the drawing's unit.
  */
 export function writeFragmentUniforms(
   uniforms: FragmentUniforms,
   state: HologramFrameState,
   basis: ViewBasis,
   density: number,
+  eyeDistance: number,
 ) {
   uniforms.time.value = state.time;
   uniforms.bodyShare.value = state.bodyShare;
@@ -126,6 +136,7 @@ export function writeFragmentUniforms(
   uniforms.viewRight.value = basis.right;
   uniforms.viewUp.value = basis.up;
   uniforms.viewFront.value = basis.front;
+  uniforms.eyeDistance.value = Number.isFinite(eyeDistance) ? eyeDistance : ORTHOGRAPHIC_EYE_DISTANCE;
 }
 
 /** The attributes, uniforms and functions of the fragment arithmetic, for a vertex shader. */
@@ -147,6 +158,8 @@ uniform vec4 lattice;
 uniform vec3 viewRight;
 uniform vec3 viewUp;
 uniform vec3 viewFront;
+// How far the centre eye is from his centre, in the drawing's unit.
+uniform float eyeDistance;
 
 // One row of body-rows.ts.
 in vec4 rest;
@@ -253,14 +266,21 @@ vec4 swirlFragment(vec2 point, vec2 unit, float orderHash, out float shown, out 
   return vec4(swirled, direction / directionLength);
 }
 
-// latticeFragment in the plane, and the depth pulled as far into the nearest layer.
+// How much larger than on the plane through his centre the centre eye sees what is depth nearer.
+float seenLarger(float depth) {
+  return eyeDistance / max(eyeDistance - depth, 0.1 * eyeDistance);
+}
+
+// The lattice point for where the centre eye sees the fragment, the depth pulled as far into the
+// nearest layer, and the fragment put where the eye sees it on that point from its layer.
 vec3 onLattice(vec2 point, float depth, float jitterHash) {
   float pull = lattice.w;
   if (pull <= 0.001) return vec3(point, depth);
   float cosine = lattice.x;
   float sine = lattice.y;
   float spacing = lattice.z;
-  vec2 local = vec2(point.x * cosine + point.y * sine, point.y * cosine - point.x * sine);
+  vec2 seen = point * seenLarger(depth);
+  vec2 local = vec2(seen.x * cosine + seen.y * sine, seen.y * cosine - seen.x * sine);
   float rowHeight = spacing * 0.866;
   float row = roundHalfUp(local.y / rowHeight);
   float shift = mod(row, 2.0) == 0.0 ? 0.0 : spacing / 2.0;
@@ -270,7 +290,8 @@ vec3 onLattice(vec2 point, float depth, float jitterHash) {
   vec2 target = vec2(snapped.x * cosine - snapped.y * sine, snapped.y * cosine + snapped.x * sine);
   float layer = spacing * LAYER_SHARE;
   float snappedDepth = roundHalfUp(depth / layer) * layer;
-  return vec3(point + (target - point) * pull, depth + (snappedDepth - depth) * pull);
+  vec2 placed = target / seenLarger(snappedDepth);
+  return vec3(point + (placed - point) * pull, depth + (snappedDepth - depth) * pull);
 }
 
 float scanned(float heightDown, out bool bright) {

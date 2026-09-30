@@ -1,18 +1,6 @@
-import {
-  AddEquation,
-  CustomBlending,
-  DoubleSide,
-  GLSL3,
-  type InstancedBufferGeometry,
-  Mesh,
-  OneFactor,
-  OneMinusSrcAlphaFactor,
-  OneMinusSrcColorFactor,
-  RawShaderMaterial,
-  type Texture,
-  Vector4,
-} from 'three';
+import { DoubleSide, GLSL3, type InstancedBufferGeometry, Mesh, RawShaderMaterial, type Texture, Vector4 } from 'three';
 import { FRAGMENT_GLSL, type FragmentUniforms, GLYPH_GLSL, glslColour, glslFloat } from './fragment-glsl';
+import { LAYER_BLENDING, setLayerFade } from './layer-blending';
 import { createRowGeometry, type RowAttributes } from './row-geometry';
 import { SPARKLE_REPEAT } from './sparkle-texture';
 import { ALPHA_FROM_LIGHT } from './view-plane-quad';
@@ -101,9 +89,7 @@ precision highp int;
 
 uniform sampler2D sparkle;
 uniform float agitation;
-// The arrival's fade (the phone's saveLayer alpha), the close-range fade, and passthrough's alpha.
-uniform float arrival;
-uniform float fade;
+// How much of the room behind his light hides; the fades are the blend's (see layer-blending.ts).
 uniform float alphaFromLight;
 
 in vec2 local;
@@ -159,7 +145,6 @@ void main() {
     // Screen, as the phone lays the hot core over the bright stroke.
     light = light + hot - light * hot;
   }
-  light *= arrival * fade;
   float brightest = max(light.r, max(light.g, light.b));
   if (brightest <= 0.0) discard;
   colour = vec4(light, alphaFromLight * brightest);
@@ -171,8 +156,6 @@ export interface StrokeUniforms {
   viewportHeight: { value: number };
   unitMetres: { value: number };
   sparkle: { value: Texture };
-  arrival: { value: number };
-  fade: { value: number };
   alphaFromLight: { value: number };
 }
 
@@ -183,9 +166,9 @@ export interface BodyStrokes {
 }
 
 /**
- * The strokes as one instanced draw, Screen-blended over the room like every other layer of him:
- * ONE, ONE_MINUS_SRC_COLOR in colour and ONE, ONE_MINUS_SRC_ALPHA in alpha, writing alpha as a
- * share of the light (see ALPHA_FROM_LIGHT), with no depth written.
+ * The strokes as one instanced draw, Screen-blended over the room and faded as one layer with the
+ * rest of him (see `layer-blending.ts`), writing alpha as a share of the light (see
+ * ALPHA_FROM_LIGHT), with no depth written.
  *
  * Unlike the phone, strokes of one tier that cross add up rather than forming a union — the phone
  * strokes each tier as one path. They are thin and seldom cross, which is why the halos, which
@@ -200,8 +183,6 @@ export function createBodyStrokes(
     viewportHeight: { value: 1 },
     unitMetres: { value: 1 },
     sparkle: { value: sparkle },
-    arrival: { value: 1 },
-    fade: { value: 1 },
     alphaFromLight: { value: ALPHA_FROM_LIGHT },
   };
   const material = new RawShaderMaterial({
@@ -215,14 +196,9 @@ export function createBodyStrokes(
     transparent: true,
     depthWrite: false,
     premultipliedAlpha: true,
-    blending: CustomBlending,
-    blendEquation: AddEquation,
-    blendSrc: OneFactor,
-    blendDst: OneMinusSrcColorFactor,
-    blendEquationAlpha: AddEquation,
-    blendSrcAlpha: OneFactor,
-    blendDstAlpha: OneMinusSrcAlphaFactor,
+    ...LAYER_BLENDING,
   });
+  setLayerFade(material, 1);
   const mesh = new Mesh(createRowGeometry(attributes), material);
   // The quad's corners are only moved into place by the shader, so three's bounds say nothing.
   mesh.frustumCulled = false;

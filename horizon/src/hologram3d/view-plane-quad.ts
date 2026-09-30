@@ -1,21 +1,9 @@
 import { SPHERE_FRACTION } from 'hologram';
-import {
-  AddEquation,
-  CustomBlending,
-  GLSL3,
-  LinearFilter,
-  Mesh,
-  OneFactor,
-  OneMinusSrcAlphaFactor,
-  OneMinusSrcColorFactor,
-  PlaneGeometry,
-  RawShaderMaterial,
-  Texture,
-  Vector3,
-} from 'three';
+import { GLSL3, LinearFilter, Mesh, PlaneGeometry, RawShaderMaterial, Texture, Vector3 } from 'three';
 import { HOLOGRAM_RADIUS_METRES } from './dimensions';
 import { glslColour } from './fragment-glsl';
 import { HALO_PAINTS } from './halo-union';
+import { LAYER_BLENDING, setLayerFade } from './layer-blending';
 
 /**
  * The side of the square the phone's drawing fills, about 3.7R.
@@ -66,8 +54,9 @@ uniform sampler2D picture;
 uniform sampler2D halo;
 // The halo tiers' strengths (dim, mid, bright) times the voice's glow; all 0 with no halo pass.
 uniform vec3 haloShares;
-uniform float haloArrival;
-uniform float fade;
+// How far CanvasKit has already faded the picture (the phone's arrival layer), undone here so
+// the whole quad is faded once, by the blend (see layer-blending.ts).
+uniform float pictureFade;
 uniform float alphaFromLight;
 
 in vec2 pictureCoordinate;
@@ -85,14 +74,14 @@ vec3 through(float covered, float share) {
 void main() {
   // Raw encoded sRGB, exactly as Skia wrote it: the projection layer is treated as sRGB and
   // premultiplied, so blending these values matches what the phone's Screen blend does.
-  vec3 light = texture(picture, pictureCoordinate).rgb;
+  vec3 light = min(vec3(1.0), texture(picture, pictureCoordinate).rgb / pictureFade);
   // The halo union's two groups, each tier Screened over the rest as the phone's paths are.
   vec3 pinned = texture(halo, vec2(haloCoordinate.x * 0.5, haloCoordinate.y)).rgb;
   vec3 turning = texture(halo, vec2(0.5 + haloCoordinate.x * 0.5, haloCoordinate.y)).rgb;
   vec3 left = through(pinned.r, haloShares.x) * through(pinned.g, haloShares.y) * through(pinned.b, haloShares.z)
     * through(turning.r, haloShares.x) * through(turning.g, haloShares.y) * through(turning.b, haloShares.z);
-  vec3 glow = (vec3(1.0) - left) * haloArrival;
-  light = (light + glow - light * glow) * fade;
+  vec3 glow = vec3(1.0) - left;
+  light = light + glow - light * glow;
   colour = vec4(light, alphaFromLight * max(light.r, max(light.g, light.b)));
 }
 `;
@@ -104,11 +93,14 @@ export interface ViewPlaneQuad {
   showPicture(picture: ImageBitmap): void;
   /**
    * Lays the halo union's coverage (`halo-union.ts`) under the picture, each tier at its strength
-   * times `glowGain` and the whole of it at `arrival`; `null` for none.
+   * times `glowGain`; `null` for none.
    */
-  showHalo(coverage: Texture | null, glowGain: number, arrival: number): void;
-  /** Fades everything the quad shows: the close-range guard. */
-  setFade(fade: number): void;
+  showHalo(coverage: Texture | null, glowGain: number): void;
+  /**
+   * Fades everything the quad shows by `fade`, when the picture itself already carries
+   * `pictureFade` of it — CanvasKit's arrival layer. Both 1 by default.
+   */
+  setFade(fade: number, pictureFade: number): void;
   /** Turns the square so its face points at `eye`, keeping it upright. */
   faceViewer(eye: Vector3): void;
   dispose(): void;
@@ -117,11 +109,10 @@ export interface ViewPlaneQuad {
 /**
  * A `side`-metre square that shows the phone's drawing as light over the room.
  *
- * Blended as Screen, like every layer of the phone's drawing: result = picture + room ×
- * (1 − picture), per channel, which in GL is ONE, ONE_MINUS_SRC_COLOR. Alpha is Screened the
- * same way (ONE, ONE_MINUS_SRC_ALPHA) so the layer's alpha stays a union rather than a sum.
- * Raw shaders, so three adds no colour management between Skia's bytes and the display, and no
- * depth write, so nothing drawn after him is hidden by the black around him.
+ * Blended as Screen, like every layer of the phone's drawing, and faded as one layer with the
+ * rest of him: see `layer-blending.ts`. Alpha is Screened the same way, so the layer's alpha stays
+ * a union rather than a sum. Raw shaders, so three adds no colour management between Skia's bytes
+ * and the display, and no depth write, so nothing drawn after him is hidden by the black around him.
  */
 export function createViewPlaneQuad(side: number): ViewPlaneQuad {
   const texture = new Texture<ImageBitmap>();
@@ -139,21 +130,15 @@ export function createViewPlaneQuad(side: number): ViewPlaneQuad {
       // Until there is a halo pass, three binds an empty texture here and the shares make it nothing.
       halo: { value: null },
       haloShares: { value: new Vector3() },
-      haloArrival: { value: 0 },
-      fade: { value: 1 },
+      pictureFade: { value: 1 },
       alphaFromLight: { value: ALPHA_FROM_LIGHT },
     },
     transparent: true,
     depthWrite: false,
     premultipliedAlpha: true,
-    blending: CustomBlending,
-    blendEquation: AddEquation,
-    blendSrc: OneFactor,
-    blendDst: OneMinusSrcColorFactor,
-    blendEquationAlpha: AddEquation,
-    blendSrcAlpha: OneFactor,
-    blendDstAlpha: OneMinusSrcAlphaFactor,
+    ...LAYER_BLENDING,
   });
+  setLayerFade(material, 1);
 
   const mesh = new Mesh(new PlaneGeometry(side, side), material);
   // Nothing to show until the first picture has been drawn.
@@ -170,7 +155,7 @@ export function createViewPlaneQuad(side: number): ViewPlaneQuad {
       texture.needsUpdate = true;
       mesh.visible = true;
     },
-    showHalo(coverage, glowGain, arrival) {
+    showHalo(coverage, glowGain) {
       const { uniforms } = material;
       uniforms.halo.value = coverage;
       const shares = coverage === null ? 0 : glowGain;
@@ -179,10 +164,11 @@ export function createViewPlaneQuad(side: number): ViewPlaneQuad {
         HALO_PAINTS.mid.strength * shares,
         HALO_PAINTS.bright.strength * shares,
       );
-      uniforms.haloArrival.value = arrival;
     },
-    setFade(fade) {
-      material.uniforms.fade.value = fade;
+    setFade(fade, pictureFade) {
+      setLayerFade(material, fade);
+      // Never 0: a picture faded to nothing is not drawn at all (see jarvis-hologram-3d.ts).
+      material.uniforms.pictureFade.value = Math.max(pictureFade, 1e-3);
     },
     faceViewer(eye) {
       // A plane faces +Z, and lookAt turns an object's +Z towards the target with the world's up kept up.
