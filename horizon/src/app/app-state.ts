@@ -117,8 +117,8 @@ export const NOT_LISTENING_LINE = 'Not listening for “Hey Jarvis”';
 /** What to do while placing things, on a line that follows the gaze. */
 export const EDITING_GUIDE_LINES: readonly string[] = [
   'Placing what Jarvis works on',
-  'Pinch or grip one in the drawer, and let go where it is in the room',
-  'Or point, pinch or pull the trigger, and do it again where it goes',
+  'Pinch or grip one in the drawer, and let go where it is',
+  'Out of reach? Point and pinch, or pull the trigger, and again there',
   'Done, B or Y when you have finished',
 ];
 

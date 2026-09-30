@@ -1,5 +1,5 @@
 import { Group, type Object3D } from 'three';
-import type { Vector3Like } from '../xr/ray';
+import { distanceBetween, type Vector3Like } from '../xr/ray';
 import { placeUnder } from './panel-placement';
 import { createTextPanel, type TextPanel } from './text-panel';
 
@@ -9,7 +9,9 @@ import { createTextPanel, type TextPanel } from './text-panel';
  *
  * A small pool of text panels, each kept for the same key from frame to frame, so a name is drawn
  * into its canvas once and only moved after that; a panel whose key is gone is hidden, and given to
- * the next new key. Each hangs just above the point it names, upright and turned to the eyes.
+ * the next new key. Each hangs just above the point it names, upright and turned to the eyes, and
+ * beyond arm's length grows with its distance, so a lamp pointed at across the room is named as
+ * legibly as one on the desk.
  */
 
 /** One name to show: `key` keeps it on the same panel from frame to frame. */
@@ -35,9 +37,20 @@ export const MAX_LABELS = 24;
 /** How wide a name may be before it wraps. */
 const LABEL_WIDTH_METRES = 0.26;
 
+/** Out to here a name is its own size; beyond, it grows with the distance, keeping its apparent size. */
+export const LABEL_TRUE_SIZE_METRES = 1.2;
+
+/** How much bigger than its own size a name is drawn at `distance` from the eyes. */
+export function labelScaleAt(distance: number): number {
+  return Math.max(1, distance / LABEL_TRUE_SIZE_METRES);
+}
+
 export function createEntityLabels(): EntityLabels {
   const group = new Group();
   const panels: TextPanel[] = [];
+  // Each panel hangs in a holder of its own, which is what is moved and scaled: the panel's own
+  // scale is its size in metres, set whenever its text is drawn.
+  const holders: Group[] = [];
   const keys: (string | undefined)[] = [];
 
   function panelFor(key: string, taken: ReadonlySet<number>): TextPanel | undefined {
@@ -48,8 +61,11 @@ export function createEntityLabels(): EntityLabels {
     if (index < 0) return undefined;
     if (index === panels.length) {
       const panel = createTextPanel({ widthMetres: LABEL_WIDTH_METRES, tone: 'label' });
+      const holder = new Group();
+      holder.add(panel.object);
       panels.push(panel);
-      group.add(panel.object);
+      holders.push(holder);
+      group.add(holder);
     }
     keys[index] = key;
     return panels[index];
@@ -67,9 +83,14 @@ export function createEntityLabels(): EntityLabels {
       for (const label of labels) {
         const panel = panelFor(label.key, taken);
         if (panel === undefined) continue;
-        taken.add(panels.indexOf(panel));
+        const index = panels.indexOf(panel);
+        const holder = holders[index];
+        if (holder === undefined) continue;
+        taken.add(index);
         panel.setText([label.text]);
-        placeUnder(panel.object, label.position, label.above + panel.heightMetres / 2, eye);
+        const scale = labelScaleAt(distanceBetween(label.position, eye));
+        holder.scale.setScalar(scale);
+        placeUnder(holder, label.position, label.above + (panel.heightMetres * scale) / 2, eye);
       }
       panels.forEach((panel, index) => {
         if (!taken.has(index)) {

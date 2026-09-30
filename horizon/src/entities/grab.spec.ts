@@ -113,6 +113,13 @@ describe('near, with a hand', () => {
     expect(after.carried).toEqual([]);
   });
 
+  it('places a token where it was last held, not where the opening fingers put the pinch point', () => {
+    const lamp = { x: 0.4, y: 1.6, z: -0.6 };
+    const opened = { x: 0.43, y: 1.62, z: -0.58 };
+    const { events } = run([[pinching(KITCHEN.position)], [pinching(lamp)], [hand({ grip: opened })]]);
+    expect(events.at(-1)).toEqual({ kind: 'placed', id: 'light.kitchen', position: lamp });
+  });
+
   it(`takes nothing more than ${HAND_REACH_METRES * 100} cm from a token's edge`, () => {
     const out = {
       x: KITCHEN.position.x,

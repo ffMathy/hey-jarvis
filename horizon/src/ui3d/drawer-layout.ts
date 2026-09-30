@@ -22,10 +22,11 @@ export const SLOTS_PER_PAGE = DRAWER_COLUMNS * DRAWER_ROWS;
 
 /**
  * A slot's size. Five centimetres between tokens is the least a pinch can pick one out of its
- * neighbours by; these leave nine across and eight down, and room for a name on two lines.
+ * neighbours by; these leave nine across and nine down, and room under each token for a name on two
+ * lines and a note under that.
  */
 export const SLOT_WIDTH_METRES = 0.09;
-export const SLOT_HEIGHT_METRES = 0.08;
+export const SLOT_HEIGHT_METRES = 0.09;
 
 export const DRAWER_MARGIN_METRES = 0.015;
 export const DRAWER_HEADER_METRES = 0.05;
@@ -39,7 +40,7 @@ export const DRAWER_HEIGHT_METRES =
 export const TOKEN_LIFT_METRES = 0.018;
 
 /** How far down from a slot's top edge its token sits; the name goes under it. */
-export const TOKEN_FROM_SLOT_TOP_METRES = 0.025;
+export const TOKEN_FROM_SLOT_TOP_METRES = 0.022;
 
 /** Where the drawer opens: this far ahead of the eyes along the floor, and this far below them. */
 export const DRAWER_AHEAD_METRES = 0.42;

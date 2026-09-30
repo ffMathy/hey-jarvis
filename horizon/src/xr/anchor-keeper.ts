@@ -7,8 +7,10 @@ import type { Vector3Like } from './ray';
  * long as the headset agrees; an anchor is a point the headset promises to keep attached to the
  * real room. So each spot he is placed at gets one: created in the same frame as the placement
  * (`XRFrame.createAnchor` only works on an active frame), followed through its `anchorSpace` once
- * it resolves, and deleted as soon as he has a new spot. No persistent handles: Quest allows a site
- * only eight, and a spot chosen for one conversation is not worth keeping past it.
+ * it resolves, and deleted as soon as he has a new spot. His spot gets no persistent handle: Quest
+ * allows a site only eight, and a spot chosen for one conversation is not worth keeping past it.
+ * The things sir places in the room are another matter — they are meant to be found again next
+ * session — and are kept on a few persistent anchors of their own (`entities/room-anchors.ts`).
  *
  * Until the anchor resolves, and for good on a headset without anchors, the spot as placed is
  * where he stands — so nothing ever waits on this.

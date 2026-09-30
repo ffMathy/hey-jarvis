@@ -251,9 +251,11 @@ function carry(
 ): GrabberStep {
   if (carrying.mode === 'near') {
     if (grabber.grip === undefined) return { events: [{ kind: 'cancelled', id: carrying.id }] };
+    // Opening a pinch moves the point between the thumb and the finger a few centimetres before it
+    // reads as open, so a token let go stays where it was last held, not where the fingers went.
+    if (released.holding) return { events: [letGo(carrying)] };
     const over: Carrying['over'] = isOnDrawer(frame.drawer, grabber.grip) ? 'drawer' : 'room';
-    const moved: Carrying = { ...carrying, position: { ...grabber.grip }, over };
-    return released.holding ? { events: [letGo(moved)] } : { carrying: moved, events: [] };
+    return { carrying: { ...carrying, position: { ...grabber.grip }, over }, events: [] };
   }
   if (grabber.ray === undefined) return { events: [{ kind: 'cancelled', id: carrying.id }] };
   const moved: Carrying = { ...carrying, ...ride(grabber, grabber.ray, carrying, frame.drawer, frame.deltaSeconds) };

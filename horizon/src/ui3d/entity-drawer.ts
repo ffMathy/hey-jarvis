@@ -77,11 +77,11 @@ export interface EntityDrawer {
 
 /** Letter heights, in metres: the title, a name, and the small print. */
 const TITLE_METRES = 0.016;
-const NAME_METRES = 0.0115;
+const NAME_METRES = 0.0125;
 const SMALL_METRES = 0.0095;
 
-/** How big the socket drawn under each token is: a little bigger than the token. */
-const SOCKET_METRES = 0.014;
+/** How big the socket drawn under each token is: the size of the token's ring, which sits in it. */
+const SOCKET_METRES = 0.019;
 
 const SANS = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
@@ -193,8 +193,8 @@ function drawSlot(context: CanvasRenderingContext2D, entry: DrawerEntry, index: 
   context.strokeStyle = entry.state === 'lost' ? UI_COLOURS.danger : UI_COLOURS.border;
   context.stroke();
 
-  const nameTop = token.y + pixels(SOCKET_METRES) + pixels(0.004);
-  const nameHeight = pixels(NAME_METRES * 1.3);
+  const nameTop = token.y + pixels(SOCKET_METRES) + pixels(0.002);
+  const nameHeight = pixels(NAME_METRES * 1.2);
   const maxWidth = pixels(SLOT_WIDTH_METRES) - 8;
   context.font = `500 ${pixels(NAME_METRES)}px ${SANS}`;
   const measure = (text: string) => context.measureText(text).width;
@@ -210,7 +210,7 @@ function drawSlot(context: CanvasRenderingContext2D, entry: DrawerEntry, index: 
   context.font = `400 ${pixels(SMALL_METRES)}px ${SANS}`;
   context.fillStyle = entry.state === 'lost' ? UI_COLOURS.danger : UI_COLOURS.mutedText;
   const bottom = toCanvas({ x: 0, y: slot.y - SLOT_HEIGHT_METRES / 2, z: 0 }).y;
-  context.fillText(note, centreX, bottom - pixels(SMALL_METRES * 0.8), maxWidth);
+  context.fillText(note, centreX, bottom - pixels(SMALL_METRES * 0.65), maxWidth);
 }
 
 function drawDisc(context: CanvasRenderingContext2D, button: DrawerButton, label: string, filled: boolean) {

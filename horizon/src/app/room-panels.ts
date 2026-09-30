@@ -53,7 +53,7 @@ export function createRoomPanels(): RoomPanels {
   const text: Record<Exclude<PanelName, 'keyboard'>, TextPanel> = {
     hint: createTextPanel({ widthMetres: 0.7, tone: 'hint' }),
     status: createTextPanel({ widthMetres: 0.8, tone: 'status' }),
-    guide: createTextPanel({ widthMetres: 0.8, tone: 'guide' }),
+    guide: createTextPanel({ widthMetres: 0.95, tone: 'guide' }),
     error: createTextPanel({ widthMetres: 0.6, tone: 'error' }),
     toast: createTextPanel({ widthMetres: 0.5, tone: 'toast' }),
     caption: createTextPanel({ widthMetres: 0.7, tone: 'caption' }),

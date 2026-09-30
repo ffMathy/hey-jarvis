@@ -46,9 +46,9 @@ export const MAX_TOKENS = 96;
 /** How big an orb is drawn: the size the grab takes it at. */
 const ORB_RADIUS_METRES = TOKEN_RADIUS_METRES * 0.7;
 
-/** The ring around it, a little outside the grab's reach of the orb, so it frames what can be taken. */
-const RING_INNER_METRES = TOKEN_RADIUS_METRES * 1.05;
-const RING_OUTER_METRES = TOKEN_RADIUS_METRES * 1.3;
+/** The ring around it: about the size the grab takes a token at, so it frames what can be taken. */
+const RING_INNER_METRES = TOKEN_RADIUS_METRES * 0.8;
+const RING_OUTER_METRES = TOKEN_RADIUS_METRES * 0.95;
 
 /** How much bigger a carried token is: it is the one sir is looking at. */
 const CARRIED_SCALE = 1.35;
@@ -79,7 +79,15 @@ function instanced(geometry: SphereGeometry | RingGeometry, material: MeshBasicM
 }
 
 export function createEntityTokens(): EntityTokens {
-  const orbMaterial = new MeshBasicMaterial({ depthTest: false, depthWrite: false, toneMapped: false });
+  // Transparent although it is solid: three draws every opaque mesh before any transparent one,
+  // whatever their render order, and the drawer's board is transparent — an opaque orb would be
+  // painted over by the board it floats in front of.
+  const orbMaterial = new MeshBasicMaterial({
+    depthTest: false,
+    depthWrite: false,
+    toneMapped: false,
+    transparent: true,
+  });
   const ringMaterial = new MeshBasicMaterial({
     depthTest: false,
     depthWrite: false,

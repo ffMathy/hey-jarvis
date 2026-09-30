@@ -216,9 +216,9 @@ export async function answerTokens(page: Page, answer: TokenAnswer): Promise<Tok
   return requests;
 }
 
-/** Opens the page, waits for the emulated room, and enters it once getting ready is done. */
-export async function enterRoom(page: Page) {
-  await page.goto('/hey-jarvis/horizon/');
+/** Opens the page (at `path`), waits for the emulated room, and enters it once getting ready is done. */
+export async function enterRoom(page: Page, path = '/hey-jarvis/horizon/') {
+  await page.goto(path);
   await page.evaluate(() => window.__xrHarness?.ready);
   const enter = page.getByRole('button', { name: 'Enter your room' });
   // The wake-word models and CanvasKit load first, with a progress bar.
