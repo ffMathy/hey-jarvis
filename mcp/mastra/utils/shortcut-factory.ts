@@ -1,5 +1,6 @@
 import type { Tool, ToolExecutionContext } from '@mastra/core/tools';
 import { createTool as mastraCreateTool } from '@mastra/core/tools';
+import { affectedEntityReaderOf, markAsAffectingEntities } from './affected-entities.js';
 import { isSlowTask, markAsSlow } from './slow-tasks.js';
 
 /**
@@ -62,6 +63,17 @@ export function createShortcut<TInput, TOutput>(config: CreateShortcutConfig<TIn
     execute: config.execute,
   });
 
+  if (!config.tool.id) {
+    return shortcut;
+  }
+
+  // A shortcut hands on what its tool returns, so it touches exactly what the tool touches, and
+  // the tool's reader reads its result. One that reshapes the result is read as touching nothing.
+  const readAffectedEntities = affectedEntityReaderOf(config.tool.id);
+  if (readAffectedEntities) {
+    markAsAffectingEntities(shortcut, readAffectedEntities);
+  }
+
   // A shortcut onto a slow tool takes exactly as long as the tool does.
-  return config.tool.id && isSlowTask(config.tool.id) ? markAsSlow(shortcut) : shortcut;
+  return isSlowTask(config.tool.id) ? markAsSlow(shortcut) : shortcut;
 }

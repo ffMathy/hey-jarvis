@@ -1,3 +1,9 @@
+export {
+  type AffectedEntity,
+  affectedEntitySchema,
+  markAsAffectingEntities,
+  readAffectedEntities,
+} from './affected-entities.js';
 // Utils exports - Core factories
 export { createAgent } from './agent-factory.js';
 // MCP-facing tool exports
