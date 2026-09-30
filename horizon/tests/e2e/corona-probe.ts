@@ -1,11 +1,12 @@
 import { PerspectiveCamera, Scene, Vector3, WebGLRenderer } from 'three';
 import { bloomRadiusAt, coronaRadiusAt, createCoronas, scanHeightAt } from '../../src/hologram3d/corona';
+import { RENDERER_PARAMETERS } from '../../src/xr/xr-stage';
 
 /**
  * The coronas, drawn in the page on a canvas of their own, for the browser test to photograph and
  * measure.
  *
- * Set up as the room's renderer is — alpha, premultiplied, no antialiasing — over a stage whose own
+ * Set up as the room's renderer is — alpha, premultiplied, four samples a pixel — over a stage whose own
  * background stands in for what is behind: black, as on the phone, or the preview's passthrough grey.
  * The browser lays the canvas over it exactly as a headset's compositor lays the layer over the
  * camera view, so what the pictures show is what the blending does over a room. Bundled into a
@@ -84,13 +85,7 @@ function setUp(): CoronaProbe {
   document.body.style.margin = '0';
   document.body.append(stage);
 
-  const renderer = new WebGLRenderer({
-    canvas,
-    alpha: true,
-    antialias: false,
-    premultipliedAlpha: true,
-    preserveDrawingBuffer: true,
-  });
+  const renderer = new WebGLRenderer({ ...RENDERER_PARAMETERS, canvas, preserveDrawingBuffer: true });
   renderer.setClearColor(0x000000, 0);
   renderer.setPixelRatio(1);
   renderer.setSize(SIZE, SIZE, false);

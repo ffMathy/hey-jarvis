@@ -11,6 +11,7 @@ import {
 } from '../hologram3d';
 import { createFrameClock } from '../hologram3d/frame-clock';
 import { viewBasisTowards } from '../hologram3d/view-basis';
+import { RENDERER_PARAMETERS } from '../xr/xr-stage';
 import { createPhaseDrives, type PhaseDrive, SETTLE_SECONDS } from './phase-drives';
 import { pictureStats } from './picture-stats';
 import { checkPort } from './port-check';
@@ -70,15 +71,9 @@ function newHologram(renderer: WebGLRenderer, painter: Painter) {
 
 /** The desktop stage: a three.js canvas with a camera you can drag round him, and the live phase loop. */
 export async function createStage(canvas: HTMLCanvasElement, painter: Painter): Promise<Stage> {
-  // As the headset's renderer is set up, plus a drawing buffer kept after compositing so a test can
-  // read the pixels back and a screenshot catches the frame.
-  const renderer = new WebGLRenderer({
-    canvas,
-    alpha: true,
-    antialias: false,
-    premultipliedAlpha: true,
-    preserveDrawingBuffer: true,
-  });
+  // As the headset's renderer is set up, multisampling included, plus a drawing buffer kept after
+  // compositing so a test can read the pixels back and a screenshot catches the frame.
+  const renderer = new WebGLRenderer({ ...RENDERER_PARAMETERS, canvas, preserveDrawingBuffer: true });
   renderer.setClearColor(0x000000, 0);
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
   const scene = new Scene();
