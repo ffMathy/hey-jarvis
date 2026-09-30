@@ -1,25 +1,11 @@
-import {
-  type AgentTrackRoom,
-  agentAudioTracks,
-  type ConversationMessage,
-  createGreetingReaders,
-  createToolActivity,
-  createVadScoreKeeper,
-  flushQueuedAudio,
-  GIVE_UP_CONNECTING_AFTER_MS,
-  HEADSET_PARTICIPANT_NAME,
-  isGreetingOver,
-  isLive,
-  type JarvisVoice,
-  type JarvisVoiceReaders,
-  requestConversationToken,
-  type UserVoice,
-  WITHOUT_FIRST_MESSAGE,
-} from 'hologram';
-import { findAgentRoom, followAgentVoice } from './agent-room';
+import { type AgentTrackRoom, agentAudioTracks } from './agent-audio-track';
+import { GIVE_UP_CONNECTING_AFTER_MS, isLive } from './conversation-life';
+import { requestConversationToken } from './conversation-token';
 import { DEADLINE_PROBLEM, describeDisconnect, describeStartFailure, describeTokenFailure } from './failure-text';
+import { isGreetingOver, WITHOUT_FIRST_MESSAGE } from './greeting-handover';
+import { createGreetingReaders } from './greeting-voice';
 import { createHalfDuplexDetector } from './half-duplex';
-import { removeOrphanedAudioFromPage } from './orphaned-audio';
+import { flushQueuedAudio } from './queued-audio';
 import type {
   JarvisSession,
   JarvisSessionDependencies,
@@ -29,7 +15,11 @@ import type {
   SessionOptions,
   SessionPhase,
 } from './session-contract';
+import { createToolActivity } from './tool-activity';
+import { createVadScoreKeeper } from './vad-score';
+import type { JarvisVoice, JarvisVoiceReaders, UserVoice } from './voice-contract';
 import { createWrittenCaption } from './written-caption';
+import type { ConversationMessage } from './written-reply';
 
 /**
  * How often a greeting in progress is checked for having finished — the phone's own interval.
@@ -44,12 +34,6 @@ const GREETING_CHECK_MS = 50;
  * after the SDK has already reported the disconnect.
  */
 const ORPHAN_SWEEP_AGAIN_MS = 2_000;
-
-/**
- * No platform delay before dialling: the SDK's three seconds are for Android phones, and a Quest
- * browser may or may not say Android depending on its mode. See `SessionOptions.connectionDelay`.
- */
-const NO_CONNECTION_DELAY = { default: 0, android: 0 };
 
 const SILENT_SPECTRUM = new Uint8Array(0);
 
@@ -75,7 +59,7 @@ type GreetingState = 'asking' | 'playing' | 'over';
  * object. That is what keeps a session that connects late, after the deadline has given up on it,
  * or one hung up on while it was still dialling, from reaching into the next summoning.
  */
-interface Attempt {
+interface Attempt<Timer> {
   /** Ended or failed. Nothing it reports afterwards counts. */
   closed: boolean;
   greeting: GreetingState;
@@ -93,15 +77,16 @@ interface Attempt {
   mode: string;
   /** Whether this app has muted the session's microphone, which the SDK publishes unmuted. */
   microphoneMuted: boolean;
-  deadline?: number;
-  greetingCheck?: number;
+  deadline?: Timer;
+  greetingCheck?: Timer;
 }
 
 /**
- * Jarvis's conversation on the headset, summoning by summoning, on the ElevenLabs SDK's own client.
+ * Jarvis's conversation, summoning by summoning, on the ElevenLabs SDK's own client.
  *
- * The phone holds its conversation through the SDK's React provider, which brings guarantees the
- * raw client does not have; this recreates them for a page with no React. **One start at a time**:
+ * Written for the headset, which has no React, and in the main entry so that every device holds
+ * its conversation by the same rules. The SDK's React provider brings guarantees the raw client
+ * does not have, and this recreates them without a framework. **One start at a time**:
  * a summon is ignored unless the last one is over, since two WebRTC sessions at once tear each
  * other down. **An ending is always reached**: every way a summoning can go wrong — the token
  * request, a start that rejects, an error before the conversation opens, the deadline, a
@@ -118,23 +103,20 @@ interface Attempt {
  * the greeting before the session could be muted. `waitsForGreetingBeforeDialling: false` dials
  * behind it instead, muted from `onConversationCreated` until he has finished.
  */
-export function createJarvisSession(dependencies: JarvisSessionDependencies): JarvisSession {
-  const { settings, startSession, greeting, events, audioContext } = dependencies;
+export function createJarvisSession<Timer>(dependencies: JarvisSessionDependencies<Timer>): JarvisSession {
+  const { settings, participantName, startSession, greeting, events } = dependencies;
   const now = dependencies.now ?? (() => performance.now());
-  const schedule =
-    dependencies.setTimeout ??
-    ((callback: () => void, milliseconds: number) => window.setTimeout(callback, milliseconds));
-  const cancel = dependencies.clearTimeout ?? ((handle: number) => window.clearTimeout(handle));
+  const schedule = dependencies.setTimeout;
+  const cancel = dependencies.clearTimeout;
   const waitsForGreetingBeforeDialling = dependencies.waitsForGreetingBeforeDialling ?? true;
-  const findRoom = dependencies.findRoom ?? findAgentRoom;
-  const followVoice =
-    dependencies.followAgentVoice ??
-    ((room: AgentTrackRoom, onReaders: (readers: JarvisVoiceReaders | undefined) => void) =>
-      followAgentVoice(room, audioContext, onReaders));
-  const removeOrphanedAudio = dependencies.removeOrphanedAudio ?? removeOrphanedAudioFromPage;
+  const halfDuplexAllowed = dependencies.halfDuplex ?? false;
+  const offlineProblem = dependencies.offlineProblem;
+  const findRoom = dependencies.findRoom ?? (() => undefined);
+  const followVoice = dependencies.followAgentVoice;
+  const removeOrphanedAudio = dependencies.removeOrphanedAudio;
 
   let phase: SessionPhase = 'idle';
-  let attempt: Attempt | undefined;
+  let attempt: Attempt<Timer> | undefined;
   let disposed = false;
   let typing = false;
   let interruptions = 0;
@@ -154,7 +136,7 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
   });
 
   const openAttempt = () => (attempt && !attempt.closed ? attempt : undefined);
-  const isCurrent = (candidate: Attempt) => candidate === attempt && !candidate.closed;
+  const isCurrent = (candidate: Attempt<Timer>) => candidate === attempt && !candidate.closed;
 
   const setPhase = (next: SessionPhase) => {
     if (next === phase) {
@@ -172,7 +154,7 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
       status: attempt?.status ?? 'disconnected',
       mode: attempt?.mode ?? 'listening',
       interruptions,
-      halfDuplex: halfDuplex.on,
+      halfDuplex: halfDuplexAllowed && halfDuplex.on,
       ...(lastError === undefined ? {} : { lastError }),
     };
     const key = JSON.stringify(diagnostics);
@@ -188,7 +170,7 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
    * as though the user had, which would send him away with nothing to say why.
    */
   const bound =
-    <CallbackArguments extends unknown[]>(owner: Attempt, handler: (...parameters: CallbackArguments) => void) =>
+    <CallbackArguments extends unknown[]>(owner: Attempt<Timer>, handler: (...parameters: CallbackArguments) => void) =>
     (...parameters: CallbackArguments) => {
       if (!isCurrent(owner)) {
         return;
@@ -257,7 +239,7 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
    * Keeps the score deaf while he speaks or greets — his voice through the speaker scores as the
    * user's — and forgets it whenever nobody is being listened to, as `useUserVoice` does.
    */
-  const updateHearing = (current: Attempt) => {
+  const updateHearing = (current: Attempt<Timer>) => {
     vadScore.jarvisSpeaking(current.greeting !== 'over' || current.mode === 'speaking');
     if (current.status !== 'connected' || current.microphoneMuted) {
       vadScore.forget();
@@ -269,10 +251,12 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
    * only when none of them does: the greeting (so the agent does not hear him say it), the keyboard
    * (the phone's text mode), and the half-duplex fallback while he is speaking.
    */
-  const microphoneHeld = (current: Attempt) =>
-    (current.greeted && current.greeting !== 'over') || typing || (halfDuplex.on && current.mode === 'speaking');
+  const microphoneHeld = (current: Attempt<Timer>) =>
+    (current.greeted && current.greeting !== 'over') ||
+    typing ||
+    (halfDuplexAllowed && halfDuplex.on && current.mode === 'speaking');
 
-  const applyMicrophone = (current: Attempt) => {
+  const applyMicrophone = (current: Attempt<Timer>) => {
     const muted = microphoneHeld(current);
     if (current.conversation && !current.closed && muted !== current.microphoneMuted) {
       current.microphoneMuted = muted;
@@ -303,7 +287,7 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
 
   // ── Endings ────────────────────────────────────────────────────────────────────────────────────
 
-  const stopTimers = (current: Attempt) => {
+  const stopTimers = (current: Attempt<Timer>) => {
     if (current.deadline !== undefined) {
       cancel(current.deadline);
       current.deadline = undefined;
@@ -318,7 +302,7 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
    * Closes an attempt for good: the greeting stopped, the session ended — now, or the moment its
    * start resolves — and everything drawn from it let go. Says whether it was still open.
    */
-  const close = (current: Attempt) => {
+  const close = (current: Attempt<Timer>) => {
     if (current.closed) {
       return false;
     }
@@ -342,13 +326,13 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
     return true;
   };
 
-  const end = (current: Attempt) => {
+  const end = (current: Attempt<Timer>) => {
     if (close(current)) {
       setPhase('ended');
     }
   };
 
-  const fail = (current: Attempt, problem: string) => {
+  const fail = (current: Attempt<Timer>, problem: string) => {
     if (close(current)) {
       events.onProblem(problem);
       setPhase('failed');
@@ -356,6 +340,9 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
   };
 
   const sweepOrphanedAudio = () => {
+    if (!removeOrphanedAudio) {
+      return;
+    }
     const sweep = () => {
       try {
         removeOrphanedAudio();
@@ -369,7 +356,7 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
 
   // ── The SDK's callbacks ────────────────────────────────────────────────────────────────────────
 
-  const adopt = (current: Attempt, conversation: SessionConversation) => {
+  const adopt = (current: Attempt<Timer>, conversation: SessionConversation) => {
     current.conversation = conversation;
     current.microphoneMuted = false;
     applyMicrophone(current);
@@ -378,14 +365,14 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
       return;
     }
     current.room = room;
-    current.stopFollowing = followVoice(room, (readers) => {
+    current.stopFollowing = followVoice?.(room, (readers) => {
       if (isCurrent(current)) {
         liveVoice = createLiveVoice(readers ?? sdkReaders);
       }
     });
   };
 
-  const statusChanged = (current: Attempt, status: string) => {
+  const statusChanged = (current: Attempt<Timer>, status: string) => {
     current.status = status;
     if (status === 'connected') {
       if (current.deadline !== undefined) {
@@ -404,7 +391,7 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
     report();
   };
 
-  const modeChanged = (current: Attempt, mode: string) => {
+  const modeChanged = (current: Attempt<Timer>, mode: string) => {
     const before = current.mode;
     current.mode = mode;
     if (mode === 'speaking' && before !== 'speaking') {
@@ -422,7 +409,7 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
    * SDK's own `interrupt()` does nothing (see `queued-audio.ts`) — and watches for his own voice
    * doing the interrupting (see `half-duplex.ts`).
    */
-  const interrupted = (current: Attempt) => {
+  const interrupted = (current: Attempt<Timer>) => {
     interruptions++;
     if (current.room) {
       flushQueuedAudio(agentAudioTracks(current.room));
@@ -443,16 +430,16 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
    * The SDK's errors. Before the conversation is open, one is a failure to open it. Once open,
    * it is not an ending — that is `onDisconnect`'s to say — so it goes to the HUD and no further.
    */
-  const errorReported = (current: Attempt, message: string) => {
+  const errorReported = (current: Attempt<Timer>, message: string) => {
     if (current.status !== 'connected') {
-      fail(current, describeStartFailure(message));
+      fail(current, describeStartFailure(message, offlineProblem));
       return;
     }
     lastError = message;
     report();
   };
 
-  const disconnected = (current: Attempt, ending: SessionEnding) => {
+  const disconnected = (current: Attempt<Timer>, ending: SessionEnding) => {
     if (ending.reason !== 'error') {
       end(current);
       return;
@@ -461,10 +448,10 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
     sweepOrphanedAudio();
   };
 
-  const sessionOptions = (current: Attempt, token: string): SessionOptions => ({
+  const sessionOptions = (current: Attempt<Timer>, token: string): SessionOptions => ({
     conversationToken: token,
     connectionType: 'webrtc',
-    connectionDelay: NO_CONNECTION_DELAY,
+    ...(dependencies.connectionDelay ? { connectionDelay: dependencies.connectionDelay } : {}),
     ...(current.greeted ? { overrides: WITHOUT_FIRST_MESSAGE } : {}),
     onConversationCreated: bound(current, (conversation: SessionConversation) => adopt(current, conversation)),
     onStatusChange: bound(current, ({ status }: { status: string }) => statusChanged(current, status)),
@@ -481,7 +468,7 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
 
   // ── Dialling ───────────────────────────────────────────────────────────────────────────────────
 
-  const started = (current: Attempt, conversation: SessionConversation) => {
+  const started = (current: Attempt<Timer>, conversation: SessionConversation) => {
     if (!isCurrent(current)) {
       // Given up on or hung up while it was dialling: nobody is waiting for it now.
       conversation.endSession().catch(() => undefined);
@@ -492,27 +479,27 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
     }
   };
 
-  const dial = (current: Attempt, token: string) => {
+  const dial = (current: Attempt<Timer>, token: string) => {
     current.dialled = true;
     let starting: Promise<SessionConversation>;
     try {
       starting = startSession(sessionOptions(current, token));
     } catch (error) {
-      fail(current, describeStartFailure(error));
+      fail(current, describeStartFailure(error, offlineProblem));
       return;
     }
     starting.then(
       (conversation) => started(current, conversation),
       (error: unknown) => {
         if (isCurrent(current)) {
-          fail(current, describeStartFailure(error));
+          fail(current, describeStartFailure(error, offlineProblem));
         }
       },
     );
   };
 
   /** Dials once there is a token and the greeting allows it — whichever of the two comes last. */
-  const dialWhenReady = (current: Attempt) => {
+  const dialWhenReady = (current: Attempt<Timer>) => {
     if (!isCurrent(current) || current.dialled || current.token === undefined || current.greeting === 'asking') {
       return;
     }
@@ -524,7 +511,7 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
 
   // ── The greeting ───────────────────────────────────────────────────────────────────────────────
 
-  function finishGreeting(current: Attempt) {
+  function finishGreeting(current: Attempt<Timer>) {
     if (current.greeting === 'playing') {
       lastHeardAt = now();
     }
@@ -546,7 +533,7 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
    * end, or the wall clock ran past its length and a grace. A player that has not answered `play()`
    * by then is given up on and stopped, so a late start cannot talk over the agent.
    */
-  function checkGreeting(current: Attempt) {
+  function checkGreeting(current: Attempt<Timer>) {
     if (current.closed || current.greeting === 'over') {
       return;
     }
@@ -564,7 +551,7 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
     }
   }
 
-  const scheduleGreetingCheck = (current: Attempt) => {
+  const scheduleGreetingCheck = (current: Attempt<Timer>) => {
     current.greetingCheck = schedule(() => {
       current.greetingCheck = undefined;
       checkGreeting(current);
@@ -575,12 +562,12 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
   };
 
   /** Whether an attempt other than `settled` is using the player now. */
-  const greetingInUseBeyond = (settled: Attempt) => {
+  const greetingInUseBeyond = (settled: Attempt<Timer>) => {
     const current = openAttempt();
     return current !== undefined && current !== settled && current.greeting !== 'over';
   };
 
-  const greetingAnswered = (current: Attempt, playing: boolean) => {
+  const greetingAnswered = (current: Attempt<Timer>, playing: boolean) => {
     if (!isCurrent(current) || current.greeting !== 'asking') {
       // Hung up on, failed or given up on while the browser was deciding: whatever it decided,
       // nobody is waiting to hear it — unless a newer summoning has the player by now.
@@ -600,7 +587,7 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
     dialWhenReady(current);
   };
 
-  const startGreeting = (current: Attempt) => {
+  const startGreeting = (current: Attempt<Timer>) => {
     current.askedAt = now();
     let answer: Promise<boolean>;
     try {
@@ -615,8 +602,8 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
     scheduleGreetingCheck(current);
   };
 
-  const requestToken = (current: Attempt) => {
-    requestConversationToken({ settings, participantName: HEADSET_PARTICIPANT_NAME }, dependencies.fetch).then(
+  const requestToken = (current: Attempt<Timer>) => {
+    requestConversationToken({ settings, participantName }, dependencies.fetch).then(
       ({ token }) => {
         if (isCurrent(current)) {
           current.token = token;
@@ -625,13 +612,13 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
       },
       (error: unknown) => {
         if (isCurrent(current)) {
-          fail(current, describeTokenFailure(error));
+          fail(current, describeTokenFailure(error, offlineProblem));
         }
       },
     );
   };
 
-  const giveUp = (current: Attempt) => {
+  const giveUp = (current: Attempt<Timer>) => {
     current.deadline = undefined;
     if (isCurrent(current) && current.status !== 'connected') {
       fail(current, DEADLINE_PROBLEM);
@@ -654,7 +641,7 @@ export function createJarvisSession(dependencies: JarvisSessionDependencies): Ja
     if (disposed || !(phase === 'idle' || phase === 'ended' || phase === 'failed')) {
       return;
     }
-    const current: Attempt = {
+    const current: Attempt<Timer> = {
       closed: false,
       greeting: 'asking',
       greeted: false,

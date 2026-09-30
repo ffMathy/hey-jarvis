@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
-import { KEEP_THINKING_AFTER_LAST_ANSWER_MS } from 'hologram';
 import { INTERRUPTED_TOO_SOON_MS } from './half-duplex';
 import { createHarness, settle } from './jarvis-session.fakes';
+import { KEEP_THINKING_AFTER_LAST_ANSWER_MS } from './tool-activity';
 
 /**
  * What an open conversation hands the hologram and the room: his voice and yours, whether he is

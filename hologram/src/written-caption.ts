@@ -1,4 +1,4 @@
-import { afterSpokenMessage, type ConversationMessage, SAYING_NOTHING, type WrittenReply } from 'hologram';
+import { afterSpokenMessage, type ConversationMessage, SAYING_NOTHING, type WrittenReply } from './written-reply';
 
 /**
  * His line in writing, under him in the room, while you are writing to him.

@@ -1,20 +1,23 @@
 /**
- * What the error panel in the room says, for every way a summoning can fail.
+ * What a summoning that failed says, for every way it can fail, on every device that holds one.
  *
- * The texts are the phone's wherever the phone has one, so the same failure reads the same on
- * every device: the token request's own messages (`describeFailure` in
- * `hologram/src/conversation-token.ts`, which reach the session as the rejection's message), the
- * deadline's (`mobile/src/conversation-screen.tsx`), the refused microphone's and the generic
- * ones. What is new here are the raw texts the phone shows verbatim and should not — the
- * browser's own words for being offline, and LiveKit's for a room that would not open or that
- * closed — which on a headset would be the only thing in front of you.
+ * The texts are the phone's wherever the phone had one, so the same failure reads the same
+ * everywhere: the token request's own messages (`describeFailure` in `conversation-token.ts`, which
+ * reach the session as the rejection's message), the deadline's, the refused microphone's and the
+ * generic ones. What the headset added are the raw texts the phone used to show verbatim and should
+ * not — the platform's own words for being offline, and LiveKit's for a room that would not open or
+ * that closed — which read as nothing a user can act on, and on a headset would be the only thing
+ * in front of you.
  */
 
 /** When nothing has answered by `GIVE_UP_CONNECTING_AFTER_MS`. The phone's words, exactly. */
 export const DEADLINE_PROBLEM = 'Jarvis did not answer. ElevenLabs may be unreachable, or the settings may be wrong.';
 
-/** A `fetch` that never reached a server. */
-export const OFFLINE_PROBLEM = 'ElevenLabs could not be reached. Check that the headset is connected to the internet.';
+/**
+ * A `fetch` that never reached a server. A device that knows what it is connected through says so
+ * more exactly: the session takes its own text as `offlineProblem`.
+ */
+export const OFFLINE_PROBLEM = 'ElevenLabs could not be reached. Check the internet connection.';
 
 /**
  * LiveKit failing to open the room at all. Its own words — "could not establish signal connection:
@@ -64,16 +67,17 @@ function safely(message: string, fallback: string): string {
 /**
  * Whether `fetch` failed before any server answered. Browsers reject with a `TypeError` then, each
  * in its own words — "Failed to fetch", "NetworkError when attempting to fetch resource.", "Load
- * failed" — and a response of any status is not this.
+ * failed" — and so does React Native, with "Network request failed". A response of any status is
+ * not this.
  */
 function isNetworkFailure(error: unknown): boolean {
   return error instanceof TypeError;
 }
 
 /** Why the token request failed. Its own messages are already written for the user. */
-export function describeTokenFailure(error: unknown): string {
+export function describeTokenFailure(error: unknown, offline = OFFLINE_PROBLEM): string {
   if (isNetworkFailure(error)) {
-    return OFFLINE_PROBLEM;
+    return offline;
   }
   return safely(messageOf(error), UNREACHABLE_PROBLEM);
 }
@@ -90,7 +94,7 @@ function isRoomFailure(error: unknown): boolean {
  * says no rejects with `NotAllowedError`. So is a room LiveKit could not open, in words about the
  * network rather than about LiveKit's signalling.
  */
-export function describeStartFailure(error: unknown): string {
+export function describeStartFailure(error: unknown, offline = OFFLINE_PROBLEM): string {
   if (error instanceof Error && (error.name === 'NotAllowedError' || error.name === 'SecurityError')) {
     return MICROPHONE_PROBLEM;
   }
@@ -98,7 +102,7 @@ export function describeStartFailure(error: unknown): string {
     return CONNECTION_PROBLEM;
   }
   if (isNetworkFailure(error)) {
-    return OFFLINE_PROBLEM;
+    return offline;
   }
   return safely(messageOf(error), UNREACHABLE_PROBLEM);
 }

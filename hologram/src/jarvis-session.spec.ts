@@ -1,18 +1,9 @@
 import { describe, expect, it } from 'bun:test';
-import {
-  GIVE_UP_CONNECTING_AFTER_MS,
-  GREETING_GRACE_SECONDS,
-  HEADSET_PARTICIPANT_NAME,
-  WITHOUT_FIRST_MESSAGE,
-} from 'hologram';
-import {
-  DEADLINE_PROBLEM,
-  DROPPED_PROBLEM,
-  MICROPHONE_PROBLEM,
-  OFFLINE_PROBLEM,
-  UNREACHABLE_PROBLEM,
-} from './failure-text';
-import { createHarness, settle } from './jarvis-session.fakes';
+import { GIVE_UP_CONNECTING_AFTER_MS } from './conversation-life';
+import { HEADSET_PARTICIPANT_NAME } from './conversation-token';
+import { DEADLINE_PROBLEM, DROPPED_PROBLEM, MICROPHONE_PROBLEM, UNREACHABLE_PROBLEM } from './failure-text';
+import { GREETING_GRACE_SECONDS, WITHOUT_FIRST_MESSAGE } from './greeting-handover';
+import { createHarness, HEADSET_OFFLINE_PROBLEM, settle } from './jarvis-session.fakes';
 
 /**
  * A summoning from the wake word to its ending: the greeting and the token at once, the session
@@ -207,7 +198,7 @@ describe('when a summoning fails', () => {
     tokens.goOffline();
     await settle();
 
-    expect(events.problems).toEqual([OFFLINE_PROBLEM]);
+    expect(events.problems).toEqual([HEADSET_OFFLINE_PROBLEM]);
     expect(session.phase).toBe('failed');
   });
 

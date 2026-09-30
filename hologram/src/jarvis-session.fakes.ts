@@ -1,4 +1,5 @@
-import type { AgentTrackRoom, JarvisVoiceReaders } from 'hologram';
+import type { AgentTrackRoom } from './agent-audio-track';
+import { HEADSET_PARTICIPANT_NAME } from './conversation-token';
 import { createJarvisSession } from './jarvis-session';
 import type {
   GreetingPlayer,
@@ -9,6 +10,7 @@ import type {
   SessionPhase,
   StartSession,
 } from './session-contract';
+import type { JarvisVoiceReaders } from './voice-contract';
 
 /**
  * Stand-ins for everything a {@link createJarvisSession} is made from, for its specs: a clock whose
@@ -366,8 +368,19 @@ export function createEventLog() {
   };
 }
 
-/** A session made entirely of the fakes above, and the handles to drive each of them. */
-export function createHarness(overrides: Partial<JarvisSessionDependencies> = {}) {
+/**
+ * What the headset sends and says that is its own, for the specs written against it: its name in
+ * the history, no platform delay before dialling, the half-duplex fallback, and its words for a
+ * request that reached no server.
+ */
+export const HEADSET_OFFLINE_PROBLEM =
+  'ElevenLabs could not be reached. Check that the headset is connected to the internet.';
+
+/**
+ * A session made entirely of the fakes above, and the handles to drive each of them — set up as the
+ * headset sets its own up, because that is the device these specs were first written for.
+ */
+export function createHarness(overrides: Partial<JarvisSessionDependencies<number>> = {}) {
   const clock = createFakeClock();
   const tokens = createFakeTokenEndpoint();
   const greeting = createFakeGreeting(clock);
@@ -380,20 +393,13 @@ export function createHarness(overrides: Partial<JarvisSessionDependencies> = {}
 
   const session = createJarvisSession({
     settings: { apiKey: 'sk_a-secret-key', agentId: 'agent_01jz0123456789' },
+    participantName: HEADSET_PARTICIPANT_NAME,
     startSession: sdk.startSession,
     greeting: greeting.player,
     events: events.events,
-    audioContext: {
-      sampleRate: 48_000,
-      state: 'running',
-      createAnalyser: () => {
-        throw new Error('The specs follow his voice through a fake, never an analyser.');
-      },
-      createMediaStreamSource: () => {
-        throw new Error('The specs follow his voice through a fake, never a media stream.');
-      },
-      resume: async () => undefined,
-    },
+    connectionDelay: { default: 0, android: 0 },
+    halfDuplex: true,
+    offlineProblem: HEADSET_OFFLINE_PROBLEM,
     fetch: tokens.fetch,
     now: clock.now,
     setTimeout: clock.setTimeout,
