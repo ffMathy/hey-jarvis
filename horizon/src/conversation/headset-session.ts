@@ -43,7 +43,14 @@ export interface HeadsetSessionOptions {
 /** As much of the spatial voice as a conversation reaches for. */
 export type HeadsetVoice = Pick<
   SpatialVoice,
-  'greeting' | 'playAgent' | 'conversationOpened' | 'attached' | 'interrupted' | 'heard' | 'halfDuplexMayJudge'
+  | 'greeting'
+  | 'playAgent'
+  | 'conversationOpened'
+  | 'attached'
+  | 'interrupted'
+  | 'heard'
+  | 'halfDuplexMayJudge'
+  | 'halfDuplexChanged'
 >;
 
 /**
@@ -68,7 +75,7 @@ function followHisVoice(
   };
 }
 
-/** The room's events, with the spatial voice told what it watches for its echo. */
+/** The room's events, with the spatial voice told what it watches for its echo, and its third tier. */
 function eventsFor(events: JarvisSessionEvents, voice: HeadsetVoice | undefined): JarvisSessionEvents {
   if (voice === undefined) return events;
   return {
@@ -80,6 +87,10 @@ function eventsFor(events: JarvisSessionEvents, voice: HeadsetVoice | undefined)
     onMessage: (message) => {
       events.onMessage?.(message);
       voice.heard(message);
+    },
+    onDiagnostics: (diagnostics) => {
+      events.onDiagnostics?.(diagnostics);
+      voice.halfDuplexChanged(diagnostics.halfDuplex);
     },
   };
 }

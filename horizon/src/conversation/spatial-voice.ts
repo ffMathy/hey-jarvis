@@ -9,6 +9,7 @@ import {
   type VoiceDemotion,
   type VoiceRoute,
   type VoiceRouteChoice,
+  type VoiceTier,
 } from './voice-route';
 import { createVoiceWatch } from './voice-watch';
 
@@ -152,6 +153,7 @@ export const LEVEL_WINDOW = 1024;
 /** What the HUD shows about his voice. */
 export interface VoiceDiagnostics {
   route: VoiceRoute;
+  tier: VoiceTier;
   /** Why, in words. */
   reason: string;
   echoCanceller: EchoCanceller;
@@ -185,6 +187,8 @@ export interface SpatialVoice {
   heard(message: ConversationMessage): void;
   /** Whether the session's half-duplex fallback may judge an interruption now (see `voice-route.ts`). */
   halfDuplexMayJudge(): boolean;
+  /** Whether the session's half-duplex fallback is on: the third tier, which the session decides. */
+  halfDuplexChanged(on: boolean): void;
   dispose(): void;
 }
 
@@ -242,10 +246,17 @@ export function createSpatialVoice(options: SpatialVoiceOptions): SpatialVoice {
   let speakerPlacedAt: Vector3Like | undefined;
   let lastSpeaker: Vector3Like | undefined;
   let disconnectAgentAt: number | undefined;
+  let halfDuplex = false;
   const samples = new Float32Array(LEVEL_WINDOW);
+
+  const tierNow = (): VoiceTier => {
+    if (router.route === 'spatial') return 'spatial';
+    return halfDuplex ? 'half-duplex' : 'element';
+  };
 
   const report: VoiceReport = {
     route: router.route,
+    tier: tierNow(),
     reason: router.reason,
     echoCanceller: choice.echoCanceller,
     setting: choice.setting,
@@ -263,6 +274,7 @@ export function createSpatialVoice(options: SpatialVoiceOptions): SpatialVoice {
 
   const refreshReport = () => {
     report.route = router.route;
+    report.tier = tierNow();
     report.reason = router.reason;
     report.echoCanceller = choice.echoCanceller;
     report.setting = choice.setting;
@@ -453,6 +465,7 @@ export function createSpatialVoice(options: SpatialVoiceOptions): SpatialVoice {
     report,
     diagnostics: () => ({
       route: router.route,
+      tier: tierNow(),
       reason: describeVoiceRouteReason(router.reason),
       echoCanceller: choice.echoCanceller,
       elements: elements.elements,
@@ -505,6 +518,10 @@ export function createSpatialVoice(options: SpatialVoiceOptions): SpatialVoice {
       }
     },
     halfDuplexMayJudge: () => router.halfDuplexMayJudge(),
+    halfDuplexChanged: (on) => {
+      halfDuplex = on;
+      refreshReport();
+    },
     dispose: () => elements.dispose(),
   };
 }

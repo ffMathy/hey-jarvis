@@ -93,6 +93,7 @@ describe('the headset’s session with his voice from where he stands', () => {
       interrupted: () => told.push('interrupted'),
       heard: (message) => told.push(`${message.role}: ${message.message}`),
       halfDuplexMayJudge: () => mayJudge,
+      halfDuplexChanged: (on) => told.push(`half duplex ${on ? 'on' : 'off'}`),
     };
     return {
       voice,
@@ -153,9 +154,10 @@ describe('the headset’s session with his voice from where he stands', () => {
 
     dependencies.events.onInterruption?.();
     dependencies.events.onMessage?.({ role: 'user', message: 'Is the suit ready?' });
+    dependencies.events.onDiagnostics?.({ status: 'connected', mode: 'speaking', interruptions: 2, halfDuplex: true });
 
     expect(roomTold).toEqual(['interrupted']);
-    expect(recording.told).toEqual(['greeting routed', 'interrupted', 'user: Is the suit ready?']);
+    expect(recording.told).toEqual(['greeting routed', 'interrupted', 'user: Is the suit ready?', 'half duplex on']);
   });
 
   it('opens a conversation on it for every room found, with the server’s word on whether he speaks', () => {

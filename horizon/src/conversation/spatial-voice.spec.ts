@@ -359,6 +359,20 @@ describe('moving him back to the headset', () => {
     expect(reaches(harness.greetingSource, harness.audio.context.destination)).toBe(true);
   });
 
+  it('is the third tier once the session’s half-duplex fallback takes over on the element', async () => {
+    const harness = await spatialAndSpeaking();
+    harness.voice.interrupted();
+    harness.voice.interrupted();
+    expect(harness.voice.report.tier).toBe('element');
+
+    harness.voice.halfDuplexChanged(true);
+    expect(harness.voice.report).toMatchObject({ route: 'element', tier: 'half-duplex' });
+    expect(harness.voice.diagnostics().tier).toBe('half-duplex');
+    // A new conversation gets its own chance at full duplex, and the session says so.
+    harness.voice.halfDuplexChanged(false);
+    expect(harness.voice.report.tier).toBe('element');
+  });
+
   it('lets the half-duplex fallback judge again once the echo canceller has settled', async () => {
     const harness = await spatialAndSpeaking();
     harness.voice.heard({ role: 'agent', message: 'The suit is ready for testing, sir.' });
@@ -442,6 +456,7 @@ describe('what cannot be done', () => {
     const { voice } = createVoice();
     expect(voice.diagnostics()).toEqual({
       route: 'spatial',
+      tier: 'spatial',
       reason: 'the headset cancels echo',
       echoCanceller: 'platform',
       elements: 1,

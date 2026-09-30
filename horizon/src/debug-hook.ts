@@ -52,6 +52,8 @@ export interface RoomReport {
 export interface VoiceReport {
   /** `spatial`, from where he stands, or `element`, from the headset. */
   route: string;
+  /** The route, or `half-duplex` once the session mutes the microphone while he speaks on the element. */
+  tier: string;
   /** Why, as `voice-route.ts` names it: `platform-echo-canceller`, `setting-off`, `echo-transcript`… */
   reason: string;
   /** What the wake word's microphone said about the echo canceller: `platform`, `browser` or `unknown`. */

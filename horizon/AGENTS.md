@@ -765,7 +765,8 @@ the models first.
 - **His voice from where he stands.** Everything past the probe: whether Quest
   Browser offers `'all'` at all (`?debug`'s voice line reads `voice spatial (the
   headset cancels echo)  echo canceller platform` when it does, and `voice element
-  (only the browser cancels echo)  echo canceller browser` when it does not);
+  (only the browser cancels echo)  echo canceller browser` when it does not, and
+  `voice half-duplex (…)` once the session mutes the microphone while he speaks);
   whether his spatial voice stays out of the microphone while the head turns —
   talk to him for a few minutes turning your head, and the line should still say
   `spatial`, not `element (echo: …)`; whether Quest Browser pulls his track into
@@ -844,8 +845,8 @@ the models first.
   phase, frames drawn, where he was placed and where the head was, how the
   placement went (level, clearance, radius), how many wakes there have been, the
   room's scene, view and recent effects, the last problem, and where his voice
-  comes from (route, reason, the probe, the setting, how the greeting is heard,
-  and where the listener and the panner were last put).
+  comes from (route, tier, reason, the probe, the setting, how the greeting is
+  heard, and where the listener and the panner were last put).
 - **His voice.** `app-voice.spec.ts` makes the fake microphone offer `'all'`, as a
   headset with its own echo canceller would, records the panners and the elements
   the page takes into Web Audio, and checks the greeting goes through an HRTF

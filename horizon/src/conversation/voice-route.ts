@@ -22,6 +22,9 @@ import type { EchoCanceller } from './echo-canceller';
 
 export type VoiceRoute = 'spatial' | 'element';
 
+/** The three tiers: a route, or the element with the session's half-duplex fallback on top of it. */
+export type VoiceTier = VoiceRoute | 'half-duplex';
+
 /** What moves his voice from where he stands back to the headset, once it has been seen. */
 export type VoiceDemotion =
   /** Cut off within moments of starting to speak: his first syllables came back. */

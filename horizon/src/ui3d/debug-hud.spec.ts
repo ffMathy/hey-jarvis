@@ -126,7 +126,7 @@ describe('describeDiagnostics', () => {
 
   it('says which tier his voice is on, why, and what the microphone said about echo', () => {
     const spatial = {
-      route: 'spatial',
+      tier: 'spatial',
       reason: 'the headset cancels echo',
       echoCanceller: 'platform',
       elements: 1,
@@ -137,16 +137,19 @@ describe('describeDiagnostics', () => {
       'voice spatial (the headset cancels echo)  echo canceller platform  1 sdk element at volume 0',
     ]);
 
-    const demoted = { ...spatial, route: 'element', reason: 'echo: he heard himself', elementVolume: 1 };
+    const demoted = { ...spatial, tier: 'element', reason: 'echo: he heard himself', elementVolume: 1 };
     expect(describeDiagnostics({ voice: demoted })).toEqual([
       'voice element (echo: he heard himself)  echo canceller platform  1 sdk element at volume 1',
     ]);
     // The third tier: the session muting the microphone while he speaks, on top of the element.
     expect(
-      describeDiagnostics({ voice: { ...demoted, elements: 2 }, conversation: { phase: 'live', halfDuplex: true } }),
+      describeDiagnostics({
+        voice: { ...demoted, tier: 'half-duplex', elements: 2 },
+        conversation: { phase: 'live', halfDuplex: true },
+      }),
     ).toEqual([
       'call live  half-duplex',
-      'voice element + half-duplex (echo: he heard himself)  echo canceller platform  2 sdk elements at volume 1',
+      'voice half-duplex (echo: he heard himself)  echo canceller platform  2 sdk elements at volume 1',
     ]);
   });
 });

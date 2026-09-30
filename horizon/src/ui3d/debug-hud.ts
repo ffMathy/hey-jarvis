@@ -54,8 +54,8 @@ export interface Diagnostics {
   };
   /** Where his voice comes from (`conversation/voice-route.ts`). */
   voice?: {
-    /** `spatial` or `element`. */
-    route: string;
+    /** `spatial`, `element` or `half-duplex`: the route, with the session's fallback on top. */
+    tier: string;
     /** Why, in words. */
     reason: string;
     /** What the wake word's microphone said about the echo canceller. */
@@ -125,14 +125,13 @@ function conversationLines(conversation: NonNullable<Diagnostics['conversation']
 }
 
 /**
- * The voice's tier on one line: spatial, element, or element with the session's half-duplex fallback
- * on top — the third tier, which the session decides and the conversation line also shows.
+ * The voice's tier on one line: spatial, element, or half-duplex — the element with the session's
+ * fallback on top, which the conversation line also shows.
  */
-function voiceLine(voice: NonNullable<Diagnostics['voice']>, halfDuplex: boolean): string {
-  const tier = voice.route === 'element' && halfDuplex ? 'element + half-duplex' : voice.route;
+function voiceLine(voice: NonNullable<Diagnostics['voice']>): string {
   const elements = voice.elements === 1 ? 'element' : 'elements';
   return (
-    `voice ${tier} (${voice.reason})  echo canceller ${voice.echoCanceller}  ` +
+    `voice ${voice.tier} (${voice.reason})  echo canceller ${voice.echoCanceller}  ` +
     `${voice.elements} sdk ${elements} at volume ${fixed(voice.elementVolume, 0)}`
   );
 }
@@ -199,7 +198,7 @@ export function describeDiagnostics(diagnostics: Diagnostics): string[] {
     ...(wake === undefined ? [] : wakeLines(wake)),
     wakeAudio === undefined ? undefined : wakeAudioLine(wakeAudio),
     ...(conversation === undefined ? [] : conversationLines(conversation)),
-    voice === undefined ? undefined : voiceLine(voice, conversation?.halfDuplex === true),
+    voice === undefined ? undefined : voiceLine(voice),
     ...(room === undefined ? [] : roomLines(room)),
     frameLine(diagnostics),
     hologram === undefined ? undefined : hologramLine(hologram),

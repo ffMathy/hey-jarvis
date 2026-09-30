@@ -17,9 +17,7 @@ export {
   createHeadsetSession,
   HEADSET_OFFLINE_PROBLEM,
   type HeadsetSessionOptions,
-  type HeadsetVoice,
   headsetSessionDependencies,
   NO_CONNECTION_DELAY,
 } from './headset-session';
-export { createPageSpatialVoice, hasSpatialAudio, type SpatialVoice, type VoiceDiagnostics } from './spatial-voice';
-export type { VoiceRoute, VoiceRouteChoice } from './voice-route';
+export { createPageSpatialVoice, hasSpatialAudio } from './spatial-voice';

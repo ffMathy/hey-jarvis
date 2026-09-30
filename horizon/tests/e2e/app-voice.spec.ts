@@ -146,6 +146,7 @@ test('he greets from where he stands: through an HRTF panner at his anchor, hear
 
   expect(await voiceReport(page)).toMatchObject({
     route: 'spatial',
+    tier: 'spatial',
     reason: 'platform-echo-canceller',
     echoCanceller: 'platform',
     setting: true,
@@ -217,7 +218,7 @@ test('a stopped AudioContext moves him back to the headset, and a greeting it wo
 
   await page.evaluate(() => window.__voiceProbe?.contexts[0]?.suspend());
   await expect.poll(async () => (await voiceReport(page)).reason, { timeout: 30000 }).toBe('context-not-running');
-  expect(await voiceReport(page)).toMatchObject({ route: 'element', greeting: 'dry' });
+  expect(await voiceReport(page)).toMatchObject({ route: 'element', tier: 'element', greeting: 'dry' });
 
   // Summoned again: the greeting was taken into a context that has stopped, so it would be played
   // into silence. It is refused instead, and he is still summoned — the agent says its own first line.
