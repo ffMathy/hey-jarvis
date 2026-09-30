@@ -30,6 +30,7 @@ export * from './hearing';
 export * from './hologram-drawing';
 export * from './played-voice';
 export * from './queued-audio';
+export * from './sample-drive';
 export * from './sample-mode';
 export * from './simulated-voice';
 export * from './tool-activity';

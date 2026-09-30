@@ -36,7 +36,7 @@ that rule.
 
 | Entry | Imports | What it holds |
 | --- | --- | --- |
-| `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the frame clock every device steps him on (`frame-clock.ts`) and the numbers it runs by (`frame-timing.ts`), the voice tracker, the simulated voices, sample mode's moods and readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the parts of a conversation with no framework in them: whether it is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`, with `createToolActivity`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) |
+| `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the frame clock every device steps him on (`frame-clock.ts`) and the numbers it runs by (`frame-timing.ts`), the voice tracker, the simulated voices, sample mode's moods, the voices each mood hands the sphere (`sample-drive.ts`) and its readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the parts of a conversation with no framework in them: whether it is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`, with `createToolActivity`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) |
 | `hologram/react` | React, Reanimated, Skia | the Skia canvas and the frame callback that steps the frame clock |
 | `hologram/react/sample` | React, Reanimated — not Skia | sample mode's clock-made voice, mood toast and frame-rate readout, shared by the phone's sample screen and the watch's waiting screen |
 | `hologram/conversation` | React, `@elevenlabs/react-native`, `@livekit/react-native`'s audio session, hologram's own native greeting player (`expo-audio` in a browser) — not Skia | his voice as the SDK hears it, which of his tool calls are in flight, the recorded greeting he answers with, and the user's voice for the listening lattice |
@@ -149,7 +149,9 @@ listening lattice and the greeting to WebM for looking at.
 **Sample mode is shared, and only sample mode has a readout.** Both devices have one — the phone's
 before there is an account, the watch's while it waits for the phone — so the moods, their order,
 their names and the readout's text live in `sample-mode.ts`, and the voice hook, the mood toast and
-the frame-rate readout in `hologram/react/sample`. Each component takes a `style`: where it sits is
+the frame-rate readout in `hologram/react/sample`. The voices themselves are `sample-drive.ts`
+(`simulatedJarvisVoice`, `simulatedUserVoice` and, for a whole mode, `createSampleDrive`): the hooks
+wrap it, and the headset's sample mode calls it directly. Each component takes a `style`: where it sits is
 the app's decision, since a round watch face and a phone sheet want different places. The
 conversation screens show no frame rate and no particle count on either device.
 
