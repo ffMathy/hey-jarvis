@@ -47,10 +47,16 @@ listening, a status line saying why and what to do about it.
   leave.
 - **No headset?** https://ffmathy.github.io/hey-jarvis/horizon/preview.html shows
   him in 3D on a desktop, phase by phase (see "The preview page" below).
+- **His voice from where he stands:** on a headset with an echo canceller of its
+  own, his voice comes from his spot in the room, and it moves with your head;
+  otherwise it comes from the headset, as before. A switch on the 2D page turns it
+  off (see "His voice from where he stands" below).
 - **URL flags:** `?debug` shows a diagnostics HUD in the room; `?flat` draws him
   as the phone's flat picture instead of in 3D; `?microphone=raw` listens for
   the wake word without echo cancellation, noise suppression or gain control, to
-  try on a headset whether it hears better that way.
+  try on a headset whether it hears better that way; `?voice=spatial` plays his
+  voice from where he stands even when the microphone says the headset has no
+  echo canceller of its own, to hear what that does.
 
 ## What is in here
 
@@ -65,7 +71,7 @@ src/xr/                    the XR stage and frame loop, input, depth probes, anc
 src/ui3d/                  text in the room: the hint, status line, error panel, captions, debug HUD
 src/wake/                  "Hey Jarvis": the microphone, the worklet, the onnxruntime-web worker, the watchdog
 src/room/                  where he stands: room snapshots, the occupancy grid, placement and its worker
-src/conversation/          hologram's session with the headset's parts: the greeting, his track, orphaned audio
+src/conversation/          hologram's session with the headset's parts: the greeting, his track, his voice from where he stands, orphaned audio
 src/hologram3d/            Jarvis in 3D: the frame clock, the body's strokes, the halo union, CanvasKit
 src/preview/               the preview page
 public/models/             the openWakeWord models and their LICENCE.txt (committed)
@@ -155,6 +161,10 @@ them: the key, getting ready, **Allow the microphone**, **Enter your room**.
   in `localStorage`. **Check and save** mints one token as `jarvis-horizon` before
   keeping anything, so a mistyped key shows next to the field, not as an error
   panel in the room.
+- **"His voice from where he stands"** is the headset's one setting of its own
+  (`page/voice-setting.ts`, under `jarvis.horizon.voice-from-where-he-stands`):
+  on by default, and read again on every Enter. Off keeps his voice on the
+  headset whatever the headset could do.
 
 **Everything in the room goes through one pure reducer (`app/app-state.ts`).**
 Every event goes through `reduceApp(model, event, now)`: the wake word, selects
@@ -214,7 +224,9 @@ button, a head-locked arrow for a spot out of view, and `?debug`'s HUD, whose
 lines come from `describeDiagnostics` and are left out for parts with nothing to
 report: the scene, XR and page visibility, the AudioContexts, the microphone's
 permission and track, the wake engine's health and audio, the SDK's status and
-mode, interruptions, half-duplex and the last error, the vad score, the room's
+mode, interruptions, half-duplex and the last error, the vad score, where his
+voice comes from (its tier, why, what the microphone said about the echo
+canceller, and the SDK's elements and their volume), the room's
 planes, meshes, labels, triangles and grid, where he was placed, frame rates, his
 CPU and CanvasKit time and surface, the granted session features and the WebGL
 extensions of interest.
@@ -479,6 +491,63 @@ the object changes when its source does:
   the SDK's input level.
 - `thinking` comes from hologram's `createToolActivity`.
 
+**His voice from where he stands** (`spatial-voice.ts`, with the route in
+`voice-route.ts` and what it watches for in `voice-watch.ts`). Three tiers,
+safest last:
+
+1. **Spatial.** The greeting and then his track go through one HRTF panner at his
+   centre — the room hands over his anchored position every XR frame, after the
+   hologram has followed the anchor — and the AudioContext's listener follows the
+   centre eye (position, forward and up), small steps glided over 30 ms and a new
+   spot jumped to. Distance is `inverse`, full level within a metre, half the
+   usual rolloff beyond it, so at 1.6 m he is at about three quarters of the level
+   the headset played him at. His track's one `MediaStreamSource` feeds both the
+   sphere's analyser and the panner. The SDK's own `<audio>` element keeps playing
+   at **volume 0 — never muted, never paused**, and only while his track really is
+   going through the panner (`agent-element-volume.ts`): Chromium pulls a remote
+   WebRTC track into Web Audio only while an element renders it, applies the
+   element's volume after that point, and LiveKit sets `muted = false` again on
+   every attach and every microphone acquisition. Every element is found — on the
+   page when the volume changes, from LiveKit's `ElementAttached`, and from a
+   `MutationObserver` on the body. The greeting's element is taken into Web Audio
+   (`createMediaElementSource`, once per page for good) only when he first greets
+   from where he stands.
+2. **Element.** The SDK's element plays him from the headset, exactly as before.
+3. **Half duplex.** The session's fallback (see below), on top of the element.
+
+**Which tier.** Spatial only when the wake word's own microphone track offers
+`echoCancellation: 'all'` in its capabilities (`echo-canceller.ts`) — on Android
+that means the device has an echo canceller of its own, which subtracts whatever
+the device plays, Web Audio included. Without it Chromium runs WebRTC's canceller
+in the page, whose reference is only WebRTC's own playout after the element's
+volume: a voice panned through Web Audio would not be subtracted, and an element
+at volume 0 would hand it silence. The setting off, or no panner in the browser,
+also means the element. `?voice=spatial` skips the probe; the setting still wins.
+**Nothing is built on the element tier from the start**: no node, the greeting
+never taken in, the page as it was before.
+
+**What moves him to the headset,** each on its own, for the rest of the page's
+life (a reload tries again): an interruption within 300 ms of his voice starting,
+measured from the audio (−45 dBFS after half a second of quiet) rather than from
+the SDK's lagging mode; two interruptions with no transcript of the user between
+them; a transcript of the user that repeats a line of his from the last ten
+seconds (`echo-transcript.ts`: half their words shared, or four in a row, and
+never on fewer than three words); the AudioContext stopped for half a second; and
+LiveKit's server saying he is speaking while under 1e-4 reaches the panner for
+1.5 s — the server's word, because WebRTC's own received level is measured after
+the element's volume and reads nothing at volume 0. Moving restores the element's
+volume at once, fades the panner branch out and disconnects it; the analyser
+stays. A greeting already taken into Web Audio plays centred through a dry branch
+from then on, and one whose AudioContext has stopped is reported refused, so the
+agent says its own first line instead of him greeting in silence.
+
+**The half-duplex fallback waits its turn** through `halfDuplexMayJudge` (a hook
+only the headset passes to `hologram`'s session): it counts no interruption while
+he is spatial, since an echo there moves him to the headset first, nor for three
+seconds after he moves, while the browser's echo canceller settles on the
+reference it has just been given. The session's `onInterruption` and `onMessage`
+events are what the watch hears.
+
 **What the session does on your behalf:** it calls `flushQueuedAudio` on the
 room's agent tracks when interrupted; captions follow `written-reply.ts`, and only
 while you are writing (the keyboard is up, or the last thing you said was typed —
@@ -655,10 +724,14 @@ the models first.
   from a user gesture, so the page's **Enter your room** is the way in; "Hey
   Jarvis" works from inside the room. Removing that tap needs the app packaged
   (below).
-- **His voice plays from the headset, not from where he stands.** The SDK's own
-  `<audio>` element plays him, which is what the browser's echo canceller knows
-  to subtract from the microphone; routing him through a spatial panner would put
-  his voice where he is and leave the wake word and the call hearing him.
+- **His voice comes from where he stands only on a headset with an echo
+  canceller of its own**; otherwise from the headset, as the SDK's `<audio>`
+  element plays it, which is what the browser's own echo canceller knows to
+  subtract. Whether a Quest registers one with Android is not known until one is
+  asked (the HUD's voice line says `echo canceller platform` or `browser`); if it
+  does not, every Quest hears him from the headset, exactly as before. A voice
+  that moves between the ears as the head turns is harder for any echo canceller,
+  which is why his is watched and moved back at the first sign of trouble.
 - **Packaging as an app needs an origin-root `assetlinks.json`.** An immersive PWA
   packaged with Bubblewrap needs Digital Asset Links at
   `https://ffmathy.github.io/.well-known/assetlinks.json`, which a project Pages
@@ -689,6 +762,18 @@ the models first.
   plays inside `immersive-ar` after `prime()`; whether remote tracks read `ended`
   after a network drop; whether `vad_score` and tool events arrive at all, which
   depends on the agent's `clientEvents`.
+- **His voice from where he stands.** Everything past the probe: whether Quest
+  Browser offers `'all'` at all (`?debug`'s voice line reads `voice spatial (the
+  headset cancels echo)  echo canceller platform` when it does, and `voice element
+  (only the browser cancels echo)  echo canceller browser` when it does not);
+  whether his spatial voice stays out of the microphone while the head turns —
+  talk to him for a few minutes turning your head, and the line should still say
+  `spatial`, not `element (echo: …)`; whether Quest Browser pulls his track into
+  Web Audio with its element at volume 0 (a `silent through the panner` demotion
+  says it does not); whether the volume rocker still changes him; whether 1.6 m
+  sounds like 1.6 m; and whether an AudioContext created before the microphone
+  opened — the Enter tap when the permission was already granted — gets the same
+  Android audio usage as the rest.
 - **The room.** Which labels, planes and meshes Quest actually reports and whether
   the room scan arrives; how its change times behave; whether an updated mesh
   arrives in new arrays; how much scene anchors jitter against the 1 cm / 0.3°
@@ -758,7 +843,17 @@ the models first.
 - **What the app shows the tests.** `window.__jarvis` (`src/debug-hook.ts`): the
   phase, frames drawn, where he was placed and where the head was, how the
   placement went (level, clearance, radius), how many wakes there have been, the
-  room's scene, view and recent effects, and the last problem.
+  room's scene, view and recent effects, the last problem, and where his voice
+  comes from (route, reason, the probe, the setting, how the greeting is heard,
+  and where the listener and the panner were last put).
+- **His voice.** `app-voice.spec.ts` makes the fake microphone offer `'all'`, as a
+  headset with its own echo canceller would, records the panners and the elements
+  the page takes into Web Audio, and checks the greeting goes through an HRTF
+  panner at his anchor with the listener following the emulated head, a stopped
+  AudioContext moving him back, and the page's setting. His live track cannot be
+  played offline, so its route through the panner and the echo signs are the unit
+  tests'; `element-volume-probe.ts` checks the rule for the SDK's elements on real
+  elements playing real streams.
 - **Slow frames.** SwiftShader draws the room at about eight frames a second while
   he is away and about one and a half while he is there, and his clock moves at
   most a tenth of a second a frame. A session gives up on a token after twenty
