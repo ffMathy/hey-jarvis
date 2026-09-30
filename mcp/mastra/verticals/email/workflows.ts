@@ -755,9 +755,6 @@ const registerEmailsStateChange = createStep({
       stateData: {
         emailCount: filing.kept.length,
         ...(filing.droppedEmailCount > 0 && { droppedEmailCount: filing.droppedEmailCount }),
-        // Only in the payload for now, where the reactor reads it: the notifier files every
-        // change as low until it takes a priority from its caller.
-        ...(filing.priority !== 'low' && { priority: filing.priority }),
         formRepliesFound: inputData.formRepliesFound,
         workflowsResumed: inputData.workflowsResumed,
         repliesRejected: inputData.repliesRejected,
@@ -769,6 +766,9 @@ const registerEmailsStateChange = createStep({
         })),
         timestamp: new Date().toISOString(),
       },
+      // A floor for the synapse gate, which can raise it but never lower it: an email triage is
+      // sure needs him now is delivered at once rather than rolled up.
+      ...(filing.priority !== 'low' && { priority: filing.priority }),
     };
 
     console.log(`📝 Registering ${filing.kept.length} email(s) with state reactor...`);

@@ -1,6 +1,6 @@
 import type { BooleanQuestion, Classifier, ClassifierAnswers } from '@mastra/core/classifier';
 import { z } from 'zod';
-import { createClassifier } from '../../utils/index.js';
+import { createLazyClassifier } from '../../utils/index.js';
 
 /**
  * The fast path in front of the email parsing agent.
@@ -165,21 +165,12 @@ export function classifiedEmailReplyFrom(
   return { kind: 'answer', response };
 }
 
-let emailReplyClassifier: Classifier | undefined;
-let emailReplyClassifierBuilt = false;
-
 /**
  * The classifier email replies are read with, or nothing when there is no key to run it with.
  *
  * One instance for the process, so the one registered on Mastra is the one replies use.
  */
-export function getEmailReplyClassifier(): Classifier | undefined {
-  if (!emailReplyClassifierBuilt) {
-    emailReplyClassifier = createClassifier(EMAIL_REPLY_CLASSIFIER_ID);
-    emailReplyClassifierBuilt = true;
-  }
-  return emailReplyClassifier;
-}
+export const getEmailReplyClassifier = createLazyClassifier(EMAIL_REPLY_CLASSIFIER_ID);
 
 /**
  * Asks the classifier what a reply answers, when its answer is made of yes-or-no fields.

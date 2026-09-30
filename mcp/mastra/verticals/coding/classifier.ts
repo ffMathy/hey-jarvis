@@ -1,5 +1,5 @@
 import type { Classifier, ClassifierAnswers } from '@mastra/core/classifier';
-import { createClassifier } from '../../utils/index.js';
+import { createLazyClassifier } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
 import { readProseQuestion } from './session-questions.js';
 
@@ -51,21 +51,12 @@ export function endsOnProseQuestion(answers: SessionQuestionAnswers): boolean {
   return answers.asksForDecision.probability > PROSE_QUESTION_CONFIDENCE;
 }
 
-let codingSessionQuestionClassifier: Classifier | undefined;
-let codingSessionQuestionClassifierBuilt = false;
-
 /**
  * The classifier session messages are read with, or nothing when there is no key to run it with.
  *
  * One instance for the process, so the one registered on Mastra is the one the watcher uses.
  */
-export function getCodingSessionQuestionClassifier(): Classifier | undefined {
-  if (!codingSessionQuestionClassifierBuilt) {
-    codingSessionQuestionClassifier = createClassifier(CODING_SESSION_QUESTION_CLASSIFIER_ID);
-    codingSessionQuestionClassifierBuilt = true;
-  }
-  return codingSessionQuestionClassifier;
-}
+export const getCodingSessionQuestionClassifier = createLazyClassifier(CODING_SESSION_QUESTION_CLASSIFIER_ID);
 
 /**
  * Asks the classifier whether a session's last message waits on the user.

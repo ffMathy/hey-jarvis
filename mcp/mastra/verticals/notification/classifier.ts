@@ -1,5 +1,5 @@
 import type { Classifier, ClassifierAnswers } from '@mastra/core/classifier';
-import { createClassifier } from '../../utils/index.js';
+import { createLazyClassifier } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -69,21 +69,12 @@ export function urgencyOverrideFrom(answers: UrgencyAnswers, agentIsUrgent: bool
   return undefined;
 }
 
-let notificationUrgencyClassifier: Classifier | undefined;
-let notificationUrgencyClassifierBuilt = false;
-
 /**
  * The classifier notification urgency is checked with, or nothing when there is no key to run it with.
  *
  * One instance for the process, so the one registered on Mastra is the one notifications use.
  */
-export function getNotificationUrgencyClassifier(): Classifier | undefined {
-  if (!notificationUrgencyClassifierBuilt) {
-    notificationUrgencyClassifier = createClassifier(NOTIFICATION_URGENCY_CLASSIFIER_ID);
-    notificationUrgencyClassifierBuilt = true;
-  }
-  return notificationUrgencyClassifier;
-}
+export const getNotificationUrgencyClassifier = createLazyClassifier(NOTIFICATION_URGENCY_CLASSIFIER_ID);
 
 /**
  * Checks the urgency an agent gave a message, and says which to use.

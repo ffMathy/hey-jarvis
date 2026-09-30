@@ -1,5 +1,5 @@
 import type { Classifier, ClassifierAnswers } from '@mastra/core/classifier';
-import { createLazyClassifier } from '../../utils/index.js';
+import { confidentChoice, createLazyClassifier } from '../../utils/index.js';
 import { type HomeService, homeServiceFrom, homeServiceQuestions } from '../internet-of-things/home-commands.js';
 import type { OpenQuestion } from './questions.js';
 import { RESPONSE_STYLE_DESCRIPTIONS, type ResponseStyle } from './response-styles.js';
@@ -177,11 +177,6 @@ export interface RequestClassification {
   responseStyle: ResponseStyle;
 }
 
-/** A choice, if the classifier is sure of it. A missing distribution means it is not. */
-function confidentChoice(answer: { choice: string; probabilities?: Record<string, number> }): string | undefined {
-  return (answer.probabilities?.[answer.choice] ?? 0) >= FAST_PATH_CONFIDENCE ? answer.choice : undefined;
-}
-
 function isRelationToRunningRequest(value: string): value is RelationToRunningRequest {
   return (RELATIONS_TO_RUNNING_REQUEST as readonly string[]).includes(value);
 }
@@ -198,18 +193,19 @@ export function readClassification(
   { agents, openQuestions, services }: Omit<RoutingContext, 'runningRequest'>,
 ): RequestClassification {
   const responseStyle = answers.responseStyle.choice;
-  const relation = answers.relationToRunningRequest && confidentChoice(answers.relationToRunningRequest);
+  const relation =
+    answers.relationToRunningRequest && confidentChoice(answers.relationToRunningRequest, FAST_PATH_CONFIDENCE);
   const classification: RequestClassification = {
     responseStyle,
     ...(relation && isRelationToRunningRequest(relation) && { relationToRunningRequest: relation }),
   };
 
-  const route = confidentChoice(answers.route);
+  const route = confidentChoice(answers.route, FAST_PATH_CONFIDENCE);
   if (route === END_CALL) {
     return { ...classification, endsCall: true };
   }
 
-  const answered = answers.answeredQuestion && confidentChoice(answers.answeredQuestion);
+  const answered = answers.answeredQuestion && confidentChoice(answers.answeredQuestion, FAST_PATH_CONFIDENCE);
   const onlyAnAnswer = (answers.onlyAnAnswer?.probability ?? 0) >= FAST_PATH_CONFIDENCE;
   if (
     answered &&
