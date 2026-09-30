@@ -1,6 +1,5 @@
-import type { Classifier } from '@mastra/core/classifier';
 import { z } from 'zod';
-import { createClassifier } from '../../utils/index.js';
+import { createLazyClassifier } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
 import { createTtlCache } from '../../utils/ttl-cache.js';
 import { callHomeAssistantApi, type EntitySummary, listEntities } from './tools.js';
@@ -265,17 +264,8 @@ export function entitiesFrom(
   return chosen.length > 0 ? chosen : undefined;
 }
 
-let homeCommandClassifier: Classifier | undefined;
-let homeCommandClassifierBuilt = false;
-
 /** The classifier that chooses a command's entities, or nothing when there is no key. */
-export function getHomeCommandClassifier(): Classifier | undefined {
-  if (!homeCommandClassifierBuilt) {
-    homeCommandClassifier = createClassifier('homeCommandClassifier');
-    homeCommandClassifierBuilt = true;
-  }
-  return homeCommandClassifier;
-}
+export const getHomeCommandClassifier = createLazyClassifier('homeCommandClassifier');
 
 /** Everything one of the service's domains holds, or `undefined` when it is too many to ask about. */
 async function candidateEntities(service: HomeService): Promise<EntitySummary[] | undefined> {

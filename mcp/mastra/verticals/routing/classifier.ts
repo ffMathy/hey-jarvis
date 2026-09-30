@@ -1,5 +1,5 @@
 import type { Classifier, ClassifierAnswers } from '@mastra/core/classifier';
-import { createClassifier } from '../../utils/index.js';
+import { createLazyClassifier } from '../../utils/index.js';
 import { type HomeService, homeServiceFrom, homeServiceQuestions } from '../internet-of-things/home-commands.js';
 import type { OpenQuestion } from './questions.js';
 import { RESPONSE_STYLE_DESCRIPTIONS, type ResponseStyle } from './response-styles.js';
@@ -240,21 +240,12 @@ export function readClassification(
   return { ...classification, fastRoute: { agentId: route, responseStyle, ...(homeService && { homeService }) } };
 }
 
-let routingClassifier: Classifier | undefined;
-let routingClassifierBuilt = false;
-
 /**
  * The classifier routing runs on, or nothing when there is no key to run it with.
  *
  * One instance for the process, so the one registered on Mastra is the one requests use.
  */
-export function getRoutingClassifier(): Classifier | undefined {
-  if (!routingClassifierBuilt) {
-    routingClassifier = createClassifier(ROUTING_CLASSIFIER_ID);
-    routingClassifierBuilt = true;
-  }
-  return routingClassifier;
-}
+export const getRoutingClassifier = createLazyClassifier(ROUTING_CLASSIFIER_ID);
 
 /** Asks the classifier everything routing can use about one request. */
 export async function classifyRequest(
