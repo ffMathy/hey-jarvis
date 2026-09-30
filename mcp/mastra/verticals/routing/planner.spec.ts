@@ -37,7 +37,7 @@ describe('an id in the request', () => {
   it('is copied into the acting agent’s prompt exactly as written', () => {
     const instructions = plannerInstructions([]);
 
-    expect(instructions).toContain('pointing at "Kitchen ceiling", light.kitchen_ceiling');
+    expect(instructions).toContain('pointing at "Kitchen ceiling", id light.kitchen_ceiling');
     expect(instructions).toContain('copy the id into its prompt exactly as written');
   });
 });

@@ -659,7 +659,7 @@ describe('a request whose tools touch things', () => {
       instructionsOutputSchema.shape.affectedEntities.parse([{ id: 'light.sofa_lamp', name: 'Sofa lamp' }]),
     ).toEqual([{ id: 'light.sofa_lamp', name: 'Sofa lamp' }]);
     expect(inputSchema.shape.userQuery.description).toContain(
-      'Turn that on (pointing at "Kitchen ceiling", light.kitchen_ceiling)',
+      'Turn that on (pointing at "Kitchen ceiling", id light.kitchen_ceiling)',
     );
   });
 });

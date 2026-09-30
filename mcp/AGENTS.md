@@ -1026,7 +1026,7 @@ ever glow. It also answers a question, to pin the resumed-agent path.
 **What sir points at:**
 On the headset, a context update names the thing sir is pointing at, and "turn that on" means it.
 The `userQuery` description asks the voice agent to add its name and id —
-`Turn that on (pointing at "Kitchen ceiling", light.kitchen_ceiling)` — because nothing but that
+`Turn that on (pointing at "Kitchen ceiling", id light.kitchen_ceiling)` — because nothing but that
 string reaches the agents. The planner copies an id in the request verbatim into the prompt of the
 agent that owns the thing, and every agent is told in the shared guidelines to act on an id it is
 given without looking it up. The tool call on that id then lights the thing up by the path above.

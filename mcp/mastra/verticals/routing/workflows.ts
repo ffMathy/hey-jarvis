@@ -63,7 +63,7 @@ const inputSchema = z.object({
   userQuery: z
     .string()
     .describe(
-      'Everything the user asked for in this turn, in one call. If they asked for two things — their calendar and their email, say — both belong in this one string: the plan splits the work itself and runs the independent parts at the same time, so a request sent in pieces is answered in pieces and later. When he means something he is pointing at ("that", "this", "it") and a context update named it, add its name and id exactly as given: \'Turn that on (pointing at "Kitchen ceiling", light.kitchen_ceiling)\'.',
+      'Everything the user asked for in this turn, in one call. If they asked for two things — their calendar and their email, say — both belong in this one string: the plan splits the work itself and runs the independent parts at the same time, so a request sent in pieces is answered in pieces and later. When he means something he is pointing at ("that", "this", "it") and a context update named it, add its name and id exactly as given: \'Turn that on (pointing at "Kitchen ceiling", id light.kitchen_ceiling)\'.',
     ),
   async: z
     .boolean()

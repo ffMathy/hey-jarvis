@@ -138,11 +138,11 @@ describe('findUnrelayedMarks', () => {
 describe('readRoutedQueries', () => {
   it('reads each routing call once, although ElevenLabs reports it twice', () => {
     const queries = readRoutedQueries([
-      ...routed('Is that on? (pointing at Kitchen ceiling light, id light.kitchen_ceiling)'),
+      ...routed('Is that on? (pointing at "Kitchen ceiling light", id light.kitchen_ceiling)'),
       ...polled([]),
     ]);
 
-    expect(queries).toEqual(['Is that on? (pointing at Kitchen ceiling light, id light.kitchen_ceiling)']);
+    expect(queries).toEqual(['Is that on? (pointing at "Kitchen ceiling light", id light.kitchen_ceiling)']);
   });
 });
 
