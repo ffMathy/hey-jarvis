@@ -152,7 +152,8 @@ private fun openAssistantSettings(activity: Activity): String {
 
 /**
  * Opens the phone's camera app for one photo, and gives `receive` the photo's `file://` URI — or
- * null, for a photo not taken. See `JarvisPhotoActivity`.
+ * null, for a photo not taken, or `NOT_READABLE`, for one taken that could not be made ready to send.
+ * See `JarvisPhotoActivity`.
  *
  * **From the app's own activity it is an ordinary start**, on top of the conversation, which comes
  * back into view when the camera is done.

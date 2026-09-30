@@ -51,8 +51,9 @@ import kotlin.math.min
  * back without one, when the camera app is missing, when a newer request takes over
  * ({@link awaitPhoto}), when this activity is torn down without an answer, and when
  * {@link GIVE_UP_AFTER_MS} passes with the camera still open — timed on the main looper, because
- * JavaScript's own timers stop while the app is behind the camera. Each request carries a number
- * ({@link REQUEST}) so an answer only ever reaches the request it is for.
+ * JavaScript's own timers stop while the app is behind the camera. A photo taken that cannot be made
+ * ready to send is answered with {@link NOT_READABLE} instead, since sir did take one. Each request
+ * carries a number ({@link REQUEST}) so an answer only ever reaches the request it is for.
  *
  * **It survives being recreated under the camera** — a rotation, a change of theme — by starting the
  * camera only on a first creation and keeping the file it is writing to across the rest.
@@ -163,8 +164,23 @@ class JarvisPhotoActivity : Activity() {
         } finally {
           photo.delete()
         }
-      runOnUiThread { finishWith(sized) }
+      runOnUiThread {
+        if (sized != null) {
+          finishWith(sized)
+        } else {
+          finishNotReadable()
+        }
+      }
     }.start()
+  }
+
+  /**
+   * A photo was taken, and could not be made ready to send: said as {@link NOT_READABLE} rather than
+   * as nothing, because sir did take one, and is waiting to hear what became of it.
+   */
+  private fun finishNotReadable() {
+    deliver(request, NOT_READABLE)
+    finish()
   }
 
   /**
@@ -188,6 +204,12 @@ class JarvisPhotoActivity : Activity() {
 
     /** The extra saying which request a photo answers. */
     internal const val REQUEST = "request"
+
+    /**
+     * Handed over in place of a photo's URI when one was taken and could not be made ready to send.
+     * Never a URI, which always starts `file://`. `index.ts` spells it the same way.
+     */
+    private const val NOT_READABLE = "notReadable"
 
     /**
      * How long the camera may stay open before the request is answered with nothing.

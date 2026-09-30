@@ -998,8 +998,9 @@ test('keeps the call alive while the camera is open, and says so when sir backs 
 
   const chooser = await openTheCamera(page);
   await expect.poll(() => textsOf(heard, 'contextual_update')).toContain(CAMERA_OPENED);
-  // Someone framing a shot says nothing, and ElevenLabs ends a silent call: the page says he is there.
-  await expect.poll(() => heard.some((event) => isOfType(event, 'user_activity')), { timeout: 10_000 }).toBe(true);
+  // Someone framing a shot says nothing, and ElevenLabs ends a silent call: the page says he is there
+  // in the tap itself, beside the note, rather than first when the heartbeat comes round in five seconds.
+  await expect.poll(() => heard.some((event) => isOfType(event, 'user_activity')), { timeout: 2_000 }).toBe(true);
 
   // Backing out of the chooser, which a browser reports as `cancel`.
   await chooser.element().dispatchEvent('cancel');
@@ -1027,6 +1028,61 @@ test('tells Jarvis the photo did not reach him when the server will not confirm 
     .toEqual(["The photo I took didn't reach you: this conversation could not be confirmed as live."]);
   expect(slotRequests).toHaveLength(1);
   expect(uploads).toHaveLength(0);
+});
+
+test('tells Jarvis a picked file that will not draw could not be read, not that the camera was closed', async ({
+  page,
+}) => {
+  const { heard, uploads } = await openAConversationToShowThingsTo(page, { serverAddress: JARVIS_SERVER });
+
+  // An image the picker lets through and the browser cannot decode, as a desktop meets an iPhone's HEIC.
+  await (await openTheCamera(page)).setFiles({
+    name: 'receipt.heic',
+    mimeType: 'image/heic',
+    buffer: Buffer.from('not a photo a browser can draw'),
+  });
+
+  // Sir picked something and is waiting to hear about it, so it takes his turn, like any photo that
+  // did not arrive — and nothing was sent anywhere.
+  await expect
+    .poll(() => textsOf(heard, 'user_message'))
+    .toEqual(["The photo I took didn't reach you: it could not be read as a photo."]);
+  expect(textsOf(heard, 'contextual_update')).not.toContain(CAMERA_CLOSED);
+  expect(uploads).toHaveLength(0);
+});
+
+test('still sends a photo whose conversation ended while the camera was open, and tells the next one nothing', async ({
+  page,
+}) => {
+  const { heard, uploads } = await openAConversationToShowThingsTo(page, { serverAddress: JARVIS_SERVER });
+
+  const chooser = await openTheCamera(page);
+  await expect.poll(() => textsOf(heard, 'contextual_update')).toContain(CAMERA_OPENED);
+
+  // The conversation ends while sir frames the shot — here by going to the settings, which ends the
+  // screen's session — and the screen opens a new one on coming back.
+  await saveJarvisServer(page, JARVIS_SERVER);
+  await expect.poll(() => conversationsOpened(heard)).toBe(3);
+  await expect(page.getByTestId('typed-message')).toBeEditable();
+
+  // Only now is the photo picked, so it is on its way while the new conversation is the one open.
+  const uploaded = page.waitForResponse(`${JARVIS_SERVER}${UPLOAD_PATH}`);
+  await chooser.setFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: ONE_PIXEL });
+
+  // It still goes to the slot opened at the tap: the server keeps it for a later request to bring up.
+  await uploaded;
+  expect(uploads).toHaveLength(1);
+  expect(uploads[0]?.method).toBe('PUT');
+
+  // The page would name the photo the moment the upload was answered; give it that moment. The
+  // conversation now open hears nothing of a photo taken in another — no turn naming it, and no note
+  // that the camera closed — and its button is free for a photo of its own.
+  await page.waitForTimeout(500);
+  const heardByTheNewOne = sinceTheLastConversationOpened(heard);
+  expect(textsOf(heardByTheNewOne, 'user_message')).toEqual([]);
+  expect(textsOf(heardByTheNewOne, 'contextual_update')).not.toContain(CAMERA_CLOSED);
+  expect(textsOf(heard, 'user_message')).not.toContain("I've sent you a photo (photo photo7).");
+  await expect(page.getByTestId('open-camera')).toBeVisible();
 });
 
 test('refuses anything but a Jarvis server’s own https address, and saves nothing with it', async ({ page }) => {

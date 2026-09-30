@@ -330,16 +330,21 @@ model that can see answers from it (`mcp/AGENTS.md`, "Vision").
 ```
 connected, server set  phone ─ contextual update ──▶ agent   "…it has a camera button beside you…"
 sir taps the button    phone  opens the camera app, or the browser's picker, inside the tap
-                       phone ─ POST <server>/api/photos/slots {"conversationId": "conv_…"} ──▶ Jarvis server
-                                 server asks ElevenLabs: is that conversation live on Jarvis's agent?
-                             ◀── 201 { "uploadPath": "/api/photos/<token>" }
+                       phone ─ POST <server>/api/photos/slots {"conversationId": "conv_…"} ──▶ Jarvis server (not awaited)
                        phone ─ contextual update ──▶ agent   "Sir has opened the camera…" — it waits
+                       phone ─ user_activity ──▶ agent   at once, then every 5 s until the tap is seen through
+                                 server asks ElevenLabs: is that conversation live on Jarvis's agent?
+                             ◀── 201 { "uploadPath": "/api/photos/<token>" }, or a refusal
 photo taken            phone ─ PUT image/jpeg to <server><uploadPath>, no key ──▶ Jarvis server ──▶ { photoId }
                        phone ─ user message ──▶ agent   "I've sent you a photo (photo photo3)."
                        agent ─ routePromptWorkflow "… (photo photo3)" ──▶ Jarvis server
 ```
 
-Five decisions carry it, and each has a reason:
+The note that the camera is open, and the first `user_activity`, go out in the tap itself, right after
+the slot request starts and before the server has answered it — whatever it answers. A slot refused, or
+never answered, is told once the camera has closed, as a photo that did not reach him.
+
+Six decisions carry it, and each has a reason:
 
 - **The phone calls the server itself, and nothing about the photo passes through ElevenLabs.** The
   agent has no camera tool and no upload tool; the button does the whole of it (`use-photo-sending.ts`,
@@ -374,16 +379,26 @@ Five decisions carry it, and each has a reason:
 - **Every tap ends in one thing said, and never in the server's words.** A camera closed without a
   photo is a note that takes no turn (`CAMERA_CLOSED`). A photo that could not be sent is said as
   sir's turn, `photoNotSent(reason)`, so Jarvis tells him out loud rather than leaving him waiting,
-  with one of four fixed reasons the phone picks from the status (`PHOTO_PROBLEMS` in
-  `photo-messages.ts`): a `403` in the server's own envelope, or a session with no id to give, is
-  "this conversation could not be confirmed as live"; a `503` in its envelope is "photo uploads are
-  switched off on the Jarvis server"; a `413` is "it was larger than a photo can be"; and anything
-  else — no network, a `5xx`, Cloudflare Access's own pages, a sign-in page answered as a `200` — is
-  "the Jarvis server could not be reached". Nothing a response said is repeated, to the agent or in
-  the phone's log, which gets a description in the phone's own words and names Cloudflare Access when
-  a refusal was not the server's. The camera app is given up on after 110 s (timed on the main looper,
-  since JavaScript's timers stop behind the camera), well inside the five minutes the slot opened at
-  the tap stays open.
+  with one of five fixed reasons the phone picks from what happened (`PHOTO_PROBLEMS` in
+  `photo-messages.ts`): a photo taken or picked that could not be read — a HEIC a desktop browser
+  cannot draw, a JPEG the camera app left that could not be decoded or read back — is "it could not
+  be read as a photo", and never a camera closed, since sir did send something (the camera's answer
+  says which, `CameraAnswer` in `platform-contracts.ts`, and `JarvisPhotoActivity` answers
+  `NOT_READABLE` rather than nothing); a `403` in the server's own envelope, or a session with no id
+  to give, is "this conversation could not be confirmed as live"; a `503` in its envelope is "photo
+  uploads are switched off on the Jarvis server"; a `413` is "it was larger than a photo can be"; and
+  anything else — no network, a server that did not answer in time, a `5xx`, Cloudflare Access's own
+  pages, a sign-in page answered as a `200` — is "the Jarvis server could not be reached". Nothing a
+  response said is repeated, to the agent or in the phone's log, which gets a description in the
+  phone's own words and names Cloudflare Access when a refusal was not the server's.
+- **Nothing is waited on for ever.** The camera app is given up on after 110 s (timed on the main
+  looper, since JavaScript's timers stop behind the camera), well inside the five minutes the slot
+  opened at the tap stays open. The slot request is given up on after 20 s and the upload after 30 s
+  (`PHOTO_SLOT_WAIT_MS` and `PHOTO_UPLOAD_WAIT_MS` in `photo-upload.ts`, an `AbortController` and a
+  `setTimeout` each), because React Native's `fetch` on Android waits on OkHttp with every timeout
+  off, and a request the network swallowed would hold the button busy, and Jarvis waiting, for the
+  rest of the call. The slot's own wait is counted from the tap, on timers that stop behind the camera,
+  so `photo-sending.ts` also gives a slot still on its way when the camera closes 20 s more at most.
 
 **It speaks into the session every device holds, and hands it nothing.** The camera is made after
 `useJarvisSession` and uses only what the session offers any screen: `status`,
@@ -397,15 +412,17 @@ a server is set and he is connected, past the greeting and settled, not held in 
 and neither thinking nor speaking — a photo arrives as sir's turn, and a turn in the middle of one
 cancels a request or cuts off an answer — and not while its camera is open or its photo on the way.
 The camera opens on the tap itself, before anything is awaited, because a browser only opens its
-picker inside the gesture; the slot request and the note to the agent follow in the same tap.
+picker inside the gesture; the slot request, the note to the agent and the first `user_activity`
+follow in the same tap.
 
 **The call is not hung up on while sir frames the shot.** A finished request is ended by the agent
 itself, after its `turnTimeout` (see `hologram/AGENTS.md`). The note that the camera is open
 (`CAMERA_OPENED`) is what the prompt waits on instead: asked to speak again before the photo or a
-word from sir has come, the agent calls `skip_turn`, never `end_call`. `user_activity` is sent every
-five seconds while the camera is open or the photo on its way, because ElevenLabs ends a call a while
-after the user last spoke — whether that covers the time behind the camera app, where JavaScript's
-timers stop, is still to be checked on a device.
+word from sir has come, the agent calls `skip_turn`, never `end_call`. `user_activity` is sent in the
+tap, beside that note, and then every five seconds while the camera is open or the photo on its way,
+because ElevenLabs ends a call a while after the user last spoke and `user_activity` may hold that off.
+ElevenLabs does not document that it does: whether it does, and whether it covers the time behind the
+camera app, where JavaScript's timers stop, is still to be checked on a device.
 
 **What is done with a photo is sir's to say, and he need not say it first.** The turn a photo arrives
 in (`photoSent`: "I've sent you a photo (photo photo3).") says only that it has arrived, naming it the
@@ -654,7 +671,7 @@ Tests must not import React Native or any Expo native module — there is no run
 
 The boundary is the ElevenLabs session, which needs a real API key and real quota. Everything up to it is exercised for real: the first-run tour (its two steps in a browser, its links, Back, and the side trip to sample mode and back), settings validation, persistence across a reload, the hologram drawing and moving with CanvasKit loaded from the export's own `canvaskit.wasm`, and the token request to ElevenLabs — its `xi-api-key` header, agent ID and participant name, and that the key never appears in the URL — along with how a rejected key and an unknown agent are explained. The typed field is covered on both of its paths: that a refused microphone still opens a conversation — dialled by asking for a **signed URL** rather than a token — and that the field stops saying "Connecting…" once nothing is; and that a microphone that *works* gets the same field beside it, over a token and not a signed URL, since a typed line there is answered out loud and quietly turning it into a text-only session would be the one way to lose that. A `start` that never opened a session at all gets no field, which is the phone's refused microphone by another route. The greeting is covered by counting `HTMLMediaElement.play()` in the page — the player fetches the recording at mount whether or not it plays, so a request proves nothing: it plays once from the export's own assets beside the token request, plays without being refused in a tab nobody has clicked — with the microphone held for it let go afterwards — and does not play in the text-only session, whose `conversation_initiation_client_data` must carry no `first_message`. The override on a voice session travels over LiveKit's data channel, which these tests close, so it is pinned by `greeting-handover.spec.ts` in `hologram` instead. Both URLs are intercepted with `page.route`; every other non-localhost request is aborted, and non-local WebSockets are closed, so a test can never dial out. Playwright answers CORS preflights for routed requests itself, so whether ElevenLabs' real CORS policy admits the web build is **not** covered — the test checks instead that the request carries no header besides `xi-api-key`, which is all a preflight would have to allow.
 
-**The camera is covered end to end in the text-only session**, whose socket the suite plays ElevenLabs' side of (`listenAsTheAgent`) — its handshake gives the conversation the id `conv_1` — with the Jarvis server answered by `page.route`. Every conversation with a camera in it first saves a Jarvis server on the settings screen (`saveJarvisServer`) while the conversation the tour landed on is still connected, the way sir would, and carries on in the conversation that replaces it. With a server: the page tells the agent once that there is a camera button here, and shows it; a tap opens the file chooser, tells the agent the camera is open, `POST`s `{"conversationId": "conv_1"}` to `<server>/api/photos/slots`, `PUT`s the picked image as a JPEG to `<server><uploadPath>` with no `Authorization` header, and then takes sir's turn naming the photo, "(photo photo7)"; backing out of the chooser sends `user_activity` while it is open and then the note that the camera was closed, with no upload and no turn; and a slot refused with a `403` in the server's envelope takes the turn saying the photo did not reach him, with the phone's reason. Without a server, or once it is cleared: no note and no button. The settings screen refuses an `http` address that is not `localhost`, a path and a user name, and saves nothing else on the screen with them; keeps a bare host as its `https` origin across a reload; and leaves an address it could not read alone when the rest of the screen is saved. What it cannot reach is the phone's camera app, the assistant's window stepping aside for it, and whether the server's real CORS admits the web build's origin, since Playwright answers routed preflights itself — see below.
+**The camera is covered end to end in the text-only session**, whose socket the suite plays ElevenLabs' side of (`listenAsTheAgent`) — its handshake gives the conversation the id `conv_1` — with the Jarvis server answered by `page.route`. Every conversation with a camera in it first saves a Jarvis server on the settings screen (`saveJarvisServer`) while the conversation the tour landed on is still connected, the way sir would, and carries on in the conversation that replaces it. With a server: the page tells the agent once that there is a camera button here, and shows it; a tap opens the file chooser, tells the agent the camera is open, `POST`s `{"conversationId": "conv_1"}` to `<server>/api/photos/slots`, `PUT`s the picked image as a JPEG to `<server><uploadPath>` with no `Authorization` header, and then takes sir's turn naming the photo, "(photo photo7)"; backing out of the chooser sends `user_activity` in the tap, while it is open, and then the note that the camera was closed, with no upload and no turn; a slot refused with a `403` in the server's envelope takes the turn saying the photo did not reach him, with the phone's reason; a picked file the browser cannot draw takes the turn saying it could not be read as a photo, never the note that the camera was closed; and a conversation that ends while the chooser is open — the settings saved, and a new conversation opened, before the photo is picked — still has the photo uploaded to the slot opened at the tap, while the new conversation hears neither a turn naming it nor the note that the camera closed. Without a server, or once it is cleared: no note and no button. The settings screen refuses an `http` address that is not `localhost`, a path and a user name, and saves nothing else on the screen with them; keeps a bare host as its `https` origin across a reload; and leaves an address it could not read alone when the rest of the screen is saved. What it cannot reach is the phone's camera app, the assistant's window stepping aside for it, and whether the server's real CORS admits the web build's origin, since Playwright answers routed preflights itself — see below.
 
 Every test that needs a configured app walks the tour first, through the `walkToCredentials` helper: the app no longer opens on a form, so a spec that types into one without pressing Next is a spec that fails on a missing field rather than on what it was checking.
 
@@ -662,7 +679,7 @@ Set `CHROMIUM_EXECUTABLE_PATH` to run against a Chromium that Playwright did not
 
 ### What CI cannot test, and what stands in for it
 
-**Showing Jarvis a photo on a device** has not been run on one yet. Before relying on it, check on a phone or an emulator with a camera app: that the camera comes up over the assistant's window and the window comes back after it with the conversation still open; that the same works from the app's own activity, where the conversation's JavaScript is paused behind the camera — LiveKit's keep-alive runs on JavaScript timers, so a long capture may cost a reconnect; that ElevenLabs does not end a call while sir frames a shot in silence; that the slot request, its preflight and the upload all pass the Cloudflare Access bypass for `/api/photos/*` and reach the server through the tunnel; that ElevenLabs reports a phone's live conversation — over WebRTC as well as the socket — with the agent and status the server's check expects; and that a receipt arrives upright. What stands in for the native half meanwhile is `take-photo.contract.spec.ts` — the provider's authority and directory, the activity's manifest entry, the module's function names and the photo's size, read out of the Kotlin, the manifest and the resource as text — and the Mobile APK workflow compiling it.
+**Showing Jarvis a photo on a device** has not been run on one yet. Before relying on it, check on a phone or an emulator with a camera app: that the camera comes up over the assistant's window and the window comes back after it with the conversation still open; that the same works from the app's own activity, where the conversation's JavaScript is paused behind the camera — LiveKit's keep-alive runs on JavaScript timers, so a long capture may cost a reconnect; that ElevenLabs does not end a call while sir frames a shot in silence; that the slot request, its preflight and the upload all pass the Cloudflare Access bypass for `/api/photos/*` and reach the server through the tunnel; that ElevenLabs reports a phone's live conversation — over WebRTC as well as the socket — with the agent and status the server's check expects; and that a receipt arrives upright. What stands in for the native half meanwhile is `take-photo.contract.spec.ts` — the provider's authority and directory, the activity's manifest entry, the module's function names, the photo's size, and the answer for a photo that could not be made ready to send, read out of the Kotlin, the manifest and the resource as text — and the Mobile APK workflow compiling it.
 
 CI has no Android emulator, and neither does an agent sandbox: that needs the Android SDK and hardware virtualisation, and the SDK only comes from `dl.google.com`. So the device-level behaviour — the assist gesture, the role picker, the session opening the app — is checked by hand on an emulator, with the script below, rather than on every push. The commands above under "Becoming the assistant" are how to look at it there, and this is the one-line version:
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CAMERA_BUTTON_HERE, CAMERA_OPENED, photoSent } from './photo-messages';
+import { CAMERA_BUTTON_HERE, CAMERA_CLOSED, CAMERA_OPENED, photoNotSent, photoSent } from './photo-messages';
 
 /**
  * The photo messages held to the two things in other packages that read them.
@@ -49,5 +49,17 @@ describe('the messages, and the prompt that says what to do with them', () => {
     expect(CAMERA_OPENED).toContain('opened the camera');
     expect(prompt).toMatch(/opened it|opened the camera/);
     expect(prompt).toContain('never `end_call`');
+  });
+
+  it('knows a camera put away without a photo by the note that says so', () => {
+    expect(CAMERA_CLOSED).toContain('closed the camera');
+    expect(prompt).toContain('closed the camera');
+  });
+
+  it('knows a photo that did not arrive by the message that says so', () => {
+    // A turn of sir's that the prompt must not route as a request: it tells him instead, with the
+    // reason, so it has to recognise the message as that.
+    expect(photoNotSent('the Jarvis server could not be reached')).toContain("didn't reach you");
+    expect(prompt).toContain("didn't reach you");
   });
 });

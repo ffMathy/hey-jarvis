@@ -1,6 +1,7 @@
 import type { JarvisConversation } from 'hologram/conversation';
 import { CAMERA_CLOSED, CAMERA_OPENED, PHOTO_PROBLEMS, photoNotSent, photoSent } from './photo-messages';
-import type { PhotoDelivery, PhotoFailure, PhotoSlot } from './photo-upload';
+import { PHOTO_SLOT_WAIT_MS, type PhotoDelivery, type PhotoFailure, type PhotoSlot } from './photo-upload';
+import type { CameraAnswer } from './platform-contracts';
 
 /** The Jarvis server, as far as one photo needs it: somewhere to send it, and sending it there. */
 export interface PhotoServer {
@@ -9,13 +10,55 @@ export interface PhotoServer {
 }
 
 /** As much of the conversation as one photo speaks into. */
-export type PhotoConversation = Pick<JarvisConversation, 'sendText' | 'sendContextualUpdate'>;
+export type PhotoConversation = Pick<JarvisConversation, 'sendText' | 'sendContextualUpdate' | 'sendUserActivity'>;
 
 /** A conversation with no ElevenLabs id to give the server is one it could never confirm as live. */
 const NO_CONVERSATION_ID: PhotoFailure = {
   problem: 'notLive',
   description: 'The conversation had no ElevenLabs id to confirm it by.',
 };
+
+/** A camera that failed outright took no photo, as far as anyone waiting on one is concerned. */
+const CLOSED: CameraAnswer = { closed: true };
+
+/** A photo sir took or picked that could not be read as one, so there was nothing to send. */
+const NOT_READABLE: PhotoFailure = {
+  problem: 'notReadable',
+  description: 'The photo that was taken could not be read as one.',
+};
+
+/** No slot yet, {@link PHOTO_SLOT_WAIT_MS} after the camera closed. */
+const NO_SLOT_IN_TIME: PhotoFailure = {
+  problem: 'unreachable',
+  description: `The Jarvis server had opened no slot ${PHOTO_SLOT_WAIT_MS / 1000} s after the camera closed.`,
+};
+
+/**
+ * The slot, waited on for no more than {@link PHOTO_SLOT_WAIT_MS} from now — the camera closing.
+ *
+ * Its request gives itself up in that time too, but counted from the tap, on JavaScript's timers,
+ * which stop while the app is behind the camera app — and whether a request settles at all is the
+ * server's to keep (`openPhotoSlot`), not something this flow can see. So the flow keeps a deadline of
+ * its own, from the moment there is a photo: a slot that never came is then a server that could not
+ * be reached, and the tap still ends in one thing said.
+ */
+async function slotInTime(slot: Promise<PhotoSlot>): Promise<PhotoSlot> {
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  const tooLate = new Promise<PhotoSlot>((resolve) => {
+    deadline = setTimeout(() => resolve(NO_SLOT_IN_TIME), PHOTO_SLOT_WAIT_MS);
+  });
+  try {
+    return await Promise.race([slot, tooLate]);
+  } finally {
+    clearTimeout(deadline);
+  }
+}
+
+/** The photo sent to the slot, once there is one, or why it could not be. */
+async function sendToTheSlot(photo: Blob, slot: Promise<PhotoSlot>, server: PhotoServer): Promise<PhotoDelivery> {
+  const opened = await slotInTime(slot);
+  return 'uploadPath' in opened ? server.sendPhoto(photo, opened.uploadPath) : opened;
+}
 
 /**
  * One tap of the camera button, from the camera opening to Jarvis hearing how it went.
@@ -27,15 +70,19 @@ const NO_CONVERSATION_ID: PhotoFailure = {
  *    certainly live — the call may drop while sir frames the shot, and the slot, which lives for
  *    minutes, outlives that. With no id to give, there is no slot to ask for.
  * 2. **The agent is told the camera is open** ({@link CAMERA_OPENED}), in the background, so it waits
- *    rather than hanging up on the silence.
+ *    rather than hanging up on the silence — and **sir's activity is reported** (`user_activity`)
+ *    there and then, rather than first when the hook's heartbeat comes round five seconds later, by
+ *    which time the agent may already have been asked to speak again. Whether ElevenLabs lets that
+ *    hold anything off is not documented; see `use-photo-sending.ts`.
  *
  * Then, once the camera has closed:
  *
  * 3. **No photo** — sir backed out — and the agent is told so ({@link CAMERA_CLOSED}), and carries on.
- * 4. **A photo**, and it goes to the slot, and the agent is told what it was filed as
- *    ({@link photoSent}) — as sir's turn, so it acts on it now. A photo that could not be sent, or had
- *    nowhere to go, is told the same way, with a fixed phrase for why ({@link photoNotSent}), so Jarvis
- *    says so out loud rather than leaving sir waiting on it.
+ * 4. **A photo**, and it goes to the slot — waited on for {@link PHOTO_SLOT_WAIT_MS} at most, if it is
+ *    still on its way — and the agent is told what it was filed as ({@link photoSent}), as sir's turn,
+ *    so it acts on it now. A photo that could not be read, could not be sent, or had nowhere to go is
+ *    told the same way, with a fixed phrase for why ({@link photoNotSent}), so Jarvis says so out loud
+ *    rather than leaving sir waiting on it.
  *
  * **A photo is sent even if the conversation it was taken in has ended.** The server keeps it as one
  * nobody has looked at yet, and routing brings it up in a later conversation. What is never done is
@@ -52,8 +99,8 @@ export async function seeThePhotoThrough({
   conversation,
   stillInTheConversation,
 }: {
-  /** The camera's answer: the photo, or `undefined` once it closed without one. */
-  photo: Promise<Blob | undefined>;
+  /** The camera's answer: the photo, a camera closed without one, or a photo that could not be read. */
+  photo: Promise<CameraAnswer>;
   /** The conversation's ElevenLabs id as it was at the tap, if it had one. See `liveConversationId`. */
   conversationId: string | undefined;
   server: PhotoServer;
@@ -63,17 +110,17 @@ export async function seeThePhotoThrough({
 }): Promise<void> {
   const slot = conversationId === undefined ? Promise.resolve(NO_CONVERSATION_ID) : server.openSlot(conversationId);
   conversation.sendContextualUpdate(CAMERA_OPENED);
+  conversation.sendUserActivity();
 
-  const taken = await photo.catch(() => undefined);
-  if (!taken) {
+  const answer = await photo.catch(() => CLOSED);
+  if ('closed' in answer) {
     if (stillInTheConversation()) {
       conversation.sendContextualUpdate(CAMERA_CLOSED);
     }
     return;
   }
 
-  const opened = await slot;
-  const delivery = 'uploadPath' in opened ? await server.sendPhoto(taken, opened.uploadPath) : opened;
+  const delivery = 'photo' in answer ? await sendToTheSlot(answer.photo, slot, server) : NOT_READABLE;
   if ('photoId' in delivery) {
     if (stillInTheConversation()) {
       conversation.sendText(photoSent(delivery.photoId));

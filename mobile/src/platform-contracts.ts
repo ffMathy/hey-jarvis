@@ -70,8 +70,18 @@ export type UseJarvisVoice = (sessionVoice: JarvisVoice) => JarvisVoice;
 export type UsePreferredHeadset = (inCall: boolean) => void;
 
 /**
- * Takes one photo for Jarvis, and resolves with it as a JPEG ready to send — or `undefined` when
- * none was taken.
+ * What the camera came back with, told three ways because each is told to Jarvis differently:
+ *
+ * - `photo`: the photo, as a JPEG ready to send.
+ * - `closed`: none was taken — sir went back without one, or there was no camera to take it with.
+ * - `notReadable`: sir took or picked one, and it could not be read as a photo — a file the browser
+ *   cannot decode, or a photo the camera app left that could not be made ready or read back. Not
+ *   `closed`, because he did send something, and is waiting to hear what became of it.
+ */
+export type CameraAnswer = { photo: Blob } | { closed: true } | { notReadable: true };
+
+/**
+ * Takes one photo for Jarvis, and resolves with what the camera came back with ({@link CameraAnswer}).
  *
  * On a phone it is the phone's own camera app, reached from wherever the conversation is drawn:
  * `inAssistantWindow` says whether that is the assistant's window, which has to make way for it.
@@ -88,4 +98,4 @@ export type TakePhoto = (options: {
    * was put away for it and comes back only to a conversation that is.
    */
   stillTalking: () => boolean;
-}) => Promise<Blob | undefined>;
+}) => Promise<CameraAnswer>;

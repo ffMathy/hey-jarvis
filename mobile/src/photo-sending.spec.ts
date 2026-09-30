@@ -1,11 +1,21 @@
-import { describe, expect, it, spyOn } from 'bun:test';
+import { describe, expect, it, jest, spyOn } from 'bun:test';
 import { CAMERA_CLOSED, CAMERA_OPENED, PHOTO_PROBLEMS, photoNotSent, photoSent } from './photo-messages';
 import { type PhotoServer, seeThePhotoThrough } from './photo-sending';
-import type { PhotoDelivery, PhotoSlot } from './photo-upload';
+import { PHOTO_SLOT_WAIT_MS, type PhotoDelivery, type PhotoSlot } from './photo-upload';
+import type { CameraAnswer } from './platform-contracts';
 
 const CONVERSATION_ID = 'conv_01jz8k3b4c5d6e7f';
 const UPLOAD_PATH = '/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ';
 const PHOTO = new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], { type: 'image/jpeg' });
+
+/** The camera coming back with a photo. */
+const TAKEN: CameraAnswer = { photo: PHOTO };
+
+/** The camera coming back without one: sir went back. */
+const WENT_BACK: CameraAnswer = { closed: true };
+
+/** The camera coming back with something sir took or picked that could not be read as a photo. */
+const NOT_READABLE: CameraAnswer = { notReadable: true };
 
 /** A promise the test settles when it chooses: the camera, still open until it is told otherwise. */
 function later<Value>() {
@@ -19,12 +29,17 @@ function later<Value>() {
 /** Everything said into the conversation, in order, as what kind of word it was. */
 type Said = { update: string } | { message: string };
 
-/** A conversation that remembers what it was told, and a switch for whether it is still the one open. */
+/**
+ * A conversation that remembers what it was told, and how often sir's activity was reported to it,
+ * and a switch for whether it is still the one open.
+ */
 function createConversation() {
   const said: Said[] = [];
+  const activity = { reported: 0 };
   let open = true;
   return {
     said,
+    activity,
     end: () => {
       open = false;
     },
@@ -32,6 +47,9 @@ function createConversation() {
     conversation: {
       sendContextualUpdate: (text: string) => said.push({ update: text }),
       sendText: (text: string) => said.push({ message: text }),
+      sendUserActivity: () => {
+        activity.reported += 1;
+      },
     },
   };
 }
@@ -64,15 +82,21 @@ function settled(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+/** The same, while the clock is faked: `setImmediate` is not among the timers Bun fakes. */
+function settledWhileTheClockIsStopped(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 describe('a tap of the camera button', () => {
-  it('asks for a slot and tells the agent the camera is open before anything is awaited', () => {
-    // Both in the tap itself: the slot while the conversation is certainly live, and the note so the
-    // agent waits for the photo rather than hanging up on the silence.
-    const { said, conversation, stillInTheConversation } = createConversation();
+  it('asks for a slot, tells the agent the camera is open and says sir is there, before anything is awaited', () => {
+    // All in the tap itself: the slot while the conversation is certainly live, the note so the agent
+    // waits for the photo rather than hanging up on the silence, and sir's activity at once rather
+    // than five seconds later, when the hook's heartbeat first comes round.
+    const { said, activity, conversation, stillInTheConversation } = createConversation();
     const { server, slotsAskedFor } = createServer();
 
     void seeThePhotoThrough({
-      photo: later<Blob | undefined>().promise,
+      photo: later<CameraAnswer>().promise,
       conversationId: CONVERSATION_ID,
       server,
       conversation,
@@ -81,12 +105,13 @@ describe('a tap of the camera button', () => {
 
     expect(slotsAskedFor).toEqual([CONVERSATION_ID]);
     expect(said).toEqual([{ update: CAMERA_OPENED }]);
+    expect(activity.reported).toBe(1);
   });
 
   it('sends the photo to the slot, and tells the agent what it was filed as, as sir’s turn', async () => {
     const { said, conversation, stillInTheConversation } = createConversation();
     const { server, photosSent } = createServer();
-    const camera = later<Blob | undefined>();
+    const camera = later<CameraAnswer>();
 
     const seen = seeThePhotoThrough({
       photo: camera.promise,
@@ -99,7 +124,7 @@ describe('a tap of the camera button', () => {
     // Nothing goes anywhere while the camera is still open.
     expect(photosSent).toHaveLength(0);
 
-    camera.settle(PHOTO);
+    camera.settle(TAKEN);
     await seen;
 
     expect(photosSent).toEqual([{ photo: PHOTO, uploadPath: UPLOAD_PATH }]);
@@ -112,7 +137,7 @@ describe('a tap of the camera button', () => {
     const { server, photosSent } = createServer({ slot: slot.promise });
 
     const seen = seeThePhotoThrough({
-      photo: Promise.resolve(PHOTO),
+      photo: Promise.resolve(TAKEN),
       conversationId: CONVERSATION_ID,
       server,
       conversation,
@@ -133,7 +158,7 @@ describe('a tap of the camera button', () => {
     const { server, photosSent } = createServer();
 
     await seeThePhotoThrough({
-      photo: Promise.resolve(undefined),
+      photo: Promise.resolve(WENT_BACK),
       conversationId: CONVERSATION_ID,
       server,
       conversation,
@@ -161,6 +186,100 @@ describe('a tap of the camera button', () => {
   });
 });
 
+describe('a photo that could not be read', () => {
+  it('is not taken for a camera closed: the agent is told, as sir’s turn, that it did not reach him', async () => {
+    // Sir took or picked something — an iPhone's HEIC, which a desktop browser cannot draw — and is
+    // waiting to hear about it. A note that he closed the camera would leave Jarvis carrying on as if
+    // he had sent nothing.
+    const warn = spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { said, conversation, stillInTheConversation } = createConversation();
+    const { server, photosSent } = createServer();
+
+    await seeThePhotoThrough({
+      photo: Promise.resolve(NOT_READABLE),
+      conversationId: CONVERSATION_ID,
+      server,
+      conversation,
+      stillInTheConversation,
+    });
+
+    expect(photosSent).toHaveLength(0);
+    expect(said).toEqual([
+      { update: CAMERA_OPENED },
+      { message: "The photo I took didn't reach you: it could not be read as a photo." },
+    ]);
+    expect(warn).toHaveBeenCalledWith(
+      'The photo for Jarvis was not sent: The photo that was taken could not be read as one.',
+    );
+    warn.mockRestore();
+  });
+
+  it('says nothing of it once the conversation has ended', async () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { said, conversation, stillInTheConversation, end } = createConversation();
+    const { server } = createServer();
+    const camera = later<CameraAnswer>();
+
+    const seen = seeThePhotoThrough({
+      photo: camera.promise,
+      conversationId: CONVERSATION_ID,
+      server,
+      conversation,
+      stillInTheConversation,
+    });
+    end();
+    camera.settle(NOT_READABLE);
+    await seen;
+
+    expect(said).toEqual([{ update: CAMERA_OPENED }]);
+    warn.mockRestore();
+  });
+});
+
+describe('a server that never answers the slot request', () => {
+  it('is given up on once the camera has been closed for as long as a slot is waited on, and sir is told', async () => {
+    // A request the network swallowed would otherwise hold the button busy, and Jarvis waiting on a
+    // photo, for the rest of the call.
+    const warn = spyOn(console, 'warn').mockImplementation(() => undefined);
+    jest.useFakeTimers();
+    try {
+      const { said, conversation, stillInTheConversation } = createConversation();
+      const { server, photosSent } = createServer({ slot: new Promise<PhotoSlot>(() => undefined) });
+      const camera = later<CameraAnswer>();
+
+      const seen = seeThePhotoThrough({
+        photo: camera.promise,
+        conversationId: CONVERSATION_ID,
+        server,
+        conversation,
+        stillInTheConversation,
+      });
+      // However long sir spends framing the shot, the wait is counted from the photo, not the tap.
+      jest.advanceTimersByTime(PHOTO_SLOT_WAIT_MS * 3);
+      camera.settle(TAKEN);
+      await settledWhileTheClockIsStopped();
+      jest.advanceTimersByTime(PHOTO_SLOT_WAIT_MS - 1);
+      await settledWhileTheClockIsStopped();
+      expect(said).toEqual([{ update: CAMERA_OPENED }]);
+
+      jest.advanceTimersByTime(1);
+      await seen;
+
+      expect(photosSent).toHaveLength(0);
+      expect(said).toEqual([
+        { update: CAMERA_OPENED },
+        { message: photoNotSent('the Jarvis server could not be reached') },
+      ]);
+      expect(warn).toHaveBeenCalledWith(
+        `The photo for Jarvis was not sent: The Jarvis server had opened no slot ${PHOTO_SLOT_WAIT_MS / 1000} s after the camera closed.`,
+      );
+    } finally {
+      jest.useRealTimers();
+      warn.mockRestore();
+    }
+  });
+});
+
 describe('a photo that does not get there', () => {
   it('tells the agent, as sir’s turn, with the phone’s reason for the slot being refused', async () => {
     const warn = spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -170,7 +289,7 @@ describe('a photo that does not get there', () => {
     });
 
     await seeThePhotoThrough({
-      photo: Promise.resolve(PHOTO),
+      photo: Promise.resolve(TAKEN),
       conversationId: CONVERSATION_ID,
       server,
       conversation,
@@ -193,7 +312,7 @@ describe('a photo that does not get there', () => {
     const { server, slotsAskedFor, photosSent } = createServer();
 
     await seeThePhotoThrough({
-      photo: Promise.resolve(PHOTO),
+      photo: Promise.resolve(TAKEN),
       conversationId: undefined,
       server,
       conversation,
@@ -214,7 +333,7 @@ describe('a photo that does not get there', () => {
     });
 
     await seeThePhotoThrough({
-      photo: Promise.resolve(PHOTO),
+      photo: Promise.resolve(TAKEN),
       conversationId: CONVERSATION_ID,
       server,
       conversation,
@@ -232,7 +351,7 @@ describe('a conversation that ends while the camera is open', () => {
     // could only land in a conversation that is not the one it was taken in.
     const { said, conversation, stillInTheConversation, end } = createConversation();
     const { server, photosSent } = createServer();
-    const camera = later<Blob | undefined>();
+    const camera = later<CameraAnswer>();
 
     const seen = seeThePhotoThrough({
       photo: camera.promise,
@@ -242,7 +361,7 @@ describe('a conversation that ends while the camera is open', () => {
       stillInTheConversation,
     });
     end();
-    camera.settle(PHOTO);
+    camera.settle(TAKEN);
     await seen;
 
     expect(photosSent).toHaveLength(1);
@@ -252,7 +371,7 @@ describe('a conversation that ends while the camera is open', () => {
   it('says nothing of a camera closed after it ended', async () => {
     const { said, conversation, stillInTheConversation, end } = createConversation();
     const { server } = createServer();
-    const camera = later<Blob | undefined>();
+    const camera = later<CameraAnswer>();
 
     const seen = seeThePhotoThrough({
       photo: camera.promise,
@@ -262,7 +381,7 @@ describe('a conversation that ends while the camera is open', () => {
       stillInTheConversation,
     });
     end();
-    camera.settle(undefined);
+    camera.settle(WENT_BACK);
     await seen;
 
     expect(said).toEqual([{ update: CAMERA_OPENED }]);
@@ -274,7 +393,7 @@ describe('a conversation that ends while the camera is open', () => {
     const { server } = createServer({
       delivery: { problem: 'unreachable', description: 'The Jarvis server could not be reached.' },
     });
-    const camera = later<Blob | undefined>();
+    const camera = later<CameraAnswer>();
 
     const seen = seeThePhotoThrough({
       photo: camera.promise,
@@ -284,7 +403,7 @@ describe('a conversation that ends while the camera is open', () => {
       stillInTheConversation,
     });
     end();
-    camera.settle(PHOTO);
+    camera.settle(TAKEN);
     await seen;
 
     expect(said).toEqual([{ update: CAMERA_OPENED }]);

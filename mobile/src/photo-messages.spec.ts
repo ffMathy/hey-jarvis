@@ -40,6 +40,7 @@ describe('what the phone tells Jarvis about the camera', () => {
       notLive: 'this conversation could not be confirmed as live',
       switchedOff: 'photo uploads are switched off on the Jarvis server',
       tooLarge: 'it was larger than a photo can be',
+      notReadable: 'it could not be read as a photo',
       unreachable: 'the Jarvis server could not be reached',
     });
   });

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'bun:test';
-import { openPhotoSlot, sendPhoto } from './photo-upload';
+import { describe, expect, it, jest } from 'bun:test';
+import { openPhotoSlot, PHOTO_SLOT_WAIT_MS, PHOTO_UPLOAD_WAIT_MS, sendPhoto } from './photo-upload';
 
 /** The Jarvis server as sir typed it into the settings screen. */
 const SERVER = 'https://jarvis.example.com';
@@ -12,13 +12,23 @@ const UPLOAD_PATH = '/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ';
 const PHOTO = new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], { type: 'image/jpeg' });
 
 /** A server that answers every request the same way, and remembers what it was sent. */
-function createServer(respond: () => Promise<Response>) {
+function createServer(respond: (init: RequestInit) => Promise<Response>) {
   const requests: Array<{ url: string; init: RequestInit }> = [];
   const send = async (url: string, init: RequestInit) => {
     requests.push({ url, init });
-    return respond();
+    return respond(init);
   };
   return { send, requests };
+}
+
+/**
+ * No answer at all: the request is left open until whoever sent it gives up on it, and then fails the
+ * way `fetch` does when it is aborted. What a half-open connection looks like from the phone.
+ */
+function neverAnswer(init: RequestInit): Promise<Response> {
+  return new Promise((_, reject) => {
+    init.signal?.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')));
+  });
 }
 
 /** An answer in the Jarvis server's own JSON envelope. */
@@ -152,6 +162,27 @@ describe('asking the Jarvis server for somewhere to send a photo', () => {
       description: 'The Jarvis server could not be reached.',
     });
   });
+
+  it('gives up on a server that never answers, as one that could not be reached', async () => {
+    // React Native's fetch on Android never gives up by itself, so without this the camera button
+    // would stay busy, and Jarvis waiting on the photo, for the rest of the call.
+    jest.useFakeTimers();
+    try {
+      const server = createServer(neverAnswer);
+
+      const slot = askForASlot(server);
+      jest.advanceTimersByTime(PHOTO_SLOT_WAIT_MS - 1);
+      expect(server.requests[0]?.init.signal?.aborted).toBe(false);
+      jest.advanceTimersByTime(1);
+
+      expect(await slot).toEqual({
+        problem: 'unreachable',
+        description: 'The Jarvis server did not answer within 20 s.',
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
 
 describe('sending the photo to the slot', () => {
@@ -243,6 +274,25 @@ describe('sending the photo to the slot', () => {
       problem: 'unreachable',
       description: 'The Jarvis server could not be reached.',
     });
+  });
+
+  it('gives up on an upload that is never answered, as a server that could not be reached', async () => {
+    jest.useFakeTimers();
+    try {
+      const server = createServer(neverAnswer);
+
+      const delivery = sendTo(server);
+      jest.advanceTimersByTime(PHOTO_UPLOAD_WAIT_MS - 1);
+      expect(server.requests[0]?.init.signal?.aborted).toBe(false);
+      jest.advanceTimersByTime(1);
+
+      expect(await delivery).toEqual({
+        problem: 'unreachable',
+        description: 'The Jarvis server did not answer within 30 s.',
+      });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('never repeats what the server said in what it says went wrong', async () => {

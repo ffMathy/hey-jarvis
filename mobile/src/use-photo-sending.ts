@@ -38,7 +38,9 @@ export type CameraConversation = Pick<
  * **Nothing here holds the call open while sir frames the shot; the agent does.** A finished request
  * is hung up on by the agent itself, after its `turnTimeout`, and the note that the camera is open is
  * what its prompt waits on instead: a nudge then gets `skip_turn` rather than `end_call`. The
- * heartbeat below covers ElevenLabs' own silence timeout.
+ * heartbeat below sends `user_activity` in case it holds off ElevenLabs' own silence timeout — which
+ * ElevenLabs does not document that it does — and it cannot run while JavaScript's timers are paused
+ * behind the camera app.
  *
  * **A photo belongs to the conversation it was taken in.** Each conversation is numbered as it ends,
  * and a photo in flight carries the number of the one it was taken in: it is still sent once that
@@ -90,9 +92,11 @@ export function usePhotoSending({
    * Sir framing a shot, or his photo on its way, is sir still there.
    *
    * ElevenLabs ends a call a while after the user last spoke, whatever its agent is waiting on, and
-   * someone pointing a camera says nothing. `user_activity` is what its client events offer for exactly
-   * this — activity that is not speech. JavaScript's timers stop while the app is behind the camera, so
-   * this covers the browser and the moments either side of the camera app rather than the whole of it.
+   * someone pointing a camera says nothing. `user_activity` is what its client events offer for
+   * activity that is not speech, though not documented as holding that off. The first is sent in the
+   * tap itself (`photo-sending.ts`), and these follow it. JavaScript's timers stop while the app is
+   * behind the camera, so this covers the browser and the moments either side of the camera app rather
+   * than the whole of it.
    */
   useEffect(() => {
     if (!busy) {
@@ -123,7 +127,7 @@ export function usePhotoSending({
         openSlot: (conversationId) => openPhotoSlot({ serverAddress, conversationId }),
         sendPhoto: (taken, uploadPath) => sendPhoto({ serverAddress, uploadPath, photo: taken }),
       },
-      conversation: { sendText, sendContextualUpdate },
+      conversation: { sendText, sendContextualUpdate, sendUserActivity },
       stillInTheConversation,
     }).finally(() => {
       if (stillInTheConversation()) {
@@ -131,7 +135,7 @@ export function usePhotoSending({
         setBusy(false);
       }
     });
-  }, [inAssistantWindow, serverAddress, liveConversationId, sendText, sendContextualUpdate]);
+  }, [inAssistantWindow, serverAddress, liveConversationId, sendText, sendContextualUpdate, sendUserActivity]);
 
   return { canSendPhotos, cameraBusy: busy, sendJarvisAPhoto };
 }

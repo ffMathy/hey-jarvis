@@ -10,7 +10,9 @@ import { PHOTO_LONG_EDGE, PHOTO_QUALITY } from './photo-upload';
  * spelled in the manifest, the paths resource and the activity; the module's function names in
  * Kotlin and in `index.ts`; the photo's size and quality in Kotlin and in the browser's half. Any of
  * them drifting builds, installs, and then fails on every photo — as "no photo taken", which is
- * the one failure that looks like sir changing his mind.
+ * the one failure that looks like sir changing his mind. The answer for a photo taken that could not
+ * be made ready is spelled in Kotlin and in `index.ts` too: drifted, it would reach JavaScript as a
+ * URI to fetch, and be told apart from a photo only by that fetch happening to fail.
  *
  * And one thing has to stay *absent*: the CAMERA permission. The phone's camera app takes the photo,
  * which needs no permission from an app that does not declare it, and throws for one that declares
@@ -82,6 +84,23 @@ describe('the module the screen calls', () => {
       expect(kotlin).toContain(`AsyncFunction("${name}")`);
       expect(javascript).toMatch(new RegExp(`\\b${name}\\(`));
     }
+  });
+});
+
+describe('a photo taken that could not be made ready to send', () => {
+  const kotlin = readSource(`${KOTLIN}/JarvisPhotoActivity.kt`);
+
+  it('is answered as such, rather than as no photo, when the activity cannot make it ready', () => {
+    expect(kotlin).toContain('deliver(request, NOT_READABLE)');
+  });
+
+  it('is answered with the word the JavaScript side reads it by', () => {
+    const javascript = /const NOT_READABLE = '([^']+)'/.exec(readSource(`${MODULE}/index.ts`))?.[1];
+
+    expect(javascript).toBeDefined();
+    expect(readPhotoConstant('NOT_READABLE')).toBe(javascript ?? '');
+    // Never a photo's URI, which is what every other answer but none is.
+    expect(javascript).not.toStartWith('file://');
   });
 });
 

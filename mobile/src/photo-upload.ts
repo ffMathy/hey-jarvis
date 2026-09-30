@@ -21,6 +21,10 @@ import type { PhotoProblem } from './photo-messages';
  * own {@link PhotoProblem}s, for the agent to tell sir, and a description in the phone's own words for
  * its log. Nothing a response said is in either.
  *
+ * **Never waits for ever, either.** Each request is given up on once {@link PHOTO_SLOT_WAIT_MS} or
+ * {@link PHOTO_UPLOAD_WAIT_MS} has passed without an answer, and that too is a server that could not
+ * be reached. See {@link givenUpOnAfter}.
+ *
  * Imports nothing but a type, and takes `fetch` as an argument, for the reason `conversation-token.ts`
  * does: every answer the server can give, and every way the network can fail, is a test with no
  * device and no server behind it.
@@ -37,6 +41,19 @@ export const PHOTO_QUALITY = 0.85;
  * (`mcp/mastra/verticals/api/routes.ts`), which `photo-upload.contract.spec.ts` holds this to.
  */
 export const PHOTO_SLOTS_PATH = '/api/photos/slots';
+
+/**
+ * How long the slot request is waited on before it is given up.
+ *
+ * The server may ask ElevenLabs about the conversation three times over before it answers — five
+ * seconds for each at most, a second and a half apart for the first two (`live-conversation.ts` in
+ * `mcp/mastra/verticals/vision`), so 16.5 s at worst — and this leaves room for all of that and a slow
+ * network besides.
+ */
+export const PHOTO_SLOT_WAIT_MS = 20_000;
+
+/** How long the photo's upload is waited on before it is given up: a photo is a few hundred kilobytes. */
+export const PHOTO_UPLOAD_WAIT_MS = 30_000;
 
 /**
  * A path a photo may be sent to: the server's upload route and a slot's token — 22 URL-safe
@@ -98,6 +115,40 @@ const UNREACHABLE: PhotoFailure = {
   problem: 'unreachable',
   description: 'The Jarvis server could not be reached.',
 };
+
+/** A request that was sent, and never answered in the time it was given. */
+function noAnswerWithin(waitMs: number): PhotoFailure {
+  return {
+    problem: 'unreachable',
+    description: `The Jarvis server did not answer within ${waitMs / 1000} s.`,
+  };
+}
+
+/**
+ * Runs one request, and the reading of its answer, with a signal that aborts it once `waitMs` has
+ * passed.
+ *
+ * **Nothing else would ever give up on it.** React Native's `fetch` on Android waits on OkHttp with
+ * every timeout switched off, so a request the network swallowed — a connection gone half-open, a
+ * server that stopped answering — would otherwise hold the camera button busy, and leave Jarvis
+ * waiting on a photo, for as long as the call lasted. An abort makes `fetch` throw, which the request
+ * answers as {@link noAnswerWithin}.
+ *
+ * A plain `AbortController` and `setTimeout`, not `AbortSignal.timeout`, which React Native does not
+ * promise to have. The timer is cleared however the request ends, so none is left behind it.
+ */
+async function givenUpOnAfter<Answer>(
+  waitMs: number,
+  request: (signal: AbortSignal) => Promise<Answer>,
+): Promise<Answer> {
+  const giveUp = new AbortController();
+  const timer = setTimeout(() => giveUp.abort(), waitMs);
+  try {
+    return await request(giveUp.signal);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * Nothing came back that could be read as the server's, whatever the status said.
@@ -166,24 +217,27 @@ export async function openPhotoSlot({
   conversationId: string;
   fetchImplementation?: SendRequest;
 }): Promise<PhotoSlot> {
-  let response: Response;
-  try {
-    response = await fetchImplementation(`${serverAddress}${PHOTO_SLOTS_PATH}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conversationId }),
-    });
-  } catch {
-    return UNREACHABLE;
-  }
+  return givenUpOnAfter(PHOTO_SLOT_WAIT_MS, async (signal): Promise<PhotoSlot> => {
+    let response: Response;
+    try {
+      response = await fetchImplementation(`${serverAddress}${PHOTO_SLOTS_PATH}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId }),
+        signal,
+      });
+    } catch {
+      return signal.aborted ? noAnswerWithin(PHOTO_SLOT_WAIT_MS) : UNREACHABLE;
+    }
 
-  if (!response.ok) {
-    return readRefusal(response, 'slot');
-  }
+    if (!response.ok) {
+      return readRefusal(response, 'slot');
+    }
 
-  const data = readSuccessData(await readJson(response));
-  const uploadPath = data && 'uploadPath' in data ? data.uploadPath : undefined;
-  return typeof uploadPath === 'string' && UPLOAD_PATH.test(uploadPath) ? { uploadPath } : NOT_THE_SERVER;
+    const data = readSuccessData(await readJson(response));
+    const uploadPath = data && 'uploadPath' in data ? data.uploadPath : undefined;
+    return typeof uploadPath === 'string' && UPLOAD_PATH.test(uploadPath) ? { uploadPath } : NOT_THE_SERVER;
+  });
 }
 
 /**
@@ -208,22 +262,25 @@ export async function sendPhoto({
     return NOT_THE_SERVER;
   }
 
-  let response: Response;
-  try {
-    response = await fetchImplementation(`${serverAddress}${uploadPath}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'image/jpeg' },
-      body: photo,
-    });
-  } catch {
-    return UNREACHABLE;
-  }
+  return givenUpOnAfter(PHOTO_UPLOAD_WAIT_MS, async (signal): Promise<PhotoDelivery> => {
+    let response: Response;
+    try {
+      response = await fetchImplementation(`${serverAddress}${uploadPath}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/jpeg' },
+        body: photo,
+        signal,
+      });
+    } catch {
+      return signal.aborted ? noAnswerWithin(PHOTO_UPLOAD_WAIT_MS) : UNREACHABLE;
+    }
 
-  if (!response.ok) {
-    return readRefusal(response, 'upload');
-  }
+    if (!response.ok) {
+      return readRefusal(response, 'upload');
+    }
 
-  const data = readSuccessData(await readJson(response));
-  const photoId = data && 'photoId' in data ? data.photoId : undefined;
-  return typeof photoId === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(photoId) ? { photoId } : NOT_THE_SERVER;
+    const data = readSuccessData(await readJson(response));
+    const photoId = data && 'photoId' in data ? data.photoId : undefined;
+    return typeof photoId === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(photoId) ? { photoId } : NOT_THE_SERVER;
+  });
 }

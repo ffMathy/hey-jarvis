@@ -70,7 +70,16 @@ export const PHOTO_PROBLEMS = {
   switchedOff: 'photo uploads are switched off on the Jarvis server',
   /** The server would not take a body that size. */
   tooLarge: 'it was larger than a photo can be',
-  /** Anything else: no network, a tunnel in the way, an answer that was not the server's. */
+  /**
+   * Sir took or picked one, and the phone could not read it as a photo to send: a format the browser
+   * cannot decode, or a file the camera app left that could not be read back. Not a camera closed
+   * without one — he did send something, and is waiting to hear what became of it.
+   */
+  notReadable: 'it could not be read as a photo',
+  /**
+   * Anything else: no network, a server that did not answer in time, a tunnel in the way, an answer
+   * that was not the server's.
+   */
   unreachable: 'the Jarvis server could not be reached',
 } as const;
 

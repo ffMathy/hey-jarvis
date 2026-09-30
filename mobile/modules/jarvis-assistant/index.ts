@@ -15,6 +15,7 @@ interface JarvisAssistantNativeModule {
   canReachAssistantSettings(): boolean;
   openAssistantSettings(): AssistantSettingsScreen;
   dismissAssistantWindow(): boolean;
+  /** A photo's `file://` URI, {@link NOT_READABLE}, or `null` for no photo. */
   takePhoto(inAssistantWindow: boolean): Promise<string | null>;
   returnFromTheCamera(showWindowAgain: boolean): Promise<boolean>;
 }
@@ -87,9 +88,23 @@ export function dismissAssistantWindow(): boolean {
 }
 
 /**
+ * What the native side answers, in place of a photo's URI, when sir took one and it could not be
+ * made ready to send. Never a URI, which always starts `file://`. Spelled the same as `NOT_READABLE`
+ * in `JarvisPhotoActivity.kt`, which `take-photo.contract.spec.ts` holds it to.
+ */
+const NOT_READABLE = 'notReadable';
+
+/**
+ * What the camera app came back with: where the photo was put, nothing, or a photo taken that could
+ * not be made ready to send.
+ */
+export type CameraAppAnswer = { uri: string } | { closed: true } | { notReadable: true };
+
+/**
  * Takes one photo with the phone's own camera app, and resolves with where it was put — a `file://`
- * URI to a small, upright JPEG — or `undefined` when none was taken: sir went back without one,
- * the phone has no camera app, or the build has no native module to ask.
+ * URI to a small, upright JPEG — or `closed` when none was taken: sir went back without one, the
+ * phone has no camera app, or the build has no native module to ask. A photo that was taken and could
+ * not be decoded or written is `notReadable`, since sir did send one.
  *
  * `inAssistantWindow` says where the conversation is drawn, because that decides how the camera
  * gets in front of it: the assistant's window is above every app, the camera's included, so it is
@@ -100,8 +115,12 @@ export async function takePhotoWithTheCameraApp({
   inAssistantWindow,
 }: {
   inAssistantWindow: boolean;
-}): Promise<string | undefined> {
-  return (await nativeModule?.takePhoto(inAssistantWindow)) ?? undefined;
+}): Promise<CameraAppAnswer> {
+  const answer = await nativeModule?.takePhoto(inAssistantWindow);
+  if (answer === NOT_READABLE) {
+    return { notReadable: true };
+  }
+  return answer ? { uri: answer } : { closed: true };
 }
 
 /**
