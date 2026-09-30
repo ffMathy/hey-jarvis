@@ -2,7 +2,7 @@ import type { AgentTrackRoom } from './agent-audio-track';
 import type { ElevenLabsSettings } from './elevenlabs-settings';
 import type { MCPToolCallEvent, ToolCallEvent } from './tool-activity';
 import type { JarvisVoice, JarvisVoiceReaders, UserVoice } from './voice-contract';
-import type { ConversationMessage } from './written-reply';
+import type { ConversationMessage, WrittenReply } from './written-reply';
 
 /**
  * The shapes a conversation with Jarvis is built from, apart from the code that builds it.
@@ -13,7 +13,8 @@ import type { ConversationMessage } from './written-reply';
  * no room and no device, while `Conversation.startSession` from `@elevenlabs/client` still fits
  * {@link StartSession} as it is (each app's contract spec holds its own copy of the SDK to that).
  * Whatever differs between the devices that hold one — how his track is listened to, how the
- * greeting is played, what a timer is — is handed in, so nothing here reaches for a platform.
+ * greeting is played, whether there is call audio to switch into, what a timer is — is handed in,
+ * so nothing here reaches for a platform.
  */
 
 /**
@@ -40,17 +41,36 @@ export interface SessionDiagnostics {
   lastError?: string;
 }
 
+/**
+ * Where a problem came from, for a device that says some of them louder than others.
+ *
+ * `reaching` is the request for a token or a signed URL, `deadline` is nothing having answered in
+ * time, and `session` is the SDK itself: a start that failed, an error before the conversation
+ * opened, or one that ended with an error. The phone shows the last kind as a toast as well as on
+ * its line, because a session that fails once open takes the sheet, and the line, with it.
+ */
+export type ProblemSource = 'reaching' | 'deadline' | 'session';
+
+/** What a session tells whoever holds it. Every one is optional: a screen may read its snapshot instead. */
 export interface JarvisSessionEvents {
-  onPhase(phase: SessionPhase): void;
+  onPhase?(phase: SessionPhase): void;
   /** A readable problem (token failure, deadline, dropped connection…). Always followed by phase 'failed'. */
-  onProblem(message: string): void;
-  /** His latest line in writing (for captions), when the written-reply logic says to show it. */
-  onCaption(text: string | undefined): void;
+  onProblem?(message: string, source: ProblemSource): void;
+  /** His latest line in writing (for captions), when the caption's rules say to show it. */
+  onCaption?(text: string | undefined): void;
   /** For a diagnostics display. */
   onDiagnostics?(diagnostics: SessionDiagnostics): void;
 }
 
+/** Whatever plays the recorded greeting. */
 export interface GreetingPlayer {
+  /**
+   * Resolves once what is played can be heard where it will be played — a Bluetooth headset's
+   * call link coming up, say. Optional; the wait counts as the greeting being asked for, and the
+   * clock that gives up on it starts again once it is over. Must not reject for long: a route that
+   * never answers is waited out by the player itself.
+   */
+  untilAudible?(): Promise<void>;
   /** Starts from the beginning; resolves whether it is actually playing. */
   playFromStart(): Promise<boolean>;
   stop(): void;
@@ -60,14 +80,81 @@ export interface GreetingPlayer {
   readonly duration: number;
 }
 
+/**
+ * The audio a call runs in, on a device that has to switch into it: a phone and a watch play the
+ * greeting as call audio, inside the session the conversation will use, or it is not heard (see
+ * `hologram/src/conversation/call-audio.ts`).
+ */
+export interface CallAudio {
+  /** Switches into it, before the greeting plays. */
+  start(): Promise<void>;
+  /** Lets it go, and puts back what it switched from. */
+  stop(): Promise<void>;
+}
+
+/**
+ * Which of his lines are written down, in a voice conversation. A text-only one writes every line
+ * down whatever this says.
+ *
+ * - `while-writing` — the headset's: while the keyboard is up, or the last thing you said was
+ *   typed, until you speak again (`createWrittenCaption`).
+ * - `while-typing` — the phone's text mode: while it is switched on, cleared at every switch
+ *   (`createTextModeCaption`).
+ */
+export type CaptionRule = 'while-writing' | 'while-typing';
+
+/** How one summoning is held. */
+export interface SummonOptions {
+  /**
+   * Held in writing on both sides: a signed URL and a socket rather than a token and a room, no
+   * recorded greeting, and every line he writes shown and mimed. For a browser whose microphone
+   * was refused, which has no audio for a room to wait for (see `requestSignedConversationUrl`).
+   */
+  textOnly?: boolean;
+  /**
+   * Called once the greeting has started, or will not — refused, given up on, or the summoning
+   * over. A browser holds its microphone open until then, because a tab nobody has clicked may play
+   * a sound only while it is using one.
+   */
+  onGreetingAnswered?: () => void;
+}
+
+/**
+ * Everything a screen draws from a session, as of its last change.
+ *
+ * A new object whenever any of it changes and the same one otherwise, so a React screen can hold
+ * it with `useSyncExternalStore` and render only when something it shows has moved.
+ */
+export interface SessionSnapshot {
+  readonly phase: SessionPhase;
+  /** The SDK's status for the summoning under way, `disconnected` when there is none. */
+  readonly status: string;
+  /** The SDK's mode for the summoning under way, `listening` when there is none. */
+  readonly mode: string;
+  /**
+   * What the sphere follows, with `listening` and `speaking` as they are now and readers that stay
+   * the same functions for as long as their source does.
+   */
+  readonly voice: JarvisVoice;
+  /** Whether that voice is the recorded greeting's. */
+  readonly greeting: boolean;
+  readonly thinking: boolean;
+  /** His last line in writing, as the caption's rules keep it. */
+  readonly writtenReply: WrittenReply;
+  /** Whether the user is writing rather than talking (see {@link JarvisSession.setTyping}). */
+  readonly typing: boolean;
+  /** Whether the summoning under way has got as far as dialling. */
+  readonly dialled: boolean;
+}
+
 export interface JarvisSession {
   /** A summoning: the wake word, a select, the assistant gesture. Single-flight: ignored unless idle, ended or failed. */
-  summon(): void;
+  summon(options?: SummonOptions): void;
   /** User dismissal: stop the greeting, end the session (reason 'user'); phase → ended. */
   hangUp(): void;
   /** System ending (hidden, backgrounded, gone): like hangUp, and a late 'error' disconnect is not reported. */
   endQuietly(): void;
-  /** Typed line into the live session (sendUserMessage); ignored unless live. */
+  /** Typed line into the connected session (sendUserMessage); ignored unless connected. */
   sendText(text: string): void;
   /** Mutes the microphone while the user writes instead of talking (the phone's text mode). */
   setTyping(typing: boolean): void;
@@ -76,6 +163,10 @@ export interface JarvisSession {
   readonly voice: JarvisVoice;
   readonly user: UserVoice;
   readonly thinking: boolean;
+  /** Everything a screen draws from, as of the last change. */
+  readonly snapshot: SessionSnapshot;
+  /** Calls `listener` after every change to {@link JarvisSession.snapshot}; returns how to stop. */
+  subscribe(listener: () => void): () => void;
   /** Whether his audio output has been silent for at least `seconds` (the headset's re-arm refractory). */
   quietFor(seconds: number): boolean;
   dispose(): void;
@@ -85,7 +176,7 @@ export interface JarvisSession {
  * As much of an open conversation as the session calls.
  *
  * Both of the SDK's conversations — `VoiceConversation` and `TextConversation` — have all of it,
- * which is what lets {@link SessionOptions.onConversationCreated} take the SDK's own argument.
+ * which is what lets `onConversationCreated` take the SDK's own argument.
  */
 export interface SessionConversation {
   endSession(): Promise<void>;
@@ -115,17 +206,8 @@ export interface ConnectionDelay {
   android: number;
 }
 
-/**
- * Exactly the options the session dials with.
- *
- * Every callback takes a structural type that the SDK's own payload satisfies, so this is a valid
- * argument to `Conversation.startSession` as it stands, and a fake can read every field.
- */
-export interface SessionOptions {
-  conversationToken: string;
-  connectionType: 'webrtc';
-  connectionDelay?: ConnectionDelay;
-  overrides?: { agent: { firstMessage: string } };
+/** The callbacks the session dials with, whichever way it dials. */
+export interface SessionCallbacks {
   onConversationCreated: (conversation: SessionConversation) => void;
   onStatusChange: (event: { status: string }) => void;
   onModeChange: (event: { mode: string }) => void;
@@ -138,6 +220,30 @@ export interface SessionOptions {
   onError: (message: string) => void;
   onDisconnect: (ending: SessionEnding) => void;
 }
+
+/** A spoken conversation: a token for a WebRTC room. */
+export interface VoiceSessionOptions extends SessionCallbacks {
+  conversationToken: string;
+  connectionType: 'webrtc';
+  connectionDelay?: ConnectionDelay;
+  overrides?: { agent: { firstMessage: string } };
+}
+
+/** A conversation held in writing: a signed URL for a socket (see {@link SummonOptions.textOnly}). */
+export interface TextSessionOptions extends SessionCallbacks {
+  signedUrl: string;
+  connectionType: 'websocket';
+  textOnly: true;
+  connectionDelay?: ConnectionDelay;
+}
+
+/**
+ * Exactly the options the session dials with.
+ *
+ * Every callback takes a structural type that the SDK's own payload satisfies, so this is a valid
+ * argument to `Conversation.startSession` as it stands, and a fake can read every field.
+ */
+export type SessionOptions = VoiceSessionOptions | TextSessionOptions;
 
 /** `Conversation.startSession` from `@elevenlabs/client`, or a fake of it. */
 export type StartSession = (options: SessionOptions) => Promise<SessionConversation>;
@@ -160,6 +266,7 @@ export type FollowAgentVoice = (
  * an object under Bun.
  */
 export interface JarvisSessionDependencies<Timer> {
+  /** Read afresh for every token, so a holder can hand over a getter that follows its settings. */
   settings: ElevenLabsSettings;
   /**
    * What this device calls itself in the ElevenLabs conversation history — one of the names in
@@ -174,6 +281,10 @@ export interface JarvisSessionDependencies<Timer> {
   setTimeout: (callback: () => void, milliseconds: number) => Timer;
   clearTimeout: (timer: Timer) => void;
   fetch?: typeof fetch;
+  /**
+   * The clock everything is measured on. The written reply's `readingUntil` is a moment on it, so
+   * a screen that compares that with `Date.now()` hands over `Date.now`.
+   */
   now?: () => number;
   /** Default true: dial only once the greeting is over. */
   waitsForGreetingBeforeDialling?: boolean;
@@ -181,8 +292,25 @@ export interface JarvisSessionDependencies<Timer> {
   connectionDelay?: ConnectionDelay;
   /** Whether the half-duplex fallback may take the microphone while he speaks (see `half-duplex.ts`). */
   halfDuplex?: boolean;
+  /** Which of his lines a voice conversation writes down; `while-writing` when left out. */
+  captions?: CaptionRule;
   /** What a request that reached no server says, where "the internet connection" can be more exact. */
   offlineProblem?: string;
+  /** What the deadline says when it gives up, asked at that moment; `DEADLINE_PROBLEM` when left out. */
+  deadlineProblem?: () => string;
+  /**
+   * The audio the call runs in, on a device that has to switch into it before the greeting (see
+   * {@link CallAudio}). Let go once nothing uses it: at once when no conversation was dialled, and
+   * otherwise once the conversation has finished ending.
+   */
+  callAudio?: CallAudio;
+  /**
+   * Resolves once the device is on a network a conversation can be held over. Asked once the
+   * greeting has started or will not, and only then are the token requested and the deadline
+   * armed: the watch brings up Wi-Fi here, off the phone's Bluetooth, which carries no audio.
+   * Without it, the token is asked for the moment he is summoned.
+   */
+  untilOnline?: () => Promise<void>;
   /**
    * The LiveKit room an open conversation runs in, checked against the app's own `livekit-client`
    * (see `roomOfConversation`). Without one, his voice is the SDK's own readings and nothing is
