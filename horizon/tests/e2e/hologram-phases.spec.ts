@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Page, TestInfo } from '@playwright/test';
 import { gridDifference } from '../../src/preview/picture-stats';
@@ -106,7 +106,9 @@ test('every phase, in 3D and flat, from the front and the side, on black and on 
     await shoot(page, testInfo, { phase, mode: 'volumetric', view: 'front', background: 'grey' });
     await shoot(page, testInfo, { phase, mode: 'volumetric', view: 'side', background: 'grey' });
     await shoot(page, testInfo, { phase, mode: 'flat', view: 'front', background: 'black' });
+    await shoot(page, testInfo, { phase, mode: 'flat', view: 'side', background: 'black' });
     await shoot(page, testInfo, { phase, mode: 'flat', view: 'front', background: 'grey' });
+    await shoot(page, testInfo, { phase, mode: 'flat', view: 'side', background: 'grey' });
   }
   testInfo.annotations.push({
     type: 'frame time',
@@ -120,6 +122,75 @@ test('every phase, in 3D and flat, from the front and the side, on black and on 
       const difference = gridDifference(firstResult.stats.grid, secondResult.stats.grid);
       expect(difference, `${first} against ${second}`).toBeGreaterThan(1);
     }
+  }
+  expect(problems).toEqual([]);
+});
+
+/** How far the volumetric look may stray from the phone's, as a share of the phone's own figure. */
+const PARITY_TOLERANCE = 0.25;
+/** Below this much mean luma an annulus is next to dark, and is compared by how far apart, not by share. */
+const DARK_LUMA = 8;
+
+function expectNear(actual: number, expected: number, label: string) {
+  if (expected < DARK_LUMA) {
+    expect.soft(Math.abs(actual - expected), label).toBeLessThan(DARK_LUMA * PARITY_TOLERANCE);
+  } else {
+    expect.soft(Math.abs(actual - expected) / expected, label).toBeLessThan(PARITY_TOLERANCE);
+  }
+}
+
+test('seen from in front, far off, he is lit as the phone draws him', async ({ page }, testInfo) => {
+  test.setTimeout(600000);
+  const problems = await openPreview(page);
+  const lines: string[] = [];
+  for (const phase of PREVIEW_PHASES) {
+    const shot = { phase, view: 'parity', background: 'black', seconds: MOMENTS[phase] / 72 } as const;
+    const flat = await still(page, { ...shot, mode: 'flat' });
+    await photograph(page, testInfo, shotName({ ...shot, mode: 'flat' }));
+    const volumetric = await still(page, { ...shot, mode: 'volumetric' });
+    await photograph(page, testInfo, shotName({ ...shot, mode: 'volumetric' }));
+    const describe = (result: StillResult) =>
+      `${result.stats.annuli.map((value) => value.toFixed(1)).join(' / ')}, p95 ${result.stats.percentile95.toFixed(1)}`;
+    lines.push(`${phase}: phone ${describe(flat)}; 3D ${describe(volumetric)}`);
+    // The core, the body and the rim each as bright as the phone's, and the brightest of him too:
+    // a halo layer stacked rather than unioned lifts the body annulus and the percentile far past this.
+    volumetric.stats.annuli.forEach((value, annulus) => {
+      expectNear(value, flat.stats.annuli[annulus], `${phase}, annulus ${annulus}`);
+    });
+    expectNear(volumetric.stats.percentile95, flat.stats.percentile95, `${phase}, 95th percentile`);
+  }
+  testInfo.annotations.push({
+    type: 'luma per annulus (0–0.5R / 0.5–0.94R / 0.94–1.25R)',
+    description: lines.join('\n'),
+  });
+  console.log(lines.join('\n'));
+  expect(problems).toEqual([]);
+});
+
+/** A headset's eyes are about this far apart. */
+const EYE_SEPARATION_METRES = 0.063;
+
+test('in stereo, for looking at with parallel eyes', async ({ page }, testInfo) => {
+  test.setTimeout(300000);
+  const problems = await openPreview(page);
+  for (const phase of ['speaking', 'listening', 'thinking', 'idle'] as const) {
+    const request: StillRequest = {
+      phase,
+      mode: 'volumetric',
+      view: 'front',
+      background: 'black',
+      seconds: MOMENTS[phase] / 72,
+    };
+    const pair = await page.evaluate(([asked, separation]) => window.__hologramPreview?.stereo(asked, separation), [
+      request,
+      EYE_SEPARATION_METRES,
+    ] as const);
+    if (pair === undefined) throw new Error('The preview published no hook.');
+    const name = `phase-${phase}-stereo.png`;
+    const file = testInfo.outputPath(name);
+    writeFileSync(file, Buffer.from(pair, 'base64'));
+    await testInfo.attach(name, { path: file, contentType: 'image/png' });
+    if (SCREENS_DIRECTORY !== undefined) copyFileSync(file, path.join(SCREENS_DIRECTORY, name));
   }
   expect(problems).toEqual([]);
 });
