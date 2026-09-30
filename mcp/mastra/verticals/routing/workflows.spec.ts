@@ -651,6 +651,11 @@ describe('a request that is waiting on the user', () => {
     expect(closing.taskIdsInProgress).toEqual([]);
     // "All tasks have completed" would be untrue, and would invite him to close the matter.
     expect(closing.instructions).not.toContain('All tasks have completed');
+    // With nothing to recap, the ask is its own sentence. It once read "questionsForUser. ask him".
+    expect(closing.instructions).toStartWith(
+      'Part of this request cannot go on until the user answers a question, which is in questionsForUser. Ask him ' +
+        'the question',
+    );
   });
 
   /**
@@ -766,6 +771,21 @@ describe('a request that has started something slow', () => {
     expect(outcome.instructions).toStartWith('All tasks have completed');
   });
 });
+
+/**
+ * When a silence is sir busy with a photo, as every statement of the wait words it: the prompt's **When
+ * Sir Is Silent** and the `end_call` and `skip_turn` descriptions in `elevenlabs/src/assets/` too, which
+ * `agent-config.spec.ts` holds to the same phrases.
+ *
+ * Only a device that said it has a camera button can be waited on, and only what settles the photo ends
+ * the wait. A word from sir about anything else once did too — and the request it was routed as ended
+ * on the hang-up, which closed the line on him on his way to the camera.
+ */
+const WAITING_FOR_A_PHOTO =
+  'you are waiting for a photo from him on a device that has told you it has a camera button — he said he ' +
+  'would send one, or a note says he has opened the camera on his phone — and since then the photo has not ' +
+  'come, nor a message that it did not reach you, nor a note that he closed the camera without one, and he ' +
+  'has not said it is not coming';
 
 /**
  * How long Jarvis is told to be, and when the call is allowed to end.
@@ -889,9 +909,7 @@ describe('how a request is answered, and when the call may end', () => {
    * skip_turn descriptions state the exception in these same words.
    */
   it('holds the line while he is getting a photo to Jarvis, even straight after a finished request', () => {
-    const exception =
-      'Unless you are waiting for a photo from him — he said he would send one, or a note says he has opened the ' +
-      'camera on his phone — and neither the photo nor a word from him has come since: then call skip_turn instead.';
+    const exception = `Unless ${WAITING_FOR_A_PHOTO}: then call skip_turn instead.`;
 
     expect(FINISHED_REQUEST_INSTRUCTIONS).toContain(exception);
     // Straight after the hang-up it qualifies, which is what makes it an exception to it.
@@ -907,6 +925,19 @@ describe('a request that said a photo is on its way', () => {
   const WAITS = 'call skip_turn, however many times you are asked — never end_call, since he is taking the photo';
   const GO_AHEAD = 'tell him in a few words to go ahead with the camera button on his phone';
 
+  /**
+   * The watch, the Voice speaker and a telephone call share the agent and have no camera button. The
+   * photo he sends from his phone goes to the phone's own conversation, so nothing here waits for it.
+   */
+  const NOT_WAITED_FOR_HERE =
+    'But if no note has told you this device has a camera button, it cannot send one: instead, last of all, tell ' +
+    'him in a few words to send it from his phone. This conversation is not waiting for that photo, so if you ' +
+    'are asked to speak again before he has said anything, call end_call without a word.';
+
+  /** The same, before a question the report asks, which is still asked last. */
+  const SENT_TO_HIS_PHONE_BEFORE_ASKING =
+    '— or, if no note has told you this device has a camera button, to send it from his phone instead.';
+
   it('has Jarvis tell him to go ahead, then wait for the photo instead of hanging up', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: "I'll send you a receipt", async: false });
     const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
@@ -920,7 +951,8 @@ describe('a request that said a photo is on its way', () => {
       'All tasks have completed. He said he is about to send you a photo, which has not arrived yet.',
     );
     expect(closing.instructions).toContain(GO_AHEAD);
-    expect(closing.instructions).toContain(WAITS);
+    // Waited for in the words every statement of the wait shares, so what ends it is the same everywhere.
+    expect(closing.instructions).toContain(`While ${WAITING_FOR_A_PHOTO}, if you are asked to speak again, ${WAITS}`);
     expect(closing.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
     // Nothing to recap, and anything further still goes through routing.
     expect(closing.instructions).not.toContain('These are every result');
@@ -928,6 +960,25 @@ describe('a request that said a photo is on its way', () => {
     // A goodbye still ends the call: it is his word, not the silence.
     expect(closing.instructions).toContain('if he says goodbye');
     expect(closing.questionsForUser).toBeUndefined();
+  });
+
+  it('sends him to his phone instead, and hangs up on the silence, where no device has said it has a camera button', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: "I'll send you a receipt", async: false });
+    const waiting = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    waiting.awaitsPhoto = true;
+    endPlanRun(waiting);
+    const answered = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    await runWorkflow(routePromptWorkflow, { userQuery: "I'll send you a receipt, and the weather?", async: false });
+    const failed = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    failed.awaitsPhoto = true;
+    failed.fail('the weather service did not answer');
+    const afterFailure = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    // Routing cannot tell which device it is, so both cases go to Jarvis, who can, the wait first.
+    for (const closing of [answered, afterFailure]) {
+      expect(closing.instructions).toContain(`is taking the photo. ${NOT_WAITED_FOR_HERE}`);
+    }
   });
 
   it('says what the rest of the request found first, then asks for the photo last of all', async () => {
@@ -973,6 +1024,12 @@ describe('a request that said a photo is on its way', () => {
 
     expect(closing.instructions).toStartWith('Part of this request cannot go on');
     expect(closing.instructions).toContain(`before you ask, ${GO_AHEAD}`);
+    // Between the question and the call's own exception, a sentence apart from each: it was once
+    // appended after the exception with no space, as "…an open line.He also said…".
+    expect(closing.instructions).toContain(
+      'the question stays open. He also said he is about to send you a photo, which has not arrived yet: ' +
+        `before you ask, ${GO_AHEAD} ${SENT_TO_HIS_PHONE_BEFORE_ASKING} One kind of request is never routed`,
+    );
     expect(closing.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
     expect(closing.questionsForUser).toEqual([{ id: 'coding', question: 'How early?' }]);
   });
@@ -995,7 +1052,10 @@ describe('a request that said a photo is on its way', () => {
     const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
     expect(closing.instructions).toContain('work he started earlier is still waiting on him');
-    expect(closing.instructions).toContain(`before you ask, ${GO_AHEAD}`);
+    expect(closing.instructions).toContain(
+      `in his own words. He also said he is about to send you a photo, which has not arrived yet: before you ask, ` +
+        `${GO_AHEAD} ${SENT_TO_HIS_PHONE_BEFORE_ASKING} One kind of request is never routed`,
+    );
     expect(closing.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
   });
 

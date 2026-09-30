@@ -128,8 +128,13 @@ holds it to what the devices assume: every client event is one ElevenLabs sends,
 `mcp_tool_call` — which the apps' thinking phase follows — is among them, and the agent
 declares no client tool, since no device answers one. It also holds the one exception to
 hanging up after a finished request — a photo sir said he would send, or has opened the camera
-for — to being stated wherever that rule is: in the prompt's **When Sir Is Silent**, and in
-both copies of the `skip_turn` and `end_call` descriptions, which must match each other.
+for, on a device that has said it has a camera button, until the photo, a message that it did not
+arrive, a note that he closed the camera without one, or his word that it is not coming settles
+it — to being stated in the same phrases wherever that rule is: in the prompt's **When Sir Is
+Silent**, and in both copies of the `skip_turn` and `end_call` descriptions, which must match each
+other. Routing's copy is held to the same phrases by `workflows.spec.ts` in `mcp/`. And it holds
+the prompt to sending sir to his phone, without waiting, where there is no camera button, and to
+ending the wait on a camera closed without a photo.
 
 ## The camera eval
 
@@ -141,9 +146,13 @@ total?" — the agent must route nothing until the photo's message is in, then r
 naming "(photo photo1)". Sent first, with nothing said, the message alone must be routed at once by
 that name. A camera opened straight after a finished request must be waited on: the request is
 answered in full, the camera's note follows at once, and several three-second turn timeouts later
-the agent must not have called `end_call`, and must still route the photo when its message comes. And
+the agent must have answered them with `skip_turn` and never called `end_call`, and must still route
+the photo when its message comes. The same request with no camera opened after it is the control:
+it must be hung up on within ten seconds. Without it, a harness whose text-only conversation is
+never asked to speak again would pass the camera case whether or not the exception exists. And
 where no device has said it has a camera button, as on the watch, the Voice speaker or a phone call,
-the announcement must not be routed at all.
+the announcement must not be routed at all, and the silence after sir is sent to his phone must be
+hung up on.
 
 What was routed, and when, is asserted off the socket, along with the photo's id never being said
 aloud; the evaluator judges what Jarvis said — sending sir to the camera button, or to his phone, and

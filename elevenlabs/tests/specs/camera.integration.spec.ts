@@ -32,7 +32,11 @@ import {
  *
  * And a camera opened straight after a finished request is waited on. Three seconds into a silence
  * ElevenLabs asks Jarvis to speak again, and after a finished request he hangs up without a word —
- * unless he is waiting for a photo, which every statement of that rule makes the exception to.
+ * unless he is waiting for a photo, which every statement of that rule makes the exception to. The
+ * same request with no camera opened after it is the control: it has to be hung up on, or the harness
+ * never asks Jarvis to speak again at all, and the wait proves nothing. Where there is no camera
+ * button, sir is sent to his phone and the silence after is hung up on too, since that photo goes to
+ * the phone's own conversation.
  *
  * The test stands in for the phone, sending its contextual updates and its message word for word.
  * No photo is really uploaded, so there is no photo1 for the vision agent to find, and whatever the
@@ -98,9 +102,38 @@ const FINISHED_REQUEST_TIMEOUT_MS = 90000;
  */
 const FRAMING_THE_SHOT_MS = 15000;
 
+/**
+ * How long a finished request with nothing after it may take to be hung up on: the three-second turn
+ * timeout, and room for the agent to answer it.
+ */
+const HANG_UP_WINDOW_MS = 10000;
+
 /** `end_call`, the system tool that hangs up. */
 function isEndCallToolName(toolName: string): boolean {
   return toolName.toLowerCase().includes('end_call');
+}
+
+/** `skip_turn`, the system tool that answers being asked to speak by staying quiet. */
+function isSkipTurnToolName(toolName: string): boolean {
+  return toolName.toLowerCase().includes('skip_turn');
+}
+
+/** Whether the agent has hung up. */
+function hungUp(messages: ServerMessage[]): boolean {
+  return messages.some(
+    (message) => message.type === 'agent_tool_response' && isEndCallToolName(message.agent_tool_response.tool_name),
+  );
+}
+
+/**
+ * The system tools the agent invoked after the device sent `note`, in order. The agent answers a turn
+ * timeout with one of them and nothing else, so this is how each nudge since the note was answered.
+ */
+function systemToolsInvokedAfter(messages: ServerMessage[], note: string): string[] {
+  const noteIndex = messages.findIndex((message) => message.type === 'contextual_update' && message.text === note);
+  return messages
+    .slice(noteIndex + 1)
+    .flatMap((message) => (message.type === 'agent_tool_response' ? [message.agent_tool_response.tool_name] : []));
 }
 
 /**
@@ -291,6 +324,15 @@ describe('Photos From His Phone', () => {
 
           const hangUps = conversation.getInvokedSystemToolNames().filter(isEndCallToolName);
           assertConversation(conversation, hangUps.length === 0, 'The agent hung up while sir had the camera open.');
+          // No hang-up proves nothing unless Jarvis was asked to speak in that silence. A skip_turn since
+          // the note is both: the turn timeout came, and it was answered by waiting.
+          const sinceTheCamera = systemToolsInvokedAfter(conversation.getMessages(), CAMERA_OPENED);
+          assertConversation(
+            conversation,
+            sinceTheCamera.some(isSkipTurnToolName),
+            'The agent never called skip_turn while sir had the camera open, so nothing shows it was asked to ' +
+              `speak and chose to wait. System tools invoked since the note: ${JSON.stringify(sinceTheCamera)}.`,
+          );
 
           // Still there, and still his: the photo he was framing is routed like any other.
           await conversation.sendMessage(PHOTO_SENT);
@@ -300,6 +342,43 @@ describe('Photos From His Phone', () => {
     },
     (FINISHED_REQUEST_TIMEOUT_MS + FRAMING_THE_SHOT_MS + CONVERSATION_TIMEOUT_MS + TOOL_CALL_TIMEOUT_MS) *
       MAX_CONVERSATION_RETRIES,
+  );
+
+  it(
+    'hangs up on the same finished request when no camera is opened after it',
+    async () => {
+      await withConversationRetry(
+        () => new TestConversation({ agentId, apiKey, googleApiKey }),
+        async (conversation) => {
+          await conversation.connect();
+          // The same phone as above, so the camera note is the only difference between the two.
+          await conversation.sendContextualUpdate(CAMERA_BUTTON_HERE);
+
+          const answered = conversation.sendMessage(FINISHED_REQUEST);
+          await waitForConversation(conversation, answeredInFull, FINISHED_REQUEST_TIMEOUT_MS);
+
+          assertMcpServerConnected(conversation.getMessages());
+          assertConversation(
+            conversation,
+            answeredInFull(conversation.getMessages()),
+            'The request was never answered in full, so there was no finished request to hang up after.',
+          );
+
+          await waitForConversation(conversation, hungUp, HANG_UP_WINDOW_MS);
+          await answered;
+
+          assertConversation(
+            conversation,
+            hungUp(conversation.getMessages()),
+            `The agent did not hang up within ${HANG_UP_WINDOW_MS / 1000}s of a finished request. Either the ` +
+              'turn timeout never asked it to speak again in this harness, and the camera case above proves ' +
+              `nothing, or it waited where it should not have. System tools invoked: ` +
+              `${JSON.stringify(conversation.getInvokedSystemToolNames())}.`,
+          );
+        },
+      );
+    },
+    (FINISHED_REQUEST_TIMEOUT_MS + HANG_UP_WINDOW_MS + CONVERSATION_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
   );
 
   it(
@@ -315,6 +394,14 @@ describe('Photos From His Phone', () => {
 
           assertMcpServerConnected(conversation.getMessages());
           await assertNothingRouted(conversation, 'The agent routed a photo no device here can send.');
+          // The photo goes to the phone's own conversation, which the agent cannot start while this one
+          // holds the line: sent there, sir has had his answer, and the silence is hung up on.
+          assertConversation(
+            conversation,
+            hungUp(conversation.getMessages()),
+            'The agent held the line for a photo no device here can send. System tools invoked: ' +
+              `${JSON.stringify(conversation.getInvokedSystemToolNames())}.`,
+          );
 
           await conversation.assertCriteria(
             'The agent told sir to send the photo from his phone, and did not pretend to be looking at a ' +

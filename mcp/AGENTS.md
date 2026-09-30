@@ -440,7 +440,8 @@ the check that lets a phone send one, where the photo is kept, and how an agent 
      the photo. Should it route the announcement anyway, the planner plans nothing for the photo and
      sets `awaitsPhoto`, and the request finishes — not as one no agent could handle — on
      instructions to tell sir to go ahead with the camera button and then hold the line with
-     `skip_turn` until the photo comes (see **Ending the call** under [Routing](#routing)).
+     `skip_turn` until the photo comes or something else settles it; where the device has no camera
+     button, to send him to his phone instead (see **Ending the call** under [Routing](#routing)).
    - **Sent first**, with nothing said — the agent routes `He sent a photo without saying what he
      wants: look at it and say what it shows (photo photo3)`. The planner plans one vision task that
      says what the photo shows and what in it could be acted on, and names the photo in
@@ -1131,12 +1132,20 @@ said anything, call `end_call` without a word. The agent's turn timeout is what 
 Nothing still waiting on sir carries it — a question the work stopped on, one from earlier, or what
 to do with a photo he sent without saying: those end on `askTheUserInstructions`, which asks last and
 waits. It makes one exception, in the same words as the prompt and the `end_call` and `skip_turn`
-descriptions: while Jarvis is waiting for a photo — sir said he would send one, or a note says he
-has opened the camera — and neither it nor a word from him has come, silence gets `skip_turn`. A
-request that said a photo is on its way (`awaitsPhoto`) does not end on it at all:
-`WAIT_FOR_THE_PHOTO` has Jarvis say what the rest of the request found, tell sir to go ahead with
-the camera button, and hold the line with `skip_turn`. See **Hanging up when he goes quiet** in
-`elevenlabs/AGENTS.md`.
+descriptions (`WAITING_FOR_A_PHOTO`): while Jarvis is waiting for a photo on a device that has told
+him it has a camera button — sir said he would send one, or a note says he has opened the camera —
+silence gets `skip_turn`, until the photo comes, a message says it did not reach him, a note says
+sir closed the camera without one, or sir says it is not coming. Nothing else he says ends it: his
+answer to a question, or any other request made before the photo comes, is routed and ends on this
+instruction too, and when a word from him ended the wait, that request's silence hung up on him on
+his way to the camera. A wait nothing settles still ends at ElevenLabs' 30-second
+`silenceEndCallTimeout`. A request that said a photo is on its way (`awaitsPhoto`) does not end on
+it at all: `WAIT_FOR_THE_PHOTO` has Jarvis say what the rest of the request found, tell sir to go
+ahead with the camera button, and hold the line with `skip_turn` — or, where no note said this
+device has a camera button, send him to his phone and hang up on the silence, since that photo goes
+to the phone's own conversation. One that also asks sir something tells him to go ahead before the
+question (`GO_AHEAD_BEFORE_ASKING`), and the question is still asked last. See **Hanging up when he
+goes quiet** in `elevenlabs/AGENTS.md`.
 
 **Questions for the user:**
 Some work cannot finish on what the request said. Questions come from two places, and

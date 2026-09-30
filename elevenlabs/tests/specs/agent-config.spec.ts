@@ -54,20 +54,31 @@ describe('the committed agent config', () => {
  * follow literally — so Jarvis could hang up on sir while he was framing the shot.
  *
  * An exception has to be stated wherever the rule it breaks is, so every one of them states it, in
- * the same words: he said he would send a photo, or has opened the camera, and neither the photo nor a
- * word from him has come since. This holds the prompt and both copies of each description to that;
- * the live half, a finished request followed by an open camera, is `camera.integration.spec.ts`.
+ * the same words: on a device that has said it has a camera button, he said he would send a photo or
+ * has opened the camera, and nothing has settled it since — the photo, a message that it did not
+ * arrive, a note that he closed the camera without one, or his saying it is not coming. This holds the
+ * prompt and both copies of each description to that, and `workflows.spec.ts` in `mcp/` holds
+ * routing's copy to the same phrases; the live half, a finished request followed by an open camera and
+ * the same request followed by nothing, is `camera.integration.spec.ts`.
+ *
+ * A word from sir about anything else once ended the wait as well. The request it was routed as ended
+ * on the hang-up, so its silence closed the line on him on his way to the camera — and a question asked
+ * beside the photo he announced made that word certain. What still bounds a wait nothing settles is
+ * ElevenLabs' thirty-second `silenceEndCallTimeout`.
  */
 describe('the silence after a finished request, while a photo is on its way', () => {
   const prompt = readFileSync(join(import.meta.dir, '..', '..', 'src', 'assets', 'agent-prompt.md'), 'utf8');
   const agentPrompt = agentConfig.conversationConfig.agent.prompt;
 
-  /** What each statement of the exception says, whichever words surround it. */
+  /**
+   * What each statement of the exception says, whichever words surround it. The descriptions set the
+   * middle phrase off with hyphens and the prompt with dashes, so the phrases stop short of both.
+   */
   const WAITING_FOR_A_PHOTO = [
-    'waiting for a photo from him',
-    'he said he would send one',
-    'opened the camera on his phone',
-    'neither the photo nor a word from him has come since',
+    'waiting for a photo from him on a device that has told you it has a camera button',
+    'he said he would send one, or a note says he has opened the camera on his phone',
+    'and since then the photo has not come, nor a message that it did not reach you, nor a note that he closed the ' +
+      'camera without one, and he has not said it is not coming',
   ];
 
   /** The config's copy of a system tool's description in its `tools` list, beside `builtInTools`. */
@@ -89,6 +100,7 @@ describe('the silence after a finished request, while a photo is on its way', ()
     for (const phrase of WAITING_FOR_A_PHOTO) {
       expect(text).toContain(phrase);
     }
+    expect(text).not.toContain('a word from him');
   }
 
   it('gives each system tool one description, in both of the places the config lists it', () => {
@@ -126,5 +138,24 @@ describe('the silence after a finished request, while a photo is on its way', ()
     expect(sectionOf(whenSirIsSilent, '**Your last reply finished a request**', '\n')).toContain(
       'you are not waiting for a photo from him',
     );
+  });
+
+  it('has the prompt send sir to his phone where there is no camera button, and not wait for that photo', () => {
+    // The watch, the Voice speaker and a telephone call share the agent. The photo goes to the phone's
+    // own conversation, and one held open here for it keeps that conversation from starting, since the
+    // agent takes one at a time.
+    const noCameraButton = sectionOf(prompt, '**Only a device with a camera button can send you one.**', '\n');
+
+    expect(noCameraButton).toContain('tell him to send it from his phone');
+    expect(noCameraButton).toContain('this one is not waiting for it');
+    expect(noCameraButton).toContain('gets `end_call` without a word');
+  });
+
+  it('has the prompt end the wait on a camera closed without a photo', () => {
+    // Once it "changed nothing", which left the wait the open camera had started still standing.
+    const cameraClosed = sectionOf(prompt, '**A note that he closed the camera without a photo**', '\n');
+
+    expect(cameraClosed).toContain('ends the wait for one, even one he said he would send');
+    expect(cameraClosed).not.toContain('changes nothing');
   });
 });
