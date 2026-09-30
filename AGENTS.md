@@ -363,7 +363,7 @@ Each project has its own AGENTS.md with specialized instructions:
 - **hologram/AGENTS.md** - The sphere itself: why nothing in it imports a value, and how it is tested
 - **mobile/AGENTS.md** - The Android assistant app, and what makes Android accept it as one
 - **watch/AGENTS.md** - The Wear OS app, and how to try it as a Pixel Watch's assistant
-- **horizon/AGENTS.md** - The Meta Quest app: Jarvis in passthrough, the emulated headset its tests run in, and the wake-word models' licence
+- **horizon/AGENTS.md** - The Meta Quest app: the wake word, where he stands, the conversation and the 3D hologram, the emulated headset its tests run in, and the wake-word models' licence
 - **home-assistant-voice-firmware/AGENTS.md** - Firmware development
 
 ## Contributing

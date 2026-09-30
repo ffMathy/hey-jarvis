@@ -34,8 +34,8 @@ import { createViewPlaneQuad } from './view-plane-quad';
 /**
  * How he is drawn: `volumetric`, the body's strokes in true 3D with CanvasKit drawing only the
  * layers that live in the view plane; or `flat`, the phone's whole drawing on the view-plane quad
- * — Milestone 0's picture, kept as the `?flat` debug switch and as the reference the volumetric
- * look is checked against.
+ * — the first picture this app drew, kept as the `?flat` debug switch and as the reference the
+ * volumetric look is checked against.
  */
 export type HologramMode = 'volumetric' | 'flat';
 
