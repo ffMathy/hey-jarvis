@@ -40,7 +40,7 @@ describe('classifyAcknowledgementTiming', () => {
   it('accepts an answer-what-you-can remark before routing', () => {
     const timing = classifyAcknowledgementTiming([
       asked('Hey, Charles, could you check my calendar?'),
-      said("[amused] I'm not Charles, sir. I'm Jarvis."),
+      said("[dry] I'm not Charles, sir. I'm Jarvis."),
       called('routePromptWorkflow'),
       said('A birthday, sir.'),
     ]);
@@ -97,7 +97,7 @@ describe('findLookupPromisesBeforeRouting', () => {
     // instructions had him announce it again.
     const promises = findLookupPromisesBeforeRouting([
       asked('Hey, Charles, could you check my calendar?'),
-      said("[amused] I'm not Charles, sir. I'm Jarvis. [dry] Let me check your calendar."),
+      said("[dry] I'm not Charles, sir. I'm Jarvis. [dry] Let me check your calendar."),
       called('routePromptWorkflow'),
       said("I'm on it, sir."),
     ]);
@@ -122,7 +122,7 @@ describe('findLookupPromisesBeforeRouting', () => {
   }
 
   const allowed = [
-    "[amused] I'm not Charles, sir. I'm Jarvis.",
+    "[dry] I'm not Charles, sir. I'm Jarvis.",
     '[dry] Naturally, sir.',
     'It is 21:53, sir. [dry] Riveting.',
     '[sighs] Another matter requiring my attention.',
