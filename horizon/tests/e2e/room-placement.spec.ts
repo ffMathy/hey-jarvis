@@ -1,7 +1,4 @@
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { build } from 'esbuild';
-import { expect, test } from './fixtures';
+import { bundle, expect, test } from './fixtures';
 import type { RoomProbeResult } from './room-probe';
 
 /**
@@ -15,30 +12,8 @@ import type { RoomProbeResult } from './room-probe';
  * and that he ends up in the room with space around him.
  */
 
-const PROBE_ENTRY = path.join(path.dirname(fileURLToPath(import.meta.url)), 'room-probe.ts');
-
-let probeScript: Promise<string> | undefined;
-
-/** The probe and the placement code it runs, as one classic script, built once per run. */
-function bundledProbe(): Promise<string> {
-  probeScript ??= build({
-    entryPoints: [PROBE_ENTRY],
-    bundle: true,
-    format: 'iife',
-    platform: 'browser',
-    target: 'es2022',
-    write: false,
-    logLevel: 'silent',
-  }).then((result) => {
-    const [output] = result.outputFiles;
-    if (output === undefined) throw new Error('esbuild produced no probe.');
-    return output.text;
-  });
-  return probeScript;
-}
-
 test('reads the emulated living room frame by frame and places Jarvis inside it', async ({ page }, testInfo) => {
-  await page.addInitScript({ content: await bundledProbe() });
+  await page.addInitScript({ content: await bundle('room-probe.ts') });
   await page.goto('/hey-jarvis/horizon/');
   await page.evaluate(() => window.__xrHarness?.ready);
 

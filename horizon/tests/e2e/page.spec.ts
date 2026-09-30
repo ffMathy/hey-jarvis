@@ -133,3 +133,28 @@ test('the page credits the wake-word models and links their licence', async ({ p
     'https://elevenlabs.io/app/sign-up',
   );
 });
+
+test('without CanvasKit the page says it could not get ready, and a room he cannot be drawn in is closed again', async ({
+  page,
+}) => {
+  // CanvasKit's wasm missing from the site, as it was from the phone's first published page.
+  await page.route('**/vendor/canvaskit.wasm', (route) => route.fulfill({ status: 404, body: 'Not found' }));
+  await page.addInitScript((storageKey) => {
+    window.localStorage.setItem(storageKey, JSON.stringify({ apiKey: 'sk_saved', agentId: 'agent_saved' }));
+  }, SETTINGS_KEY);
+  await openPage(page);
+
+  const primary = page.locator('#primary');
+  await expect(primary).toHaveText('Try getting ready again', { timeout: 60000 });
+  await expect(page.getByRole('status')).toContainText('Jarvis could not get ready: his drawing did not load.');
+
+  // Sample mode needs no models, so it can be tried, and fails the moment he would be drawn.
+  const sample = page.getByRole('button', { name: 'Try him in your room' });
+  await sample.click();
+  await expect.poll(() => page.evaluate(() => window.__jarvis?.phase), { timeout: 60000 }).toBe('failed');
+  await expect(page.getByRole('status')).toContainText('Jarvis could not join you');
+  // Back on the page, able to try again, with no session left open on an empty room.
+  await expect(sample).toBeEnabled();
+  await expect.poll(() => page.evaluate(() => window.__xrHarness?.device.activeSession !== undefined)).toBe(false);
+  expect(await page.evaluate(() => window.__jarvis?.frames)).toBe(0);
+});

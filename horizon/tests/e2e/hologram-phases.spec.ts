@@ -1,5 +1,4 @@
-import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
+import { writeFileSync } from 'node:fs';
 import type { Page, TestInfo } from '@playwright/test';
 import { gridDifference } from '../../src/preview/picture-stats';
 import {
@@ -11,7 +10,7 @@ import {
   type StillRequest,
   type StillResult,
 } from '../../src/preview/preview-hook';
-import { expect, test } from './fixtures';
+import { expect, keepPicture, test } from './fixtures';
 
 /**
  * Jarvis in 3D, through every phase, on the preview page — photographed, and measured against the
@@ -42,12 +41,6 @@ const MOMENTS: Record<PreviewPhase, number> = {
   // Half gone.
   leaving: 14,
 };
-
-/**
- * Where a copy of every picture goes as well as the test's own output folder, for a person to look
- * through: set HOLOGRAM_SCREENS_DIR to a folder.
- */
-const SCREENS_DIRECTORY = process.env.HOLOGRAM_SCREENS_DIR;
 
 async function openPreview(page: Page) {
   const problems: string[] = [];
@@ -81,13 +74,8 @@ function shotName({ phase, mode, view, background }: Shot, suffix = '') {
 }
 
 async function photograph(page: Page, testInfo: TestInfo, name: string) {
-  const file = testInfo.outputPath(name);
-  await page.locator('#stage').screenshot({ path: file });
-  await testInfo.attach(name, { path: file, contentType: 'image/png' });
-  if (SCREENS_DIRECTORY !== undefined) {
-    mkdirSync(SCREENS_DIRECTORY, { recursive: true });
-    copyFileSync(file, path.join(SCREENS_DIRECTORY, name));
-  }
+  await page.locator('#stage').screenshot({ path: testInfo.outputPath(name) });
+  await keepPicture(testInfo, name);
 }
 
 async function shoot(page: Page, testInfo: TestInfo, shot: Shot): Promise<StillResult> {
@@ -187,10 +175,8 @@ test('in stereo, for looking at with parallel eyes', async ({ page }, testInfo) 
     ] as const);
     if (pair === undefined) throw new Error('The preview published no hook.');
     const name = `phase-${phase}-stereo.png`;
-    const file = testInfo.outputPath(name);
-    writeFileSync(file, Buffer.from(pair, 'base64'));
-    await testInfo.attach(name, { path: file, contentType: 'image/png' });
-    if (SCREENS_DIRECTORY !== undefined) copyFileSync(file, path.join(SCREENS_DIRECTORY, name));
+    writeFileSync(testInfo.outputPath(name), Buffer.from(pair, 'base64'));
+    await keepPicture(testInfo, name);
   }
   expect(problems).toEqual([]);
 });

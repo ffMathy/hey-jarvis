@@ -1,9 +1,7 @@
-import { copyFileSync, mkdirSync } from 'node:fs';
-import path from 'node:path';
 import type { Page } from '@playwright/test';
 import { DISTANCE_AHEAD_METRES } from '../../src/hologram3d/dimensions';
 import type { PreviewPhase, RoomStatus } from '../../src/preview/preview-hook';
-import { expect, test } from './fixtures';
+import { expect, photograph, test } from './fixtures';
 
 /**
  * The volumetric hologram in the emulated Quest 3's living room, from the preview page's room mode.
@@ -13,9 +11,6 @@ import { expect, test } from './fixtures';
  * are for looking at; the frame times are the emulator's, drawn by SwiftShader on a CPU, and say
  * nothing about a Quest's.
  */
-
-/** Set HOLOGRAM_SCREENS_DIR to a folder to have a copy of every picture put there too. */
-const SCREENS_DIRECTORY = process.env.HOLOGRAM_SCREENS_DIR;
 
 /**
  * The phases shown, and the moment of each whose voices he is held at for the picture: the
@@ -80,19 +75,9 @@ test('in the emulated living room, 1.6 m ahead, through three phases', async ({ 
     await expect
       .poll(async () => (await roomStatus(page)).frames, { timeout: 60000 })
       .toBeGreaterThanOrEqual(settledAt);
-    for (const [name, clip] of [
-      [`room-${phase}.png`, undefined],
-      // Closer in on him: the middle of the view, where he stands.
-      [`room-${phase}-close.png`, { x: 690, y: 270, width: 540, height: 540 }],
-    ] as const) {
-      const file = testInfo.outputPath(name);
-      await page.screenshot({ path: file, clip });
-      await testInfo.attach(name, { path: file, contentType: 'image/png' });
-      if (SCREENS_DIRECTORY !== undefined) {
-        mkdirSync(SCREENS_DIRECTORY, { recursive: true });
-        copyFileSync(file, path.join(SCREENS_DIRECTORY, name));
-      }
-    }
+    await photograph(page, testInfo, `room-${phase}.png`);
+    // Closer in on him: the middle of the view, where he stands.
+    await photograph(page, testInfo, `room-${phase}-close.png`, { x: 690, y: 270, width: 540, height: 540 });
   }
 
   const { intervals, updates, canvasKit, frames } = await roomStatus(page);
