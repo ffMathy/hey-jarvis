@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test';
+import { Classifier } from '@mastra/core/classifier';
 import { z } from 'zod';
 import * as realAgentFactory from '../../utils/agent-factory.js';
 import { LOW_THINKING_PROVIDER_OPTIONS } from '../../utils/providers/google-provider.js';
@@ -188,5 +189,98 @@ describe('parseEmailReply', () => {
     await expect(parseEmailReply({ question, replyBody, responseSchema: approvalSchema })).rejects.toThrow(
       '503 from the model provider',
     );
+  });
+});
+
+/** A classifier on a fake Jev that answers every question with the probability staged for it, or fails. */
+function fakeClassifier(probabilities: Record<string, number> | Error) {
+  const evaluatedStates: unknown[] = [];
+  const classifier = new Classifier({
+    id: 'emailReplyClassifier',
+    model: {
+      specificationVersion: 'v4',
+      provider: 'fake',
+      modelId: 'jev-fake',
+      supportedQuestionTypes: ['boolean'],
+      doEvaluate: async ({ state, questions }) => {
+        evaluatedStates.push(state);
+        if (probabilities instanceof Error) {
+          throw probabilities;
+        }
+        return {
+          answers: Object.fromEntries(
+            Object.keys(questions).map((id) => [id, { type: 'boolean' as const, probability: probabilities[id] ?? 0.5 }]),
+          ),
+          warnings: [],
+        };
+      },
+    },
+  });
+  return { classifier, evaluatedStates };
+}
+
+describe('parseEmailReply with the email reply classifier', () => {
+  const approvalSchema = z.object({ approved: z.boolean(), comments: z.string().optional() });
+  const question = 'Please approve the budget for project "Atlas".';
+  const replyBody = '<p>Yeah fine, go ahead</p><blockquote>Please approve the budget?</blockquote>';
+
+  afterEach(() => {
+    stagedGeneration = undefined;
+    generateCalls.length = 0;
+  });
+
+  it('answers without the model when the classifier is sure, from the words the person wrote', async () => {
+    const { classifier, evaluatedStates } = fakeClassifier({ answersTheQuestion: 0.98, field_approved: 0.96 });
+    stagedGeneration = { object: { approved: false } };
+
+    expect(await parseEmailReply({ question, replyBody, responseSchema: approvalSchema, classifier })).toEqual({
+      approved: true,
+      comments: 'Yeah fine, go ahead',
+    });
+    expect(evaluatedStates).toEqual(['Yeah fine, go ahead']);
+    expect(generateCalls).toHaveLength(0);
+  });
+
+  it('refuses a reply the classifier is sure decides nothing, the way an unusable answer is refused', async () => {
+    const { classifier } = fakeClassifier({ answersTheQuestion: 0.03, field_approved: 0.5 });
+    stagedGeneration = { object: { approved: true } };
+
+    await expect(
+      parseEmailReply({ question, replyBody: 'Let me think about it', responseSchema: approvalSchema, classifier }),
+    ).rejects.toThrow('The email reply classifier found no answer: the reply does not give a decision');
+    expect(generateCalls).toHaveLength(0);
+  });
+
+  it('asks the model when the classifier is unsure', async () => {
+    const { classifier } = fakeClassifier({ answersTheQuestion: 0.98, field_approved: 0.6 });
+    stagedGeneration = { object: { approved: true, comments: 'from the model' } };
+
+    expect(await parseEmailReply({ question, replyBody, responseSchema: approvalSchema, classifier })).toEqual({
+      approved: true,
+      comments: 'from the model',
+    });
+    expect(generateCalls).toHaveLength(1);
+  });
+
+  it('asks the model when the classifier fails', async () => {
+    const { classifier } = fakeClassifier(new Error('Jev is down'));
+    stagedGeneration = { object: { approved: false } };
+
+    expect(await parseEmailReply({ question, replyBody, responseSchema: approvalSchema, classifier })).toEqual({
+      approved: false,
+    });
+    expect(generateCalls).toHaveLength(1);
+  });
+
+  it('never asks the classifier about an answer that needs text a person wrote', async () => {
+    const { classifier, evaluatedStates } = fakeClassifier({});
+    const vendorSchema = z.object({ vendorName: z.string(), justification: z.string() });
+    stagedGeneration = { object: { vendorName: 'Acme', justification: 'Cheapest' } };
+
+    expect(
+      await parseEmailReply({ question: 'Which vendor?', replyBody: 'Acme', responseSchema: vendorSchema, classifier }),
+    ).toEqual({ vendorName: 'Acme', justification: 'Cheapest' });
+    expect(evaluatedStates).toHaveLength(0);
+    expect(generateCalls).toHaveLength(1);
   });
 });
