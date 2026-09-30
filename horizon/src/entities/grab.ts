@@ -85,6 +85,8 @@ export interface CarriedToken {
   id: string;
   grabber: string;
   mode: GrabMode;
+  /** Where it was taken from: the drawer, or its place in the room, which it keeps until let go. */
+  from: 'drawer' | 'room';
   position: Vector3Like;
   /** Where it would go if let go now. */
   over: 'drawer' | 'room';
@@ -335,6 +337,7 @@ export function stepGrab(state: GrabState, frame: GrabFrame): GrabStep {
     id: held.id,
     grabber,
     mode: held.mode,
+    from: held.from,
     position: { ...held.position },
     over: held.over,
   }));

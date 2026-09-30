@@ -99,7 +99,14 @@ describe('near, with a hand', () => {
       { kind: 'grabbed', id: 'light.kitchen', grabber: 'right-hand', mode: 'near', from: 'drawer' },
     ]);
     expect(carried).toEqual([
-      { id: 'light.kitchen', grabber: 'right-hand', mode: 'near', position: { x: 0.2, y: 1.4, z: -0.5 }, over: 'room' },
+      {
+        id: 'light.kitchen',
+        grabber: 'right-hand',
+        mode: 'near',
+        from: 'drawer',
+        position: { x: 0.2, y: 1.4, z: -0.5 },
+        over: 'room',
+      },
     ]);
     const after = run([[pinching(KITCHEN.position)], [pinching(lamp)], [hand({ grip: lamp })]]);
     expect(after.events.at(-1)).toEqual({ kind: 'placed', id: 'light.kitchen', position: lamp });
