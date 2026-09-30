@@ -14,7 +14,7 @@ hologram               the design, the voice tracking, the ElevenLabs credential
                        conversation's framework-free parts — no framework
 hologram/react         the same sphere as a React Native view you can render
                        (plus ./react/lifecycle and ./react/sample, which are Skia-free)
-hologram/conversation  the hooks a screen holding an ElevenLabs conversation needs
+hologram/conversation  the hook a React Native screen holds its conversation with
 hologram/assets/*      the files themselves (the greeting, the icons), for a bundler that takes
                        a file as a URL
 ```
@@ -36,15 +36,15 @@ that rule.
 
 | Entry | Imports | What it holds |
 | --- | --- | --- |
-| `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the clock the view runs him on (`frame-timing.ts`), the voice tracker, the simulated voices, sample mode's moods and readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the parts of a conversation with no framework in them: whether it is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`, with `createToolActivity`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) |
+| `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the clock the view runs him on (`frame-timing.ts`), the voice tracker, the simulated voices, sample mode's moods and readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the conversation itself: the session every device holds it in (`jarvis-session.ts`, its shapes in `session-contract.ts`), what its failures say (`failure-text.ts`), which of his lines it writes down (`written-caption.ts`), the headset's half-duplex fallback (`half-duplex.ts`), and the pieces it is built from — whether a conversation is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) |
 | `hologram/react` | React, Reanimated, Skia | the Skia canvas and the frame loop |
 | `hologram/react/sample` | React, Reanimated — not Skia | sample mode's clock-made voice, mood toast and frame-rate readout, shared by the phone's sample screen and the watch's waiting screen |
-| `hologram/conversation` | React, `@elevenlabs/react-native`, `@livekit/react-native`'s audio session, hologram's own native greeting player (`expo-audio` in a browser) — not Skia | his voice as the SDK hears it, which of his tool calls are in flight, the recorded greeting he answers with, and the user's voice for the listening lattice |
+| `hologram/conversation` | React, `@elevenlabs/client`, `@livekit/react-native`'s audio session, hologram's own native greeting player (`expo-audio` in a browser) — not Skia | `useJarvisSession`, which hands the main entry's session the SDK, the greeting's player and the call's audio, and holds its snapshot for a screen |
 
 `hologram/conversation` deliberately does **not** reach Skia. That is what lets
 a screen open a conversation before CanvasKit has finished loading in a browser,
 which is the case `mobile/src/jarvis-hologram.web.tsx` exists to handle — and it
-is why the conversation hooks are not simply part of `hologram/react`.
+is why the conversation hook is not simply part of `hologram/react`.
 `react.contract.spec.ts` holds it to that, as it does `./react/lifecycle` and
 `./react/sample`.
 
@@ -97,15 +97,60 @@ loop stops where the kept rows end (`densityRowsEnd`) instead of reading every
 row to throw most of them away — which under Hermes, with no JIT, was 4.1 of
 the 5.3 ms a picture took to build at the floor, on a desktop harness.
 
-`src/conversation/` is where `@elevenlabs/react-native` is called for real, and
-it is thinner still: two flags out of the conversation's own state, two readers
-out of the SDK's analysers, the tool calls in flight and the latest `vad_score`
-held in React for the screens (the rules for both are the main entry's), and
-the greeting's player.
+`src/conversation/` is where the ElevenLabs SDK is called for real, and it is
+thinner still: `useJarvisSession` hands the main entry's session
+`Conversation.startSession`, the greeting's player, the call's audio and a
+timer, and holds its snapshot in React. Every rule of the conversation is the
+main entry's — see below.
 
 If you find yourself wanting a microphone, a permission prompt, a navigation
 decision or a screen layout in any of the three, it belongs in the app, not
 here.
+
+## One conversation, three devices
+
+`createJarvisSession` (`jarvis-session.ts`) is the conversation on every device:
+the headset calls it directly, and the phone and the watch through
+`useJarvisSession`. It holds one summoning at a time on the SDK's own client —
+the SDK's React provider is not used anywhere — and it is the only place the
+rules live:
+
+- **One start at a time, and stale callbacks dropped.** Every SDK callback is
+  bound to the summoning that dialled it.
+- **Status and mode come from the SDK's status and mode callbacks only.** The
+  provider marked any `onError` as the conversation's end, so on the phone
+  Jarvis faded out over a non-fatal error while his voice played on. An error
+  once connected goes to the diagnostics and no further; the ending is
+  `onDisconnect`'s to report.
+- **Every failure ends in `failed`, with a problem in words** (`failure-text.ts`)
+  and where it came from (`reaching`, `deadline`, `session` — the phone toasts
+  the last). Raw texts — the platform's for being offline, LiveKit's for a room
+  that would not open or closed — are replaced, and nothing that looks like a
+  credential is ever shown.
+- **The deadline ends what it gives up on.** A conversation that connects after
+  `GIVE_UP_CONNECTING_AFTER_MS` is ended the moment its start resolves; on the
+  phone it used to connect under a line saying it had not.
+- **The greeting and the token start together** and the session is dialled once
+  he has finished (`waitsForGreetingBeforeDialling`, false in a browser, which
+  dials behind him muted until he has).
+
+Everything that differs by device is handed in, and the main entry stays free of
+platforms: the participant name, the timers, how his track is listened to
+(`findRoom`, `followAgentVoice`), the call's audio a phone and a watch greet
+inside (`callAudio`: let go at once when nothing was dialled, otherwise only once
+the conversation has finished ending), a network to bring up first (`untilOnline`
+and `leaveNetwork`, the watch's Wi-Fi), the deadline's words, which of his lines
+are written down (`captions`: the headset's while-writing, the phone's text
+mode; a `textOnly` summoning — a browser with no microphone — writes and mimes
+every line), the half-duplex fallback (the headset's alone) and the SDK's
+connection delay (the headset's is zero). A screen reads it through `snapshot`
+and `subscribe`, which only tell it about changes, so a React screen renders when
+something it shows has moved.
+
+Its specs are the headset's (`jarvis-session.spec.ts`,
+`jarvis-session-conversation.spec.ts`, set up the way the headset sets it up) and
+the phone's and the watch's (`jarvis-session-devices.spec.ts`), all driven by the
+fakes in `jarvis-session.fakes.ts`, which fire callbacks in the SDK's own order.
 
 ## Two things about the ElevenLabs half worth knowing before changing it
 
@@ -155,29 +200,32 @@ conversation screens show no frame rate and no particle count on either device.
 
 ## Summoned, he greets you before he is connected
 
-`useGreeting` (`src/conversation/greeting.ts`) is the voice firmware's trick on the phone and the
-watch: "Hello sir, how can I help?" plays from `assets/greeting.mp3` — the firmware's own recording
-— the moment he is summoned, the session is dialled *behind* it, and the agent is told to skip its
-first message (`overrides: { agent: { firstMessage: '' } }`, the firmware's `first_message: ""`).
-While it plays the sphere follows `createGreetingReaders` at the player's own position, and the
-session's microphone is muted from `onConversationCreated` until it ends, so the agent does not hear
-Jarvis through the speaker as the user. `isGreetingOver` (`greeting-handover.ts`) decides the end:
-the recording's end, or its length plus a grace if playback never started. Three things that are
+The voice firmware's trick, on every device, and the session's (`jarvis-session.ts`): "Hello sir,
+how can I help?" plays from `assets/greeting.mp3` — the firmware's own recording — the moment he is
+summoned, the token is fetched beside it, and the agent is told to skip its first message
+(`overrides: { agent: { firstMessage: '' } }`, the firmware's `first_message: ""`). While it plays
+the sphere follows `createGreetingReaders` at the player's own position, and a session dialled
+behind it has its microphone muted from `onConversationCreated` until it ends, so the agent does not
+hear Jarvis through the speaker as the user. `isGreetingOver` (`greeting-handover.ts`) decides the
+end: the recording's end, or its length plus a grace if playback never started — a clock that starts
+again once a headset's call link is up, since that wait was not him being late. The things that are
 easy to break:
 
 - **On a phone and a watch, he greets as call audio, inside the call's audio session.** Played by
   expo-audio — media, `USAGE_MEDIA` — the recording was not heard on a phone: not on its own, and
-  not inside LiveKit's audio session started before him either (tested on a phone). So `beginGreeting` first starts the audio
-  session the SDK would (`call-audio.ts`: the `communication` preset, on the speaker), and then plays
+  not inside LiveKit's audio session started before him either (tested on a phone). So the session
+  first starts the audio session the SDK would (`callAudio`, which `useJarvisSession` fills with
+  `call-audio.ts`: the `communication` preset, on the speaker), and then plays
   the recording through this package's own native module, `JarvisGreeting`
   (`android/.../JarvisGreetingModule.kt`), a `MediaPlayer` with `USAGE_VOICE_COMMUNICATION` — the
   stream, route and volume Jarvis's voice uses a moment later. It prefers a Bluetooth headset, then
   a wired one, then the speaker, so the greeting comes out where the conversation will — started on
   the speaker alone, as the SDK does, he greeted from the phone and answered in the AirPods. On a
   Bluetooth headset he then waits for its call link to come up (`untilCallRouteReady`, at most
-  2.5 s plus a 250 ms margin): played into straight away, AirPods lost his first word.
-  LiveKit's `start` does nothing when the SDK calls it again. Screens call `releaseCallAudio()` when a start fails, so no call audio is
-  left with no call.
+  2.5 s plus a 250 ms margin, the player's `untilAudible`): played into straight away, AirPods lost
+  his first word. LiveKit's `start` does nothing when the SDK calls it again. The session lets the
+  call's audio go at once when nothing was dialled — a refused greeting, a hang-up, a token that
+  never came — so no call audio is left with no call.
 - **Call mode is switched off the main thread, by this package.** Reanimated draws the sphere on
   Android's main thread, and LiveKit switches the device into `MODE_IN_COMMUNICATION` there as its
   session starts — which Android takes a noticeable moment over, so the sphere froze once in every
@@ -186,25 +234,25 @@ easy to break:
   mode already in force. LiveKit also remembers that as the mode to put back, so `stopCallAudio`
   does the putting back: after LiveKit's stop (a bridge call that only *posts* to the main thread,
   so `getAudioOutputs` on the same bridge queue is awaited first as a barrier), `leaveCallMode`
-  queues behind it on the main thread and switches back off it. `useGreeting` calls it on every
-  ending — `releaseCallAudio`, and any dialled conversation reaching `disconnected`, by which time
+  queues behind it on the main thread and switches back off it. The session calls it on every
+  ending, and for a dialled conversation only once its `endSession()` has resolved, by which time
   the SDK has stopped LiveKit's session. `call-audio.contract.spec.ts` fails if LiveKit or the SDK
   stops behaving the way that order relies on.
 - **That makes this package a native module.** `expo-module.config.json` at its root is what both
   apps' autolinking finds, since both depend on `hologram`. In a build without it,
   `greeting-player.ts` reports the recording as unplayable, and the agent keeps its own first
   message. A browser plays the recording with expo-audio (`greeting-player.web.ts`).
-- **And the session still starts after him.** The token is fetched beside him, but screens
-  `await untilCallMayTakeTheAudio()` before `startSession`; it resolves once the recording is over
-  (at once in a browser), and `false` if he was stopped, in which case there is nobody left to dial
-  for.
+- **And the session still starts after him, on a device.** The token is fetched beside him, but
+  the session is dialled only once the recording is over (`waitsForGreetingBeforeDialling`, which
+  `useJarvisSession` sets on a device and not in a browser), and not at all if he was hung up on.
 - **In a browser, only while the microphone is held.** A tab nobody has clicked since it loaded
   refuses to play a sound unless the page is using the microphone, so the phone app's web build
-  holds the stream it asked permission with until `beginGreeting` resolves. There `beginGreeting`
-  waits for the browser's answer, and if it is still no the greeting is dropped and the agent
-  keeps its own first message, so he is never left not greeting at all.
+  holds the stream it asked permission with until the session says the greeting has started or
+  will not (`onGreetingAnswered`). The session waits for the browser's answer, and if it is no the
+  greeting is dropped and the agent keeps its own first message, so he is never left not greeting
+  at all.
 
-`useUserVoice` is the `UserVoice` for the listening lattice: presence is only ever the latest
+The session's `user` is the `UserVoice` for the listening lattice: presence is only ever the latest
 `vad_score` (`vad-score.ts`), ignored while he speaks or greets — the firmware's
 `speaker_is_active_` rule, since his voice through the speaker scores as the user's — and volume is
 the SDK's input level. Both read zero while the session is not connected or its microphone is muted.
@@ -249,12 +297,15 @@ itself is deliberately not shared: the headset's runs on XR frame time and
 resets the arrival on every summon, and extracting the phone's would rewrite
 the hot loop of two shipped apps for two constants' worth of gain.
 
-Its conversation runs on the SDK's own client with no React, so the rules the
-hooks follow are here too: `createToolActivity` is `useToolActivity`'s state
-machine on injected timers, and the hook keeps its own implementation so the
-phone and the watch did not change. `roomOfConversation` takes the app's own
-`Room` guard rather than importing `livekit-client`, because an `instanceof` is
-only true against the copy the app's SDK built the room from.
+Its conversation is the same session the phone and the watch hold theirs in
+(`createJarvisSession`, see "One conversation, three devices"), called
+directly: the headset hands it its browser parts — his track analysed on the
+app's `AudioContext`, the greeting's `<audio>` element, the orphaned audio a
+dropped call leaves on a page that lives for hours — through
+`createHeadsetSession` in `horizon/src/conversation/`. `roomOfConversation`
+takes each app's own `Room` guard rather than importing `livekit-client`,
+because an `instanceof` is only true against the copy the app's SDK built the
+room from.
 
 ## Tests
 

@@ -1,4 +1,4 @@
-import type { GreetingPlayer } from './session-contract';
+import type { GreetingPlayer } from 'hologram';
 
 /**
  * "Hello sir, how can I help?" — the voice firmware's own recording, played the moment he is

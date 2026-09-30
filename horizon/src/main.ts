@@ -217,7 +217,7 @@ async function openConversationRoom(
   try {
     session = await sessionRequest;
     stream = await listening;
-    const [modules, [{ Conversation }, { createJarvisSession }]] = await Promise.all([
+    const [modules, [{ Conversation }, { createHeadsetSession }]] = await Promise.all([
       roomLoading,
       conversationLoading,
     ]);
@@ -227,7 +227,7 @@ async function openConversationRoom(
       mode: 'conversation',
       wake,
       createConversation: (events) =>
-        createJarvisSession({ settings, startSession: Conversation.startSession, greeting, audioContext, events }),
+        createHeadsetSession({ settings, startSession: Conversation.startSession, greeting, audioContext, events }),
       stopMicrophone,
       diagnostics: flags.has('debug') ? roomDiagnostics : undefined,
     });

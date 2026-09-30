@@ -1,26 +1,19 @@
 /**
- * Jarvis's conversation on the headset: the ElevenLabs session from summon to ending, the recorded
- * greeting he answers with, his voice and yours for the hologram, and what he is thinking about.
+ * Jarvis's conversation on the headset: `hologram`'s session, with what a page in Quest Browser
+ * needs around it — the recorded greeting played through an `<audio>` element, his track listened
+ * to on the app's `AudioContext`, and the audio a dropped call leaves on the page cleared away.
  *
- * Built on the SDK's own client (`Conversation.startSession` from `@elevenlabs/client`) and on
- * hologram's framework-free halves of the phone's conversation — the token request, the rules for
- * the greeting, the tool calls, the voice-activity score, the played voice, the agent's track and
- * the written reply — so the headset and the phone answer every question about a conversation the
- * same way. See `jarvis-session.ts` for the session itself.
+ * The session itself — the greeting and the token at once, the deadline, the failures in words,
+ * the microphone rules, the captions, the half-duplex fallback — is `createJarvisSession` in
+ * `hologram`'s main entry, which the phone and the watch run too. See `headset-session.ts` for what
+ * the headset hands it.
  */
 export { createGreetingPlayer, type GreetingElement, type PrimableGreetingPlayer } from './greeting-player';
 export { greetingRecordingUrl } from './greeting-recording';
-export { createJarvisSession } from './jarvis-session';
-export type {
-  GreetingPlayer,
-  JarvisSession,
-  JarvisSessionDependencies,
-  JarvisSessionEvents,
-  ListeningAudioContext,
-  SessionConversation,
-  SessionDiagnostics,
-  SessionEnding,
-  SessionOptions,
-  SessionPhase,
-  StartSession,
-} from './session-contract';
+export {
+  createHeadsetSession,
+  HEADSET_OFFLINE_PROBLEM,
+  type HeadsetSessionOptions,
+  headsetSessionDependencies,
+  NO_CONNECTION_DELAY,
+} from './headset-session';

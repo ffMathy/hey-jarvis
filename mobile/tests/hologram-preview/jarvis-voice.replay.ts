@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { JarvisVoice, UseJarvisVoice } from '../../src/platform-contracts';
 
+// The real follower, since this module stands in for the whole of `src/jarvis-voice.ts`: only the
+// voice the sphere draws is replaced, and an emulator never opens a conversation for it to follow.
+export { followJarvisVoice } from '../../src/jarvis-voice';
+
 /**
  * A recorded Jarvis, for looking at the hologram where no conversation can run.
  *
@@ -70,6 +74,7 @@ function decodeBase64(text: string): Uint8Array {
   return bytes;
 }
 
+// The session's own voice is ignored: the recording is what is drawn, whatever the session does.
 export const useJarvisVoice: UseJarvisVoice = (): JarvisVoice => {
   const frames = useMemo(
     () => recording.frames.map((frame) => ({ volume: frame.volume, spectrum: decodeBase64(frame.spectrum) })),
@@ -93,7 +98,7 @@ export const useJarvisVoice: UseJarvisVoice = (): JarvisVoice => {
     return () => clearInterval(timer);
   }, [current]);
 
-  // Stable across `speaking` changes, as in src/jarvis-voice.ts.
+  // Stable across `speaking` changes, as the session's readers are.
   const readers = useMemo(
     () => ({
       getVolume: () => current()?.volume ?? 0,

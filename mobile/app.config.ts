@@ -138,7 +138,7 @@ const config: ExpoConfig = {
   //
   // Web is here for a smaller reason, but a real one: the conversation is the
   // whole app apart from the assist gesture, and it runs in a browser on the
-  // same `ConversationProvider` over the browser's own WebRTC. Taking over the
+  // same session (`useJarvisSession`) over the browser's own WebRTC. Taking over the
   // assist gesture stays Android's, and the app says so when it is on web rather
   // than leaving a button that cannot work.
   platforms: ['android', 'web'],

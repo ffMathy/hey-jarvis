@@ -1,23 +1,15 @@
 import { describe, expect, it } from 'bun:test';
-import {
-  GIVE_UP_CONNECTING_AFTER_MS,
-  GREETING_GRACE_SECONDS,
-  HEADSET_PARTICIPANT_NAME,
-  WITHOUT_FIRST_MESSAGE,
-} from 'hologram';
-import {
-  DEADLINE_PROBLEM,
-  DROPPED_PROBLEM,
-  MICROPHONE_PROBLEM,
-  OFFLINE_PROBLEM,
-  UNREACHABLE_PROBLEM,
-} from './failure-text';
-import { createHarness, settle } from './jarvis-session.fakes';
+import { GIVE_UP_CONNECTING_AFTER_MS } from './conversation-life';
+import { HEADSET_PARTICIPANT_NAME } from './conversation-token';
+import { DEADLINE_PROBLEM, DROPPED_PROBLEM, MICROPHONE_PROBLEM, UNREACHABLE_PROBLEM } from './failure-text';
+import { GREETING_GRACE_SECONDS, WITHOUT_FIRST_MESSAGE } from './greeting-handover';
+import { createHarness, HEADSET_OFFLINE_PROBLEM, settle } from './jarvis-session.fakes';
 
 /**
  * A summoning from the wake word to its ending: the greeting and the token at once, the session
  * dialled after him, and every way it can fail landing in `failed` with something readable — the
- * guarantees the phone gets from the SDK's React provider, rebuilt here with no React.
+ * guarantees the SDK's React provider gives, rebuilt with no React. Set up as the headset sets it
+ * up; what the phone and the watch add is in `jarvis-session-devices.spec.ts`.
  */
 
 describe('summoning Jarvis', () => {
@@ -75,11 +67,11 @@ describe('summoning Jarvis', () => {
     await clock.advance(greeting.durationMilliseconds + 100);
     expect(session.phase).toBe('connecting');
     expect(sdk.dials).toHaveLength(1);
-    const { options } = sdk.latest;
-    expect(options.conversationToken).toBe('a-webrtc-token');
-    expect(options.connectionType).toBe('webrtc');
-    expect(options.connectionDelay).toEqual({ default: 0, android: 0 });
-    expect(options.overrides).toEqual(WITHOUT_FIRST_MESSAGE);
+    const { spoken } = sdk.latest;
+    expect(spoken?.conversationToken).toBe('a-webrtc-token');
+    expect(spoken?.connectionType).toBe('webrtc');
+    expect(spoken?.connectionDelay).toEqual({ default: 0, android: 0 });
+    expect(spoken?.overrides).toEqual(WITHOUT_FIRST_MESSAGE);
 
     await sdk.latest.connect();
     expect(session.phase).toBe('live');
@@ -111,7 +103,7 @@ describe('summoning Jarvis', () => {
     tokens.grant();
     await settle();
     expect(sdk.dials).toHaveLength(1);
-    expect(sdk.latest.options.overrides).toEqual(WITHOUT_FIRST_MESSAGE);
+    expect(sdk.latest.spoken?.overrides).toEqual(WITHOUT_FIRST_MESSAGE);
 
     const conversation = sdk.latest.conversation;
     const statusWhenMuted: string[] = [];
@@ -142,7 +134,7 @@ describe('summoning Jarvis', () => {
 
     tokens.grant();
     await settle();
-    expect(sdk.latest.options.overrides).toBeUndefined();
+    expect(sdk.latest.spoken?.overrides).toBeUndefined();
   });
 
   it('gives up on a recording the browser never answers for, and stops it if it starts late', async () => {
@@ -153,7 +145,7 @@ describe('summoning Jarvis', () => {
     await clock.advance(greeting.durationMilliseconds + GREETING_GRACE_SECONDS * 1000);
     expect(session.phase).toBe('connecting');
     expect(greeting.stops).toBe(1);
-    expect(sdk.latest.options.overrides).toBeUndefined();
+    expect(sdk.latest.spoken?.overrides).toBeUndefined();
 
     greeting.allow();
     await settle();
@@ -207,7 +199,7 @@ describe('when a summoning fails', () => {
     tokens.goOffline();
     await settle();
 
-    expect(events.problems).toEqual([OFFLINE_PROBLEM]);
+    expect(events.problems).toEqual([HEADSET_OFFLINE_PROBLEM]);
     expect(session.phase).toBe('failed');
   });
 

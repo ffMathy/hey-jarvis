@@ -65,7 +65,7 @@ src/xr/                    the XR stage and frame loop, input, depth probes, anc
 src/ui3d/                  text in the room: the hint, status line, error panel, captions, debug HUD
 src/wake/                  "Hey Jarvis": the microphone, the worklet, the onnxruntime-web worker, the watchdog
 src/room/                  where he stands: room snapshots, the occupancy grid, placement and its worker
-src/conversation/          the ElevenLabs session, the greeting, his voice and yours
+src/conversation/          hologram's session with the headset's parts: the greeting, his track, orphaned audio
 src/hologram3d/            Jarvis in 3D: the frame clock, the body's strokes, the halo union, CanvasKit
 src/preview/               the preview page
 public/models/             the openWakeWord models and their LICENCE.txt (committed)
@@ -409,10 +409,16 @@ the emulated Quest's real XR frames in the browser.
 
 ## The conversation (`src/conversation/`)
 
-`createJarvisSession` holds one summoning at a time on the ElevenLabs SDK's own
-client (`Conversation.startSession` from `@elevenlabs/client`, passed in as
-`startSession`). There is no React provider here, so it rebuilds that provider's
-guarantees:
+The session is `hologram`'s `createJarvisSession` — the one the phone and the
+watch hold their conversations in too (see "One conversation, three devices" in
+`../hologram/AGENTS.md`). `createHeadsetSession` (`headset-session.ts`) hands it
+what is the headset's: its name (`jarvis-horizon`), no platform delay before
+dialling, the half-duplex fallback, its words for being offline, his track
+analysed on the app's `AudioContext` (`agent-room.ts`), the greeting's `<audio>`
+element (`greeting-player.ts`) and the orphaned-audio sweep
+(`orphaned-audio.ts`). It holds one summoning at a time on the ElevenLabs SDK's
+own client (`Conversation.startSession` from `@elevenlabs/client`, passed in as
+`startSession`), with no React provider, and keeps that provider's guarantees:
 
 - **One start at a time.** A summon is ignored unless the last one is `idle`,
   `ended` or `failed`, because two WebRTC sessions at once tear each other down.
@@ -454,7 +460,8 @@ imported with `?url`.
 
 **Three things can hold the microphone muted, and it opens only when none of them
 does:** the greeting; the keyboard (`setTyping`, the phone's text mode); the
-half-duplex fallback while he speaks. `half-duplex.ts` turns that fallback on for
+half-duplex fallback while he speaks, which only the headset asks for.
+`half-duplex.ts` (in `hologram`) turns that fallback on for
 the rest of a conversation when an interruption comes within 300 ms of him
 starting to speak, or when two interruptions arrive with no transcript of the user
 between them — both signs of his own voice coming back through a weak echo
@@ -472,25 +479,30 @@ the object changes when its source does:
 **What the session does on your behalf:** it calls `flushQueuedAudio` on the
 room's agent tracks when interrupted; captions follow `written-reply.ts`, and only
 while you are writing (the keyboard is up, or the last thing you said was typed —
-a typed line that comes back as a transcript is recognised and ignored); after a
+a typed line that comes back as a transcript is recognised and ignored:
+`createWrittenCaption`, hologram's `while-writing` rule); after a
 dropped connection it removes the hidden `<audio>` elements the SDK leaves behind
 (`orphaned-audio.ts`); and `quietFor(seconds)` tells the room how long his output
 has been silent, for re-arming the wake word.
 
-**Failure texts** (`failure-text.ts`) are the phone's wherever the phone has one.
-The raw texts it shows verbatim are replaced: the browser's "Failed to fetch",
-LiveKit's text for a room it could not open ("The connection to ElevenLabs could
-not be opened. The network may be blocking it."), and "LiveKit connection state
-changed to disconnected". A message that looks like it contains a credential is
-never shown.
+**Failure texts** (hologram's `failure-text.ts`) are the phone's wherever the phone
+has one, on every device. The raw texts are replaced: the browser's "Failed to
+fetch" (the headset says it in its own words, `HEADSET_OFFLINE_PROBLEM`), LiveKit's
+text for a room it could not open ("The connection to ElevenLabs could not be
+opened. The network may be blocking it."), and "LiveKit connection state changed
+to disconnected". A message that looks like it contains a credential is never
+shown.
 
 `agent-room.contract.spec.ts` checks four things in the installed SDK: that it
 still keeps the room on `connection.getRoom()`, that it builds that room from the
 same `livekit-client` this app imports (so `instanceof Room` can match), that it
 still uses the disconnect wording `describeDisconnect` looks for, and, at compile
-time, that `Conversation.startSession` still fits `StartSession`. Everything else
-is covered by the offline specs, driven by the fakes in `jarvis-session.fakes.ts`,
-which fire callbacks in the SDK's own order. `greeting-recording.ts` is the only
+time, that `Conversation.startSession` still fits `StartSession`. The session's own
+behaviour is pinned in `hologram` (`jarvis-session.spec.ts` and
+`jarvis-session-conversation.spec.ts`, set up the way `createHeadsetSession` sets
+it up, driven by the fakes in `jarvis-session.fakes.ts`, which fire callbacks in
+the SDK's own order); `headset-session.spec.ts` checks the headset really does set
+it up that way. `greeting-recording.ts` is the only
 file that imports `?url`, so `bun test` never loads it; `mp3-url.d.ts` declares
 only `*.mp3?url`, never hologram's numeric `*.mp3`, which horizon must not reach.
 

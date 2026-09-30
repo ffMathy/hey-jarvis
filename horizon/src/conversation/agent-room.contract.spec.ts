@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Conversation } from '@elevenlabs/client';
-import type { StartSession } from './session-contract';
+import type { StartSession } from 'hologram';
 
 /**
  * What the headset relies on in the installed ElevenLabs SDK, read from the SDK itself.

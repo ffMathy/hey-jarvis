@@ -9,7 +9,6 @@ import {
   roomOfConversation,
 } from 'hologram';
 import { Room } from 'livekit-client';
-import type { ListeningAudioContext } from './session-contract';
 
 /**
  * Jarvis's voice as the headset plays it, read from his track in the conversation's LiveKit room.
@@ -48,6 +47,18 @@ function findPlayableTrack(room: AgentTrackRoom): MediaStreamTrack | undefined {
     }
   }
   return undefined;
+}
+
+/**
+ * As much of an `AudioContext` as listening to Jarvis's track takes. The app's one context has all
+ * of it; naming only this much is what lets a test hand in something that is not a browser's.
+ */
+export interface ListeningAudioContext {
+  readonly sampleRate: number;
+  readonly state: string;
+  createAnalyser(): AnalyserNode;
+  createMediaStreamSource(stream: MediaStream): MediaStreamAudioSourceNode;
+  resume(): Promise<void>;
 }
 
 /** An analyser watching one track, and the way to let go of it. */

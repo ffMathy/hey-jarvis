@@ -1,23 +1,30 @@
-import type { AgentTrackRoom, JarvisVoiceReaders } from 'hologram';
+import type { AgentTrackRoom } from './agent-audio-track';
+import { HEADSET_PARTICIPANT_NAME } from './conversation-token';
 import { createJarvisSession } from './jarvis-session';
 import type {
+  CallAudio,
   GreetingPlayer,
   JarvisSessionDependencies,
+  ProblemSource,
   SessionConversation,
   SessionDiagnostics,
   SessionOptions,
   SessionPhase,
   StartSession,
+  TextSessionOptions,
+  VoiceSessionOptions,
 } from './session-contract';
+import type { JarvisVoiceReaders } from './voice-contract';
 
 /**
  * Stand-ins for everything a {@link createJarvisSession} is made from, for its specs: a clock whose
  * timers run only when told to, a token endpoint that answers when told to, a greeting whose
- * recording plays on that clock, and an SDK whose sessions connect, fail and drop when told to —
- * each firing its callbacks in the order the real `@elevenlabs/client` 1.24.0 does (read from
- * `VoiceConversation.startSession` and `BaseConversation.endSessionWithDetails`).
+ * recording plays on that clock, the call's audio a phone switches into, and an SDK whose sessions
+ * connect, fail, drop and take their time to end when told to — each firing its callbacks in the
+ * order the real `@elevenlabs/client` 1.24.0 does (read from `VoiceConversation.startSession` and
+ * `BaseConversation.endSessionWithDetails`).
  *
- * Not a spec itself, so `bun test` loads it only through the two that use it.
+ * Not a spec itself, so `bun test` loads it only through the specs that use it.
  */
 
 /** Lets every promise already settled run its reactions, and any response body finish reading. */
@@ -119,6 +126,15 @@ export function createFakeTokenEndpoint() {
         }),
       );
     },
+    /** Answers a request for a signed URL, which is what a conversation held in writing asks for. */
+    sign(signedUrl = 'wss://api.elevenlabs.io/v1/convai/conversation?agent_id=x&conversation_signature=y') {
+      latest().answer.resolve(
+        new Response(JSON.stringify({ signed_url: signedUrl }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    },
     refuse(status: number, body: unknown = {}) {
       latest().answer.resolve(
         new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
@@ -131,15 +147,32 @@ export function createFakeTokenEndpoint() {
   };
 }
 
-/** The recording, played on the fake clock: two seconds long, heard from when the browser allows it. */
-export function createFakeGreeting(clock: FakeClock) {
+/**
+ * The recording, played on the fake clock: two seconds long, heard from when the browser allows it.
+ * With `waitsForRoute`, it first waits for a headset's call link as a phone's player does, until
+ * the test says the route is ready.
+ */
+export function createFakeGreeting(clock: FakeClock, { waitsForRoute = false }: { waitsForRoute?: boolean } = {}) {
   const DURATION = 2;
   const answers: Array<Deferred<boolean>> = [];
+  const routeWaits: Array<Deferred<void>> = [];
+  const log: string[] = [];
   let startedAt: number | undefined;
   let stops = 0;
 
   const player: GreetingPlayer = {
+    ...(waitsForRoute
+      ? {
+          untilAudible: () => {
+            const wait = deferred<void>();
+            routeWaits.push(wait);
+            log.push('wait-for-route');
+            return wait.promise;
+          },
+        }
+      : {}),
     playFromStart: () => {
+      log.push('play');
       const answer = deferred<boolean>();
       answers.push(answer);
       return answer.promise;
@@ -168,9 +201,19 @@ export function createFakeGreeting(clock: FakeClock) {
 
   return {
     player,
+    /** What was asked of the player, in order. */
+    log,
     durationMilliseconds: DURATION * 1000,
     get plays() {
       return answers.length;
+    },
+    /** The headset's call link is up: a player waiting for it goes on to play. */
+    routeReady() {
+      const wait = routeWaits.at(-1);
+      if (!wait) {
+        throw new Error('Nothing is waiting for the route.');
+      }
+      wait.resolve();
     },
     get stops() {
       return stops;
@@ -190,6 +233,41 @@ export function createFakeGreeting(clock: FakeClock) {
   };
 }
 
+/**
+ * The call's audio on a phone or a watch, recording when it is switched into and let go of. A
+ * start finishes only when the test says so, unless `startsAtOnce`.
+ */
+export function createFakeCallAudio({ startsAtOnce = true }: { startsAtOnce?: boolean } = {}) {
+  const log: string[] = [];
+  const starts: Array<Deferred<void>> = [];
+  const callAudio: CallAudio = {
+    start: () => {
+      log.push('start');
+      const started = deferred<void>();
+      starts.push(started);
+      if (startsAtOnce) {
+        started.resolve();
+      }
+      return started.promise;
+    },
+    stop: async () => {
+      log.push('stop');
+    },
+  };
+  return {
+    callAudio,
+    log,
+    /** The switch into call audio has finished. */
+    finishStarting() {
+      const started = starts.at(-1);
+      if (!started) {
+        throw new Error('Call audio has not been asked for.');
+      }
+      started.resolve();
+    },
+  };
+}
+
 /** A conversation the SDK hands over, recording what the session does with it. */
 export interface FakeConversation extends SessionConversation {
   muting: boolean[];
@@ -197,11 +275,21 @@ export interface FakeConversation extends SessionConversation {
   endSessions: number;
   inputVolume: number;
   outputVolume: number;
+  /**
+   * Makes the next ending take as long as the test says, as the real SDK's does while it takes its
+   * audio down: `disconnecting` at once, and `disconnected` only on `finishEnding`.
+   */
+  holdEnding(): void;
+  finishEnding(): void;
 }
 
 /** One `startSession` call, driven by the test in the order the real SDK fires its callbacks. */
 export interface FakeDial {
   options: SessionOptions;
+  /** The options, if this dial was for a spoken conversation over WebRTC. */
+  spoken: VoiceSessionOptions | undefined;
+  /** The options, if this dial was for a conversation held in writing over a socket. */
+  written: TextSessionOptions | undefined;
   conversation: FakeConversation;
   /** `onConversationCreated`, `connected`, then the start resolves. */
   connect(): Promise<void>;
@@ -216,16 +304,29 @@ export interface FakeDial {
 function createFakeDial(options: SessionOptions): { dial: FakeDial; promise: Promise<SessionConversation> } {
   const started = deferred<SessionConversation>();
   let status = 'connecting';
+  let slowEnding = false;
+  let ending: Deferred<void> | undefined;
 
-  const endWith = (ending: { reason: string; message?: string }) => {
+  const finishWith = (details: { reason: string; message?: string }) => {
+    status = 'disconnected';
+    options.onStatusChange({ status });
+    options.onDisconnect(details);
+  };
+
+  const endWith = (details: { reason: string; message?: string }) => {
     if (status !== 'connected' && status !== 'connecting') {
-      return;
+      return ending?.promise ?? Promise.resolve();
     }
     status = 'disconnecting';
     options.onStatusChange({ status });
-    status = 'disconnected';
-    options.onStatusChange({ status });
-    options.onDisconnect(ending);
+    if (!slowEnding) {
+      finishWith(details);
+      return Promise.resolve();
+    }
+    const held = deferred<void>();
+    ending = held;
+    held.promise.then(() => finishWith(details));
+    return held.promise;
   };
 
   const conversation: FakeConversation = {
@@ -234,9 +335,18 @@ function createFakeDial(options: SessionOptions): { dial: FakeDial; promise: Pro
     endSessions: 0,
     inputVolume: 0.3,
     outputVolume: 0.2,
-    endSession: async () => {
+    endSession: () => {
       conversation.endSessions++;
-      endWith({ reason: 'user' });
+      return endWith({ reason: 'user' });
+    },
+    holdEnding: () => {
+      slowEnding = true;
+    },
+    finishEnding: () => {
+      if (!ending) {
+        throw new Error('Nothing is ending.');
+      }
+      ending.resolve();
     },
     setMicMuted: (muted) => {
       conversation.muting.push(muted);
@@ -254,6 +364,8 @@ function createFakeDial(options: SessionOptions): { dial: FakeDial; promise: Pro
 
   const dial: FakeDial = {
     options,
+    spoken: 'conversationToken' in options ? options : undefined,
+    written: 'signedUrl' in options ? options : undefined,
     conversation,
     connect: async () => {
       options.onConversationCreated(conversation);
@@ -268,8 +380,12 @@ function createFakeDial(options: SessionOptions): { dial: FakeDial; promise: Pro
       started.reject(error);
       await settle();
     },
-    drop: (message) => endWith({ reason: 'error', message }),
-    agentHangsUp: () => endWith({ reason: 'agent' }),
+    drop: (message) => {
+      endWith({ reason: 'error', message });
+    },
+    agentHangsUp: () => {
+      endWith({ reason: 'agent' });
+    },
   };
   return { dial, promise: started.promise };
 }
@@ -338,12 +454,14 @@ export function createEventLog() {
   const log: string[] = [];
   const phases: SessionPhase[] = [];
   const problems: string[] = [];
+  const sources: ProblemSource[] = [];
   const captions: Array<string | undefined> = [];
   const diagnostics: SessionDiagnostics[] = [];
   return {
     log,
     phases,
     problems,
+    sources,
     captions,
     diagnostics,
     events: {
@@ -351,8 +469,9 @@ export function createEventLog() {
         phases.push(phase);
         log.push(`phase:${phase}`);
       },
-      onProblem: (message: string) => {
+      onProblem: (message: string, source: ProblemSource) => {
         problems.push(message);
+        sources.push(source);
         log.push(`problem:${message}`);
       },
       onCaption: (text: string | undefined) => {
@@ -366,11 +485,27 @@ export function createEventLog() {
   };
 }
 
-/** A session made entirely of the fakes above, and the handles to drive each of them. */
-export function createHarness(overrides: Partial<JarvisSessionDependencies> = {}) {
+/**
+ * What the headset sends and says that is its own, for the specs written against it: its name in
+ * the history, no platform delay before dialling, the half-duplex fallback, and its words for a
+ * request that reached no server.
+ */
+export const HEADSET_OFFLINE_PROBLEM =
+  'ElevenLabs could not be reached. Check that the headset is connected to the internet.';
+
+/**
+ * A session made entirely of the fakes above, and the handles to drive each of them — set up as the
+ * headset sets its own up, because that is the device these specs were first written for. A spec
+ * about another device overrides what differs; `waitsForRoute` gives the greeting a phone's wait
+ * for a headset's call link.
+ */
+export function createHarness(
+  overrides: Partial<JarvisSessionDependencies<number>> = {},
+  { waitsForRoute = false }: { waitsForRoute?: boolean } = {},
+) {
   const clock = createFakeClock();
   const tokens = createFakeTokenEndpoint();
-  const greeting = createFakeGreeting(clock);
+  const greeting = createFakeGreeting(clock, { waitsForRoute });
   const sdk = createFakeSdk();
   const events = createEventLog();
   const { room, element } = createFakeRoom();
@@ -380,20 +515,13 @@ export function createHarness(overrides: Partial<JarvisSessionDependencies> = {}
 
   const session = createJarvisSession({
     settings: { apiKey: 'sk_a-secret-key', agentId: 'agent_01jz0123456789' },
+    participantName: HEADSET_PARTICIPANT_NAME,
     startSession: sdk.startSession,
     greeting: greeting.player,
     events: events.events,
-    audioContext: {
-      sampleRate: 48_000,
-      state: 'running',
-      createAnalyser: () => {
-        throw new Error('The specs follow his voice through a fake, never an analyser.');
-      },
-      createMediaStreamSource: () => {
-        throw new Error('The specs follow his voice through a fake, never a media stream.');
-      },
-      resume: async () => undefined,
-    },
+    connectionDelay: { default: 0, android: 0 },
+    halfDuplex: true,
+    offlineProblem: HEADSET_OFFLINE_PROBLEM,
     fetch: tokens.fetch,
     now: clock.now,
     setTimeout: clock.setTimeout,

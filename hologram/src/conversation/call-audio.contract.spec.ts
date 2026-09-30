@@ -58,7 +58,7 @@ describe('the ElevenLabs SDK', () => {
     expect(setup).toMatch(/detach: async \(\) => \{[\s\S]*?finally \{\s*await AudioSession\.stopAudioSession\(\);/);
   });
 
-  it('takes the session down before it reports `disconnected`, which is when `useGreeting` lets go', () => {
+  it('takes the session down before its ending resolves, which is when the session lets the call audio go', () => {
     const conversation = read(CLIENT_SDK, 'dist/BaseConversation.js');
 
     expect(conversation).toMatch(

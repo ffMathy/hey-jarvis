@@ -1,66 +1,66 @@
-import { useConversationMode, useConversationStatus, useRawConversation } from '@elevenlabs/react-native';
-import { useSdkVoiceReaders } from 'hologram/conversation';
-import { useEffect, useMemo, useState } from 'react';
 import { jarvisAudio } from '../modules/jarvis-audio';
-import { followAgentAudioTrack, type NativeTrackIds, roomOfConversation } from './agent-audio-track';
-import type { UseJarvisVoice } from './platform-contracts';
+import { followAgentAudioTrack } from './agent-audio-track';
+import type { FollowJarvisVoice, UseJarvisVoice } from './platform-contracts';
 import { createTappedVoiceReaders } from './tapped-voice';
 
 /**
- * The conversation's output audio on Android.
+ * Jarvis's voice on Android, read from his own WebRTC track.
  *
- * Read from Jarvis's own WebRTC track: `modules/jarvis-audio` keeps the samples
- * that play on it, and `tapped-voice.ts` analyses them the way a browser would.
- * The SDK's own readers are only the fallback, until that track is found or if
- * it cannot be. They come from LiveKit's processors, whose spectrum is mostly
- * empty and whose volume reads the bytes of each sample swapped (see "The
- * hologram on a device" in mobile/AGENTS.md), so a hologram drawn from them
- * turns and flashes rather than following his voice.
+ * `modules/jarvis-audio` keeps the samples that play on the track and `tapped-voice.ts` analyses
+ * them the way a browser would. Until the track is found, or if it cannot be listened to, the
+ * session falls back to the SDK's own readers — LiveKit's processors, whose spectrum is mostly empty
+ * and whose volume reads the bytes of each sample swapped (see "The hologram on a device" in
+ * mobile/AGENTS.md), so a sphere drawn from them turns and flashes rather than following his voice.
  *
- * One module, so it can be swapped whole: `.scripts/verify-hologram-on-emulator.sh`
- * can build the app with `tests/hologram-preview/jarvis-voice.replay.ts` in its
- * place, since an emulator has no ElevenLabs session to listen to.
+ * Handed to the session as its `followAgentVoice`, which calls it once his room is found and stops
+ * it when the conversation is over. The room comes checked against this app's own `Room`
+ * (`roomOfConversation` in `agent-audio-track.ts`).
  */
-export const useJarvisVoice: UseJarvisVoice = () => {
-  const { status } = useConversationStatus();
-  const { mode } = useConversationMode();
-  const conversation = useRawConversation();
-  const sdkReaders = useSdkVoiceReaders();
-  const [agentTrack, setAgentTrack] = useState<NativeTrackIds | undefined>(undefined);
-  const [isTapped, setIsTapped] = useState(false);
+export const followJarvisVoice: FollowJarvisVoice = (room, onReaders) => {
+  const audio = jarvisAudio;
+  if (!audio) {
+    return () => undefined;
+  }
+  const tapped = createTappedVoiceReaders(audio);
+  let listening = false;
 
-  useEffect(() => {
-    const room = conversation ? roomOfConversation(conversation) : undefined;
-    if (!room) {
-      setAgentTrack(undefined);
-      return;
+  const stopListening = () => {
+    if (listening) {
+      listening = false;
+      audio.stopListeningToTrack();
     }
-    return followAgentAudioTrack(room, setAgentTrack);
-  }, [conversation]);
+  };
 
-  useEffect(() => {
-    const audio = jarvisAudio;
-    if (!audio || !agentTrack) {
+  const stopFollowing = followAgentAudioTrack(room, (track) => {
+    if (listening) {
+      stopListening();
+      onReaders(undefined);
+    }
+    if (!track) {
       return;
     }
     try {
-      audio.listenToTrack(agentTrack.peerConnectionId, agentTrack.trackId);
+      audio.listenToTrack(track.peerConnectionId, track.trackId);
     } catch {
       // Not found natively after all: the SDK's readers carry on.
       return;
     }
-    setIsTapped(true);
-    return () => {
-      audio.stopListeningToTrack();
-      setIsTapped(false);
-    };
-  }, [agentTrack]);
+    listening = true;
+    onReaders(tapped);
+  });
 
-  // Made once, so they stay the same functions for the life of the screen — see
-  // `useSdkVoiceReaders` for why that matters.
-  const tappedReaders = useMemo(() => (jarvisAudio ? createTappedVoiceReaders(jarvisAudio) : undefined), []);
-  const readers = isTapped && tappedReaders ? tappedReaders : sdkReaders;
-
-  const listening = status === 'connected';
-  return { listening, speaking: listening && mode === 'speaking', ...readers };
+  return () => {
+    stopFollowing();
+    stopListening();
+  };
 };
+
+/**
+ * The voice the sphere follows in a conversation: the session's own, which already follows his
+ * track through {@link followJarvisVoice}.
+ *
+ * Here so the whole voice can be swapped in one place: `.scripts/verify-hologram-on-emulator.sh`
+ * builds the app with `tests/hologram-preview/jarvis-voice.replay.ts` in this module's place, since
+ * an emulator has no ElevenLabs session to listen to.
+ */
+export const useJarvisVoice: UseJarvisVoice = (voice) => voice;
