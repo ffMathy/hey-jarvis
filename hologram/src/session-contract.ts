@@ -60,6 +60,18 @@ export interface JarvisSessionEvents {
   onCaption?(text: string | undefined): void;
   /** For a diagnostics display. */
   onDiagnostics?(diagnostics: SessionDiagnostics): void;
+  /**
+   * One of his interruptions, as the SDK reported it, once the session has dealt with it itself
+   * (dropped what the browser had queued, weighed it for the half-duplex fallback). For a device
+   * that watches for its own echo: the headset, whose voice may come from where he stands.
+   */
+  onInterruption?(): void;
+  /**
+   * Every line of the conversation as the SDK reported it — his (`agent`) and the user's (`user`)
+   * — whatever the caption's rules show. For the same watch: a transcript of the user that repeats
+   * what he has just said is his own voice coming back through the microphone.
+   */
+  onMessage?(message: ConversationMessage): void;
 }
 
 /** Whatever plays the recorded greeting. */
@@ -292,6 +304,14 @@ export interface JarvisSessionDependencies<Timer> {
   connectionDelay?: ConnectionDelay;
   /** Whether the half-duplex fallback may take the microphone while he speaks (see `half-duplex.ts`). */
   halfDuplex?: boolean;
+  /**
+   * Asked at every interruption: whether the half-duplex fallback may count this one. Always yes
+   * when left out. The headset says no while his voice comes from where he stands — an echo there
+   * moves his voice back to the headset's own speakers first, which the headset watches for itself
+   * — and for a few seconds after moving it, while the browser's echo canceller settles on the new
+   * sound.
+   */
+  halfDuplexMayJudge?: () => boolean;
   /** Which of his lines a voice conversation writes down; `while-writing` when left out. */
   captions?: CaptionRule;
   /** What a request that reached no server says, where "the internet connection" can be more exact. */

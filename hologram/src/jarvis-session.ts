@@ -143,6 +143,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
   const cancel = dependencies.clearTimeout;
   const waitsForGreetingBeforeDialling = dependencies.waitsForGreetingBeforeDialling ?? true;
   const halfDuplexAllowed = dependencies.halfDuplex ?? false;
+  const halfDuplexMayJudge = dependencies.halfDuplexMayJudge ?? (() => true);
   const offlineProblem = dependencies.offlineProblem;
   const deadlineProblem = dependencies.deadlineProblem ?? (() => DEADLINE_PROBLEM);
   const findRoom = dependencies.findRoom ?? (() => undefined);
@@ -593,16 +594,20 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
   /**
    * Drops what the browser still has queued of the sentence he was cut off in — over WebRTC the
    * SDK's own `interrupt()` does nothing (see `queued-audio.ts`) — and watches for his own voice
-   * doing the interrupting (see `half-duplex.ts`).
+   * doing the interrupting (see `half-duplex.ts`), unless whoever holds the session says this one
+   * is not the fallback's to judge. Then it tells them, since they may be watching for it too.
    */
   const interrupted = (current: Attempt<Timer>) => {
     interruptions++;
     if (current.room) {
       flushQueuedAudio(agentAudioTracks(current.room));
     }
-    halfDuplex.interrupted(current.mode === 'speaking');
+    if (halfDuplexMayJudge()) {
+      halfDuplex.interrupted(current.mode === 'speaking');
+    }
     applyMicrophone(current);
     report();
+    events.onInterruption?.();
   };
 
   const messageArrived = (message: ConversationMessage) => {
@@ -610,6 +615,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       halfDuplex.userSpoke();
     }
     caption.heard(message);
+    events.onMessage?.(message);
   };
 
   /**

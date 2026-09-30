@@ -211,6 +211,88 @@ describe('interruptions', () => {
     expect(harness.events.diagnostics.at(-1)?.halfDuplex).toBe(false);
     expect(harness.sdk.latest.conversation.muting).toEqual([]);
   });
+
+  it('count nothing towards half duplex while the holder says the fallback may not judge them', async () => {
+    let mayJudge = false;
+    const harness = createHarness({ halfDuplexMayJudge: () => mayJudge });
+    await harness.goLive();
+    const { options } = harness.sdk.latest;
+
+    // Cut off at once, twice, with nothing said: both shapes of the symptom, and neither counted.
+    options.onModeChange({ mode: 'speaking' });
+    options.onInterruption();
+    options.onModeChange({ mode: 'listening' });
+    options.onModeChange({ mode: 'speaking' });
+    options.onInterruption();
+    options.onModeChange({ mode: 'listening' });
+    expect(harness.events.diagnostics.at(-1)?.halfDuplex).toBe(false);
+    expect(harness.events.diagnostics.at(-1)?.interruptions).toBe(2);
+    // What was queued is dropped all the same: that is not the fallback's business.
+    expect(harness.element.plays).toBe(2);
+
+    mayJudge = true;
+    options.onModeChange({ mode: 'speaking' });
+    options.onInterruption();
+    expect(harness.events.diagnostics.at(-1)?.halfDuplex).toBe(true);
+  });
+});
+
+describe('what the holder is told of the conversation, for a device watching for its own echo', () => {
+  function createWatchedHarness() {
+    const told: string[] = [];
+    const watched = createHarness({
+      events: {
+        onInterruption: () => told.push('interruption'),
+        onMessage: (message) => told.push(`${message.role}: ${message.message}`),
+      },
+    });
+    return { told, watched };
+  }
+
+  it('hears of every interruption, after the session has dealt with it', async () => {
+    const seenWhenTold: Array<{ flushed: number; halfDuplex: boolean | undefined }> = [];
+    let latestHalfDuplex: boolean | undefined;
+    const watched = createHarness({
+      halfDuplexMayJudge: () => true,
+      events: {
+        onDiagnostics: (diagnostics) => {
+          latestHalfDuplex = diagnostics.halfDuplex;
+        },
+        onInterruption: () => seenWhenTold.push({ flushed: watched.element.plays, halfDuplex: latestHalfDuplex }),
+      },
+    });
+    await watched.goLive();
+    const { options } = watched.sdk.latest;
+
+    options.onModeChange({ mode: 'speaking' });
+    options.onInterruption();
+
+    // Dealt with first: the queued audio dropped, and the fallback judged and reported.
+    expect(seenWhenTold).toEqual([{ flushed: 1, halfDuplex: true }]);
+  });
+
+  it('hears every line either side said, whatever the captions show', async () => {
+    const { told, watched } = createWatchedHarness();
+    await watched.goLive();
+    const { options } = watched.sdk.latest;
+
+    options.onMessage({ role: 'agent', message: 'Good evening, sir.' });
+    options.onMessage({ role: 'user', message: 'Good evening.' });
+
+    expect(told).toEqual(['agent: Good evening, sir.', 'user: Good evening.']);
+  });
+
+  it('hears nothing from a summoning that is over', async () => {
+    const { told, watched } = createWatchedHarness();
+    await watched.goLive();
+    const { options } = watched.sdk.latest;
+
+    watched.session.hangUp();
+    options.onInterruption();
+    options.onMessage({ role: 'user', message: 'Too late.' });
+
+    expect(told).toEqual([]);
+  });
 });
 
 describe('writing to him', () => {

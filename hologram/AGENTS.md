@@ -147,6 +147,16 @@ connection delay (the headset's is zero). A screen reads it through `snapshot`
 and `subscribe`, which only tell it about changes, so a React screen renders when
 something it shows has moved.
 
+Three optional hooks exist for the headset's spatial voice, and only the headset
+passes them, so the phone and the watch behave exactly as they did without them.
+`halfDuplexMayJudge` is asked at every interruption whether the half-duplex
+fallback may count it: the headset says no while his voice comes from where he
+stands, because an echo there moves his voice back to the headset's own speakers
+first, and for three seconds after that move while the echo canceller settles.
+`onInterruption` and `onMessage` (in the events) tell the holder what the SDK
+reported, after the session has dealt with it, so the headset can watch for his
+voice coming back through the microphone.
+
 Its specs are the headset's (`jarvis-session.spec.ts`,
 `jarvis-session-conversation.spec.ts`, set up the way the headset sets it up) and
 the phone's and the watch's (`jarvis-session-devices.spec.ts`), all driven by the
