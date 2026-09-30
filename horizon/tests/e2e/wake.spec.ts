@@ -58,13 +58,16 @@ async function serve(harnessBuild: string): Promise<{ server: Server; url: strin
   return { server, url: `http://localhost:${address.port}/` };
 }
 
-/** Builds the harness page with the app's Vite config into `outDir`. */
+/**
+ * Builds the harness page with the app's Vite config into `outDir` — the config's own pages
+ * replaced by the harness's, since they are named relative to the app, not to the harness.
+ */
 async function buildHarness(outDir: string) {
   await build({
     configFile: path.join(HORIZON, 'vite.config.ts'),
     root: HARNESS,
     logLevel: 'warn',
-    build: { outDir, emptyOutDir: true },
+    build: { outDir, emptyOutDir: true, rolldownOptions: { input: path.join(HARNESS, 'index.html') } },
   });
 }
 

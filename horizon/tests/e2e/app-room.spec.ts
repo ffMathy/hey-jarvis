@@ -175,7 +175,7 @@ test('holding the trigger while he greets you hangs up, and stops the greeting',
   // Most of the way through the arrival, well into the greeting — and within the twenty seconds
   // the session waits for a token, which here never comes: the emulator draws him about a frame
   // and a half a second, and his clock moves at most a tenth of a second a frame.
-  await frames(page, 10);
+  await frames(page, 8);
   expect(await scene(page)).toBe('present:greeting');
   expect(await greetingPlays(page)).toBe(1);
   await photograph(page, testInfo, 'app-greeting.png');

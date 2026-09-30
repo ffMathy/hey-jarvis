@@ -30,10 +30,12 @@ import { canEnterRoom, requestRoomSession } from './xr/room-session';
  * What is loaded when matters on a headset, whose browser fetches over Wi-Fi and compiles on a
  * phone's chip. The page itself, the wake engine and the greeting's player are here, because the
  * page needs them from its first frame: the wake-word models load and warm up while the user reads
- * it, and the Enter tap has to reach the engine and the player before it awaits anything. The room
- * — three, the hologram, the placement worker's client — and the ElevenLabs SDK are loaded apart,
- * but started at once rather than on the tap, so they have usually arrived by the time someone has
- * found the button; the SDK and LiveKit are about 600 kB on their own, which the page never needs.
+ * it, and the Enter tap has to reach the engine and the player before it awaits anything. (The
+ * player is imported from its own files: `conversation/`'s surface brings the session and LiveKit
+ * with it.) The room — three, the hologram, the placement worker's client — and the ElevenLabs SDK
+ * are loaded apart, but started at once rather than on the tap, so they have usually arrived by the
+ * time someone has found the button; the SDK and LiveKit are about 600 kB on their own, which the
+ * page never needs.
  *
  * URL flags: `?debug` shows the diagnostics HUD in the room, `?flat` draws him as the phone's flat
  * picture instead of in 3D, and `?microphone=raw` listens for the wake word without echo
@@ -50,7 +52,7 @@ const roomLoading = Promise.all([
   import('./hologram3d'),
   import('./room'),
 ]);
-const conversationLoading = Promise.all([import('@elevenlabs/client'), import('./conversation/jarvis-session')]);
+const conversationLoading = Promise.all([import('@elevenlabs/client'), import('./conversation')]);
 // Awaited on entering the room; until then a failure only has to not be reported twice.
 roomLoading.catch(() => undefined);
 conversationLoading.catch(() => undefined);
