@@ -5,7 +5,18 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { buildTaskPatch, filterTasks, type TaskSummary } from './tools.js';
+import { readAffectedEntities } from '../../utils/affected-entities.js';
+import {
+  buildTaskPatch,
+  createTask,
+  deleteTask,
+  describeTaskList,
+  filterTasks,
+  getAllTaskLists,
+  getAllTasks,
+  type TaskSummary,
+  updateTask,
+} from './tools.js';
 
 function task(id: string, title: string, notes?: string): TaskSummary {
   return { id, title, notes, status: 'needsAction', selfLink: `https://tasks/${id}` };
@@ -41,5 +52,33 @@ describe('buildTaskPatch', () => {
 
   it('clears the completion date when a task is reopened', () => {
     expect(buildTaskPatch({ status: 'needsAction' })).toEqual({ status: 'needsAction', completed: null });
+  });
+});
+
+/**
+ * What the task tools report as touched, which sir's headset lights up: the list, by its real id,
+ * since that is what he places in the room -- not the task, which comes and goes.
+ */
+describe('the task lists a request touches', () => {
+  const groceries = { id: 'MDk1NTEw', name: 'Groceries' };
+
+  it('names a list by the real id Google gives it, whichever way it was asked for', () => {
+    expect(describeTaskList({ id: 'MDk1NTEw', title: 'Groceries' }, '@default')).toEqual(groceries);
+  });
+
+  it('is the list a task was read, added, changed or deleted in', () => {
+    const changed = { id: 't1', title: 'Buy milk', status: 'needsAction', selfLink: '', taskList: groceries };
+
+    expect(readAffectedEntities(createTask.id, {}, changed)).toEqual([groceries]);
+    expect(readAffectedEntities(updateTask.id, {}, changed)).toEqual([groceries]);
+    expect(readAffectedEntities(deleteTask.id, {}, { success: true, message: '', taskList: groceries })).toEqual([
+      groceries,
+    ]);
+    expect(readAffectedEntities(getAllTasks.id, {}, { tasks: [], taskList: groceries })).toEqual([groceries]);
+  });
+
+  it('is nothing when the list could not be looked up, or for the list of every list, which is a survey', () => {
+    expect(readAffectedEntities(getAllTasks.id, {}, { tasks: [] })).toEqual([]);
+    expect(readAffectedEntities(getAllTaskLists.id, {}, { taskLists: [{ ...groceries, selfLink: '' }] })).toEqual([]);
   });
 });

@@ -2,6 +2,8 @@ import { type calendar_v3, google } from 'googleapis';
 import { chunk } from 'lodash-es';
 import { z } from 'zod';
 import { getGoogleAuth } from '../../credentials/google-auth.js';
+import { type AffectedEntity, affectedEntitySchema, markAsAffectingEntities } from '../../utils/affected-entities.js';
+import { logger } from '../../utils/logger.js';
 import { createTool } from '../../utils/tool-factory.js';
 import { createTtlCache } from '../../utils/ttl-cache.js';
 
@@ -19,12 +21,15 @@ export const createCalendarEvent = createTool({
     attendees: z.array(z.string()).optional().describe('List of attendee email addresses'),
   }),
   outputSchema: z.object({
-    id: z.string(),
-    summary: z.string(),
-    start: z.string(),
-    end: z.string(),
-    htmlLink: z.string(),
-    status: z.string(),
+    id: z.string().describe('The id of the new event'),
+    summary: z.string().describe('Its title'),
+    start: z.string().describe('When it starts'),
+    end: z.string().describe('When it ends'),
+    htmlLink: z.string().describe('A link to it in Google Calendar'),
+    status: z.string().describe('Its status, such as "confirmed"'),
+    calendar: affectedEntitySchema
+      .optional()
+      .describe('The calendar the event is in, by its id and name, when the calendar list has it'),
   }),
   execute: async (inputData) => {
     const auth = await getGoogleAuth();
@@ -45,10 +50,13 @@ export const createCalendarEvent = createTool({
       attendees: inputData.attendees?.map((email: string) => ({ email })),
     };
 
-    const response = await calendar.events.insert({
-      calendarId: inputData.calendarId,
-      requestBody: event,
-    });
+    const [response, touchedCalendar] = await Promise.all([
+      calendar.events.insert({
+        calendarId: inputData.calendarId,
+        requestBody: event,
+      }),
+      lookUpCalendar(inputData.calendarId),
+    ]);
 
     return {
       id: response.data.id!,
@@ -57,6 +65,7 @@ export const createCalendarEvent = createTool({
       end: response.data.end?.dateTime || response.data.end?.date || '',
       htmlLink: response.data.htmlLink!,
       status: response.data.status!,
+      calendar: touchedCalendar,
     };
   },
 });
@@ -70,22 +79,29 @@ export const deleteCalendarEvent = createTool({
     eventId: z.string().describe('Event ID to delete'),
   }),
   outputSchema: z.object({
-    success: z.boolean(),
-    message: z.string(),
+    success: z.boolean().describe('Whether the event was deleted'),
+    message: z.string().describe('What happened, in a sentence'),
+    calendar: affectedEntitySchema
+      .optional()
+      .describe('The calendar the event is in, by its id and name, when the calendar list has it'),
   }),
   execute: async (inputData) => {
     const auth = await getGoogleAuth();
     const calendar = google.calendar({ version: 'v3', auth });
 
-    await calendar.events.delete({
-      calendarId: inputData.calendarId,
-      eventId: inputData.eventId,
-      sendUpdates: 'none',
-    });
+    const [, touchedCalendar] = await Promise.all([
+      calendar.events.delete({
+        calendarId: inputData.calendarId,
+        eventId: inputData.eventId,
+        sendUpdates: 'none',
+      }),
+      lookUpCalendar(inputData.calendarId),
+    ]);
 
     return {
       success: true,
       message: `Event ${inputData.eventId} deleted successfully`,
+      calendar: touchedCalendar,
     };
   },
 });
@@ -147,22 +163,28 @@ export const updateCalendarEvent = createTool({
     location: z.string().optional().describe('New event location'),
   }),
   outputSchema: z.object({
-    id: z.string(),
-    summary: z.string(),
-    start: z.string(),
-    end: z.string(),
-    htmlLink: z.string(),
-    status: z.string(),
+    id: z.string().describe('The id of the event'),
+    summary: z.string().describe('Its title, as it is now'),
+    start: z.string().describe('When it starts, as it is now'),
+    end: z.string().describe('When it ends, as it is now'),
+    htmlLink: z.string().describe('A link to it in Google Calendar'),
+    status: z.string().describe('Its status, such as "confirmed"'),
+    calendar: affectedEntitySchema
+      .optional()
+      .describe('The calendar the event is in, by its id and name, when the calendar list has it'),
   }),
   execute: async (inputData) => {
     const auth = await getGoogleAuth();
     const calendar = google.calendar({ version: 'v3', auth });
 
-    const response = await calendar.events.patch({
-      calendarId: inputData.calendarId,
-      eventId: inputData.eventId,
-      requestBody: buildEventPatch(inputData),
-    });
+    const [response, touchedCalendar] = await Promise.all([
+      calendar.events.patch({
+        calendarId: inputData.calendarId,
+        eventId: inputData.eventId,
+        requestBody: buildEventPatch(inputData),
+      }),
+      lookUpCalendar(inputData.calendarId),
+    ]);
 
     return {
       id: response.data.id!,
@@ -171,20 +193,21 @@ export const updateCalendarEvent = createTool({
       end: response.data.end?.dateTime || response.data.end?.date || '',
       htmlLink: response.data.htmlLink!,
       status: response.data.status!,
+      calendar: touchedCalendar,
     };
   },
 });
 
 const calendarEventSchema = z.object({
-  id: z.string(),
+  id: z.string().describe('The event id, which updating or deleting it needs'),
   calendarId: z.string().describe('The calendar the event is in, which updating or deleting it needs'),
-  summary: z.string(),
-  start: z.string(),
-  end: z.string(),
-  description: z.string().optional(),
-  location: z.string().optional(),
-  status: z.string(),
-  htmlLink: z.string(),
+  summary: z.string().describe('Its title'),
+  start: z.string().describe('When it starts: a time, or a date for an all-day event'),
+  end: z.string().describe('When it ends: a time, or a date for an all-day event'),
+  description: z.string().optional().describe('Its description, if any'),
+  location: z.string().optional().describe('Where it is, if given'),
+  status: z.string().describe('Its status, such as "confirmed"'),
+  htmlLink: z.string().describe('A link to it in Google Calendar'),
 });
 
 /** An event as `getCalendarEvents` lists it. */
@@ -246,7 +269,7 @@ export async function collectEventsFromCalendars(
 const CALENDAR_LIST_TTL_MS = 10 * 60_000;
 
 /** One of the user's calendars, as the calendar list reports it. */
-interface CalendarListEntry {
+export interface CalendarListEntry {
   id: string;
   summary: string;
   description?: string;
@@ -278,6 +301,44 @@ async function getCalendarList(): Promise<CalendarListEntry[]> {
   return await calendarListCache.get('calendars', loadCalendarList);
 }
 
+/** The alias Google Calendar accepts for the account's own calendar, and the tools' default. */
+const PRIMARY_CALENDAR_ID = 'primary';
+
+/**
+ * A calendar as sir's headset records it -- by its real id, with its name -- or undefined when the
+ * list does not have it.
+ *
+ * The real id rather than the one asked for, because "primary" and the account's own address are
+ * the same calendar: the headset matches by id, so a calendar placed in the room under one would
+ * never light up when a request reached it under the other.
+ */
+export function describeCalendar(calendars: CalendarListEntry[], calendarId: string): AffectedEntity | undefined {
+  const entry = calendars.find(
+    (candidate) => candidate.id === calendarId || (calendarId === PRIMARY_CALENDAR_ID && candidate.primary === true),
+  );
+  return entry ? { id: entry.id, name: entry.summary } : undefined;
+}
+
+/**
+ * The calendar a tool touched, looked up in the cached list alongside the tool's own call. Never
+ * rejects.
+ *
+ * A calendar the list cannot describe is still reported by the id it was asked for -- except the
+ * alias, which would be recorded as a calendar of its own.
+ */
+async function lookUpCalendar(calendarId: string): Promise<AffectedEntity | undefined> {
+  const asAsked = calendarId === PRIMARY_CALENDAR_ID ? undefined : { id: calendarId };
+
+  try {
+    return describeCalendar(await getCalendarList(), calendarId) ?? asAsked;
+  } catch (error) {
+    logger.warn('Could not look up the calendar a tool touched', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return asAsked;
+  }
+}
+
 // Tool to get calendar events
 export const getCalendarEvents = createTool({
   id: 'getCalendarEvents',
@@ -298,11 +359,16 @@ export const getCalendarEvents = createTool({
     maxResults: z.number().optional().default(10).describe('Maximum number of events to return (default: 10)'),
   }),
   outputSchema: z.object({
-    events: z.array(calendarEventSchema),
+    events: z.array(calendarEventSchema).describe('The events found, in start order'),
     unreachableCalendars: z
       .array(z.string())
       .optional()
       .describe('Calendars whose events could not be fetched, when searching all of them'),
+    calendars: z
+      .array(affectedEntitySchema)
+      .describe(
+        'The calendars read, by id and name: the one asked, or with allCalendars only those the events came from',
+      ),
   }),
   execute: async (inputData) => {
     const auth = await getGoogleAuth();
@@ -335,11 +401,20 @@ export const getCalendarEvents = createTool({
     };
 
     if (!inputData.allCalendars) {
-      return { events: await listEvents(inputData.calendarId) };
+      const [events, readCalendar] = await Promise.all([
+        listEvents(inputData.calendarId),
+        lookUpCalendar(inputData.calendarId),
+      ]);
+      return { events, calendars: readCalendar ? [readCalendar] : [] };
     }
 
     const calendars = (await getCalendarList()).map((entry) => ({ id: entry.id, name: entry.summary }));
-    return await collectEventsFromCalendars(calendars, inputData.maxResults, listEvents);
+    const collected = await collectEventsFromCalendars(calendars, inputData.maxResults, listEvents);
+
+    // Reading every calendar in the account is a survey of them, so only the ones the answer came
+    // from count as read.
+    const answeringCalendarIds = new Set(collected.events.map((event) => event.calendarId));
+    return { ...collected, calendars: calendars.filter((calendar) => answeringCalendarIds.has(calendar.id)) };
   },
 });
 
@@ -362,6 +437,26 @@ export const getAllCalendars = createTool({
   }),
   execute: async () => ({ calendars: await getCalendarList() }),
 });
+
+const touchedCalendarSchema = z.object({ calendar: affectedEntitySchema.optional() });
+
+/** The calendar an event was created, changed or deleted in. */
+function readTouchedCalendar(_toolArguments: unknown, toolResult: unknown): AffectedEntity[] {
+  const { calendar } = touchedCalendarSchema.parse(toolResult);
+  return calendar ? [calendar] : [];
+}
+
+markAsAffectingEntities(createCalendarEvent, readTouchedCalendar);
+markAsAffectingEntities(updateCalendarEvent, readTouchedCalendar);
+markAsAffectingEntities(deleteCalendarEvent, readTouchedCalendar);
+
+const readCalendarsSchema = z.object({ calendars: z.array(affectedEntitySchema) });
+
+// Listing every calendar is a survey, so getAllCalendars is deliberately left unmarked.
+markAsAffectingEntities(
+  getCalendarEvents,
+  (_toolArguments, toolResult) => readCalendarsSchema.parse(toolResult).calendars,
+);
 
 // Export all tools together for convenience
 export const calendarTools = {

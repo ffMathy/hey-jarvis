@@ -1,7 +1,61 @@
 import { google, type tasks_v1 } from 'googleapis';
 import { z } from 'zod';
 import { getGoogleAuth } from '../../credentials/google-auth.js';
+import { type AffectedEntity, affectedEntitySchema, markAsAffectingEntities } from '../../utils/affected-entities.js';
+import { logger } from '../../utils/logger.js';
 import { createTool } from '../../utils/tool-factory.js';
+import { createTtlCache } from '../../utils/ttl-cache.js';
+
+/** The alias Google Tasks accepts for the account's default list, and the tools' default. */
+const DEFAULT_TASK_LIST_ID = '@default';
+
+/**
+ * How long a task list's real id and title are reused.
+ *
+ * They are looked up only so sir's headset can record the list a request touched, and a list is
+ * renamed about as often as it is created.
+ */
+const TASK_LIST_TTL_MS = 10 * 60_000;
+
+const taskListCache = createTtlCache<AffectedEntity>({ ttlMs: TASK_LIST_TTL_MS, maxEntries: 20 });
+
+/**
+ * A task list as sir's headset records it -- by its real id, with its title -- from what Google
+ * Tasks says about it.
+ *
+ * The real id rather than the one asked for, because "@default" and the default list's own id are
+ * the same list: the headset matches by id, so a list placed in the room under one would never light
+ * up when a request reached it under the other.
+ */
+export function describeTaskList(taskList: tasks_v1.Schema$TaskList, askedFor: string): AffectedEntity {
+  return { id: taskList.id ?? askedFor, name: taskList.title ?? undefined };
+}
+
+/**
+ * The task list a tool touched, looked up alongside the tool's own call. Never rejects.
+ *
+ * A list that cannot be looked up is still reported by the id it was asked for -- except the alias,
+ * which would be recorded as a list of its own.
+ */
+async function lookUpTaskList(taskListId: string): Promise<AffectedEntity | undefined> {
+  try {
+    return await taskListCache.get(taskListId, async () => {
+      const tasks = google.tasks({ version: 'v1', auth: await getGoogleAuth() });
+      const response = await tasks.tasklists.get({ tasklist: taskListId, fields: 'id,title' });
+      return describeTaskList(response.data, taskListId);
+    });
+  } catch (error) {
+    logger.warn('Could not look up the task list a tool touched', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return taskListId === DEFAULT_TASK_LIST_ID ? undefined : { id: taskListId };
+  }
+}
+
+/** The task list a tool reports it touched. */
+const touchedTaskListField = affectedEntitySchema
+  .optional()
+  .describe('The task list this touched, by its id and title, when it could be looked up');
 
 // Tool to create a task
 export const createTask = createTool({
@@ -14,12 +68,13 @@ export const createTask = createTool({
     dueDate: z.string().optional().describe('Due date in ISO 8601 format (e.g., 2024-01-15T10:00:00Z)'),
   }),
   outputSchema: z.object({
-    id: z.string(),
-    title: z.string(),
-    notes: z.string().optional(),
-    due: z.string().optional(),
-    status: z.string(),
-    selfLink: z.string(),
+    id: z.string().describe('The id of the new task'),
+    title: z.string().describe('Its title'),
+    notes: z.string().optional().describe('Its notes, if any'),
+    due: z.string().optional().describe('When it is due, if it has a date'),
+    status: z.string().describe('Its status: needsAction or completed'),
+    selfLink: z.string().describe('A link to it in the Google Tasks API'),
+    taskList: touchedTaskListField,
   }),
   execute: async (inputData) => {
     const auth = await getGoogleAuth();
@@ -34,10 +89,13 @@ export const createTask = createTool({
       task.due = inputData.dueDate;
     }
 
-    const response = await tasks.tasks.insert({
-      tasklist: inputData.taskListId,
-      requestBody: task,
-    });
+    const [response, taskList] = await Promise.all([
+      tasks.tasks.insert({
+        tasklist: inputData.taskListId,
+        requestBody: task,
+      }),
+      lookUpTaskList(inputData.taskListId),
+    ]);
 
     return {
       id: response.data.id!,
@@ -46,6 +104,7 @@ export const createTask = createTool({
       due: response.data.due ?? undefined,
       status: response.data.status!,
       selfLink: response.data.selfLink!,
+      taskList,
     };
   },
 });
@@ -59,21 +118,26 @@ export const deleteTask = createTool({
     taskId: z.string().describe('Task ID to delete'),
   }),
   outputSchema: z.object({
-    success: z.boolean(),
-    message: z.string(),
+    success: z.boolean().describe('Whether the task was deleted'),
+    message: z.string().describe('What happened, in a sentence'),
+    taskList: touchedTaskListField,
   }),
   execute: async (inputData) => {
     const auth = await getGoogleAuth();
     const tasks = google.tasks({ version: 'v1', auth });
 
-    await tasks.tasks.delete({
-      tasklist: inputData.taskListId,
-      task: inputData.taskId,
-    });
+    const [, taskList] = await Promise.all([
+      tasks.tasks.delete({
+        tasklist: inputData.taskListId,
+        task: inputData.taskId,
+      }),
+      lookUpTaskList(inputData.taskListId),
+    ]);
 
     return {
       success: true,
       message: `Task ${inputData.taskId} deleted successfully`,
+      taskList,
     };
   },
 });
@@ -120,29 +184,35 @@ export const getAllTasks = createTool({
     maxResults: z.number().optional().default(100).describe('Maximum number of tasks to return (default: 100)'),
   }),
   outputSchema: z.object({
-    tasks: z.array(
-      z.object({
-        id: z.string(),
-        title: z.string(),
-        notes: z.string().optional(),
-        due: z.string().optional(),
-        status: z.string(),
-        completed: z.string().optional(),
-        selfLink: z.string(),
-      }),
-    ),
+    tasks: z
+      .array(
+        z.object({
+          id: z.string().describe('The task id, which updating or deleting it needs'),
+          title: z.string().describe('Its title'),
+          notes: z.string().optional().describe('Its notes, if any'),
+          due: z.string().optional().describe('When it is due, if it has a date'),
+          status: z.string().describe('Its status: needsAction or completed'),
+          completed: z.string().optional().describe('When it was completed, if it was'),
+          selfLink: z.string().describe('A link to it in the Google Tasks API'),
+        }),
+      )
+      .describe('The tasks in the list, narrowed by the search if one was given'),
+    taskList: touchedTaskListField,
   }),
   execute: async (inputData) => {
     const auth = await getGoogleAuth();
     const tasks = google.tasks({ version: 'v1', auth });
 
-    const response = await tasks.tasks.list({
-      tasklist: inputData.taskListId,
-      showCompleted: inputData.showCompleted,
-      maxResults: inputData.maxResults,
-      // Only what is reported, so Google leaves out etags, positions, links and the rest.
-      fields: 'items(id,title,notes,due,status,completed,selfLink)',
-    });
+    const [response, taskList] = await Promise.all([
+      tasks.tasks.list({
+        tasklist: inputData.taskListId,
+        showCompleted: inputData.showCompleted,
+        maxResults: inputData.maxResults,
+        // Only what is reported, so Google leaves out etags, positions, links and the rest.
+        fields: 'items(id,title,notes,due,status,completed,selfLink)',
+      }),
+      lookUpTaskList(inputData.taskListId),
+    ]);
 
     const taskItems = response.data.items || [];
     const listedTasks = taskItems.map((task) => ({
@@ -155,7 +225,7 @@ export const getAllTasks = createTool({
       selfLink: task.selfLink!,
     }));
 
-    return { tasks: filterTasks(listedTasks, inputData.search) };
+    return { tasks: filterTasks(listedTasks, inputData.search), taskList };
   },
 });
 
@@ -213,23 +283,27 @@ export const updateTask = createTool({
     status: z.enum(['needsAction', 'completed']).optional().describe('Task status'),
   }),
   outputSchema: z.object({
-    id: z.string(),
-    title: z.string(),
-    notes: z.string().optional(),
-    due: z.string().optional(),
-    status: z.string(),
-    completed: z.string().optional(),
-    selfLink: z.string(),
+    id: z.string().describe('The id of the task'),
+    title: z.string().describe('Its title, as it is now'),
+    notes: z.string().optional().describe('Its notes, as they are now'),
+    due: z.string().optional().describe('When it is due, as it is now'),
+    status: z.string().describe('Its status, as it is now: needsAction or completed'),
+    completed: z.string().optional().describe('When it was completed, if it is'),
+    selfLink: z.string().describe('A link to it in the Google Tasks API'),
+    taskList: touchedTaskListField,
   }),
   execute: async (inputData) => {
     const auth = await getGoogleAuth();
     const tasks = google.tasks({ version: 'v1', auth });
 
-    const response = await tasks.tasks.patch({
-      tasklist: inputData.taskListId,
-      task: inputData.taskId,
-      requestBody: buildTaskPatch(inputData),
-    });
+    const [response, taskList] = await Promise.all([
+      tasks.tasks.patch({
+        tasklist: inputData.taskListId,
+        task: inputData.taskId,
+        requestBody: buildTaskPatch(inputData),
+      }),
+      lookUpTaskList(inputData.taskListId),
+    ]);
 
     return {
       id: response.data.id!,
@@ -239,6 +313,7 @@ export const updateTask = createTool({
       status: response.data.status!,
       completed: response.data.completed ?? undefined,
       selfLink: response.data.selfLink!,
+      taskList,
     };
   },
 });
@@ -274,6 +349,23 @@ export const getAllTaskLists = createTool({
     };
   },
 });
+
+const touchedTaskListSchema = z.object({ taskList: affectedEntitySchema.optional() });
+
+/**
+ * The task list a task was read, added, changed or deleted in -- the list, not the task, since the
+ * list is what sir places in the room and a task comes and goes.
+ */
+function readTouchedTaskList(_toolArguments: unknown, toolResult: unknown): AffectedEntity[] {
+  const { taskList } = touchedTaskListSchema.parse(toolResult);
+  return taskList ? [taskList] : [];
+}
+
+markAsAffectingEntities(createTask, readTouchedTaskList);
+markAsAffectingEntities(deleteTask, readTouchedTaskList);
+markAsAffectingEntities(getAllTasks, readTouchedTaskList);
+markAsAffectingEntities(updateTask, readTouchedTaskList);
+// Listing every task list is a survey, so getAllTaskLists is deliberately left unmarked.
 
 // Export all tools together for convenience
 export const todoListTools = {
