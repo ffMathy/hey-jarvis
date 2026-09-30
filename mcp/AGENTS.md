@@ -873,8 +873,9 @@ small, fast surface, and everything else happens behind them.
    dropped.
 6. A delegation that stops to ask the user something is reported in that closing report as a
    question, in `questionsForUser` — see **Questions for the user** below.
-7. What a delegation's tools read or change is reported the moment a tool answers, in
-   `affectedEntities` — see [What a request touches](#affected-entities) below.
+7. What a delegation's tools read or change is reported in `affectedEntities`, the request's first
+   things shortly after a tool answers and later ones with the next report — see
+   [What a request touches](#affected-entities) below.
 
 **How long the answer is:** the planner labels every request with a `responseStyle`, by where its
 value lands (`RESPONSE_STYLES` in `routing/planner.ts`):
@@ -1000,19 +1001,40 @@ but the glow waits on it. The calendar list keeps Google's retries, because it i
    failed validation (`{ error: true, … }`) and a failed workflow tool (`{ error, runId }`) as
    ordinary results, and `readAffectedEntities` skips both before a reader sees them.
 2. Each thing is reported once per request, at most `MOST_AFFECTED_ENTITIES_PER_REQUEST` (20) of
-   them, and nothing is recorded once the user has asked to be notified. A new one wakes a parked
-   poll.
-3. The poll returns it in `affectedEntities`, and the instructions open with
+   them, and nothing is recorded once the user has asked to be notified. Only the request's
+   **first** batch may end a parked poll by itself, and only once `AFFECTED_ENTITIES_GRACE_MS`
+   (450 ms) has passed — see the rule below.
+3. The poll returns them in `affectedEntities`, and the instructions open with
    `MARK_AFFECTED_INSTRUCTIONS`: call the `markAffected` client tool with exactly those entities,
    silently, before anything else, and never retry it. Silent covers the call and the list, not the
    things: "which kitchen lights are on?" is answered by naming the lights the lookup touched, so
    only the `affectedEntities` list and its ids are kept out of what he hears, and the clause says
    the rest of the report names things as it always would. When that is all the response has, it then
-   says to poll again at once and say nothing. Results, the slow-work offer, the closing report and
-   the reply to `notifyWhenDone` all carry whatever has not been reported yet, the instruction first.
+   says to poll again at once and say nothing. Results, the slow-work offer, the closing report, the
+   reply to `notifyWhenDone` and the response a poll gives when it runs out its deadline all carry
+   whatever has not been reported yet, the instruction first.
 
-The price is a round trip: a response with nothing but new entities costs the voice model one step
-to call `markAffected` and poll again, on every device, including those that light nothing up.
+**When things touched may end a poll.** A response with nothing but entities costs the voice model
+a whole step — call `markAffected`, poll again — and routing is never told which device a
+conversation is on, so it costs that step on phones, watches and speakers that light nothing up,
+too. So it is rationed (`RoutingProgress.affectedEntitiesMayEndAPoll` and `buildSnapshot` in
+`routing/controller.ts`):
+- The request's **first** batch may end a parked poll by itself, but only after
+  `AFFECTED_ENTITIES_GRACE_MS` (450 ms). A result, the slow-work offer or the closing report landing
+  inside that window goes out in the same response, with the entities in it. That is the usual shape
+  of a command — a tool answers, then the agent does — so a quick command costs no extra step at all.
+- Once any entities have been handed over, **later ones never end a poll by themselves**. A snapshot
+  with nothing else to say leaves them waiting, and they ride on the next response: results, the
+  slow-work offer, the closing report, the reply to `notifyWhenDone`, or the one a poll gives at its
+  deadline (`answeringAnyway`), which the voice model had to take a step for regardless.
+
+The cost that remains, deliberately: at most one extra voice-model step per request, when nothing
+lands within the window — on every device, since routing cannot tell them apart; the first glow on
+the headset up to 450 ms later than it could be; and a later thing's glow waiting for the next
+response, up to the poll deadline. `affected-entities-interview.spec.ts` pins both ends: a quick
+command answers in one response carrying all it touched, and a held one gets exactly one
+entities-only response.
+
 `MARK_AFFECTED_TOOL` (`'markAffected'`) has to match the ElevenLabs agent's configuration and prompt
 and every client that registers the tool; whether a conversation is on a device that lights things
 up is for the agent prompt to say.

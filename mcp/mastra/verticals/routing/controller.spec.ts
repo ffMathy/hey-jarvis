@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { markAsAffectingEntities } from '../../utils/affected-entities.js';
 import { markAsSlow } from '../../utils/slow-tasks.js';
 import {
+  AFFECTED_ENTITIES_GRACE_MS,
   asRoutingEvents,
   buildSnapshot,
   getRoutingRuntime,
@@ -348,14 +349,14 @@ describe('a delegation whose tool touched things', () => {
     touch(progress, LOCATION_STEP, { id: 'light.sofa_lamp' }, { id: 'light.porch', name: 'Porch' });
     touch(progress, WEATHER_STEP, { id: 'light.sofa_lamp', name: 'Sofa lamp' }, { id: 'light.porch' });
 
-    expect(buildSnapshot(progress).newlyAffected).toEqual([
+    expect(buildSnapshot(progress, { answeringAnyway: true }).newlyAffected).toEqual([
       { id: 'light.sofa_lamp', name: 'Sofa lamp' },
       { id: 'light.porch', name: 'Porch' },
     ]);
 
     // Handed over by that snapshot, and not reported again when a later tool touches it too.
     touch(progress, CALENDAR_STEP, { id: 'light.porch', name: 'Porch' });
-    expect(buildSnapshot(progress).newlyAffected).toEqual([]);
+    expect(buildSnapshot(progress, { answeringAnyway: true }).newlyAffected).toEqual([]);
   });
 
   it(`reports no more than ${MOST_AFFECTED_ENTITIES_PER_REQUEST} things for one request`, () => {
@@ -364,22 +365,9 @@ describe('a delegation whose tool touched things', () => {
     touch(progress, LOCATION_STEP, ...lights.slice(0, 15));
     touch(progress, LOCATION_STEP, ...lights.slice(15));
 
-    expect(buildSnapshot(progress).newlyAffected).toEqual(lights.slice(0, MOST_AFFECTED_ENTITIES_PER_REQUEST));
-  });
-
-  it('wakes a poll parked on the request', async () => {
-    const progress = startedPlan();
-    let woken = false;
-    const parked = progress.wait().then(() => {
-      woken = true;
-    });
-
-    await Promise.resolve();
-    expect(woken).toBe(false);
-
-    touch(progress, LOCATION_STEP, { id: 'light.sofa_lamp' });
-    await parked;
-    expect(woken).toBe(true);
+    expect(buildSnapshot(progress, { answeringAnyway: true }).newlyAffected).toEqual(
+      lights.slice(0, MOST_AFFECTED_ENTITIES_PER_REQUEST),
+    );
   });
 
   it('is not recorded once the user has asked to be notified, since no poll is left to carry it', () => {
@@ -387,7 +375,98 @@ describe('a delegation whose tool touched things', () => {
     progress.notifyWhenDone = true;
     touch(progress, LOCATION_STEP, { id: 'light.sofa_lamp' });
 
+    expect(buildSnapshot(progress, { answeringAnyway: true }).newlyAffected).toEqual([]);
+  });
+});
+
+/**
+ * When what a request touched may end a poll by itself.
+ *
+ * A response that carries nothing else costs the voice model a whole step on every device, the ones
+ * that light nothing up included -- so only the request's first things touched may end a poll alone,
+ * and only once `AFFECTED_ENTITIES_GRACE_MS` has given a result the chance to go out with them.
+ */
+describe('things touched, and a poll parked on the request', () => {
+  function touch(progress: RoutingProgress, delegationId: string, ...entities: { id: string; name?: string }[]) {
+    progress.handle({ type: 'delegation_affected_entities', delegationId, entities });
+  }
+
+  /** Parks a poll on the request, and says whether it has been woken. */
+  function park(progress: RoutingProgress) {
+    const parked = { woken: false };
+    void progress.wait().then(() => {
+      parked.woken = true;
+    });
+    return parked;
+  }
+
+  function sleep(milliseconds: number) {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+  }
+
+  it('wakes it for the first things touched once the grace window has passed, not before', async () => {
+    const progress = startedPlan();
+    const parked = park(progress);
+
+    touch(progress, LOCATION_STEP, { id: 'light.sofa_lamp' });
+    await sleep(AFFECTED_ENTITIES_GRACE_MS / 2);
+    expect(parked.woken).toBe(false);
+    // Nor may a poll arriving meanwhile take them alone.
     expect(buildSnapshot(progress).newlyAffected).toEqual([]);
+
+    await sleep(AFFECTED_ENTITIES_GRACE_MS / 2 + 100);
+    expect(parked.woken).toBe(true);
+    expect(buildSnapshot(progress).newlyAffected).toEqual([{ id: 'light.sofa_lamp' }]);
+  });
+
+  it('wakes it at once for a result landing inside the window, which carries the things with it', async () => {
+    const progress = startedPlan();
+    const parked = park(progress);
+
+    touch(progress, LOCATION_STEP, { id: 'light.sofa_lamp' });
+    progress.handle({ type: 'delegation_end', delegationId: LOCATION_STEP, result: { text: 'On.' }, isError: false });
+    await Promise.resolve();
+
+    expect(parked.woken).toBe(true);
+    const snapshot = buildSnapshot(progress);
+    expect(snapshot.landed.map((outcome) => outcome.taskId)).toEqual(['location']);
+    expect(snapshot.newlyAffected).toEqual([{ id: 'light.sofa_lamp' }]);
+  });
+
+  it('never wakes it for things touched after the first ones were handed over', async () => {
+    const progress = startedPlan();
+    touch(progress, LOCATION_STEP, { id: 'light.sofa_lamp' });
+    await sleep(AFFECTED_ENTITIES_GRACE_MS + 50);
+    expect(buildSnapshot(progress).newlyAffected).toEqual([{ id: 'light.sofa_lamp' }]);
+
+    const parked = park(progress);
+    touch(progress, WEATHER_STEP, { id: 'light.porch', name: 'Porch' });
+    await sleep(AFFECTED_ENTITIES_GRACE_MS + 50);
+
+    expect(parked.woken).toBe(false);
+    expect(buildSnapshot(progress).newlyAffected).toEqual([]);
+  });
+
+  it('carries later things on the next report, or on a poll that answers anyway', () => {
+    const progress = startedPlan();
+    touch(progress, LOCATION_STEP, { id: 'light.sofa_lamp' });
+    buildSnapshot(progress, { answeringAnyway: true });
+
+    touch(progress, LOCATION_STEP, { id: 'light.porch' });
+    progress.handle({ type: 'delegation_end', delegationId: LOCATION_STEP, result: { text: 'On.' }, isError: false });
+    expect(buildSnapshot(progress).newlyAffected).toEqual([{ id: 'light.porch' }]);
+
+    touch(progress, WEATHER_STEP, { id: 'light.garden' });
+    expect(buildSnapshot(progress).newlyAffected).toEqual([]);
+    expect(buildSnapshot(progress, { answeringAnyway: true }).newlyAffected).toEqual([{ id: 'light.garden' }]);
+  });
+
+  it('carries whatever is left on the closing report', () => {
+    const progress = startedPlan();
+    touch(progress, LOCATION_STEP, { id: 'light.sofa_lamp' });
+    progress.handle({ type: 'finished' });
+
+    expect(buildSnapshot(progress).newlyAffected).toEqual([{ id: 'light.sofa_lamp' }]);
   });
 });
 

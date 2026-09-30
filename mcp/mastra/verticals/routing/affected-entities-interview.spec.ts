@@ -236,9 +236,36 @@ describe('a light switched by voice, with the headset watching', () => {
     expect(reportedLater.flatMap((response) => response.affectedEntities ?? [])).toEqual([
       { id: 'light.pantry', name: 'Pantry' },
     ]);
+    // The first things touched had a response of their own; the pantry never does, and rides on the
+    // agent's answer instead -- a response with nothing else would cost the voice model a step.
     for (const response of reportedLater) {
       expect(response.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
+      expect(response.completedTaskResults).toEqual([{ id: 'lights', result: ANSWER }]);
     }
+  }, 60_000);
+
+  it('answers a quick command in one response, with everything it touched', async () => {
+    const house = fakeHomeAssistant();
+    restoreFetch = () => house.fetchSpy.mockRestore();
+    // The house answers at once, so the agent's answer lands inside the window the first things
+    // touched are held for -- the usual shape of a command on a phone, which lights nothing up.
+    house.letServiceCallThrough();
+
+    await executeTool(routeTool, { userQuery: REQUEST, async: false });
+
+    let first = await poll();
+    for (let attempt = 0; attempt < 10 && first.instructions.startsWith('Still processing'); attempt += 1) {
+      first = await poll();
+    }
+
+    expect(first.affectedEntities).toEqual([
+      { id: 'light.kitchen_ceiling', name: 'Kitchen ceiling' },
+      { id: 'light.kitchen_spots', name: 'Kitchen spots' },
+      { id: 'light.pantry', name: 'Pantry' },
+    ]);
+    expect(first.completedTaskResults).toEqual([{ id: 'lights', result: ANSWER }]);
+    expect(first.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
+    expect(first.instructions).not.toContain('Nothing has finished yet');
   }, 60_000);
 });
 

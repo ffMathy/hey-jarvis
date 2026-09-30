@@ -13,6 +13,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import {
+  AFFECTED_ENTITIES_GRACE_MS,
   buildSnapshot,
   DEFAULT_ROUTING_SESSION_ID,
   RoutingProgress,
@@ -88,8 +89,8 @@ const fakeRuntime: RoutingRuntime = {
     // into the buffer it was handed, so a new request must not be handed the same object.
     progressBySessionId.set(sessionId, new RoutingProgress());
   },
-  async poll(sessionId) {
-    return buildSnapshot(progressFor(sessionId));
+  async poll(sessionId, options) {
+    return buildSnapshot(progressFor(sessionId), options);
   },
   async waitForChange(_sessionId, deadlineMs) {
     // Nothing in these tests settles on its own — the spec arranges state up front — so a
@@ -522,11 +523,35 @@ describe('a request whose tools touch things', () => {
   const SOFA_LAMP = { id: 'light.sofa_lamp', name: 'Sofa lamp' };
   const PORCH = { id: 'light.porch', name: 'Porch' };
 
-  it('is reported at once, with Jarvis told to mark it first and poll again without a word', async () => {
-    await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the sofa lamp', async: false });
-    touchThings(DEFAULT_ROUTING_SESSION_ID, startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings'), SOFA_LAMP);
+  /**
+   * Has the polls wait on the request itself, as the real runtime's do, with a deadline long enough
+   * that only what the request does ends one: the default fake only ever runs out its deadline.
+   */
+  function waitOnTheRequest(deadlineMs = 5_000): void {
+    setRoutingRuntime({
+      ...fakeRuntime,
+      async waitForChange(sessionId, remainingMs) {
+        await Promise.race([progressFor(sessionId).wait(), new Promise((resolve) => setTimeout(resolve, remainingMs))]);
+      },
+    });
+    setPollDeadlineForTest(deadlineMs);
+  }
 
-    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+  /** Polls once, and says how long the poll took to answer. */
+  async function timedPoll(input: { notifyWhenDone?: boolean } = {}) {
+    const startedAt = Date.now();
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, input));
+    return { outcome, elapsedMs: Date.now() - startedAt };
+  }
+
+  it('ends a waiting poll with the first things touched once the grace window has passed', async () => {
+    waitOnTheRequest();
+    await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the sofa lamp', async: false });
+    const delegationId = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings');
+
+    const polled = timedPoll();
+    setTimeout(() => touchThings(DEFAULT_ROUTING_SESSION_ID, delegationId, SOFA_LAMP), 20);
+    const { outcome, elapsedMs } = await polled;
 
     expect(outcome.affectedEntities).toEqual([SOFA_LAMP]);
     expect(outcome.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
@@ -535,28 +560,80 @@ describe('a request whose tools touch things', () => {
     expect(outcome.taskIdsInProgress).toEqual(['internetOfThings']);
     expect(outcome.completedTaskResults).toBeUndefined();
     expect(outcome.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
+    // Held for the window, so the glow is late by that much and no more -- never by the deadline.
+    expect(elapsedMs).toBeGreaterThanOrEqual(AFFECTED_ENTITIES_GRACE_MS);
+    expect(elapsedMs).toBeLessThan(AFFECTED_ENTITIES_GRACE_MS + 1_000);
   });
 
-  it('wakes a poll that is already waiting, rather than holding the glow until its deadline', async () => {
-    // A runtime whose wait is the request's own, as the real one's is: the default fake only ever
-    // runs out its deadline, which is exactly what this must not do.
-    setRoutingRuntime({
-      ...fakeRuntime,
-      async waitForChange(sessionId, deadlineMs) {
-        await Promise.race([progressFor(sessionId).wait(), new Promise((resolve) => setTimeout(resolve, deadlineMs))]);
-      },
-    });
-    setPollDeadlineForTest(5_000);
-    await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the sofa lamp', async: false });
-    const delegationId = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings');
+  it('sends a result landing inside the window in the same response, sparing a step', async () => {
+    waitOnTheRequest();
+    await runWorkflow(routePromptWorkflow, { userQuery: 'sofa lamp on, and the weather', async: false });
+    const lamp = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings');
+    startDelegation(DEFAULT_ROUTING_SESSION_ID, 'weather');
 
-    const startedAt = Date.now();
-    const polled = runWorkflow(getNextInstructionsWorkflow, {});
-    setTimeout(() => touchThings(DEFAULT_ROUTING_SESSION_ID, delegationId, SOFA_LAMP), 20);
-    const outcome = resultOf(await polled);
+    const polled = timedPoll();
+    touchThings(DEFAULT_ROUTING_SESSION_ID, lamp, SOFA_LAMP);
+    setTimeout(() => finishDelegation(DEFAULT_ROUTING_SESSION_ID, lamp, { text: 'The sofa lamp is on.' }), 100);
+    const { outcome, elapsedMs } = await polled;
 
     expect(outcome.affectedEntities).toEqual([SOFA_LAMP]);
-    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    expect(outcome.completedTaskResults).toEqual([{ id: 'internetOfThings', result: 'The sofa lamp is on.' }]);
+    expect(outcome.instructions).toContain('More results have arrived');
+    expect(elapsedMs).toBeLessThan(AFFECTED_ENTITIES_GRACE_MS);
+  });
+
+  it('sends the closing report landing inside the window in the same response', async () => {
+    waitOnTheRequest();
+    await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the sofa lamp', async: false });
+    const lamp = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings');
+
+    const polled = timedPoll();
+    touchThings(DEFAULT_ROUTING_SESSION_ID, lamp, SOFA_LAMP);
+    setTimeout(() => {
+      finishDelegation(DEFAULT_ROUTING_SESSION_ID, lamp, { text: 'The sofa lamp is on.' });
+      endPlanRun(progressFor(DEFAULT_ROUTING_SESSION_ID));
+    }, 100);
+    const { outcome } = await polled;
+
+    expect(outcome.affectedEntities).toEqual([SOFA_LAMP]);
+    expect(outcome.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
+    expect(outcome.instructions).toContain('All tasks have completed');
+  });
+
+  it('never ends a poll for things touched after the first batch; they ride on the next report', async () => {
+    waitOnTheRequest();
+    await runWorkflow(routePromptWorkflow, { userQuery: 'the sofa lamp, then the porch', async: false });
+    const lamps = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings');
+    touchThings(DEFAULT_ROUTING_SESSION_ID, lamps, SOFA_LAMP);
+    expect((await timedPoll()).outcome.affectedEntities).toEqual([SOFA_LAMP]);
+
+    const polled = timedPoll();
+    touchThings(DEFAULT_ROUTING_SESSION_ID, lamps, PORCH);
+    setTimeout(() => finishDelegation(DEFAULT_ROUTING_SESSION_ID, lamps, { text: 'Both are on.' }), 800);
+    const { outcome, elapsedMs } = await polled;
+
+    // Woken by the result, well after the window: the porch did not end the poll by itself.
+    expect(elapsedMs).toBeGreaterThanOrEqual(700);
+    expect(outcome.affectedEntities).toEqual([PORCH]);
+    expect(outcome.completedTaskResults).toEqual([{ id: 'internetOfThings', result: 'Both are on.' }]);
+    expect(outcome.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
+  });
+
+  it('carries later things on the response a poll gives when it runs out its deadline', async () => {
+    waitOnTheRequest(AFFECTED_ENTITIES_GRACE_MS + 400);
+    await runWorkflow(routePromptWorkflow, { userQuery: 'the sofa lamp, then the porch', async: false });
+    const lamps = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings');
+    touchThings(DEFAULT_ROUTING_SESSION_ID, lamps, SOFA_LAMP);
+    await timedPoll();
+
+    touchThings(DEFAULT_ROUTING_SESSION_ID, lamps, PORCH);
+    const { outcome, elapsedMs } = await timedPoll();
+
+    expect(elapsedMs).toBeGreaterThanOrEqual(AFFECTED_ENTITIES_GRACE_MS + 350);
+    expect(outcome.affectedEntities).toEqual([PORCH]);
+    expect(outcome.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
+    expect(outcome.instructions).toContain('call getNextInstructionsWorkflow again at once');
+    expect(outcome.completedTaskResults).toBeUndefined();
   });
 
   it('puts marking them before the results that landed with them', async () => {

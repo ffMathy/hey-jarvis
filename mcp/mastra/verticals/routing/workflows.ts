@@ -204,8 +204,9 @@ const INSTRUCTIONS = {
     CONVERSATION_CONTROL_EXCEPTION,
   stillProcessing:
     'Still processing your request. Call getNextInstructionsWorkflow again to wait a bit longer for it to complete. Say nothing to the user in the meantime — he has already been told you are on it, and has no use for a running commentary on the waiting.',
-  // What follows the markAffected instruction when that is all a response has: nothing has
-  // finished, so this is the waiting instruction above, sent early for the glow's sake.
+  // What follows the markAffected instruction when that is all a response has: the request's first
+  // things touched, sent early for the glow's sake, or later ones a poll carries when it runs out its
+  // deadline. Nothing has finished, so this is the waiting instruction above.
   nothingFinishedYet:
     'Nothing has finished yet, so say nothing to the user — he has already been told you are on it. Then call getNextInstructionsWorkflow again at once.',
 } as const;
@@ -215,8 +216,9 @@ const INSTRUCTIONS = {
  *
  * Those are the things the request has just started reading or changing, and on sir's headset
  * `markAffected` lights up the ones he has placed in the room -- a glow that is only worth anything
- * while the work is still going on. So a poll returns the moment a tool reports one, with this in
- * front of whatever else the response says, and the call comes first.
+ * while the work is still going on. So the request's first things touched end a poll shortly after a
+ * tool reports them (see `AFFECTED_ENTITIES_GRACE_MS` in ./controller.ts), later ones ride on the
+ * next report, and this goes in front of whatever else the response says, so the call comes first.
  *
  * The rest is what a client tool needs said where it is asked for. It must be silent, because a tool
  * call sir can hear is not one (see `agent-prompt.md`). It must copy the entities exactly, because
@@ -631,7 +633,9 @@ const getNextInstructionsStep = createStep({
     // and the reply to that is Jarvis saying he will be told. A request that finished in the
     // meantime has nothing to notify about, and is reported by the loop below like any other.
     if (inputData.notifyWhenDone && (await runtime.notifyWhenDone(sessionId))) {
-      const snapshot = await runtime.poll(sessionId);
+      // The last response this conversation hears about the request, so it carries every thing
+      // touched that is still waiting.
+      const snapshot = await runtime.poll(sessionId, { answeringAnyway: true });
       if (!snapshot.finished) {
         return withAffectedEntities(
           {
@@ -650,9 +654,12 @@ const getNextInstructionsStep = createStep({
 
     // Each pass reads the delegations afresh. A snapshot marks whatever it reports as
     // handed over, so taking one and discarding it would lose those results -- every path
-    // out of this loop returns the snapshot it just took.
+    // out of this loop returns the snapshot it just took. Things touched that cannot end a
+    // poll by themselves are left waiting by a snapshot that has nothing else to say, and the
+    // pass at the deadline, which answers whatever it finds, carries them.
     while (true) {
-      const snapshot = await runtime.poll(sessionId);
+      const answeringAnyway = Date.now() >= deadlineAt;
+      const snapshot = await runtime.poll(sessionId, { answeringAnyway });
 
       // A finished request reports everything, including what earlier polls already
       // relayed, so a dropped response cannot lose a result for good.
@@ -665,15 +672,14 @@ const getNextInstructionsStep = createStep({
         return report;
       }
 
-      const remaining = deadlineAt - Date.now();
-      if (remaining <= 0) {
+      if (answeringAnyway) {
         return {
           instructions: INSTRUCTIONS.stillProcessing,
           taskIdsInProgress: snapshot.inProgress,
         };
       }
 
-      await runtime.waitForChange(sessionId, remaining);
+      await runtime.waitForChange(sessionId, deadlineAt - Date.now());
     }
   },
 });
