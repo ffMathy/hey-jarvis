@@ -665,7 +665,9 @@ src/ui3d/entity-tokens.ts       the orbs, entity-labels.ts their names, pointing
 
 **The registry** (`jarvis.horizon.entities`, version 1) keeps every entity ever marked, at most
 300, and never forgets a placed one; every `markAffected` report is recorded whatever the room is
-doing. It is written half a second after a change, and at once when placing things ends, when the
+doing. An id is any string the model sent, `__proto__` and `constructor` included, so entries are
+read only as the object's own (`knownEntity`, `hasAnchor`) and defined, never assigned, even when
+parsed. It is written half a second after a change, and at once when placing things ends, when the
 room closes and on `pagehide`. A placement is an offset in the space of one of at most four
 persistent anchors, because `local-floor` starts somewhere new every session: a drop reuses a
 located anchor within 2.5 m, otherwise makes a new one while the budget lasts, and falls back to

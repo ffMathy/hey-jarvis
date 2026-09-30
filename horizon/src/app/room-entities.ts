@@ -47,6 +47,8 @@ import {
   type EntityRegistry,
   entityLabel,
   forgetAnchor,
+  hasAnchor,
+  knownEntity,
   placedEntities,
   placeEntity,
   placementStateOf,
@@ -235,7 +237,7 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
   let drawnCoronas: { id: string; level: number; position: Vector3Like }[] = [];
 
   function labelOf(id: string): string {
-    const entity = store.registry.entities[id];
+    const entity = knownEntity(store.registry, id);
     return entity === undefined ? id : entityLabel(entity);
   }
 
@@ -288,7 +290,7 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
       }
       // Nobody waits for it any more, so an anchor no placement names — the one made for this drop —
       // is given back rather than left holding one of the origin's eight with nothing to find it by.
-      if (settled.kind === 'placed' && !Object.hasOwn(store.registry.anchors, settled.anchor)) {
+      if (settled.kind === 'placed' && !hasAnchor(store.registry, settled.anchor)) {
         releaseAnchors([settled.anchor]);
       }
     }
@@ -460,7 +462,7 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
 
   /** The entity `id` as the conversation is told about it: its id to act on, and its name to say. */
   function pointedEntity(id: string | undefined): PointedEntity | undefined {
-    const entity = id === undefined ? undefined : store.registry.entities[id];
+    const entity = id === undefined ? undefined : knownEntity(store.registry, id);
     if (entity === undefined) return undefined;
     return entity.name === undefined ? { id: entity.id } : { id: entity.id, name: entity.name };
   }

@@ -470,13 +470,13 @@ export function createRoomAnchors<Space, Transform>(
     },
     release,
     status(now) {
-      const anchors: Record<string, RoomAnchorState> = {};
       const notFound: string[] = [];
       for (const [uuid, entry] of stored) {
-        anchors[uuid] = entry.state;
         const waiting = entry.state === 'restoring' || entry.state === 'unlocated';
         if (waiting && !entry.everLocated && now - entry.askedAt >= NOT_FOUND_AFTER_SECONDS) notFound.push(uuid);
       }
+      // Defined from entries rather than assigned, since a stored handle is any string the page kept.
+      const anchors = Object.fromEntries([...stored].map(([uuid, entry]) => [uuid, entry.state]));
       return { anchors, notFound, pending: pending.length };
     },
   };
