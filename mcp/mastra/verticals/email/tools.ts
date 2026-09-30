@@ -1,6 +1,7 @@
 import { ConfidentialClientApplication } from '@azure/msal-node';
 import { z } from 'zod';
 import { getCredentialsStorage, getEmailStateStorage } from '../../storage/index.js';
+import { type AffectedEntity, markAsAffectingEntities } from '../../utils/affected-entities.js';
 import { createTool } from '../../utils/tool-factory.js';
 import { createAccessTokenCache, type IssuedAccessToken } from './access-token-cache.js';
 
@@ -740,6 +741,44 @@ export async function clearLastSeenEmailState(folder?: string): Promise<ClearLas
     message: 'Cleared last seen email state for all folders',
   };
 }
+
+/**
+ * Microsoft Graph's well-known mail folders, by the name its API takes, with what Outlook calls them.
+ */
+const WELL_KNOWN_MAIL_FOLDER_NAMES = new Map([
+  ['inbox', 'Inbox'],
+  ['drafts', 'Drafts'],
+  ['sentitems', 'Sent Items'],
+  ['deleteditems', 'Deleted Items'],
+  ['archive', 'Archive'],
+  ['junkemail', 'Junk Email'],
+  ['outbox', 'Outbox'],
+]);
+
+/**
+ * A mail folder as sir's headset records it: by the id `findEmails` takes for it, with its name
+ * when it is one of the well-known folders.
+ *
+ * A well-known folder is reported in lower case whatever case it was asked for in, since Graph
+ * reads them that way and the headset matches by id.
+ */
+export function describeMailFolder(folder: string): AffectedEntity {
+  const wellKnownFolder = folder.trim().toLowerCase();
+  const name = WELL_KNOWN_MAIL_FOLDER_NAMES.get(wellKnownFolder);
+  return name ? { id: wellKnownFolder, name } : { id: folder.trim() };
+}
+
+const findEmailsArgumentsSchema = z.object({ folder: z.string().default('inbox') });
+
+// Reading a folder is working on it. Deleting a message is left unmarked: which folder it was in
+// is not known without looking the message up first.
+markAsAffectingEntities(findEmails, (toolArguments) => [
+  describeMailFolder(findEmailsArgumentsSchema.parse(toolArguments).folder),
+]);
+markAsAffectingEntities(draftEmail, () => [describeMailFolder('drafts')]);
+markAsAffectingEntities(draftReply, () => [describeMailFolder('drafts')]);
+markAsAffectingEntities(updateDraft, () => [describeMailFolder('drafts')]);
+markAsAffectingEntities(sendEmail, () => [describeMailFolder('sentitems')]);
 
 // Export all tools together for convenience (email state functions are NOT tools)
 export const emailTools = {

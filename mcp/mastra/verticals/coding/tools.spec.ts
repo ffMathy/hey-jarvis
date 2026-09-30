@@ -9,6 +9,7 @@
  */
 
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
+import { readAffectedEntities } from '../../utils/affected-entities.js';
 import { isSlowTask } from '../../utils/slow-tasks.js';
 import { executeTool } from '../../utils/tool-factory.js';
 import { DEFAULT_OWNER, DEFAULT_REPOSITORY } from './repository.js';
@@ -16,9 +17,13 @@ import {
   analyzeCodebase,
   buildCodebaseQuestionTask,
   codingTools,
+  createGitHubIssue,
   listRepositoryIssues,
+  listUserRepositories,
   runCodingTask,
+  startCodingSession,
 } from './tools.js';
+import { implementFeatureWorkflow } from './workflows.js';
 
 /**
  * A stand-in for `fetch` that answers every request with `respond`, recording the URLs asked for.
@@ -199,5 +204,43 @@ describe('analyzeCodebase', () => {
 
   it('is one of the tools the coding agent is given', () => {
     expect(codingTools.analyzeCodebase).toBe(analyzeCodebase);
+  });
+});
+
+/**
+ * What the coding tools report as touched, which sir's headset lights up: the repository a tool
+ * works on, by its full name in lower case, defaulting to Jarvis's own as the tools do.
+ */
+describe('the repository a coding request touches', () => {
+  const jarvis = { id: 'ffmathy/hey-jarvis', name: 'hey-jarvis' };
+
+  it('is Jarvis’s own when none is named, and the one named otherwise', () => {
+    expect(readAffectedEntities(listRepositoryIssues.id, {}, { issues: [], total_count: 0 })).toEqual([jarvis]);
+    expect(readAffectedEntities(analyzeCodebase.id, { owner: 'ffMathy', repo: 'Dotfiles', question: 'q' }, {})).toEqual(
+      [{ id: 'ffmathy/dotfiles', name: 'Dotfiles' }],
+    );
+    expect(
+      readAffectedEntities(createGitHubIssue.id, { title: 't', body: 'b' }, { success: true, message: '' }),
+    ).toEqual([jarvis]);
+  });
+
+  it('is the repository an implementation was started in, read off the workflow the coding agent calls', () => {
+    expect(
+      readAffectedEntities(
+        `workflow-${implementFeatureWorkflow.id}`,
+        { inputData: { initialRequest: 'Add a tool' } },
+        {},
+      ),
+    ).toEqual([jarvis]);
+  });
+
+  it('is nothing for a session that did not start, or for a list of every repository', () => {
+    expect(readAffectedEntities(startCodingSession.id, { request: 'r' }, { success: false, message: 'no' })).toEqual(
+      [],
+    );
+    expect(readAffectedEntities(startCodingSession.id, { request: 'r' }, { success: true, message: 'ok' })).toEqual([
+      jarvis,
+    ]);
+    expect(readAffectedEntities(listUserRepositories.id, {}, { repositories: [], total_count: 0 })).toEqual([]);
   });
 });

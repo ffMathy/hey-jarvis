@@ -1,5 +1,6 @@
 import { pick, truncate } from 'lodash-es';
 import { z } from 'zod';
+import { type AffectedEntity, markAsAffectingEntities } from '../../utils/affected-entities.js';
 import { logger } from '../../utils/logger.js';
 import { markAsSlow } from '../../utils/slow-tasks.js';
 import { createTool, executeTool } from '../../utils/tool-factory.js';
@@ -12,7 +13,7 @@ import {
 } from './claude-sessions.js';
 import { octokit } from './github-client.js';
 import { buildSessionWorkInstructions } from './publish-session-work.js';
-import { DEFAULT_OWNER, DEFAULT_REPOSITORY } from './repository.js';
+import { DEFAULT_OWNER, DEFAULT_REPOSITORY, describeRepository } from './repository.js';
 import { buildSessionQuestionInstructions } from './session-questions.js';
 import { claudeSessionWatcher } from './session-watcher.js';
 
@@ -625,6 +626,25 @@ export const updateGitHubIssue = createTool({
     };
   },
 });
+
+/** The repository a tool names, each part defaulting to Jarvis's own as the tools themselves do. */
+const repositoryArgumentsSchema = z.object({ owner: z.string().optional(), repo: z.string().optional() });
+
+/** The repository a tool was pointed at, which is what it works on. */
+function readRepository(toolArguments: unknown): AffectedEntity[] {
+  const { owner, repo } = repositoryArgumentsSchema.parse(toolArguments);
+  return [describeRepository(owner, repo)];
+}
+
+// Listing or searching every repository is a survey, and a session's status or a message to it is
+// about the session rather than the code, so those tools are deliberately left unmarked.
+markAsAffectingEntities(listRepositoryIssues, readRepository);
+markAsAffectingEntities(analyzeCodebase, readRepository);
+markAsAffectingEntities(createGitHubIssue, readRepository);
+markAsAffectingEntities(updateGitHubIssue, readRepository);
+markAsAffectingEntities(startCodingSession, (toolArguments, toolResult) =>
+  z.object({ success: z.literal(true) }).safeParse(toolResult).success ? readRepository(toolArguments) : [],
+);
 
 // Export all tools together for convenience
 export const codingTools = {

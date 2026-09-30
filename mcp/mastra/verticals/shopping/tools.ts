@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { markAsAffectingEntities } from '../../utils/affected-entities.js';
 import { extractErrorMessage } from '../../utils/errors.js';
 import { createTool } from '../../utils/tool-factory.js';
 import { changeProductQuantity, clearCart, getCartContents, searchProductCatalog } from './bilka/client.js';
@@ -208,6 +209,24 @@ export const clearCartContents = createTool({
     return { success: true };
   },
 });
+
+/**
+ * Sir's basket at Bilka, as his headset records it.
+ *
+ * It is the one thing the shopping tools read and change, and it has no id of its own -- there is
+ * one basket, and no tool takes an id for it -- so it is given one here. The catalogue is not
+ * marked: a product found there is not yet anything of his.
+ */
+export const BILKA_BASKET = { id: 'bilka-basket', name: 'Shopping basket' };
+
+const basketChangesSchema = z.object({ results: z.array(z.object({ success: z.boolean() })) });
+
+markAsAffectingEntities(getCurrentCartContents, () => [BILKA_BASKET]);
+markAsAffectingEntities(clearCartContents, () => [BILKA_BASKET]);
+// Only a change that went through touched the basket.
+markAsAffectingEntities(setProductBasketQuantity, (_toolArguments, toolResult) =>
+  basketChangesSchema.parse(toolResult).results.some((result) => result.success) ? [BILKA_BASKET] : [],
+);
 
 export const shoppingTools = {
   findProductInCatalog,

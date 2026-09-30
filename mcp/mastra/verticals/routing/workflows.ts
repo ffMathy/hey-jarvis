@@ -1,6 +1,7 @@
 import { upperFirst } from 'lodash-es';
 import z from 'zod';
 import { createStep, createWorkflow } from '../../utils';
+import { type AffectedEntity, affectedEntitySchema } from '../../utils/affected-entities.js';
 import {
   DEFAULT_ROUTING_SESSION_ID,
   getRoutingRuntime,
@@ -31,6 +32,16 @@ import type { OpenQuestion } from './questions.js';
  * what the polls report. See ./controller.ts.
  */
 
+/**
+ * The client tool the voice agent lights things up with on sir's headset.
+ *
+ * It is not one of the routing tools: it lives on the ElevenLabs agent, and the headset answers it
+ * (see `hologram/` and `horizon/`), so the voice model keeps its two routing tools and only reaches
+ * for this one when a response here says to. The name has to match in all of those places -- here,
+ * the agent's configuration and prompt, and every client that registers it.
+ */
+export const MARK_AFFECTED_TOOL = 'markAffected';
+
 const inputSchema = z.object({
   // No default. This carried a worked example of a request -- weather, calendar, commute and
   // a lasagna recipe -- which meant a caller that forgot the field did not get an error but a
@@ -44,10 +55,15 @@ const inputSchema = z.object({
   // running side by side (see `plannerInstructions`), so splitting it here throws that away and
   // buys nothing. The description is where this has to be said, because it is what the voice model
   // reads when it decides what to put in the field.
+  //
+  // **What he points at travels here too.** On his headset, a context update names the thing sir is
+  // pointing at, and "turn that on" means it. Nothing but this string reaches the agents, so the
+  // thing has to be written into it, and by its id: the planner copies an id into the prompt it
+  // writes, and the agent acts on exactly that id rather than guessing which light "that" was.
   userQuery: z
     .string()
     .describe(
-      'Everything the user asked for in this turn, in one call. If they asked for two things — their calendar and their email, say — both belong in this one string: the plan splits the work itself and runs the independent parts at the same time, so a request sent in pieces is answered in pieces and later.',
+      'Everything the user asked for in this turn, in one call. If they asked for two things — their calendar and their email, say — both belong in this one string: the plan splits the work itself and runs the independent parts at the same time, so a request sent in pieces is answered in pieces and later. When he means something he is pointing at ("that", "this", "it") and a context update named it, add its name and id exactly as given: \'Turn that on (pointing at "Kitchen ceiling", light.kitchen_ceiling)\'.',
     ),
   async: z
     .boolean()
@@ -98,6 +114,12 @@ const instructionsOutputSchema = z.object({
     .array(z.string())
     .optional()
     .describe('Tasks that have just started work taking minutes rather than seconds'),
+  affectedEntities: z
+    .array(affectedEntitySchema)
+    .optional()
+    .describe(
+      `Things the request has just started reading or changing, to pass to ${MARK_AFFECTED_TOOL} exactly as given`,
+    ),
 });
 
 const pollInputSchema = z.object({
@@ -182,7 +204,32 @@ const INSTRUCTIONS = {
     CONVERSATION_CONTROL_EXCEPTION,
   stillProcessing:
     'Still processing your request. Call getNextInstructionsWorkflow again to wait a bit longer for it to complete. Say nothing to the user in the meantime — he has already been told you are on it, and has no use for a running commentary on the waiting.',
+  // What follows the markAffected instruction when that is all a response has: nothing has
+  // finished, so this is the waiting instruction above, sent early for the glow's sake.
+  nothingFinishedYet:
+    'Nothing has finished yet, so say nothing to the user — he has already been told you are on it. Then call getNextInstructionsWorkflow again at once.',
 } as const;
+
+/**
+ * What a response that carries `affectedEntities` asks for before anything else.
+ *
+ * Those are the things the request has just started reading or changing, and on sir's headset
+ * `markAffected` lights up the ones he has placed in the room -- a glow that is only worth anything
+ * while the work is still going on. So a poll returns the moment a tool reports one, with this in
+ * front of whatever else the response says, and the call comes first.
+ *
+ * The rest is what a client tool needs said where it is asked for. It must be silent, because a tool
+ * call sir can hear is not one (see `agent-prompt.md`). It must copy the entities exactly, because
+ * the headset matches them by id. And it must never be retried: a client that does not know the tool
+ * -- an app built before it, or the speaker firmware -- answers it with an error, and the loop's own
+ * rule is to retry a failed call at once. Whether the conversation is on a device that lights
+ * anything up at all is the agent prompt's to say, alongside the tool itself.
+ */
+export const MARK_AFFECTED_INSTRUCTIONS =
+  `affectedEntities lists what this request has just started reading or changing. Before anything else, call ` +
+  `${MARK_AFFECTED_TOOL} with exactly those entities, every id and name as given. It is silent: it only lights them ` +
+  'up on his headset, so never announce or mention it, never read an entity aloud, and never call it again if it ' +
+  'fails. ';
 
 /**
  * How to speak a result, by the style the planner gave the request (see `RESPONSE_STYLES`).
@@ -412,6 +459,28 @@ function questionsForUser(questions: OpenQuestion[]): { id: string; question: st
 }
 
 /**
+ * A report with the things the request has touched since the last poll put in front of it, if any.
+ *
+ * Every kind of report carries them -- a closing one included, since a command can finish in the
+ * time it takes to poll, and the headset keeps a record of everything Jarvis has touched as well as
+ * lighting it up.
+ */
+function withAffectedEntities<TReport extends { instructions: string }>(
+  report: TReport,
+  newlyAffected: AffectedEntity[],
+): TReport & { affectedEntities?: AffectedEntity[] } {
+  if (newlyAffected.length === 0) {
+    return report;
+  }
+
+  return {
+    ...report,
+    instructions: MARK_AFFECTED_INSTRUCTIONS + report.instructions,
+    affectedEntities: newlyAffected,
+  };
+}
+
+/**
  * The closing report, which carries every result the request produced rather than only the
  * ones that finished last.
  *
@@ -428,6 +497,11 @@ function questionsForUser(questions: OpenQuestion[]): { id: string; question: st
  * — and this one sweeps up anything that went missing on the way.
  */
 function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructionsOutputSchema> {
+  return withAffectedEntities(buildClosingReportOfResults(snapshot), snapshot.newlyAffected);
+}
+
+/** The closing report as the results and questions alone decide it. */
+function buildClosingReportOfResults(snapshot: RoutingSnapshot): z.infer<typeof instructionsOutputSchema> {
   if (snapshot.error) {
     // Whatever landed before the failure is still the user's answer to part of what he
     // asked, so it goes with the apology rather than being dropped alongside the rest.
@@ -473,28 +547,36 @@ function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructi
 }
 
 /**
- * A report covering the delegations that landed since the last poll, and any that have just
- * started something slow, if there is either.
+ * A report covering the delegations that landed since the last poll, any that have just started
+ * something slow, and anything the request has just touched, if there is any of that.
  */
 function buildProgressReport(snapshot: RoutingSnapshot): z.infer<typeof instructionsOutputSchema> | undefined {
   const hasResults = snapshot.landed.length > 0;
   const hasNewlySlow = snapshot.newlySlow.length > 0;
-  if (!hasResults && !hasNewlySlow) {
+  if (!hasResults && !hasNewlySlow && snapshot.newlyAffected.length === 0) {
     return undefined;
   }
 
-  return {
-    instructions: hasNewlySlow
-      ? slowTaskOfferInstructions(hasResults, snapshot.responseStyle)
-      : moreToComeInstructions(snapshot.responseStyle),
-    ...(hasResults && {
-      completedTaskResults: snapshot.landed.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
-    }),
-    // Answerable because the plan is written down before anything runs: what is still
-    // outstanding is known, not inferred from whatever happened to start.
-    taskIdsInProgress: snapshot.inProgress,
-    ...(hasNewlySlow && { slowTaskIds: snapshot.newlySlow }),
-  };
+  let instructions: string = INSTRUCTIONS.nothingFinishedYet;
+  if (hasNewlySlow) {
+    instructions = slowTaskOfferInstructions(hasResults, snapshot.responseStyle);
+  } else if (hasResults) {
+    instructions = moreToComeInstructions(snapshot.responseStyle);
+  }
+
+  return withAffectedEntities(
+    {
+      instructions,
+      ...(hasResults && {
+        completedTaskResults: snapshot.landed.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
+      }),
+      // Answerable because the plan is written down before anything runs: what is still
+      // outstanding is known, not inferred from whatever happened to start.
+      taskIdsInProgress: snapshot.inProgress,
+      ...(hasNewlySlow && { slowTaskIds: snapshot.newlySlow }),
+    },
+    snapshot.newlyAffected,
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -544,13 +626,16 @@ const getNextInstructionsStep = createStep({
     if (inputData.notifyWhenDone && (await runtime.notifyWhenDone(sessionId))) {
       const snapshot = await runtime.poll(sessionId);
       if (!snapshot.finished) {
-        return {
-          instructions: notifyWhenDoneInstructions(snapshot.landed.length > 0, snapshot.responseStyle),
-          ...(snapshot.landed.length > 0 && {
-            completedTaskResults: snapshot.landed.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
-          }),
-          taskIdsInProgress: snapshot.inProgress,
-        };
+        return withAffectedEntities(
+          {
+            instructions: notifyWhenDoneInstructions(snapshot.landed.length > 0, snapshot.responseStyle),
+            ...(snapshot.landed.length > 0 && {
+              completedTaskResults: snapshot.landed.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
+            }),
+            taskIdsInProgress: snapshot.inProgress,
+          },
+          snapshot.newlyAffected,
+        );
       }
 
       return buildClosingReport(snapshot);

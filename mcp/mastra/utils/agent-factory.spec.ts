@@ -16,7 +16,7 @@
 import { afterEach, describe, expect, it, setSystemTime } from 'bun:test';
 import type { LanguageModelV3CallOptions, LanguageModelV3StreamPart, LanguageModelV3Usage } from '@ai-sdk/provider';
 import { z } from 'zod';
-import { createAgent } from './agent-factory.js';
+import { createAgent, POINTED_AT_ID_GUIDELINE } from './agent-factory.js';
 import { createTool } from './tool-factory.js';
 
 /** A provider's token accounting, which nothing here looks at but the stream shape requires. */
@@ -181,6 +181,7 @@ describe('createAgent instructions', () => {
         '',
         '# Additional context and guidelines',
         'Never ask questions. Always make best-guess assumptions.',
+        POINTED_AT_ID_GUIDELINE,
         `The time is currently: \`${now.toString()}\`.`,
       ].join('\n'),
     );
@@ -206,6 +207,7 @@ describe('createAgent instructions', () => {
         '',
         '# Additional context and guidelines',
         'Never ask questions. Always make best-guess assumptions.',
+        POINTED_AT_ID_GUIDELINE,
         `The time is currently: \`${now.toString()}\`.`,
       ].join('\n'),
     );

@@ -113,7 +113,13 @@ interface PollResponse {
   slowTaskIds?: string[];
 }
 
-/** The openings a response has when it closes a request, and only then. */
+/**
+ * The openings a response has when it closes a request, and only then.
+ *
+ * Searched for rather than expected at the start: a response that also carries what the request
+ * touched opens with the markAffected instruction instead (see `MARK_AFFECTED_INSTRUCTIONS`), and the
+ * coding agent's implementation workflow reports the repository it works on.
+ */
 const CLOSING_OPENINGS = ['All tasks have completed', 'The request could not be completed', 'Part of this request'];
 
 /** Says something to Jarvis, and does what he does: polls until the request is closed. */
@@ -122,7 +128,7 @@ async function say(userQuery: string): Promise<PollResponse> {
 
   for (let attempt = 0; attempt < 30; attempt += 1) {
     const response = (await executeTool(pollTool, {})) as PollResponse;
-    if (CLOSING_OPENINGS.some((opening) => response.instructions.startsWith(opening))) {
+    if (CLOSING_OPENINGS.some((opening) => response.instructions.includes(opening))) {
       return response;
     }
   }
@@ -219,7 +225,7 @@ describe('a coding request made by voice', () => {
 
     const response = await say(FEATURE_REQUEST);
 
-    expect(response.instructions).toStartWith('All tasks have completed');
+    expect(response.instructions).toContain('All tasks have completed');
     expect(response.questionsForUser).toBeUndefined();
     expect(response.slowTaskIds).toBeUndefined();
     expect(response.completedTaskResults).toEqual([{ id: 'feature', result: SESSION_STARTED }]);
@@ -247,7 +253,7 @@ describe('a question the Claude session asks along the way', () => {
     const response = await say(ANSWER);
 
     expect(line.sent).toEqual([{ sessionId: RECORDED_SESSION_ID, message: ANSWER }]);
-    expect(response.instructions).toStartWith('All tasks have completed');
+    expect(response.instructions).toContain('All tasks have completed');
     expect(response.completedTaskResults).toEqual([
       { id: TITLE, result: expect.stringContaining('Passed the answer on to the Claude Code session') },
     ]);
@@ -262,7 +268,7 @@ describe('a question the Claude session asks along the way', () => {
     const line = await sessionAsks(SESSION_QUESTION);
 
     const aside = await say('What is the meaning of life?');
-    expect(aside.instructions).toStartWith('The request could not be completed');
+    expect(aside.instructions).toContain('The request could not be completed');
     expect(listOpenQuestions()).toMatchObject([{ question: SESSION_QUESTION }]);
     expect(line.sent).toEqual([]);
 

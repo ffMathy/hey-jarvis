@@ -1,6 +1,12 @@
 import { getDistance } from 'geolib';
 import { chunk } from 'lodash-es';
 import { z } from 'zod';
+import {
+  type AffectedEntity,
+  affectedEntitySchema,
+  cleanAffectedEntities,
+  markAsAffectingEntities,
+} from '../../utils/affected-entities.js';
 import { logger } from '../../utils/logger.js';
 import { createTool } from '../../utils/tool-factory.js';
 import { createTtlCache } from '../../utils/ttl-cache.js';
@@ -147,6 +153,122 @@ export function normalizeDomain(domain: string): string {
   return normalized;
 }
 
+/** One target field of a service call: an id, a comma-separated string of them, or a list. */
+const serviceTargetIdsSchema = z.union([z.string(), z.array(z.string())]).optional();
+
+/** The target fields of a service call's data, which is otherwise free-form. */
+const serviceTargetSchema = z.object({
+  entity_id: serviceTargetIdsSchema,
+  area_id: serviceTargetIdsSchema,
+  device_id: serviceTargetIdsSchema,
+});
+
+/**
+ * The words Home Assistant reads in `entity_id` as "every entity" or "no entity" rather than as ids.
+ *
+ * Neither is resolved: every light in the house is a survey rather than something being worked on,
+ * and no entity is nothing to report.
+ */
+const ENTITY_ID_KEYWORDS = new Set(['all', 'none']);
+
+/**
+ * How long a service call waits for its targets to be resolved.
+ *
+ * The call is what sir is waiting for, and its targets only light them up on his headset, so a
+ * slow render gives up on the glow rather than holding up the answer.
+ */
+const TARGET_RESOLUTION_TIMEOUT_MS = 1_500;
+
+function idsOf(value: z.infer<typeof serviceTargetIdsSchema>): string[] {
+  const ids = typeof value === 'string' ? value.split(',') : (value ?? []);
+  return ids.map((id) => id.trim()).filter((id) => id.length > 0);
+}
+
+/**
+ * Renders the entities a service call targets, each with its name: the ids given, and every entity
+ * of the service's domain in the areas and devices given.
+ *
+ * Areas and devices are narrowed to the domain because that is what the service reaches --
+ * `light.turn_off` on the living room switches off its lights, not its speaker. The one domain that
+ * reaches everything is `homeassistant`, so it is not narrowed. Ids Home Assistant does not know are
+ * left out, since nothing was done to them.
+ *
+ * @param domain - Already passed through {@link normalizeDomain}, since it is written into the template
+ */
+function buildServiceTargetTemplate(
+  domain: string,
+  targets: { entityIds: string[]; areaIds: string[]; deviceIds: string[] },
+): string {
+  const inDomain = domain === 'homeassistant' ? 'true' : `e.startswith('${domain}.')`;
+
+  return `
+{%- set ns = namespace(ids=${JSON.stringify(targets.entityIds)}, items=[]) -%}
+{%- for a in ${JSON.stringify(targets.areaIds)} -%}
+  {%- for e in area_entities(a) if ${inDomain} -%}{%- set ns.ids = ns.ids + [e] -%}{%- endfor -%}
+{%- endfor -%}
+{%- for d in ${JSON.stringify(targets.deviceIds)} -%}
+  {%- for e in device_entities(d) if ${inDomain} -%}{%- set ns.ids = ns.ids + [e] -%}{%- endfor -%}
+{%- endfor -%}
+{%- for e in ns.ids|unique -%}
+  {%- set st = states[e] -%}
+  {%- if st -%}{%- set ns.items = ns.items + [{"id":e,"name":st.name|string}] -%}{%- endif -%}
+{%- endfor -%}
+{{ ns.items | to_json }}
+    `
+    .split('\n')
+    .map((line) => line.trim())
+    .join('\n');
+}
+
+async function renderServiceTargets(domain: string, data: Record<string, unknown>): Promise<AffectedEntity[]> {
+  const target = serviceTargetSchema.parse(data);
+  const entityIds = idsOf(target.entity_id).filter((id) => !ENTITY_ID_KEYWORDS.has(id.toLowerCase()));
+  const areaIds = idsOf(target.area_id);
+  const deviceIds = idsOf(target.device_id);
+  if (entityIds.length + areaIds.length + deviceIds.length === 0) {
+    return [];
+  }
+
+  const template = buildServiceTargetTemplate(normalizeDomain(domain), { entityIds, areaIds, deviceIds });
+  const response = await callHomeAssistantApi('template', 'POST', { template });
+  const parsed: unknown = typeof response === 'string' ? JSON.parse(response) : response;
+
+  return cleanAffectedEntities(z.array(affectedEntitySchema).parse(parsed));
+}
+
+/**
+ * The entities a service call reaches, for sir's headset to light up. Never rejects.
+ *
+ * Asked for alongside the call rather than after it, and given up on after
+ * {@link TARGET_RESOLUTION_TIMEOUT_MS}: an area's lights are only known to Home Assistant, and the
+ * call must never wait long on the answer, let alone fail over it.
+ */
+async function resolveServiceTargets(domain: string, data: Record<string, unknown>): Promise<AffectedEntity[]> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<AffectedEntity[]>((resolve) => {
+    timer = setTimeout(() => {
+      logger.warn('Gave up resolving the targets of a Home Assistant service call', { domain });
+      resolve([]);
+    }, TARGET_RESOLUTION_TIMEOUT_MS);
+  });
+
+  const resolved = renderServiceTargets(domain, data).catch((error: unknown) => {
+    logger.warn('Could not resolve the targets of a Home Assistant service call', {
+      domain,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  });
+
+  try {
+    return await Promise.race([resolved, timedOut]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const serviceCallResultSchema = z.object({ targets: z.array(affectedEntitySchema) });
+
 // Tool to call an IoT service
 export const callIoTService = createTool({
   id: 'callIoTService',
@@ -168,16 +290,22 @@ export const callIoTService = createTool({
       ),
   }),
   outputSchema: z.object({
-    success: z.boolean(),
-    domain: z.string(),
-    service: z.string(),
-    data: z.record(z.string(), z.unknown()),
-    message: z.string(),
+    success: z.boolean().describe('Whether Home Assistant accepted the call'),
+    domain: z.string().describe('The domain the service is in'),
+    service: z.string().describe('The service that was called'),
+    data: z.record(z.string(), z.unknown()).describe('The service data it was called with'),
+    message: z.string().describe('What happened, in a sentence'),
+    targets: z
+      .array(affectedEntitySchema)
+      .describe('The entities the call reached, each with its name; empty when Home Assistant could not say in time'),
   }),
   execute: async (inputData) => {
     const endpoint = `services/${inputData.domain}/${inputData.serviceId}`;
     const calledAt = Date.now();
-    await callHomeAssistantApi(endpoint, 'POST', inputData.data);
+    const [, targets] = await Promise.all([
+      callHomeAssistantApi(endpoint, 'POST', inputData.data),
+      resolveServiceTargets(inputData.domain, inputData.data),
+    ]);
     // The moment the house actually changes, which is what a slow request is measured against.
     logger.info('Called a Home Assistant service', {
       service: `${inputData.domain}.${inputData.serviceId}`,
@@ -190,9 +318,15 @@ export const callIoTService = createTool({
       service: inputData.serviceId,
       data: inputData.data,
       message: `Successfully called ${inputData.domain}.${inputData.serviceId}`,
+      targets,
     };
   },
 });
+
+markAsAffectingEntities(
+  callIoTService,
+  (_toolArguments, toolResult) => serviceCallResultSchema.parse(toolResult).targets,
+);
 
 // Tool to get logbook entries for an entity
 export const getEntityLogbook = createTool({
@@ -213,16 +347,18 @@ export const getEntityLogbook = createTool({
       .describe('ISO 8601 timestamp for the end of the time range (optional, defaults to now)'),
   }),
   outputSchema: z.object({
-    entityId: z.string(),
-    entries: z.array(
-      z.object({
-        when: z.string(),
-        name: z.string(),
-        message: z.string().optional(),
-        domain: z.string(),
-        state: z.string().optional(),
-      }),
-    ),
+    entityId: z.string().describe('The entity the entries are for'),
+    entries: z
+      .array(
+        z.object({
+          when: z.string().describe('When it happened, as an ISO 8601 timestamp'),
+          name: z.string().describe('The name of the entity it happened to'),
+          message: z.string().optional().describe('What happened, as the logbook words it'),
+          domain: z.string().describe('The domain of the entity'),
+          state: z.string().optional().describe('The state it changed to'),
+        }),
+      )
+      .describe('What happened to the entity in the time range, oldest first'),
   }),
   execute: async (inputData) => {
     const endTime = inputData.endTime || new Date().toISOString();
@@ -242,6 +378,17 @@ export const getEntityLogbook = createTool({
       })),
     };
   },
+});
+
+const logbookResultSchema = z.object({
+  entityId: z.string(),
+  entries: z.array(z.object({ name: z.string() })),
+});
+
+// Reading an entity's history is working on that entity, and the entries carry its name.
+markAsAffectingEntities(getEntityLogbook, (_toolArguments, toolResult) => {
+  const { entityId, entries } = logbookResultSchema.parse(toolResult);
+  return [{ id: entityId, name: entries.find((entry) => entry.name.length > 0)?.name }];
 });
 
 // Tool to get all devices (entities/states)
@@ -578,6 +725,16 @@ export interface EntitySummary {
 const ENTITY_SUMMARY_BATCH_SIZE = 250;
 
 /**
+ * The most entities a `findEntities` lookup can match and still count as the things a request is
+ * working on.
+ *
+ * "What lights are on in the kitchen" matches a handful, and those are what the answer is about.
+ * A lookup that matched more was a survey to choose from -- every light in the house -- and the
+ * entities then acted on are reported by the service call that acts on them.
+ */
+export const MOST_ENTITIES_A_LOOKUP_AFFECTS = 10;
+
+/**
  * The most entities `findEntities` hands back.
  *
  * Every entity listed is input the agent's next step has to read, and that is the step the
@@ -636,14 +793,16 @@ export const findEntities = createTool({
     search: z.string().optional().describe('Only entities whose id or name contains this, e.g. "lamp"'),
   }),
   outputSchema: z.object({
-    entities: z.array(
-      z.object({
-        id: z.string(),
-        name: z.string(),
-        area: z.string().nullable(),
-        state: z.string(),
-      }),
-    ),
+    entities: z
+      .array(
+        z.object({
+          id: z.string().describe('The entity id a service call targets it by'),
+          name: z.string().describe('What the entity is called'),
+          area: z.string().nullable().describe('The name of the area it is in, if any'),
+          state: z.string().describe('Its current state'),
+        }),
+      )
+      .describe('The entities that matched'),
     totalMatches: z
       .number()
       .describe('How many entities matched, which is more than were returned if the list was cut short'),
@@ -661,6 +820,16 @@ export const findEntities = createTool({
     const matches = filterEntities(entities, inputData);
     return { entities: matches.slice(0, MAX_ENTITIES_FOUND), totalMatches: matches.length };
   },
+});
+
+const foundEntitiesSchema = z.object({
+  entities: z.array(z.object({ id: z.string(), name: z.string() })),
+  totalMatches: z.number(),
+});
+
+markAsAffectingEntities(findEntities, (_toolArguments, toolResult) => {
+  const { entities, totalMatches } = foundEntitiesSchema.parse(toolResult);
+  return totalMatches > MOST_ENTITIES_A_LOOKUP_AFFECTS ? [] : entities.map(({ id, name }) => ({ id, name }));
 });
 
 const homeAreasSchema = z.array(z.object({ id: z.string(), name: z.string() }));

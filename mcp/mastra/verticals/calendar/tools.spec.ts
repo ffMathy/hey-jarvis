@@ -8,7 +8,18 @@
  */
 
 import { afterEach, describe, expect, it, setSystemTime } from 'bun:test';
-import { buildEventPatch, type CalendarEvent, collectEventsFromCalendars } from './tools.js';
+import { readAffectedEntities } from '../../utils/affected-entities.js';
+import {
+  buildEventPatch,
+  type CalendarEvent,
+  collectEventsFromCalendars,
+  createCalendarEvent,
+  deleteCalendarEvent,
+  describeCalendar,
+  getAllCalendars,
+  getCalendarEvents,
+  updateCalendarEvent,
+} from './tools.js';
 
 function event(id: string, calendarId: string, start: string): CalendarEvent {
   return { id, calendarId, summary: id, start, end: start, status: 'confirmed', htmlLink: `https://calendar/${id}` };
@@ -122,5 +133,44 @@ describe('buildEventPatch', () => {
       start: { dateTime: '2026-09-27T10:00:00Z', timeZone: 'UTC', date: null },
       end: { dateTime: '2026-09-27T11:00:00Z', timeZone: 'UTC', date: null },
     });
+  });
+});
+
+/**
+ * What the calendar tools report as touched, which sir's headset lights up: the calendar, by its
+ * real id, since that is what he places in the room -- not the events, which come and go.
+ */
+describe('the calendars a request touches', () => {
+  const list = [
+    { id: 'mathias@example.com', summary: 'Mathias', primary: true },
+    { id: 'family@group', summary: 'Family' },
+  ];
+  const family = { id: 'family@group', name: 'Family' };
+
+  it('names the account’s own calendar by its real id, whichever way it was asked for', () => {
+    expect(describeCalendar(list, 'primary')).toEqual({ id: 'mathias@example.com', name: 'Mathias' });
+    expect(describeCalendar(list, 'mathias@example.com')).toEqual({ id: 'mathias@example.com', name: 'Mathias' });
+    expect(describeCalendar(list, 'family@group')).toEqual(family);
+    expect(describeCalendar(list, 'someone-else@group')).toBeUndefined();
+  });
+
+  it('is the calendar an event was created, changed or deleted in', () => {
+    const changed = { id: 'e1', summary: 'Dinner', start: '', end: '', htmlLink: '', status: 'confirmed' };
+
+    for (const tool of [createCalendarEvent, updateCalendarEvent]) {
+      expect(readAffectedEntities(tool.id, {}, { ...changed, calendar: family })).toEqual([family]);
+    }
+    expect(readAffectedEntities(deleteCalendarEvent.id, {}, { success: true, message: '', calendar: family })).toEqual([
+      family,
+    ]);
+    expect(readAffectedEntities(createCalendarEvent.id, {}, changed)).toEqual([]);
+  });
+
+  it('is every calendar a lookup read', () => {
+    expect(readAffectedEntities(getCalendarEvents.id, {}, { events: [], calendars: [family] })).toEqual([family]);
+  });
+
+  it('is nothing for the list of every calendar, which is a survey', () => {
+    expect(readAffectedEntities(getAllCalendars.id, {}, { calendars: list })).toEqual([]);
   });
 });

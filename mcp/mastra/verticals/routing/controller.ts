@@ -1,5 +1,7 @@
 import type { Mastra } from '@mastra/core';
 import type { Agent } from '@mastra/core/agent';
+import { z } from 'zod';
+import { type AffectedEntity, readAffectedEntities } from '../../utils/affected-entities.js';
 import { logger } from '../../utils/logger.js';
 import { isSlowTask } from '../../utils/slow-tasks.js';
 import { sendCompletionNotice } from './completion-notice.js';
@@ -68,10 +70,22 @@ export type RoutingEvent =
   | { type: 'delegation_suspended'; delegationId: string; suspension: DelegationSuspension }
   /** A delegation started something marked slow. See `utils/slow-tasks.ts`. */
   | { type: 'delegation_slow'; delegationId: string }
+  /** A delegation's tool read or changed these things. See `utils/affected-entities.ts`. */
+  | { type: 'delegation_affected_entities'; delegationId: string; entities: AffectedEntity[] }
   /** The request failed outright. */
   | { type: 'error'; message: string }
   /** The plan run ended. */
   | { type: 'finished' };
+
+/**
+ * The most things one request reports as touched.
+ *
+ * Each is copied by the voice model into a `markAffected` call, token by token, on the path to
+ * sir's answer, and a request that switched off a whole floor has already said all it needs to by
+ * the twentieth light. The rest are dropped rather than queued: a glow that arrives after the
+ * answer lights up nothing.
+ */
+export const MOST_AFFECTED_ENTITIES_PER_REQUEST = 20;
 
 /** One delegation that has finished, as the poll loop reports it. */
 export interface DelegationOutcome {
@@ -125,6 +139,19 @@ export class RoutingProgress {
   /** Every task that started something slow, so each is announced once. */
   private readonly slowTaskIds = new Set<string>();
   /**
+   * Things the request's tools have read or changed, which the caller has not been told about yet.
+   *
+   * Reported the moment they arrive rather than with the results, because what they are for -- a
+   * glow on sir's headset around the thing being worked on -- is only worth anything while the work
+   * is still going on.
+   */
+  unannouncedAffectedEntities: AffectedEntity[] = [];
+  /**
+   * Each thing this request has reported as touched, so that none is reported twice and the total
+   * stays within {@link MOST_AFFECTED_ENTITIES_PER_REQUEST}.
+   */
+  private readonly affectedEntityIds = new Set<string>();
+  /**
    * Whether the user asked to be notified when this request is done.
    *
    * Such a request no longer belongs to the conversation that started it: a newer request does
@@ -164,7 +191,13 @@ export class RoutingProgress {
 
   /** Resolves when there is something new to say, or the request has ended. */
   wait(): Promise<void> {
-    if (this.pending.length > 0 || this.unannouncedSlowTaskIds.length > 0 || this.error || this.isFinished()) {
+    if (
+      this.pending.length > 0 ||
+      this.unannouncedSlowTaskIds.length > 0 ||
+      this.unannouncedAffectedEntities.length > 0 ||
+      this.error ||
+      this.isFinished()
+    ) {
       return Promise.resolve();
     }
     return new Promise<void>((resolve) => {
@@ -208,6 +241,9 @@ export class RoutingProgress {
         return;
       case 'delegation_slow':
         this.handleDelegationSlow(event);
+        return;
+      case 'delegation_affected_entities':
+        this.handleDelegationAffectedEntities(event);
         return;
       case 'error':
         this.fail(event.message);
@@ -287,6 +323,54 @@ export class RoutingProgress {
       this.unannouncedSlowTaskIds.push(delegation.taskId);
       this.wake();
     }
+  }
+
+  /**
+   * Records what a delegation's tool touched, each thing once, and wakes a poll to report it.
+   *
+   * Nothing is recorded once the user has asked to be notified: the conversation has moved on, and
+   * no poll is left to carry it to his headset.
+   */
+  private handleDelegationAffectedEntities(
+    event: Extract<RoutingEvent, { type: 'delegation_affected_entities' }>,
+  ): void {
+    if (this.notifyWhenDone) {
+      return;
+    }
+
+    const fresh: AffectedEntity[] = [];
+    for (const entity of event.entities) {
+      if (this.affectedEntityIds.has(entity.id)) {
+        // A later tool can name a thing an earlier one only gave the id of, and a name not yet
+        // handed over is still worth having -- it is the only label the headset has for it.
+        const waiting = this.unannouncedAffectedEntities.find((unannounced) => unannounced.id === entity.id);
+        if (waiting && !waiting.name && entity.name) {
+          waiting.name = entity.name;
+        }
+        continue;
+      }
+      if (this.affectedEntityIds.size >= MOST_AFFECTED_ENTITIES_PER_REQUEST) {
+        logger.info('Dropping things a request touched past the most it reports', {
+          delegationId: event.delegationId,
+          most: MOST_AFFECTED_ENTITIES_PER_REQUEST,
+        });
+        break;
+      }
+      this.affectedEntityIds.add(entity.id);
+      fresh.push(entity);
+    }
+
+    if (fresh.length === 0) {
+      return;
+    }
+
+    logger.info('Delegation touched things', {
+      delegationId: event.delegationId,
+      entityIds: fresh.map((entity) => entity.id),
+      elapsedMs: this.elapsedMs(),
+    });
+    this.unannouncedAffectedEntities.push(...fresh);
+    this.wake();
   }
 
   /** How long ago the request was started. */
@@ -374,6 +458,8 @@ export interface RoutingSnapshot {
   earlierQuestions: OpenQuestion[];
   /** Tasks that have started something slow since the last poll. */
   newlySlow: string[];
+  /** Things the request has read or changed since the last poll. */
+  newlyAffected: AffectedEntity[];
   /** How the planner said the request should be answered. */
   responseStyle: ResponseStyle;
   error?: string;
@@ -390,6 +476,8 @@ export function buildSnapshot(progress: RoutingProgress): RoutingSnapshot {
   progress.pending = [];
   const newlySlow = progress.unannouncedSlowTaskIds;
   progress.unannouncedSlowTaskIds = [];
+  const newlyAffected = progress.unannouncedAffectedEntities;
+  progress.unannouncedAffectedEntities = [];
 
   return {
     landed,
@@ -399,6 +487,7 @@ export function buildSnapshot(progress: RoutingProgress): RoutingSnapshot {
     questions: progress.questions,
     earlierQuestions: progress.earlierQuestions,
     newlySlow,
+    newlyAffected,
     responseStyle: progress.responseStyle,
     error: progress.error,
   };
@@ -531,7 +620,11 @@ function asWorkflowChunk(chunk: unknown): WorkflowChunk | undefined {
 export function asRoutingEvents(chunk: unknown, plan: RoutingPlan): RoutingEvent[] {
   const parsed = asWorkflowChunk(chunk);
   if (parsed?.type === 'workflow-step-output') {
-    return [...asSlowTaskEvents(parsed.payload, plan), ...asSuspensionEvents(parsed.payload, plan)];
+    return [
+      ...asSlowTaskEvents(parsed.payload, plan),
+      ...asAffectedEntityEvents(parsed.payload, plan),
+      ...asSuspensionEvents(parsed.payload, plan),
+    ];
   }
 
   if (parsed?.type !== 'workflow-step-result') {
@@ -633,6 +726,42 @@ function asSlowTaskEvents(payload: Record<string, unknown>, plan: RoutingPlan): 
 
   const delegationId = delegationIdOfStepOutput(payload, plan);
   return delegationId ? [{ type: 'delegation_slow', delegationId }] : [];
+}
+
+/**
+ * An agent's own `tool-result` chunk, as far as reading what the tool touched needs it.
+ *
+ * Parsed rather than duck-typed, since this is Mastra's undocumented chunk shape and a mismatch
+ * here is silent: the request runs and answers, and the headset simply never lights up.
+ * `affected-entities-interview.spec.ts` runs a real plan to pin it.
+ */
+const toolResultChunkSchema = z.object({
+  type: z.literal('tool-result'),
+  payload: z.object({ toolName: z.string(), args: z.unknown(), result: z.unknown() }),
+});
+
+/** What the tool behind one of an agent's chunks touched, if the chunk is a tool's result. */
+function affectedEntitiesOfChunk(chunk: unknown): AffectedEntity[] {
+  const toolResult = toolResultChunkSchema.safeParse(chunk);
+  if (!toolResult.success) {
+    return [];
+  }
+
+  const { toolName, args, result } = toolResult.data.payload;
+  return readAffectedEntities(toolName, args, result);
+}
+
+/**
+ * Things a delegation's tool read or changed, read off a step's streamed output.
+ *
+ * Seen the same way a slow tool is -- the agent step forwards its agent's chunks -- but from the
+ * tool's *result* rather than its call: what a lookup found, or which lights an area's service call
+ * reached, is only known once the tool has answered.
+ */
+function asAffectedEntityEvents(payload: Record<string, unknown>, plan: RoutingPlan): RoutingEvent[] {
+  const entities = affectedEntitiesOfChunk(payload.output);
+  const delegationId = entities.length > 0 ? delegationIdOfStepOutput(payload, plan) : undefined;
+  return delegationId ? [{ type: 'delegation_affected_entities', delegationId, entities }] : [];
 }
 
 /**
@@ -845,6 +974,10 @@ async function resumeWithAnswer(
       suspension = asDelegationSuspension(chunk) ?? suspension;
       if (isSlowToolCall(chunk)) {
         progress.handle({ type: 'delegation_slow', delegationId });
+      }
+      const entities = affectedEntitiesOfChunk(chunk);
+      if (entities.length > 0) {
+        progress.handle({ type: 'delegation_affected_entities', delegationId, entities });
       }
     }
 
