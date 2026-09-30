@@ -59,7 +59,11 @@ import { createSampleDriver, type SampleDriver } from './sample-driver';
 export interface RoomOptions {
   mode: RoomMode;
   createHologram: HologramFactory;
-  placement: PlacementPort;
+  /**
+   * Makes where he stands, once the room is open and drawing. The room model may start a worker,
+   * and one made before the stage or the hologram failed would have nothing left to dispose it.
+   */
+  createPlacement: () => PlacementPort;
   /** Absent in a room that does not listen: sample mode's. */
   wake?: WakePort;
   /** Absent in a room with no ElevenLabs session to hold — sample mode's; he then stays silent. */
@@ -152,6 +156,7 @@ function sceneName(model: AppModel): string {
 interface Room {
   stage: XrStage;
   hologram: HologramPort;
+  placement: PlacementPort;
   options: RoomOptions;
   now: () => number;
   model: AppModel;
@@ -217,6 +222,7 @@ function startRoom(
     anchors: createAnchorKeeper<XRSpace, XRRigidTransform>((position) => new XRRigidTransform(position)),
     depth: undefined,
     meter: createFrameRateMeter(),
+    placement: options.createPlacement(),
     holder,
     spot: undefined,
     pendingPlacement: undefined,
@@ -479,7 +485,7 @@ function release(room: Room) {
   room.hud?.dispose();
   room.hologram.dispose();
   room.conversation.dispose();
-  room.options.placement.dispose?.();
+  room.placement.dispose?.();
   room.stage.dispose();
   room.finish();
 }
@@ -488,7 +494,7 @@ function onFrame(room: Room, tick: XrFrameTick) {
   room.meter.frame(tick.time);
   room.options.debug.frames += 1;
   room.input.update(tick.frame, tick.referenceSpace);
-  room.options.placement.observe?.({
+  room.placement.observe?.({
     frame: tick.frame,
     referenceSpace: tick.referenceSpace,
     summoning: room.pendingPlacement !== undefined && !room.placing,
@@ -536,7 +542,7 @@ function placeIfAsked(room: Room, tick: XrFrameTick) {
   };
   room.placing = true;
   try {
-    const answer = room.options.placement.place(request);
+    const answer = room.placement.place(request);
     if (answer instanceof Promise) answer.then(placed, () => placed(fallbackPlacement(eye)));
     else placed(answer);
   } catch {
@@ -592,7 +598,7 @@ function describeSpot(spot: PlacementLike | undefined): string | undefined {
 function collectDiagnostics(room: Room): Diagnostics {
   const { stage, options, conversation } = room;
   const wake = options.wake?.health;
-  const described = options.placement.describe?.();
+  const described = room.placement.describe?.();
   return {
     scene: sceneName(room.model),
     xrVisibility: stage.visibility,

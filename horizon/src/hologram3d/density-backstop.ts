@@ -26,8 +26,13 @@ export const BACKSTOP_FLOOR = 0.125;
 /**
  * An interval this long is a stall — a tab switch, a shader compiled on first use, the headset
  * taken off — rather than a frame the GPU could not finish, and says nothing about the frame rate.
+ *
+ * No longer than the XR stage's LONGEST_FRAME_SECONDS, because that is where it caps every step
+ * it hands on: a stall of any length arrives here as exactly that, and a threshold above it would
+ * count every hitch of a summon as a dropped frame. A tenth of a second is still well clear of
+ * the slowest real frames, 36 Hz with every other frame of 72 dropped.
  */
-const STALL_SECONDS = 0.25;
+const STALL_SECONDS = 0.1;
 
 export function createDensityBackstop(): DensityBackstop {
   let density = 1;
