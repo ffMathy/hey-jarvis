@@ -182,8 +182,9 @@ after. The product rules pinned in `app-state.spec.ts`:
 events so each step sees the model the previous one left, and carries out the
 effects: it places him in the next XR frame (the head, the gaze or the ray of the
 select that summoned him, the depth probes), anchors the spot, drives the
-hologram from the conversation or from sample mode (`app/sample-driver.ts`, built
-from hologram's `moodOf` / `fillSimulatedSpectrum` / `simulatedUserAt`), and
+hologram from the conversation or from sample mode (`app/sample-driver.ts`, which
+only remembers the mood and takes what it hands the hologram from hologram's
+`createSampleDrive`, the code the phone's and the watch's sample hooks wrap), and
 arranges the panels: what is about him is world-locked under him; the hint and
 status line follow the gaze with a lag. A select also calls the wake engine's
 `rebuild` when it needs a gesture to get audio going again, since a select is the
@@ -519,11 +520,13 @@ as the reference the 3D look is checked against.
 
 Per frame, on the CPU:
 
-1. **The phone's clock** (`frame-clock.ts`): the same exported pieces
-   `hologram-view.tsx` composes, in the same order — the voice read every
-   READ_INTERVAL_MS (on the clock's own time), eased per frame, the tracker stepped
-   on the raw reading, thinking and leaving faded at their fixed rates, the lattice
-   eased — and the arrival restarted on `arrive()`.
+1. **The phone's clock** (`frame-clock.ts`): hologram's frame clock, the one
+   `hologram-view.tsx` steps in its frame callback — `advanceFrameClock` behind the
+   `frameStepSeconds` gate, drawn through `hologramFrameOf`: the voice eased per
+   frame, the tracker stepped on the raw reading, thinking and leaving faded at
+   their fixed rates, the lattice eased. This file keeps only what the headset does
+   differently: the voice is read every READ_INTERVAL_MS on the clock's own time,
+   and the arrival restarts on `arrive()` (`restartArrival`).
 2. **`analyseFrame`**, and CanvasKit drawing everything flat — the whorl, the core,
    the rim, the chips, the pulse — at **density 0**, which skips the body and the
    stream and nothing else (`flat-hologram.ts`). CanvasKit is the full build React

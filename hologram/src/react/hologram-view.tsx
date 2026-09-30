@@ -10,32 +10,26 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import {
-  advanceVoiceActivity,
+  advanceFrameClock,
   createDensityControl,
+  createFrameClockState,
   createHologramResources,
   createHologramScene,
-  createVoiceActivityState,
   type DensityPace,
   drawHologram,
-  easeBands,
-  easeHearing,
-  easeHearingLevel,
-  easeLevel,
   foldSpectrum,
+  frameStepSeconds,
   hearingFromPresence,
   hearingLevelFromVolume,
-  LEAVING_SECONDS,
-  MATERIALISE_SECONDS,
-  MINIMUM_FRAME_SECONDS,
+  hologramFrameOf,
   PARTICLE_COUNT,
   perceivedLevel,
   READ_INTERVAL_MS,
+  restartArrival,
   SCENE_SEED,
   seedFromRemembered,
   steerDensity,
-  THOUGHT_FADE_SECONDS,
   VOICE_BAND_COUNT,
-  voiceDrive,
 } from '../index';
 import type { JarvisVoice, UserVoice } from '../voice-contract';
 import { useIsForeground } from './is-foreground';
@@ -345,7 +339,8 @@ function JarvisHologramView({
   const speakingNow = useSharedValue(speaking);
   const thinkingNow = useSharedValue(thinking);
   const leavingNow = useSharedValue(leaving);
-  // Everything the drawing reads, in one value, advanced once a frame.
+  // Everything the drawing reads, in one value, advanced once a frame: the frame clock the headset
+  // steps too (see `frame-clock.ts` in the main entry).
   //
   // These were six shared values — the clock, the level, the bands, and the
   // tracker's agitation, burst age and burst count. Each write is a reason for the
@@ -355,17 +350,7 @@ function JarvisHologramView({
   // frame cannot see — whether the voice just started or stopped, and how long ago
   // the rim last threw chips — is the tracker's state, which rides along here so it
   // is advanced in place by the same `modify`.
-  const frame = useSharedValue({
-    time: 0,
-    level: 0,
-    bands: new Array(VOICE_BAND_COUNT).fill(0) as number[],
-    speaking,
-    thinking: 0,
-    presence: 1,
-    hearing: 0,
-    hearingLevel: 0,
-    activity: createVoiceActivityState(quietestSpeech),
-  });
+  const frame = useSharedValue(createFrameClockState(quietestSpeech, speaking));
 
   useEffect(() => {
     speakingNow.value = speaking;
@@ -500,10 +485,11 @@ function JarvisHologramView({
 
   const clock = useFrameCallback((info) => {
     waiting.value += (info.timeSincePreviousFrame ?? DEFAULT_FRAME_MS) / 1000;
-    if (waiting.value < MINIMUM_FRAME_SECONDS) {
+    // Nought while what has waited is still under MINIMUM_FRAME_SECONDS, and then the whole of it.
+    const deltaSeconds = frameStepSeconds(waiting.value);
+    if (deltaSeconds === 0) {
       return;
     }
-    const deltaSeconds = waiting.value;
     waiting.value = 0;
     // A frame has been asked for, so a picture is about to exist. Exactly 1 only before the fade
     // has started, so this runs once.
@@ -512,19 +498,17 @@ function JarvisHologramView({
     }
     frame.modify((current) => {
       'worklet';
-      current.time += deltaSeconds;
-      current.level = easeLevel(current.level, targetLevel.value, deltaSeconds);
-      current.bands = easeBands(current.bands, targetBands.value, deltaSeconds);
-      current.speaking = speakingNow.value;
-      // Toward whichever end the app is asking for, at a fixed rate: see THOUGHT_FADE_SECONDS.
-      const towardThought = (thinkingNow.value ? 1 : -1) * (deltaSeconds / THOUGHT_FADE_SECONDS);
-      current.thinking = Math.min(1, Math.max(0, current.thinking + towardThought));
-      const towardGone = (leavingNow.value ? -1 : 1) * (deltaSeconds / LEAVING_SECONDS);
-      current.presence = Math.min(1, Math.max(0, current.presence + towardGone));
-      current.hearing = easeHearing(current.hearing, targetHearing.value, deltaSeconds);
-      current.hearingLevel = easeHearingLevel(current.hearingLevel, targetHearingLevel.value, deltaSeconds);
-      advanceVoiceActivity(current.activity, targetLevel.value, deltaSeconds);
-      return current;
+      return advanceFrameClock(
+        current,
+        deltaSeconds,
+        targetLevel.value,
+        targetBands.value,
+        speakingNow.value,
+        thinkingNow.value,
+        leavingNow.value,
+        targetHearing.value,
+        targetHearingLevel.value,
+      );
     });
 
     if (frameRate === undefined) {
@@ -573,9 +557,7 @@ function JarvisHologramView({
     if (isForeground) {
       frame.modify((current) => {
         'worklet';
-        current.time = 0;
-        current.presence = 1;
-        return current;
+        return restartArrival(current);
       });
     }
     clock.setActive(isForeground);
@@ -588,7 +570,6 @@ function JarvisHologramView({
     // Read once: this is a copy out of the UI runtime, and the drawing wants nine
     // fields of it.
     const current = frame.value;
-    const activity = current.activity;
     const recorder = Skia.PictureRecorder();
     const bounds = Skia.XYWHRect(0, 0, drawnSize, drawnSize);
     const canvas = recorder.beginRecording(bounds);
@@ -599,32 +580,9 @@ function JarvisHologramView({
     if (background !== undefined) {
       canvas.drawColor(Skia.Color(background));
     }
-    drawHologram(
-      canvas,
-      drawnSize,
-      {
-        time: current.time,
-        // Judged against how loud this voice actually gets, not against full scale. A phone
-        // microphone in a quiet room never comes near 1, and the sphere answering the absolute
-        // number is why the user saw almost no change however far the answer was turned up.
-        level: voiceDrive(current.level, activity.loudest),
-        bands: current.bands,
-        speaking: current.speaking,
-        agitation: activity.agitation,
-        burstAge: activity.burstAge,
-        burstStrength: activity.burstStrength,
-        burstCount: activity.burstCount,
-        // The materialisation plays once, from the moment this canvas mounted.
-        appearance: Math.min(1, current.time / MATERIALISE_SECONDS),
-        thinking: current.thinking,
-        hearing: current.hearing,
-        hearingLevel: current.hearingLevel,
-        presence: current.presence,
-        density: density.value.density,
-      },
-      scene,
-      resources,
-    );
+    // The level judged against how loud this voice actually gets, and the materialisation played
+    // once from the start of the arrival: see `hologramFrameOf`.
+    drawHologram(canvas, drawnSize, hologramFrameOf(current, density.value.density), scene, resources);
     if (DRAWN_IN_A_LAYER) {
       canvas.restore();
     }

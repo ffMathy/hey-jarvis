@@ -36,8 +36,8 @@ that rule.
 
 | Entry | Imports | What it holds |
 | --- | --- | --- |
-| `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the clock the view runs him on (`frame-timing.ts`), the voice tracker, the simulated voices, sample mode's moods and readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the conversation itself: the session every device holds it in (`jarvis-session.ts`, its shapes in `session-contract.ts`), what its failures say (`failure-text.ts`), which of his lines it writes down (`written-caption.ts`), the headset's half-duplex fallback (`half-duplex.ts`), and the pieces it is built from — whether a conversation is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) |
-| `hologram/react` | React, Reanimated, Skia | the Skia canvas and the frame loop |
+| `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the frame clock every device steps him on (`frame-clock.ts`) and the numbers it runs by (`frame-timing.ts`), the voice tracker, the simulated voices, sample mode's moods, the voices each mood hands the sphere (`sample-drive.ts`) and its readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the conversation itself: the session every device holds it in (`jarvis-session.ts`, its shapes in `session-contract.ts`), what its failures say (`failure-text.ts`), which of his lines it writes down (`written-caption.ts`), the headset's half-duplex fallback (`half-duplex.ts`), and the pieces it is built from — whether a conversation is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) |
+| `hologram/react` | React, Reanimated, Skia | the Skia canvas and the frame callback that steps the frame clock |
 | `hologram/react/sample` | React, Reanimated — not Skia | sample mode's clock-made voice, mood toast and frame-rate readout, shared by the phone's sample screen and the watch's waiting screen |
 | `hologram/conversation` | React, `@elevenlabs/client`, `@livekit/react-native`'s audio session, hologram's own native greeting player (`expo-audio` in a browser) — not Skia | `useJarvisSession`, which hands the main entry's session the SDK, the greeting's player and the call's audio, and holds its snapshot for a screen |
 
@@ -194,7 +194,9 @@ listening lattice and the greeting to WebM for looking at.
 **Sample mode is shared, and only sample mode has a readout.** Both devices have one — the phone's
 before there is an account, the watch's while it waits for the phone — so the moods, their order,
 their names and the readout's text live in `sample-mode.ts`, and the voice hook, the mood toast and
-the frame-rate readout in `hologram/react/sample`. Each component takes a `style`: where it sits is
+the frame-rate readout in `hologram/react/sample`. The voices themselves are `sample-drive.ts`
+(`simulatedJarvisVoice`, `simulatedUserVoice` and, for a whole mode, `createSampleDrive`): the hooks
+wrap it, and the headset's sample mode calls it directly. Each component takes a `style`: where it sits is
 the app's decision, since a round watch face and a phone sheet want different places. The
 conversation screens show no frame rate and no particle count on either device.
 
@@ -265,7 +267,7 @@ client tool for it and see it as the agent hanging up.
 
 ## Worklets
 
-The drawing and the tracker both run on the UI thread under Reanimated, so every
+The drawing, the tracker and the frame clock all run on the UI thread under Reanimated, so every
 exported function carries the `'worklet'` directive, helpers are declared before
 their callers, and nothing closes over anything but its arguments and
 module-level constants. Breaking one of those rules fails at runtime on a device
@@ -289,13 +291,24 @@ than from copies of them. So the main entry exports what that needs:
 `analyseFrame` and its `HologramFrameState`, the per-fragment helpers
 (`readFragment`, `fragmentStrength`, `placeFragment`, `swirlFragment`,
 `latticeFragment`, `scanned`, `densityRowsEnd` and the rest), the body's and
-the stream's row layouts, and the constants they read; and `frame-timing.ts`,
-the view's clock — `READ_INTERVAL_MS`, `THOUGHT_FADE_SECONDS`,
-`LEAVING_SECONDS`, `MINIMUM_FRAME_SECONDS`, `SCENE_SEED` — which the view
-imports from there, as it does `MATERIALISE_SECONDS`. The view's frame loop
-itself is deliberately not shared: the headset's runs on XR frame time and
-resets the arrival on every summon, and extracting the phone's would rewrite
-the hot loop of two shipped apps for two constants' worth of gain.
+the stream's row layouts, and the constants they read; and the frame clock.
+
+The frame clock is one implementation, `frame-clock.ts`, stepped by both: a
+state made once (`createFrameClockState`), the gate that holds back a step
+under `MINIMUM_FRAME_SECONDS` (`frameStepSeconds`), the step itself
+(`advanceFrameClock`), the arrival's restart (`restartArrival`) and the frame
+the drawing is handed (`hologramFrameOf`), with the numbers it runs by in
+`frame-timing.ts`. The view calls them inside its frame callback's
+`frame.modify`; the headset's `horizon/src/hologram3d/frame-clock.ts` wraps
+them and keeps only what it does differently, which is when rather than
+what — it reads the voice on the clock's own time instead of on a JS-thread
+timer, and restarts the arrival on every summon instead of on coming back to
+the foreground. Because the step runs every frame under Hermes with no JIT,
+it takes the readings as positional arguments, allocates nothing, and must
+stay a worklet over that one state object. `frame-clock.spec.ts` keeps a
+frozen copy of the view's loop as it was before it was shared and steps both
+side by side, so a change to the step that alters the phone's frames by as
+much as the last bit fails there.
 
 Its conversation is the same session the phone and the watch hold theirs in
 (`createJarvisSession`, see "One conversation, three devices"), called
