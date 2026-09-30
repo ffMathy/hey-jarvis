@@ -87,8 +87,13 @@
       "dependsOn": ["^transit", "lint", "typecheck", "initialize"],
       "outputs": ["playwright-report/**", "test-results/**", "dist/**"]
     },
+    // Never cached: every package's `initialize` installs something outside the repository
+    // (ESPHome through pip, Playwright's browsers, the mastra CLI), so a cache hit replays the
+    // log, installs nothing, and whatever needed it finds it missing — which is how the firmware
+    // build failed with "ESPHome is not installed" right under a replayed pip install.
     "initialize": {
-      "cache": true
+      "cache": false,
+      "outputs": []
     },
     "//#install-skia": {
       "cache": false,
