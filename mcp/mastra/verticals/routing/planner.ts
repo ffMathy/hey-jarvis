@@ -3,9 +3,15 @@ import { z } from 'zod';
 import { createAgent, getModel } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
 import { getPublicAgents } from '..';
-import type { HomeCommand } from '../internet-of-things/home-commands.js';
-import { getHomeAreas } from '../internet-of-things/tools.js';
-import { classifyRequest, type FastRoute, getRoutingClassifier, type RoutableAgentSummary } from './classifier.js';
+import { getHomeServices, type HomeService } from '../internet-of-things/home-commands.js';
+import {
+  classifyRequest,
+  type FastRoute,
+  getRoutingClassifier,
+  type RelationToRunningRequest,
+  type RequestClassification,
+  type RoutableAgentSummary,
+} from './classifier.js';
 import type { PlannedChain } from './plan.js';
 import type { OpenQuestion } from './questions.js';
 import { RESPONSE_STYLE_DESCRIPTIONS, RESPONSE_STYLES, type ResponseStyle } from './response-styles.js';
@@ -256,10 +262,17 @@ export interface RoutingDecision {
   answers: PlannedAnswer[];
   responseStyle: ResponseStyle;
   /**
-   * A smart home command to carry out directly instead of running `chains`, which are then the
-   * fallback should Home Assistant refuse it (see `internet-of-things/home-commands.ts`).
+   * The service a smart home command is carried out with, directly rather than through `chains`,
+   * which are then the fallback should that decline or fail (see `internet-of-things/home-commands.ts`).
    */
-  homeCommand?: HomeCommand;
+  homeService?: HomeService;
+  /** The request is only about ending the call, so there is nothing to run. */
+  endsCall?: boolean;
+  /**
+   * How the request relates to the one still running in its session, when the classifier is sure.
+   * Left out, the new request supersedes the running one, as every request did before.
+   */
+  relationToRunningRequest?: RelationToRunningRequest;
 }
 
 /** Asks the planner for a plan. */
@@ -306,23 +319,63 @@ export async function planFromFastRoute(route: FastRoute, userQuery: string): Pr
     ),
     answers: [],
     responseStyle: route.responseStyle,
-    ...(route.homeCommand && { homeCommand: route.homeCommand }),
+    ...(route.homeService && { homeService: route.homeService }),
   };
+}
+
+/**
+ * The decision the classifier settles a request with on its own, or nothing when the planner should.
+ *
+ * An answer to a waiting question is the user's own words, which is what the planner is told to
+ * copy anyway, and a goodbye has nothing to run at all.
+ */
+export async function decisionFromClassification(
+  classification: RequestClassification,
+  userQuery: string,
+): Promise<RoutingDecision | undefined> {
+  const { responseStyle, relationToRunningRequest } = classification;
+  const relation = relationToRunningRequest && { relationToRunningRequest };
+
+  if (classification.endsCall) {
+    return { chains: [], answers: [], responseStyle, endsCall: true, ...relation };
+  }
+  if (classification.answeredQuestionId) {
+    return {
+      chains: [],
+      answers: [{ questionId: classification.answeredQuestionId, answer: userQuery }],
+      responseStyle,
+      ...relation,
+    };
+  }
+  if (classification.relationToRunningRequest === 'cancels') {
+    return { chains: [], answers: [], responseStyle: 'command', ...relation };
+  }
+  if (classification.fastRoute) {
+    return { ...(await planFromFastRoute(classification.fastRoute, userQuery)), ...relation };
+  }
+  return undefined;
 }
 
 /**
  * Decides what a request needs: the chains it runs as, and any answers it gave.
  *
  * The planner and the routing classifier (see `classifier.ts`) are asked at the same time. If the
- * classifier is sure one agent takes the request whole, that is the plan and the planner is
- * cancelled; otherwise the planner's plan is used, and the request waited no longer than it would
- * have without a classifier at all. A classifier that fails is logged and ignored, for the same
- * reason. Without a TypeSafe key there is no classifier, and this is the planner alone.
+ * classifier settles the request on its own -- one agent takes it whole, it only answers a waiting
+ * question, it is only a goodbye, or it only cancels the running request -- that is the decision
+ * and the planner is cancelled. Otherwise the planner's plan is used, and the request waited no
+ * longer than it would have without a classifier at all. A classifier that fails is logged and
+ * ignored, for the same reason. Without a TypeSafe key there is no classifier, and this is the
+ * planner alone.
+ *
+ * With a request still running, how the new one relates to it is wanted even when the planner
+ * answers first, so the classifier is then waited for -- it is the faster of the two, so that
+ * seldom costs anything.
  */
 export async function planDelegations(
   planner: Agent,
   userQuery: string,
   openQuestions: OpenQuestion[] = [],
+  runningRequest: string | undefined = undefined,
   classifier = getRoutingClassifier(),
 ): Promise<RoutingDecision> {
   const abortPlanner = new AbortController();
@@ -331,24 +384,35 @@ export async function planDelegations(
   }
 
   // Before either starts, so nothing is awaited between starting the planner and handling it.
-  // Areas are cached, and an empty list when Home Assistant is slow, so this never waits long.
-  const [agents, areas] = await Promise.all([getRoutableAgents(), getHomeAreas()]);
+  // Services are cached, and an empty list when Home Assistant is slow, so this never waits long.
+  const [agents, services] = await Promise.all([getRoutableAgents(), getHomeServices()]);
   const planned = planWithPlanner(planner, userQuery, openQuestions, abortPlanner.signal);
   const abortClassifier = new AbortController();
-  const fastRoute = classifyRequest(classifier, userQuery, agents, openQuestions, areas, abortClassifier.signal).catch(
-    (error: unknown) => {
-      if (!abortClassifier.signal.aborted) {
-        logger.warn('Routing classifier failed; using the planner', { error });
-      }
-      return undefined;
-    },
-  );
+  const classified = classifyRequest(
+    classifier,
+    userQuery,
+    { agents, openQuestions, services, runningRequest },
+    abortClassifier.signal,
+  ).catch((error: unknown) => {
+    if (!abortClassifier.signal.aborted) {
+      logger.warn('Routing classifier failed; using the planner', { error });
+    }
+    return undefined;
+  });
 
   try {
-    return await preferFastPlan(
+    const decision = await preferFastPlan(
       planned,
-      fastRoute.then((route) => (route ? planFromFastRoute(route, userQuery) : undefined)),
+      classified.then((classification) =>
+        classification ? decisionFromClassification(classification, userQuery) : undefined,
+      ),
     );
+    if (runningRequest === undefined || decision.relationToRunningRequest) {
+      return decision;
+    }
+
+    const relationToRunningRequest = (await classified)?.relationToRunningRequest;
+    return relationToRunningRequest ? { ...decision, relationToRunningRequest } : decision;
   } finally {
     // Whichever lost is working for nothing. Aborting the winner is a no-op.
     abortPlanner.abort();

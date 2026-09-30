@@ -30,6 +30,7 @@ import {
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow,
 } from './verticals/index.js';
+import { getHomeCommandClassifier } from './verticals/internet-of-things/home-commands.js';
 import {
   getInternetOfThingsAgent,
   internetOfThingsShortcuts,
@@ -145,9 +146,9 @@ export async function getMastra(): Promise<Mastra> {
       await getWeatherAgent(),
       await getWebResearchAgent(),
     ]),
-    // Only when TypeSafe is configured; without it routing plans every request with the planner.
-    // Registered so Studio traces its evaluations alongside the planner it races.
-    classifiers: toClassifierMap([getRoutingClassifier()]),
+    // Only when TypeSafe is configured; without it every decision falls back to what it was before.
+    // Registered so Studio traces their evaluations.
+    classifiers: toClassifierMap([getRoutingClassifier(), getHomeCommandClassifier()]),
     tools: {
       ...tokenUsageTools,
       ...calendarTools,

@@ -1,7 +1,6 @@
 import type { Classifier, ClassifierAnswers } from '@mastra/core/classifier';
 import { createClassifier } from '../../utils/index.js';
-import { type HomeCommand, homeCommandFrom, homeCommandQuestions } from '../internet-of-things/home-commands.js';
-import type { HomeArea } from '../internet-of-things/tools.js';
+import { type HomeService, homeServiceFrom, homeServiceQuestions } from '../internet-of-things/home-commands.js';
 import type { OpenQuestion } from './questions.js';
 import { RESPONSE_STYLE_DESCRIPTIONS, type ResponseStyle } from './response-styles.js';
 
@@ -16,10 +15,11 @@ import { RESPONSE_STYLE_DESCRIPTIONS, type ResponseStyle } from './response-styl
  *
  * So both run at once. When the classifier is sure that a single agent can carry the whole request
  * as it was said, the planner is cancelled and the request goes to that agent with the user's own
- * words as its prompt. Anything else -- several agents, one that needs another's answer first, an
- * answer to a waiting question, or simply a classifier that is not sure -- is left to the planner,
- * which is exactly as good as it was before any of this existed. Being wrong here costs a
- * wrong answer and being unsure costs nothing, so the bar is set high.
+ * words as its prompt. The same call settles the other decisions routing used to leave to the
+ * planner or to a rule of thumb: whether the request is only the answer to a question the user was
+ * asked, whether it is only a goodbye, and whether it replaces, cancels or adds to a request still
+ * running. Anything the classifier is not sure of is decided as it was before any of this existed.
+ * Being wrong here costs a wrong answer and being unsure costs nothing, so the bar is set high.
  */
 
 /** Registered on the Mastra instance under this key, so Studio shows its evaluations. */
@@ -51,21 +51,53 @@ export interface RoutableAgentSummary {
   description: string;
 }
 
+/** The choice for a request that is about the call itself: goodbye, that will be all, hang up. */
+const END_CALL = 'endCall';
+/** The choice for a request that answers none of the questions waiting on the user. */
+const NO_QUESTION = 'none';
+
 /**
- * Built per call, because the waiting questions change between requests.
+ * How a request relates to the one still running when it arrives.
  *
- * The home command questions are asked of every request rather than in a second call once it is
- * known to be one, because a second call would be a second round trip on exactly the requests
- * this is meant to speed up. They are left out when the areas are not known, since a command
- * cannot then be aimed at a room anyway.
+ * - `replaces`: a correction or a change of mind about it ("no, the kitchen").
+ * - `cancels`: stop it, and do nothing else ("never mind").
+ * - `adds`: a separate errand, which should not cost the running one its answer.
  */
-export function routingQuestions(agents: RoutableAgentSummary[], openQuestions: OpenQuestion[], areas: HomeArea[]) {
+export const RELATIONS_TO_RUNNING_REQUEST = ['replaces', 'cancels', 'adds'] as const;
+
+export type RelationToRunningRequest = (typeof RELATIONS_TO_RUNNING_REQUEST)[number];
+
+/** What the classifier is given besides the request itself. */
+export interface RoutingContext {
+  agents: RoutableAgentSummary[];
+  openQuestions: OpenQuestion[];
+  services: HomeService[];
+  /** The request still running in this session, if there is one. */
+  runningRequest?: string;
+}
+
+/**
+ * The questions put to Jev about one request, built per call because what they offer changes:
+ * the questions waiting on the user, the request still running, Home Assistant's services.
+ *
+ * Everything routing might want to know is asked in the one call, rather than in a second call
+ * once the first has answered, because a second call would be a second round trip on exactly the
+ * requests this is meant to speed up. The questions a request does not need -- no question waiting,
+ * nothing running, services unknown -- are left out.
+ */
+export function routingQuestions({ agents, openQuestions, services, runningRequest }: RoutingContext) {
   // Keyed by whatever the agents are called, so the choice is any string and is checked against
-  // the routable ids when it is read (see `fastRouteFrom`).
+  // the routable ids when it is read (see `readClassification`).
   const routeCriteria: Record<string, string | null> = {
     ...Object.fromEntries(agents.map((agent) => [agent.id, agent.description || null])),
     [SEVERAL]: 'More than one agent is needed, or one agent needs another agent to answer first',
     [NONE]: 'No agent covers this request',
+    [END_CALL]:
+      'The user is saying goodbye, says that will be all or that they are done, or asks to hang up or end the call',
+  };
+  const questionCriteria: Record<string, string> = {
+    ...Object.fromEntries(openQuestions.map((question) => [question.id, question.question])),
+    [NO_QUESTION]: 'It answers none of these questions',
   };
 
   return {
@@ -75,7 +107,8 @@ export function routingQuestions(agents: RoutableAgentSummary[], openQuestions: 
         'This is a request the user made to a voice assistant. Choose the one agent that can carry out ALL of it, ' +
         'exactly as it was said, knowing nothing else. Choose several when it asks for more than one thing that ' +
         'different agents cover, or when carrying it out needs something another agent would first have to look up ' +
-        '-- "the weather where I am" needs the location before the weather. Choose none when no agent covers it.',
+        '-- "the weather where I am" needs the location before the weather. Choose none when no agent covers it, ' +
+        'and endCall when it is only about ending the conversation.',
       criteria: routeCriteria,
     },
     responseStyle: {
@@ -85,13 +118,30 @@ export function routingQuestions(agents: RoutableAgentSummary[], openQuestions: 
         'kinds, pick the one that needs the most words.',
       criteria: RESPONSE_STYLE_DESCRIPTIONS,
     },
-    ...(areas.length > 0 && agents.some((agent) => agent.id === HOME_AGENT_ID) && homeCommandQuestions(areas)),
+    ...(services.length > 0 && agents.some((agent) => agent.id === HOME_AGENT_ID) && homeServiceQuestions(services)),
     ...(openQuestions.length > 0 && {
-      answersWaitingQuestion: {
+      answeredQuestion: {
+        type: 'choice' as const,
+        instructions:
+          'The assistant earlier asked the user these questions, which are still waiting for an answer. Which one, ' +
+          'if any, does this request answer?',
+        criteria: questionCriteria,
+      },
+      onlyAnAnswer: {
         type: 'boolean' as const,
-        instructions: `The assistant earlier asked the user these questions, which are still waiting for an answer:\n${openQuestions
-          .map((question) => `- ${question.question}`)
-          .join('\n')}\nIs this request, in whole or in part, the user's answer to one of them?`,
+        instructions:
+          'Is this request nothing but the reply to a question the assistant asked, with no new errand in it?',
+      },
+    }),
+    ...(runningRequest !== undefined && {
+      relationToRunningRequest: {
+        type: 'choice' as const,
+        instructions: `The assistant is still working on an earlier request: "${runningRequest}". How does this new request relate to it?`,
+        criteria: {
+          replaces: 'It corrects or changes the earlier request, or moves on from it so it is no longer wanted',
+          cancels: 'It only asks to stop or forget the earlier request, and asks for nothing new',
+          adds: 'It is a separate errand, and the earlier request is still wanted',
+        } satisfies Record<RelationToRunningRequest, string>,
       },
     }),
   };
@@ -103,43 +153,91 @@ export type RoutingAnswers = ClassifierAnswers<ReturnType<typeof routingQuestion
 export interface FastRoute {
   agentId: string;
   responseStyle: ResponseStyle;
-  /** Set when the request is a smart home command plain enough to carry out without the agent. */
-  homeCommand?: HomeCommand;
+  /**
+   * Set when the request is a smart home command and Jev is sure which service carries it out. The
+   * entities it acts on are chosen next (see `internet-of-things/home-commands.ts`).
+   */
+  homeService?: HomeService;
 }
 
 /**
- * Reads the classifier's answers into a route, or into nothing when the planner should decide.
- *
- * Pure, so every way of declining the fast path can be tested without a model.
+ * Everything routing took from the classifier about one request. Any field left out is one the
+ * classifier was not sure of, and routing decides it the way it did before there was a classifier.
  */
-export function fastRouteFrom(
+export interface RequestClassification {
+  /** One agent takes the whole request. */
+  fastRoute?: FastRoute;
+  /** The request is only the answer to this waiting question, in the user's own words. */
+  answeredQuestionId?: string;
+  /** The request is only about ending the call. */
+  endsCall?: boolean;
+  /** How the request relates to the one still running, when one is. */
+  relationToRunningRequest?: RelationToRunningRequest;
+  /** How the answer should sound, whenever the classifier is sure of anything else. */
+  responseStyle: ResponseStyle;
+}
+
+/** A choice, if the classifier is sure of it. A missing distribution means it is not. */
+function confidentChoice(answer: { choice: string; probabilities?: Record<string, number> }): string | undefined {
+  return (answer.probabilities?.[answer.choice] ?? 0) >= FAST_PATH_CONFIDENCE ? answer.choice : undefined;
+}
+
+function isRelationToRunningRequest(value: string): value is RelationToRunningRequest {
+  return (RELATIONS_TO_RUNNING_REQUEST as readonly string[]).includes(value);
+}
+
+/**
+ * Reads the classifier's answers into what routing can act on, leaving out whatever it is unsure of.
+ *
+ * Pure, so every way of declining can be tested without a model. A request that answers a waiting
+ * question is never also given a fast route: only the answer path or the planner can carry an
+ * answer back to the work that asked, so a request that might be one does not go to a single agent.
+ */
+export function readClassification(
   answers: RoutingAnswers,
-  routableAgentIds: ReadonlySet<string>,
-  areas: HomeArea[],
-): FastRoute | undefined {
-  const { choice, probabilities } = answers.route;
-  if (!routableAgentIds.has(choice)) {
-    return undefined;
-  }
-
-  // No distribution means no way of knowing how sure it is, which is the same as not being sure.
-  if ((probabilities?.[choice] ?? 0) < FAST_PATH_CONFIDENCE) {
-    return undefined;
-  }
-
-  // Only the planner can pull an answer out of a request and hand it back to the work that asked,
-  // so a request that might be one goes to the planner.
-  if (answers.answersWaitingQuestion && answers.answersWaitingQuestion.probability > 1 - FAST_PATH_CONFIDENCE) {
-    return undefined;
-  }
-
+  { agents, openQuestions, services }: Omit<RoutingContext, 'runningRequest'>,
+): RequestClassification {
   const responseStyle = answers.responseStyle.choice;
-  const homeCommand =
-    choice === HOME_AGENT_ID && responseStyle === 'command' && answers.homeAction && answers.homeArea
-      ? homeCommandFrom({ homeAction: answers.homeAction, homeArea: answers.homeArea }, areas, FAST_PATH_CONFIDENCE)
+  const relation = answers.relationToRunningRequest && confidentChoice(answers.relationToRunningRequest);
+  const classification: RequestClassification = {
+    responseStyle,
+    ...(relation && isRelationToRunningRequest(relation) && { relationToRunningRequest: relation }),
+  };
+
+  const route = confidentChoice(answers.route);
+  if (route === END_CALL) {
+    return { ...classification, endsCall: true };
+  }
+
+  const answered = answers.answeredQuestion && confidentChoice(answers.answeredQuestion);
+  const onlyAnAnswer = (answers.onlyAnAnswer?.probability ?? 0) >= FAST_PATH_CONFIDENCE;
+  if (
+    answered &&
+    answered !== NO_QUESTION &&
+    onlyAnAnswer &&
+    openQuestions.some((question) => question.id === answered)
+  ) {
+    return { ...classification, answeredQuestionId: answered };
+  }
+  // Anything short of sure that it answers nothing leaves the answer to the planner.
+  if (openQuestions.length > 0 && answered !== NO_QUESTION) {
+    return classification;
+  }
+
+  if (!route || !agents.some((agent) => agent.id === route)) {
+    return classification;
+  }
+
+  const homeService =
+    route === HOME_AGENT_ID && responseStyle === 'command' && answers.homeService && answers.homeCommandGivesSetting
+      ? homeServiceFrom(
+          { homeService: answers.homeService, homeCommandGivesSetting: answers.homeCommandGivesSetting },
+          services,
+          FAST_PATH_CONFIDENCE,
+        )
       : undefined;
 
-  return { agentId: choice, responseStyle, ...(homeCommand && { homeCommand }) };
+  return { ...classification, fastRoute: { agentId: route, responseStyle, ...(homeService && { homeService }) } };
 }
 
 let routingClassifier: Classifier | undefined;
@@ -158,20 +256,18 @@ export function getRoutingClassifier(): Classifier | undefined {
   return routingClassifier;
 }
 
-/** Asks the classifier whether one agent can take a request whole. */
+/** Asks the classifier everything routing can use about one request. */
 export async function classifyRequest(
   classifier: Classifier,
   userQuery: string,
-  agents: RoutableAgentSummary[],
-  openQuestions: OpenQuestion[],
-  areas: HomeArea[],
+  context: RoutingContext,
   abortSignal?: AbortSignal,
-): Promise<FastRoute | undefined> {
+): Promise<RequestClassification> {
   const { answers } = await classifier.evaluate({
     state: userQuery,
-    questions: routingQuestions(agents, openQuestions, areas),
+    questions: routingQuestions(context),
     abortSignal,
   });
 
-  return fastRouteFrom(answers, new Set(agents.map((agent) => agent.id)), areas);
+  return readClassification(answers, context);
 }

@@ -846,16 +846,30 @@ request faster, never slower. Without `HEY_JARVIS_TYPESAFE_AI_API_KEY` there is 
 every request is planned as before. The response-style wording lives in `response-styles.ts`, so
 the planner and the classifier describe the four styles identically.
 
-**The plainest smart home commands skip the agent too.** The same Jev call also asks which of a
-handful of everyday actions a request is (`HOME_ACTIONS` in `internet-of-things/home-commands.ts`:
-lights, switches, fans on/off, blinds open/close, media play/pause) and which area it names, or
-the whole home. When the request is routed to `internetOfThings` as a `command` and both answers
-clear the same bar, the Home Assistant service is called directly, with no model round trip at
-all. The result says how many devices changed state, and does not claim success when none did.
-Anything with a value, a named device, an exception or no room goes to the agent, and so does a
-command Home Assistant refuses: the same one-agent chain the request would have run is started
-instead. The classifier only picks from fixed lists, so it can never call a service outside
-`HOME_ACTIONS` or target an area the home does not have.
+**Smart home commands skip the agent too.** Home Assistant's own services, every one that
+targets entities with its name and description, fetched live and cached for ten minutes, ride
+along on the same Jev call: which service carries the request out, and whether the request gives a
+setting (a brightness, temperature, colour). When the request is routed to `internetOfThings` as a
+`command`, the service is sure, needs no required field and no setting was given, every entity
+that service can act on is fetched live and put to Jev as one yes/no each, with its name, area and
+state (`internet-of-things/home-commands.ts`). If every entity is settled one way or the other and
+at least one is chosen, the service is called on exactly those, with no language model involved.
+The result says how many devices changed state, and does not claim success when none did. Anything
+else (an unsure service or entity, a setting, more than 150 candidate entities, Home Assistant
+refusing the call) runs the same one-agent chain the request would have run anyway. Jev only picks
+from what Home Assistant listed, so it cannot call a service or touch an entity that does not exist.
+
+**The same call settles three more decisions** that used to fall to the planner or a rule of thumb:
+
+- **An answer to a waiting question.** When Jev is sure the request answers one of the open
+  questions and is nothing but that answer, it goes straight back to the work that asked, in the
+  user's own words, with no planner.
+- **A goodbye.** `endCall` is a route choice. A goodbye that reaches routing is handed straight
+  back to the voice agent's `end_call`, rather than reported as a request no agent could handle.
+- **A request arriving while another runs.** It joins the running request's report while it is
+  classified against it: `adds` keeps both and reports them together, `cancels` stops the running
+  one and says so, and a correction, or an unsure answer, supersedes it as every request used to.
+  `RoutingProgress.join` counts the requests reporting into it, and it finishes only when all do.
 
 Routing has been three things. A task DAG with a wave scheduler this vertical owned; then a
 supervisor agent delegating inside its own tool-call loop; now a plan. The middle one is why:
