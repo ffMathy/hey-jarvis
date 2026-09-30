@@ -16,10 +16,12 @@ import {
 import {
   createWorkflowApiHandler,
   extractWorkflowError,
+  MCP_PATH,
   PHOTO_SLOTS_ROUTE,
   PHOTO_UPLOAD_PATH,
   PHOTO_UPLOAD_ROUTE,
   type RegisteredApiRoute,
+  readsItsOwnBody,
   registerApiRoutes,
   registerWorkflowApi,
   withoutUploadToken,
@@ -153,9 +155,12 @@ let forwardedError: unknown;
  */
 let conversationVerdict: ConversationVerdict = 'live';
 const conversationsChecked: string[] = [];
+/** Whom each of those checks was asked on behalf of, in the same order. */
+const sourcesAsking: string[] = [];
 
-async function checkConversation(conversationId: string): Promise<ConversationVerdict> {
+async function checkConversation(conversationId: string, source: string): Promise<ConversationVerdict> {
   conversationsChecked.push(conversationId);
+  sourcesAsking.push(source);
   return conversationVerdict;
 }
 
@@ -183,13 +188,14 @@ async function readBody(response: Response) {
 
 beforeAll(async () => {
   const app = express();
-  // As the MCP server does it (`mcp-server.ts`): JSON everywhere but the photo routes, which read
-  // their own bodies, if at all.
+  // As the MCP server does it (`mcp-server.ts`), with the same check: JSON everywhere but the routes
+  // that read their own bodies, if at all.
+  const parseJson = express.json();
   app.use((request, response, next) => {
-    if (request.path.startsWith(`${PHOTO_UPLOAD_PATH}/`)) {
+    if (readsItsOwnBody(request.path)) {
       next();
     } else {
-      express.json()(request, response, next);
+      parseJson(request, response, next);
     }
   });
 
@@ -238,6 +244,7 @@ beforeEach(() => {
   forwardedError = undefined;
   conversationVerdict = 'live';
   conversationsChecked.length = 0;
+  sourcesAsking.length = 0;
 });
 
 describe('createWorkflowApiHandler', () => {
@@ -504,19 +511,28 @@ function putPhoto(uploadToken: string, body: Uint8Array<ArrayBuffer> = JPEG, con
   return putPhotoWith(uploadToken, { 'Content-Type': contentType }, body);
 }
 
+/** Asks for a photo slot at this path, however it is spelled, with these headers and this body. */
+function postToSlotPath(path: string, headers: Record<string, string>, body: string) {
+  return fetch(`${baseUrl}${path}`, { method: 'POST', headers, body, keepalive: false });
+}
+
 /** Asks for a photo slot as the phone does, with this body sent as it is. */
 function postSlotRequest(body: string, contentType = 'application/json') {
-  return fetch(`${baseUrl}${PHOTO_SLOTS_ROUTE}`, {
-    method: 'POST',
-    headers: { 'Content-Type': contentType },
-    body,
-    keepalive: false,
-  });
+  return postToSlotPath(PHOTO_SLOTS_ROUTE, { 'Content-Type': contentType }, body);
 }
 
 /** Asks for a photo slot for this conversation. */
 function askForSlot(conversationId: string = CONVERSATION_ID) {
   return postSlotRequest(JSON.stringify({ conversationId }));
+}
+
+/** Asks for a photo slot as a request Cloudflare passed on, from this address. */
+function askForSlotThroughCloudflare(connectingAddress: string) {
+  return postToSlotPath(
+    PHOTO_SLOTS_ROUTE,
+    { 'Content-Type': 'application/json', 'CF-Connecting-IP': connectingAddress },
+    JSON.stringify({ conversationId: CONVERSATION_ID }),
+  );
 }
 
 /** What a slot request answers with once it is granted. */
@@ -646,6 +662,70 @@ describe('a photo slot', () => {
       expect(forwardedError).toBeUndefined();
       expect(conversationsChecked).toEqual([]);
     });
+
+    it('without reading more than a kilobyte either at the same path spelled in capitals', async () => {
+      // Express routes these to the slot endpoint all the same. Had the server's own parser read the
+      // body first, the route's limit would never have applied, and the id would have been checked.
+      const body = JSON.stringify({ conversationId: CONVERSATION_ID, padding: 'x'.repeat(2048) });
+
+      for (const path of ['/API/PHOTOS/SLOTS', '/Api/Photos/Slots']) {
+        const response = await postToSlotPath(path, { 'Content-Type': 'application/json' }, body);
+
+        expect(response.status).toBe(400);
+        expect(await readBody(response)).toEqual({
+          success: false,
+          message: 'Send the id of the conversation the photo is for, as {"conversationId": "conv_…"}.',
+        });
+      }
+      expect(forwardedError).toBeUndefined();
+      expect(conversationsChecked).toEqual([]);
+    });
+  });
+
+  describe('counted against whoever asks', () => {
+    it('as the address Cloudflare says the request came from', async () => {
+      expect((await askForSlotThroughCloudflare('198.51.100.23')).status).toBe(201);
+
+      expect(sourcesAsking).toEqual(['198.51.100.23']);
+    });
+
+    it('as the address the connection came from, when the request did not come through Cloudflare', async () => {
+      expect((await askForSlot()).status).toBe(201);
+
+      // However the socket reports it: a dual-stack one says `::ffff:127.0.0.1`.
+      expect(sourcesAsking).toEqual(['127.0.0.1']);
+    });
+
+    it('as the address the connection came from, when the header holds no address', async () => {
+      await askForSlotThroughCloudflare('not an address');
+      await askForSlotThroughCloudflare('198.51.100.23, 198.51.100.24');
+
+      expect(sourcesAsking).toEqual(['127.0.0.1', '127.0.0.1']);
+    });
+
+    it('as one source for a whole IPv6 /64, however each address in it is written', async () => {
+      const addresses = [
+        '2001:db8:1:2::1',
+        '2001:0DB8:0001:0002:ffff:ffff:ffff:fffe',
+        '2001:db8:1:3::1',
+        '2001:db8::5',
+        '2001:db8:0:0:1::',
+        '::ffff:192.0.2.1',
+      ];
+      for (const address of addresses) {
+        await askForSlotThroughCloudflare(address);
+      }
+
+      expect(sourcesAsking).toEqual([
+        '2001:db8:1:2::/64',
+        '2001:db8:1:2::/64',
+        '2001:db8:1:3::/64',
+        '2001:db8:0:0::/64',
+        '2001:db8:0:0::/64',
+        // An IPv4 address written as IPv6 is the IPv4 address.
+        '192.0.2.1',
+      ]);
+    });
   });
 
   it('can be asked for by the browser build, from its own origin', async () => {
@@ -774,5 +854,37 @@ describe('the photo upload', () => {
     expect(withoutUploadToken('/api/photos/slots')).toBe('/api/photos/slots');
     expect(withoutUploadToken('/api/photos/slots?x=1')).toBe('/api/photos/slots?x=1');
     expect(withoutUploadToken('/api/shopping-list')).toBe('/api/shopping-list');
+    // Express routes a path in any case, so a token is taken out of one in any case too.
+    expect(withoutUploadToken('/API/Photos/Q2hhbmdlIG1lIHBsZWFzZQ')).toBe('/API/Photos/…');
+    expect(withoutUploadToken('/API/PHOTOS/SLOTS')).toBe('/API/PHOTOS/SLOTS');
+  });
+});
+
+describe('the server’s JSON parser', () => {
+  it('leaves the MCP endpoint and the photo routes to read their own bodies, however the path is spelled', () => {
+    const readingTheirOwn = [
+      MCP_PATH,
+      '/API/MCP',
+      `${MCP_PATH}/messages`,
+      PHOTO_SLOTS_ROUTE,
+      '/API/PHOTOS/SLOTS',
+      '/Api/Photos/Q2hhbmdlIG1lIHBsZWFzZQ',
+    ];
+
+    for (const path of readingTheirOwn) {
+      expect(readsItsOwnBody(path)).toBe(true);
+    }
+  });
+
+  it('reads every other body', () => {
+    for (const path of [
+      '/api/shopping-list',
+      '/API/SHOPPING-LIST',
+      '/api/mcpx',
+      PHOTO_UPLOAD_PATH,
+      '/api/photosx/slots',
+    ]) {
+      expect(readsItsOwnBody(path)).toBe(false);
+    }
   });
 });

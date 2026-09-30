@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test';
 import {
   claimUploadSlot,
   dismissPhoto,
@@ -129,6 +129,73 @@ describe('the photos kept', () => {
 
   it('are nothing to find when none has been kept', () => {
     expect(findPhoto(undefined, 0)).toBeUndefined();
+    expect(findPhoto('photo1', 0)).toBeUndefined();
+  });
+});
+
+/**
+ * The half hour kept on a timer, not only whenever the store is next touched.
+ *
+ * On Bun's fake timers, so that half an hour passes at once. Every look here asks at the moment the
+ * photo was kept, when a prune would let go of nothing: a photo that is gone is gone because its
+ * timer let go of it.
+ */
+describe('a photo whose half hour is up', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    // Before the real timers are back, so that the fake ones are what is stopped.
+    forgetPhotos();
+    jest.useRealTimers();
+  });
+
+  it('is let go of on time, though nothing has touched the store since', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0);
+
+    jest.advanceTimersByTime(KEEP_PHOTO_MS - 1);
+    expect(findPhoto('photo1', 0)?.photoId).toBe('photo1');
+
+    jest.advanceTimersByTime(1);
+    expect(findPhoto('photo1', 0)).toBeUndefined();
+    expect(photosWaiting(0)).toEqual([]);
+  });
+
+  it('is let go of on its own time, leaving a later photo its own', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0);
+    jest.advanceTimersByTime(60_000);
+    keepPhoto(PHOTO, 'image/jpeg', 0);
+
+    jest.advanceTimersByTime(KEEP_PHOTO_MS - 60_000);
+
+    expect(findPhoto('photo1', 0)).toBeUndefined();
+    expect(findPhoto('photo2', 0)?.photoId).toBe('photo2');
+  });
+
+  it('lets go of nothing else when it was let go of early to make room', () => {
+    for (let photo = 0; photo <= MAX_KEPT_PHOTOS; photo += 1) {
+      keepPhoto(PHOTO, 'image/jpeg', 0);
+    }
+    expect(findPhoto('photo1', 0)).toBeUndefined();
+
+    jest.advanceTimersByTime(KEEP_PHOTO_MS);
+
+    expect(findPhoto(undefined, 0)).toBeUndefined();
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('does not let go of a photo given its id after every photo was forgotten', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0);
+    forgetPhotos();
+    jest.advanceTimersByTime(KEEP_PHOTO_MS / 2);
+    const fresh = keepPhoto(PHOTO, 'image/jpeg', 0);
+
+    // When the forgotten photo1's half hour would have been up.
+    jest.advanceTimersByTime(KEEP_PHOTO_MS / 2);
+    expect(findPhoto('photo1', 0)).toBe(fresh);
+
+    jest.advanceTimersByTime(KEEP_PHOTO_MS / 2);
     expect(findPhoto('photo1', 0)).toBeUndefined();
   });
 });

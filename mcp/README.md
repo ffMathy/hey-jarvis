@@ -434,8 +434,10 @@ ElevenLabs needs. Studio on 4111 is therefore not reachable until you route a ho
    paths on the MCP hostname must bypass Access: `/artifacts/*`, the visualize vertical's pages, and
    `/api/photos/*`, where the phone asks for a photo slot and sends the photo without an Access
    token. Behind that bypass a slot is opened only for a conversation ElevenLabs reports as live on
-   Jarvis's agent, and a photo is taken only with the single-use token of a slot — see "MCP Server
-   Access" in [AGENTS.md](./AGENTS.md#mcp-server-access).
+   Jarvis's agent, and a photo is taken only with the single-use token of a slot. The server limits
+   how often each address can have a conversation checked, and a Cloudflare rate limiting rule on
+   `/api/photos/slots` turns a flood away before it reaches the tunnel — see "MCP Server Access" in
+   [AGENTS.md](./AGENTS.md#mcp-server-access) for both.
 
 ### If Studio is served from a different origin
 

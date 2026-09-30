@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import express, { type NextFunction, type Request, type Response, type Router } from 'express';
 import { type ZodTypeAny, z } from 'zod';
 import { extractErrorMessage } from '../../utils/errors.js';
@@ -164,6 +165,33 @@ export function registerWorkflowApi(router: Router, config: WorkflowApiConfig): 
 export const PHOTO_UPLOAD_PATH = '/api/photos';
 
 /**
+ * Where the MCP endpoint is served (`mcp-server.ts`). Declared here, beside the photo paths, because
+ * {@link readsItsOwnBody} has to know it, and this module can be imported without starting a server.
+ */
+export const MCP_PATH = '/api/mcp';
+
+/**
+ * Whether the route at this path reads its own body, so that the MCP server's JSON parser must leave
+ * the request alone: the MCP endpoint and its subpaths, which read the raw body, and everything under
+ * {@link PHOTO_UPLOAD_PATH}, which is open to anyone — an upload is turned away before anything a
+ * stranger sends is read (`claimSlotBeforeReading`), and a slot request reads its own body, a
+ * kilobyte at most (`readSlotRequest`).
+ *
+ * **Compared in lower case**, because Express matches routes without regard to case:
+ * `/API/PHOTOS/SLOTS` reaches the slot endpoint all the same, and a skip that missed it would let
+ * the server's parser read a hundred kilobytes first — after which the route's own parser, finding
+ * the body already read, would not apply its limit at all.
+ */
+export function readsItsOwnBody(path: string): boolean {
+  const lowerCasePath = path.toLowerCase();
+  return (
+    lowerCasePath === MCP_PATH ||
+    lowerCasePath.startsWith(`${MCP_PATH}/`) ||
+    lowerCasePath.startsWith(`${PHOTO_UPLOAD_PATH}/`)
+  );
+}
+
+/**
  * Where sir's phone asks for somewhere to send a photo, with the id of the conversation it is in.
  *
  * Under {@link PHOTO_UPLOAD_PATH} on purpose: that is the one path Cloudflare Access lets the phone
@@ -218,6 +246,60 @@ function answerPreflight(_request: Request, response: Response): void {
 /** What the phone sends to ask for a slot. */
 const slotRequestSchema = z.object({ conversationId: z.string() });
 
+/** How many of an IPv6 address's leading groups name the network it is in: its /64. */
+const IPV6_NETWORK_GROUPS = 4;
+
+/**
+ * The network an address counts as, for a limit per source: an IPv4 address is its own, and an IPv6
+ * address is its /64 — the block a single connection is handed, which lets whoever holds one ask from
+ * a new address every time. An IPv4 address written as IPv6 (`::ffff:192.0.2.1`, as a dual-stack
+ * socket reports one) is the IPv4 address.
+ */
+function networkOf(address: string): string {
+  const mappedIPv4 = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(address)?.[1];
+  if (mappedIPv4) {
+    return mappedIPv4;
+  }
+  if (isIP(address) !== 6) {
+    return address;
+  }
+
+  // Written out in full, without a zone (`%eth0`): `::` stands for however many groups of zeros are
+  // missing, and an IPv4 address at the end for two groups.
+  const [head = '', tail = ''] = address.replace(/%.*$/, '').split('::');
+  const headGroups = head ? head.split(':') : [];
+  const tailGroups = tail ? tail.split(':') : [];
+  const groupsIn = (groups: string[]) => groups.reduce((count, group) => count + (group.includes('.') ? 2 : 1), 0);
+  const zeros = Array.from({ length: 8 - groupsIn(headGroups) - groupsIn(tailGroups) }, () => '0');
+  const network = [...headGroups, ...zeros, ...tailGroups]
+    .slice(0, IPV6_NETWORK_GROUPS)
+    .map((group) => Number.parseInt(group, 16).toString(16));
+  return `${network.join(':')}::/64`;
+}
+
+/**
+ * Who is asking for a slot, as the key their checks are counted under
+ * (`MAX_CHECKS_PER_SOURCE_PER_MINUTE` in `vision/live-conversation.ts`).
+ *
+ * **`CF-Connecting-IP` when it holds an address.** Behind the Cloudflare tunnel every request arrives
+ * from `cloudflared`, so the socket's own address is the same for everyone, and one stranger's limit
+ * would be everyone's. Cloudflare sets this header on every request it passes to the tunnel, to the
+ * address the request came from, replacing any value the client sent, and the tunnel is the only way
+ * in from outside — so the header is trusted here, where it could not be if the port were open to the
+ * internet. What can still write it is a client on the LAN, which can reach the port directly and is
+ * not whom this limit is for; the process-wide limit bounds what it could do with it anyway.
+ *
+ * **The socket's address otherwise**: a request without the header did not come through the tunnel —
+ * from the LAN, or a spec — and whoever opened the connection is who is asking. Not
+ * `X-Forwarded-For`, which a client can fill with whatever it likes, and which Express reads only with
+ * `trust proxy` set.
+ */
+function whoIsAsking(request: Request): string {
+  const connectingAddress = request.get('CF-Connecting-IP')?.trim();
+  const address = connectingAddress && isIP(connectingAddress) ? connectingAddress : request.ip;
+  return networkOf(address ?? 'an unknown address');
+}
+
 /** How each way a slot can be refused is answered, by what the conversation check found. */
 const SLOT_REFUSALS: Record<Exclude<ConversationVerdict, 'live'>, { status: number; message: string }> = {
   malformed: {
@@ -246,10 +328,10 @@ const parseSlotRequest = express.json({ limit: '1kb' });
  * Reads the slot request's body: JSON, and at most a kilobyte.
  *
  * Its own parser rather than the server's, which skips everything under {@link PHOTO_UPLOAD_PATH}
- * (see `mcp-server.ts`): the request is open to anyone, and `{"conversationId": "conv_…"}` is a few
- * dozen bytes, so a stranger's hundred kilobytes are refused rather than read. A body the parser
- * refuses — too large, not JSON — is answered like any other that names no conversation, in the
- * envelope the phone reads, rather than by the server's error handler.
+ * (see {@link readsItsOwnBody}): the request is open to anyone, and `{"conversationId": "conv_…"}`
+ * is a few dozen bytes, so a stranger's hundred kilobytes are refused rather than read. A body the
+ * parser refuses — too large, not JSON — is answered like any other that names no conversation, in
+ * the envelope the phone reads, rather than by the server's error handler.
  */
 function readSlotRequest(request: Request, response: Response, next: NextFunction): void {
   parseSlotRequest(request, response, (error?: unknown) => {
@@ -281,7 +363,7 @@ function openSlotForLiveConversation(
           return;
         }
 
-        const verdict = await isLiveJarvisConversation(slotRequest.data.conversationId);
+        const verdict = await isLiveJarvisConversation(slotRequest.data.conversationId, whoIsAsking(request));
         if (verdict !== 'live') {
           refuseSlot(response, verdict);
           return;
@@ -360,8 +442,11 @@ function keepUploadedPhoto(request: Request, response: Response): void {
   } satisfies WorkflowApiResponse);
 }
 
-/** An upload token where the request log would show one: under the photo path, and not `slots`. */
-const UPLOAD_TOKEN_IN_PATH = new RegExp(`^(${PHOTO_UPLOAD_PATH}/)(?!slots(?:[/?#]|$))[^/?#]+`);
+/**
+ * An upload token where the request log would show one: under the photo path, and not `slots`. In
+ * any case, as Express routes them (see {@link readsItsOwnBody}).
+ */
+const UPLOAD_TOKEN_IN_PATH = new RegExp(`^(${PHOTO_UPLOAD_PATH}/)(?!slots(?:[/?#]|$))[^/?#]+`, 'i');
 
 /**
  * The request's path, with an upload token taken out, for logging.
@@ -379,8 +464,9 @@ export function withoutUploadToken(url: string): string {
  *
  * Answers in the JSON envelope every route here uses: `201` with `{ uploadToken, uploadPath,
  * expiresAt }`, or `400` for a body that names no conversation id, `403` for a conversation that is
- * not live on Jarvis's agent, `429` once the minute's checks are spent, `502` when ElevenLabs could
- * not confirm it, and `503` when this server has no ElevenLabs key or agent to check with.
+ * not live on Jarvis's agent, `429` once the minute's checks are spent — the asker's own
+ * ({@link whoIsAsking}), or the whole process's — `502` when ElevenLabs could not confirm it, and
+ * `503` when this server has no ElevenLabs key or agent to check with.
  *
  * @param isLiveJarvisConversation - The check to ask; the process's own unless a spec hands it a fake
  * @returns The registered path, for logging

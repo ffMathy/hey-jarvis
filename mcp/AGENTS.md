@@ -506,11 +506,20 @@ holding a secret. The check:
   body that cannot be read is *unverifiable*, and the slot is refused with `502`. A server without
   the API key or either agent id refuses every slot with `503`, and `mcp-server.ts` logs one warning
   at startup naming the missing variables (`whyPhotoSlotsAreOff`) — never a value.
-- **Is bounded**, since every check spends Jarvis's ElevenLabs quota: a conversation found live is
-  taken as live for a minute without asking again, and at most 30 checks a minute go upstream from
-  the whole process (beyond that, `429`). The body holds the whole transcript, emails and calendar
-  entries included, so it is never logged: at most the status and a refusal's `detail.code`, and
-  never the conversation id.
+- **Is bounded**, since every check spends up to four requests on Jarvis's ElevenLabs key. A
+  verdict is remembered for a minute — live, so three photos in a row cost one check, and not live, so
+  repeating a made-up id costs nothing upstream; an unverifiable one is never remembered. A check
+  that does go upstream counts twice: against whoever asked, at most 6 a minute
+  (`MAX_CHECKS_PER_SOURCE_PER_MINUTE`), and then against the whole process, at most 30 — beyond
+  either, `429`. The first is what keeps one stranger from spending the second, which would turn
+  away every photo sir sends for as long as they kept at it; a check refused for its source counts
+  against nothing else. Whoever asked is `CF-Connecting-IP`, which Cloudflare sets on every request
+  it passes to the tunnel, or the socket's address for a request that did not come through it, and
+  an IPv6 address counts as its /64 (`whoIsAsking` in `api/routes.ts`). The price of remembering
+  *not live* is a call so new that none of the three steps found it: that phone is turned away for
+  the rest of the minute too. The body holds the whole transcript, emails and calendar entries
+  included, so it is never logged: at most the status and a refusal's `detail.code`, and never the
+  conversation id.
 
 **Its limits are deliberate.** It proves only that whoever asks knows the id of a conversation live
 on Jarvis's agent. A conversation id is not a secret — it is in ElevenLabs' history, and the SDK
@@ -544,9 +553,12 @@ the phone ever sees it, and there is no key.
 **The photo store** (`vision/photos.ts`) is **in memory, in the MCP server's process, and nowhere
 else**: `/data` goes into every Home Assistant backup, and a photo of a letter does not belong there.
 Everything is bounded for the Pi — at most 20 open slots and 5 photos of at most 3 MB, oldest let go
-first, a photo kept for 30 minutes. An id is matched however a model wrote it ("Photo 3" is
-`photo3`), and a question that names no photo means the latest only if it is under three minutes
-old. Studio's process (`mastra dev`, 4111) has a store of its own that nothing fills, so photos can
+first, a photo kept for 30 minutes. Slots are pruned whenever the store is touched, but a photo's
+half hour is kept on an unref'd timer (`letGoOfPhotoOnTime`), because the privacy policy promises
+it: pruned only when touched, a photo shown late in the evening would stay in memory until someone
+next spoke to Jarvis. The timer carries the photo's id and nothing else, so a photo let go of early
+to make room is not held by it. An id is matched however a model wrote it ("Photo 3" is `photo3`),
+and a question that names no photo means the latest only if it is under three minutes old. Studio's process (`mastra dev`, 4111) has a store of its own that nothing fills, so photos can
 only be asked about through the MCP server.
 
 **The photo routes** (`api/routes.ts`) are reachable by anyone — the phone holds no Cloudflare Access
@@ -554,8 +566,9 @@ service token — and both answer in the routes' JSON envelope (`success`, `mess
 - **`POST /api/photos/slots`** (`PHOTO_SLOTS_ROUTE`) reads its own body, JSON of at most a kilobyte
   (`readSlotRequest`), and answers `201` with the slot; `400` for a body without a well-formed
   conversation id — one that is not JSON, or over a kilobyte, included — `403` for a conversation not
-  live on Jarvis's agent, `429` once the minute's checks are spent, `502` when ElevenLabs could not
-  confirm it, and `503` when this server cannot check at all. `registerApiRoutes(router, { isLiveJarvisConversation })` takes a stand-in for the check, which
+  live on Jarvis's agent, `429` once the minute's checks are spent — the asker's own or the whole
+  process's — `502` when ElevenLabs could not confirm it, and `503` when this server cannot check at
+  all. `registerApiRoutes(router, { isLiveJarvisConversation })` takes a stand-in for the check, which
   is how `routes.spec.ts` covers each answer without ElevenLabs.
 - **`PUT /api/photos/:uploadToken`** (`PHOTO_UPLOAD_ROUTE`) asks for no key, and **reads nothing until
   the request has earned it**, in this order:
@@ -563,12 +576,16 @@ service token — and both answer in the routes' JSON envelope (`success`, `mess
      — the slot is claimed before anything else happens, so it is read from once.
   2. Only then does `express.raw` read at most 3 MB.
 
-The JSON parser in `mcp-server.ts` skips everything under `/api/photos/` for the same reason, and the
-request log writes an upload's path without its token (`withoutUploadToken`, which leaves
-`/api/photos/slots` readable) and never with its headers or body. CORS allows any origin, `PUT`,
-`POST` and `OPTIONS`, and the `Content-Type` header: what lets a request through is written into it
-by the phone — the conversation id, the token — rather than anything a browser attaches by itself,
-and the browser build is served from GitHub Pages. Both paths answer an `OPTIONS` preflight.
+The JSON parser in `mcp-server.ts` skips everything under `/api/photos/` for the same reason
+(`readsItsOwnBody` in `api/routes.ts`, which `routes.spec.ts` mounts too), and the request log writes
+an upload's path without its token (`withoutUploadToken`, which leaves `/api/photos/slots` readable)
+and never with its headers or body. Both compare the path in any case, since Express routes
+`/API/PHOTOS/SLOTS` to the slot endpoint all the same: a skip that missed it would have let the
+server's parser read a hundred kilobytes, and the route's own kilobyte limit would never have
+applied. CORS allows any origin, `PUT`, `POST` and `OPTIONS`, and the `Content-Type` header: what
+lets a request through is written into it by the phone — the conversation id, the token — rather
+than anything a browser attaches by itself, and the browser build is served from GitHub Pages. Both
+paths answer an `OPTIONS` preflight.
 
 **Required Environment Variables:** none of its own. The check uses `HEY_JARVIS_ELEVENLABS_API_KEY`,
 which needs read access to the agents' conversation history, and at least one of
@@ -576,7 +593,8 @@ which needs read access to the agents' conversation history, and at least one of
 phone vertical uses. Without them the server starts as usual and photo uploads are off.
 
 **Requirements:** a Cloudflare Access bypass for `/api/photos/*`, and this server's address in the
-phone's settings under **Jarvis server** — see [MCP Server Access](#mcp-server-access).
+phone's settings under **Jarvis server**; a Cloudflare rate limiting rule for `/api/photos/slots` is
+recommended — see [MCP Server Access](#mcp-server-access).
 
 **Example Use Cases:**
 - "I'll send you a receipt — what's the total?", then the photo
@@ -2845,9 +2863,28 @@ Jarvis's agent; sending the photo needs the slot's token, 128 random bits handed
 phone, good for five minutes and one photo, and claimed before a byte of the body is read (see
 [Vision Vertical](#vision-vertical)). Nothing else under `/api` is reachable without Access.
 
+**Rate-limit the slot endpoint at Cloudflare as well.** The server limits the checks it sends
+ElevenLabs per address, 6 a minute, and 30 for the whole process (see **The live-conversation
+check** under [Vision Vertical](#vision-vertical)), but each request it turns away has still crossed
+the tunnel and woken the Pi. A rate limiting rule turns a flood away at Cloudflare's edge instead. On
+the zone's **Security rules** page, **Create rule** → **Rate limiting rules**:
+- **When incoming requests match**: URI Path equals `/api/photos/slots`.
+- **With the same characteristics**: IP.
+- **When rate exceeds**: 3 requests per 10 seconds.
+- **Then take action**: Block, for 10 seconds.
+
+Those are what the Free plan allows — one rule, matched on the path, counted by IP, over ten seconds —
+and they are ample: a phone asks once per tap of the camera button, plus a CORS preflight from the
+browser build. A plan with longer periods can match the server instead, 6 requests a minute, and one
+that can match on the method can leave the preflights out by adding Request Method equals `POST`.
+The path is compared as written, so a request spelled `/API/PHOTOS/SLOTS` is not counted by the rule
+— should Access let it through at all — and meets the server's own limit, which counts every
+spelling alike.
+
 **Rolling the camera out** takes these steps, in this order:
-1. Deploy the MCP server image with the vision vertical, and add the bypass above. The startup log
-   should not say `Photo uploads are off`; if it does, it names the ElevenLabs variable missing.
+1. Deploy the MCP server image with the vision vertical, and add the bypass and the rate limiting
+   rule above. The startup log should not say `Photo uploads are off`; if it does, it names the
+   ElevenLabs variable missing.
 2. Redeploy the ElevenLabs agent (`bunx turbo deploy --filter=elevenlabs`), so that its prompt knows
    the phone's photo messages and it has no client tool for the camera. An agent deployed from an
    earlier build of this feature expects to open the camera itself, through a tool this server no

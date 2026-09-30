@@ -13,7 +13,9 @@ import {
   LIST_LOOKBACK_SECONDS,
   LIVE_VERDICT_KEPT_MS,
   MAX_CHECKS_PER_MINUTE,
+  MAX_CHECKS_PER_SOURCE_PER_MINUTE,
   NOT_FOUND_RETRY_MS,
+  NOT_LIVE_VERDICT_KEPT_MS,
   whyPhotoSlotsAreOff,
 } from './live-conversation.js';
 
@@ -22,6 +24,9 @@ const JARVIS_AGENT = 'agent_01jarvis';
 const TEST_AGENT = 'agent_01tests';
 const OTHER_AGENT = 'agent_01someoneelse';
 const CONVERSATION = 'conv_01jz8k3b4c5d6e7f';
+
+/** Whoever is asking, as the route names them: here, an address from the documentation range. */
+const ASKER = '203.0.113.7';
 
 /** Where the check asks about {@link CONVERSATION}. */
 const LOOKUP_URL = `https://api.elevenlabs.io/v1/convai/conversations/${CONVERSATION}`;
@@ -145,7 +150,7 @@ describe('a conversation live on Jarvis’s agent', () => {
   it('is live while it is in progress, asked with the key in a header and a deadline', async () => {
     const { check, requests } = checkAgainst([conversation(JARVIS_AGENT, 'in-progress')]);
 
-    expect(await check(CONVERSATION)).toBe('live');
+    expect(await check(CONVERSATION, ASKER)).toBe('live');
 
     expect(requests).toHaveLength(1);
     expect(requests[0]?.url.href).toBe(LOOKUP_URL);
@@ -158,7 +163,7 @@ describe('a conversation live on Jarvis’s agent', () => {
   it('is live as soon as it has started', async () => {
     const { check } = checkAgainst([conversation(JARVIS_AGENT, 'initiated')]);
 
-    expect(await check(CONVERSATION)).toBe('live');
+    expect(await check(CONVERSATION, ASKER)).toBe('live');
   });
 
   it('reads only the agent and the status, so a transcript the SDK could not parse does not matter', async () => {
@@ -171,7 +176,7 @@ describe('a conversation live on Jarvis’s agent', () => {
       }),
     ]);
 
-    expect(await check(CONVERSATION)).toBe('live');
+    expect(await check(CONVERSATION, ASKER)).toBe('live');
   });
 });
 
@@ -179,14 +184,14 @@ describe('a conversation that is not live', () => {
   it('is not live on another agent, even in progress', async () => {
     const { check } = checkAgainst([conversation(OTHER_AGENT, 'in-progress')]);
 
-    expect(await check(CONVERSATION)).toBe('not-live');
+    expect(await check(CONVERSATION, ASKER)).toBe('not-live');
   });
 
   for (const status of ['processing', 'done', 'failed']) {
     it(`is not live once it has ended: ${status}`, async () => {
       const { check } = checkAgainst([conversation(JARVIS_AGENT, status)]);
 
-      expect(await check(CONVERSATION)).toBe('not-live');
+      expect(await check(CONVERSATION, ASKER)).toBe('not-live');
     });
   }
 });
@@ -195,7 +200,7 @@ describe('a conversation ElevenLabs does not know yet', () => {
   it('is asked about again a moment later, and is live if it is found then', async () => {
     const { check, requests, sleeps } = checkAgainst([NOT_FOUND, conversation(JARVIS_AGENT, 'in-progress')]);
 
-    expect(await check(CONVERSATION)).toBe('live');
+    expect(await check(CONVERSATION, ASKER)).toBe('live');
 
     expect(sleeps).toEqual([NOT_FOUND_RETRY_MS]);
     expect(requests.map((request) => request.url.href)).toEqual([LOOKUP_URL, LOOKUP_URL]);
@@ -206,7 +211,7 @@ describe('a conversation ElevenLabs does not know yet', () => {
       [JARVIS_AGENT]: listing({ conversationId: CONVERSATION, agentId: JARVIS_AGENT, status: 'in-progress' }),
     });
 
-    expect(await check(CONVERSATION)).toBe('live');
+    expect(await check(CONVERSATION, ASKER)).toBe('live');
 
     expect(requests).toHaveLength(3);
     const list = requests[2];
@@ -229,7 +234,7 @@ describe('a conversation ElevenLabs does not know yet', () => {
       ),
     });
 
-    expect(await check(CONVERSATION)).toBe('not-live');
+    expect(await check(CONVERSATION, ASKER)).toBe('not-live');
   });
 
   it('is looked for on the test agent too, when one is configured', async () => {
@@ -239,7 +244,7 @@ describe('a conversation ElevenLabs does not know yet', () => {
       [TEST_AGENT]: listing({ conversationId: CONVERSATION, agentId: TEST_AGENT, status: 'initiated' }),
     });
 
-    expect(await check(CONVERSATION)).toBe('live');
+    expect(await check(CONVERSATION, ASKER)).toBe('live');
 
     expect(requests.slice(2).map((request) => request.url.searchParams.get('agent_id'))).toEqual([
       JARVIS_AGENT,
@@ -254,7 +259,7 @@ describe('a conversation ElevenLabs does not know yet', () => {
       [TEST_AGENT]: refusal(500, 'internal_error'),
     });
 
-    expect(await check(CONVERSATION)).toBe('unverifiable');
+    expect(await check(CONVERSATION, ASKER)).toBe('unverifiable');
   });
 });
 
@@ -271,7 +276,7 @@ describe('ElevenLabs not answering in a way that can be trusted', () => {
     it(`is unverifiable, and asked once, on ${what}`, async () => {
       const { check, requests } = checkAgainst([reply]);
 
-      expect(await check(CONVERSATION)).toBe('unverifiable');
+      expect(await check(CONVERSATION, ASKER)).toBe('unverifiable');
       expect(requests).toHaveLength(1);
     });
   }
@@ -281,25 +286,27 @@ describe('ElevenLabs not answering in a way that can be trusted', () => {
       () => Promise.reject(new DOMException('The operation timed out.', 'TimeoutError')),
     ]);
 
-    expect(await check(CONVERSATION)).toBe('unverifiable');
+    expect(await check(CONVERSATION, ASKER)).toBe('unverifiable');
   });
 
   it('is unverifiable when ElevenLabs cannot be reached at all', async () => {
     const { check } = checkAgainst([() => Promise.reject(new TypeError('fetch failed'))]);
 
-    expect(await check(CONVERSATION)).toBe('unverifiable');
+    expect(await check(CONVERSATION, ASKER)).toBe('unverifiable');
   });
 
   it('is unverifiable when the answer is not JSON, or not a conversation', async () => {
-    expect(await checkAgainst([() => new Response('<html>Sign in</html>')]).check(CONVERSATION)).toBe('unverifiable');
-    expect(await checkAgainst([json({ agent_id: JARVIS_AGENT })]).check(CONVERSATION)).toBe('unverifiable');
-    expect(await checkAgainst([json(null)]).check(CONVERSATION)).toBe('unverifiable');
+    expect(await checkAgainst([() => new Response('<html>Sign in</html>')]).check(CONVERSATION, ASKER)).toBe(
+      'unverifiable',
+    );
+    expect(await checkAgainst([json({ agent_id: JARVIS_AGENT })]).check(CONVERSATION, ASKER)).toBe('unverifiable');
+    expect(await checkAgainst([json(null)]).check(CONVERSATION, ASKER)).toBe('unverifiable');
   });
 
   it('is unverifiable when a list is not a list', async () => {
     const { check } = checkAgainst([NOT_FOUND], { [JARVIS_AGENT]: json({ conversations: 'none' }) });
 
-    expect(await check(CONVERSATION)).toBe('unverifiable');
+    expect(await check(CONVERSATION, ASKER)).toBe('unverifiable');
   });
 
   it('logs the status and the refusal’s code, and never the body or the conversation', async () => {
@@ -308,8 +315,8 @@ describe('ElevenLabs not answering in a way that can be trusted', () => {
       const { check } = checkAgainst([
         json({ detail: { code: 'invalid_api_key', message: `${CONVERSATION}: ${PRIVATE_WORDS}` } }, 401),
       ]);
-      await check(CONVERSATION);
-      await checkAgainst([json({ transcript: PRIVATE_WORDS })]).check(CONVERSATION);
+      await check(CONVERSATION, ASKER);
+      await checkAgainst([json({ transcript: PRIVATE_WORDS })]).check(CONVERSATION, ASKER);
 
       expect(warnings.mock.calls).toContainEqual([expect.any(String), { status: 401, code: 'invalid_api_key' }]);
       const logged = JSON.stringify(warnings.mock.calls);
@@ -340,7 +347,7 @@ describe('an id that is not an ElevenLabs conversation id', () => {
     const { check, requests } = checkAgainst([conversation(JARVIS_AGENT, 'in-progress')]);
 
     for (const conversationId of notConversationIds) {
-      expect(await check(conversationId)).toBe('malformed');
+      expect(await check(conversationId, ASKER)).toBe('malformed');
     }
     expect(requests).toEqual([]);
   });
@@ -350,61 +357,146 @@ describe('a conversation found live', () => {
   it('is taken as live for a minute without asking ElevenLabs again', async () => {
     const { check, requests, clock } = checkAgainst([conversation(JARVIS_AGENT, 'in-progress')]);
 
-    expect(await check(CONVERSATION)).toBe('live');
+    expect(await check(CONVERSATION, ASKER)).toBe('live');
     clock.now += LIVE_VERDICT_KEPT_MS - 1;
-    expect(await check(CONVERSATION)).toBe('live');
+    expect(await check(CONVERSATION, ASKER)).toBe('live');
     expect(requests).toHaveLength(1);
 
     clock.now += 1;
-    expect(await check(CONVERSATION)).toBe('live');
+    expect(await check(CONVERSATION, ASKER)).toBe('live');
     expect(requests).toHaveLength(2);
   });
+});
 
-  it('is asked about afresh when it was not live, since it may only not have been visible yet', async () => {
-    const { check, requests } = checkAgainst([
+/** Distinct, well-formed ids, so that no check is answered from a remembered verdict. */
+function conversationNumber(index: number): string {
+  return `conv_call${String(index).padStart(8, '0')}`;
+}
+
+/** Distinct sources, each asking on its own account. */
+function sourceNumber(index: number): string {
+  return `198.51.100.${index}`;
+}
+
+describe('a conversation found not live', () => {
+  it('is taken as not live for a minute without asking ElevenLabs again, and asked about afresh after', async () => {
+    const { check, requests, clock } = checkAgainst([
       conversation(OTHER_AGENT, 'in-progress'),
       conversation(JARVIS_AGENT, 'in-progress'),
     ]);
 
-    expect(await check(CONVERSATION)).toBe('not-live');
-    expect(await check(CONVERSATION)).toBe('live');
+    expect(await check(CONVERSATION, ASKER)).toBe('not-live');
+    clock.now += NOT_LIVE_VERDICT_KEPT_MS - 1;
+    expect(await check(CONVERSATION, ASKER)).toBe('not-live');
+    expect(requests).toHaveLength(1);
+
+    clock.now += 1;
+    expect(await check(CONVERSATION, ASKER)).toBe('live');
+    expect(requests).toHaveLength(2);
+  });
+
+  it('costs a stranger repeating a made-up id one check, and none of their own after that', async () => {
+    const { check, requests } = checkAgainst([NOT_FOUND], { [JARVIS_AGENT]: listing() });
+
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      expect(await check(CONVERSATION, ASKER)).toBe('not-live');
+    }
+    // The lookup, its retry and the list, once.
+    expect(requests).toHaveLength(3);
+
+    // Only the first went upstream, so only the first counted against them.
+    for (let index = 1; index < MAX_CHECKS_PER_SOURCE_PER_MINUTE; index += 1) {
+      expect(await check(conversationNumber(index), ASKER)).toBe('not-live');
+    }
+    expect(await check(conversationNumber(MAX_CHECKS_PER_SOURCE_PER_MINUTE), ASKER)).toBe('too-many-checks');
+  });
+
+  it('is not remembered when ElevenLabs could not say, since it has said nothing about it', async () => {
+    const { check, requests } = checkAgainst([refusal(500, 'internal_error'), conversation(JARVIS_AGENT, 'initiated')]);
+
+    expect(await check(CONVERSATION, ASKER)).toBe('unverifiable');
+    expect(await check(CONVERSATION, ASKER)).toBe('live');
     expect(requests).toHaveLength(2);
   });
 });
 
 describe('how often ElevenLabs is asked', () => {
-  /** Distinct, well-formed ids, so that no check is answered from a remembered verdict. */
-  function conversationNumber(index: number): string {
-    return `conv_call${String(index).padStart(8, '0')}`;
-  }
-
-  it(`is at most ${MAX_CHECKS_PER_MINUTE} checks a minute, and the next is refused without asking`, async () => {
+  it(`is at most ${MAX_CHECKS_PER_SOURCE_PER_MINUTE} checks a minute for one source, and the next is refused without asking`, async () => {
     const { check, requests, clock } = checkAgainst([conversation(OTHER_AGENT, 'in-progress')]);
 
-    for (let index = 0; index < MAX_CHECKS_PER_MINUTE; index += 1) {
-      expect(await check(conversationNumber(index))).toBe('not-live');
+    for (let index = 0; index < MAX_CHECKS_PER_SOURCE_PER_MINUTE; index += 1) {
+      expect(await check(conversationNumber(index), ASKER)).toBe('not-live');
     }
-    expect(await check(conversationNumber(MAX_CHECKS_PER_MINUTE))).toBe('too-many-checks');
-    expect(requests).toHaveLength(MAX_CHECKS_PER_MINUTE);
+    expect(await check(conversationNumber(MAX_CHECKS_PER_SOURCE_PER_MINUTE), ASKER)).toBe('too-many-checks');
+    expect(requests).toHaveLength(MAX_CHECKS_PER_SOURCE_PER_MINUTE);
 
     // A minute after the first, there is room again.
     clock.now += 60_000;
-    expect(await check(conversationNumber(MAX_CHECKS_PER_MINUTE))).toBe('not-live');
+    expect(await check(conversationNumber(MAX_CHECKS_PER_SOURCE_PER_MINUTE), ASKER)).toBe('not-live');
   });
 
-  it('does not count a conversation already found live against that', async () => {
+  it('leaves every other source its own checks when one has spent its minute', async () => {
+    const { check, requests } = checkAgainst([conversation(OTHER_AGENT, 'in-progress')]);
+
+    for (let index = 0; index <= MAX_CHECKS_PER_SOURCE_PER_MINUTE; index += 1) {
+      await check(conversationNumber(index), ASKER);
+    }
+
+    expect(await check(conversationNumber(100), sourceNumber(1))).toBe('not-live');
+    expect(requests).toHaveLength(MAX_CHECKS_PER_SOURCE_PER_MINUTE + 1);
+  });
+
+  it(`is at most ${MAX_CHECKS_PER_MINUTE} checks a minute from the whole process, however many sources ask`, async () => {
+    const { check, requests, clock } = checkAgainst([conversation(OTHER_AGENT, 'in-progress')]);
+
+    for (let index = 0; index < MAX_CHECKS_PER_MINUTE; index += 1) {
+      expect(await check(conversationNumber(index), sourceNumber(index))).toBe('not-live');
+    }
+    expect(await check(conversationNumber(MAX_CHECKS_PER_MINUTE), sourceNumber(MAX_CHECKS_PER_MINUTE))).toBe(
+      'too-many-checks',
+    );
+    expect(requests).toHaveLength(MAX_CHECKS_PER_MINUTE);
+
+    clock.now += 60_000;
+    expect(await check(conversationNumber(MAX_CHECKS_PER_MINUTE), sourceNumber(MAX_CHECKS_PER_MINUTE))).toBe(
+      'not-live',
+    );
+  });
+
+  it('does not count a check a source was refused against the whole process', async () => {
+    const { check, requests } = checkAgainst([conversation(OTHER_AGENT, 'in-progress')]);
+
+    // One stranger asking as fast as they like, with a new id every time.
+    for (let index = 0; index < 100; index += 1) {
+      await check(conversationNumber(index), ASKER);
+    }
+    expect(requests).toHaveLength(MAX_CHECKS_PER_SOURCE_PER_MINUTE);
+
+    // Everyone else still has the rest of the process's minute.
+    for (let index = MAX_CHECKS_PER_SOURCE_PER_MINUTE; index < MAX_CHECKS_PER_MINUTE; index += 1) {
+      expect(await check(conversationNumber(1_000 + index), sourceNumber(index))).toBe('not-live');
+    }
+    expect(requests).toHaveLength(MAX_CHECKS_PER_MINUTE);
+  });
+
+  it('does not count a conversation already found live against either', async () => {
     const { check, requests } = checkAgainst([
       conversation(JARVIS_AGENT, 'in-progress'),
       conversation(OTHER_AGENT, 'in-progress'),
     ]);
 
-    expect(await check(CONVERSATION)).toBe('live');
-    for (let index = 1; index < MAX_CHECKS_PER_MINUTE; index += 1) {
-      await check(conversationNumber(index));
+    expect(await check(CONVERSATION, ASKER)).toBe('live');
+    for (let index = 1; index < MAX_CHECKS_PER_SOURCE_PER_MINUTE; index += 1) {
+      await check(conversationNumber(index), ASKER);
+    }
+    for (let index = MAX_CHECKS_PER_SOURCE_PER_MINUTE; index < MAX_CHECKS_PER_MINUTE; index += 1) {
+      await check(conversationNumber(index), sourceNumber(index));
     }
 
-    expect(await check(CONVERSATION)).toBe('live');
-    expect(await check(conversationNumber(MAX_CHECKS_PER_MINUTE))).toBe('too-many-checks');
+    // Both the asker's minute and the process's are spent, and the live one is still live.
+    expect(await check(CONVERSATION, ASKER)).toBe('live');
+    expect(await check(conversationNumber(MAX_CHECKS_PER_MINUTE), ASKER)).toBe('too-many-checks');
+    expect(await check(conversationNumber(MAX_CHECKS_PER_MINUTE), sourceNumber(0))).toBe('too-many-checks');
     expect(requests).toHaveLength(MAX_CHECKS_PER_MINUTE);
   });
 });
@@ -414,7 +506,7 @@ describe('which of Jarvis’s agents count', () => {
     delete process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID;
     process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID = TEST_AGENT;
 
-    expect(await checkAgainst([conversation(TEST_AGENT, 'in-progress')]).check(CONVERSATION)).toBe('live');
+    expect(await checkAgainst([conversation(TEST_AGENT, 'in-progress')]).check(CONVERSATION, ASKER)).toBe('live');
   });
 
   it('counts either when both are configured, and prefers neither', async () => {
@@ -422,9 +514,9 @@ describe('which of Jarvis’s agents count', () => {
     // away every photo from his phone.
     process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID = TEST_AGENT;
 
-    expect(await checkAgainst([conversation(JARVIS_AGENT, 'in-progress')]).check(CONVERSATION)).toBe('live');
-    expect(await checkAgainst([conversation(TEST_AGENT, 'in-progress')]).check(CONVERSATION)).toBe('live');
-    expect(await checkAgainst([conversation(OTHER_AGENT, 'in-progress')]).check(CONVERSATION)).toBe('not-live');
+    expect(await checkAgainst([conversation(JARVIS_AGENT, 'in-progress')]).check(CONVERSATION, ASKER)).toBe('live');
+    expect(await checkAgainst([conversation(TEST_AGENT, 'in-progress')]).check(CONVERSATION, ASKER)).toBe('live');
+    expect(await checkAgainst([conversation(OTHER_AGENT, 'in-progress')]).check(CONVERSATION, ASKER)).toBe('not-live');
   });
 });
 
@@ -433,7 +525,7 @@ describe('a server that cannot check', () => {
     delete process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
     const { check, requests } = checkAgainst([conversation(JARVIS_AGENT, 'in-progress')]);
 
-    expect(await check(CONVERSATION)).toBe('switched-off');
+    expect(await check(CONVERSATION, ASKER)).toBe('switched-off');
     expect(requests).toEqual([]);
   });
 
@@ -441,14 +533,16 @@ describe('a server that cannot check', () => {
     delete process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID;
     const { check, requests } = checkAgainst([conversation(JARVIS_AGENT, 'in-progress')]);
 
-    expect(await check(CONVERSATION)).toBe('switched-off');
+    expect(await check(CONVERSATION, ASKER)).toBe('switched-off');
     expect(requests).toEqual([]);
   });
 
   it('counts a variable of nothing but whitespace as unset', async () => {
     process.env.HEY_JARVIS_ELEVENLABS_API_KEY = '  \n';
 
-    expect(await checkAgainst([conversation(JARVIS_AGENT, 'in-progress')]).check(CONVERSATION)).toBe('switched-off');
+    expect(await checkAgainst([conversation(JARVIS_AGENT, 'in-progress')]).check(CONVERSATION, ASKER)).toBe(
+      'switched-off',
+    );
   });
 
   it('says nothing at startup when it can check', () => {

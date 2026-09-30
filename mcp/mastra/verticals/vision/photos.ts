@@ -23,8 +23,12 @@ import { randomBytes } from 'node:crypto';
  * **Everything is bounded**, because the Pi this runs on has two gigabytes for two processes: at
  * most {@link MAX_OPEN_SLOTS} slots and {@link MAX_KEPT_PHOTOS} photos of at most
  * {@link MAX_PHOTO_BYTES}, the oldest let go first, and nothing kept past {@link KEEP_PHOTO_MS}.
- * Pruning happens whenever the store is touched rather than on a timer, as the other short-lived
- * state in this server does.
+ * Slots are pruned whenever the store is touched, as the other short-lived state in this server is,
+ * and the oldest photo is let go of the moment a new one needs its room. A photo's own half hour is
+ * kept **on a timer**
+ * ({@link letGoOfPhotoOnTime}), because it is a promise — the privacy policy makes it — about how
+ * long sir's photo is held at all: pruned only when touched, a letter shown at ten in the evening,
+ * with nobody talking to Jarvis again until morning, would sit in this process's memory all night.
  *
  * **A photo nobody has looked at yet is waiting** ({@link photosWaiting}). The conversation that
  * sent one is told about it by the phone and looks at it straight away, whether sir said what it is
@@ -109,6 +113,9 @@ const keptPhotos = new Map<string, KeptPhoto>();
 /** How many photos this process has kept, which is what the next id counts from. */
 let photosKept = 0;
 
+/** The timer that lets go of each photo when its time is up, by photo id, until it has. */
+const releaseTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
 /** Lets go of whatever has outlived its time. */
 function prune(now: number): void {
   for (const [uploadToken, expiresAt] of openSlots) {
@@ -156,6 +163,22 @@ export function claimUploadSlot(uploadToken: string, now = Date.now()): boolean 
   return openSlots.delete(uploadToken);
 }
 
+/**
+ * Lets go of a photo whose {@link KEEP_PHOTO_MS} is up, whether or not anything has touched the store
+ * since: what {@link keepPhoto} schedules for each photo it keeps.
+ *
+ * **By id, and that is enough.** An id is never given to a second photo while this process runs —
+ * the count only grows — except after {@link forgetPhotos}, which stops every timer first. So the
+ * photo this finds under its id is the one it was scheduled for, or none: one already let go of, to
+ * make room or by a prune, is simply not there. The timer holds the id and nothing else, so a photo let
+ * go of early is not held in memory, by the timer that would have let go of it, for the rest of its
+ * half hour.
+ */
+function letGoOfPhotoOnTime(photoId: string): void {
+  releaseTimers.delete(photoId);
+  keptPhotos.delete(photoId);
+}
+
 /** Keeps a photo that came in through a claimed slot, and says what it is called now. */
 export function keepPhoto(data: Buffer, mediaType: PhotoMediaType, now = Date.now()): KeptPhoto {
   prune(now);
@@ -171,6 +194,11 @@ export function keepPhoto(data: Buffer, mediaType: PhotoMediaType, now = Date.no
     dismissedAt: undefined,
   };
   keptPhotos.set(photo.photoId, photo);
+
+  // Unref'd: a photo waiting out its half hour is no reason for the process to keep running.
+  const releaseTimer = setTimeout(letGoOfPhotoOnTime, KEEP_PHOTO_MS, photo.photoId);
+  releaseTimer.unref();
+  releaseTimers.set(photo.photoId, releaseTimer);
   return photo;
 }
 
@@ -274,8 +302,15 @@ export function howLongAgo(milliseconds: number): string {
   return minutes === 1 ? 'a minute ago' : `${minutes} minutes ago`;
 }
 
-/** Forgets every slot and photo — and with them which were looked at — and starts the ids again. For tests. */
+/**
+ * Forgets every slot and photo — and with them which were looked at — and starts the ids again. For
+ * tests. The timers go too, since the ids they carry are about to be given out again.
+ */
 export function forgetPhotos(): void {
+  for (const releaseTimer of releaseTimers.values()) {
+    clearTimeout(releaseTimer);
+  }
+  releaseTimers.clear();
   openSlots.clear();
   keptPhotos.clear();
   photosKept = 0;

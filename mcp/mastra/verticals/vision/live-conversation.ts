@@ -34,10 +34,14 @@ import { logger } from '../../utils/logger.js';
  * Anything else — a refused key, a rate limit, ElevenLabs down, a timeout, a body that is not what it
  * should be — is **unverifiable**, and the slot is refused: this fails closed.
  *
- * **Bounded, because the endpoint is public.** Each check costs a call on Jarvis's ElevenLabs key, so
- * a conversation found live is remembered for {@link LIVE_VERDICT_KEPT_MS} — the phone asks again for
- * each photo — and no more than {@link MAX_CHECKS_PER_MINUTE} checks go upstream in a minute, from
- * the whole process. A malformed id never gets as far as ElevenLabs at all.
+ * **Bounded, because the endpoint is public.** Each check costs up to four calls on Jarvis's
+ * ElevenLabs key, so a verdict is remembered — live for {@link LIVE_VERDICT_KEPT_MS}, since the phone
+ * asks again for each photo, and not live for {@link NOT_LIVE_VERDICT_KEPT_MS}, so that repeating an
+ * id costs nothing upstream — and a check that does go upstream is counted twice: against whoever
+ * asked, at most {@link MAX_CHECKS_PER_SOURCE_PER_MINUTE} a minute, and then against the whole
+ * process, at most {@link MAX_CHECKS_PER_MINUTE}. The first is what keeps one stranger from spending
+ * the second, which would turn every photo sir sends away for as long as they kept at it. A
+ * malformed id never gets as far as ElevenLabs at all.
  */
 
 /** The ElevenLabs API key, which the phone vertical calls with too. */
@@ -102,16 +106,38 @@ const LIST_PAGE_SIZE = 100;
 export const LIVE_VERDICT_KEPT_MS = 60_000;
 
 /**
+ * How long a conversation found not live is taken to be not live without asking again.
+ *
+ * An id ElevenLabs does not know is the dearest to check — the lookup, its retry and a list per
+ * agent — and the cheapest to send, so without this a stranger could spend four requests on
+ * Jarvis's key by repeating one made-up id. A minute, like a live verdict. What it costs is a call
+ * so new that none of the three steps found it: that phone is turned away for the rest of the minute
+ * too, rather than asked about again at its next tap.
+ */
+export const NOT_LIVE_VERDICT_KEPT_MS = 60_000;
+
+/**
+ * The most checks sent to ElevenLabs in a minute on behalf of one source — an address, or an IPv6
+ * network (see `whoIsAsking` in `api/routes.ts`).
+ *
+ * A household is one source, behind its router, and it needs about one check per conversation a
+ * minute: the phone asks once per photo, and not even that while its conversation is remembered as
+ * live. Six leaves room for two phones at once and a refusal retried, and means that a stranger who
+ * wants the whole process's {@link MAX_CHECKS_PER_MINUTE} has to find five sources to ask from.
+ */
+export const MAX_CHECKS_PER_SOURCE_PER_MINUTE = 6;
+
+/**
  * The most checks sent to ElevenLabs in a minute, from the whole process.
  *
  * A check is up to four requests (the lookup, its retry, and a list per agent). Thirty a minute is
  * far more than a household sends photos, and far fewer than a stranger would need to make this
- * server a way of spending Jarvis's ElevenLabs quota. It bounds the remembered verdicts too, since
- * only a check can add one.
+ * server a way of spending Jarvis's ElevenLabs quota. It bounds what is remembered too — verdicts,
+ * and the sources that checks were counted against — since only a check can add either.
  */
 export const MAX_CHECKS_PER_MINUTE = 30;
 
-/** The window {@link MAX_CHECKS_PER_MINUTE} counts over. */
+/** The window {@link MAX_CHECKS_PER_MINUTE} and {@link MAX_CHECKS_PER_SOURCE_PER_MINUTE} count over. */
 const CHECK_WINDOW_MS = 60_000;
 
 /**
@@ -120,7 +146,8 @@ const CHECK_WINDOW_MS = 60_000;
  * - `live`: in progress on one of Jarvis's agents — open the slot
  * - `not-live`: ended, on another agent, or unknown to ElevenLabs
  * - `malformed`: not an ElevenLabs conversation id at all; nothing was asked
- * - `too-many-checks`: the minute's checks are spent; nothing was asked
+ * - `too-many-checks`: the minute's checks are spent, the asker's own or the whole process's;
+ *   nothing was asked
  * - `unverifiable`: ElevenLabs could not be asked, or did not answer in a way that could be read
  * - `switched-off`: this server has no ElevenLabs key or no agent to compare with
  */
@@ -132,8 +159,11 @@ export type ConversationVerdict =
   | 'unverifiable'
   | 'switched-off';
 
-/** Asks whether a conversation is live on Jarvis's agent. */
-export type LiveConversationCheck = (conversationId: string) => Promise<ConversationVerdict>;
+/**
+ * Asks whether a conversation is live on Jarvis's agent, on behalf of `source`: whoever is asking,
+ * as the key their checks are counted under ({@link MAX_CHECKS_PER_SOURCE_PER_MINUTE}).
+ */
+export type LiveConversationCheck = (conversationId: string, source: string) => Promise<ConversationVerdict>;
 
 /** What a check needs from outside itself, so a spec can hand it a fake ElevenLabs and a clock. */
 export interface LiveConversationDependencies {
@@ -239,8 +269,25 @@ function recentConversationsUrl(agentId: string, nowMilliseconds: number): strin
   return `${CONVERSATIONS_URL}?${query.toString()}`;
 }
 
+/** A verdict that is remembered, and the moment it stops being taken as true. */
+interface RememberedVerdict {
+  verdict: 'live' | 'not-live';
+  until: number;
+}
+
+/** Lets go of the checks, oldest first, that have fallen out of the window by `at`. */
+function forgetChecksBefore(checkedAt: number[], at: number): void {
+  while (checkedAt.length > 0) {
+    const oldest = checkedAt[0];
+    if (oldest === undefined || at - oldest < CHECK_WINDOW_MS) {
+      return;
+    }
+    checkedAt.shift();
+  }
+}
+
 /**
- * Builds a check with its own remembered verdicts and its own count of checks.
+ * Builds a check with its own remembered verdicts and its own counts of checks.
  *
  * The server uses one, {@link checkLiveConversation}; a spec builds its own with a fake ElevenLabs,
  * clock and sleep, so nothing it does is seen by another.
@@ -250,10 +297,16 @@ export function createLiveConversationCheck(
 ): LiveConversationCheck {
   const { fetch: fetchUpstream, now, sleep } = { ...DEFAULT_DEPENDENCIES, ...dependencies };
 
-  /** Conversations found live, with the moment each stops being taken as live. */
-  const liveUntilByConversationId = new Map<string, number>();
+  /** What each conversation was last found to be, while that is still taken as true. */
+  const rememberedVerdicts = new Map<string, RememberedVerdict>();
   /** When each check in the current window went upstream, oldest first. */
   const checkedAt: number[] = [];
+  /**
+   * The same, by the source each was asked on behalf of. A source is added only by a check that
+   * went upstream, and dropped once its window is empty, so there are never more of them than
+   * {@link MAX_CHECKS_PER_MINUTE}, however many a stranger asks from.
+   */
+  const checkedAtBySource = new Map<string, number[]>();
 
   /** Sends one request to ElevenLabs, or answers `undefined` when it could not be made or timed out. */
   async function askUpstream(url: string, apiKey: string): Promise<Response | undefined> {
@@ -355,21 +408,21 @@ export function createLiveConversationCheck(
 
   /** Lets go of verdicts and counted checks that have outlived their time. */
   function prune(at: number): void {
-    for (const [conversationId, liveUntil] of liveUntilByConversationId) {
-      if (liveUntil <= at) {
-        liveUntilByConversationId.delete(conversationId);
+    for (const [conversationId, remembered] of rememberedVerdicts) {
+      if (remembered.until <= at) {
+        rememberedVerdicts.delete(conversationId);
       }
     }
-    while (checkedAt.length > 0) {
-      const oldest = checkedAt[0];
-      if (oldest === undefined || at - oldest < CHECK_WINDOW_MS) {
-        break;
+    forgetChecksBefore(checkedAt, at);
+    for (const [source, checkedAtFromSource] of checkedAtBySource) {
+      forgetChecksBefore(checkedAtFromSource, at);
+      if (checkedAtFromSource.length === 0) {
+        checkedAtBySource.delete(source);
       }
-      checkedAt.shift();
     }
   }
 
-  return async (conversationId) => {
+  return async (conversationId, source) => {
     if (!CONVERSATION_ID.test(conversationId)) {
       return 'malformed';
     }
@@ -381,22 +434,30 @@ export function createLiveConversationCheck(
 
     const at = now();
     prune(at);
-    if (liveUntilByConversationId.has(conversationId)) {
-      return 'live';
+    const remembered = rememberedVerdicts.get(conversationId);
+    if (remembered) {
+      return remembered.verdict;
     }
 
-    // Not logged: the request log already has every refusal's status, and a flood of them is
-    // exactly when a line apiece would bury everything else.
-    if (checkedAt.length >= MAX_CHECKS_PER_MINUTE) {
+    // The source's limit first, and a check refused by it is not counted against the process: a
+    // stranger asking over and over spends only their own minute. Not logged: the request log
+    // already has every refusal's status, and a flood of them is exactly when a line apiece would
+    // bury everything else.
+    const checkedAtFromSource = checkedAtBySource.get(source) ?? [];
+    if (checkedAtFromSource.length >= MAX_CHECKS_PER_SOURCE_PER_MINUTE || checkedAt.length >= MAX_CHECKS_PER_MINUTE) {
       return 'too-many-checks';
     }
     checkedAt.push(at);
+    checkedAtFromSource.push(at);
+    checkedAtBySource.set(source, checkedAtFromSource);
 
     const verdict = await askElevenLabs(conversationId, configuration);
-    // Only a live verdict is remembered: one that is not live may be a call that has not become
-    // visible yet, and the next photo should get to ask again.
+    // An unverifiable verdict is never remembered: ElevenLabs said nothing about the conversation,
+    // and the next photo should get to ask again.
     if (verdict === 'live') {
-      liveUntilByConversationId.set(conversationId, now() + LIVE_VERDICT_KEPT_MS);
+      rememberedVerdicts.set(conversationId, { verdict, until: now() + LIVE_VERDICT_KEPT_MS });
+    } else if (verdict === 'not-live') {
+      rememberedVerdicts.set(conversationId, { verdict, until: now() + NOT_LIVE_VERDICT_KEPT_MS });
     }
     return verdict;
   };

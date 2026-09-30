@@ -5,10 +5,10 @@ import express from 'express';
 import { logTokenUsageSummary, mastra } from './index.js';
 import { initializeScheduler } from './scheduler.js';
 import { createInstructionsWorkflowTool, createSimplifiedWorkflowTool } from './utils/mcp-tool-factory.js';
+import { MCP_PATH, readsItsOwnBody } from './verticals/api/routes.js';
 import { getMissingClaudeCodeHostVariables, isClaudeCodeHostConfigured } from './verticals/coding/index.js';
 import {
   getPublicAgents,
-  PHOTO_UPLOAD_PATH,
   registerApiRoutes,
   registerArtifactRoutes,
   registerShoppingTriggers,
@@ -37,19 +37,18 @@ export async function startMcpServer() {
 
   const port = parseInt(process.env.PORT || '4112', 10);
   const host = process.env.HOST || '0.0.0.0';
-  const mcpPath = '/api/mcp';
 
   const app = express();
 
-  // JSON body parsing middleware for API routes. Not the MCP endpoint and its subpaths, which read
-  // the raw body, and not the photo routes, which are open to anyone: an upload must be turned away
-  // before anything a stranger sends is read (`claimSlotBeforeReading`), and a slot request reads
-  // its own body, a kilobyte at most (`readSlotRequest`) — both in `verticals/api/routes.ts`.
+  // JSON body parsing middleware for API routes. Not for the routes that read their own body — the
+  // MCP endpoint, and the photo routes, which are open to anyone — however the path is spelled: see
+  // `readsItsOwnBody` in `verticals/api/routes.ts`, whose spec mounts this same check.
+  const parseJson = express.json();
   app.use((req, res, next) => {
-    if (req.path === mcpPath || req.path.startsWith(`${mcpPath}/`) || req.path.startsWith(`${PHOTO_UPLOAD_PATH}/`)) {
+    if (readsItsOwnBody(req.path)) {
       next();
     } else {
-      express.json()(req, res, next);
+      parseJson(req, res, next);
     }
   });
 
@@ -88,7 +87,7 @@ export async function startMcpServer() {
   app.use(apiRouter);
 
   // MCP endpoint - handles both GET (for initial connection) and POST (for messages)
-  app.all(mcpPath, (req, res): void => {
+  app.all(MCP_PATH, (req, res): void => {
     const base = `http://${host}:${port}`;
     const url = new URL(req.url || '', base);
 
@@ -96,7 +95,7 @@ export async function startMcpServer() {
       try {
         await mcpServer.startHTTP({
           url,
-          httpPath: mcpPath,
+          httpPath: MCP_PATH,
           req,
           res,
         });
@@ -123,7 +122,7 @@ export async function startMcpServer() {
     },
   );
 
-  console.log(`J.A.R.V.I.S. MCP Server listening on http://${host}:${port}${mcpPath}`);
+  console.log(`J.A.R.V.I.S. MCP Server listening on http://${host}:${port}${MCP_PATH}`);
   for (const { method, path } of registeredApiRoutes) {
     console.log(`API endpoint available: ${method} http://${host}:${port}${path}`);
   }
@@ -162,7 +161,7 @@ export async function startMcpServer() {
   return new Promise<void>((resolve) => {
     app.listen(port, host, () => {
       console.log(`Server running on http://${host}:${port}`);
-      console.log(`MCP HTTP endpoint: http://${host}:${port}${mcpPath}`);
+      console.log(`MCP HTTP endpoint: http://${host}:${port}${MCP_PATH}`);
       resolve();
     });
   });
