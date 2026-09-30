@@ -47,7 +47,12 @@ export function SettingsScreen({ settings, photoUploadKey, onSave, onCancel, onT
         that a lost phone means revoking one key.
       </Text>
 
-      <ElevenLabsFields settings={settings} photos={{ storedKey: photoUploadKey }} submitLabel="Save" onSubmit={onSave} />
+      <ElevenLabsFields
+        settings={settings}
+        photos={{ storedKey: photoUploadKey }}
+        submitLabel="Save"
+        onSubmit={onSave}
+      />
 
       {onCancel ? (
         <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={onCancel}>
