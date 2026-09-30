@@ -1,3 +1,4 @@
+import type { AffectedEntity } from './affected-entities';
 import type { AgentTrackRoom } from './agent-audio-track';
 import { HEADSET_PARTICIPANT_NAME } from './conversation-token';
 import { createJarvisSession } from './jarvis-session';
@@ -22,7 +23,8 @@ import type { JarvisVoiceReaders } from './voice-contract';
  * recording plays on that clock, the call's audio a phone switches into, and an SDK whose sessions
  * connect, fail, drop and take their time to end when told to — each firing its callbacks in the
  * order the real `@elevenlabs/client` 1.24.0 does (read from `VoiceConversation.startSession` and
- * `BaseConversation.endSessionWithDetails`).
+ * `BaseConversation.endSessionWithDetails`), and answering the agent's client tool calls as its
+ * `BaseConversation.handleClientToolCall` does.
  *
  * Not a spec itself, so `bun test` loads it only through the specs that use it.
  */
@@ -268,10 +270,17 @@ export function createFakeCallAudio({ startsAtOnce = true }: { startsAtOnce?: bo
   };
 }
 
+/** One contextual update the session sent, as `sendContextualUpdate` was handed it. */
+export interface SentContext {
+  text: string;
+  contextId?: string;
+}
+
 /** A conversation the SDK hands over, recording what the session does with it. */
 export interface FakeConversation extends SessionConversation {
   muting: boolean[];
   sent: string[];
+  contextualUpdates: SentContext[];
   endSessions: number;
   inputVolume: number;
   outputVolume: number;
@@ -282,6 +291,15 @@ export interface FakeConversation extends SessionConversation {
   holdEnding(): void;
   finishEnding(): void;
 }
+
+/** What the SDK sends the agent back for one client tool call: its `client_tool_result`. */
+export interface ClientToolAnswer {
+  result: string;
+  isError: boolean;
+}
+
+/** The SDK's own answer for a tool whose handler returned nothing. */
+export const CLIENT_TOOL_DEFAULT_RESULT = 'Client tool execution successful.';
 
 /** One `startSession` call, driven by the test in the order the real SDK fires its callbacks. */
 export interface FakeDial {
@@ -299,6 +317,13 @@ export interface FakeDial {
   drop(message: string): void;
   /** The agent calls `end_call`. */
   agentHangsUp(): void;
+  /**
+   * The agent calls a client tool, with parameters as it wrote them. Answered as the SDK answers:
+   * a tool the session registered is awaited, and nothing returned becomes the SDK's default; a
+   * tool that throws, or one never registered, is reported through `onError` and answered as an
+   * error, which is what the agent then reacts to.
+   */
+  callClientTool(name: string, parameters: unknown): Promise<ClientToolAnswer>;
 }
 
 function createFakeDial(options: SessionOptions): { dial: FakeDial; promise: Promise<SessionConversation> } {
@@ -354,6 +379,11 @@ function createFakeDial(options: SessionOptions): { dial: FakeDial; promise: Pro
     sendUserMessage: (text) => {
       conversation.sent.push(text);
     },
+    contextualUpdates: [],
+    sendContextualUpdate: (text, contextOptions) => {
+      const contextId = contextOptions?.contextId;
+      conversation.contextualUpdates.push(contextId === undefined ? { text } : { text, contextId });
+    },
     getInputVolume: () => conversation.inputVolume,
     getOutputVolume: () => conversation.outputVolume,
     getOutputByteFrequencyData: () => new Uint8Array(1024).fill(40),
@@ -385,6 +415,22 @@ function createFakeDial(options: SessionOptions): { dial: FakeDial; promise: Pro
     },
     agentHangsUp: () => {
       endWith({ reason: 'agent' });
+    },
+    callClientTool: async (name, parameters) => {
+      // `BaseConversation.handleClientToolCall`, step for step, minus the socket it answers on.
+      if (!Object.hasOwn(options.clientTools, name)) {
+        const message = `Client tool with name ${name} is not defined on client`;
+        options.onError(message);
+        return { result: message, isError: true };
+      }
+      try {
+        const returned = (await options.clientTools[name](parameters)) ?? CLIENT_TOOL_DEFAULT_RESULT;
+        return { result: typeof returned === 'object' ? JSON.stringify(returned) : String(returned), isError: false };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        options.onError(`Client tool execution failed with following error: ${message}`);
+        return { result: `Client tool execution failed: ${message}`, isError: true };
+      }
     },
   };
   return { dial, promise: started.promise };
@@ -457,6 +503,7 @@ export function createEventLog() {
   const sources: ProblemSource[] = [];
   const captions: Array<string | undefined> = [];
   const diagnostics: SessionDiagnostics[] = [];
+  const affected: Array<readonly AffectedEntity[]> = [];
   return {
     log,
     phases,
@@ -464,6 +511,7 @@ export function createEventLog() {
     sources,
     captions,
     diagnostics,
+    affected,
     events: {
       onPhase: (phase: SessionPhase) => {
         phases.push(phase);
@@ -480,6 +528,10 @@ export function createEventLog() {
       },
       onDiagnostics: (reported: SessionDiagnostics) => {
         diagnostics.push(reported);
+      },
+      onAffected: (entities: readonly AffectedEntity[]) => {
+        affected.push(entities);
+        log.push(`affected:${entities.map((entity) => entity.id).join(',')}`);
       },
     },
   };

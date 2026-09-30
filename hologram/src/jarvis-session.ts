@@ -1,3 +1,4 @@
+import { affectedEntitiesOf, MARK_AFFECTED_TOOL, MARKED_RESULT, NOTHING_MARKED_RESULT } from './affected-entities';
 import { type AgentTrackRoom, agentAudioTracks } from './agent-audio-track';
 import { GIVE_UP_CONNECTING_AFTER_MS, isLive } from './conversation-life';
 import { requestConversationToken, requestSignedConversationUrl } from './conversation-token';
@@ -11,6 +12,7 @@ import type {
   JarvisSessionDependencies,
   ProblemSource,
   SessionCallbacks,
+  SessionClientTools,
   SessionConversation,
   SessionDiagnostics,
   SessionEnding,
@@ -45,6 +47,13 @@ const GREETING_CHECK_MS = 50;
 const ORPHAN_SWEEP_AGAIN_MS = 2_000;
 
 const SILENT_SPECTRUM = new Uint8Array(0);
+
+/**
+ * The context id the device's own context is said under (`deviceContext`). The server keeps only
+ * the newest update for an id, so a holder that has something new to say about the device says it
+ * under this one, and the agent is not left with both.
+ */
+export const DEVICE_CONTEXT_ID = 'device';
 
 /** Nothing to listen to: what the sphere follows between conversations and while one is dialled. */
 const SILENT_VOICE: JarvisVoice = {
@@ -110,6 +119,11 @@ interface Attempt<Timer> {
   microphoneMuted: boolean;
   deadline?: Timer;
   greetingCheck?: Timer;
+  /**
+   * Contextual updates waiting for the conversation to connect: the latest text for each context
+   * id, in the order each id was last said, starting with the device's own context.
+   */
+  pendingContext: Map<string | undefined, string>;
 }
 
 /**
@@ -149,6 +163,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
   const findRoom = dependencies.findRoom ?? (() => undefined);
   const followVoice = dependencies.followAgentVoice;
   const removeOrphanedAudio = dependencies.removeOrphanedAudio;
+  const deviceContext = dependencies.deviceContext?.trim();
 
   let phase: SessionPhase = 'idle';
   let attempt: Attempt<Timer> | undefined;
@@ -277,6 +292,12 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     }
   };
 
+  /** Notes something that went wrong inside a callback, for the diagnostics and no further. */
+  const noteError = (error: unknown) => {
+    lastError = error instanceof Error ? error.message : String(error);
+    report();
+  };
+
   /**
    * Binds an SDK callback to the attempt that dialled it (see {@link Attempt}), and keeps it from
    * throwing into the SDK: a throw from `onConversationCreated` makes the SDK end the conversation
@@ -291,8 +312,28 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       try {
         handler(...parameters);
       } catch (error) {
-        lastError = error instanceof Error ? error.message : String(error);
-        report();
+        noteError(error);
+      }
+    };
+
+  /**
+   * Binds a client tool to the attempt that dialled it, as {@link bound} binds a callback, and keeps
+   * it answering. A tool that throws is sent back to the agent as a failure, which the model may
+   * apologise for aloud or call again, so a throw is noted for the diagnostics instead and the call
+   * is answered with the SDK's default. So is a call from a summoning that is over: its conversation
+   * is being ended, and nothing it asks for is shown.
+   */
+  const boundTool =
+    (owner: Attempt<Timer>, tool: (parameters: unknown) => string) =>
+    (parameters: unknown): string | undefined => {
+      if (!isCurrent(owner)) {
+        return undefined;
+      }
+      try {
+        return tool(parameters);
+      } catch (error) {
+        noteError(error);
+        return undefined;
       }
     };
 
@@ -488,6 +529,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     }
     answerGreeting(current);
     stopTimers(current);
+    current.pendingContext.clear();
     current.stopFollowing?.();
     current.stopFollowing = undefined;
     liveVoice = createLiveVoice(sdkReaders);
@@ -536,6 +578,32 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     schedule(sweep, ORPHAN_SWEEP_AGAIN_MS);
   };
 
+  // ── Telling the agent what it should know ─────────────────────────────────────────────────────
+
+  const sayContext = (conversation: SessionConversation, text: string, contextId: string | undefined) => {
+    try {
+      conversation.sendContextualUpdate(text, contextId === undefined ? undefined : { contextId });
+    } catch {
+      // The session went between the status and this; its ending says so for itself.
+    }
+  };
+
+  /**
+   * Says whatever has been waiting for the conversation, once it is both handed over and connected
+   * — the SDK reports the two in that order, but `adopt` from a resolved start can come after.
+   */
+  const sayPendingContext = (current: Attempt<Timer>) => {
+    const conversation = current.conversation;
+    if (!conversation || current.closed || current.status !== 'connected' || current.pendingContext.size === 0) {
+      return;
+    }
+    const pending = [...current.pendingContext];
+    current.pendingContext.clear();
+    for (const [contextId, text] of pending) {
+      sayContext(conversation, text, contextId);
+    }
+  };
+
   // ── The SDK's callbacks ────────────────────────────────────────────────────────────────────────
 
   const adopt = (current: Attempt<Timer>, conversation: SessionConversation) => {
@@ -546,6 +614,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       current.callAudio = 'conversation';
     }
     applyMicrophone(current);
+    sayPendingContext(current);
     const room = findRoom(conversation);
     if (!room) {
       return;
@@ -566,6 +635,9 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
         cancel(current.deadline);
         current.deadline = undefined;
       }
+      // Before the phase moves on, so that anything the holder says the moment he is live comes
+      // after what was waiting, and is what the agent is left with.
+      sayPendingContext(current);
       if (current.greeting === 'over') {
         setPhase('live');
       }
@@ -640,6 +712,24 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     sweepOrphanedAudio();
   };
 
+  /**
+   * The agent says what the request under way affects (see `affected-entities.ts`). Answered on
+   * every device, so that none of them sends back an error the model would react to; only a holder
+   * that shows them is told.
+   */
+  const markAffected = (parameters: unknown): string => {
+    const entities = affectedEntitiesOf(parameters);
+    if (entities.length === 0) {
+      return NOTHING_MARKED_RESULT;
+    }
+    events.onAffected?.(entities);
+    return MARKED_RESULT;
+  };
+
+  const clientTools = (current: Attempt<Timer>): SessionClientTools => ({
+    [MARK_AFFECTED_TOOL]: boundTool(current, markAffected),
+  });
+
   const callbacks = (current: Attempt<Timer>): SessionCallbacks => ({
     onConversationCreated: bound(current, (conversation: SessionConversation) => adopt(current, conversation)),
     onStatusChange: bound(current, ({ status }: { status: string }) => statusChanged(current, status)),
@@ -662,6 +752,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
         connectionType: 'websocket',
         textOnly: true,
         ...delay,
+        clientTools: clientTools(current),
         ...callbacks(current),
       };
     }
@@ -670,6 +761,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       connectionType: 'webrtc',
       ...delay,
       ...(current.greeted ? { overrides: WITHOUT_FIRST_MESSAGE } : {}),
+      clientTools: clientTools(current),
       ...callbacks(current),
     };
   };
@@ -998,6 +1090,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       status: 'disconnected',
       mode: 'listening',
       microphoneMuted: false,
+      pendingContext: new Map(deviceContext ? [[DEVICE_CONTEXT_ID, deviceContext]] : []),
     };
     attempt = current;
     startAfresh(textOnly);
@@ -1050,6 +1143,22 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       } catch {
         // The session went between the status and this; its ending says so for itself.
       }
+    },
+    sendContextualUpdate: (text, contextId) => {
+      const current = openAttempt();
+      const update = text.trim();
+      if (!current || !update) {
+        return;
+      }
+      // Connected rather than live, as for a typed line: a browser's conversation is up behind the
+      // greeting, and what the agent should know is worth knowing before its first answer.
+      if (current.conversation && current.status === 'connected') {
+        sayContext(current.conversation, update, contextId);
+        return;
+      }
+      // Moved to the end, so what is said on connecting keeps the order it was last said in.
+      current.pendingContext.delete(contextId);
+      current.pendingContext.set(contextId, update);
     },
     setTyping: (next) => {
       typing = next;

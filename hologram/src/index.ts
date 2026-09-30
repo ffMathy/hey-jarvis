@@ -17,6 +17,7 @@
  * microphone, a view tree or an SDK, or keeps a clock of its own — those live in `./react`, in
  * `./conversation`, or in the app that has one.
  */
+export * from './affected-entities';
 export * from './agent-audio-track';
 export * from './conversation-life';
 export * from './conversation-token';
