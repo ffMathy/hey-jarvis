@@ -209,7 +209,10 @@ function fakeClassifier(probabilities: Record<string, number> | Error) {
         }
         return {
           answers: Object.fromEntries(
-            Object.keys(questions).map((id) => [id, { type: 'boolean' as const, probability: probabilities[id] ?? 0.5 }]),
+            Object.keys(questions).map((id) => [
+              id,
+              { type: 'boolean' as const, probability: probabilities[id] ?? 0.5 },
+            ]),
           ),
           warnings: [],
         };
