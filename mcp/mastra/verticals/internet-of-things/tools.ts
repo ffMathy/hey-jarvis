@@ -69,8 +69,11 @@ interface ServicesApiResponse {
 // Type for services grouped by domain
 type ServicesByDomain = Record<string, Record<string, ServiceDefinition>>;
 
-// Get Home Assistant configuration from environment
-const getHomeAssistantConfig = () => {
+/**
+ * Where Home Assistant is and how to authenticate against it, for both the REST calls here and
+ * the websocket the event monitor holds open.
+ */
+export const getHomeAssistantConfig = () => {
   let url = process.env.HEY_JARVIS_HOME_ASSISTANT_URL;
   let token = process.env.HEY_JARVIS_HOME_ASSISTANT_TOKEN;
 
@@ -803,7 +806,7 @@ export const getChangedDevicesSince = createTool({
 [
 {%- for s in states if (nowts - as_timestamp(s.last_changed)) <= ${inputData.sinceSeconds} ${domainFilter} -%}
   {%- set did = device_id(s.entity_id) -%}
-  {"device_id":"{{ did }}","device_name":"{{ device_name(s.entity_id) }}","device_label_ids":{{ labels(did)|list|to_json }},"entity_id":"{{ s.entity_id }}","entity_label_ids":{{ labels(s.entity_id)|list|to_json }},"state":"{{ s.state }}","last_changed":{{ as_timestamp(s.last_changed)|int }}}
+  {"device_id":"{{ did }}","device_name":{{ (device_name(s.entity_id) or '')|to_json }},"device_label_ids":{{ labels(did)|list|to_json }},"entity_id":"{{ s.entity_id }}","entity_label_ids":{{ labels(s.entity_id)|list|to_json }},"state":{{ s.state|to_json }},"last_changed":{{ as_timestamp(s.last_changed)|int }}}
   {%- if not loop.last -%},{%- endif -%}
 {%- endfor -%}
 ]

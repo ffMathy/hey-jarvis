@@ -52,7 +52,7 @@ ESP32 Voice Hardware  ←→  Home Assistant  ←→  MCP Server (Mastra AI)  �
 | [**hologram**](./hologram) | The sphere itself, and the voice tracking behind it — platform-free, and bundled by every app |
 | [**horizon**](./horizon) | Jarvis in your room: a WebXR page for Meta Quest — say "Hey Jarvis" and he appears where there is space, in passthrough, and holds the conversation — [open it on the headset](https://ffmathy.github.io/hey-jarvis/horizon/) |
 
-Getting the app onto a phone and a paired watch goes through Google Play — internal testing on every pull request, the closed test on every release cut from `main`: [**docs/play-store.md**](./docs/play-store.md) covers the upload key, the publisher account and the secrets each needs. The signing and the workflow are in place; what is not is an open Play developer account, which is where that document starts.
+Getting the app onto a phone and a paired watch goes through Google Play — published only when a release is cut from `main`, to the closed test: [**docs/play-store.md**](./docs/play-store.md) covers the upload key, the publisher account and the secrets each needs. The signing and the workflow are in place; what is not is an open Play developer account, which is where that document starts.
 
 ## Quick Start
 

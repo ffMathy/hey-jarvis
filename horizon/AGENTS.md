@@ -607,8 +607,7 @@ the models first.
   site cannot publish — it needs the user-site repository, a custom domain or
   another host.
 - **The wake-word models are CC BY-NC-SA 4.0** (above).
-- **Older `claude/**` branches take `/horizon/` off Pages** until they are rebased
-  (see "Publishing" below).
+- **Pages shows the last release**, not the latest push (see "Publishing" below).
 - **No service worker.** The wasm in `vendor/` and the models are not
   content-hashed, so a cache-first worker would serve an old `canvaskit.wasm` to a
   newer CanvasKit loader after a dependency update, and a network-first one would
@@ -652,8 +651,9 @@ the models first.
 ## Opening it on a Quest
 
 - **Published:** see "Using it on a Quest" above.
-- **From a branch:** pushing a `claude/**` branch republishes the site (see
-  below), so a branch's build is at the same URL once its workflow run finishes.
+- **From a branch:** start the **Mobile Web** workflow by hand from the Actions tab
+  on that branch (see below); its build is then at the same URL once the run
+  finishes, until the next release or manual run replaces it.
 - **From a dev server:** WebXR needs HTTPS or `localhost`. With the headset on
   USB, `adb reverse tcp:5173 tcp:5173` makes the dev server `localhost` on the
   headset, then open `http://localhost:5173/`.
@@ -728,12 +728,13 @@ app at the root, `dist/horizon` in `horizon/` — and publishes it. Vite's
 `base: './'` makes every asset URL relative, so the same build works at any
 sub-path and needs no base-path variable.
 
-**Caveat: older branches take the headset app off the site.** Pages keeps one live
-site and the last run wins. A `claude/**` branch cut before this package existed
-still runs its own copy of the workflow, which publishes the phone app alone, so
-`/hey-jarvis/horizon/` returns 404 after such a push until the next run from a
-branch that has horizon. Nothing in the new workflow can prevent that; rebasing
-the old branches does.
+**It publishes for releases only.** `release.yml` calls the workflow with the tagged
+commit once Release Please has cut a release; pushes and pull requests publish
+nothing. It can be started by hand on any branch, which is how a branch's build
+gets onto a headset before it is merged. Pages keeps one live site and the last run
+wins, and a manual run from a branch cut before this package existed publishes the
+phone app alone, taking `/hey-jarvis/horizon/` off the site until the next run from
+a branch that has it.
 
 ## CI
 

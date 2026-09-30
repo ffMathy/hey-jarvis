@@ -54,7 +54,7 @@ mcp/
 │   │   │   ├── contacts.ts
 │   │   │   ├── tools.ts
 │   │   │   └── index.ts
-│   │   ├── generative-ui/   # Pages built on request by a Claude session (mostly shortcuts)
+│   │   ├── visualize/   # Pages built on request by a Claude session (mostly shortcuts)
 │   │   │   ├── agent.ts
 │   │   │   ├── shortcuts.ts
 │   │   │   ├── tools.ts
@@ -347,29 +347,40 @@ routing, so a surprising route can be traced back to the sensor that caused it.
   are named after the phone, so without it a two-phone household cannot be told apart.
 - `HEY_JARVIS_CAR_NAME` (optional): the car's name, when it is not a Tesla behind Tessie.
 
-### Generative UI Vertical (Shortcuts)
+### Visualize Vertical (Shortcuts)
 Answers "visualize…" and "generate a UI for…" with an interactive web page (an artifact), and pushes
 its link to the user's phone so a tap opens it in the phone's browser. It builds nothing itself: the
 page is written by a Claude Code session, which is the coding vertical's to start, and the push is
 the notification vertical's to send. What lives here is the asking — the brief a session builds from —
-and the reading of the link it reports back.
+the reading of the page it hands back, and hosting that page for a day.
 
-**Available Shortcuts** (`generative-ui/shortcuts.ts`):
+**Available Shortcuts** (`visualize/shortcuts.ts`):
 - **`createArtifact`**: a shortcut onto the coding vertical's `runCodingTask`. Wraps the request in a
-  brief (`buildArtifactTask`) that asks for one self-contained, phone-first page, published as an
-  artifact, with its URL alone on the last line of the session's final message — and tells the
-  session not to ask questions or touch a repository, since nobody is watching it work.
+  brief (`buildArtifactTask`) that asks for one self-contained, phone-first HTML page, handed back
+  in a fenced ```` ```html ```` block at the end of the session's final message — and tells the
+  session not to ask questions, touch a repository, or try to publish the page itself.
 - **`openArtifactOnPhone`**: a shortcut onto the notification vertical's `sendPushNotification`,
   refusing to send without a `url`. Also how the agent sends an earlier page again.
 
-**Available Tools** (`generative-ui/tools.ts`):
-- **`generateUserInterface`**: the two shortcuts in order. Builds the page, reads its URL out of the
-  session's last message (`findArtifactUrl`, which takes the *last* address so a session that cites
-  its sources first is not taken at its first link), and pushes it to the phone unless `sendToPhone`
-  is `false`. Returns `artifactUrl` and `sentToPhone`. A push that fails is reported
-  next to the link rather than thrown, since the page exists either way.
+**Available Tools** (`visualize/tools.ts`):
+- **`generateUserInterface`**: the two shortcuts in order. Builds the page, reads it out of the
+  session's last message (`findArtifactHtml`, which takes the *last* fenced block, and refuses a
+  document that never reaches `</html>`), hosts it, and pushes the link to the phone unless
+  `sendToPhone` is `false`. Returns `artifactUrl`, `expiresAt` and `sentToPhone`. A push that fails
+  is reported next to the link rather than thrown, since the page exists either way.
 
-**Agent:** `generativeUi` is routable, so the planner sends it visualization requests. The builder
+**Hosting** (`visualize/artifact-hosting.ts`): a session run over SSH has nowhere to publish to —
+asked to, it invented links like `https://artifacts.local/news-summary` — and free file hosts serve
+`.html` as plain text. So the MCP server hosts the pages itself, at
+`GET /artifacts/<uuid>` under `HEY_JARVIS_CLOUDFLARED_TUNNEL_URL`, the tunnel hostname the phone can
+already reach. Each page is a file in `$HEY_JARVIS_STORAGE_PATH/artifacts/`, so Studio's process can
+store a page the MCP server serves and a restart keeps the links working. A page lives for 24 hours
+(`ARTIFACT_LIFETIME_MILLISECONDS`): after that it answers 404, and expired files are deleted each
+time a new page is stored. The random UUID is the only thing keeping a page private, so it is served
+with `no-store`, `no-referrer` and `noindex`. If a Cloudflare Access application covers the tunnel
+hostname, give `/artifacts/*` a *Bypass* policy, or the phone gets Access's login page instead.
+
+**Agent:** `visualize` is routable, so the planner sends it visualization requests. The builder
 cannot reach Jarvis's own data, so a page about the calendar, the house or the shopping list needs
 that agent to fetch it first and the planner to pass it along — the agent's description says so.
 
@@ -386,19 +397,20 @@ says so and names the coding and reflection agents instead. Those are chained by
 than reached through more shortcuts on web research: a shortcut belongs to the agent that already
 holds the context, and here web research holds none of it.
 
-**Requirements:** the Claude Code sandbox under [Coding Agent](#coding-agent), on a subscription
-that can publish artifacts; plus the companion-app notify service the
-[Notification Agent](#notification-agent) uses for the push.
+**Requirements:** the Claude Code sandbox under [Coding Agent](#coding-agent);
+`HEY_JARVIS_CLOUDFLARED_TUNNEL_URL` (in `op.optional.env`), the MCP server's public address; plus the
+companion-app notify service the [Notification Agent](#notification-agent) uses for the push.
 
 **Example Use Cases:**
 - "Visualize the electricity prices for the rest of the day"
 - "Generate a UI for tracking my running times"
 - "Send that chart to my phone again"
 
-### Phone Vertical (Tools Only)
-Provides outbound calling, texting and contact lookup:
+### Phone Vertical
+Provides outbound calling, texting and contact lookup, and feeds the phone's notifications to Synapse:
 - **4 phone tools**: Place calls, send texts, and read the user's Google address book
-- **No agents or workflows**: This vertical exposes only tools for use by other agents
+- **No agents**: The tools are for use by other agents
+- **Notifications**: Maps the Android notifications the Home Assistant event monitor sees into Synapse state changes (see [Phone Notifications Into Synapse](#phone-notifications-into-synapse))
 - **Twilio integration**: Uses ElevenLabs Conversational AI platform with Twilio for phone calls
 - **Custom first message**: Each call can specify a custom greeting message for the recipient
 - **Conversation support**: After the initial message, the agent can engage in conversation with the recipient
@@ -476,7 +488,7 @@ Reads, analyses and changes code — Jarvis's own above all — and manages GitH
 - **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
 - **Repository management**: Browse and search repositories for any GitHub user
 - **Issue tracking**: View open, closed, or all issues for repositories
-- **Codebase questions**: `analyzeCodebase` has a Claude Code session read the code and answer — how something works, a review, ideas for improvement, technical debt — without changing anything. It is `runCodingTask` with a read-only brief (`buildCodebaseQuestionTask`), and it is slow like the tool it wraps. A `context` input carries what the code cannot show, most often the reflection agent's failures, which live in Mastra's storage where a session cannot reach. Before it existed, a question about Jarvis's own code had no agent to go to, and "gather ideas to improve Jarvis and visualize them" was planned onto web research. The planned shape now is reflection → coding → generativeUi, one chain, each handed the previous answer
+- **Codebase questions**: `analyzeCodebase` has a Claude Code session read the code and answer — how something works, a review, ideas for improvement, technical debt — without changing anything. It is `runCodingTask` with a read-only brief (`buildCodebaseQuestionTask`), and it is slow like the tool it wraps. A `context` input carries what the code cannot show, most often the reflection agent's failures, which live in Mastra's storage where a session cannot reach. Before it existed, a question about Jarvis's own code had no agent to go to, and "gather ideas to improve Jarvis and visualize them" was planned onto web research. The planned shape now is reflection → coding → visualize, one chain, each handed the previous answer
 - **Workflow coordination**: Triggers requirements gathering workflow for new feature requests
 - **Smart defaults**: a task with no repository named is a task on Jarvis himself, `ffMathy/hey-jarvis` (`coding/repository.ts`). Every tool, `implementFeatureWorkflow` and the agent default to it, and the implementing session is told the repository up front and never asks which one is meant
 
@@ -613,7 +625,7 @@ whole vault.
   task, waits until its turn ends (`waitForClaudeSessionTurn`, up to 15 minutes) and returns the last message it
   sent. The session is not handed to the watcher, because the caller reports the result itself. Like
   `startCodingSession` it is not one of the coding agent's own tools; the agent's own `analyzeCodebase` wraps it with a read-only brief, and other verticals reach it through shortcuts, such as the
-  [Generative UI Vertical](#generative-ui-vertical-shortcuts)'s `createArtifact`. It is marked slow, and a shortcut
+  [Visualize Vertical](#visualize-vertical-shortcuts)'s `createArtifact`. It is marked slow, and a shortcut
   onto it inherits the mark. Every task it starts ends on `FOREGROUND_WORK_NOTE`, which tells the session to work in
   the foreground: its answer is the last message of its turn, and the process is let go the moment that turn ends,
   so a subagent or command left running in the background is stopped unfinished — and a turn that ends on "waiting
@@ -1139,9 +1151,11 @@ in standard 5-field form; croner nicknames (`@hourly`, `@daily`) work too.
    - Purpose: Resumes the suspended runs that inbound form replies answer, and registers the
      emails as a state change
 
-5. **IoT Device Monitoring** - Runs every 3 hours + on startup
-   - Workflow: `iotMonitoringWorkflow`
-   - Purpose: Monitors Home Assistant devices and registers state changes
+5. **IoT Noise Baselines** - Runs every 3 hours + on startup
+   - Workflow: `iotNoiseBaselineWorkflow`
+   - Purpose: Recalculates how much each entity normally fluctuates, from 15 minutes of history,
+     so the Home Assistant event monitor can drop changes that are only noise. The changes
+     themselves are not polled: see [Home Assistant Event Monitor](#home-assistant-event-monitor)
 
 6. **Storage Retention** - Runs nightly at midnight
    - Workflow: `storageRetentionWorkflow`
@@ -1196,6 +1210,87 @@ api:
             timeout: !lambda 'return silence_seconds > 0 ? silence_seconds * 1000 : 3000;'
 ```
 
+
+### Phone Notifications Into Synapse
+
+The Home Assistant companion app on Android reports each notification the phone posts through its
+`sensor.<phone>_last_notification` sensor: the state is the text, and the attributes carry the app
+(`package`), `android.title`, `android.text`, `android.bigText` and `post_time`. The Home Assistant
+event monitor (`internet-of-things/event-monitor.ts`) already receives that sensor's `state_changed`
+events, and routes them to `phone/notifications.ts` instead of the device reports. Each one is
+registered with Synapse as `notification_posted` from the `phone` source, with `app`, `title`,
+`text` and `postedAt`. From there it is an ordinary state change: matched against subscriptions, saved
+to memory, and rolled up by the delivery policy rather than waking the reactor per notification.
+
+How these differ from the monitor's other entities:
+
+- **Attribute-only updates count.** The monitor otherwise drops them, but two notifications in a row
+  with the same text differ only in their attributes.
+- **No bulking.** Each notification is its own message; the bulker would keep only the first and
+  last of a burst.
+- **Never a device state.** Neither this sensor nor `_last_removed_notification` is reported,
+  caught up on, or stored as a device state, so the text never lands in `device_state` storage.
+- **No catch-up.** The sensor holds only the latest notification, so one posted while the socket
+  was down is not reported on reconnect.
+- The `sensitive` label excludes the sensor as it does any other entity. A notification with neither
+  a title nor text (media players, progress bars) is dropped.
+
+**Setup:** the *Last notification* sensor and its Allow List, in the
+[companion app checklist](#home-assistant-companion-app-setup) below.
+
+### Home Assistant Companion App Setup
+
+Jarvis reads the primary user's Android phone entirely through the Home Assistant companion app:
+where he is, whether he is driving, whether the phone is silenced, and what notifications it gets. It
+also sends to the phone through the app. Every toggle below is in the companion app unless stated
+otherwise, and most are under **Settings → Companion app → Manage sensors**.
+
+**Home Assistant side:**
+
+- **Assign the phone to the user's person.** Go to Settings → People → *the user* → *Track device*
+  and add the phone's `device_tracker`. The `person` entity is what "is he home" and "how far is he
+  from the car" are answered from (`inferUserLocation`). A phone that isn't assigned to a person
+  gives no location at all.
+- **Tell Jarvis which phone is his.** Companion-app devices are named after the phone ("Pixel 9"),
+  not after the user. Do one of these:
+  - set `HEY_JARVIS_PRIMARY_USER_PHONE_DEVICE` to the device name;
+  - name the device after the user;
+  - make a notify group called `notify.<user>_phone`.
+
+  In a household with only one phone, none of this is needed.
+
+**Companion app:**
+
+| Toggle | Where | Permission | Used for |
+| --- | --- | --- | --- |
+| Background location | Location sensors | Location → *Allow all the time* | The user's zone and GPS fix: home or away, distance to the car |
+| Detected activity | Activity sensors | Physical activity | "In vehicle" means he is driving, so an urgent message becomes a call |
+| Android Auto | Android Auto sensors | — | Connected to the car, so the same as driving |
+| Ringer mode | Audio sensors | — | Silent or vibrate means an urgent message is not spoken out loud in the house |
+| Do not disturb | Do not disturb sensors | — | Same as ringer mode, for DND and its priority-only modes |
+| Battery level | Battery sensors | — | Only used to recognise the device as a phone |
+| Last notification | Notification sensors | Notification access; set the **Allow List** | Feeds the phone's notifications into Synapse (see [above](#phone-notifications-into-synapse)) |
+| Notifications | Android app settings → Notifications | Allow notifications | Push notifications from `sendPushNotification` / `sendNotification` |
+| Display over other apps | Android app settings | Display over other apps | `command_activity`, which is how Jarvis sets an alarm on the phone |
+
+Notes:
+
+- **Leave *Last removed notification* off.** Jarvis never reads it and keeps it out of every report,
+  so enabling it only costs battery.
+- **Allow List for *Last notification*:** everything allowed ends up in shared memory, so leave out
+  banking, one-time codes and the like.
+- **Display over other apps can't be requested up front.** The companion app asks for it the first
+  time a `command_activity` arrives, so the first alarm Jarvis sets only opens that prompt. Grant it,
+  and every alarm after that works.
+- **Battery:** set the companion app's battery usage to *Unrestricted* in Android's app settings.
+  Otherwise Android defers its background updates, and the location, activity and notification
+  sensors can be minutes behind. Jarvis would then route messages based on where the user was, not
+  where he is.
+- **A Wear OS watch** with the companion app registers as a device of its own. Jarvis never sends to
+  it, because the phone mirrors its notifications onto the watch anyway, so nothing on the watch
+  needs enabling.
+- **A reinstalled app** comes back as a new device. Assign its new `device_tracker` to the person
+  again. The rest is picked up on its own within ten minutes.
 
 ### State Change Notification Workflow
 Reactive notification workflow using agent network for intelligent state change analysis:
@@ -1289,6 +1384,62 @@ await registerStateChange.execute({
   stateData: { task: 'Submit report', deadline: '2025-11-23T09:00:00Z' },
 });
 ```
+
+### Synapse Rules (Standing Instructions in Code)
+
+Rules are the State Change Reactor's equivalent of Claude Code rules. Each rule is a Markdown file in
+`mastra/verticals/synapse/rules/`. Its frontmatter says which state changes it applies to, and its body
+is instructions the reactor is given whenever one of them arrives. Subscriptions and working-memory
+preferences are created at runtime and can lapse or be forgotten. A rule is committed to the
+repository, so it is reviewed and versioned, and it applies until it is deleted.
+
+```markdown
+---
+description: Messages from family
+patterns:
+  - event: phone/notification_posted
+    data:
+      app: com.whatsapp
+      title: "{mom,dad}*"
+  - internet-of-things/home_assistant_event
+---
+Always tell me about these straight away, even at night.
+```
+
+**Patterns:**
+- A pattern is either a glob matched against the change's `<source>/<stateType>`, or an object with
+  that glob as `event` plus `data`. The `data` entries are globs that fields of the state data must
+  also match, all of them. Nested fields are addressed by dotted path (`data.command`).
+- A rule applies when **any** of its patterns matches.
+- Globs are matched with picomatch in bash mode, case-insensitively:
+  - `*` matches anything, slashes included, because the values are free text and ids rather than
+    paths;
+  - `?` and braces (`{a,b}`) work as usual;
+  - an array field (e.g. `observedStates`) matches when any element does;
+  - numbers and booleans are compared as text.
+- Useful `<source>/<stateType>` values:
+  - `phone/notification_posted`
+  - `internet-of-things/device_state_change` (`entityId`, `deviceName`, `newState`, …)
+  - `internet-of-things/home_assistant_event` (`eventType`, `data.*`)
+  - `weather/weather_update`
+  - `email/*`
+  - `coding/*`
+
+**How it reaches the reactor:**
+1. `registerStateChangeNotification` matches the rules against every state change. The rules are read
+   once per process, so a rule change takes effect on the next deploy or restart.
+2. The matched rules go into the change's notification payload as `rules`, next to
+   `matchedSubscriptions`. Each has a `name`, an optional `description` and its `instructions`.
+3. The reactor's instructions treat them as deliberate: a rule is not a vector-similarity guess, so it
+   applies. It wins over working memory where the two disagree, and it never needs
+   `markSubscriptionTriggered`.
+
+**Invalid rules:** a rule that doesn't parse is logged and skipped at runtime, so a mistake can't break
+state-change handling. `rules.spec.ts` parses every committed rule, which keeps a broken one out of CI.
+
+**Limitation:** a rule changes what the reactor *does* with a change, not *when* it sees it. Every
+change is filed at low priority and rolled up on the dispatcher's roughly one-minute cadence, whatever
+rule applies to it.
 
 ### Weather Workflow
 Multi-step weather processing workflow with state change registration:
@@ -2352,6 +2503,31 @@ The MCP server does not require authentication. All endpoints are publicly acces
   request can be read back as a breakdown
 - Sensor data processing and analysis
 - Scene and routine management
+
+#### Home Assistant Event Monitor
+`verticals/internet-of-things/event-monitor.ts` holds one subscription to Home Assistant's
+websocket API (through the official `home-assistant-js-websocket` client) and files what happens in
+the house for the State Change Reactor as it happens. It is started by `mcp-server.ts` only, the
+process that also owns the schedules, so Studio never files a change twice.
+
+- **What it listens to.** `state_changed` events whose state value moved (attribute-only updates
+  and entities being added or removed are dropped), and every other bus event except
+  `IGNORED_EVENT_TYPES` — Home Assistant's own bookkeeping, plus `call_service`,
+  `automation_triggered` and `script_started`, whose effects are reported as state changes anyway.
+  Other events are what bring button presses, doorbells and tag scans to the reactor, filed as
+  `home_assistant_event`; state changes keep the `device_state_change` type. The companion app's
+  notification sensors are the exception: they are routed to the phone vertical, not reported as
+  device states (see [Phone Notifications Into Synapse](#phone-notifications-into-synapse)).
+- **Spammy sources are bulked** (`change-bulker.ts`). Changes are collected per entity, or per event
+  type and source. A quiet bucket is released after 30 seconds; one that reaches 5 changes is spammy
+  and held for 10 minutes, then reported once with `changeCount`/`occurrences`, the first and last
+  value and the distinct values in between.
+- **Filtering** (`change-reports.ts`). Anything whose entity or device carries the `sensitive` label
+  is dropped. A state bucket is dropped as noise unless some value it passed through differs from
+  where it started by more than the entity's noise baseline, so a door that opened and closed inside
+  one window is still reported.
+- **Catch-up.** On every connect and reconnect it compares `get_states` against the last states it
+  saw (persisted in `iot_device_states`) and reports what changed while it was away.
 
 ### Model Context Protocol (MCP)
 - Server-client communication for tool sharing

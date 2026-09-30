@@ -168,8 +168,8 @@ of `CI`, which compiles the firmware and runs `turbo test` over untrusted pull
 request code on every push: that workflow is given no vault token at all, and the
 integration tests that would need one do not run on GitHub Actions (see
 [Testing Changes](#testing-changes)). The workflows that do carry it are
-`Release`, which runs only on `main`, and `Play`, which needs the upload key to
-publish a pull request's build to internal testing.
+`Release`, which runs only on `main`, and `Play`, which needs the upload key and
+runs only when `Release` calls it (or someone starts it by hand).
 
 ### Releases
 
@@ -192,12 +192,13 @@ release is tagged by the next run of the workflow, and the run log says so.
 To hold a release back, hold the commits back: anything that lands on `main`
 ships on the next run.
 
-A release ships the phone and the watch too. Once the release is tagged, the
-`play` job hands the tagged commit to the `Play` workflow, and that is the same
-workflow — the same build, the same upload key, the same
-two-releases-on-two-tracks — that every pull request publishes to internal
-testing. The only difference is the track each bundle goes to, so a release is
-never a path that has gone unexercised.
+A release ships the phone, the watch and the web build too. Once the release is
+tagged, the `play` job hands the tagged commit to the `Play` workflow and the
+`pages` job hands it to `Mobile Web`, which publishes to GitHub Pages. Those are
+the only automatic ways into either workflow: pull requests and branch pushes
+publish nothing to Play or Pages. A pull request still builds the phone and
+watch APKs (`Mobile APK`, `Wear APK`) and keeps them as run artifacts, so the
+build is exercised before it is released without anything reaching testers.
 
 It publishes to the **closed test** (`alpha`), not production. Production is not
 open to a personal developer account until it has run a closed test with twelve
@@ -466,3 +467,14 @@ touches what it covers.
 - DON'T USE for: basic Turborepo command syntax and common day-to-day commands
 
 <!-- turbo configuration end-->
+
+<!-- BEGIN:turborepo-agent-rules -->
+
+# This is NOT the Turborepo you know
+
+Turborepo configuration, task behavior, and CLI commands can vary between installed versions and may differ from your training data. Resolve the `turbo` package from this file's directory or relevant workspace; in monorepos, it may not be visible from the repository root. For example, run `node -p "require.resolve('turbo/package.json')"` from a workspace that depends on `turbo`.
+
+Read `docs/README.md` inside that installed package first, then read the relevant pages from its `docs/` directory before changing Turborepo configuration or commands. Heed deprecation notices. These bundled docs match the installed package version and are available without network access.
+
+This block is written and re-added by `turbo` before repository-scoped commands when an AI agent is detected. In the Turborepo source repository, its template is defined in `crates/turborepo-cli/src/cli/agent_guidance.rs`. Removing the managed block while updates are enabled means a later qualifying invocation will add it again. Set `"agentGuidance": false` in the root `turbo.json` or `turbo.jsonc` to opt out; this does not remove an existing block. Keep the block committed with your work to avoid an uncommitted change on the next agent invocation.
+<!-- END:turborepo-agent-rules -->

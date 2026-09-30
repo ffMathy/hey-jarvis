@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { isSlowTask } from '../../utils/slow-tasks.js';
 import { executeTool } from '../../utils/tool-factory.js';
-import { generateUserInterface } from '../generative-ui/tools.js';
+import { generateUserInterface } from '../visualize/tools.js';
 import { getWebResearchAgent } from './agent.js';
 import { visualizeResearch } from './shortcuts.js';
 

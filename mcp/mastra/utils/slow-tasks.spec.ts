@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { createArtifact } from '../verticals/generative-ui/shortcuts.js';
+import { createArtifact } from '../verticals/visualize/shortcuts.js';
 import { createShortcut } from './shortcut-factory.js';
 import { isSlowTask, markAsSlow } from './slow-tasks.js';
 import { createTool } from './tool-factory.js';
