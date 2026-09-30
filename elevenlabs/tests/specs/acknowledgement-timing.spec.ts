@@ -7,14 +7,15 @@ import {
 } from '../utils/acknowledgement-timing.js';
 import type { ServerMessage } from '../utils/conversation-strategy.js';
 
-const said = (text: string): ServerMessage =>
-  ({ type: 'agent_response', agent_response_event: { agent_response: text } }) as ServerMessage;
-const asked = (text: string): ServerMessage => ({ type: 'user_message', text }) as ServerMessage;
-const called = (toolName: string): ServerMessage =>
-  ({
-    type: 'mcp_tool_call',
-    mcp_tool_call: { tool_name: toolName, tool_call_id: 'call-1', state: 'loading', result: [] },
-  }) as unknown as ServerMessage;
+const said = (text: string): ServerMessage => ({
+  type: 'agent_response',
+  agent_response_event: { agent_response: text },
+});
+const asked = (text: string): ServerMessage => ({ type: 'user_message', text });
+const called = (toolName: string): ServerMessage => ({
+  type: 'mcp_tool_call',
+  mcp_tool_call: { tool_name: toolName, tool_call_id: 'call-1', state: 'loading', result: [] },
+});
 
 /**
  * Offline coverage for the two rules the live evals lean on: the user must hear

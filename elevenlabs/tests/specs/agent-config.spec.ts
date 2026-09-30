@@ -8,14 +8,7 @@ import {
 import { PromptAgentApiModelInputToolsItem } from '@elevenlabs/elevenlabs-js/serialization';
 import agentConfig from '../../src/assets/agent-config.json';
 import { toTestAgentClientEvents, toTestAgentTools } from '../../src/main';
-
-/**
- * The client tool that lights up what a request touches, spelled as the headset registers it in
- * `hologram/` and as Mastra's routing instructions name it in `mcp/mastra/verticals/routing/`.
- * Copied rather than imported, because this package imports nothing of the devices': nothing but
- * this spec stands between those spellings and the configuration below.
- */
-const MARK_AFFECTED_TOOL = 'markAffected';
+import { MARK_AFFECTED_TOOL_NAME } from '../utils/headset.js';
 
 /**
  * The committed config reaches ElevenLabs only through `deploy`, and that runs in the release
@@ -72,7 +65,7 @@ describe('the committed agent config', () => {
  */
 describe('the markAffected client tool', () => {
   const markAffected = agentConfig.conversationConfig.agent.prompt.tools.find(
-    (tool) => tool.type === 'client' && tool.name === MARK_AFFECTED_TOOL,
+    (tool) => tool.type === 'client' && tool.name === MARK_AFFECTED_TOOL_NAME,
   );
 
   it('is declared as a client tool, under the name the headset answers', () => {
@@ -146,7 +139,7 @@ describe('the test agent overrides', () => {
   it('keeps markAffected, which the routing instructions name', () => {
     const kept = toTestAgentTools(committedTools).map((tool) => tool.name);
 
-    expect(kept).toContain(MARK_AFFECTED_TOOL);
+    expect(kept).toContain(MARK_AFFECTED_TOOL_NAME);
   });
 
   it('keeps nothing but client tools', () => {

@@ -1,11 +1,15 @@
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { type Data, WebSocket } from 'ws';
-import type {
-  ConversationInitiationMetadataEvent,
-  ConversationStrategy,
-  PingEvent,
-  ServerMessage,
-  UserMessageEvent,
+import {
+  type ClientToolAnswerer,
+  type ClientToolCall,
+  type ClientToolResultEvent,
+  type ContextualUpdateEvent,
+  type ConversationStrategy,
+  mcpToolNamesIn,
+  type ServerMessage,
+  transcriptOf,
+  type UserMessageEvent,
 } from './conversation-strategy';
 
 /**
@@ -44,6 +48,11 @@ const MAX_REPLY_WAIT_MS = 75_000;
 export interface ElevenLabsConversationOptions {
   agentId: string;
   apiKey: string;
+  /**
+   * Answers the agent's client tool calls as a device would — `markAffected` with the headset's
+   * short acknowledgement, say. Without one, every call is recorded and left unanswered.
+   */
+  answerClientToolCall?: ClientToolAnswerer;
 }
 
 /**
@@ -55,6 +64,7 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
   private client: ElevenLabsClient;
   private readonly agentId: string;
   private readonly apiKey: string;
+  private readonly answerClientToolCall?: ClientToolAnswerer;
   private messages: ServerMessage[] = [];
   private conversationId?: string;
   private shouldStop = false;
@@ -64,6 +74,7 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
   constructor(options: ElevenLabsConversationOptions) {
     this.agentId = options.agentId;
     this.apiKey = options.apiKey;
+    this.answerClientToolCall = options.answerClientToolCall;
     this.client = new ElevenLabsClient({ apiKey: this.apiKey });
   }
 
@@ -167,9 +178,8 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
   private _handleMessage(message: ServerMessage): void {
     switch (message.type) {
       case 'conversation_initiation_metadata': {
-        const event = message as ConversationInitiationMetadataEvent;
         if (!this.conversationId) {
-          this.conversationId = event.conversation_initiation_metadata_event.conversation_id;
+          this.conversationId = message.conversation_initiation_metadata_event.conversation_id;
 
           // Mark conversation as ready
           this.conversationReady = true;
@@ -182,11 +192,10 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
       }
 
       case 'ping': {
-        const event = message as PingEvent;
         // Respond to ping with pong
         const pongEvent: PongEvent = {
           type: 'pong',
-          event_id: event.ping_event.event_id,
+          event_id: message.ping_event.event_id,
         };
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
           this.ws.send(JSON.stringify(pongEvent));
@@ -198,11 +207,55 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
         break;
       }
 
+      case 'client_tool_call': {
+        this.messages.push(message);
+        this._answerClientToolCall(message.client_tool_call);
+        break;
+      }
+
       default:
         // Store all raw messages
         this.messages.push(message);
         break;
     }
+  }
+
+  /**
+   * Answers a client tool call on the device's behalf, when the test asked for that. The answer is
+   * recorded beside the call, so the log shows what the agent was handed.
+   */
+  private _answerClientToolCall(call: ClientToolCall): void {
+    const result = this.answerClientToolCall?.(call);
+    if (result === undefined || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    const resultEvent: ClientToolResultEvent = {
+      type: 'client_tool_result',
+      tool_call_id: call.tool_call_id,
+      result,
+      is_error: false,
+    };
+    this.ws.send(JSON.stringify(resultEvent));
+    this.messages.push(resultEvent);
+  }
+
+  /**
+   * Background for the agent that starts no turn, so there is no reply to wait for. The context id
+   * travels as `context_id`, exactly as the SDK's `sendContextualUpdate` sends it.
+   */
+  async sendContextualUpdate(text: string, contextId?: string): Promise<void> {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+
+    const updateEvent: ContextualUpdateEvent =
+      contextId === undefined
+        ? { type: 'contextual_update', text }
+        : { type: 'contextual_update', text, context_id: contextId };
+
+    this.ws.send(JSON.stringify(updateEvent));
+    this.messages.push(updateEvent);
   }
 
   async sendMessage(text: string): Promise<string> {
@@ -215,16 +268,18 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
       text,
     };
 
+    const sentAt = this.messages.length;
     this.ws.send(JSON.stringify(messageEvent));
     await this.waitForResponse();
 
-    // Store the sent message in our messages array, but in the position right after the first agent_response message
-    const agentResponseIndex = this.messages.findIndex((msg) => msg.type === 'agent_response');
-    if (agentResponseIndex !== -1) {
-      this.messages.splice(agentResponseIndex + 1, 0, messageEvent as ServerMessage);
-    } else {
-      this.messages.push(messageEvent as ServerMessage);
-    }
+    // The message is recorded where it was sent, so everything after it in the log is what it got.
+    // The one exception is the greeting: it can land just after the first message has gone out, and
+    // it was said before that message, so the message goes after it. This always used to go after
+    // the greeting, which put every later message of a conversation ahead of the earlier ones.
+    const greetedBeforeSending = this.messages.slice(0, sentAt).some((message) => message.type === 'agent_response');
+    const greetingIndex = this.messages.findIndex((message) => message.type === 'agent_response');
+    const recordAt = greetedBeforeSending || greetingIndex === -1 ? sentAt : greetingIndex + 1;
+    this.messages.splice(recordAt, 0, messageEvent);
 
     // Find and return the last agent response
     const lastAgentResponse = [...this.messages].reverse().find((msg) => msg.type === 'agent_response');
@@ -285,27 +340,11 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
    * which outlasts the test.
    */
   getCalledToolNames(): Promise<string[]> {
-    return Promise.resolve(
-      this.messages
-        .filter((message) => message.type === 'mcp_tool_call')
-        .map((message) => message.mcp_tool_call.tool_name),
-    );
+    return Promise.resolve(mcpToolNamesIn(this.messages));
   }
 
   getTranscriptText(): string {
-    return this.messages
-      .map((msg) => {
-        if (msg.type === 'user_message') {
-          return `> USER: ${(msg as UserMessageEvent).text}`;
-        } else if (msg.type === 'agent_response') {
-          return `> AGENT: ${msg.agent_response_event.agent_response.trim()}`;
-        } else if (msg.type === 'mcp_tool_call' && msg.mcp_tool_call.state === 'success') {
-          return `> TOOL: ${msg.mcp_tool_call.tool_name} → ${JSON.stringify(msg.mcp_tool_call.result)}`;
-        }
-        return '';
-      })
-      .filter((x) => !!x)
-      .join('\n');
+    return transcriptOf(this.messages);
   }
 
   async disconnect(): Promise<void> {

@@ -8,6 +8,14 @@ export {
   stripAudioTags,
 } from './acknowledgement-timing';
 export {
+  type ClientToolAnswerer,
+  type ClientToolCall,
+  clientToolNamesIn,
+  latestContextualUpdates,
+  mcpToolNamesIn,
+  transcriptOf,
+} from './conversation-strategy';
+export {
   type ElevenLabsConversationOptions,
   ElevenLabsConversationStrategy,
 } from './elevenlabs-conversation-strategy';
@@ -15,6 +23,20 @@ export {
   type GeminiMastraConversationOptions,
   GeminiMastraConversationStrategy,
 } from './gemini-mastra-conversation-strategy';
+export {
+  type AffectedEntity,
+  DEVICE_CONTEXT_ID,
+  findUnrelayedMarks,
+  HEADSET_DEVICE_CONTEXT,
+  MARK_AFFECTED_TOOL_NAME,
+  type MarkAffectedCall,
+  NOT_POINTING_CONTEXT,
+  POINTING_CONTEXT_ID,
+  pointingContext,
+  readMarkAffectedCalls,
+  readRelayedAffectedEntities,
+  readRoutedQueries,
+} from './headset';
 export {
   assertMcpServerConnected,
   findDisconnectedIntegrations,
@@ -46,7 +68,9 @@ export {
   TestConversation,
 } from './test-conversation';
 export {
+  MAX_CONVERSATION_RETRIES,
   startTestEnvironment,
   stopTestEnvironment,
   TEST_ENVIRONMENT_SETUP_TIMEOUT_MS,
+  withConversationRetry,
 } from './test-environment';
