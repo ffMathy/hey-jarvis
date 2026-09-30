@@ -34,7 +34,7 @@ import {
   turn,
   useInput,
 } from './entities-driver';
-import { expect, photograph, test } from './fixtures';
+import { expect, photograph, ROOM_PICTURE_VIEWPORT, test } from './fixtures';
 
 /**
  * The things Jarvis works on, placed in the emulated living room and found there again.
@@ -75,6 +75,9 @@ const INBOX_SPOT: RoomPoint = { x: 0.6, y: 1.0, z: 0.3 };
 /** The second and third visits' origins: moved along the floor and turned. */
 const MOVED: Origin = { x: 0.8, z: -0.6, yawDegrees: 35 };
 const MOVED_AGAIN: Origin = { x: -0.5, z: 0.4, yawDegrees: -60 };
+
+// The pictures of the drawer, the tokens, the names and the reticle are for judging how they look.
+test.use({ viewport: ROOM_PICTURE_VIEWPORT });
 
 function withOrigin(origin: Origin): string {
   return `/hey-jarvis/horizon/?origin=${origin.x},${origin.z},${origin.yawDegrees}`;
