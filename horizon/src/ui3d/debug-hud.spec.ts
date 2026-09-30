@@ -40,7 +40,7 @@ describe('describeDiagnostics', () => {
         },
         frameRates: { supported: [72, 80, 90, 120], requested: 90, measured: 89.6 },
         frameMilliseconds: 11.1,
-        hologram: { cpuMilliseconds: 1.84, density: 1, canvasKitMilliseconds: 3.2 },
+        hologram: { cpuMilliseconds: 1.84, density: 1, canvasKitMilliseconds: 3.2, surface: 'webgl' },
         webglExtensions: ['OCULUS_multiview'],
       }),
     ).toEqual([
@@ -54,8 +54,46 @@ describe('describeDiagnostics', () => {
       'labels wall 6, table 4, (none) 1',
       'placed full 1.6 m',
       'rates 72/80/90/120  asked 90  got 90  frame 11.1 ms',
-      'hologram cpu 1.8 ms  skia 3.2 ms  density 1.00',
+      'hologram cpu 1.8 ms  skia 3.2 ms webgl  density 1.00',
       'gl OCULUS_multiview',
+    ]);
+  });
+
+  it('says why the wake word, the call or the room is in trouble, and what the session was granted', () => {
+    expect(
+      describeDiagnostics({
+        wake: {
+          state: 'broken',
+          level: 0,
+          score: 0,
+          chunksPerSecond: 0,
+          millisecondsPerChunk: 0,
+          armed: false,
+          problem: 'The microphone stopped — pinch to wake me',
+          needsGesture: true,
+        },
+        wakeAudio: {
+          contextState: 'running',
+          sampleRate: 16000,
+          droppedChunks: 3,
+          recoveries: 1,
+          profile: 'processed',
+        },
+        conversation: { phase: 'live', lastError: 'A server message could not be read.' },
+        room: { planes: 3, meshes: 0, labels: {}, triangles: 0, voxels: 1200, problem: 'No floor was found.' },
+        xrFeatures: ['local-floor', 'plane-detection'],
+      }),
+    ).toEqual([
+      'wake broken  score 0.00  rms 0.000',
+      'wake 0.0 chunks/s  0.0 ms/chunk',
+      'wake: The microphone stopped — pinch to wake me (needs a select)',
+      'wake audio running 16000 Hz  processed  dropped 3  recoveries 1',
+      'call live',
+      'call error: A server message could not be read.',
+      'room 3 planes  0 meshes  0 triangles  1200 voxels',
+      'labels no labels',
+      'room: No floor was found.',
+      'xr local-floor plane-detection',
     ]);
   });
 

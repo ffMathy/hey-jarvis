@@ -100,16 +100,6 @@ describe('entering the room', () => {
     ]);
   });
 
-  it('summons him straight away when asked to, as a room with no wake engine does', () => {
-    const room = new Room({ kind: 'absent' });
-    const effects = room.send({ type: 'entered', mode: 'conversation', summonNow: true });
-    expect(room.scene).toEqual({ kind: 'placing', purpose: 'conversation', towards: undefined });
-    expect(effects).toEqual([
-      { type: 'place', towards: undefined },
-      { type: 'set-frame-rate', target: 'highest' },
-    ]);
-  });
-
   it('starts a fresh session, forgetting the last one but not the wake engine', () => {
     const room = new Room().inConversation();
     room.send({ type: 'session-ended' });
@@ -270,6 +260,25 @@ describe('dismissing him', () => {
     expect(types(room.send({ type: 'wake' })).slice(0, 2)).toEqual(['arrive', 'summon']);
   });
 
+  it('arms the wake word only once his voice has been quiet for a while', () => {
+    const room = new Room().inConversation('live', false);
+    room.send({ type: 'voice-quiet', quiet: false });
+    expect(types(room.send({ type: 'dismiss-button' }))).toEqual(['hang-up', 'hologram']);
+    expect(room.view.wakeArmed).toBe(false);
+    room.send({ type: 'presence-gone' });
+    expect(room.view.wakeArmed).toBe(false);
+    expect(room.send({ type: 'voice-quiet', quiet: true })).toEqual([{ type: 'arm-wake' }]);
+    expect(room.scene).toEqual({ kind: 'waiting' });
+  });
+
+  it('disarms the wake word again if he is heard before he has gone', () => {
+    const room = new Room().inConversation();
+    room.send({ type: 'session-phase', phase: 'ended' });
+    expect(room.view.wakeArmed).toBe(true);
+    expect(room.send({ type: 'voice-quiet', quiet: false })).toEqual([{ type: 'disarm-wake' }]);
+    expect(room.send({ type: 'voice-quiet', quiet: false })).toEqual([]);
+  });
+
   it('does not summon him again on a held select while he is leaving: that is someone still hanging up', () => {
     const room = new Room().inConversation();
     room.send({ type: 'dismiss-button' });
@@ -306,6 +315,14 @@ describe('failures', () => {
     const room = new Room().inConversation('connecting');
     room.send({ type: 'session-phase', phase: 'failed' });
     expect(room.scene).toMatchObject({ kind: 'failed', problem: UNEXPLAINED_FAILURE });
+  });
+
+  it('keeps the wake word disarmed after a failure while the greeting still echoes', () => {
+    const room = new Room().inConversation('greeting');
+    room.send({ type: 'voice-quiet', quiet: false });
+    room.send({ type: 'session-phase', phase: 'failed' });
+    expect(types(room.after(SHORTEST_ERROR_MS))).toEqual(['hologram', 'hide-panel']);
+    expect(types(room.send({ type: 'voice-quiet', quiet: true }))).toEqual(['arm-wake']);
   });
 
   it('lets him leave and re-arms the wake word once the problem has been up long enough', () => {

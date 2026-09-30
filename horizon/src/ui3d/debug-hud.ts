@@ -29,6 +29,18 @@ export interface Diagnostics {
     chunksPerSecond: number;
     millisecondsPerChunk: number;
     armed: boolean;
+    /** Why it is not listening, as the status line says it. */
+    problem?: string;
+    /** Whether it is waiting for a select to get audio going again. */
+    needsGesture?: boolean;
+  };
+  /** The wake engine's own audio: its 16 kHz context, and what it has had to put up with. */
+  wakeAudio?: {
+    contextState?: string;
+    sampleRate?: number;
+    droppedChunks: number;
+    recoveries: number;
+    profile: string;
   };
   conversation?: {
     phase: string;
@@ -37,18 +49,27 @@ export interface Diagnostics {
     interruptions?: number;
     halfDuplex?: boolean;
     vadScore?: number;
+    /** The last error the SDK reported without ending the conversation. */
+    lastError?: string;
   };
   room?: {
     planes: number;
     meshes: number;
     labels: Record<string, number>;
     triangles: number;
+    /** Occupied cells in the placement grid. */
+    voxels?: number;
+    /** Why the room could not be used. */
+    problem?: string;
     placement?: string;
   };
+  /** The session features the headset granted, of those the room asked for. */
+  xrFeatures?: readonly string[];
   frameRates?: { supported: readonly number[]; requested?: number; measured?: number };
   /** Milliseconds between the last two frames. */
   frameMilliseconds?: number;
-  hologram?: { cpuMilliseconds: number; density: number; canvasKitMilliseconds: number };
+  /** `surface` is where CanvasKit draws: `webgl` or `cpu`. */
+  hologram?: { cpuMilliseconds: number; density: number; canvasKitMilliseconds: number; surface?: string };
   webglExtensions?: readonly string[];
 }
 
@@ -64,10 +85,20 @@ function describeLabels(labels: Record<string, number>): string {
 }
 
 function wakeLines(wake: NonNullable<Diagnostics['wake']>): string[] {
-  return [
+  const lines = [
     `wake ${wake.state}${wake.armed ? ' armed' : ''}  score ${fixed(wake.score, 2)}  rms ${fixed(wake.level, 3)}`,
     `wake ${fixed(wake.chunksPerSecond, 1)} chunks/s  ${fixed(wake.millisecondsPerChunk, 1)} ms/chunk`,
   ];
+  if (wake.problem !== undefined) lines.push(`wake: ${wake.problem}${wake.needsGesture ? ' (needs a select)' : ''}`);
+  return lines;
+}
+
+function wakeAudioLine(audio: NonNullable<Diagnostics['wakeAudio']>): string {
+  const rate = audio.sampleRate === undefined ? '–' : `${audio.sampleRate} Hz`;
+  return (
+    `wake audio ${audio.contextState ?? '–'} ${rate}  ${audio.profile}  ` +
+    `dropped ${audio.droppedChunks}  recoveries ${audio.recoveries}`
+  );
 }
 
 function conversationLines(conversation: NonNullable<Diagnostics['conversation']>): string[] {
@@ -76,14 +107,18 @@ function conversationLines(conversation: NonNullable<Diagnostics['conversation']
   if (conversation.interruptions !== undefined) parts.push(`interruptions ${conversation.interruptions}`);
   if (conversation.halfDuplex) parts.push('half-duplex');
   if (conversation.vadScore !== undefined) parts.push(`vad ${fixed(conversation.vadScore, 2)}`);
-  return [parts.join('  ')];
+  const lines = [parts.join('  ')];
+  if (conversation.lastError !== undefined) lines.push(`call error: ${conversation.lastError}`);
+  return lines;
 }
 
 function roomLines(room: NonNullable<Diagnostics['room']>): string[] {
+  const voxels = room.voxels === undefined ? '' : `  ${room.voxels} voxels`;
   const lines = [
-    `room ${room.planes} planes  ${room.meshes} meshes  ${room.triangles} triangles`,
+    `room ${room.planes} planes  ${room.meshes} meshes  ${room.triangles} triangles${voxels}`,
     `labels ${describeLabels(room.labels)}`,
   ];
+  if (room.problem !== undefined) lines.push(`room: ${room.problem}`);
   if (room.placement !== undefined) lines.push(`placed ${room.placement}`);
   return lines;
 }
@@ -116,26 +151,33 @@ function microphoneLine(diagnostics: Diagnostics): string | undefined {
 }
 
 function hologramLine(hologram: NonNullable<Diagnostics['hologram']>): string {
-  const { cpuMilliseconds, canvasKitMilliseconds, density } = hologram;
-  return `hologram cpu ${fixed(cpuMilliseconds, 1)} ms  skia ${fixed(canvasKitMilliseconds, 1)} ms  density ${fixed(density, 2)}`;
+  const { cpuMilliseconds, canvasKitMilliseconds, density, surface } = hologram;
+  const skia = `skia ${fixed(canvasKitMilliseconds, 1)} ms${surface === undefined ? '' : ` ${surface}`}`;
+  return `hologram cpu ${fixed(cpuMilliseconds, 1)} ms  ${skia}  density ${fixed(density, 2)}`;
 }
 
 function extensionsLine(extensions: readonly string[]): string {
   return `gl ${extensions.length > 0 ? extensions.join(' ') : 'none of interest'}`;
 }
 
+function featuresLine(features: readonly string[]): string {
+  return `xr ${features.length > 0 ? features.join(' ') : 'no features'}`;
+}
+
 /** Everything known, as short lines; parts with nothing to report are left out. */
 export function describeDiagnostics(diagnostics: Diagnostics): string[] {
-  const { scene, wake, conversation, room, hologram, webglExtensions } = diagnostics;
+  const { scene, wake, wakeAudio, conversation, room, hologram, webglExtensions, xrFeatures } = diagnostics;
   return [
     scene === undefined ? undefined : `scene ${scene}`,
     visibilityLine(diagnostics),
     microphoneLine(diagnostics),
     ...(wake === undefined ? [] : wakeLines(wake)),
+    wakeAudio === undefined ? undefined : wakeAudioLine(wakeAudio),
     ...(conversation === undefined ? [] : conversationLines(conversation)),
     ...(room === undefined ? [] : roomLines(room)),
     frameLine(diagnostics),
     hologram === undefined ? undefined : hologramLine(hologram),
+    xrFeatures === undefined ? undefined : featuresLine(xrFeatures),
     webglExtensions === undefined ? undefined : extensionsLine(webglExtensions),
   ].filter((line) => line !== undefined);
 }

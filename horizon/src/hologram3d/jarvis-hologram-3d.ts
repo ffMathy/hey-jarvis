@@ -12,7 +12,7 @@ import { createBodyStrokes } from './body-strokes';
 import { loadPainter, type Painter } from './canvaskit';
 import { createDensityBackstop } from './density-backstop';
 import { HOLOGRAM_RADIUS_METRES } from './dimensions';
-import { createFlatHologram, DRAWING_SIZE_PIXELS } from './flat-hologram';
+import { createFlatHologram, DRAWING_SIZE_PIXELS, type DrawingSurfaceKind } from './flat-hologram';
 import type { Vector3Tuple, ViewBasis } from './fragment-3d';
 import { createFragmentUniforms, writeFragmentUniforms } from './fragment-glsl';
 import { createFrameClock, type HologramDrive } from './frame-clock';
@@ -46,6 +46,8 @@ export interface HologramDiagnostics {
   density: number;
   /** Of that, the time CanvasKit took to draw and hand over its picture. */
   canvasKitMilliseconds: number;
+  /** Whether CanvasKit got a GPU surface, which is most of what its time depends on. */
+  surface: DrawingSurfaceKind;
 }
 
 export interface JarvisHologram3D {
@@ -152,7 +154,12 @@ export async function createJarvisHologram3D(
   let front: Vector3Tuple | null = null;
   let view: ViewBasis | null = null;
   let lastFrame: HologramFrame | null = null;
-  const diagnostics: HologramDiagnostics = { cpuMilliseconds: 0, density: 1, canvasKitMilliseconds: 0 };
+  const diagnostics: HologramDiagnostics = {
+    cpuMilliseconds: 0,
+    density: 1,
+    canvasKitMilliseconds: 0,
+    surface: flat.kind,
+  };
 
   function hide() {
     quad.mesh.visible = false;

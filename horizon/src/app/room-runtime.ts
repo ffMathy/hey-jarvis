@@ -16,6 +16,7 @@ import {
   type AppModel,
   type AppView,
   initialAppModel,
+  QUIET_BEFORE_ARMING_SECONDS,
   type RoomMode,
   reduceApp,
   type SelectEvent,
@@ -24,6 +25,7 @@ import {
 } from './app-state';
 import { createFrameRateMeter, type FrameRateMeter } from './frame-rate-meter';
 import {
+  type ConversationDiagnostics,
   type ConversationEvents,
   type ConversationFactory,
   type ConversationPort,
@@ -49,27 +51,26 @@ import { createSampleDriver, type SampleDriver } from './sample-driver';
  * out — a conversation reporting its phase from inside `summon()`, say — wait their turn, so each
  * step sees the model the one before it left.
  *
- * The parts that are other modules' come in through `ports.ts`, so the room runs today with
- * stand-ins (`milestone-zero.ts`) and takes the real ones unchanged.
+ * The parts that are other modules' come in through `ports.ts`, and `main.ts` chooses them: the
+ * wake engine, the ElevenLabs session, the 3D hologram and the room model — or, in sample mode,
+ * no wake engine and no session, with the moods driving him instead.
  */
 
 export interface RoomOptions {
   mode: RoomMode;
   createHologram: HologramFactory;
   placement: PlacementPort;
-  /** Absent in a room that does not listen — sample mode, or Milestone 0. */
+  /** Absent in a room that does not listen: sample mode's. */
   wake?: WakePort;
-  /** Absent in a room with no ElevenLabs session to hold; he then stays silent. */
+  /** Absent in a room with no ElevenLabs session to hold — sample mode's; he then stays silent. */
   createConversation?: ConversationFactory;
-  /** Summon him on entering rather than waiting for the wake word — for a room with no wake engine. */
-  summonOnEntry?: boolean;
   /** Stops the microphone the wake word listened on, when the session ends. */
   stopMicrophone?: () => void;
   /** The `?debug` HUD. */
   showHud?: boolean;
   /**
    * What the other modules can add to the HUD that the room cannot see itself: the microphone's
-   * permission and track, the AudioContext's state.
+   * permission and track, the AudioContexts' states.
    */
   diagnostics?: () => Partial<Diagnostics>;
   debug: JarvisDebugState;
@@ -156,7 +157,7 @@ interface Room {
   model: AppModel;
   hologramState: AppView['hologram'];
   conversation: ConversationPort;
-  conversationDiagnostics: Diagnostics['conversation'];
+  conversationDiagnostics: ConversationDiagnostics | undefined;
   sample: SampleDriver;
   panels: RoomPanels;
   hud: DebugHud | undefined;
@@ -175,6 +176,8 @@ interface Room {
   goneReported: boolean;
   lastReadout: number;
   lastReadiness: WakeReadiness | undefined;
+  /** Whether his voice was quiet when the state machine was last told, which it starts out assuming. */
+  lastQuiet: boolean;
   queue: AppEvent[];
   dispatching: boolean;
   /** Set by `return-to-page`: the room is let go of once the step carrying it is done. */
@@ -223,6 +226,7 @@ function startRoom(
     goneReported: false,
     lastReadout: 0,
     lastReadiness: undefined,
+    lastQuiet: true,
     queue: [],
     dispatching: false,
     returning: false,
@@ -248,7 +252,6 @@ function startRoom(
   dispatch(room, {
     type: 'entered',
     mode: options.mode,
-    summonNow: options.summonOnEntry,
     canType: stage.session.isSystemKeyboardSupported === true,
   });
 }
@@ -259,7 +262,7 @@ function conversationEvents(room: Room): ConversationEvents {
     onProblem: (message) => dispatch(room, { type: 'problem', message }),
     onCaption: (text) => dispatch(room, { type: 'caption', text }),
     onDiagnostics: (diagnostics) => {
-      room.conversationDiagnostics = { phase: room.conversation.phase, ...diagnostics };
+      room.conversationDiagnostics = diagnostics;
     },
   };
 }
@@ -275,14 +278,33 @@ function subscribe(room: Room) {
   cleanups.push(room.keyboard.onClose(() => dispatch(room, { type: 'keyboard-closed' })));
   const wake = options.wake;
   if (wake !== undefined) {
-    cleanups.push(wake.onWake(() => dispatch(room, { type: 'wake' })));
+    cleanups.push(
+      wake.onWake(() => {
+        options.debug.wakes += 1;
+        dispatch(room, { type: 'wake' });
+      }),
+    );
     cleanups.push(wake.onHealth((health) => reportReadiness(room, readinessOf(health))));
   }
-  // Frames stop while hidden and may slow to a crawl while blurred; the minute's grace and the
-  // error panel's time are counted all the same.
-  const ticking = setInterval(() => dispatch(room, { type: 'tick' }), 1000);
+  // Frames stop while hidden and may slow to a crawl while blurred; the minute's grace, the error
+  // panel's time and his voice going quiet are counted all the same.
+  const ticking = setInterval(() => passTime(room), 1000);
   cleanups.push(() => clearInterval(ticking));
   void stage.ended.then(() => dispatch(room, { type: 'session-ended' }));
+}
+
+/** Tells the state machine when his voice has gone quiet for long enough to arm the wake word, or stopped being. */
+function reportQuiet(room: Room) {
+  const quiet = room.conversation.quietFor(QUIET_BEFORE_ARMING_SECONDS);
+  if (quiet === room.lastQuiet) return;
+  room.lastQuiet = quiet;
+  dispatch(room, { type: 'voice-quiet', quiet });
+}
+
+/** The passing of time, for everything in the state machine that waits on it. */
+function passTime(room: Room) {
+  reportQuiet(room);
+  dispatch(room, { type: 'tick' });
 }
 
 /** Passes the wake engine's readiness on when it changed, or when the room is waiting to hear it. */
@@ -314,7 +336,9 @@ function onSelect(room: Room, hold: SelectEvent['hold'], ray: Ray | undefined) {
   // A wake engine that needs user activation to recover gets it from the next select, which is
   // the only activation there is inside the room.
   const wake = room.options.wake;
-  if (wake !== undefined && wake.health.state === 'broken') wake.rebuild().catch(() => undefined);
+  if (wake !== undefined && (wake.health.needsGesture || wake.health.state === 'broken')) {
+    wake.rebuild().catch(() => undefined);
+  }
   dispatch(room, { type: 'select', hold, target: targetOf(room, ray), ray });
 }
 
@@ -332,7 +356,7 @@ function dispatch(room: Room, event: AppEvent) {
       room.model = step.model;
       for (const effect of step.effects) carryOut(room, effect);
       if (changed) {
-        publishRoomDebugState(sceneName(room.model), viewOf(room.model), step.effects);
+        publishRoomDebugState(room.options.debug, sceneName(room.model), viewOf(room.model), step.effects);
       }
     }
   } finally {
@@ -464,7 +488,11 @@ function onFrame(room: Room, tick: XrFrameTick) {
   room.meter.frame(tick.time);
   room.options.debug.frames += 1;
   room.input.update(tick.frame, tick.referenceSpace);
-  room.options.placement.observe?.(tick.frame, tick.referenceSpace, tick.epoch);
+  room.options.placement.observe?.({
+    frame: tick.frame,
+    referenceSpace: tick.referenceSpace,
+    summoning: room.pendingPlacement !== undefined && !room.placing,
+  });
   placeIfAsked(room, tick);
   if (room.pendingAnchor !== undefined) {
     room.anchors.place(tick.frame, tick.referenceSpace, room.pendingAnchor);
@@ -476,7 +504,7 @@ function onFrame(room: Room, tick: XrFrameTick) {
   room.panels.arrange(tick.centreEye, spot, room.hologram.radius, tick.deltaSeconds, pointTo);
   room.hud?.follow(tick.centreEye);
   refreshReadouts(room, tick);
-  dispatch(room, { type: 'tick' });
+  passTime(room);
 }
 
 /** Starts the placement a summon asked for, against this frame's head, gaze and depth. */
@@ -491,7 +519,6 @@ function placeIfAsked(room: Room, tick: XrFrameTick) {
     forward: asked.towards?.direction ?? copyPoint(gazeOf(eye)),
     depthProbes: room.depth?.probes(tick.frame, tick.referenceSpace, head) ?? [],
     previous: room.spot?.position,
-    headOrientation: { x: eye.orientation.x, y: eye.orientation.y, z: eye.orientation.z, w: eye.orientation.w },
   };
   const placed = (placement: PlacementLike) => {
     room.placing = false;
@@ -499,6 +526,12 @@ function placeIfAsked(room: Room, tick: XrFrameTick) {
     room.freshSpot = true;
     room.options.debug.hologramPosition = toRoomPoint(placement.position);
     room.options.debug.headPositionAtPlacement = toRoomPoint(head);
+    room.options.debug.placement = {
+      level: placement.level,
+      clearance: placement.clearance,
+      radius: placement.radius,
+      needsPointer: placement.needsPointer,
+    };
     dispatch(room, { type: 'placed' });
   };
   room.placing = true;
@@ -549,9 +582,17 @@ function refreshReadouts(room: Room, tick: XrFrameTick) {
   room.hud?.update(collectDiagnostics(room));
 }
 
+/** Where he stands, for the HUD: how far placement had to relax, his size and his room. */
+function describeSpot(spot: PlacementLike | undefined): string | undefined {
+  if (spot === undefined) return undefined;
+  const clearance = Number.isFinite(spot.clearance) ? `${spot.clearance.toFixed(2)} m clear` : 'room unknown';
+  return `${spot.level}  r ${spot.radius.toFixed(2)} m  ${clearance}${spot.needsPointer ? '  arrow' : ''}`;
+}
+
 function collectDiagnostics(room: Room): Diagnostics {
-  const { stage, options } = room;
+  const { stage, options, conversation } = room;
   const wake = options.wake?.health;
+  const described = options.placement.describe?.();
   return {
     scene: sceneName(room.model),
     xrVisibility: stage.visibility,
@@ -566,9 +607,16 @@ function collectDiagnostics(room: Room): Diagnostics {
             chunksPerSecond: wake.chunksPerSecond,
             millisecondsPerChunk: wake.millisecondsPerChunk,
             armed: wake.armed,
+            problem: wake.problem,
+            needsGesture: wake.needsGesture,
           },
-    conversation: room.conversationDiagnostics ?? { phase: room.conversation.phase },
-    room: options.placement.describe?.(),
+    conversation: {
+      ...room.conversationDiagnostics,
+      phase: conversation.phase,
+      vadScore: conversation.user.getPresence(),
+    },
+    room: described === undefined ? undefined : { ...described, placement: describeSpot(room.spot) },
+    xrFeatures: stage.session.enabledFeatures,
     frameRates: {
       supported: stage.supportedFrameRates,
       requested: stage.requestedFrameRate,

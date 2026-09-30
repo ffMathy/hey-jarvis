@@ -1,3 +1,5 @@
+import type { AppView } from './app/app-state';
+
 /**
  * What the app shows the browser tests through `window.__jarvis`.
  *
@@ -11,14 +13,39 @@
 /** Where the app is: on the 2D page, getting into the room, or in it. */
 export type JarvisPhase = 'loading' | 'unsupported' | 'ready' | 'entering' | 'in-room' | 'failed';
 
-/** Which kind of surface CanvasKit is drawing the hologram into. */
-export type HologramSurfaceKind = 'webgl' | 'cpu';
-
 /** A point in the session's `local-floor` space, in metres. */
 export interface RoomPoint {
   x: number;
   y: number;
   z: number;
+}
+
+/** How the last placement went: how far the rules had to relax, and how much room he was given. */
+export interface PlacementReport {
+  /** `full`, `tight`, `small`, `wide` or `fallback`: see `src/room/types.ts`. */
+  level: string;
+  /** Free distance around his centre, in metres; Infinity when nothing about the room was known. */
+  clearance: number;
+  radius: number;
+  needsPointer: boolean;
+}
+
+/**
+ * What the room's state machine thinks is going on: the scene, what each panel says, whether the
+ * wake word is armed, and the effects of the last few steps — which is what a test driving selects
+ * and the wake word needs to see.
+ */
+export interface RoomReport {
+  /** The scene, as the room spells it: `waiting`, `present:live`, `sample:thinking`, `leaving:wait`… */
+  scene: string;
+  view: AppView;
+  /**
+   * The effects carried out recently, oldest first, each as its type and — for the ones about a
+   * panel or a mood — what it was about: `hang-up`, `show-panel toast: Listening`, `cycle-sample idle`.
+   * A panel that is only up for a moment may be gone by the time a test looks at the view; its
+   * effect is still here.
+   */
+  recentEffects: string[];
 }
 
 export interface JarvisDebugState {
@@ -29,7 +56,11 @@ export interface JarvisDebugState {
   hologramPosition: RoomPoint | null;
   /** Where the viewer's head was when he was placed. */
   headPositionAtPlacement: RoomPoint | null;
-  surface: HologramSurfaceKind | null;
+  placement: PlacementReport | null;
+  /** How many times the wake word has fired in a room since the page opened. */
+  wakes: number;
+  /** The room's state machine, once a room has been opened. */
+  room: RoomReport | null;
   /** The last thing that went wrong, as shown on the page. */
   problem: string | null;
 }
@@ -47,7 +78,9 @@ export function initialDebugState(): JarvisDebugState {
     frames: 0,
     hologramPosition: null,
     headPositionAtPlacement: null,
-    surface: null,
+    placement: null,
+    wakes: 0,
+    room: null,
     problem: null,
   };
 }

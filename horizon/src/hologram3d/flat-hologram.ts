@@ -7,8 +7,10 @@ import {
   type HologramScene,
   SCENE_SEED,
 } from 'hologram';
-import type { HologramSurfaceKind } from '../debug-hook';
 import { type Painter, wrapCanvas } from './canvaskit';
+
+/** Where CanvasKit draws him: on the GPU through WebGL, or with its own CPU rasteriser. */
+export type DrawingSurfaceKind = 'webgl' | 'cpu';
 
 /**
  * How many pixels across the drawing is.
@@ -21,7 +23,7 @@ export const DRAWING_SIZE_PIXELS = 512;
 
 /** The phone's whole drawing, rasterised once a frame into a picture the headset can show. */
 export interface FlatHologram {
-  kind: HologramSurfaceKind;
+  kind: DrawingSurfaceKind;
   /** Draws `frame` and hands the result over; the caller owns, and must close, the bitmap. */
   draw(frame: HologramFrame): ImageBitmap;
   dispose(): void;
@@ -30,7 +32,7 @@ export interface FlatHologram {
 interface DrawingTarget {
   surface: Surface;
   canvas: OffscreenCanvas;
-  kind: HologramSurfaceKind;
+  kind: DrawingSurfaceKind;
 }
 
 /** How the browsers that emulate WebGL on the CPU name their renderer. */

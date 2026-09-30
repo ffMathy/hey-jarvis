@@ -26,6 +26,10 @@ import type { Ray } from '../xr/ray';
  * and the wake word is armed again — so one bad summon never leaves the room deaf. The problem is
  * also handed back to the 2D page, which shows it after the room is closed.
  *
+ * **The wake word is armed again only once he has been quiet for two seconds.** His voice comes
+ * out of the headset's own speakers, a few centimetres from its microphones; armed while the tail
+ * of his last sentence is still in the room, the wake word would be listening to him.
+ *
  * **The headset's lifecycle** follows one table. `visible-blurred` (the Meta button, the system
  * keyboard) keeps the call and ignores the wake word and selects; a minute of it ends the call.
  * `hidden` ends the call quietly and disarms. Coming back to `visible` checks the wake engine's
@@ -59,8 +63,8 @@ export type Scene =
 /**
  * What the wake engine last said about itself.
  *
- * `absent` is a room with no wake engine at all — Milestone 0, before `src/wake/` is wired in —
- * which shows neither the hint nor a status line, because there is nothing to report on.
+ * `absent` is a room with no wake engine at all — sample mode's, which never listens — and shows
+ * neither the hint nor a status line, because there is nothing to report on.
  */
 export type WakeReadiness = { kind: 'absent' } | { kind: 'listening' } | { kind: 'not-listening'; problem: string };
 
@@ -72,6 +76,15 @@ export type WakeReadiness = { kind: 'absent' } | { kind: 'listening' } | { kind:
  * nobody is on.
  */
 export const BLURRED_CALL_LIMIT_MS = 60_000;
+
+/**
+ * How long his voice must have been silent before the wake word is armed again, in seconds.
+ *
+ * Two: longer than the echo of a sentence takes to die away in a furnished room, and as long as the
+ * wake engine's own refractory period, which starts again when it is armed — so a detection can
+ * never come sooner than four seconds after he stopped speaking.
+ */
+export const QUIET_BEFORE_ARMING_SECONDS = 2;
 
 /** The least time an error panel stays up, in milliseconds, however short the problem. */
 export const SHORTEST_ERROR_MS = 6000;
@@ -98,6 +111,11 @@ export interface AppModel {
   wake: WakeReadiness;
   /** Set on coming back to visible, until the wake engine reports its health: nothing is armed until then. */
   checkingWake: boolean;
+  /**
+   * Whether his voice has been silent for {@link QUIET_BEFORE_ARMING_SECONDS}: the wake word is only
+   * armed when it has, so it never hears him.
+   */
+  voiceQuiet: boolean;
   /** Whether he has been summoned in this session: the hint only teaches, it does not nag. */
   summonedOnce: boolean;
   /** Whether this headset shows its system keyboard to an immersive page. */
@@ -124,8 +142,6 @@ export type AppEvent =
   | {
       type: 'entered';
       mode: RoomMode;
-      /** Summon at once rather than wait for the wake word — the room when there is no wake engine to wait on. */
-      summonNow?: boolean;
       /** Whether the session can show the system keyboard (`XRSession.isSystemKeyboardSupported`). */
       canType?: boolean;
     }
@@ -141,6 +157,8 @@ export type AppEvent =
   | { type: 'tick' }
   | { type: 'session-ended' }
   | { type: 'wake-health'; readiness: WakeReadiness }
+  /** Whether his voice has now been silent for {@link QUIET_BEFORE_ARMING_SECONDS}, sent when that changes. */
+  | { type: 'voice-quiet'; quiet: boolean }
   | { type: 'keyboard-closed' }
   | { type: 'typed'; text: string };
 
@@ -203,6 +221,7 @@ export function initialAppModel(wake: WakeReadiness = { kind: 'absent' }): AppMo
     blurredSince: undefined,
     wake,
     checkingWake: false,
+    voiceQuiet: true,
     summonedOnce: false,
     canType: false,
     keyboardOpen: false,
@@ -274,7 +293,7 @@ function onEntered(model: AppModel, event: Extract<AppEvent, { type: 'entered' }
       { type: 'place', towards: undefined },
     );
   }
-  return event.summonNow ? startPlacing(fresh, undefined) : stay(fresh);
+  return stay(fresh);
 }
 
 function onWake(model: AppModel): Transition {
@@ -454,6 +473,10 @@ function onWakeHealth(model: AppModel, readiness: WakeReadiness): Transition {
   return go(model, { wake: readiness, checkingWake: false });
 }
 
+function onVoiceQuiet(model: AppModel, quiet: boolean): Transition {
+  return quiet === model.voiceQuiet ? stay(model) : go(model, { voiceQuiet: quiet });
+}
+
 function onKeyboardClosed(model: AppModel, now: number): Transition {
   if (!model.keyboardOpen) return stay(model);
   // Still blurred once the keyboard is down means the room is away for some other reason, which
@@ -495,6 +518,8 @@ function handle(model: AppModel, event: AppEvent, now: number): Transition {
       return onSessionEnded(model);
     case 'wake-health':
       return onWakeHealth(model, event.readiness);
+    case 'voice-quiet':
+      return onVoiceQuiet(model, event.quiet);
     case 'keyboard-closed':
       return onKeyboardClosed(model, now);
     case 'typed':
@@ -578,7 +603,8 @@ function wakeArmedOf(model: AppModel): boolean {
     model.wake.kind !== 'absent' &&
     waitingForIt &&
     attending(model) &&
-    !model.checkingWake
+    !model.checkingWake &&
+    model.voiceQuiet
   );
 }
 

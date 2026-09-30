@@ -1,7 +1,7 @@
 import { type JarvisVoice, SILENT_VOICE, type UserVoice } from 'hologram';
 import type { Object3D, WebGLRenderer } from 'three';
 import type { DepthProbe } from '../xr/depth-probes';
-import type { PoseLike, QuaternionLike, Vector3Like } from '../xr/ray';
+import type { PoseLike, Vector3Like } from '../xr/ray';
 import type { SessionPhase, WakeReadiness } from './app-state';
 
 /**
@@ -9,11 +9,13 @@ import type { SessionPhase, WakeReadiness } from './app-state';
  * placement, each as the few calls the room makes of it.
  *
  * Each mirrors the surface of the module that fills it (`src/wake/`, `src/conversation/`,
- * `src/hologram3d/`, `src/room/`) — the same names and shapes, so those modules' factories can be
- * passed in as they are — but declared here, on the room's side, so the room is written and tested
- * against what it needs rather than against whatever else those modules export. Any of them can be
- * a stand-in: `milestone-zero.ts` has one for the hologram and one for placement, and a room with
- * no wake engine or no conversation simply has none.
+ * `src/hologram3d/`, `src/room/`) — the same names and shapes, so the wake engine, the session and
+ * the hologram are passed in as they are — but declared here, on the room's side, so the room is
+ * written and tested against what it needs rather than against whatever else those modules export.
+ * `main.ts` is the one place that fills them. Placement is the only one with an adapter between it
+ * and its module (`room-placement.ts`), because the room model answers from a worker and has to be
+ * fed snapshots only an XR frame can take; and sample mode's room has no wake engine and no
+ * conversation at all.
  */
 
 // ─────────────────────────── the wake word (src/wake/) ───────────────────────────
@@ -30,6 +32,11 @@ export interface WakeHealthLike {
   level: number;
   score: number;
   armed: boolean;
+  /**
+   * Whether it can only get audio going again inside a gesture: the room calls `rebuild` from the
+   * next select, which is the only user activation there is inside an immersive session.
+   */
+  needsGesture: boolean;
 }
 
 export interface WakePort {
@@ -57,12 +64,21 @@ export function readinessOf(health: WakeHealthLike): WakeReadiness {
 
 // ─────────────────────────── the conversation (src/conversation/) ───────────────────────────
 
+/** What the conversation tells the `?debug` HUD about itself. */
+export interface ConversationDiagnostics {
+  status: string;
+  mode: string;
+  interruptions: number;
+  halfDuplex: boolean;
+  lastError?: string;
+}
+
 export interface ConversationEvents {
   onPhase(phase: SessionPhase): void;
   /** Always followed by the phase `failed`. */
   onProblem(message: string): void;
   onCaption(text: string | undefined): void;
-  onDiagnostics?(diagnostics: { status: string; mode: string; interruptions: number; halfDuplex: boolean }): void;
+  onDiagnostics?(diagnostics: ConversationDiagnostics): void;
 }
 
 export interface ConversationPort {
@@ -85,8 +101,8 @@ export type ConversationFactory = (events: ConversationEvents) => ConversationPo
 const NOBODY: UserVoice = { getPresence: () => 0, getVolume: () => 0 };
 
 /**
- * A conversation that never starts: the room's when it has no ElevenLabs session to hold, as at
- * Milestone 0. He is summoned, stays idle and silent, and leaves when sent away.
+ * A conversation that never starts: sample mode's, whose moods are make-believe and which holds no
+ * ElevenLabs session. He is summoned, stays idle and silent, and leaves when sent away.
  */
 export function createSilentConversation(): ConversationPort {
   return {
@@ -124,7 +140,7 @@ export interface HologramPort {
   /** 0–1; 0 once he has gone after `leaving`. */
   readonly presence: number;
   radius: number;
-  readonly diagnostics?: { cpuMilliseconds: number; density: number; canvasKitMilliseconds: number };
+  readonly diagnostics?: { cpuMilliseconds: number; density: number; canvasKitMilliseconds: number; surface: string };
   dispose(): void;
 }
 
@@ -138,11 +154,6 @@ export interface PlacementRequestLike {
   forward: Vector3Like;
   depthProbes: DepthProbe[];
   previous?: Vector3Like;
-  /**
-   * Which way the head is turned — beyond the contract's request, for a stand-in that needs the
-   * top of the head to find "ahead" when the gaze is straight up or down.
-   */
-  headOrientation: QuaternionLike;
 }
 
 export interface PlacementLike {
@@ -153,15 +164,37 @@ export interface PlacementLike {
   needsPointer: boolean;
 }
 
+/** What the `?debug` HUD shows about the room. */
+export interface RoomDescriptionLike {
+  planes: number;
+  meshes: number;
+  labels: Record<string, number>;
+  triangles: number;
+  /** Occupied cells in the placement grid. */
+  voxels?: number;
+  /** Why the room could not be used, when it could not. */
+  problem?: string;
+}
+
+/** One XR frame, as placement is shown it. */
+export interface ObservedFrame {
+  frame: XRFrame;
+  referenceSpace: XRReferenceSpace;
+  /**
+   * Whether a summon is waiting on this frame's placement, so the room should be read now rather
+   * than when its next reading is due: he is placed against what the headset knows at that moment.
+   */
+  summoning: boolean;
+}
+
 export interface PlacementPort {
   place(request: PlacementRequestLike): PlacementLike | Promise<PlacementLike>;
   /**
-   * Called every frame, so a room model can take its snapshot of the planes and meshes: they can
-   * only be read from an active frame, and the reference space's epoch says when every cached
-   * pose went stale.
+   * Called every frame, before any placement asked for in it, so a room model can read the planes
+   * and meshes: they can only be read from inside an active frame.
    */
-  observe?(frame: XRFrame, referenceSpace: XRReferenceSpace, epoch: number): void;
-  /** For the HUD. */
-  describe?(): { planes: number; meshes: number; labels: Record<string, number>; triangles: number };
+  observe?(observed: ObservedFrame): void;
+  /** For the HUD: the room as last described, or undefined before there is a description. */
+  describe?(): RoomDescriptionLike | undefined;
   dispose?(): void;
 }

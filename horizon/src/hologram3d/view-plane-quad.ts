@@ -1,17 +1,7 @@
-import { SPHERE_FRACTION } from 'hologram';
 import { GLSL3, LinearFilter, Mesh, PlaneGeometry, RawShaderMaterial, Texture, Vector3 } from 'three';
-import { HOLOGRAM_RADIUS_METRES } from './dimensions';
 import { glslColour } from './fragment-glsl';
 import { HALO_PAINTS } from './halo-union';
 import { LAYER_BLENDING, setLayerFade } from './layer-blending';
-
-/**
- * The side of the square the phone's drawing fills, about 3.7R.
- *
- * `drawHologram` puts a sphere of radius SPHERE_FRACTION × size in a size × size square, so the
- * square is R / SPHERE_FRACTION across. Taken from the drawing so the two cannot drift apart.
- */
-export const VIEW_PLANE_SIDE_METRES = HOLOGRAM_RADIUS_METRES / SPHERE_FRACTION;
 
 /**
  * How much of the room behind him his light hides, as a share of how bright it is.
@@ -101,8 +91,6 @@ export interface ViewPlaneQuad {
    * `pictureFade` of it — CanvasKit's arrival layer. Both 1 by default.
    */
   setFade(fade: number, pictureFade: number): void;
-  /** Turns the square so its face points at `eye`, keeping it upright. */
-  faceViewer(eye: Vector3): void;
   dispose(): void;
 }
 
@@ -169,10 +157,6 @@ export function createViewPlaneQuad(side: number): ViewPlaneQuad {
       setLayerFade(material, fade);
       // Never 0: a picture faded to nothing is not drawn at all (see jarvis-hologram-3d.ts).
       material.uniforms.pictureFade.value = Math.max(pictureFade, 1e-3);
-    },
-    faceViewer(eye) {
-      // A plane faces +Z, and lookAt turns an object's +Z towards the target with the world's up kept up.
-      mesh.lookAt(eye);
     },
     dispose() {
       current?.close();
