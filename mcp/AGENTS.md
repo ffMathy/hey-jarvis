@@ -817,9 +817,10 @@ The planner writes a flat list of **tasks**. Each names one agent, the prompt it
 in `needs` the id of the one task whose answer it cannot be carried out without. Tasks run at
 the same time as each other unless `needs` says otherwise.
 
-An id in the request — most often the thing sir is pointing at, `(pointing at "Kitchen ceiling",
-light.kitchen_ceiling)` — is copied verbatim into the prompt of the agent that owns the thing, so it
-acts on that very thing rather than looking it up (see **What sir points at** under Routing).
+An id in the request — most often the thing sir is pointing at,
+`(pointing at "Kitchen ceiling", id light.kitchen_ceiling)` — is copied verbatim into the prompt of
+the agent that owns the thing, so it acts on that very thing rather than looking it up (see **What
+sir points at** under Routing).
 
 What actually runs is **chains**, derived from that list in `task-chains.ts`: the delegations
 inside one chain run in order, and every delegation after the first is handed the previous
