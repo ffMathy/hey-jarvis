@@ -1,8 +1,17 @@
 import { z } from 'zod';
 import { createAgent, LOW_THINKING_PROVIDER_OPTIONS } from '../../utils/index.js';
+import { logger } from '../../utils/logger.js';
 import { withRetry } from '../../utils/retry.js';
+import { executeTool } from '../../utils/tool-factory.js';
 import { createAgentStep, createStep, createToolStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
-import { findProductInCatalog, getCurrentCartContents, setProductBasketQuantity } from './tools.js';
+import { canBeSetInCode, chooseProducts, getProductChoiceClassifier } from './classifier.js';
+import {
+  findPreferredProducts,
+  findProductInCatalog,
+  formatProductSize,
+  getCurrentCartContents,
+  setProductBasketQuantity,
+} from './tools.js';
 
 // Schema for shopping list input
 const shoppingListInputSchema = z.object({
@@ -181,13 +190,89 @@ Provide a summary of the actions you took for each product.`,
   defaultOptions: { providerOptions: LOW_THINKING_PROVIDER_OPTIONS },
 } satisfies Parameters<typeof createAgent>[0];
 
+type ExtractedProduct = z.infer<typeof extractedProductSchema>['products'][number];
+
+/**
+ * Sets the basket quantity of every item whose product a classifier is sure of, without the agent,
+ * and hands back the items left for it.
+ *
+ * The mutator agent is a tool loop: a model round trip to search, another to read the results and
+ * set the basket. For a plain count of something ("2 agurker") the search needs no model at all,
+ * and picking one product from the results is a choice from a list, which is what the classifier
+ * answers (see `classifier.ts`). Everything else -- removals, weights and volumes, items it is
+ * unsure of or finds nothing for, and every item when there is no key or the call fails -- goes to
+ * the agent exactly as before, as does any item whose basket change fails here.
+ */
+async function setChosenProductsWithoutAgent(
+  products: ExtractedProduct[],
+  userRequest: string,
+  cartBefore: unknown,
+): Promise<{ changes: string[]; productsForAgent: ExtractedProduct[] }> {
+  const classifier = getProductChoiceClassifier();
+  const settableProducts = products.filter(canBeSetInCode);
+  const basket = cartSnapshotSchema.safeParse(cartBefore);
+  // Without the basket, a product already in it could be added a second time rather than
+  // updated, which the agent would not do.
+  if (!classifier || settableProducts.length === 0 || !basket.success) {
+    return { changes: [], productsForAgent: products };
+  }
+
+  try {
+    const basketCandidates = basket.data.map((line) => ({
+      objectID: line.objectID,
+      name: line.name,
+      brand: line.brand,
+      size: formatProductSize(line.units, line.unitsOfMeasure),
+      basketQuantity: line.quantity,
+    }));
+    const choices = await chooseProducts(
+      settableProducts,
+      userRequest,
+      basketCandidates,
+      findPreferredProducts,
+      classifier,
+    );
+    if (choices.length === 0) {
+      logger.info('Product choice was not sure of any item; leaving all to the agent', {
+        itemCount: products.length,
+      });
+      return { changes: [], productsForAgent: products };
+    }
+
+    const { results } = await executeTool(setProductBasketQuantity, {
+      items: choices.map(({ product, candidate }) => ({
+        object_id: candidate.objectID,
+        quantity: product.quantity,
+        product_name: candidate.name,
+      })),
+    });
+    // The results come back in the order the items were given.
+    const setProducts = new Set(choices.filter((_, index) => results[index]?.success).map(({ product }) => product));
+    const productsForAgent = products.filter((product) => !setProducts.has(product));
+
+    logger.info('Set basket quantities without the agent', {
+      setCount: setProducts.size,
+      leftToAgentCount: productsForAgent.length,
+    });
+
+    return {
+      changes: results.filter((result) => result.success).map((result) => result.message),
+      productsForAgent,
+    };
+  } catch (error: unknown) {
+    logger.warn('Setting products without the agent failed; leaving all to the agent', { error });
+    return { changes: [], productsForAgent: products };
+  }
+}
+
 /**
  * Runs the mutator agent over the products that need a change.
  *
  * A plain step rather than `createAgentStep`, because that runs its agent with `toolChoice:
  * 'none'` to get structured output back -- so the mutator could never call a tool, and the step
  * reported changes to the basket that were never made. A request that changes nothing (every
- * product already in the basket as asked) skips the model altogether.
+ * product already in the basket as asked) skips the model altogether, and so does one whose every
+ * item a classifier could settle (see {@link setChosenProductsWithoutAgent}).
  */
 const processExtractedProducts = createStep({
   id: 'process-extracted-products',
@@ -198,9 +283,18 @@ const processExtractedProducts = createStep({
     mutationResults: z.array(z.string()),
   }),
   execute: async ({ inputData, state }) => {
-    const productsToProcess = inputData.products.filter((product) => product.operationType !== null);
-    if (productsToProcess.length === 0) {
+    const productsNeedingAction = inputData.products.filter((product) => product.operationType !== null);
+    if (productsNeedingAction.length === 0) {
       return { mutationResults: [] };
+    }
+
+    const { changes, productsForAgent: productsToProcess } = await setChosenProductsWithoutAgent(
+      productsNeedingAction,
+      state.prompt ?? '',
+      state.cartBefore,
+    );
+    if (productsToProcess.length === 0) {
+      return { mutationResults: changes };
     }
 
     const prompt = `Please process each of these products that require action (operationType is not null):
@@ -223,7 +317,7 @@ Use your available tools to search for products and update the cart. Return a su
       label: 'shopping list mutator',
     });
 
-    return { mutationResults: [response.text] };
+    return { mutationResults: [...changes, response.text] };
   },
 });
 

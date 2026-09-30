@@ -9,7 +9,16 @@ import type { BilkaCartResponse } from './types.js';
  * used to be fetched and parsed as well, only for the tool's output schema to drop them, and a
  * search now asks for several filtered result lists at once.
  */
-const CATALOG_ATTRIBUTES_TO_RETRIEVE = ['objectID', 'name', 'brand', 'subBrand', 'price', 'attributes'];
+const CATALOG_ATTRIBUTES_TO_RETRIEVE = [
+  'objectID',
+  'name',
+  'brand',
+  'subBrand',
+  'price',
+  'attributes',
+  'units',
+  'unitsOfMeasure',
+];
 
 const catalogHitSchema = z.object({
   objectID: z.string(),
@@ -19,6 +28,10 @@ const catalogHitSchema = z.object({
   /** In øre. */
   price: z.number(),
   attributes: z.array(z.object({ attributeName: z.string() })).nullish(),
+  // The size of one, named as the cart names it. Only ever descriptive, so a hit that lacks it or
+  // carries it in another shape is read without it rather than failing the whole search.
+  units: z.number().nullish().catch(undefined),
+  unitsOfMeasure: z.string().nullish().catch(undefined),
 });
 
 export type CatalogHit = z.infer<typeof catalogHitSchema>;
