@@ -429,11 +429,18 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
   };
 
   /**
-   * Lets go of it once the conversation that had it has finished ending, which the SDK only says
-   * after it has taken its own audio session down — putting the device's audio mode back before
-   * then would leave it for the SDK to switch into again as it goes.
+   * Ends a conversation, and lets go of the call's audio once it has finished ending, which the SDK
+   * only says after it has taken its own audio session down — putting the device's audio mode back
+   * before then would leave it for the SDK to switch into again as it goes.
    */
-  const releaseAfter = (current: Attempt<Timer>, ending: Promise<void>) => {
+  const endAndRelease = (current: Attempt<Timer>, conversation: SessionConversation) => {
+    let ending: Promise<void>;
+    try {
+      ending = conversation.endSession();
+    } catch {
+      // Already gone; there is nothing left to wait for.
+      ending = Promise.resolve();
+    }
     ending.catch(() => undefined).then(() => releaseCallAudio(current));
   };
 
@@ -492,7 +499,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       leaveNetwork?.();
     }
     if (current.conversation) {
-      releaseAfter(current, current.conversation.endSession());
+      endAndRelease(current, current.conversation);
     } else if (!current.starting) {
       releaseCallAudio(current);
     }
@@ -667,7 +674,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     current.starting = false;
     if (!isCurrent(current)) {
       // Given up on or hung up while it was dialling: nobody is waiting for it now.
-      releaseAfter(current, conversation.endSession());
+      endAndRelease(current, conversation);
       return;
     }
     if (!current.conversation) {

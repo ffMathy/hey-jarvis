@@ -43,11 +43,12 @@ function createReplyKeeper(onChange: (reply: WrittenReply) => void) {
   let reply: WrittenReply = SAYING_NOTHING;
   return {
     show(next: WrittenReply) {
-      const changed = next.shown !== reply.shown || next.readingUntil !== reply.readingUntil;
-      reply = next;
-      if (changed) {
-        onChange(reply);
+      if (next.shown === reply.shown && next.readingUntil === reply.readingUntil) {
+        // The same on screen: kept as it was, so whoever compares it sees nothing has moved.
+        return;
       }
+      reply = next;
+      onChange(reply);
     },
     get reply() {
       return reply;
