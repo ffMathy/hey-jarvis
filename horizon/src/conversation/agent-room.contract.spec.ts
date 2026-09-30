@@ -12,7 +12,9 @@ import type { StartSession } from 'hologram';
  * against this app's `livekit-client`. A new SDK version that moves either breaks nothing loudly:
  * the hologram quietly goes back to the SDK's own readings, which never read his pauses as silence,
  * and interruptions stop dropping the queued tail of his sentence. So this fails instead. It is the
- * phone's `mobile/src/agent-audio-track.contract.spec.ts`, for this app's copies.
+ * phone's `mobile/src/agent-audio-track.contract.spec.ts`, for this app's copies. It also pins what
+ * `hologram`'s fakes copy from the SDK for `markAffected` and contextual updates — how a client
+ * tool is answered and how a context id is sent — so the specs driven by them stay true to it.
  */
 
 const HORIZON_ROOT = join(import.meta.dir, '../..');
@@ -65,5 +67,22 @@ describe("the SDK's conversation", () => {
 
   it('takes `Conversation.startSession` as the session’s `startSession`, unchanged', () => {
     expect(startSessionFits).toBe(true);
+  });
+
+  it('answers a registered client tool the way hologram’s fakes answer `markAffected`', () => {
+    // `callClientTool` in `hologram/src/jarvis-session.fakes.ts` copies this: an own property looked
+    // up by name, and nothing returned answered with the default rather than as an error.
+    const source = readClientSource('BaseConversation.js');
+
+    expect(source).toContain(
+      'Object.prototype.hasOwnProperty.call(this.options.clientTools, event.client_tool_call.tool_name)',
+    );
+    expect(source).toContain('?? "Client tool execution successful."');
+  });
+
+  it('sends a contextual update with its context id, which is what lets a newer one replace it', () => {
+    expect(readClientSource('BaseConversation.js')).toMatch(
+      /type: "contextual_update",\s*text,\s*\.\.\.\(options\?\.contextId \? \{ context_id: options\.contextId \} : \{\}\)/,
+    );
   });
 });

@@ -264,6 +264,7 @@ async function openConversationRoom(
           audioContext,
           events,
           voice,
+          deviceContext: conversation.HEADSET_DEVICE_CONTEXT,
         }),
       stopMicrophone,
       diagnostics: flags.has('debug') ? roomDiagnostics : undefined,
