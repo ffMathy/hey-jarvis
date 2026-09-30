@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { DISTANCE_AHEAD_METRES } from '../../src/hologram3d/dimensions';
 import type { PreviewPhase, RoomStatus } from '../../src/preview/preview-hook';
-import { expect, photograph, test } from './fixtures';
+import { expect, photograph, ROOM_PICTURE_VIEWPORT, test } from './fixtures';
 
 /**
  * The volumetric hologram in the emulated Quest 3's living room, from the preview page's room mode.
@@ -42,7 +42,7 @@ test('in the emulated living room, 1.6 m ahead, through three phases', async ({ 
   });
   // Larger than the default, since the emulator draws the room at the window's size and he is a
   // head's width across at 1.6 m.
-  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.setViewportSize(ROOM_PICTURE_VIEWPORT);
   await page.goto('/hey-jarvis/horizon/preview.html');
   await page.evaluate(() => window.__xrHarness?.ready);
   await page.evaluate(() => window.__hologramPreview?.ready);
@@ -76,8 +76,14 @@ test('in the emulated living room, 1.6 m ahead, through three phases', async ({ 
       .poll(async () => (await roomStatus(page)).frames, { timeout: 60000 })
       .toBeGreaterThanOrEqual(settledAt);
     await photograph(page, testInfo, `room-${phase}.png`);
-    // Closer in on him: the middle of the view, where he stands.
-    await photograph(page, testInfo, `room-${phase}-close.png`, { x: 690, y: 270, width: 540, height: 540 });
+    // Closer in on him: the middle of the view, where he stands, half the view high.
+    const side = ROOM_PICTURE_VIEWPORT.height / 2;
+    await photograph(page, testInfo, `room-${phase}-close.png`, {
+      x: (ROOM_PICTURE_VIEWPORT.width - side) / 2,
+      y: (ROOM_PICTURE_VIEWPORT.height - side) / 2,
+      width: side,
+      height: side,
+    });
   }
 
   const { intervals, updates, canvasKit, frames } = await roomStatus(page);

@@ -175,4 +175,11 @@ describe('extensionsOfInterest', () => {
     ]);
     expect(extensionsOfInterest(null)).toEqual([]);
   });
+
+  it('says whether multisampling can go straight into the XR layer, and whether canvases filter along a tilt', () => {
+    expect(extensionsOfInterest(['EXT_texture_filter_anisotropic', 'WEBGL_multisampled_render_to_texture'])).toEqual([
+      'WEBGL_multisampled_render_to_texture',
+      'EXT_texture_filter_anisotropic',
+    ]);
+  });
 });

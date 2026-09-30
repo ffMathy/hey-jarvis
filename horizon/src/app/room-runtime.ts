@@ -238,6 +238,9 @@ function startRoom(
   const holder = new Group();
   holder.visible = false;
   holder.add(hologram.object);
+  // Every canvas in the room is filtered as sharply as this GPU allows along a tilt: the drawer is a
+  // lectern, and names and panels are read from the side as often as square on.
+  const anisotropy = stage.renderer.capabilities.getMaxAnisotropy();
   const room: Room = {
     stage,
     hologram,
@@ -248,11 +251,15 @@ function startRoom(
     conversation: createSilentConversation(),
     conversationDiagnostics: undefined,
     sample: createSampleDriver(now),
-    panels: createRoomPanels(),
-    hud: options.showHud ? createDebugHud() : undefined,
+    panels: createRoomPanels(anisotropy),
+    hud: options.showHud ? createDebugHud(anisotropy) : undefined,
     input: createXrInput(stage.session, stage.referenceSpace, now),
     inputs: createInputSnapshots(stage.session),
-    entities: createRoomEntities({ session: stage.session, storage: options.entityStorage ?? forgetfulStorage() }),
+    entities: createRoomEntities({
+      session: stage.session,
+      storage: options.entityStorage ?? forgetfulStorage(),
+      anisotropy,
+    }),
     keyboard: createSystemKeyboard(document),
     anchors: createAnchorKeeper<XRSpace, XRRigidTransform>((position) => new XRRigidTransform(position)),
     depth: undefined,

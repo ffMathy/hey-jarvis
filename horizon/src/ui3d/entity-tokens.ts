@@ -1,4 +1,5 @@
 import {
+  CircleGeometry,
   Color,
   DoubleSide,
   DynamicDrawUsage,
@@ -6,7 +7,6 @@ import {
   MeshBasicMaterial,
   Object3D,
   RingGeometry,
-  SphereGeometry,
 } from 'three';
 import { TOKEN_RADIUS_METRES } from '../entities/grab';
 import type { Vector3Like } from '../xr/ray';
@@ -17,7 +17,12 @@ import { UI_COLOURS } from './ui-colours';
  * entity — in its drawer slot, where it stands in the room, or in his hand.
  *
  * Every token is one instance of two instanced meshes, so any number of them is two draws: the orb,
- * and a ring turned to face the eyes so it reads as a ring from anywhere. The ring's colour says
+ * and a ring round it, both turned to face the eyes so the ring reads as a ring from anywhere. The
+ * orb is a flat disc: drawn unlit, a sphere looks exactly like the disc it covers, and a disc's
+ * outline is round to well under a pixel however near the eyes it is carried, for a fraction of a
+ * sphere's triangles. Their edges are smoothed by the renderer's multisampling (`xr/xr-stage.ts`):
+ * the emulator's pictures, at half a headset's density, show no steps along them, so they are not
+ * drawn as distance fields the way his strokes and coronas are. The ring's colour says
  * what the token is: the accent, sir's own colour, for one waiting to be placed or being carried;
  * the text colour for one already standing in the room; the danger colour for one whose anchor is
  * gone. Jarvis's orange is kept for his corona, so what sir handles never looks like what Jarvis is
@@ -67,7 +72,7 @@ const ORB_COLOURS: Record<TokenLook, string> = {
   lost: '#fecaca',
 };
 
-function instanced(geometry: SphereGeometry | RingGeometry, material: MeshBasicMaterial): InstancedMesh {
+function instanced(geometry: CircleGeometry | RingGeometry, material: MeshBasicMaterial): InstancedMesh {
   const mesh = new InstancedMesh(geometry, material, MAX_TOKENS);
   mesh.instanceMatrix.setUsage(DynamicDrawUsage);
   mesh.count = 0;
@@ -96,7 +101,7 @@ export function createEntityTokens(): EntityTokens {
     opacity: 0.95,
     side: DoubleSide,
   });
-  const orbs = instanced(new SphereGeometry(ORB_RADIUS_METRES, 20, 14), orbMaterial);
+  const orbs = instanced(new CircleGeometry(ORB_RADIUS_METRES, 48), orbMaterial);
   const rings = instanced(new RingGeometry(RING_INNER_METRES, RING_OUTER_METRES, 40), ringMaterial);
   const placement = new Object3D();
   const colour = new Color();

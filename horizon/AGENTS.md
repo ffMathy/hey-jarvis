@@ -240,9 +240,20 @@ status line follow the gaze with a lag. A select also calls the wake engine's
 only user activation there is inside the room.
 
 **The XR layer (`src/xr/`).**
-- `xr-stage.ts` sets up the renderer (alpha, no antialiasing, premultiplied,
-  foveation 0.3). It runs one frame loop whose subscribers get the frame, the
-  space, the viewer pose, the centre eye and a time step capped at 0.1 s. It also
+- `xr-stage.ts` sets up the renderer (`RENDERER_PARAMETERS`: alpha, premultiplied,
+  four samples a pixel; foveation 0.3), and the preview's renderers are made the
+  same way. The samples are for the room's plain triangles — the tokens, the
+  reticle, the arrow, a canvas's plane seen edge on — whose edges nothing else
+  smooths; his strokes and CanvasKit's picture smooth themselves and are drawn
+  exactly as before, since fragments are still shaded once a pixel, and the
+  canvases' outlines are smoothed in their pictures (see "Text in the room" below).
+  Meta recommends four samples on Quest's tiled GPUs as nearly free. With WebXR
+  layers, three renders each eye into a four-sample target: straight into the
+  projection layer through `WEBGL_multisampled_render_to_texture` when the GPU has
+  it and the layer ignores depth, otherwise resolved into it by a blit at the end of
+  the frame (the HUD's `gl` line says whether the extension is there). It runs one
+  frame loop whose subscribers get the frame, the space, the viewer pose, the
+  centre eye and a time step capped at 0.1 s. It also
   keeps the reference-space reset epoch, the visibility state and the frame rate:
   the lowest while waiting, the highest up to 90 while he is there.
 - `xr-input.ts` turns selects into taps and holds, and reads B and Y (`buttons[5]`)
@@ -266,7 +277,15 @@ only user activation there is inside the room.
 **Text in the room (`src/ui3d/`).** Panels are canvas-drawn text on planes at
 1500 px per metre, which is about what a Quest 3 shows at arm's length, each with
 a translucent backing so it can be read over any passthrough, drawn after
-everything else and never hidden by his glow. There is also a drawn keyboard
+everything else and never hidden by his glow. Every canvas — panels, names, the
+drawer, the keyboard and wrist buttons — goes through `ui-canvas.ts`: uploaded
+premultiplied, as raw sRGB bytes, mipmapped and read trilinearly with the
+renderer's most anisotropic filtering (handed in from `room-runtime.ts`, where the
+renderer is known), half a mipmap level sharper than the display alone would ask
+for, and drawn inside an eight-pixel transparent margin, so what ends a panel is
+its picture's alpha, which filtering smooths, rather than the edge of its plane.
+Without mipmaps, words shown smaller than their canvas skipped texels and broke
+up; unpremultiplied, every outline had a dark fringe. There is also a drawn keyboard
 button, a head-locked arrow for a spot out of view, the drawer, tokens, names,
 reticle and wrist button of placing things (see "Entities placed in the room"),
 and `?debug`'s HUD, whose
@@ -696,7 +715,10 @@ the registry; let go on the drawer, it goes back in. A drop still waiting on a n
 taken back, or dropped again, gives that anchor back — at once, or as soon as the headset hands out
 its handle (`RoomAnchors.cancel`) — since no placement would ever name it. Tokens are drawn in the
 accent, sir's colour, through walls, with names over the carried one and every placed one; no hand
-meshes, since passthrough shows the real hands (and three's hand models load from a CDN).
+meshes, since passthrough shows the real hands (and three's hand models load from a CDN). A token is
+a disc and a ring turned to the eyes, and the reticle a ring, smoothed by the renderer's four
+samples: at half a headset's density the emulator's pictures show no steps along them, so, unlike
+his strokes and coronas, they are not distance fields.
 
 **The wrist button**, for hands without a controller's A or X, stands off the back of a wrist
 raised as if to read a watch (the back towards the eyes within 40°, 0.15–0.7 m from them), and is
@@ -782,6 +804,11 @@ the centre eye sees them line up, the thinking plane is level with the floor.
 its vertex shader (three 0.186 has no transform feedback, and a float state pass
 needs an extension a Quest may not have). The unit tests hold `fragment-3d.ts` to
 the phone; `hologram-port.spec.ts` holds the GLSL to `fragment-3d.ts`.
+
+The renderer takes four samples a pixel (`xr/xr-stage.ts`), for the room's plain
+triangles; fragments are still shaded once a pixel, so none of these passes looks
+any different for it, and the halo union renders into a target of its own that is
+never multisampled.
 
 Blending (`layer-blending.ts`): Screen in colour and alpha, raw encoded sRGB — no
 three.js colour management anywhere between Skia's bytes and the layer — and
@@ -956,6 +983,16 @@ the models first.
   passes' cost at 0.8, 1.6 and 2.6 m; the alpha factor in a bright and a dim room;
   whether 1.2-pixel hot cores shimmer; whether the projection layer composites as
   the spec says; stereo comfort; whether `updateTargetFrameRate` behaves.
+- **Smooth edges and text.** What four samples a pixel cost in Quest Browser
+  (the HUD's frame time, against a build with `antialias: false`), and whether its
+  projection layer takes the render-to-texture path: the HUD's `gl` line has to
+  list `WEBGL_multisampled_render_to_texture`, and three only uses it when the
+  layer ignores depth. The room submits a depth buffer nothing is drawn into; if the
+  samples cost more than Meta's half to one and a half milliseconds, `depth: false`
+  in `RENDERER_PARAMETERS` is the next thing to try. Whether the panels' text is as
+  sharp as it should be at the hint's 1.3 m and the drawer's half metre, and whether
+  the half-level sharpening shimmers as the head moves; whether the tokens' rings
+  crawl across the room, where they are a pixel or two wide.
 - **Placing things.** How long persistent anchors take to restore and locate, how
   they behave across rooms, what `requestPersistentHandle` says at the limit of
   eight per origin, whether other Pages projects on `ffmathy.github.io` already
@@ -1073,9 +1110,21 @@ the models first.
   specs every phase; each is attached to the report, and copied to
   `HOLOGRAM_SCREENS_DIR` when that is set. `hologram-room.spec.ts` logs the
   emulator's frame times, which say nothing about a Quest's.
+- **Pictures at a headset's density, nearly.** The emulator's XR framebuffer is
+  the window's size in CSS pixels — IWER sets its canvas to `innerWidth` by
+  `innerHeight` whatever the device pixel ratio, and its synthetic room would size
+  its own canvas again on every frame at any ratio but 1 — so only a larger window
+  gives more pixels per degree. `app-entities.spec.ts` and `hologram-room.spec.ts`,
+  whose pictures are for judging how things look, open 2560 by 1440
+  (`ROOM_PICTURE_VIEWPORT` in `fixtures.ts`): about 12.6 pixels per degree in the
+  middle of IWER's 90° view, half a Quest 3's 25, where the default 1280 by 720 has
+  a quarter and makes every edge look four times as jagged as a headset would. The
+  other specs keep the default: four times the pixels slows every SwiftShader
+  frame, and the ones that keep him greeting have twenty seconds to do their work in.
 
 What IWER does not cover: projection layers (it only has `XRWebGLLayer`, so the
-path Quest actually composites is not exercised), `fixedFoveation`,
+path Quest actually composites is not exercised, and the four samples in its
+pictures are the page canvas's own, not a render into a layer), `fixedFoveation`,
 `initiateRoomCapture`, anything about the microphone inside an immersive
 session, the eight-anchor limit, a persistent anchor that fails to restore or
 takes time to relocalise (its anchors are unlimited and always located), and a

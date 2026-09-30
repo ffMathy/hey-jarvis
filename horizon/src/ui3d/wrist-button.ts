@@ -1,6 +1,14 @@
-import { CanvasTexture, Mesh, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace } from 'three';
+import { Mesh, PlaneGeometry } from 'three';
 import type { Vector3Like } from '../xr/ray';
-import { drawingContext, PIXELS_PER_METRE } from './text-panel';
+import {
+  CANVAS_MARGIN_PIXELS,
+  canvasMetres,
+  canvasPixels,
+  createCanvasMaterial,
+  createCanvasTexture,
+  drawingContext,
+  withMargin,
+} from './ui-canvas';
 import { UI_COLOURS } from './ui-colours';
 
 /**
@@ -24,15 +32,18 @@ export interface WristButton {
   dispose(): void;
 }
 
-/** A disc with a map pin in it: accent on dark, or dark on accent while it is touched. */
+/**
+ * A disc `size` pixels across with a map pin in it, its rim just inside that: accent on dark, or
+ * dark on accent while it is touched.
+ */
 function drawButton(context: CanvasRenderingContext2D, size: number, touched: boolean) {
   const middle = size / 2;
-  context.clearRect(0, 0, size, size);
+  const rim = Math.max(2, size * 0.05);
   context.beginPath();
-  context.arc(middle, middle, middle - 2, 0, Math.PI * 2);
+  context.arc(middle, middle, middle - rim / 2, 0, Math.PI * 2);
   context.fillStyle = touched ? UI_COLOURS.accent : 'rgba(16, 23, 37, 0.85)';
   context.fill();
-  context.lineWidth = Math.max(2, size * 0.05);
+  context.lineWidth = rim;
   context.strokeStyle = UI_COLOURS.accent;
   context.stroke();
 
@@ -51,23 +62,23 @@ function drawButton(context: CanvasRenderingContext2D, size: number, touched: bo
   context.fill();
 }
 
-export function createWristButton(): WristButton {
-  const size = Math.round(WRIST_BUTTON_METRES * PIXELS_PER_METRE);
+export interface WristButtonOptions {
+  /** The renderer's most anisotropic filtering: a wrist is seldom square to the eyes. */
+  anisotropy: number;
+}
+
+export function createWristButton(options: WristButtonOptions): WristButton {
+  const size = canvasPixels(WRIST_BUTTON_METRES);
   const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
+  canvas.width = withMargin(size);
+  canvas.height = withMargin(size);
   const context = drawingContext(canvas);
   let drawnTouched: boolean | undefined;
-  const texture = new CanvasTexture(canvas);
-  texture.colorSpace = SRGBColorSpace;
-  const material = new MeshBasicMaterial({
-    map: texture,
-    transparent: true,
-    depthWrite: false,
-    depthTest: false,
-    toneMapped: false,
-  });
-  const mesh = new Mesh(new PlaneGeometry(WRIST_BUTTON_METRES, WRIST_BUTTON_METRES), material);
+  const texture = createCanvasTexture(canvas, options.anisotropy);
+  const material = createCanvasMaterial(texture);
+  // The button and its margin: the disc itself is WRIST_BUTTON_METRES across.
+  const plane = canvasMetres(canvas.width);
+  const mesh = new Mesh(new PlaneGeometry(plane, plane), material);
   mesh.renderOrder = 10;
   mesh.visible = false;
 
@@ -78,6 +89,9 @@ export function createWristButton(): WristButton {
       if (position === undefined) return;
       if (touched !== drawnTouched) {
         drawnTouched = touched;
+        context.setTransform(1, 0, 0, 1, 0, 0);
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        context.translate(CANVAS_MARGIN_PIXELS, CANVAS_MARGIN_PIXELS);
         drawButton(context, size, touched);
         texture.needsUpdate = true;
       }

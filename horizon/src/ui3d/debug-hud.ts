@@ -236,8 +236,10 @@ export function describeDiagnostics(diagnostics: Diagnostics): string[] {
 }
 
 /**
- * The WebGL extensions whose presence changes what the hologram can do on a headset: multiview,
- * float render targets, and the debug renderer name that says which GPU this is.
+ * The WebGL extensions whose presence changes what the room can do on a headset: multiview, float
+ * render targets, multisampling straight into the XR layer's texture (without it, every frame's
+ * samples are resolved by a blit — see `xr/xr-stage.ts`), anisotropic filtering for the canvases
+ * (`ui-canvas.ts`), and the debug renderer name that says which GPU this is.
  */
 export const EXTENSIONS_OF_INTEREST = [
   'OCULUS_multiview',
@@ -246,6 +248,8 @@ export const EXTENSIONS_OF_INTEREST = [
   'EXT_color_buffer_half_float',
   'EXT_float_blend',
   'OES_texture_float_linear',
+  'WEBGL_multisampled_render_to_texture',
+  'EXT_texture_filter_anisotropic',
   'WEBGL_debug_renderer_info',
 ] as const;
 
@@ -266,8 +270,9 @@ export interface DebugHud {
 /** Where the HUD sits in the view: ahead, down and to the left, clear of where he usually stands. */
 const HUD_OFFSET = { x: -0.28, y: -0.26, z: -0.75 };
 
-export function createDebugHud(): DebugHud {
-  const panel = createTextPanel({ widthMetres: 0.42, tone: 'hud' });
+/** `anisotropy` is the renderer's most anisotropic filtering (see `ui-canvas.ts`). */
+export function createDebugHud(anisotropy: number): DebugHud {
+  const panel = createTextPanel({ widthMetres: 0.42, tone: 'hud', anisotropy });
   return {
     object: panel.object,
     update(diagnostics) {

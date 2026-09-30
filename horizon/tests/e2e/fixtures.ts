@@ -47,6 +47,20 @@ export function bundle(entry: string): Promise<string> {
 }
 
 /**
+ * The window a spec that photographs the room opens: twice the default 1280 by 720 each way.
+ *
+ * The emulator's XR framebuffer is the window's size in CSS pixels — IWER sets its canvas to
+ * `innerWidth` by `innerHeight` when the layer is set, whatever the device pixel ratio, and three
+ * takes the layer's size as it is — and the synthetic room is drawn at that size too (at any
+ * device pixel ratio but 1 it would size its canvas again on every frame). So a larger window is
+ * the only way to more pixels per degree. IWER's view is 90° high: 720 pixels high is about 6
+ * pixels per degree at its middle, a quarter of a Quest 3's 25, and every edge looked four times as
+ * jagged as a headset would show it; 1440 is about 12.6, half. Four times the pixels slows every
+ * frame SwiftShader draws, so only the specs whose pictures are for looking at use it.
+ */
+export const ROOM_PICTURE_VIEWPORT = { width: 2560, height: 1440 } as const;
+
+/**
  * Where a copy of every picture the specs take goes as well as the test's own output folder, for a
  * person to look through: set HOLOGRAM_SCREENS_DIR to a folder.
  */

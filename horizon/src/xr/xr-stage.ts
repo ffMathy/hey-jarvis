@@ -1,4 +1,4 @@
-import { PerspectiveCamera, Scene, WebGLRenderer } from 'three';
+import { PerspectiveCamera, Scene, WebGLRenderer, type WebGLRendererParameters } from 'three';
 import { chooseFrameRate, type FrameRateTarget } from './frame-rate';
 import { type OriginOffset, originPose } from './origin-offset';
 import { type CentreEye, centreEyeOfPose } from './viewer-pose';
@@ -27,6 +27,46 @@ import { type CentreEye, centreEyeOfPose } from './viewer-pose';
  * flaw, so this stays low until a headset says the frame rate needs more.
  */
 export const FOVEATION = 0.3;
+
+/**
+ * How the room's WebGL context is made; the preview's renderers are made the same way.
+ *
+ * Transparent, so the passthrough shows through everywhere nothing is drawn, and premultiplied,
+ * which is how the compositor reads the layer anyway.
+ *
+ * Multisampled, four samples a pixel. Jarvis smooths his own edges — his strokes are distance
+ * fields a pixel soft at the rim, his flat parts are Skia's — and the canvases' outlines are
+ * smoothed in their pictures (`ui3d/ui-canvas.ts`), but the rest of the room is plain triangles
+ * whose edges nothing else smooths: the tokens and rings of what he works on, the pointing
+ * reticle, the pointer arrow, and a canvas's plane seen edge on.
+ *
+ * With `antialias` set, three's WebXRManager renders each eye into a four-sample target when the
+ * browser has WebXR layers: through WEBGL_multisampled_render_to_texture, straight into the
+ * projection layer's texture, when the GPU has that extension and the layer ignores depth — the
+ * samples then live in the GPU's tile memory and are resolved as each tile is written out — and
+ * otherwise into a multisampled renderbuffer that is blitted into the layer at the end of the
+ * frame. Without layers it asks the XRWebGLLayer for `antialias`, and the browser multisamples a
+ * framebuffer of its own. The framebuffer scale factor, left at 1 (the headset's recommended
+ * size), says how many pixels there are; the samples say how many coverage tests each of them
+ * gets. Foveation is still set on the layer, whatever the samples; on the blit path the eyes are
+ * drawn into three's renderbuffer rather than the layer's own texture, and whether the headset
+ * still foveates them there is its to show. Fragments are still shaded once a pixel, so what
+ * already smoothed itself is drawn exactly as before: his strokes, the CanvasKit quad and the halo
+ * union, which renders into a target of its own that is never multisampled.
+ *
+ * Meta recommends four samples on Quest, and no more, as nearly free on its tiled GPUs — 0.5 to
+ * 1.5 ms a frame in its measurements:
+ * https://developers.meta.com/horizon/documentation/unity/gpu-improved-algorithms/ and
+ * https://developers.meta.com/vr/documentation/native/android/mobile-msaa-analysis/. Those pages
+ * are for native apps on the same GPUs; what it costs in Quest Browser, and whether its layers
+ * take the render-to-texture path, only a headset can say (`?debug` shows the frame time and
+ * whether the extension is there).
+ */
+export const RENDERER_PARAMETERS = {
+  alpha: true,
+  antialias: true,
+  premultipliedAlpha: true,
+} as const satisfies WebGLRendererParameters;
 
 /**
  * The longest step a single frame may advance anything by, in seconds.
@@ -102,10 +142,7 @@ export interface XrStageOptions {
 
 /** Sets up the renderer on `session` and starts the frame loop. */
 export async function createXrStage(session: XRSession, options: XrStageOptions = {}): Promise<XrStage> {
-  // Transparent, so the passthrough shows through everywhere he is not; premultiplied, which is
-  // how the compositor reads the layer anyway; no multisampling, because what is drawn here is
-  // antialiased by its own shaders and by Skia.
-  const renderer = new WebGLRenderer({ alpha: true, antialias: false, premultipliedAlpha: true });
+  const renderer = new WebGLRenderer(RENDERER_PARAMETERS);
   renderer.setClearColor(0x000000, 0);
   renderer.xr.enabled = true;
   renderer.xr.setReferenceSpaceType('local-floor');

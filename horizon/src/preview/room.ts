@@ -1,6 +1,7 @@
 import { PerspectiveCamera, Scene, WebGLRenderer } from 'three';
 import { createJarvisHologram3D, DISTANCE_AHEAD_METRES, type JarvisHologram3D, type Painter } from '../hologram3d';
 import { type CentreEye, centreEyeOf, pointAhead } from '../xr/viewer-pose';
+import { FOVEATION, RENDERER_PARAMETERS } from '../xr/xr-stage';
 import { createPhaseDrives } from './phase-drives';
 import {
   PREVIEW_PHASES,
@@ -13,9 +14,6 @@ import {
 
 /** How many frames' timings are kept for the readout and the browser tests. */
 const TIMINGS_KEPT = 240;
-
-/** As the room's renderer blurs the edges of the view: see `src/xr/room-view.ts`. */
-const FOVEATION = 0.3;
 
 export interface PreviewRoom {
   /** A copy of where the room is now. */
@@ -64,7 +62,9 @@ export function createPreviewRoom(painter: Painter): PreviewRoom {
   }
 
   async function enter(session: XRSession) {
-    const renderer = new WebGLRenderer({ alpha: true, antialias: false, premultipliedAlpha: true });
+    // Made as the room's is, multisampled and foveated alike, so what the preview shows in a
+    // headset is what the room would.
+    const renderer = new WebGLRenderer(RENDERER_PARAMETERS);
     renderer.setClearColor(0x000000, 0);
     renderer.xr.enabled = true;
     renderer.xr.setReferenceSpaceType('local-floor');
