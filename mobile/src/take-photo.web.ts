@@ -8,6 +8,16 @@ const CLOSED: CameraAnswer = { closed: true };
 const NOT_READABLE: CameraAnswer = { notReadable: true };
 
 /**
+ * How long the picker may stay open before it is taken as closed. Kept in step with
+ * `GIVE_UP_AFTER_MS` in `JarvisPhotoActivity.kt`, the phone's camera app's bound, for the same
+ * reasons: it is well inside the five minutes the slot opened at the tap lives, and a picker open
+ * longer than this is a phone put down or a desktop's chooser left behind another window rather
+ * than a shot being framed. While it is open the camera button stays busy and keeps telling the
+ * agent sir is active, and the agent is told to wait rather than hang up.
+ */
+export const PICKER_GIVE_UP_AFTER_MS = 110_000;
+
+/**
  * Takes a photo in a browser: the file picker, which a phone's browser opens on its camera
  * (`capture`) and a desktop's opens on its files — a receipt already on disk is as good to show him.
  *
@@ -20,6 +30,11 @@ const NOT_READABLE: CameraAnswer = { notReadable: true };
  * **A file that will not draw is not a picker closed.** `accept="image/*"` lets through images the
  * browser cannot decode — an iPhone's HEIC, on most desktops — and sir, who picked one, is told it
  * could not be read rather than left waiting on a photo Jarvis thinks he never sent.
+ *
+ * **Nor is it waited on for ever.** A browser answers neither `change` nor `cancel` while its picker
+ * stays open, and cannot be made to close it, so once {@link PICKER_GIVE_UP_AFTER_MS} has passed the
+ * picker is taken as closed, taken off the page, and no longer listened to: a file picked after that
+ * is not sent.
  */
 export const takePhoto: TakePhoto = () =>
   new Promise((resolve) => {
@@ -29,7 +44,11 @@ export const takePhoto: TakePhoto = () =>
     picker.setAttribute('capture', 'environment');
     picker.style.display = 'none';
 
+    const listening = new AbortController();
+    const givingUp = setTimeout(() => finish(CLOSED), PICKER_GIVE_UP_AFTER_MS);
     const finish = (answer: CameraAnswer | Promise<CameraAnswer>) => {
+      clearTimeout(givingUp);
+      listening.abort();
       picker.remove();
       resolve(answer);
     };
@@ -39,9 +58,9 @@ export const takePhoto: TakePhoto = () =>
         const picked = picker.files?.[0];
         finish(picked ? readyToSend(picked) : CLOSED);
       },
-      { once: true },
+      { once: true, signal: listening.signal },
     );
-    picker.addEventListener('cancel', () => finish(CLOSED), { once: true });
+    picker.addEventListener('cancel', () => finish(CLOSED), { once: true, signal: listening.signal });
 
     document.body.append(picker);
     picker.click();

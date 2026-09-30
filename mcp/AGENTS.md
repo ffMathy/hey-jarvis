@@ -512,11 +512,17 @@ holding a secret. The check:
   repeating a made-up id costs nothing upstream; an unverifiable one is never remembered. A check
   that does go upstream counts twice: against whoever asked, at most 6 a minute
   (`MAX_CHECKS_PER_SOURCE_PER_MINUTE`), and then against the whole process, at most 30 — beyond
-  either, `429`. The first is what keeps one stranger from spending the second, which would turn
-  away every photo sir sends for as long as they kept at it; a check refused for its source counts
-  against nothing else. Whoever asked is `CF-Connecting-IP`, which Cloudflare sets on every request
-  it passes to the tunnel, or the socket's address for a request that did not come through it, and
-  an IPv6 address counts as its /64 (`whoIsAsking` in `api/routes.ts`). The price of remembering
+  either, `429`; a check refused for its source counts against nothing else. The second is the bound
+  on Jarvis's key. Spending it all turns away every photo sir sends for as long as it lasts, and the
+  first only raises what that costs, to five sources asking at once: it does not stop a stranger
+  with a few proxies, Tor's exit nodes or several tunnels, who has that many. Behind it stand the
+  Cloudflare rate limiting rule (see [MCP Server Access](#mcp-server-access)), which turns away any
+  one address's flood at the edge, and the process-wide limit, which caps what such a stranger can
+  spend on the key. Whoever asked is `CF-Connecting-IP`, which Cloudflare sets on every request it passes to the
+  tunnel, or the socket's address for a request that did not come through it, and an IPv6 address
+  counts as its /48 (`whoIsAsking` in `api/routes.ts`): a connection is commonly delegated a /56 or
+  a /48, and a free tunnel broker routes a /48, so counting each /64 would make one stranger
+  hundreds of sources. The price of remembering
   *not live* is a call so new that none of the three steps found it: that phone is turned away for
   the rest of the minute too. The body holds the whole transcript, emails and calendar entries
   included, so it is never logged: at most the status and a refusal's `detail.code`, and never the
@@ -569,6 +575,18 @@ the model was sent it, the photo base64-encoded into a `data:image/...` string t
 image's bytes in every span before it is exported, leaving the question and the rest of the span as
 they were. Its spec runs a real trace, with and without it, so it is held to the spans Mastra actually
 writes. The photo reader has no memory, which would be a second copy.
+
+**Nor in the log.** A model call that fails throws the AI SDK's `APICallError`, whose
+`requestBodyValues` is the whole request — for the photo reader, the photo as Gemini's
+`inlineData.data` — and Mastra logs that error ("Upstream LLM API error", "Error in agent stream"),
+once per attempt when a `RetryError` keeps them all. `createLogger` (`utils/logger.ts`) prints
+`[request body left out]` in its place, wherever the error sits: on its own, as a `cause`, or in a
+`RetryError`'s `errors` and `lastError`. That goes for every agent, not just the photo reader, since
+the body is every prompt in full, emails and calendar entries included. The rest of the error stays:
+the URL, the status, and what the provider answered, which for Gemini names the failure rather than
+repeating the request. An error nested deeper than the logger follows is printed by name and message
+alone, never as the raw object whose fields Pino would otherwise print. `logger.spec.ts` logs a failed
+photo read through a real logger and reads back what was written.
 
 **The photo routes** (`api/routes.ts`) are reachable by anyone — the phone holds no Cloudflare Access
 service token — and both answer in the routes' JSON envelope (`success`, `message`, `data`):
@@ -2890,9 +2908,13 @@ phone, good for five minutes and one photo, and claimed before a byte of the bod
 [Vision Vertical](#vision-vertical)). Nothing else under `/api` is reachable without Access.
 
 **Rate-limit the slot endpoint at Cloudflare as well.** The server limits the checks it sends
-ElevenLabs per address, 6 a minute, and 30 for the whole process (see **The live-conversation
-check** under [Vision Vertical](#vision-vertical)), but each request it turns away has still crossed
-the tunnel and woken the Pi. A rate limiting rule turns a flood away at Cloudflare's edge instead. On
+ElevenLabs per address (an IPv6 /48), 6 a minute, and 30 for the whole process (see **The
+live-conversation check** under [Vision Vertical](#vision-vertical)), but each request it turns away
+has still crossed the tunnel and woken the Pi. A rate limiting rule turns a flood away at
+Cloudflare's edge instead. Neither the rule nor the server's per-address limit stops a stranger who
+asks from many addresses at once from spending the process's 30 checks, and turning sir's photos away
+while they keep at it; what the limits bound is how much that can cost, on the Pi and on the
+ElevenLabs key. On
 the zone's **Security rules** page, **Create rule** → **Rate limiting rules**:
 - **When incoming requests match**: URI Path equals `/api/photos/slots`.
 - **With the same characteristics**: IP.

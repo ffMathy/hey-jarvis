@@ -703,11 +703,13 @@ describe('a photo slot', () => {
       expect(sourcesAsking).toEqual(['127.0.0.1', '127.0.0.1']);
     });
 
-    it('as one source for a whole IPv6 /64, however each address in it is written', async () => {
+    it('as one source for a whole IPv6 /48, however each address in it is written', async () => {
       const addresses = [
         '2001:db8:1:2::1',
         '2001:0DB8:0001:0002:ffff:ffff:ffff:fffe',
-        '2001:db8:1:3::1',
+        // Another /64 of the same /48, which a delegated prefix or a tunnel broker hands out too.
+        '2001:db8:1:ff00::1',
+        '2001:db8:2::1',
         '2001:db8::5',
         '2001:db8:0:0:1::',
         '::ffff:192.0.2.1',
@@ -717,11 +719,12 @@ describe('a photo slot', () => {
       }
 
       expect(sourcesAsking).toEqual([
-        '2001:db8:1:2::/64',
-        '2001:db8:1:2::/64',
-        '2001:db8:1:3::/64',
-        '2001:db8:0:0::/64',
-        '2001:db8:0:0::/64',
+        '2001:db8:1::/48',
+        '2001:db8:1::/48',
+        '2001:db8:1::/48',
+        '2001:db8:2::/48',
+        '2001:db8:0::/48',
+        '2001:db8:0::/48',
         // An IPv4 address written as IPv6 is the IPv4 address.
         '192.0.2.1',
       ]);

@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { Transform } from 'node:stream';
+import { APICallError } from '@ai-sdk/provider';
+import { createCustomTransport } from '@mastra/core/logger';
+import { RetryError } from 'ai';
 import { clearDiagnostics, recentDiagnostics } from './diagnostics';
-import { createLogger, unwrapErrors } from './logger';
+import { createLogger, REQUEST_BODY_LEFT_OUT, unwrapErrors } from './logger';
 
 /**
  * The symptom these tests pin down:
@@ -217,5 +221,118 @@ describe('createLogger, recording what it is told', () => {
     createLogger('Mastra').info('Server started on port 4111');
 
     expect(recentDiagnostics()).toEqual([]);
+  });
+});
+
+/**
+ * A model call that fails throws an `APICallError` carrying the whole request it sent, and Mastra
+ * logs that error. For the photo reader the request holds the photo, base64-encoded as Gemini's
+ * `inlineData`, and the log is kept on disk — where the privacy policy says a photo never goes.
+ */
+describe('createLogger, given a model call that failed', () => {
+  /** A photo, as Gemini is sent one: base64, long enough that any piece of it printed would show. */
+  const photo = Buffer.alloc(24_000, 'a letter on the kitchen table, photographed').toString('base64');
+
+  /** What Gemini answered, and what the log is for: which call failed, and why. */
+  const failure = 'Internal error encountered.';
+
+  /** The error `@ai-sdk/google` throws for a `500`, with the request it sent. */
+  function failedPhotoRead(): APICallError {
+    return new APICallError({
+      message: failure,
+      url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:streamGenerateContent',
+      requestBodyValues: {
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: 'What does this letter ask for?' },
+              { inlineData: { mimeType: 'image/jpeg', data: photo } },
+            ],
+          },
+        ],
+      },
+      statusCode: 500,
+      responseBody: JSON.stringify({ error: { code: 500, message: failure, status: 'INTERNAL' } }),
+      isRetryable: true,
+    });
+  }
+
+  /** What the AI SDK throws once its retries are spent: every attempt's error, and the last again. */
+  function retriesSpent(): RetryError {
+    return new RetryError({
+      message: `Failed after 3 attempts. Last error: ${failure}`,
+      reason: 'maxRetriesExceeded',
+      errors: [failedPhotoRead(), failedPhotoRead(), failedPhotoRead()],
+    });
+  }
+
+  /** Logs `error` as Mastra does, and hands back what was written: the log lines, and the ring's record. */
+  function logged(error: Error): { written: string; recorded: string } {
+    const lines: string[] = [];
+    const capture = new Transform({
+      transform(chunk, _encoding, callback) {
+        lines.push(String(chunk));
+        callback();
+      },
+    });
+
+    clearDiagnostics();
+    createLogger('Mastra', { capture: createCustomTransport(capture) })
+      .child({ component: 'AGENT' })
+      .error('Upstream LLM API error', { error, runId: 'run_1' });
+
+    return { written: lines.join(''), recorded: JSON.stringify(recentDiagnostics()) };
+  }
+
+  const shapes: Array<[string, () => Error]> = [
+    ['on its own', failedPhotoRead],
+    ['kept once per attempt by a RetryError', retriesSpent],
+    [
+      'as the cause of the error Mastra wraps it in',
+      () => new Error('Error in agent stream', { cause: failedPhotoRead() }),
+    ],
+    [
+      'deeper in a cause chain than the log walks',
+      () =>
+        new Error('[Agent:RoutingSupervisor] - Failed agent tool execution for vision', {
+          cause: new Error('Failed tool execution for lookAtPhoto', { cause: retriesSpent() }),
+        }),
+    ],
+  ];
+
+  it.each(shapes)('leaves the photo out of the log, %s', (_shape, errorFor) => {
+    const { written, recorded } = logged(errorFor());
+
+    expect(written).not.toBe('');
+    for (const output of [written, recorded]) {
+      expect(output).not.toContain(photo.slice(0, 64));
+      expect(output).not.toContain(photo.slice(-64));
+      expect(output).toContain(failure);
+    }
+  });
+
+  it('keeps the rest of the error, which is what says what went wrong', () => {
+    const { written } = logged(failedPhotoRead());
+
+    expect(JSON.parse(written)).toMatchObject({
+      msg: 'Upstream LLM API error',
+      error: {
+        name: 'AI_APICallError',
+        message: failure,
+        statusCode: 500,
+        url: expect.stringContaining('generativelanguage.googleapis.com'),
+        responseBody: expect.stringContaining('INTERNAL'),
+        isRetryable: true,
+        requestBodyValues: REQUEST_BODY_LEFT_OUT,
+      },
+    });
+  });
+
+  it('keeps every attempt a RetryError made, each without its request', () => {
+    const { written } = logged(retriesSpent());
+
+    const attempt = { message: failure, statusCode: 500, requestBodyValues: REQUEST_BODY_LEFT_OUT };
+    expect(JSON.parse(written)).toMatchObject({ error: { errors: [attempt, attempt, attempt], lastError: attempt } });
   });
 });

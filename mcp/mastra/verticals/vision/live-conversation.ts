@@ -39,9 +39,15 @@ import { logger } from '../../utils/logger.js';
  * asks again for each photo, and not live for {@link NOT_LIVE_VERDICT_KEPT_MS}, so that repeating an
  * id costs nothing upstream — and a check that does go upstream is counted twice: against whoever
  * asked, at most {@link MAX_CHECKS_PER_SOURCE_PER_MINUTE} a minute, and then against the whole
- * process, at most {@link MAX_CHECKS_PER_MINUTE}. The first is what keeps one stranger from spending
- * the second, which would turn every photo sir sends away for as long as they kept at it. A
- * malformed id never gets as far as ElevenLabs at all.
+ * process, at most {@link MAX_CHECKS_PER_MINUTE}. The second is the bound on Jarvis's key: however
+ * many ask, no more checks than that go upstream. Spending all of it turns away every photo sir sends
+ * for as long as it lasts, and the first raises what that costs — five sources asking at once rather
+ * than one — without ruling it out: a stranger with a few proxies, Tor's exit nodes or several
+ * tunnels of their own has five sources. What stands behind it is the Cloudflare rate limiting rule
+ * in front of the tunnel (see **MCP Server Access** in `mcp/AGENTS.md`), which turns away any one
+ * address's flood before it reaches this server, and the process-wide limit itself, which keeps what
+ * such a stranger can spend on the key to those checks. A malformed id never gets as far as
+ * ElevenLabs at all.
  */
 
 /** The ElevenLabs API key, which the phone vertical calls with too. */
@@ -123,7 +129,9 @@ export const NOT_LIVE_VERDICT_KEPT_MS = 60_000;
  * A household is one source, behind its router, and it needs about one check per conversation a
  * minute: the phone asks once per photo, and not even that while its conversation is remembered as
  * live. Six leaves room for two phones at once and a refusal retried, and means that a stranger who
- * wants the whole process's {@link MAX_CHECKS_PER_MINUTE} has to find five sources to ask from.
+ * wants the whole process's {@link MAX_CHECKS_PER_MINUTE} has to ask from five sources at once. That
+ * raises the cost of turning sir's photos away; it does not stop someone who has five sources to ask
+ * from, which is why the process-wide limit is a bound of its own.
  */
 export const MAX_CHECKS_PER_SOURCE_PER_MINUTE = 6;
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PHOTO_LONG_EDGE, PHOTO_QUALITY } from './photo-upload';
+import { PICKER_GIVE_UP_AFTER_MS } from './take-photo.web';
 
 /**
  * The photo's way through Kotlin, held to what the rest of the app assumes of it.
@@ -12,7 +13,9 @@ import { PHOTO_LONG_EDGE, PHOTO_QUALITY } from './photo-upload';
  * them drifting builds, installs, and then fails on every photo — as "no photo taken", which is
  * the one failure that looks like sir changing his mind. The answer for a photo taken that could not
  * be made ready is spelled in Kotlin and in `index.ts` too: drifted, it would reach JavaScript as a
- * URI to fetch, and be told apart from a photo only by that fetch happening to fail.
+ * URI to fetch, and be told apart from a photo only by that fetch happening to fail. How long the
+ * camera may stay open is spelled in Kotlin and in the browser's half as well, so that a phone and a
+ * browser give up on it alike.
  *
  * And one thing has to stay *absent*: the CAMERA permission. The phone's camera app takes the photo,
  * which needs no permission from an app that does not declare it, and throws for one that declares
@@ -108,5 +111,11 @@ describe('the photo as it is sent', () => {
   it('is the same size and quality from the camera app as from a browser', () => {
     expect(Number(readPhotoConstant('LONG_EDGE'))).toBe(PHOTO_LONG_EDGE);
     expect(Number(readPhotoConstant('JPEG_QUALITY'))).toBe(Math.round(PHOTO_QUALITY * 100));
+  });
+});
+
+describe('a camera left open', () => {
+  it('is given up on after as long in a browser as the camera app is on the phone', () => {
+    expect(Number(readPhotoConstant('GIVE_UP_AFTER_MS').replaceAll('_', ''))).toBe(PICKER_GIVE_UP_AFTER_MS);
   });
 });

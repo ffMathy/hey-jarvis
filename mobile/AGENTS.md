@@ -393,12 +393,19 @@ Six decisions carry it, and each has a reason:
   phone's own words and names Cloudflare Access when a refusal was not the server's.
 - **Nothing is waited on for ever.** The camera app is given up on after 110 s (timed on the main
   looper, since JavaScript's timers stop behind the camera), well inside the five minutes the slot
-  opened at the tap stays open. The slot request is given up on after 20 s and the upload after 30 s
-  (`PHOTO_SLOT_WAIT_MS` and `PHOTO_UPLOAD_WAIT_MS` in `photo-upload.ts`, an `AbortController` and a
-  `setTimeout` each), because React Native's `fetch` on Android waits on OkHttp with every timeout
-  off, and a request the network swallowed would hold the button busy, and Jarvis waiting, for the
-  rest of the call. The slot's own wait is counted from the tap, on timers that stop behind the camera,
-  so `photo-sending.ts` also gives a slot still on its way when the camera closes 20 s more at most.
+  opened at the tap stays open, and a browser's picker after the same 110 s
+  (`PICKER_GIVE_UP_AFTER_MS` in `take-photo.web.ts`, which `take-photo.contract.spec.ts` holds to the
+  Kotlin): a browser answers nothing while its picker stays open and cannot be made to close it, so
+  the picker is then taken as closed and taken off the page, and a file picked after that is not
+  sent. The slot request is given up on after 20 s (`PHOTO_SLOT_WAIT_MS` in `photo-upload.ts`), and
+  the upload after 30 s plus the time its bytes take at 64 kbit/s (`PHOTO_UPLOAD_WAIT_MS` and
+  `MIN_UPLINK_BYTES_PER_MS`) — a photo of a few hundred kilobytes on weak coverage takes longer than
+  a fixed 30 s to send, and React Native's `fetch` reports no upload progress to wait on instead, so
+  a megabyte is given 161 s. Each is an `AbortController` and a `setTimeout`, because React Native's
+  `fetch` on Android waits on OkHttp with every timeout off, and a request the network swallowed
+  would hold the button busy, and Jarvis waiting, for the rest of the call; the log says how long it
+  waited. The slot's own wait is counted from the tap, on timers that stop behind the camera, so
+  `photo-sending.ts` also gives a slot still on its way when the camera closes 20 s more at most.
 
 **It speaks into the session every device holds, and hands it nothing.** The camera is made after
 `useJarvisSession` and uses only what the session offers any screen: `status`,
@@ -645,7 +652,7 @@ Three things do differ, and each is a pair of files Metro picks between rather t
 
 - **Storage.** `expo-secure-store` ships `export default {}` as its web implementation, so the native path does not degrade on web — it throws. `key-value-store.web.ts` uses `localStorage` instead, and the settings screen says so, because `localStorage` is not a keystore.
 - **The microphone.** `PermissionsAndroid` is not part of `react-native-web`. `microphone-permission.web.ts` asks by requesting a stream and releasing it again, so a refusal still surfaces as a permission problem rather than as a failed connection.
-- **The camera.** `take-photo.web.ts` is a file picker (`capture="environment"`, which a phone's browser opens on its camera and a desktop's on its files), drawn onto a canvas and re-encoded as the same JPEG the phone sends. A picker only opens inside a tap, which is why the camera button asks for it before anything is awaited.
+- **The camera.** `take-photo.web.ts` is a file picker (`capture="environment"`, which a phone's browser opens on its camera and a desktop's on its files), drawn onto a canvas and re-encoded as the same JPEG the phone sends. A picker only opens inside a tap, which is why the camera button asks for it before anything is awaited, and one left open is taken as closed after the camera app's 110 s.
 
 `platform-contracts.ts` holds the types both halves implement, so neither can drift — nothing else in the app imports both.
 

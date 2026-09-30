@@ -1,5 +1,11 @@
 import { describe, expect, it, jest } from 'bun:test';
-import { openPhotoSlot, PHOTO_SLOT_WAIT_MS, PHOTO_UPLOAD_WAIT_MS, sendPhoto } from './photo-upload';
+import {
+  MIN_UPLINK_BYTES_PER_MS,
+  openPhotoSlot,
+  PHOTO_SLOT_WAIT_MS,
+  PHOTO_UPLOAD_WAIT_MS,
+  sendPhoto,
+} from './photo-upload';
 
 /** The Jarvis server as sir typed it into the settings screen. */
 const SERVER = 'https://jarvis.example.com';
@@ -57,8 +63,9 @@ function askForASlot(server: { send: (url: string, init: RequestInit) => Promise
 function sendTo(
   server: { send: (url: string, init: RequestInit) => Promise<Response> },
   uploadPath: string = UPLOAD_PATH,
+  photo: Blob = PHOTO,
 ) {
-  return sendPhoto({ serverAddress: SERVER, uploadPath, photo: PHOTO, fetchImplementation: server.send });
+  return sendPhoto({ serverAddress: SERVER, uploadPath, photo, fetchImplementation: server.send });
 }
 
 describe('asking the Jarvis server for somewhere to send a photo', () => {
@@ -281,8 +288,9 @@ describe('sending the photo to the slot', () => {
     try {
       const server = createServer(neverAnswer);
 
+      // Four bytes: 30 s for the answer, and a millisecond for the bytes.
       const delivery = sendTo(server);
-      jest.advanceTimersByTime(PHOTO_UPLOAD_WAIT_MS - 1);
+      jest.advanceTimersByTime(PHOTO_UPLOAD_WAIT_MS);
       expect(server.requests[0]?.init.signal?.aborted).toBe(false);
       jest.advanceTimersByTime(1);
 
@@ -293,6 +301,61 @@ describe('sending the photo to the slot', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  describe('a large photo, on a slow uplink', () => {
+    /** A megabyte: a busy scene at the phone's size and quality, well inside the server's 3 MB. */
+    const LARGE_PHOTO = new Blob([new Uint8Array(1_048_576)], { type: 'image/jpeg' });
+
+    /** Its deadline: the answer's 30 s, and its bytes at 64 kbit/s. */
+    const LARGE_PHOTO_WAIT_MS = PHOTO_UPLOAD_WAIT_MS + 1_048_576 / MIN_UPLINK_BYTES_PER_MS;
+
+    it('is still delivered when it takes 45 s, past the 30 s a small one is given', async () => {
+      // A megabyte at about 190 kbit/s: slow, and getting through.
+      jest.useFakeTimers();
+      try {
+        const server = createServer(
+          (init) =>
+            new Promise((resolve, reject) => {
+              init.signal?.addEventListener('abort', () =>
+                reject(new DOMException('The operation was aborted.', 'AbortError')),
+              );
+              setTimeout(
+                () => resolve(serverAnswer({ success: true, message: 'Photo received', data: { photoId: 'photo3' } })),
+                45_000,
+              );
+            }),
+        );
+
+        const delivery = sendTo(server, UPLOAD_PATH, LARGE_PHOTO);
+        jest.advanceTimersByTime(45_000);
+
+        expect(await delivery).toEqual({ photoId: 'photo3' });
+        expect(server.requests[0]?.init.signal?.aborted).toBe(false);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('is given up on too, once its bytes have had all the time they are given', async () => {
+      jest.useFakeTimers();
+      try {
+        const server = createServer(neverAnswer);
+
+        const delivery = sendTo(server, UPLOAD_PATH, LARGE_PHOTO);
+        jest.advanceTimersByTime(LARGE_PHOTO_WAIT_MS - 1);
+        expect(server.requests[0]?.init.signal?.aborted).toBe(false);
+        jest.advanceTimersByTime(1);
+
+        // 161 s: 30 s for the answer, and 131 s for a megabyte at 64 kbit/s.
+        expect(await delivery).toEqual({
+          problem: 'unreachable',
+          description: 'The Jarvis server did not answer within 161 s.',
+        });
+      } finally {
+        jest.useRealTimers();
+      }
+    });
   });
 
   it('never repeats what the server said in what it says went wrong', async () => {

@@ -21,9 +21,9 @@ import type { PhotoProblem } from './photo-messages';
  * own {@link PhotoProblem}s, for the agent to tell sir, and a description in the phone's own words for
  * its log. Nothing a response said is in either.
  *
- * **Never waits for ever, either.** Each request is given up on once {@link PHOTO_SLOT_WAIT_MS} or
- * {@link PHOTO_UPLOAD_WAIT_MS} has passed without an answer, and that too is a server that could not
- * be reached. See {@link givenUpOnAfter}.
+ * **Never waits for ever, either.** Each request is given up on once {@link PHOTO_SLOT_WAIT_MS}, or
+ * for the upload {@link photoUploadWaitMs}, has passed without an answer, and that too is a server
+ * that could not be reached. See {@link givenUpOnAfter}.
  *
  * Imports nothing but a type, and takes `fetch` as an argument, for the reason `conversation-token.ts`
  * does: every answer the server can give, and every way the network can fail, is a test with no
@@ -52,8 +52,30 @@ export const PHOTO_SLOTS_PATH = '/api/photos/slots';
  */
 export const PHOTO_SLOT_WAIT_MS = 20_000;
 
-/** How long the photo's upload is waited on before it is given up: a photo is a few hundred kilobytes. */
+/**
+ * How long the upload is waited on for its answer, besides the time its bytes are given to go
+ * ({@link MIN_UPLINK_BYTES_PER_MS}). The server answers as soon as it holds the photo, so this is a
+ * slow network's connection and round trips, with room to spare.
+ */
 export const PHOTO_UPLOAD_WAIT_MS = 30_000;
+
+/**
+ * The slowest uplink a photo is given time for, in bytes a millisecond: 8, which is 64 kbit/s.
+ *
+ * **The photo has to go before anything can answer**, and it is large: a JPEG of a detailed scene or
+ * a long receipt at {@link PHOTO_LONG_EDGE} is several hundred kilobytes, and the server takes up to
+ * 3 MB. On the weak coverage a deadline is there for, about a hundred kilobits a second, one of
+ * 450 KB takes well over half a minute to send — so a fixed 30 s would cut off an upload that was
+ * still getting through, and have Jarvis tell sir his server could not be reached. React Native's
+ * `fetch` reports no upload progress to reset a deadline on, so the deadline grows with the photo
+ * instead: a slower uplink than this is taken for no network at all.
+ */
+export const MIN_UPLINK_BYTES_PER_MS = 8;
+
+/** How long an upload of `photo` is waited on before it is given up: its answer's time and its bytes'. */
+function photoUploadWaitMs(photo: Blob): number {
+  return PHOTO_UPLOAD_WAIT_MS + Math.ceil(photo.size / MIN_UPLINK_BYTES_PER_MS);
+}
 
 /**
  * A path a photo may be sent to: the server's upload route and a slot's token — 22 URL-safe
@@ -116,11 +138,11 @@ const UNREACHABLE: PhotoFailure = {
   description: 'The Jarvis server could not be reached.',
 };
 
-/** A request that was sent, and never answered in the time it was given. */
+/** A request that was sent, and never answered in the time it was given, to the second. */
 function noAnswerWithin(waitMs: number): PhotoFailure {
   return {
     problem: 'unreachable',
-    description: `The Jarvis server did not answer within ${waitMs / 1000} s.`,
+    description: `The Jarvis server did not answer within ${Math.round(waitMs / 1000)} s.`,
   };
 }
 
@@ -262,7 +284,8 @@ export async function sendPhoto({
     return NOT_THE_SERVER;
   }
 
-  return givenUpOnAfter(PHOTO_UPLOAD_WAIT_MS, async (signal): Promise<PhotoDelivery> => {
+  const waitMs = photoUploadWaitMs(photo);
+  return givenUpOnAfter(waitMs, async (signal): Promise<PhotoDelivery> => {
     let response: Response;
     try {
       response = await fetchImplementation(`${serverAddress}${uploadPath}`, {
@@ -272,7 +295,7 @@ export async function sendPhoto({
         signal,
       });
     } catch {
-      return signal.aborted ? noAnswerWithin(PHOTO_UPLOAD_WAIT_MS) : UNREACHABLE;
+      return signal.aborted ? noAnswerWithin(waitMs) : UNREACHABLE;
     }
 
     if (!response.ok) {

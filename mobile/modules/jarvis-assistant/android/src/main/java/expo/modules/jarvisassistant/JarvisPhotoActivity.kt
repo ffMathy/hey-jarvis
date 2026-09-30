@@ -217,7 +217,8 @@ class JarvisPhotoActivity : Activity() {
      * Well inside the five minutes the upload slot lives (`UPLOAD_SLOT_MS` in the Jarvis server's
      * `vision/photos.ts`), which was opened when sir tapped the camera button: a photo taken at the
      * last moment here still has time to be made ready and sent before its slot closes. A camera left
-     * open for longer than this is a phone put down rather than a shot being framed.
+     * open for longer than this is a phone put down rather than a shot being framed. Kept in step with
+     * `PICKER_GIVE_UP_AFTER_MS` in `take-photo.web.ts`, the browser's bound.
      */
     private const val GIVE_UP_AFTER_MS = 110_000L
 

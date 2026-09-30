@@ -246,14 +246,16 @@ function answerPreflight(_request: Request, response: Response): void {
 /** What the phone sends to ask for a slot. */
 const slotRequestSchema = z.object({ conversationId: z.string() });
 
-/** How many of an IPv6 address's leading groups name the network it is in: its /64. */
-const IPV6_NETWORK_GROUPS = 4;
+/** How many of an IPv6 address's leading groups name the network it is in: its /48. */
+const IPV6_NETWORK_GROUPS = 3;
 
 /**
  * The network an address counts as, for a limit per source: an IPv4 address is its own, and an IPv6
- * address is its /64 — the block a single connection is handed, which lets whoever holds one ask from
- * a new address every time. An IPv4 address written as IPv6 (`::ffff:192.0.2.1`, as a dual-stack
- * socket reports one) is the IPv4 address.
+ * address is its /48. Whoever holds a prefix can ask from any address in it, and a connection is
+ * commonly handed a /56 or a /48 — a home's router is delegated one, and a free tunnel broker routes
+ * a /48 — so counting each /64 would let one stranger be hundreds of sources. Only sir's own phones
+ * ask here, so a coarser group costs him nothing. An IPv4 address written as IPv6 (`::ffff:192.0.2.1`,
+ * as a dual-stack socket reports one) is the IPv4 address.
  */
 function networkOf(address: string): string {
   const mappedIPv4 = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(address)?.[1];
@@ -274,7 +276,7 @@ function networkOf(address: string): string {
   const network = [...headGroups, ...zeros, ...tailGroups]
     .slice(0, IPV6_NETWORK_GROUPS)
     .map((group) => Number.parseInt(group, 16).toString(16));
-  return `${network.join(':')}::/64`;
+  return `${network.join(':')}::/48`;
 }
 
 /**
