@@ -834,6 +834,18 @@ repeating a lookup costs time and quota, while dropping one of the edges costs a
 The common shapes — a location before a weather lookup, a recipe before a reminder — are paths
 and pay nothing for it.
 
+**Most requests skip the planner.** A Jev classifier (`routing/classifier.ts`, on TypeSafe AI's
+evaluation model through Mastra's `Classifier`) is asked at the same time as the planner: which
+single agent can carry out the whole request as it was said — or `several`, or `none` — and how
+the answer should sound. When it is at least `FAST_PATH_CONFIDENCE` sure of one agent, the planner
+is cancelled and that agent gets the user's own words as its prompt. Anything else is left to the
+planner: several agents, one that needs another's answer first, a request that might answer a
+waiting question, or a classifier that is not sure. The planner's result is used whenever it
+lands first, and a failing classifier is logged and ignored, so the classifier can only make a
+request faster, never slower. Without `HEY_JARVIS_TYPESAFE_AI_API_KEY` there is no classifier and
+every request is planned as before. The response-style wording lives in `response-styles.ts`, so
+the planner and the classifier describe the four styles identically.
+
 Routing has been three things. A task DAG with a wave scheduler this vertical owned; then a
 supervisor agent delegating inside its own tool-call loop; now a plan. The middle one is why:
 its loop was opaque, so a request could not be looked at, and it could not say what was
@@ -1901,6 +1913,7 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **Weather**: `HEY_JARVIS_OPENWEATHERMAP_API_KEY` for weather data
 - **Google Maps**: `HEY_JARVIS_GOOGLE_MAPS_API_KEY` for navigation, travel time estimation and place search
 - **Google Gemini**: `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` for language models and embeddings. Deliberately separate from the Maps key -- they are restricted to different APIs and are not interchangeable.
+- **TypeSafe AI (optional)**: `HEY_JARVIS_TYPESAFE_AI_API_KEY` for Jev, the evaluation model behind the routing classifier. Resolved from `op://Jarvis/TypeSafe AI/API key` through `mcp/op.optional.env`; without it routing plans every request with the planner.
 - **Google OAuth2 (Calendar, Tasks & Contacts)**: `HEY_JARVIS_GOOGLE_CLIENT_ID`, `HEY_JARVIS_GOOGLE_CLIENT_SECRET`, `HEY_JARVIS_GOOGLE_REFRESH_TOKEN` for accessing the Google Calendar, Tasks and People APIs (see [Google OAuth2 Setup](#google-oauth2-setup) below)
 - **Shopping (Bilka)**: `HEY_JARVIS_BILKA_EMAIL`, `HEY_JARVIS_BILKA_PASSWORD`, `HEY_JARVIS_BILKA_API_KEY` for authentication
 - **Shopping (Search)**: `HEY_JARVIS_ALGOLIA_API_KEY`, `HEY_JARVIS_ALGOLIA_APPLICATION_ID`, `HEY_JARVIS_BILKA_USER_TOKEN` for product search

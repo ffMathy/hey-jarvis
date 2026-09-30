@@ -1,9 +1,12 @@
 import type { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
 import { createAgent, getModel } from '../../utils/index.js';
+import { logger } from '../../utils/logger.js';
 import { getPublicAgents } from '..';
+import { classifyRequest, type FastRoute, getRoutingClassifier, type RoutableAgentSummary } from './classifier.js';
 import type { PlannedChain } from './plan.js';
 import type { OpenQuestion } from './questions.js';
+import { RESPONSE_STYLE_DESCRIPTIONS, RESPONSE_STYLES, type ResponseStyle } from './response-styles.js';
 import { chainsFromTasks } from './task-chains.js';
 
 /**
@@ -35,6 +38,7 @@ const PLANNER_AGENT_ID = 'routing-planner';
 const PLANNER_MODEL = 'gemini-flash-lite-latest';
 
 export { PLANNER_AGENT_ID };
+export { RESPONSE_STYLES, type ResponseStyle };
 
 /**
  * What the planner emits.
@@ -57,24 +61,6 @@ export { PLANNER_AGENT_ID };
  * planner, which reads every request anyway and is shown the questions still open, is the one
  * place that can tell an answer from a new errand without Jarvis having to label it.
  */
-/**
- * How long, and in what voice, Jarvis should answer a request.
- *
- * Decided here because this is the one place that reads every request with its intent in view,
- * and it costs nothing extra: the planner is already choosing agents, and which agents it chose
- * mostly settles the question. The voice model is told the result through the closing
- * instruction (see `responseStyleInstructions` in `workflows.ts`), which arrives exactly when it
- * is about to speak.
- *
- * The test is where the value of the request lands. A command's value is in the house or on the
- * phone, and the words only confirm it, so they should be as few as possible. A lookup's value is
- * the words, but only a few of them. A briefing's value is the words, and there are many. A
- * conversation's value is the exchange itself, which is where Jarvis's wit earns its keep.
- */
-export const RESPONSE_STYLES = ['command', 'lookup', 'briefing', 'conversation'] as const;
-
-export type ResponseStyle = (typeof RESPONSE_STYLES)[number];
-
 const planSchema = z.object({
   responseStyle: z
     .enum(RESPONSE_STYLES)
@@ -110,6 +96,11 @@ const planSchema = z.object({
 });
 
 export { planSchema };
+
+/** The styles, as the planner's instructions list them. */
+function responseStyleList(): string {
+  return RESPONSE_STYLES.map((style) => `- \`${style}\` — ${RESPONSE_STYLE_DESCRIPTIONS[style]}`).join('\n');
+}
 
 /** How the planner is told what it may delegate to. */
 function agentCatalogue(agents: Agent[]): string {
@@ -172,10 +163,7 @@ Sometimes work started earlier — an agent on an earlier request, or a coding s
 
 # How the answer should sound
 Set \`responseStyle\` to how Jarvis should answer once the plan has run. Ask where the value of the request lands:
-- \`command\` — it changes something in the world, and the words only confirm it: lights, blinds, music, scenes, heating, an alarm or timer, adding to the shopping or to-do list, sending a message. He wants it done, not described
-- \`lookup\` — it asks for one fact: is the door locked, the weather now, when the next meeting is, how long the drive takes
-- \`briefing\` — it asks for several facts or a summary: the calendar for the week, new emails, research, a recipe, a status report
-- \`conversation\` — it is open-ended: an opinion, advice, planning something together, chat
+${responseStyleList()}
 
 When a request mixes kinds, pick the one that needs the most words — a command and a lookup together is a \`lookup\`; anything with a briefing in it is a \`briefing\`. An answer to a waiting question takes the style of the work it resumes. With no tasks at all, use \`conversation\`.
 
@@ -190,20 +178,27 @@ ${agentCatalogue(agents)}`;
 }
 
 /**
- * The ids the planner is allowed to name, remembered from the catalogue it was built with.
+ * The agents the planner is allowed to name, remembered from the catalogue it was built with.
  *
  * Held rather than re-derived because `getPublicAgents()` constructs a fresh agent per call
  * -- ten of them, each with its own tools and memory -- and a routing request would otherwise
- * pay for that twice: once to build the planner and once to check what it wrote.
+ * pay for that twice: once to build the planner and once to check what it wrote. The routing
+ * classifier is shown the same catalogue, so it cannot pick an agent the planner could not.
  */
-let routableAgentIds: ReadonlySet<string> | undefined;
+let routableAgents: RoutableAgentSummary[] | undefined;
+
+function rememberRoutableAgents(agents: Agent[]): RoutableAgentSummary[] {
+  routableAgents = agents.map((agent) => ({ id: agent.id, description: agent.getDescription() }));
+  return routableAgents;
+}
+
+async function getRoutableAgents(): Promise<RoutableAgentSummary[]> {
+  return routableAgents ?? rememberRoutableAgents(await getPublicAgents());
+}
 
 /** Which agents a plan may delegate to. */
 export async function getRoutableAgentIds(): Promise<ReadonlySet<string>> {
-  if (!routableAgentIds) {
-    routableAgentIds = new Set((await getPublicAgents()).map((agent) => agent.id));
-  }
-  return routableAgentIds;
+  return new Set((await getRoutableAgents()).map((agent) => agent.id));
 }
 
 /**
@@ -213,14 +208,14 @@ export async function getRoutableAgentIds(): Promise<ReadonlySet<string>> {
  * are fixed at boot, and the planner is on the latency-critical path.
  */
 export async function getRoutingPlannerAgent(): Promise<Agent> {
-  const routableAgents = await getPublicAgents();
-  routableAgentIds = new Set(routableAgents.map((agent) => agent.id));
+  const agents = await getPublicAgents();
+  rememberRoutableAgents(agents);
 
   return createAgent({
     id: PLANNER_AGENT_ID,
     name: 'RoutingPlanner',
     description: 'Turns a user request into a plan of delegations for the specialized agents.',
-    instructions: plannerInstructions(routableAgents),
+    instructions: plannerInstructions(agents),
     model: getModel(PLANNER_MODEL),
     // Planning one request has nothing to recall from the last one, and memory here would
     // buy an embedding round trip on the one path that cannot afford any. The questions still
@@ -254,15 +249,24 @@ export function plannerPrompt(userQuery: string, openQuestions: OpenQuestion[]):
   return `The request:\n${userQuery}\n\nQuestions waiting for the user's answer:\n${waiting}`;
 }
 
-/** Asks the planner for a plan: the chains it runs as, and any answers the request gave. */
-export async function planDelegations(
+/** What routing does with a request: the chains it runs as, and any answers the request gave. */
+export interface RoutingDecision {
+  chains: PlannedChain[];
+  answers: PlannedAnswer[];
+  responseStyle: ResponseStyle;
+}
+
+/** Asks the planner for a plan. */
+async function planWithPlanner(
   planner: Agent,
   userQuery: string,
-  openQuestions: OpenQuestion[] = [],
-): Promise<{ chains: PlannedChain[]; answers: PlannedAnswer[]; responseStyle: ResponseStyle }> {
+  openQuestions: OpenQuestion[],
+  abortSignal: AbortSignal,
+): Promise<RoutingDecision> {
   const response = await planner.generate(plannerPrompt(userQuery, openQuestions), {
     structuredOutput: { schema: planSchema },
     toolChoice: 'none',
+    abortSignal,
   });
 
   const plan = response.object;
@@ -280,4 +284,80 @@ export async function planDelegations(
     answers,
     responseStyle: plan.responseStyle,
   };
+}
+
+/**
+ * The plan for a request one agent takes whole: that agent, asked in the user's own words.
+ *
+ * Built through `chainsFromTasks` like any planned request, so a fast route runs exactly as a
+ * one-task plan would.
+ */
+export async function planFromFastRoute(route: FastRoute, userQuery: string): Promise<RoutingDecision> {
+  return {
+    chains: chainsFromTasks(
+      [{ id: route.agentId, agentId: route.agentId, prompt: userQuery, needs: '' }],
+      await getRoutableAgentIds(),
+    ),
+    answers: [],
+    responseStyle: route.responseStyle,
+  };
+}
+
+/**
+ * Decides what a request needs: the chains it runs as, and any answers it gave.
+ *
+ * The planner and the routing classifier (see `classifier.ts`) are asked at the same time. If the
+ * classifier is sure one agent takes the request whole, that is the plan and the planner is
+ * cancelled; otherwise the planner's plan is used, and the request waited no longer than it would
+ * have without a classifier at all. A classifier that fails is logged and ignored, for the same
+ * reason. Without a TypeSafe key there is no classifier, and this is the planner alone.
+ */
+export async function planDelegations(
+  planner: Agent,
+  userQuery: string,
+  openQuestions: OpenQuestion[] = [],
+  classifier = getRoutingClassifier(),
+): Promise<RoutingDecision> {
+  const abortPlanner = new AbortController();
+  if (!classifier) {
+    return planWithPlanner(planner, userQuery, openQuestions, abortPlanner.signal);
+  }
+
+  // Before either starts, so nothing is awaited between starting the planner and handling it.
+  const agents = await getRoutableAgents();
+  const planned = planWithPlanner(planner, userQuery, openQuestions, abortPlanner.signal);
+  const abortClassifier = new AbortController();
+  const fastRoute = classifyRequest(classifier, userQuery, agents, openQuestions, abortClassifier.signal).catch((error: unknown) => {
+    if (!abortClassifier.signal.aborted) {
+      logger.warn('Routing classifier failed; using the planner', { error });
+    }
+    return undefined;
+  });
+
+  try {
+    return await preferFastPlan(
+      planned,
+      fastRoute.then((route) => (route ? planFromFastRoute(route, userQuery) : undefined)),
+    );
+  } finally {
+    // Whichever lost is working for nothing. Aborting the winner is a no-op.
+    abortPlanner.abort();
+    abortClassifier.abort();
+  }
+}
+
+/**
+ * The fast plan if there is one, and the planner's otherwise -- whichever can be known first.
+ *
+ * A fast plan wins as soon as it exists, even over a planner that has already failed. A planner
+ * that answers first wins outright, since there is nothing left to be faster than. A planner
+ * failure is final only once the classifier has declined too.
+ */
+export async function preferFastPlan(
+  planned: Promise<RoutingDecision>,
+  fastPlan: Promise<RoutingDecision | undefined>,
+): Promise<RoutingDecision> {
+  const fastPlanOrPlanned = fastPlan.then((plan) => plan ?? planned);
+  const plannedUnlessFailed = planned.catch(() => fastPlanOrPlanned);
+  return Promise.race([plannedUnlessFailed, fastPlanOrPlanned]);
 }

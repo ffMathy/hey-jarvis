@@ -1,5 +1,6 @@
 import { Mastra } from '@mastra/core';
 import type { Agent } from '@mastra/core/agent';
+import type { Classifier } from '@mastra/core/classifier';
 import { SpanType } from '@mastra/core/observability';
 import { MastraServer } from '@mastra/hono';
 import { CloudExporter, DefaultExporter, Observability, SamplingStrategyType } from '@mastra/observability';
@@ -38,6 +39,7 @@ import { getNotificationAgent, notificationTools } from './verticals/notificatio
 import { phoneTools } from './verticals/phone/index.js';
 import { presenceShortcuts } from './verticals/presence/index.js';
 import { getReflectionAgent, reflectionTools } from './verticals/reflection/index.js';
+import { getRoutingClassifier } from './verticals/routing/classifier.js';
 import { getRoutingPlannerAgent } from './verticals/routing/planner.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 import { getShoppingListAgent, getShoppingListSummaryAgent, shoppingTools } from './verticals/shopping/index.js';
@@ -59,6 +61,12 @@ function toAgentMap(agents: Agent[]): Record<string, Agent> {
     acc[agent.id] = agent;
     return acc;
   }, {});
+}
+
+function toClassifierMap(classifiers: (Classifier | undefined)[]): Record<string, Classifier> {
+  return Object.fromEntries(
+    classifiers.filter((classifier) => classifier !== undefined).map((classifier) => [classifier.id, classifier]),
+  );
 }
 
 /**
@@ -137,6 +145,9 @@ export async function getMastra(): Promise<Mastra> {
       await getWeatherAgent(),
       await getWebResearchAgent(),
     ]),
+    // Only when TypeSafe is configured; without it routing plans every request with the planner.
+    // Registered so Studio traces its evaluations alongside the planner it races.
+    classifiers: toClassifierMap([getRoutingClassifier()]),
     tools: {
       ...tokenUsageTools,
       ...calendarTools,
