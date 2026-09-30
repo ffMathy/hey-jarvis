@@ -75,6 +75,7 @@ tests/e2e/                 Playwright: the emulated headset and room, and the sp
 .scripts/build.sh          vite build into ../dist/horizon
 .scripts/test.sh           bun test over every *.spec.ts outside tests/e2e
 .scripts/serve-dist.ts     serves the build under /hey-jarvis/horizon/ for the browser tests
+.scripts/render-demo.ts    renders the demo video (demo-shot.ts: the shot and camera; demo-encode.ts: the soundtrack and ffmpeg)
 ```
 
 ## Commands
@@ -86,6 +87,7 @@ timeout 300 bunx turbo test --filter=horizon         # the offline unit tests
 timeout 1200 bunx turbo e2e --filter=horizon         # the browser tests, against a fresh build
 timeout 60  bunx turbo lint --filter=horizon
 bunx turbo serve --filter=horizon                    # Vite's dev server on the LAN (persistent: run it in the background)
+timeout 3600 bun horizon/.scripts/render-demo.ts     # the demo video, after a build (see "The demo video")
 ```
 
 `serve` does not run `initialize`; run that once first, or CanvasKit's wasm is
@@ -590,6 +592,47 @@ flat or 3D, and the alpha factor. **Enter your room** opens the same hologram in
 headset, 1.6 m ahead; there a select moves on to the next phase. It is what the
 browser tests photograph and measure, through `window.__hologramPreview`
 (`preview-hook.ts`).
+
+## The demo video
+
+`.scripts/render-demo.ts` films the app in the browser tests' emulated Quest 3 and living room and
+encodes a WebM (VP9 and Opus):
+
+    timeout 300  bunx turbo build --filter=horizon
+    timeout 3600 bun horizon/.scripts/render-demo.ts --out horizon-demo.webm
+
+36 s at 1280x720 and 30 fps takes about a quarter of an hour. `--seconds N` stretches or squeezes
+the whole shot (`--seconds 8` is a five-minute draft with every beat); `--size`, `--fps` and `--fov`
+(vertical, 66° by default — IWER's 90° leaves him a speck) set the picture; `--frames dir` and
+`--keep-frames` keep the PNGs, which are otherwise deleted after the encode. It needs an ffmpeg with
+libvpx-vp9 and libopus — FFMPEG_PATH, else the one on the PATH; Playwright's own is VP8-only.
+CHROMIUM_EXECUTABLE_PATH works as it does for the browser tests.
+
+**The shot** (`demo-shot.ts`, pure, pinned by `demo-shot.spec.ts`): the real room, entered with a key,
+waiting with its hint, the head glancing so the hint is seen trailing the gaze; a cut, from the same
+pose, to sample mode — the real room cannot summon him without ElevenLabs — where he is placed 1.6 m
+ahead and arrives; a walk to arm's length (0.8 m, well outside his 2.5R fade), one full turn round him
+there while selects on him walk listening, thinking, idle and speaking, and a walk back to 1.9 m.
+The head moves in distance and bearing around his centre, each eased on overlapping windows so the
+walk curves rather than stops, with a bob that follows the steps taken, and always looks at his centre.
+
+**Smooth although SwiftShader is not.** `page.clock` fakes Date, performance and the timers; once the
+hint is up the clock is paused and `requestAnimationFrame` is replaced by a queue the script empties.
+Each video frame advances the clock by exactly one frame and runs exactly one animation frame — one
+XR frame, which IWER stamps with the faked `performance.now()` — so the app, his frame clock and
+sample mode all see 1/fps between frames however long the frame took to draw. Playwright's own fake
+animation frames run on a 16 ms grid, two or three per video frame, which is why they are replaced.
+Placement answers from its worker on real time, and the script waits for it between frames, so he
+arrives on the same frame in every render.
+
+**The soundtrack** (`demo-encode.ts`): sample mode's speaking is the greeting's measurement repeated,
+so `assets/greeting.mp3` is laid under every stretch in which he speaks, on the same 3.14 s beat,
+cut where a select moves him on. No repeat starts in the fade out.
+
+**What it leans on:** the page's buttons, IWER's device and controller, `window.__jarvis` (phase,
+scene, the hint panel, where he was placed and his radius) and the e2e harness. If a later IWER
+captured `requestAnimationFrame` once at install instead of looking it up each frame, the queue
+would have to be installed before the page loads.
 
 ## The wake-word models, and their licence
 
