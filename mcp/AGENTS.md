@@ -996,7 +996,10 @@ than 200 characters are dropped and names are cut at 120.
    poll.
 3. The poll returns it in `affectedEntities`, and the instructions open with
    `MARK_AFFECTED_INSTRUCTIONS`: call the `markAffected` client tool with exactly those entities,
-   silently, before anything else, and never retry it. When that is all the response has, it then
+   silently, before anything else, and never retry it. Silent covers the call and the list, not the
+   things: "which kitchen lights are on?" is answered by naming the lights the lookup touched, so
+   only the `affectedEntities` list and its ids are kept out of what he hears, and the clause says
+   the rest of the report names things as it always would. When that is all the response has, it then
    says to poll again at once and say nothing. Results, the slow-work offer, the closing report and
    the reply to `notifyWhenDone` all carry whatever has not been reported yet, the instruction first.
 

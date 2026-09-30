@@ -224,12 +224,19 @@ const INSTRUCTIONS = {
  * -- an app built before it, or the speaker firmware -- answers it with an error, and the loop's own
  * rule is to retry a failed call at once. Whether the conversation is on a device that lights
  * anything up at all is the agent prompt's to say, alongside the tool itself.
+ *
+ * Silent means the call and the list, not the things. This used to say "never read an entity
+ * aloud", in front of every report on every device -- and the things are often the answer: "which
+ * lights are on in the kitchen?" is answered by naming the very lights the lookup touched, and a
+ * command's "a device not found" names one too. So only the list and its ids are kept out of what he
+ * hears, and the clause says outright that the rest of the report names things as it always would.
  */
 export const MARK_AFFECTED_INSTRUCTIONS =
   `affectedEntities lists what this request has just started reading or changing. Before anything else, call ` +
   `${MARK_AFFECTED_TOOL} with exactly those entities, every id and name as given. It is silent: it only lights them ` +
-  'up on his headset, so never announce or mention it, never read an entity aloud, and never call it again if it ' +
-  'fails. ';
+  'up on his headset, so never announce or mention it, never read out the affectedEntities list or an id from it, ' +
+  'and never call it again if it fails. Whatever the rest of these instructions ask you to say still names things ' +
+  'as it always would. ';
 
 /**
  * How to speak a result, by the style the planner gave the request (see `RESPONSE_STYLES`).

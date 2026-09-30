@@ -654,6 +654,22 @@ describe('a request whose tools touch things', () => {
     expect(MARK_AFFECTED_INSTRUCTIONS).toContain('never call it again if it fails');
   });
 
+  it('keeps only the list itself out of what he hears, since the things are often the answer', async () => {
+    // "Which lights are on in the kitchen?" is answered by naming the very lights the lookup touched.
+    await runWorkflow(routePromptWorkflow, { userQuery: 'which kitchen lights are on?', async: false });
+    const delegationId = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings');
+    touchThings(DEFAULT_ROUTING_SESSION_ID, delegationId, SOFA_LAMP, PORCH);
+    finishDelegation(DEFAULT_ROUTING_SESSION_ID, delegationId, { text: 'The sofa lamp and the porch light are on.' });
+    endPlanRun(progressFor(DEFAULT_ROUTING_SESSION_ID));
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.instructions).toContain('never read out the affectedEntities list or an id from it');
+    expect(closing.instructions).toContain('still names things as it always would');
+    expect(closing.instructions).not.toContain('never read an entity aloud');
+    expect(closing.instructions).toContain('All tasks have completed');
+  });
+
   it('publishes the field, and tells the voice agent to route what sir points at by its id', () => {
     expect(
       instructionsOutputSchema.shape.affectedEntities.parse([{ id: 'light.sofa_lamp', name: 'Sofa lamp' }]),
