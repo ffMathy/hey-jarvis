@@ -5,14 +5,15 @@
  * What the model does with the instructions is the LLM eval's to judge; what is pinned here is the
  * contract around it: that every plan must carry a style, that only the four known ones are
  * accepted, and that the instructions describe each of them — and that waiting photos reach the
- * planner by id, with the rules for what to do about them, including letting one be, and asking sir
- * about one he sent with nothing said.
+ * planner by id, with the rules for what to do about them, including letting one be, asking sir
+ * about one he sent with nothing said, and waiting for one he says is on its way.
  */
 
-import { describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { Classifier } from '@mastra/core/classifier';
 import { createScriptedModel } from '../../../tests/utils/scripted-model.js';
 import { createAgent } from '../../utils/agent-factory.js';
+import { forgetPhotos, keepPhoto, markPhotoLookedAt, photosWaiting } from '../vision/photos.js';
 import { routingQuestions } from './classifier.js';
 import {
   decisionFromClassification,
@@ -28,32 +29,17 @@ import {
 } from './planner.js';
 import type { OpenQuestion } from './questions.js';
 
+/** Everything a plan leaves empty, as the planner has to write it out. */
+const NOTHING_PLANNED = { tasks: [], answers: [], dismissedPhotoIds: [], photosToAskAbout: [], awaitsPhoto: false };
+
 describe('responseStyle', () => {
   it('is required on every plan, so a request is never answered in no particular way', () => {
-    expect(planSchema.safeParse({ tasks: [], answers: [], dismissedPhotoIds: [], photosToAskAbout: [] }).success).toBe(
-      false,
-    );
-    expect(
-      planSchema.safeParse({
-        responseStyle: 'command',
-        tasks: [],
-        answers: [],
-        dismissedPhotoIds: [],
-        photosToAskAbout: [],
-      }).success,
-    ).toBe(true);
+    expect(planSchema.safeParse(NOTHING_PLANNED).success).toBe(false);
+    expect(planSchema.safeParse({ responseStyle: 'command', ...NOTHING_PLANNED }).success).toBe(true);
   });
 
   it('accepts only the styles the closing instructions know how to speak', () => {
-    expect(
-      planSchema.safeParse({
-        responseStyle: 'monologue',
-        tasks: [],
-        answers: [],
-        dismissedPhotoIds: [],
-        photosToAskAbout: [],
-      }).success,
-    ).toBe(false);
+    expect(planSchema.safeParse({ responseStyle: 'monologue', ...NOTHING_PLANNED }).success).toBe(false);
   });
 
   it('is explained to the planner, one style at a time', () => {
@@ -89,6 +75,7 @@ describe('photos nobody has looked at yet', () => {
         { photoId: 'photo2', keptAt: NOW - 12 * 60_000 },
         { photoId: 'photo3', keptAt: NOW - 4 * 60_000 },
       ],
+      [],
       NOW,
     );
 
@@ -105,6 +92,7 @@ describe('photos nobody has looked at yet', () => {
       'Push, please.',
       [WAITING_QUESTION],
       [{ photoId: 'photo3', keptAt: NOW - 30_000 }],
+      [],
       NOW,
     );
 
@@ -118,7 +106,7 @@ describe('photos nobody has looked at yet', () => {
   });
 
   it('leave the prompt as the request alone when there are none', () => {
-    expect(plannerPrompt('What is the weather?', [], [], NOW)).toBe('What is the weather?');
+    expect(plannerPrompt('What is the weather?', [], [], [], NOW)).toBe('What is the weather?');
   });
 
   it('are explained to the planner: work on the photo, never an answer, and left alone otherwise', () => {
@@ -135,16 +123,22 @@ describe('photos nobody has looked at yet', () => {
   });
 });
 
-/** A planner on a scripted model that replies with this plan, whatever it is asked. */
-async function plannerReplying(plan: object) {
+/** A planner on a scripted model that replies with this plan whatever it is asked, and what it was asked. */
+async function plannerHearing(plan: object) {
   const scripted = createScriptedModel(() => ({ text: JSON.stringify(plan) }));
-  return createAgent({
+  const planner = await createAgent({
     id: PLANNER_AGENT_ID,
     name: PLANNER_AGENT_ID,
     instructions: 'You plan.',
     model: scripted.model,
     memory: undefined,
   });
+  return { planner, calls: scripted.calls };
+}
+
+/** A planner on a scripted model that replies with this plan, whatever it is asked. */
+async function plannerReplying(plan: object) {
+  return (await plannerHearing(plan)).planner;
 }
 
 /**
@@ -155,7 +149,13 @@ async function plannerReplying(plan: object) {
 describe('a reply that he wants nothing done with a photo', () => {
   it('has a place in every plan, empty when there is none, so the model never leaves it out', () => {
     expect(
-      planSchema.safeParse({ responseStyle: 'command', tasks: [], answers: [], photosToAskAbout: [] }).success,
+      planSchema.safeParse({
+        responseStyle: 'command',
+        tasks: [],
+        answers: [],
+        photosToAskAbout: [],
+        awaitsPhoto: false,
+      }).success,
     ).toBe(false);
   });
 
@@ -169,11 +169,10 @@ describe('a reply that he wants nothing done with a photo', () => {
 
   it('comes back for the photos the planner was shown, once each, and never as an answer', async () => {
     const planner = await plannerReplying({
+      ...NOTHING_PLANNED,
       responseStyle: 'command',
-      tasks: [],
       answers: [{ questionId: 'photo3', answer: 'Nothing, never mind.' }],
       dismissedPhotoIds: ['photo3', 'photo3', 'photo9'],
-      photosToAskAbout: [],
     });
 
     const plan = await planDelegations(
@@ -191,14 +190,147 @@ describe('a reply that he wants nothing done with a photo', () => {
 
   it('dismisses nothing when no photo was shown', async () => {
     const planner = await plannerReplying({
+      ...NOTHING_PLANNED,
       responseStyle: 'conversation',
-      tasks: [],
-      answers: [],
       dismissedPhotoIds: ['photo1'],
-      photosToAskAbout: [],
     });
 
     expect((await planDelegations(planner, 'Never mind.')).dismissedPhotoIds).toEqual([]);
+  });
+});
+
+/**
+ * The photo Jarvis has just described and asked about. The look that let him describe it marked it
+ * as looked at, so it is no longer waiting — and without being shown it, the planner could not dismiss
+ * it when sir said he wants nothing done with it, and his "nothing" was reported to him as a request no
+ * agent could handle.
+ */
+describe('a photo the request names that has been looked at already', () => {
+  const NOW = 10_000_000;
+  const PHOTO = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
+  const NOTHING = "Answer to 'what would you like done with it?': nothing, never mind (photo photo1)";
+  const HEADING = 'Photos the request names, which have been looked at or dismissed already:';
+
+  /** Photo1, looked at a moment after it arrived, as the look Jarvis described leaves it. */
+  function lookedAtPhoto(): void {
+    keepPhoto(PHOTO, 'image/jpeg');
+    markPhotoLookedAt('photo1');
+  }
+
+  beforeEach(() => {
+    forgetPhotos();
+  });
+
+  // The store is the process's: a photo left behind would be listed in another file's requests.
+  afterEach(() => {
+    forgetPhotos();
+  });
+
+  it('is listed apart from the waiting ones, by id and how long ago it was sent', () => {
+    expect(plannerPrompt(NOTHING, [], [], [{ photoId: 'photo1', keptAt: NOW - 2 * 60_000 }], NOW)).toBe(
+      `The request:\n${NOTHING}\n\n${HEADING}\n- photo1, sent 2 minutes ago`,
+    );
+  });
+
+  it('is listed after the waiting ones when there are both', () => {
+    expect(
+      plannerPrompt(
+        NOTHING,
+        [],
+        [{ photoId: 'photo2', keptAt: NOW - 30_000 }],
+        [{ photoId: 'photo1', keptAt: NOW - 2 * 60_000 }],
+        NOW,
+      ),
+    ).toBe(
+      `The request:\n${NOTHING}\n\n` +
+        'Photos the user has sent that nobody has looked at yet:\n- photo2, sent just now\n\n' +
+        `${HEADING}\n- photo1, sent 2 minutes ago`,
+    );
+  });
+
+  it('is explained to the planner: his wanting nothing done with it dismisses it too', () => {
+    const instructions = plannerInstructions([]);
+
+    expect(instructions).toContain('A photo the request names by its tag that has been looked at or dismissed');
+    expect(instructions).toContain(
+      'That includes his reply about the photo the request names when he was just asked what to do with it — "Answer to \'what would you like done with it?\': nothing (photo photo3)"',
+    );
+    expect(planSchema.shape.dismissedPhotoIds.description).toContain(
+      'one the request names that he was just asked about',
+    );
+  });
+
+  it('is shown to the planner, and dismissed when he wants nothing done with it', async () => {
+    lookedAtPhoto();
+    const { planner, calls } = await plannerHearing({
+      ...NOTHING_PLANNED,
+      responseStyle: 'command',
+      dismissedPhotoIds: ['photo1'],
+    });
+
+    const plan = await planDelegations(planner, NOTHING, [], photosWaiting());
+
+    expect(calls[0]?.transcript).toContain(`${HEADING}\n- photo1, sent just now`);
+    expect(plan.dismissedPhotoIds).toEqual(['photo1']);
+    expect(plan.chains).toEqual([]);
+  });
+
+  it('is found however the tag writes its id, and listed once however often it is named', async () => {
+    lookedAtPhoto();
+    const { planner, calls } = await plannerHearing({ ...NOTHING_PLANNED, responseStyle: 'command' });
+
+    await planDelegations(planner, 'Nothing for (photo Photo1), and nothing for (photo photo1) either');
+
+    expect(calls[0]?.transcript).toContain(`${HEADING}\n- photo1, sent just now`);
+    expect(calls[0]?.transcript.match(/- photo1, sent/g)).toHaveLength(1);
+  });
+
+  it('is not listed twice when it is still waiting', async () => {
+    keepPhoto(PHOTO, 'image/jpeg');
+    const { planner, calls } = await plannerHearing({ ...NOTHING_PLANNED, responseStyle: 'command' });
+
+    await planDelegations(planner, NOTHING, [], photosWaiting());
+
+    expect(calls[0]?.transcript).not.toContain(HEADING);
+    expect(calls[0]?.transcript).toContain('Photos the user has sent that nobody has looked at yet:\n- photo1');
+  });
+
+  it('is never asked about as one sent with nothing said: he has been told what it shows', async () => {
+    lookedAtPhoto();
+    const planner = await plannerReplying({
+      ...NOTHING_PLANNED,
+      responseStyle: 'lookup',
+      photosToAskAbout: ['photo1'],
+    });
+
+    expect((await planDelegations(planner, NOTHING)).photosToAskAbout).toEqual([]);
+  });
+
+  it('is not one the store has let go of', async () => {
+    const { planner, calls } = await plannerHearing({
+      ...NOTHING_PLANNED,
+      responseStyle: 'command',
+      dismissedPhotoIds: ['photo1'],
+    });
+
+    const plan = await planDelegations(planner, NOTHING);
+
+    expect(calls[0]?.transcript).not.toContain(HEADING);
+    expect(plan.dismissedPhotoIds).toEqual([]);
+  });
+
+  it('is never the latest photo standing in for a tag that names none', async () => {
+    lookedAtPhoto();
+    const { planner, calls } = await plannerHearing({
+      ...NOTHING_PLANNED,
+      responseStyle: 'command',
+      dismissedPhotoIds: ['photo1'],
+    });
+
+    const plan = await planDelegations(planner, 'Nothing, never mind (photo __)');
+
+    expect(calls[0]?.transcript).not.toContain(HEADING);
+    expect(plan.dismissedPhotoIds).toEqual([]);
   });
 });
 
@@ -221,7 +353,13 @@ describe('a photo he sent without saying what he wants', () => {
 
   it('has a place in every plan, empty when there is none, so the model never leaves it out', () => {
     expect(
-      planSchema.safeParse({ responseStyle: 'lookup', tasks: [], answers: [], dismissedPhotoIds: [] }).success,
+      planSchema.safeParse({
+        responseStyle: 'lookup',
+        tasks: [],
+        answers: [],
+        dismissedPhotoIds: [],
+        awaitsPhoto: false,
+      }).success,
     ).toBe(false);
   });
 
@@ -240,18 +378,11 @@ describe('a photo he sent without saying what he wants', () => {
     expect(instructions).toContain('a photo he sent without saying what he wants is a `lookup`');
   });
 
-  it('is not planned for before it arrives', () => {
-    expect(plannerInstructions([])).toContain(
-      'A photo he says he is about to send — "I\'ll send you a receipt" — has not arrived: plan nothing for it',
-    );
-  });
-
   it('comes back for the photos the planner was shown, once each, beside the look', async () => {
     const planner = await plannerReplying({
+      ...NOTHING_PLANNED,
       responseStyle: 'lookup',
       tasks: [LOOK],
-      answers: [],
-      dismissedPhotoIds: [],
       photosToAskAbout: ['photo3', 'photo3', 'photo9'],
     });
 
@@ -266,9 +397,8 @@ describe('a photo he sent without saying what he wants', () => {
 
   it('is never one he has just said he wants nothing done with', async () => {
     const planner = await plannerReplying({
+      ...NOTHING_PLANNED,
       responseStyle: 'command',
-      tasks: [],
-      answers: [],
       dismissedPhotoIds: ['photo3'],
       photosToAskAbout: ['photo3'],
     });
@@ -286,14 +416,83 @@ describe('a photo he sent without saying what he wants', () => {
 
   it('asks about nothing when no photo was shown', async () => {
     const planner = await plannerReplying({
+      ...NOTHING_PLANNED,
       responseStyle: 'lookup',
       tasks: [LOOK],
-      answers: [],
-      dismissedPhotoIds: [],
       photosToAskAbout: ['photo3'],
     });
 
     expect((await planDelegations(planner, BARE_PHOTO)).photosToAskAbout).toEqual([]);
+  });
+});
+
+/**
+ * A photo he says is on its way — "I'll send you a receipt" — that has not arrived. The voice agent is
+ * told to route nothing until it does, but a request that slips through planned nothing, and an empty
+ * plan was reported to sir as a request no agent could handle, closing on the hang-up just as he went
+ * quiet to take the shot. The plan says so instead, and the closing report has Jarvis wait for it (see
+ * `buildClosingReport` in `workflows.ts`).
+ */
+describe('a photo he says he is about to send', () => {
+  const ANNOUNCED = "I'll send you a photo of a receipt in a moment";
+
+  it('has a place in every plan, false when there is none, so the model never leaves it out', () => {
+    expect(
+      planSchema.safeParse({
+        responseStyle: 'command',
+        tasks: [],
+        answers: [],
+        dismissedPhotoIds: [],
+        photosToAskAbout: [],
+      }).success,
+    ).toBe(false);
+    expect(planSchema.shape.awaitsPhoto.description).toBe(
+      'True only when the request says he is about to send or show a photo that has not arrived yet',
+    );
+  });
+
+  it('is explained to the planner: plan nothing for it, say it is coming, and plan the rest as usual', () => {
+    const instructions = plannerInstructions([]);
+
+    expect(instructions).toContain(
+      'A photo he says he is about to send — "I\'ll send you a receipt" — has not arrived: plan nothing for it',
+    );
+    expect(instructions).toContain('nothing for what he wants done with it, which comes back with the photo');
+    expect(instructions).toContain('Set `awaitsPhoto`, and Jarvis tells him to go ahead with the camera button');
+    expect(instructions).toContain('Plan anything else the request asks for as usual');
+    expect(instructions).toContain('always for a photo that has already arrived');
+    expect(instructions).toContain('and so is one that only says a photo is on its way');
+  });
+
+  it('comes back on the decision, with nothing planned for it', async () => {
+    const planner = await plannerReplying({ ...NOTHING_PLANNED, responseStyle: 'command', awaitsPhoto: true });
+
+    const plan = await planDelegations(planner, ANNOUNCED);
+
+    expect(plan.awaitsPhoto).toBe(true);
+    expect(plan.chains).toEqual([]);
+  });
+
+  it('comes back beside the rest of the request', async () => {
+    const planner = await plannerReplying({
+      ...NOTHING_PLANNED,
+      responseStyle: 'lookup',
+      tasks: [{ id: 'weather', agentId: 'weather', prompt: 'What is the weather?', needs: '' }],
+      awaitsPhoto: true,
+    });
+
+    const plan = await planDelegations(planner, `${ANNOUNCED} — and what is the weather?`);
+
+    expect(plan.awaitsPhoto).toBe(true);
+    expect(plan.chains.flatMap((chain) => chain.delegations.map((delegation) => delegation.agentId))).toEqual([
+      'weather',
+    ]);
+  });
+
+  it('is left off a decision that awaits nothing', async () => {
+    const planner = await plannerReplying({ ...NOTHING_PLANNED, responseStyle: 'conversation' });
+
+    expect(await planDelegations(planner, 'Never mind.')).not.toHaveProperty('awaitsPhoto');
   });
 });
 

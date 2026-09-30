@@ -39,7 +39,10 @@ async function resolvePhotoReader(mastra: ToolMastra | undefined): Promise<Agent
  *
  * **A reading is what stops a photo waiting** (see `photosWaiting` in `photos.ts`). Only once the
  * reader has answered: a reading that failed has told sir nothing about his photo, so it is still
- * worth bringing up.
+ * worth bringing up. For the same reason the reader is stopped with the request that asked: a look
+ * still in flight when sir talks over it would otherwise go on to mark a photo whose reading nobody
+ * will ever tell him (and a look that did finish is taken back in that case, by `carryOut` in
+ * `routing/controller.ts`).
  */
 export const lookAtPhoto = createTool({
   id: 'lookAtPhoto',
@@ -64,15 +67,18 @@ export const lookAtPhoto = createTool({
     const reader = await resolvePhotoReader(context?.mastra);
     const reading = await withRetry(
       () =>
-        reader.generate([
-          {
-            role: 'user',
-            content: [
-              { type: 'image', image: photo.data, mediaType: photo.mediaType },
-              { type: 'text', text: question },
-            ],
-          },
-        ]),
+        reader.generate(
+          [
+            {
+              role: 'user',
+              content: [
+                { type: 'image', image: photo.data, mediaType: photo.mediaType },
+                { type: 'text', text: question },
+              ],
+            },
+          ],
+          { abortSignal: context?.abortSignal },
+        ),
       { label: 'lookAtPhoto' },
     );
     markPhotoLookedAt(photo.photoId);

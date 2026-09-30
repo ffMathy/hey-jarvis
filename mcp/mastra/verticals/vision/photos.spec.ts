@@ -14,6 +14,7 @@ import {
   openUploadSlot,
   photosWaiting,
   UPLOAD_SLOT_MS,
+  unmarkPhotoLookedAt,
 } from './photos.js';
 
 const PHOTO = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
@@ -226,5 +227,51 @@ describe('how long ago, in words to be read out', () => {
     expect(howLongAgo(59_999)).toBe('just now');
     expect(howLongAgo(60_000)).toBe('a minute ago');
     expect(howLongAgo(4 * 60_000 + 59_999)).toBe('4 minutes ago');
+  });
+});
+
+/**
+ * A look whose reading never reached sir — the request that looked was superseded before its report
+ * was read — is taken back, so the photo is brought up later rather than lost (see `carryOut` in
+ * `routing/controller.ts`).
+ */
+describe('a look taken back', () => {
+  it('leaves the photo waiting again, however the id was written', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0);
+    markPhotoLookedAt('photo1', 1_000);
+
+    unmarkPhotoLookedAt('Photo 1', 2_000);
+
+    expect(photosWaiting(2_000)).toEqual([{ photoId: 'photo1', keptAt: 0 }]);
+    expect(findPhoto('photo1', 2_000)?.lookedAt).toBeUndefined();
+  });
+
+  it('counts the next look as the first, since none reached him before it', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0);
+    markPhotoLookedAt('photo1', 1_000);
+    unmarkPhotoLookedAt('photo1', 2_000);
+
+    markPhotoLookedAt('photo1', 3_000);
+
+    expect(findPhoto('photo1', 3_000)?.lookedAt).toBe(3_000);
+  });
+
+  it('leaves a photo he wants nothing done with dismissed', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0);
+    markPhotoLookedAt('photo1', 1_000);
+    dismissPhoto('photo1', 1_500);
+
+    unmarkPhotoLookedAt('photo1', 2_000);
+
+    expect(photosWaiting(2_000)).toEqual([]);
+  });
+
+  it('changes nothing when the id names no photo kept', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0);
+    markPhotoLookedAt('photo1', 1_000);
+
+    unmarkPhotoLookedAt('photo9', 2_000);
+
+    expect(photosWaiting(2_000)).toEqual([]);
   });
 });

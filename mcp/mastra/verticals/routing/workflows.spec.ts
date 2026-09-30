@@ -487,7 +487,9 @@ describe('a request made while a photo he sent is waiting on him', () => {
 
   /**
    * The photo wording is added only when a photo is there, so every report that has none is word for
-   * word what it was before photos could wait.
+   * word what it was before photos could wait. The one exception is the hang-up's own, which holds the
+   * line while he is getting a photo to Jarvis at all — the camera, not a photo that waits — and so is
+   * left out of what is compared here (it is pinned under "how a request is answered").
    */
   it('says nothing of photos when none is waiting', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
@@ -510,8 +512,9 @@ describe('a request made while a photo he sent is waiting on him', () => {
     const allDone = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
     for (const closing of [withEarlierQuestion, afterFailure, allDone]) {
-      expect(closing.instructions).not.toMatch(/photo/i);
+      expect(closing.instructions.replace(FINISHED_REQUEST_INSTRUCTIONS, '')).not.toMatch(/photo/i);
     }
+    expect(allDone.instructions).toContain(FINISHED_REQUEST_INSTRUCTIONS);
     expect(withEarlierQuestion.instructions).toStartWith(
       'This request has finished, but work he started earlier is still waiting on him to answer a question',
     );
@@ -878,6 +881,134 @@ describe('how a request is answered, and when the call may end', () => {
 
   it('errs on the side of saying enough when the planner never labelled the request', () => {
     expect(new RoutingProgress().responseStyle).toBe('briefing');
+  });
+
+  /**
+   * The phone's note that sir has opened the camera is not him saying anything, so without this the
+   * turn timeout would have Jarvis hang up while he frames the shot. The prompt and the end_call and
+   * skip_turn descriptions state the exception in these same words.
+   */
+  it('holds the line while he is getting a photo to Jarvis, even straight after a finished request', () => {
+    const exception =
+      'Unless you are waiting for a photo from him — he said he would send one, or a note says he has opened the ' +
+      'camera on his phone — and neither the photo nor a word from him has come since: then call skip_turn instead.';
+
+    expect(FINISHED_REQUEST_INSTRUCTIONS).toContain(exception);
+    // Straight after the hang-up it qualifies, which is what makes it an exception to it.
+    expect(FINISHED_REQUEST_INSTRUCTIONS).toContain(`call end_call without a word. ${exception}`);
+  });
+});
+
+/**
+ * A request that said a photo is on its way (`awaitsPhoto` in `planner.ts`). Sir is about to go quiet
+ * to take it, so the hang-up every other finished request ends on would close the line under him.
+ */
+describe('a request that said a photo is on its way', () => {
+  const WAITS = 'call skip_turn, however many times you are asked — never end_call, since he is taking the photo';
+  const GO_AHEAD = 'tell him in a few words to go ahead with the camera button on his phone';
+
+  it('has Jarvis tell him to go ahead, then wait for the photo instead of hanging up', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: "I'll send you a receipt", async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    progress.awaitsPhoto = true;
+    endPlanRun(progress);
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    // Still the words that tell him to stop polling.
+    expect(closing.instructions).toStartWith(
+      'All tasks have completed. He said he is about to send you a photo, which has not arrived yet.',
+    );
+    expect(closing.instructions).toContain(GO_AHEAD);
+    expect(closing.instructions).toContain(WAITS);
+    expect(closing.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
+    // Nothing to recap, and anything further still goes through routing.
+    expect(closing.instructions).not.toContain('These are every result');
+    expect(closing.instructions).toContain('send it through routePromptWorkflow');
+    // A goodbye still ends the call: it is his word, not the silence.
+    expect(closing.instructions).toContain('if he says goodbye');
+    expect(closing.questionsForUser).toBeUndefined();
+  });
+
+  it('says what the rest of the request found first, then asks for the photo last of all', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: "I'll send you a receipt, and the weather?", async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    progress.responseStyle = 'lookup';
+    progress.awaitsPhoto = true;
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
+    endPlanRun(progress);
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
+    expect(closing.instructions).toContain('Tell him whatever he has not heard yet');
+    expect(closing.instructions).toContain('one short sentence');
+    expect(closing.instructions).toContain(`Last of all, ${GO_AHEAD}`);
+    expect(closing.instructions).toContain(WAITS);
+    expect(closing.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
+  });
+
+  it('still waits for the photo when the rest of the request failed', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: "I'll send you a receipt, and the weather?", async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    progress.awaitsPhoto = true;
+    progress.fail('the weather service did not answer');
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.instructions).toStartWith('The request could not be completed');
+    expect(closing.instructions).toContain(GO_AHEAD);
+    expect(closing.instructions).toContain(WAITS);
+    expect(closing.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
+  });
+
+  it('has him told to go ahead before a question the report asks, which is still asked last', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: "I'll send you a receipt, and remind me", async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    progress.awaitsPhoto = true;
+    suspendDelegation(DEFAULT_ROUTING_SESSION_ID, startDelegation(DEFAULT_ROUTING_SESSION_ID, 'coding'), 'How early?');
+    endPlanRun(progress);
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.instructions).toStartWith('Part of this request cannot go on');
+    expect(closing.instructions).toContain(`before you ask, ${GO_AHEAD}`);
+    expect(closing.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
+    expect(closing.questionsForUser).toEqual([{ id: 'coding', question: 'How early?' }]);
+  });
+
+  it('has him told to go ahead before an earlier question a failed request brings up', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: "I'll send you a receipt, and the weather?", async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    progress.awaitsPhoto = true;
+    progress.earlierQuestions = [
+      {
+        id: 'q7',
+        taskId: 'Push reminders for tasks',
+        agentId: 'coding',
+        question: 'Email, or a push notification?',
+        deliverAnswer: async () => 'Passed on.',
+      },
+    ];
+    progress.fail('the weather service did not answer');
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.instructions).toContain('work he started earlier is still waiting on him');
+    expect(closing.instructions).toContain(`before you ask, ${GO_AHEAD}`);
+    expect(closing.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
+  });
+
+  it('is waited for by nothing else: every other report reads as it did', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
+    endPlanRun(progress);
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.instructions).not.toContain('He said he is about to send you a photo');
+    expect(closing.instructions).not.toContain(WAITS);
   });
 });
 

@@ -65,6 +65,7 @@ function scriptedPlanner() {
           answers: [{ questionId: waitingQuestionId, answer: ANSWER }],
           dismissedPhotoIds: [],
           photosToAskAbout: [],
+          awaitsPhoto: false,
         }),
       };
     }
@@ -77,6 +78,7 @@ function scriptedPlanner() {
           answers: [],
           dismissedPhotoIds: [],
           photosToAskAbout: [],
+          awaitsPhoto: false,
         }),
       };
     }
@@ -89,6 +91,7 @@ function scriptedPlanner() {
         answers: [],
         dismissedPhotoIds: [],
         photosToAskAbout: [],
+        awaitsPhoto: false,
       }),
     };
   });

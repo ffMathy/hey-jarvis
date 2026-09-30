@@ -151,14 +151,15 @@ async function createStandInAgent(id: string, description: string): Promise<Agen
 }
 
 /**
- * Asks the real planner instructions for a plan, with any questions still waiting on the user and
- * any photos he sent that nobody has looked at yet.
+ * Asks the real planner instructions for a plan, with any questions still waiting on the user, any
+ * photos he sent that nobody has looked at yet, and any the request names that have been looked at.
  */
 async function planWithAnswers(
   userQuery: string,
   agents: Agent[],
   openQuestions: OpenQuestion[] = [],
   waitingPhotos: WaitingPhoto[] = [],
+  namedPhotos: WaitingPhoto[] = [],
 ) {
   const planner = await createAgent({
     id: 'routing-planner-under-test',
@@ -167,7 +168,7 @@ async function planWithAnswers(
     memory: undefined,
   });
 
-  const response = await planner.generate(plannerPrompt(userQuery, openQuestions, waitingPhotos), {
+  const response = await planner.generate(plannerPrompt(userQuery, openQuestions, waitingPhotos, namedPhotos), {
     structuredOutput: { schema: planSchema },
     toolChoice: 'none',
   });
@@ -181,6 +182,7 @@ async function planWithAnswers(
     answers: response.object.answers,
     dismissedPhotoIds: response.object.dismissedPhotoIds,
     photosToAskAbout: response.object.photosToAskAbout,
+    awaitsPhoto: response.object.awaitsPhoto,
   };
 }
 
@@ -492,6 +494,27 @@ shoppingList in a chain of its own would be wrong: it would run without knowing 
     expect(chains).toEqual([]);
   }, 120000);
 
+  // The same reply to the question a look at a photo sent with nothing said ends on. That look marked
+  // the photo as looked at, so it is no longer waiting, and it is shown to the planner only because
+  // the request names it — under its own heading.
+  it('dismisses the photo Jarvis has just asked about when sir wants nothing done with it', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    const { chains, answers, dismissedPhotoIds } = await planWithAnswers(
+      "Answer to 'what would you like done with it?': nothing, never mind (photo photo3)",
+      [await getVisionAgent(), await getShoppingListAgent(), await createStandInAgent('weather', WEATHER_DESCRIPTION)],
+      [],
+      [],
+      [JUST_SENT_PHOTO],
+    );
+
+    expect(dismissedPhotoIds).toEqual(['photo3']);
+    expect(answers).toEqual([]);
+    expect(chains).toEqual([]);
+  }, 120000);
+
   // A photo sent with nothing said: the phone reports it, and the voice agent routes a look at it.
   // Jarvis says what it shows and then asks what sir would like done with it, which only happens if
   // the plan names the photo in `photosToAskAbout` (see `buildClosingReport` in `workflows.ts`).
@@ -531,7 +554,7 @@ It must NOT delegate to shoppingList or any other agent that acts on the photo: 
       return;
     }
 
-    const { photosToAskAbout } = await planWithAnswers(
+    const { photosToAskAbout, awaitsPhoto } = await planWithAnswers(
       'What is the total on this receipt? (photo photo3)',
       [await getVisionAgent(), await getShoppingListAgent(), await createStandInAgent('weather', WEATHER_DESCRIPTION)],
       [],
@@ -539,22 +562,40 @@ It must NOT delegate to shoppingList or any other agent that acts on the photo: 
     );
 
     expect(photosToAskAbout).toEqual([]);
+    // It has arrived, so there is nothing to wait for.
+    expect(awaitsPhoto).toBe(false);
   }, 120000);
 
   // Sir says what he wants before he sends the photo. The voice agent is told to wait for it, but a
-  // request that slips through has nothing to look at yet, and must not look at an older photo.
-  it('plans nothing for a photo he says he is about to send', async () => {
+  // request that slips through has nothing to look at yet, and must not look at an older photo. It
+  // says the photo is on its way instead, so Jarvis tells him to go ahead and waits for it, rather than
+  // reporting that no agent could handle the request and hanging up while he takes the shot.
+  it('plans nothing for a photo he says he is about to send, and says it is on its way', async () => {
     if (!ollamaAvailable) {
       return;
     }
 
-    const { chains, photosToAskAbout } = await planWithAnswers("I'll send you a photo of a receipt in a moment", [
-      await getVisionAgent(),
-      await getShoppingListAgent(),
-      await createStandInAgent('weather', WEATHER_DESCRIPTION),
-    ]);
+    const { chains, photosToAskAbout, awaitsPhoto } = await planWithAnswers(
+      "I'll send you a photo of a receipt in a moment",
+      [await getVisionAgent(), await getShoppingListAgent(), await createStandInAgent('weather', WEATHER_DESCRIPTION)],
+    );
 
     expect(chains).toEqual([]);
     expect(photosToAskAbout).toEqual([]);
+    expect(awaitsPhoto).toBe(true);
+  }, 120000);
+
+  it('plans the rest of a request that also says a photo is on its way', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    const { chains, awaitsPhoto } = await planWithAnswers(
+      "I'll send you a receipt in a moment. And what is the weather in Aarhus?",
+      [await getVisionAgent(), await getShoppingListAgent(), await createStandInAgent('weather', WEATHER_DESCRIPTION)],
+    );
+
+    expect(awaitsPhoto).toBe(true);
+    expect(chains.flatMap((chain) => chain.delegations.map((delegation) => delegation.agentId))).toEqual(['weather']);
   }, 120000);
 });

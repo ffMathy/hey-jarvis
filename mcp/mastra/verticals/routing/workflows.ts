@@ -228,13 +228,47 @@ function speakingInstructions(style: ResponseStyle): string {
  * So a request that leaves sir something to answer never ends on this. A question the work stopped
  * on, one earlier work is waiting on, and what to do with a photo he sent without saying — which
  * Jarvis has only just described to him — all end on `askTheUserInstructions` instead, which has him
- * ask last and wait for the answer.
+ * ask last and wait for the answer. Nor does a request that said a photo is on its way, which ends on
+ * {@link WAIT_FOR_THE_PHOTO}.
+ *
+ * Silence is not always the end, though. Sir can open the camera on his phone just after a request
+ * has finished — to send the second receipt, say — and the phone's note that he has done so is not
+ * him saying anything, so the turn timeout would have Jarvis hang up while he frames the shot. The
+ * exception is stated here, where the hang-up is, and in the same words in the prompt and in the
+ * `end_call` and `skip_turn` descriptions (`elevenlabs/src/assets/`): this instruction is the freshest
+ * thing Jarvis reads, and a rule it left out would lose to it.
  */
 export const FINISHED_REQUEST_INSTRUCTIONS =
   'Once you have said it, stop. If you are asked to speak again before he has said anything, he has nothing ' +
-  'more: call end_call without a word. Because of that, never end what you say here on a question or an ' +
-  'offer — "shall I let you know when it is done?" — since the line closes while he is still answering it. State ' +
-  'what will happen instead; work that tells him when it is done says so in its result. ';
+  'more: call end_call without a word. Unless you are waiting for a photo from him — he said he would send ' +
+  'one, or a note says he has opened the camera on his phone — and neither the photo nor a word from him has ' +
+  'come since: then call skip_turn instead. Because of the hang-up, never end what you say here on a question ' +
+  'or an offer — "shall I let you know when it is done?" — since the line closes while he is still answering ' +
+  'it. State what will happen instead; work that tells him when it is done says so in its result. ';
+
+/**
+ * What ends a request that said a photo is on its way (`awaitsPhoto` in `planner.ts`), in place of
+ * {@link FINISHED_REQUEST_INSTRUCTIONS}.
+ *
+ * "I'll send you a receipt" means sir is about to go quiet for a reason: he is opening the camera and
+ * taking the shot. The hang-up every other finished request ends on would close the line under him —
+ * the turn timeout asks Jarvis to speak again a few seconds into that silence — so this has him say to
+ * go ahead, and then hold the line with `skip_turn` until the photo or a word from sir comes. What the
+ * photo is for comes back with it, routed with its id (see `agent-prompt.md` in `elevenlabs/`).
+ */
+const WAIT_FOR_THE_PHOTO =
+  'He said he is about to send you a photo, which has not arrived yet. Last of all, tell him in a few words to ' +
+  'go ahead with the camera button on his phone, then stop and wait for it. If you are asked to speak again ' +
+  'before the photo or a word from him has come, call skip_turn, however many times you are asked — never ' +
+  'end_call, since he is taking the photo. ';
+
+/**
+ * The same, for a report that asks him something as well: the question still comes last, and waiting
+ * for his answer already keeps the line open.
+ */
+const GO_AHEAD_BEFORE_ASKING =
+  'He also said he is about to send you a photo, which has not arrived yet: before you ask, tell him in a few ' +
+  'words to go ahead with the camera button on his phone. ';
 
 /**
  * The recap is for results that never reached Jarvis, not for results he already spoke. "Do not
@@ -256,17 +290,34 @@ function recapInstructions(style: ResponseStyle): string {
   );
 }
 
+/** What a finished request says about anything sir asks for next. */
+const ANYTHING_FURTHER =
+  'That finishes this request, but not the conversation: if the user asks for anything further, ' +
+  'send it through routePromptWorkflow exactly as you did this one, however small it sounds and ' +
+  'however many times you have already done it. Answering a later request from ' +
+  'memory, or promising to look and then calling nothing, leaves him with nothing at all. ' +
+  'Anything further means something he says next, not a part of what he already asked that you ' +
+  'left out of this request — if he asked for two things, both should have gone out together, and ' +
+  'routing the second one now is a round trip he should never have had to wait through. ';
+
 function allTasksCompletedInstructions(style: ResponseStyle): string {
   return (
     `All tasks have completed. ${recapInstructions(style)}` +
     FINISHED_REQUEST_INSTRUCTIONS +
-    'That finishes this request, but not the conversation: if the user asks for anything further, ' +
-    'send it through routePromptWorkflow exactly as you did this one, however small it sounds and ' +
-    'however many times you have already done it. Answering a later request from ' +
-    'memory, or promising to look and then calling nothing, leaves him with nothing at all. ' +
-    'Anything further means something he says next, not a part of what he already asked that you ' +
-    'left out of this request — if he asked for two things, both should have gone out together, and ' +
-    'routing the second one now is a round trip he should never have had to wait through. ' +
+    ANYTHING_FURTHER +
+    CONVERSATION_CONTROL_EXCEPTION
+  );
+}
+
+/**
+ * A finished request that said a photo is on its way: whatever else it found, then go ahead and wait.
+ * Still "All tasks have completed", since that is what tells Jarvis to stop polling.
+ */
+function waitingForAPhotoInstructions(hasResults: boolean, style: ResponseStyle): string {
+  return (
+    `All tasks have completed. ${hasResults ? recapInstructions(style) : ''}` +
+    WAIT_FOR_THE_PHOTO +
+    ANYTHING_FURTHER +
     CONVERSATION_CONTROL_EXCEPTION
   );
 }
@@ -491,6 +542,43 @@ function earlierQuestionsAfterFailure(hasWaitingPhotos: boolean): string {
   );
 }
 
+/**
+ * How a failed request's closing report ends: on the questions from earlier when there are any, on
+ * waiting for a photo he said is on its way, and on the hang-up otherwise.
+ */
+function howAFailureEnds(bringsUpEarlier: boolean, hasWaitingPhotos: boolean, awaitsPhoto: boolean): string {
+  if (bringsUpEarlier) {
+    return earlierQuestionsAfterFailure(hasWaitingPhotos) + (awaitsPhoto ? GO_AHEAD_BEFORE_ASKING : '');
+  }
+  return awaitsPhoto ? WAIT_FOR_THE_PHOTO : FINISHED_REQUEST_INSTRUCTIONS;
+}
+
+/**
+ * The closing report of a request that failed.
+ *
+ * Whatever landed before the failure is still the user's answer to part of what he asked, so it goes
+ * with the apology rather than being dropped alongside the rest.
+ */
+function failureReport(
+  snapshot: RoutingSnapshot,
+  fromEarlier: { id: string; question: string }[],
+  hasWaitingPhotos: boolean,
+): z.infer<typeof instructionsOutputSchema> {
+  const answered = snapshot.all.filter((outcome) => !outcome.failed);
+  return {
+    instructions:
+      `The request could not be completed: ${snapshot.error}. Tell him plainly, in a sentence, what could not be ` +
+      `done, then anything that did finish: ${speakingInstructions(snapshot.responseStyle)} ` +
+      howAFailureEnds(fromEarlier.length > 0, hasWaitingPhotos, snapshot.awaitsPhoto) +
+      CONVERSATION_CONTROL_EXCEPTION,
+    ...(answered.length > 0 && {
+      completedTaskResults: answered.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
+    }),
+    taskIdsInProgress: [],
+    ...(fromEarlier.length > 0 && { questionsForUser: fromEarlier }),
+  };
+}
+
 /** The questions a closing report asks, as Jarvis is handed them. */
 function questionsForUser(questions: OpenQuestion[]): { id: string; question: string }[] {
   return questions.map((question) => ({ id: question.taskId, question: question.question }));
@@ -539,22 +627,7 @@ function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructi
   const hasWaitingPhotos = snapshot.waitingPhotos.some((photo) => !photosAskedAbout.has(photo.id));
 
   if (snapshot.error) {
-    // Whatever landed before the failure is still the user's answer to part of what he
-    // asked, so it goes with the apology rather than being dropped alongside the rest.
-    const answered = snapshot.all.filter((outcome) => !outcome.failed);
-    return {
-      instructions:
-        `The request could not be completed: ${snapshot.error}. Tell him plainly, in a sentence, what could not be ` +
-        `done, then anything that did finish: ${speakingInstructions(snapshot.responseStyle)} ` +
-        (fromEarlier.length > 0
-          ? earlierQuestionsAfterFailure(hasWaitingPhotos) + CONVERSATION_CONTROL_EXCEPTION
-          : FINISHED_REQUEST_INSTRUCTIONS + CONVERSATION_CONTROL_EXCEPTION),
-      ...(answered.length > 0 && {
-        completedTaskResults: answered.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
-      }),
-      taskIdsInProgress: [],
-      ...(fromEarlier.length > 0 && { questionsForUser: fromEarlier }),
-    };
+    return failureReport(snapshot, fromEarlier, hasWaitingPhotos);
   }
 
   const completedTaskResults = snapshot.all.map((outcome) => ({ id: outcome.taskId, result: outcome.result }));
@@ -569,12 +642,13 @@ function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructi
   const questions = [...fromEarlier, ...questionsForUser(snapshot.questions), ...photoQuestions];
   if (questions.length > 0) {
     return {
-      instructions: askTheUserInstructions(
-        completedTaskResults.length > 0,
-        snapshot.responseStyle,
-        snapshot.questions.length > 0 || photoQuestions.length > 0,
-        hasWaitingPhotos || photoQuestions.length > 0,
-      ),
+      instructions:
+        askTheUserInstructions(
+          completedTaskResults.length > 0,
+          snapshot.responseStyle,
+          snapshot.questions.length > 0 || photoQuestions.length > 0,
+          hasWaitingPhotos || photoQuestions.length > 0,
+        ) + (snapshot.awaitsPhoto ? GO_AHEAD_BEFORE_ASKING : ''),
       ...(completedTaskResults.length > 0 && { completedTaskResults }),
       taskIdsInProgress: [],
       questionsForUser: questions,
@@ -582,7 +656,9 @@ function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructi
   }
 
   return {
-    instructions: allTasksCompletedInstructions(snapshot.responseStyle),
+    instructions: snapshot.awaitsPhoto
+      ? waitingForAPhotoInstructions(completedTaskResults.length > 0, snapshot.responseStyle)
+      : allTasksCompletedInstructions(snapshot.responseStyle),
     completedTaskResults,
     taskIdsInProgress: [],
   };

@@ -437,7 +437,10 @@ the check that lets a phone send one, where the photo is kept, and how an agent 
    and the planner hands it to the vision agent. Both orders work:
    - **Told first, then sent** — "I'll send you a receipt, what's the total?" — the agent routes
      nothing until the photo arrives, then routes the question with the id in it: ordinary work on
-     the photo.
+     the photo. Should it route the announcement anyway, the planner plans nothing for the photo and
+     sets `awaitsPhoto`, and the request finishes — not as one no agent could handle — on
+     instructions to tell sir to go ahead with the camera button and then hold the line with
+     `skip_turn` until the photo comes (see **Ending the call** under [Routing](#routing)).
    - **Sent first**, with nothing said — the agent routes `He sent a photo without saying what he
      wants: look at it and say what it shows (photo photo3)`. The planner plans one vision task that
      says what the photo shows and what in it could be acted on, and names the photo in
@@ -460,7 +463,11 @@ up from there (`routing/waiting-photos.ts` — routing depends on vision, never 
   handle. The plan's `dismissedPhotoIds` (required, empty-when-absent, like `answers`) takes it
   instead: the controller dismisses those photos, and a plan that does nothing else finishes as done
   rather than failing. A dismissed photo is still kept, so a question he thinks better of finds it;
-  it is only no longer waiting.
+  it is only no longer waiting. That goes for his answer to the question a look at a photo sent with
+  nothing said ends on, too: the look marked the photo as looked at, so it is not waiting any more,
+  but any photo still kept that the request names by its tag is listed to the planner as well, under
+  a heading of its own (`photosTheRequestNames` in `routing/planner.ts`), and his "nothing" about it
+  is a dismissal like any other. Only by the id the tag gives: never the latest photo standing in.
 - **A later request's closing report brings it up**, in `questionsForUser` with the photo id as its
   id: `Sir sent you a photo 4 minutes ago (photo3) that nobody has looked at yet: ask him what he
   would like done with it.` Only once it has waited a minute unlooked-at (`PHOTO_WAITING_GRACE_MS`),
@@ -472,6 +479,11 @@ up from there (`routing/waiting-photos.ts` — routing depends on vision, never 
 - **Only a reading counts.** A reader that failed has told sir nothing about his photo, so it stays
   waiting — and a photo sent with nothing said whose look failed is not asked about as one Jarvis
   has described; a question about a photo that is not kept marks nothing.
+- **And only a reading sir hears.** What a look read reaches him in its request's closing report,
+  and a request he talks over is superseded and never read. So the reader is stopped with the
+  request (the tool's abort signal), and a look that did finish is taken back
+  (`unmarkPhotoLookedAt`, called from `carryOut`): the photo is waiting again, and is brought up
+  later rather than lost.
 
 **The live-conversation check** (`vision/live-conversation.ts`) is what stands in front of a slot.
 Both photo routes have to bypass Cloudflare Access, since the phone holds no Access service token,
@@ -515,7 +527,8 @@ the phone ever sees it, and there is no key.
   The only way any agent here sees a photo, since a routed agent is handed text and nothing else.
   Its answer is the reading quoted as the photo's content, with the photo's age:
   `Photo photo1, taken just now, shows: «…»`. Once the reader has answered, the photo is no longer
-  waiting.
+  waiting. The reader is handed the tool's abort signal, so a request that is cancelled stops its
+  look too.
 
 **Agents** (`vision/agents.ts`):
 - **`vision`** is public, so the planner routes to it. It finds the id and the question in its
@@ -1034,6 +1047,10 @@ from what Home Assistant listed, so it cannot call a service or touch an entity 
   classified against it: `adds` keeps both and reports them together, `cancels` stops the running
   one and says so, and a correction, or an unsure answer, supersedes it as every request used to.
   `RoutingProgress.join` counts the requests reporting into it, and it finishes only when all do.
+  What the request says about a photo is still the planner's, whichever relation Jev picks: a photo
+  it waves away is let go of under `cancels` too, and one that only waves a photo away, or only says
+  one is on its way, is carried out beside the running request without giving the shared report its
+  own `command` style.
 
 Routing has been three things. A task DAG with a wave scheduler this vertical owned; then a
 supervisor agent delegating inside its own tool-call loop; now a plan. The middle one is why:
@@ -1087,7 +1104,13 @@ with `FINISHED_REQUEST_INSTRUCTIONS`: say nothing more, and if asked to speak ag
 said anything, call `end_call` without a word. The agent's turn timeout is what asks him again.
 Nothing still waiting on sir carries it — a question the work stopped on, one from earlier, or what
 to do with a photo he sent without saying: those end on `askTheUserInstructions`, which asks last and
-waits. See **Hanging up when he goes quiet** in `elevenlabs/AGENTS.md`.
+waits. It makes one exception, in the same words as the prompt and the `end_call` and `skip_turn`
+descriptions: while Jarvis is waiting for a photo — sir said he would send one, or a note says he
+has opened the camera — and neither it nor a word from him has come, silence gets `skip_turn`. A
+request that said a photo is on its way (`awaitsPhoto`) does not end on it at all:
+`WAIT_FOR_THE_PHOTO` has Jarvis say what the rest of the request found, tell sir to go ahead with
+the camera button, and hold the line with `skip_turn`. See **Hanging up when he goes quiet** in
+`elevenlabs/AGENTS.md`.
 
 **Questions for the user:**
 Some work cannot finish on what the request said. Questions come from two places, and
@@ -1130,8 +1153,11 @@ makes carries every question still waiting in `questionsForUser`, and Jarvis ans
 then reminds him of the question and asks it last (`takeQuestionsToBringUp` in `questions.ts`).
 That is what rescues a question asked on a call he missed or in a push notification. A question
 brought up is left alone for 30 minutes (`QUESTION_REMINDER_INTERVAL_MS`), so a conversation hears
-it once rather than after every request, and a superseded request or one he is to be notified about
-brings nothing up, since nobody hears its report. Open questions live in memory, so a restart forgets them while the
+it once rather than after every request, and a superseded request, one he is to be notified about or
+one he stopped brings nothing up, since nobody hears it in that report. Two requests sharing a report
+— one joined to the other as `adds` — each bring up what is due as their own work ends, and the
+report keeps what either took for as long as it still stands, so the second to finish does not wipe
+out the reminder the first one took. Open questions live in memory, so a restart forgets them while the
 suspended run stays in storage; the request then has to be made again.
 
 **A photo he sent that nobody has looked at yet** is brought up the same way (`takePhotosToBringUp`
@@ -1155,8 +1181,12 @@ him what he would like done with it.` (`askWhatToDoWithPhoto`). It is closed wit
 `askTheUserInstructions` as a request waiting on him, photo wording included, so Jarvis speaks the
 result, asks, and waits — never `end_call`. A photo asked about that way is not also brought up as a
 waiting one, and a request that failed asks nothing about its photos: one whose look failed is still
-waiting, and is brought up later like any other. `waiting-photos.spec.ts` drives this end to end on
-scripted models, from the routed message to the report that asks.
+waiting, and is brought up later like any other. His "nothing" in reply is a dismissal: the photo is
+listed to the planner because his reply names it (see **"Nothing, never mind" dismisses it** under
+[Vision Vertical](#vision-vertical)). A request he talks over before it is heard takes its look back,
+so the photo is brought up later instead. `waiting-photos.spec.ts` drives all of this end to end on
+scripted models, from the routed message to the report that asks — and, with a stand-in classifier
+(`setRoutingClassifierForTest`), requests that join a running one.
 
 A reply given on a call or on the house speakers only reaches the work if the ElevenLabs agent
 routes it, so its prompt (`elevenlabs/src/assets/agent-prompt.md`) says a reply to a question the

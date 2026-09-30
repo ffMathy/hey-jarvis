@@ -16,9 +16,11 @@ import { QUESTION_REMINDER_INTERVAL_MS } from './questions.js';
  * His reply is not an answer to be handed back, as a question's is: "add everything on it to the
  * shopping list" is itself a request, so it is routed and planned like one. The planner is shown every
  * waiting photo (see `plannerPrompt`), and plans the vision agent looking at it and whatever acts on
- * what it shows. Once the vision agent has looked, the photo is no longer waiting. "Nothing, never
- * mind" is the one reply that is not work: the planner dismisses the photo (`dismissedPhotoIds`), and
- * it stops waiting just the same, without the request being reported as one nothing could handle.
+ * what it shows. Once the vision agent has looked, the photo is no longer waiting — unless sir talked
+ * over the request that looked, and never heard what it saw: that look is taken back (see `carryOut`
+ * in `controller.ts`). "Nothing, never mind" is the one reply that is not work: the planner dismisses
+ * the photo (`dismissedPhotoIds`), and it stops waiting just the same, without the request being
+ * reported as one nothing could handle.
  *
  * Routing depends on vision here, and never the other way round: the photo store knows nothing of
  * conversations, reminders or the voice agent.

@@ -218,6 +218,24 @@ export function markPhotoLookedAt(photoId: string, now = Date.now()): void {
 }
 
 /**
+ * Takes back a look at a photo whose reading never reached sir, so it is waiting again.
+ *
+ * A look is marked the moment the reader answers, but what it read only reaches sir in the closing
+ * report of the request that looked — and a request he talks over is superseded, and its report is
+ * never read. Such a photo was neither described to him nor asked about, and marked as looked at it
+ * would never be brought up either: the one thing waiting photos are for is that a photo he sent is
+ * not lost. So routing puts it back (see `carryOut` in `routing/controller.ts`), and the next request
+ * he hears brings it up like any other. A photo he said he wants nothing done with stays dismissed.
+ */
+export function unmarkPhotoLookedAt(photoId: string, now = Date.now()): void {
+  prune(now);
+  const photo = keptPhotos.get(canonicalPhotoId(photoId));
+  if (photo) {
+    photo.lookedAt = undefined;
+  }
+}
+
+/**
  * Records that sir wants nothing done with a photo, so it is no longer waiting.
  *
  * "Nothing, I was only testing" is a reply to being asked about a photo like any other, and without
