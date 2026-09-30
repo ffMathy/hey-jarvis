@@ -188,9 +188,17 @@ export async function findSubscriptionsForStateChange(
  * All three components are included — the LLM needs the `thenAction` to decide what
  * action a match implies, even though only `whenEvent` and `givenCondition` were scored.
  *
+ * When the state change classifier has already judged the candidates, its answer for each is
+ * written under it, as a second opinion to the similarity: similarity says a subscription is on
+ * the same topic, and the classifier says whether its WHEN actually happened.
+ *
  * @param matches - Matches to render, strongest first
+ * @param fireProbabilities - The classifier's probability that each subscription fires, by id
  */
-export function formatSubscriptionMatches(matches: SubscriptionMatch[]): string {
+export function formatSubscriptionMatches(
+  matches: SubscriptionMatch[],
+  fireProbabilities: ReadonlyMap<string, number> = new Map(),
+): string {
   if (matches.length === 0) {
     return 'No subscriptions matched this state change.';
   }
@@ -208,6 +216,11 @@ export function formatSubscriptionMatches(matches: SubscriptionMatch[]): string 
       }
 
       lines.push(`   THEN: ${subscription.thenAction}`);
+
+      const fireProbability = fireProbabilities.get(subscription.id);
+      if (fireProbability !== undefined) {
+        lines.push(`   Classifier: fires with probability ${fireProbability.toFixed(2)}`);
+      }
 
       if (subscription.lastTriggeredAt) {
         lines.push(`   Last triggered: ${subscription.lastTriggeredAt} (${subscription.triggerCount}x)`);
