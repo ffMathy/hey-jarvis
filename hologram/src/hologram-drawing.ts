@@ -1729,6 +1729,94 @@ export function createHologramResources(Skia: SkiaApiType, scene: HologramScene)
 
 type Resources = ReturnType<typeof createHologramResources>;
 
+/** A Skia object that is freed only when something deletes it: a path, or a paint. */
+interface Disposable {
+  dispose(): void;
+}
+
+function isDisposable(value: unknown): value is Disposable {
+  return typeof value === 'object' && value !== null && 'dispose' in value && typeof value.dispose === 'function';
+}
+
+/**
+ * The resources, and a way to let go of what drawing with them makes: for Skia over CanvasKit.
+ *
+ * Every frame builds its paths afresh (pathOf) and drops them once they are drawn. Native Skia
+ * frees a dropped path when the collector finds its wrapper. React Native Skia's web API over
+ * CanvasKit — what the headset draws with, and the phone's web build — never does: a path there
+ * wraps a PathBuilder, a raw WebAssembly object no finalizer is registered for, and nothing in
+ * the web API deletes it. Measured over CanvasKit, every frame left fourteen behind: about 4 kB
+ * a frame at density 0, as the headset draws, and about 80 kB at density 1, as the phone does,
+ * for as long as he is drawn and until CanvasKit's heap runs out.
+ */
+export interface ReleasableHologramResources {
+  resources: Resources;
+  /**
+   * Deletes every path the frames since the last call made, except the ladder ring's, which
+   * drawTruss keeps from one frame to the next until its weight changes. Call it once a frame
+   * has been handed on — the surface flushed, or the picture recorded — never in the middle of one.
+   */
+  release(): void;
+  /** Deletes the paths still held and the paints; the resources cannot be drawn with afterwards. */
+  dispose(): void;
+}
+
+/**
+ * {@link createHologramResources}, with every path they make recorded so it can be deleted.
+ *
+ * Only for Skia over CanvasKit. Native Skia already frees what the frame drops, and there this
+ * would only add work to every frame.
+ */
+export function createReleasableHologramResources(
+  Skia: SkiaApiType,
+  scene: HologramScene,
+): ReleasableHologramResources {
+  const made: DetachedPath[] = [];
+  const makeFromCmds: SkiaApiType['Path']['MakeFromCmds'] = (commands) => {
+    const path = Skia.Path.MakeFromCmds(commands);
+    if (path !== null) made.push(path);
+    return path;
+  };
+  // Everything else about the path factory is left as it is, `this` included, so its other
+  // methods go on working on CanvasKit's own factory object.
+  const Path = new Proxy(Skia.Path, {
+    get: (target, property, receiver) =>
+      property === 'MakeFromCmds' ? makeFromCmds : Reflect.get(target, property, receiver),
+  });
+  const resources = createHologramResources({ ...Skia, Path }, scene);
+  // The prebuilt shapes, and the empty stand-in the ladder ring starts from: they last as long
+  // as the resources do.
+  const lasting = made.splice(0);
+  let disposed = false;
+  return {
+    resources,
+    release() {
+      const cache = resources.trussCache;
+      const reused = [cache.outer, cache.inner, cache.haze, cache.rungs, cache.detail];
+      let kept = 0;
+      for (const path of made) {
+        if (reused.includes(path)) {
+          made[kept++] = path;
+        } else {
+          path.dispose();
+        }
+      }
+      made.length = kept;
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      // A set, because the prebuilt paths are both recorded and held in the resources.
+      const everything = new Set<Disposable>([...made, ...lasting]);
+      for (const value of Object.values(resources)) {
+        if (isDisposable(value)) everything.add(value);
+      }
+      for (const disposable of everything) disposable.dispose();
+      made.length = 0;
+    },
+  };
+}
+
 // ---- math helpers (worklets) --------------------------------------------------------------
 // Every worklet is declared after the worklets it calls: the worklets plugin captures what a
 // worklet calls at the moment the worklet is defined, so a helper declared further down would

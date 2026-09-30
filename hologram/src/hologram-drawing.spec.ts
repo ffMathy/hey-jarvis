@@ -6,6 +6,7 @@ import {
   bodyTurnRadians,
   createHologramResources,
   createHologramScene,
+  createReleasableHologramResources,
   densityKey,
   drawHologram,
   type HologramFrame,
@@ -857,5 +858,72 @@ describe('the hologram', () => {
         expect(edgeLitShare(loudest, band)).toBeLessThan(0.002);
       }
     }
+  });
+});
+
+/**
+ * A Skia over CanvasKit that knows which of the paths it made are still alive: the ones nobody
+ * has disposed. Nothing else frees them there — see createReleasableHologramResources.
+ */
+function countingSkia() {
+  const alive = new Set<object>();
+  const Path = new Proxy(Skia.Path, {
+    get(target, property, receiver) {
+      if (property !== 'MakeFromCmds') return Reflect.get(target, property, receiver);
+      const makeFromCmds: typeof target.MakeFromCmds = (commands) => {
+        const path = target.MakeFromCmds(commands);
+        if (path === null) return path;
+        alive.add(path);
+        const dispose = path.dispose.bind(path);
+        path.dispose = () => {
+          alive.delete(path);
+          dispose();
+        };
+        return path;
+      };
+      return makeFromCmds;
+    },
+  });
+  return { skia: { ...Skia, Path }, alive };
+}
+
+describe('letting go of paths by hand, for CanvasKit', () => {
+  /**
+   * Frames in threes: the rim fading in as he arrives changes the ladder ring's weight between
+   * one three and the next, so its paths are rebuilt, and holds it within one, so they are reused.
+   */
+  const frames = Array.from({ length: 24 }, (_, index) => ({
+    ...speech(2 + index / 72, 0.5, spectrum('high', 0.6), 0.2, 3),
+    appearance: Math.min(1, 0.64 + Math.floor(index / 3) * 0.06),
+  }));
+
+  it('lets go of every path a frame made once it is drawn, and keeps what the next frame reuses', () => {
+    const counting = countingSkia();
+    const scene = createHologramScene(SEED);
+    const releasable = createReleasableHologramResources(counting.skia, scene);
+    const lasting = counting.alive.size;
+    const plain = mount();
+    const weights = new Set<number>();
+    for (const frame of frames) {
+      const released = render(frame, { scene, resources: releasable.resources });
+      releasable.release();
+      // The ladder ring's five paths are all that may outlive the frame that built them.
+      expect(counting.alive.size - lasting).toBeLessThanOrEqual(5);
+      expect(difference(released, render(frame, plain))).toBe(0);
+      weights.add(releasable.resources.trussCache.weight);
+    }
+    expect(weights.size).toBeGreaterThan(3);
+  });
+
+  it('deletes everything it made, paints and all, when disposed', () => {
+    const counting = countingSkia();
+    const scene = createHologramScene(SEED);
+    const releasable = createReleasableHologramResources(counting.skia, scene);
+    render(speech(4.2, 0.5, spectrum('low', 0.5)), { scene, resources: releasable.resources });
+    releasable.dispose();
+    expect(counting.alive.size).toBe(0);
+    expect(() => releasable.resources.thinRingStroke.setAlphaf(0.5)).toThrow();
+    // A second dispose finds nothing left to delete, rather than deleting it twice.
+    releasable.dispose();
   });
 });
