@@ -112,11 +112,29 @@ export async function keepOffline(page: Page) {
   );
 }
 
+/**
+ * How slowly the emulator drew the room in the test just run, reported beside its result: the
+ * median time between XR frames on the page as it was left, and how many there were. Frame times
+ * vary with the machine far more than with the app, so a failure on a slow run (a loaded laptop, a
+ * CI runner) says so here. Nothing is reported for a page that never opened a room.
+ */
+async function reportFrameTimes(page: Page, testInfo: TestInfo) {
+  const times = await page.evaluate(() => window.__xrHarness?.frameTimes ?? []).catch((): number[] => []);
+  if (times.length < 2) return;
+  const intervals = times.slice(1).map((time, index) => time - (times[index] ?? time));
+  const sorted = [...intervals].sort((first, second) => first - second);
+  const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
+  const description = `median interval ${median.toFixed(1)} ms over ${times.length} frames`;
+  testInfo.annotations.push({ type: 'emulator frame times (SwiftShader, not a Quest)', description });
+  console.log(`Emulator frame times in "${testInfo.title}": ${description}`);
+}
+
 export const test = base.extend({
-  page: async ({ page }, use) => {
+  page: async ({ page }, use, testInfo) => {
     await keepOffline(page);
     await page.addInitScript({ content: await bundle('xr-harness.ts') });
     await use(page);
+    await reportFrameTimes(page, testInfo);
   },
 });
 

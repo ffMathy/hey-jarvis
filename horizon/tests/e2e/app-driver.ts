@@ -22,6 +22,21 @@ declare global {
   }
 }
 
+/** The app's page, where the site serves it. */
+export const APP_PAGE = '/hey-jarvis/horizon/';
+
+/**
+ * A budget of the app's own that a spec can hold (`src/test-seams.ts`), since the emulator draws
+ * too slowly to race it: `deadline=never` keeps a summoning waiting for a conversation that never
+ * opens, and `errors=held` keeps an error panel up until a select or B.
+ */
+export type TestSeam = 'deadline=never' | 'errors=held';
+
+/** The app's page, opened holding `seams`. */
+export function appPage(...seams: TestSeam[]): string {
+  return seams.length === 0 ? APP_PAGE : `${APP_PAGE}?${seams.join('&')}`;
+}
+
 /** hologram's `ELEVENLABS_SETTINGS_STORAGE_KEY`, spelled out: Playwright cannot import hologram's TypeScript. */
 export const SETTINGS_KEY = 'jarvis.elevenlabs-settings';
 
@@ -166,8 +181,13 @@ export async function greetingPlays(page: Page): Promise<number> {
 /** The build the specs run against, as `serve-dist.ts` serves it. */
 const SITE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../dist/horizon');
 
-/** How many times over the greeting is played by the tests that need him to still be greeting. */
-const GREETING_REPEATS = 10;
+/**
+ * How many times over the greeting is played by the tests that need him to still be greeting: its
+ * two seconds ninety times, about three minutes, which is longer than a test may run (`timeout` in
+ * `playwright.config.ts`). The recording plays on the wall clock whatever the frame rate, so a
+ * shorter one ended under a spec that was still drawing its frames on a slow machine.
+ */
+const GREETING_REPEATS = 90;
 
 /** An MP3's ID3v2 tag, if it starts with one: ten bytes of header, then a syncsafe length. */
 function withoutId3Tag(recording: Buffer): Buffer {
@@ -177,8 +197,8 @@ function withoutId3Tag(recording: Buffer): Buffer {
 }
 
 /**
- * The built greeting, played {@link GREETING_REPEATS} times in a row, served in its place: about
- * twenty seconds of him greeting, long enough for the emulator's slow frames to watch him do it.
+ * The built greeting, played {@link GREETING_REPEATS} times in a row, served in its place: him
+ * greeting for longer than any test lasts, however slowly the emulator draws him doing it.
  */
 export async function lengthenTheGreeting(page: Page) {
   const assets = path.join(SITE, 'assets');
@@ -217,7 +237,7 @@ export async function answerTokens(page: Page, answer: TokenAnswer): Promise<Tok
 }
 
 /** Opens the page (at `path`), waits for the emulated room, and enters it once getting ready is done. */
-export async function enterRoom(page: Page, path = '/hey-jarvis/horizon/') {
+export async function enterRoom(page: Page, path = APP_PAGE) {
   await page.goto(path);
   await page.evaluate(() => window.__xrHarness?.ready);
   const enter = page.getByRole('button', { name: 'Enter your room' });
@@ -235,28 +255,16 @@ export async function untilListening(page: Page) {
 /**
  * Photographs the error panel as `name`, and returns what it said.
  *
- * The panel is up for six seconds, and the emulator can take several over a picture while he is
- * drawn, so a picture is only known to show the panel if the panel is still up once the picture
- * is back. When it is not, `failAgain` brings about the next failure and the picture is taken of
- * that one, up to `attempts` times.
+ * On a page opened with `errors=held` ({@link appPage}): the panel is otherwise up for six seconds,
+ * and the emulator can take longer than that over a picture while he is drawn. Held, it is up until
+ * the spec dismisses it, so the picture is always of the panel — which is checked once it is back.
  */
-export async function photographError(
-  page: Page,
-  testInfo: TestInfo,
-  name: string,
-  failAgain: () => Promise<void>,
-  attempts = 3,
-): Promise<readonly string[]> {
-  for (let attempt = 1; ; attempt += 1) {
-    await expect
-      .poll(async () => (await roomReport(page)).view.panels.error, { timeout: 120000, intervals: [100] })
-      .not.toBeNull();
-    await photograph(page, testInfo, name);
-    const lines = (await roomReport(page)).view.panels.error;
-    if (lines !== null) return lines;
-    if (attempt === attempts) throw new Error(`The error panel was gone every time before its picture was taken.`);
-    await failAgain();
-  }
+export async function photographError(page: Page, testInfo: TestInfo, name: string): Promise<readonly string[]> {
+  await expect.poll(async () => (await roomReport(page)).view.panels.error, { timeout: 120000 }).not.toBeNull();
+  await photograph(page, testInfo, name);
+  const lines = (await roomReport(page)).view.panels.error;
+  if (lines === null) throw new Error('The error panel went while its picture was taken: is the page holding errors?');
+  return lines;
 }
 
 /** The effects carried out since the last `marker` among the recent ones, or all of them without it. */

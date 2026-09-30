@@ -1,6 +1,7 @@
 import {
   aim,
   answerTokens,
+  appPage,
   collectProblems,
   countGreetings,
   debugState,
@@ -31,7 +32,10 @@ import { expect, photograph, test } from './fixtures';
  * is what this checks; `app-wake-word.spec.ts` does it again summoned by a spoken "hey jarvis".
  *
  * The pictures are for looking at: the emulator draws the room with SwiftShader, a frame or two a
- * second, so they say how he looks in a room, not how fast.
+ * second, so they say how he looks in a room, not how fast. It draws too slowly to race the app's
+ * wall-clock budgets, so the specs that depend on one hold it (`appPage`): the deadline, where he
+ * must still be greeting or connecting when the spec gets round to it, and the error panel, where
+ * it is photographed.
  */
 
 /** hologram's `describeFailure` for a 401, the phone's words for a key ElevenLabs refused. */
@@ -74,7 +78,7 @@ test('sample mode walks every mood in the room on a select on him, and leaves on
     ['speaking', 'Speaking'],
   ] as const) {
     await tap(page);
-    await expect.poll(() => scene(page)).toBe(`sample:${mode}`);
+    await expect.poll(() => scene(page), { timeout: 30000 }).toBe(`sample:${mode}`);
     // The name is only up for a moment, which can be over before the next frame here; its effect stays.
     expect((await roomReport(page)).recentEffects).toContain(`show-panel toast: ${name}`);
     if (mode !== 'speaking') {
@@ -92,9 +96,11 @@ test('sample mode walks every mood in the room on a select on him, and leaves on
   await tap(page);
   // He leaves, and then the room closes and the page is back.
   await expect.poll(async () => (await debugState(page)).phase, { timeout: 60000 }).toBe('ready');
-  await expect.poll(() => page.evaluate(() => window.__xrHarness?.device.activeSession !== undefined)).toBe(false);
+  await expect
+    .poll(() => page.evaluate(() => window.__xrHarness?.device.activeSession !== undefined), { timeout: 30000 })
+    .toBe(false);
   expect((await roomReport(page)).recentEffects).toContain('exit-xr');
-  await expect(page.getByRole('button', { name: 'Try him in your room' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Try him in your room' })).toBeEnabled({ timeout: 30000 });
   expect(problems).toEqual([]);
 });
 
@@ -105,7 +111,8 @@ test('a select summons him; a key ElevenLabs rejects is said on a panel, and the
   const requests = await answerTokens(page, { status: 401, body: { detail: { status: 'invalid_api_key' } } });
   await countGreetings(page);
   await withSavedSettings(page);
-  await enterRoom(page);
+  // Held until it is dismissed, so that its picture is of the panel however long it takes.
+  await enterRoom(page, appPage('errors=held'));
   await untilListening(page);
   const waiting = await roomReport(page);
   expect(waiting.view.panels.hint).toEqual(['Say “Hey Jarvis”', 'or pinch / pull the trigger']);
@@ -116,13 +123,9 @@ test('a select summons him; a key ElevenLabs rejects is said on a panel, and the
   // Summoned along the controller's ray, straight ahead.
   await aim(page, { x: HAND.x, y: HAND.y, z: HAND.z - 2 });
   await tap(page);
-  await expect.poll(() => scene(page), { timeout: 60000, intervals: [100] }).toBe('failed');
+  await expect.poll(() => scene(page), { timeout: 60000 }).toBe('failed');
   const failed = await roomReport(page);
-  const photographed = await photographError(page, testInfo, 'app-error-rejected-key.png', async () => {
-    await expect.poll(() => scene(page), { timeout: 60000 }).toBe('waiting');
-    await tap(page);
-  });
-  expect(photographed).toEqual([REJECTED_KEY]);
+  expect(await photographError(page, testInfo, 'app-error-rejected-key.png')).toEqual([REJECTED_KEY]);
   expect(failed.view.panels.error).toEqual([REJECTED_KEY]);
   expect(failed.view.hologram).toBe('shown');
   expect(failed.view.wakeArmed).toBe(false);
@@ -131,18 +134,22 @@ test('a select summons him; a key ElevenLabs rejects is said on a panel, and the
     new Set(['jarvis-horizon']),
   );
   expect(new Set(requests.map((request) => request.apiKey))).toEqual(new Set(['sk_room_test']));
-  // One greeting for every summon, however many it took to photograph the panel.
-  expect(await greetingPlays(page)).toBe(requests.length);
+  // One summon, one greeting.
+  expect(requests).toHaveLength(1);
+  expect(await greetingPlays(page)).toBe(1);
   const spot = await hologramPosition(page);
   const head = (await debugState(page)).headPositionAtPlacement;
   if (head === null) throw new Error('No head was recorded at placement.');
   expect(insideLivingRoom(spot)).toBe(true);
   expect(spot.z).toBeLessThan(head.z - 0.8);
 
-  // Up for as long as it takes to read, then he leaves and the room listens again.
+  // On a headset it is up for as long as it takes to read, or until a select (the unit tests time
+  // it, in app-state.spec.ts); held here, it is the select. He leaves, and the room listens again
+  // once his voice has been quiet for long enough.
+  await tap(page);
   await expect.poll(() => scene(page), { timeout: 60000 }).toBe('waiting');
+  await expect.poll(async () => (await roomReport(page)).view.wakeArmed, { timeout: 30000 }).toBe(true);
   const listening = await roomReport(page);
-  expect(listening.view.wakeArmed).toBe(true);
   expect(listening.view.panels.error).toBeNull();
   expect(listening.recentEffects).toEqual(expect.arrayContaining(['hologram leaving', 'hologram hidden', 'arm-wake']));
   // The hint only teaches: once he has been summoned it is not shown again.
@@ -152,20 +159,21 @@ test('a select summons him; a key ElevenLabs rejects is said on a panel, and the
 
 test('holding the trigger while he greets you hangs up, and stops the greeting', async ({ page }, testInfo) => {
   const problems = collectProblems(page);
-  // Never answered, so he is still greeting — not failing — when he is dismissed.
+  // Never answered, and never given up on, so he is still greeting — not failing — when he is
+  // dismissed, however slowly the emulator draws the way there.
   await answerTokens(page, 'never');
   await lengthenTheGreeting(page);
   await countGreetings(page);
   await withSavedSettings(page);
-  await enterRoom(page);
+  await enterRoom(page, appPage('deadline=never'));
   await untilListening(page);
 
   await aim(page, { x: HAND.x, y: HAND.y, z: HAND.z - 2 });
   await tap(page);
   await expect.poll(() => scene(page), { timeout: 60000 }).toBe('present:greeting');
-  // Most of the way through the arrival, well into the greeting — and within the twenty seconds
-  // the session waits for a token, which here never comes: the emulator draws him about a frame
-  // and a half a second, and his clock moves at most a tenth of a second a frame.
+  // Most of the way through the arrival, well into the greeting. His clock moves at most a tenth of
+  // a second a frame, so it is frames that bring him in, not seconds: however long these take, the
+  // greeting outlasts them and the session is still waiting for its token.
   await frames(page, 8);
   expect(await scene(page)).toBe('present:greeting');
   expect(await greetingPlays(page)).toBe(1);
@@ -185,9 +193,10 @@ test('holding the trigger while he greets you hangs up, and stops the greeting',
 
 test('B sends him away; blurred ignores the buttons; hidden ends the call quietly', async ({ page }, testInfo) => {
   const problems = collectProblems(page);
+  // Never answered, and never given up on, so he is present until a button or the headset ends it.
   await answerTokens(page, 'never');
   await withSavedSettings(page);
-  await enterRoom(page);
+  await enterRoom(page, appPage('deadline=never'));
   await untilListening(page);
 
   await aim(page, { x: HAND.x, y: HAND.y, z: HAND.z - 2 });

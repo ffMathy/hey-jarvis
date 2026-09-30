@@ -177,7 +177,9 @@ test('what Jarvis works on is placed in the room by hand and controller, kept, p
     await hold(heldFor(slot.worldPosition, grip));
     await frames(page, 2);
     await controllerButton(page, 'right', 'squeeze', 1);
-    await expect.poll(async () => (await entities(page)).carried.map((token) => token.id)).toEqual([KITCHEN.id]);
+    await expect
+      .poll(async () => (await entities(page)).carried.map((token) => token.id), { timeout: 30000 })
+      .toEqual([KITCHEN.id]);
     expect((await entities(page)).carried[0]).toMatchObject({ grabber: 'right-controller', mode: 'near' });
 
     await hold(heldFor(KITCHEN_SPOT, grip));
@@ -285,7 +287,9 @@ test('what Jarvis works on is placed in the room by hand and controller, kept, p
     await holdHand(page, 'right', { position: heldFor(token, pinch), rotation: HAND_RAY_UP, pinch: 0 });
     await frames(page, 2);
     await holdHand(page, 'right', { position: heldFor(token, pinch), rotation: HAND_RAY_UP, pinch: 1 });
-    await expect.poll(async () => (await entities(page)).carried.map((carried) => carried.id)).toEqual([INBOX.id]);
+    await expect
+      .poll(async () => (await entities(page)).carried.map((carried) => carried.id), { timeout: 30000 })
+      .toEqual([INBOX.id]);
     expect((await entities(page)).carried[0]).toMatchObject({ grabber: 'right-hand', mode: 'near' });
     // Every pinch was a select, and none of them summoned him.
     expect(await scene(page)).toBe('editing');
@@ -384,9 +388,9 @@ test('what Jarvis works on is placed in the room by hand and controller, kept, p
     await expect.poll(() => scene(page), { timeout: 90000 }).toBe('sample:speaking');
     await aim(page, toEmulator(await hologramPosition(page), MOVED_AGAIN));
     await tap(page);
-    await expect.poll(() => scene(page)).toBe('sample:listening');
+    await expect.poll(() => scene(page), { timeout: 30000 }).toBe('sample:listening');
     await tap(page);
-    await expect.poll(() => scene(page)).toBe('sample:thinking');
+    await expect.poll(() => scene(page), { timeout: 30000 }).toBe('sample:thinking');
     await expect
       .poll(async () => (await entities(page)).affected.sort(), { timeout: 60000 })
       .toEqual([INBOX.id, KITCHEN.id].sort());
@@ -430,7 +434,9 @@ test('what Jarvis works on is placed in the room by hand and controller, kept, p
     await hold(heldFor(toEmulator(slot.worldPosition, MOVED_AGAIN), grip));
     await frames(page, 2);
     await controllerButton(page, 'right', 'squeeze', 1);
-    await expect.poll(async () => (await entities(page)).carried.map((token) => token.id)).toEqual([CALENDAR.id]);
+    await expect
+      .poll(async () => (await entities(page)).carried.map((token) => token.id), { timeout: 30000 })
+      .toEqual([CALENDAR.id]);
     await hold(heldFor(FAR_SPOT, grip));
     await expect
       .poll(async () =>

@@ -1,5 +1,5 @@
 import { SyntheticEnvironmentModule } from '@iwer/sem';
-import { metaQuest3, XRDevice, XRReferenceSpace } from 'iwer';
+import { metaQuest3, XRDevice, XRReferenceSpace, XRSession } from 'iwer';
 
 /**
  * An emulated Meta Quest 3 standing in an emulated living room, for the browser tests.
@@ -19,6 +19,12 @@ export interface XrHarness {
   device: XRDevice;
   /** Settles once the room has loaded; entering the room before then finds it empty. */
   ready: Promise<void>;
+  /**
+   * When each XR frame the page was handed was stamped, in milliseconds on the page's clock: how
+   * slowly the emulator drew, which `fixtures.ts` reports after every test. SwiftShader's frame
+   * times on a CPU, which say how busy the machine was and nothing about a Quest's.
+   */
+  frameTimes: number[];
 }
 
 declare global {
@@ -61,8 +67,28 @@ function acceptRigidTransforms() {
   };
 }
 
+/**
+ * Writes down the time of every XR frame into `times`, by wrapping the emulator's
+ * `XRSession.requestAnimationFrame`: every callback of a frame is handed the same time, so it is
+ * written once.
+ */
+function recordFrameTimes(times: number[]) {
+  const request = XRSession.prototype.requestAnimationFrame;
+  XRSession.prototype.requestAnimationFrame = function (
+    this: XRSession,
+    callback: Parameters<XRSession['requestAnimationFrame']>[0],
+  ) {
+    return request.call(this, (time, frame) => {
+      if (times.at(-1) !== time) times.push(time);
+      callback(time, frame);
+    });
+  };
+}
+
 function installHarness(): XrHarness {
   acceptRigidTransforms();
+  const frameTimes: number[] = [];
+  recordFrameTimes(frameTimes);
   const device = new XRDevice(metaQuest3);
   // Chromium has a `navigator.xr` of its own, which says no to immersive-ar. Without
   // `forceInstall` the runtime sees it, decides a real one is present and does nothing at all.
@@ -75,7 +101,7 @@ function installHarness(): XrHarness {
   if (!(environment instanceof SyntheticEnvironmentModule)) {
     throw new Error('The synthetic environment did not install.');
   }
-  return { device, ready: environment.loadDefaultEnvironment('living_room') };
+  return { device, ready: environment.loadDefaultEnvironment('living_room'), frameTimes };
 }
 
 window.__xrHarness = installHarness();
