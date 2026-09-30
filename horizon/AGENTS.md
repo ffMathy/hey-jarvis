@@ -216,7 +216,10 @@ after. The product rules pinned in `app-state.spec.ts`:
 - **Placing things (`editing`):** entered from `waiting` only — A/X, the wrist
   button — or straight from the page's **Place entities**, and left with B/Y, the
   same button again or the drawer's Done: back to waiting, or, in a room opened
-  only to place things, back to the page at once. Every select while editing is
+  only to place things, back to the page at once — unless a drop is still waiting
+  on its new anchor, when the room stays open (`keeping`, with "Keeping what you
+  placed…" on the guide line) until the drop settles, or 11 s at most, since the
+  frames that settle it stop with the session. Every select while editing is
   the placing's own, so a pinch never summons him, and since editing never opens
   over a call, a grab held for a second can never be read as the hold that hangs
   up. A select still held as it closes — the trigger or pinch that pressed Done
@@ -1026,15 +1029,18 @@ the models first.
   comes from (route, tier, reason, the probe, the setting, how the greeting is
   heard, and where the listener and the panner were last put), and the entities
   (see "Entities placed in the room").
-- **Placing things.** `app-entities.spec.ts` walks the whole feature in four
+- **Placing things.** `app-entities.spec.ts` walks the whole feature in five
   visits sharing one browser's `localStorage`, where both the registry and the
   emulator's persistent anchors live: **Place entities** and a controller's grip,
   Done; a new session opened with `?origin` moved and turned, where the entity must
   be found at the same spot of the room — the emulator's `local-floor` is its
   global space, so without a moved origin a position kept in `local-floor` would
   come back right for the wrong reason; a controller's ray and a pointing finger;
-  A, a pinch, B; the wrist button; and sample mode's thinking lighting a corona
-  round each placed entity. `entities-driver.ts` holds the emulated head, hands and
+  A, a pinch, B; the wrist button; Done pulled with the trigger in a room with a
+  conversation, held and let go without summoning him; sample mode's thinking
+  lighting a corona round each placed entity; and **Place entities** again, with a
+  drop far from every anchor and Done in the same frame, kept before the room
+  closes. `entities-driver.ts` holds the emulated head, hands and
   controllers, converts between the emulator's space and the room's, and measures
   where a hand pinches or a controller grips from the app's own report rather than
   copying the emulator's poses. `corona.spec.ts` photographs and measures the corona

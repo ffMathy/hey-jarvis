@@ -214,6 +214,8 @@ interface Room {
   lastReadiness: WakeReadiness | undefined;
   /** Whether his voice was quiet when the state machine was last told, which it starts out assuming. */
   lastQuiet: boolean;
+  /** Whether a drop was still settling when the state machine was last told; it starts out with none. */
+  lastSettling: boolean;
   queue: AppEvent[];
   dispatching: boolean;
   /** Set by `return-to-page`: the room is let go of once the step carrying it is done. */
@@ -266,6 +268,7 @@ function startRoom(
     lastReadout: 0,
     lastReadiness: undefined,
     lastQuiet: true,
+    lastSettling: false,
     queue: [],
     dispatching: false,
     returning: false,
@@ -606,6 +609,11 @@ function updateEntities(room: Room, tick: XrFrameTick) {
     pretendWorking: scene.kind === 'sample' && scene.mode === 'thinking',
   });
   if (outcome.context !== undefined) room.conversation.sendContextualUpdate(outcome.context, POINTING_CONTEXT_ID);
+  // Before Done, which this very frame may also have pressed with the drop that is still settling.
+  if (outcome.settling !== room.lastSettling) {
+    room.lastSettling = outcome.settling;
+    dispatch(room, { type: 'drops-settling', settling: outcome.settling });
+  }
   if (outcome.editButton) dispatch(room, { type: 'edit-button' });
   if (outcome.done) dispatch(room, { type: 'edit-done' });
 }

@@ -9,6 +9,8 @@ import {
   EDITING_GUIDE_LINES,
   HINT_LINES,
   initialAppModel,
+  KEEPING_LINES,
+  KEEPING_LONGEST_MS,
   NOT_LISTENING_LINE,
   reduceApp,
   SHORTEST_ERROR_MS,
@@ -787,6 +789,14 @@ describe('placing things', () => {
     }
   });
 
+  it('goes back to waiting in a room with a conversation even while a drop is being kept: the room stays open', () => {
+    const room = new Room().editing();
+    room.send({ type: 'drops-settling', settling: true });
+    room.send({ type: 'edit-done' });
+    expect(room.scene).toEqual({ kind: 'waiting' });
+    expect(room.send({ type: 'drops-settling', settling: false })).toEqual([]);
+  });
+
   it('hears no wake word while it is open', () => {
     const room = new Room().editing();
     expect(room.view.wakeArmed).toBe(false);
@@ -898,6 +908,81 @@ describe('placing things', () => {
         // Nothing to hang up, no microphone and no sample to stop: only the page to bring back.
         expect(room.send({ type: 'session-ended' })).toEqual([{ type: 'return-to-page' }]);
       }
+    });
+
+    /** Placing things with a drop just let go whose new anchor is still being made and found. */
+    function keeping(): Room {
+      const room = new Room({ kind: 'absent' });
+      room.send({ type: 'entered', mode: 'placement' });
+      expect(room.send({ type: 'drops-settling', settling: true })).toEqual([]);
+      return room;
+    }
+
+    it('stays open while a drop is still being kept, saying so, and closes once it has been', () => {
+      for (const event of [
+        { type: 'dismiss-button' },
+        { type: 'edit-button' },
+        { type: 'edit-done' },
+      ] satisfies AppEvent[]) {
+        const room = keeping();
+        expect(room.send(event)).toEqual([
+          { type: 'consume-held-selects' },
+          { type: 'show-panel', panel: 'guide', lines: KEEPING_LINES },
+          { type: 'editing', active: false },
+        ]);
+        expect(room.scene).toEqual({ kind: 'keeping', until: room.now + KEEPING_LONGEST_MS });
+        expect(room.view.frameRate).toBe('highest');
+        expect(room.send({ type: 'drops-settling', settling: false })).toEqual([
+          { type: 'hide-panel', panel: 'guide' },
+          { type: 'exit-xr' },
+        ]);
+        expect(room.scene).toEqual({ kind: 'outside' });
+      }
+    });
+
+    it('asks nothing more of sir while it keeps: selects, buttons and the wake word do nothing', () => {
+      const room = keeping();
+      room.send({ type: 'edit-done' });
+      for (const event of [
+        { type: 'select', hold: 'short', target: 'elsewhere' },
+        { type: 'select', hold: 'long', target: 'elsewhere' },
+        { type: 'dismiss-button' },
+        { type: 'edit-button' },
+        { type: 'edit-done' },
+        { type: 'wake' },
+        { type: 'drops-settling', settling: true },
+      ] satisfies AppEvent[]) {
+        expect(room.send(event)).toEqual([]);
+      }
+      expect(room.scene.kind).toBe('keeping');
+    });
+
+    it('closes anyway once a drop has had as long as the headset gets to find its new anchor', () => {
+      const room = keeping();
+      room.send({ type: 'edit-done' });
+      expect(room.after(KEEPING_LONGEST_MS - 1)).toEqual([]);
+      expect(room.after(1)).toEqual([{ type: 'hide-panel', panel: 'guide' }, { type: 'exit-xr' }]);
+      expect(room.scene).toEqual({ kind: 'outside' });
+    });
+
+    it('closes at once when every drop has been kept by the time it is done', () => {
+      const room = keeping();
+      room.send({ type: 'drops-settling', settling: false });
+      expect(types(room.send({ type: 'edit-done' }))).toEqual([
+        'consume-held-selects',
+        'hide-panel',
+        'editing',
+        'exit-xr',
+      ]);
+    });
+
+    it('brings the page back when the session ends while it keeps', () => {
+      const room = keeping();
+      room.send({ type: 'edit-done' });
+      expect(room.send({ type: 'session-ended' })).toEqual([
+        { type: 'return-to-page' },
+        { type: 'hide-panel', panel: 'guide' },
+      ]);
     });
 
     it('never summons him, whatever is selected or said', () => {

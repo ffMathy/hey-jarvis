@@ -134,6 +134,11 @@ export interface EntitiesOutcome {
   editButton: boolean;
   /** The drawer's Done was pressed. */
   done: boolean;
+  /**
+   * Whether a drop is still waiting on the new anchor it will be kept on — which a room opened only
+   * to place things stays open for, since it settles in a later frame.
+   */
+  settling: boolean;
 }
 
 export interface RoomEntities {
@@ -272,9 +277,11 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
       // Left over from a session that ended before the headset let go of them, or refused to.
       releaseAnchors(unusedAnchors(store.registry));
     }
+    let kept = false;
     for (const settled of anchors.update(frame.frame, frame.space, time)) {
       if (awaitingAnchor.has(settled.id)) {
         keep(settled);
+        kept = true;
         continue;
       }
       // Nobody waits for it any more, so an anchor no placement names — the one made for this drop —
@@ -283,6 +290,9 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
         releaseAnchors([settled.anchor]);
       }
     }
+    // Kept after placing things ended, which Done may do while a drop settles: moving an entity onto
+    // its new anchor may have left its old one unused, after the ending gave back what it could see.
+    if (kept && !editing) releaseAnchors(unusedAnchors(store.registry));
   }
 
   /** Where each placed entity is this frame: on its located anchor, or where it waits for one. */
@@ -559,7 +569,7 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
     update(frame) {
       time = frame.time;
       inputs = frame.inputs;
-      const outcome: EntitiesOutcome = { editButton: false, done: false };
+      const outcome: EntitiesOutcome = { editButton: false, done: false, settling: false };
       settleAnchors(frame);
       positions = locate();
       hands = readHands(hands, frame.inputs, frame.eye.position);
@@ -567,6 +577,7 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
       if (editing) edit(frame, outcome);
       else point(frame, outcome);
       light(frame);
+      outcome.settling = awaitingAnchor.size > 0;
       return outcome;
     },
     report() {

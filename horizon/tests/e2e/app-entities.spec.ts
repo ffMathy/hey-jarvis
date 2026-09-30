@@ -14,6 +14,7 @@ import {
 } from './app-driver';
 import {
   controllerButton,
+  controllerButtons,
   distance,
   EMULATED_ANCHORS_KEY,
   entities,
@@ -25,6 +26,7 @@ import {
   measureOffset,
   NO_ORIGIN,
   type Origin,
+  pointControllerAt,
   pointHandAt,
   pressControllerButton,
   REGISTRY_KEY,
@@ -72,6 +74,12 @@ const SEEDED = {
  */
 const KITCHEN_SPOT: RoomPoint = { x: -0.7, y: 1.15, z: 0.2 };
 const INBOX_SPOT: RoomPoint = { x: 0.6, y: 1.0, z: 0.3 };
+
+/** Across the room, three metres from the kitchen light's anchor: a drop here needs an anchor of its own. */
+const FAR_SPOT: RoomPoint = { x: 1.9, y: 1.0, z: -1.4 };
+
+/** `app-state.ts`'s `KEEPING_LINES`, the one line a room opened only to place things shows while it keeps a drop. */
+const KEEPING = 'Keeping what you placed…';
 
 /** The second and third visits' origins: moved along the floor and turned. */
 const MOVED: Origin = { x: 0.8, z: -0.6, yawDegrees: 35 };
@@ -125,8 +133,8 @@ function middleOf(points: readonly RoomPoint[]): RoomPoint {
 test('what Jarvis works on is placed in the room by hand and controller, kept, pointed at and lit', async ({
   page,
 }, testInfo) => {
-  // Four visits to the room, each at the emulator's pace of a few frames a second.
-  test.setTimeout(900_000);
+  // Five visits to the room, each at the emulator's pace of a few frames a second.
+  test.setTimeout(1_200_000);
   const problems = collectProblems(page);
   await seedRegistry(page, SEEDED);
   await withSavedSettings(page);
@@ -394,6 +402,54 @@ test('what Jarvis works on is placed in the room by hand and controller, kept, p
       .poll(async () => (await entities(page)).coronas.find((corona) => corona.id === KITCHEN.id)?.level)
       .toBe(1);
     await photograph(page, testInfo, 'entities-corona.png');
+  });
+
+  await test.step('Done pulled the moment a drop is let go keeps the room open until the drop is kept', async () => {
+    await page.goto(withOrigin(MOVED_AGAIN));
+    await page.evaluate(() => window.__xrHarness?.ready);
+    await page.getByRole('button', { name: 'Place entities' }).click();
+    await expect.poll(() => scene(page), { timeout: 90000 }).toBe('editing');
+    await expect.poll(async () => (await entities(page)).drawer.buttons.length, { timeout: 60000 }).toBeGreaterThan(0);
+    const report = await entities(page);
+    const slot = report.drawer.slots.find((entry) => entry.id === CALENDAR.id);
+    const done = report.drawer.buttons.find((button) => button.button === 'done');
+    if (slot === undefined || done === undefined) throw new Error('The drawer has no calendar, or no Done.');
+    await pointControllerAt(page, 'left', { x: -0.25, y: 1.3, z: 0.95 }, toEmulator(done.worldPosition, MOVED_AGAIN));
+
+    const hold = (position: RoomPoint) => holdController(page, 'right', position, REACHING_CONTROLLER);
+    const grip = await measureOffset(page, {
+      id: 'right-controller',
+      origin: MOVED_AGAIN,
+      start: { x: 0.35, y: 1.1, z: 0.9 },
+      hold,
+      measure: (input) => input.grip,
+    });
+    await hold(heldFor(toEmulator(slot.worldPosition, MOVED_AGAIN), grip));
+    await frames(page, 2);
+    await controllerButton(page, 'right', 'squeeze', 1);
+    await expect.poll(async () => (await entities(page)).carried.map((token) => token.id)).toEqual([CALENDAR.id]);
+    await hold(heldFor(FAR_SPOT, grip));
+    await expect
+      .poll(async () =>
+        distance(toEmulator((await entities(page)).carried[0]?.position ?? NOWHERE, MOVED_AGAIN), FAR_SPOT),
+      )
+      .toBeLessThan(0.01);
+
+    // Let go far from the kitchen light's anchor, so it waits on a new one, and Done in the same frame.
+    await controllerButtons(page, [
+      { hand: 'right', button: 'squeeze', value: 0 },
+      { hand: 'left', button: 'trigger', value: 1 },
+    ]);
+    await expect.poll(async () => (await debugState(page)).phase, { timeout: 60000 }).toBe('ready');
+    await controllerButton(page, 'left', 'trigger', 0);
+    expect((await roomReport(page)).recentEffects).toEqual(
+      expect.arrayContaining([`show-panel guide: ${KEEPING}`, 'exit-xr']),
+    );
+    const kept = keptPlacement(await stored(page, REGISTRY_KEY), CALENDAR.id);
+    if (kept === undefined) throw new Error('The calendar was not kept.');
+    expect(kept.anchor).not.toBe(kitchenAnchor);
+    expect(Math.hypot(...kept.offset)).toBeLessThan(0.01);
+    expect(keysOf(await stored(page, EMULATED_ANCHORS_KEY))).toContain(kept.anchor);
   });
 
   expect(problems).toEqual([]);

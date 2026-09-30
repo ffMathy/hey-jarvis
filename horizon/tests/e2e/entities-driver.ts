@@ -166,12 +166,37 @@ export async function holdController(page: Page, hand: 'left' | 'right', positio
   );
 }
 
+/** Holds a controller at `position` with its laser pointing at `target`, both in the emulator's space. */
+export async function pointControllerAt(page: Page, hand: 'left' | 'right', position: RoomPoint, target: RoomPoint) {
+  await holdController(
+    page,
+    hand,
+    position,
+    turnBetween({ x: 0, y: 0, z: -1 }, normalised(difference(position, target))),
+  );
+}
+
 /** Presses a controller's button (`trigger`, `squeeze`, `a-button`…), or lets it go. */
 export async function controllerButton(page: Page, hand: 'left' | 'right', button: string, value: 0 | 1) {
-  await page.evaluate(
-    ({ hand, button, value }) => window.__xrHarness?.device.controllers[hand]?.updateButtonValue(button, value),
-    { hand, button, value },
-  );
+  await controllerButtons(page, [{ hand, button, value }]);
+}
+
+export interface ButtonChange {
+  hand: 'left' | 'right';
+  button: string;
+  value: 0 | 1;
+}
+
+/**
+ * Presses or lets go of several buttons at once: the emulator applies every change made between two
+ * frames in the next one, so the room reads them all in the same frame.
+ */
+export async function controllerButtons(page: Page, changes: readonly ButtonChange[]) {
+  await page.evaluate((all) => {
+    for (const { hand, button, value } of all) {
+      window.__xrHarness?.device.controllers[hand]?.updateButtonValue(button, value);
+    }
+  }, changes);
 }
 
 /** Presses a controller's button and lets it go, a few frames apart, so the room reads the press. */
