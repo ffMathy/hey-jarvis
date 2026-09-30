@@ -10,8 +10,9 @@
     "format": "cd .. && bunx biome format --write hologram",
     "test": "cd .. && bash hologram/.scripts/test.sh"
   },
-  "//peer": "Whichever app is Jarvis brings its own copy of these; both of them already depend on all eight directly. Skia is only a type import in the main entry, but the react entry calls into it, and the conversation entry calls into the ElevenLabs SDK and, for the recorded greeting, LiveKit's audio session and hologram's own native player (expo) on a device, expo-audio in a browser. The native player is why this package has an expo-module.config.json: both apps autolink it.",
+  "//peer": "Whichever app is Jarvis brings its own copy of these; both of them depend on all nine directly. Skia is only a type import in the main entry, but the react entry calls into it, and the conversation entry calls into the ElevenLabs SDK (its client's `Conversation.startSession`, which must be the very copy `@elevenlabs/react-native` registers its session strategy on \u2014 `mobile/src/agent-audio-track.contract.spec.ts` checks it is) and, for the recorded greeting, LiveKit's audio session and hologram's own native player (expo) on a device, expo-audio in a browser. The native player is why this package has an expo-module.config.json: both apps autolink it.",
   "peerDependencies": {
+    "@elevenlabs/client": "*",
     "@elevenlabs/react-native": "*",
     "@livekit/react-native": "*",
     "@shopify/react-native-skia": "*",
@@ -22,6 +23,7 @@
     "react-native-reanimated": "*"
   },
   "devDependencies": {
+    "@elevenlabs/client": "1.24.0",
     "@elevenlabs/react-native": "1.2.26",
     "@livekit/react-native": "2.12.0",
     "@shopify/react-native-skia": "2.6.2",

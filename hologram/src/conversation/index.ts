@@ -20,5 +20,6 @@ export { NOTHING_IN_FLIGHT, type ToolCallsInFlight, toolCallFinished, toolCallSt
 export { useAgentVoice } from './agent-voice';
 export { useGreeting } from './greeting';
 export { useSdkVoiceReaders } from './sdk-voice-readers';
+export { type JarvisConversation, type JarvisSessionOptions, useJarvisSession } from './session';
 export { useToolActivity } from './tool-activity';
 export { useUserVoice } from './user-voice';
