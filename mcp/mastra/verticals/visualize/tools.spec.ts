@@ -25,7 +25,7 @@ const HOSTED_URL_PATTERN = /^https:\/\/jarvis\.example\.com\/artifacts\/([0-9a-f
 
 const originalEnvironment = {
   storagePath: process.env.HEY_JARVIS_STORAGE_PATH,
-  tunnelUrl: process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL,
+  tunnelUrl: process.env.HEY_JARVIS_PUBLIC_URL,
 };
 
 function restoreEnvironmentVariable(name: string, value: string | undefined) {
@@ -61,7 +61,7 @@ function sessionReports(finalMessage: string, success = true) {
 beforeEach(async () => {
   storageDirectory = await mkdtemp(path.join(tmpdir(), 'visualize-tools-'));
   process.env.HEY_JARVIS_STORAGE_PATH = storageDirectory;
-  process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL = PUBLIC_BASE_URL;
+  process.env.HEY_JARVIS_PUBLIC_URL = PUBLIC_BASE_URL;
   ({ createArtifactSpy, openArtifactOnPhoneSpy } = spyOnShortcuts());
   openArtifactOnPhoneSpy.mockResolvedValue({ success: true, message: 'sent', serviceCalled: 'notify.mobile_app_x' });
 });
@@ -70,7 +70,7 @@ afterEach(async () => {
   createArtifactSpy.mockRestore();
   openArtifactOnPhoneSpy.mockRestore();
   restoreEnvironmentVariable('HEY_JARVIS_STORAGE_PATH', originalEnvironment.storagePath);
-  restoreEnvironmentVariable('HEY_JARVIS_CLOUDFLARED_TUNNEL_URL', originalEnvironment.tunnelUrl);
+  restoreEnvironmentVariable('HEY_JARVIS_PUBLIC_URL', originalEnvironment.tunnelUrl);
   await rm(storageDirectory, { recursive: true, force: true });
 });
 
@@ -140,13 +140,13 @@ describe('generateUserInterface', () => {
   });
 
   it('fails without pushing anything when there is no public address to host at', async () => {
-    delete process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL;
+    delete process.env.HEY_JARVIS_PUBLIC_URL;
     sessionReports(SESSION_ANSWER);
 
     const result = await executeTool(generateUserInterface, { request: 'Draw a diagram' });
 
     expect(result).toMatchObject({ success: false, sentToPhone: false });
-    expect(result.message).toContain('HEY_JARVIS_CLOUDFLARED_TUNNEL_URL is not set');
+    expect(result.message).toContain('HEY_JARVIS_PUBLIC_URL is not set');
     expect(openArtifactOnPhoneSpy).not.toHaveBeenCalled();
   });
 

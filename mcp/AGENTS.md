@@ -378,8 +378,9 @@ the reading of the page it hands back, and hosting that page for a day.
 **Hosting** (`visualize/artifact-hosting.ts`): a session run over SSH has nowhere to publish to —
 asked to, it invented links like `https://artifacts.local/news-summary` — and free file hosts serve
 `.html` as plain text. So the MCP server hosts the pages itself, at
-`GET /artifacts/<uuid>` under `HEY_JARVIS_CLOUDFLARED_TUNNEL_URL`, the tunnel hostname the phone can
-already reach. Each page is a file in `$HEY_JARVIS_STORAGE_PATH/artifacts/`, so Studio's process can
+`GET /artifacts/<uuid>` under `HEY_JARVIS_PUBLIC_URL`, the production MCP server's own tunnel
+hostname. Not `HEY_JARVIS_CLOUDFLARED_TUNNEL_URL`: that is the ElevenLabs tests' local-testing
+tunnel, only up during a test run, and links on it answer Cloudflare error 1033. Each page is a file in `$HEY_JARVIS_STORAGE_PATH/artifacts/`, so Studio's process can
 store a page the MCP server serves and a restart keeps the links working. A page lives for 24 hours
 (`ARTIFACT_LIFETIME_MILLISECONDS`): after that it answers 404, and expired files are deleted each
 time a new page is stored. The random UUID is the only thing keeping a page private, so it is served
@@ -404,7 +405,8 @@ than reached through more shortcuts on web research: a shortcut belongs to the a
 holds the context, and here web research holds none of it.
 
 **Requirements:** the Claude Code sandbox under [Coding Agent](#coding-agent);
-`HEY_JARVIS_CLOUDFLARED_TUNNEL_URL` (in `op.optional.env`), the MCP server's public address; plus the
+`HEY_JARVIS_PUBLIC_URL` (in `op.optional.env`, the `Public URL` field of the `Jarvis` item), the
+production MCP server's public address; plus the
 companion-app notify service the [Notification Agent](#notification-agent) uses for the push.
 
 **Example Use Cases:**
