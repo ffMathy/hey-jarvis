@@ -37,15 +37,20 @@ export function getArtifactDirectory(): string {
 }
 
 /**
- * The public address the MCP server answers on -- the Cloudflare tunnel's hostname.
+ * The public address the production MCP server answers on -- the hostname its own Cloudflare
+ * tunnel serves, which ElevenLabs reaches it at.
+ *
+ * Deliberately not `HEY_JARVIS_CLOUDFLARED_TUNNEL_URL`: that is the tunnel the ElevenLabs tests
+ * bring up on a developer's machine for the length of a run, and a link on it answers Cloudflare
+ * error 1033 the rest of the time.
  *
  * Without it a page could be stored but not linked to, so its absence is an error that says which
  * variable to set, rather than a link to somewhere the phone cannot reach.
  */
 export function getPublicBaseUrl(): string {
-  const baseUrl = process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL?.trim();
+  const baseUrl = process.env.HEY_JARVIS_PUBLIC_URL?.trim();
   if (!baseUrl) {
-    throw new Error('HEY_JARVIS_CLOUDFLARED_TUNNEL_URL is not set, so there is no public address to host the page at.');
+    throw new Error('HEY_JARVIS_PUBLIC_URL is not set, so there is no public address to host the page at.');
   }
 
   return (/^https?:\/\//.test(baseUrl) ? baseUrl : `https://${baseUrl}`).replace(/\/+$/, '');

@@ -24,7 +24,7 @@ const PAGE = '<!doctype html><html><body><h1>News</h1></body></html>';
 
 const originalEnvironment = {
   storagePath: process.env.HEY_JARVIS_STORAGE_PATH,
-  tunnelUrl: process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL,
+  tunnelUrl: process.env.HEY_JARVIS_PUBLIC_URL,
 };
 
 function restoreEnvironmentVariable(name: string, value: string | undefined) {
@@ -70,32 +70,32 @@ afterAll(() => {
 beforeEach(async () => {
   storageDirectory = await mkdtemp(path.join(tmpdir(), 'visualize-hosting-'));
   process.env.HEY_JARVIS_STORAGE_PATH = storageDirectory;
-  process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL = 'https://jarvis.example.com';
+  process.env.HEY_JARVIS_PUBLIC_URL = 'https://jarvis.example.com';
 });
 
 afterEach(async () => {
   restoreEnvironmentVariable('HEY_JARVIS_STORAGE_PATH', originalEnvironment.storagePath);
-  restoreEnvironmentVariable('HEY_JARVIS_CLOUDFLARED_TUNNEL_URL', originalEnvironment.tunnelUrl);
+  restoreEnvironmentVariable('HEY_JARVIS_PUBLIC_URL', originalEnvironment.tunnelUrl);
   await rm(storageDirectory, { recursive: true, force: true });
 });
 
 describe('getPublicBaseUrl', () => {
   it('drops a trailing slash', () => {
-    process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL = 'https://jarvis.example.com/';
+    process.env.HEY_JARVIS_PUBLIC_URL = 'https://jarvis.example.com/';
 
     expect(getPublicBaseUrl()).toBe('https://jarvis.example.com');
   });
 
   it('assumes HTTPS for a bare hostname', () => {
-    process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL = 'jarvis.example.com';
+    process.env.HEY_JARVIS_PUBLIC_URL = 'jarvis.example.com';
 
     expect(getPublicBaseUrl()).toBe('https://jarvis.example.com');
   });
 
   it('says which variable is missing', () => {
-    delete process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL;
+    delete process.env.HEY_JARVIS_PUBLIC_URL;
 
-    expect(() => getPublicBaseUrl()).toThrow(/HEY_JARVIS_CLOUDFLARED_TUNNEL_URL is not set/);
+    expect(() => getPublicBaseUrl()).toThrow(/HEY_JARVIS_PUBLIC_URL is not set/);
   });
 });
 
