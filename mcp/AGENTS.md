@@ -846,6 +846,17 @@ request faster, never slower. Without `HEY_JARVIS_TYPESAFE_AI_API_KEY` there is 
 every request is planned as before. The response-style wording lives in `response-styles.ts`, so
 the planner and the classifier describe the four styles identically.
 
+**The plainest smart home commands skip the agent too.** The same Jev call also asks which of a
+handful of everyday actions a request is (`HOME_ACTIONS` in `internet-of-things/home-commands.ts`:
+lights, switches, fans on/off, blinds open/close, media play/pause) and which area it names, or
+the whole home. When the request is routed to `internetOfThings` as a `command` and both answers
+clear the same bar, the Home Assistant service is called directly, with no model round trip at
+all. The result says how many devices changed state, and does not claim success when none did.
+Anything with a value, a named device, an exception or no room goes to the agent, and so does a
+command Home Assistant refuses: the same one-agent chain the request would have run is started
+instead. The classifier only picks from fixed lists, so it can never call a service outside
+`HOME_ACTIONS` or target an area the home does not have.
+
 Routing has been three things. A task DAG with a wave scheduler this vertical owned; then a
 supervisor agent delegating inside its own tool-call loop; now a plan. The middle one is why:
 its loop was opaque, so a request could not be looked at, and it could not say what was

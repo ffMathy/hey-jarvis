@@ -1,5 +1,7 @@
 import type { Classifier, ClassifierAnswers } from '@mastra/core/classifier';
 import { createClassifier } from '../../utils/index.js';
+import { type HomeCommand, homeCommandFrom, homeCommandQuestions } from '../internet-of-things/home-commands.js';
+import type { HomeArea } from '../internet-of-things/tools.js';
 import type { OpenQuestion } from './questions.js';
 import { RESPONSE_STYLE_DESCRIPTIONS, type ResponseStyle } from './response-styles.js';
 
@@ -37,14 +39,27 @@ const SEVERAL = 'several';
 /** The choice for a request no agent can handle. */
 const NONE = 'none';
 
+/**
+ * The agent a smart home command goes to, and the one whose simplest commands are carried out
+ * without it (see `internet-of-things/home-commands.ts`).
+ */
+const HOME_AGENT_ID = 'internetOfThings';
+
 /** What the classifier is told about one agent it may pick. */
 export interface RoutableAgentSummary {
   id: string;
   description: string;
 }
 
-/** Built per call, because the waiting questions change between requests. */
-export function routingQuestions(agents: RoutableAgentSummary[], openQuestions: OpenQuestion[]) {
+/**
+ * Built per call, because the waiting questions change between requests.
+ *
+ * The home command questions are asked of every request rather than in a second call once it is
+ * known to be one, because a second call would be a second round trip on exactly the requests
+ * this is meant to speed up. They are left out when the areas are not known, since a command
+ * cannot then be aimed at a room anyway.
+ */
+export function routingQuestions(agents: RoutableAgentSummary[], openQuestions: OpenQuestion[], areas: HomeArea[]) {
   // Keyed by whatever the agents are called, so the choice is any string and is checked against
   // the routable ids when it is read (see `fastRouteFrom`).
   const routeCriteria: Record<string, string | null> = {
@@ -70,6 +85,7 @@ export function routingQuestions(agents: RoutableAgentSummary[], openQuestions: 
         'kinds, pick the one that needs the most words.',
       criteria: RESPONSE_STYLE_DESCRIPTIONS,
     },
+    ...(areas.length > 0 && agents.some((agent) => agent.id === HOME_AGENT_ID) && homeCommandQuestions(areas)),
     ...(openQuestions.length > 0 && {
       answersWaitingQuestion: {
         type: 'boolean' as const,
@@ -87,6 +103,8 @@ export type RoutingAnswers = ClassifierAnswers<ReturnType<typeof routingQuestion
 export interface FastRoute {
   agentId: string;
   responseStyle: ResponseStyle;
+  /** Set when the request is a smart home command plain enough to carry out without the agent. */
+  homeCommand?: HomeCommand;
 }
 
 /**
@@ -94,7 +112,11 @@ export interface FastRoute {
  *
  * Pure, so every way of declining the fast path can be tested without a model.
  */
-export function fastRouteFrom(answers: RoutingAnswers, routableAgentIds: ReadonlySet<string>): FastRoute | undefined {
+export function fastRouteFrom(
+  answers: RoutingAnswers,
+  routableAgentIds: ReadonlySet<string>,
+  areas: HomeArea[],
+): FastRoute | undefined {
   const { choice, probabilities } = answers.route;
   if (!routableAgentIds.has(choice)) {
     return undefined;
@@ -111,7 +133,13 @@ export function fastRouteFrom(answers: RoutingAnswers, routableAgentIds: Readonl
     return undefined;
   }
 
-  return { agentId: choice, responseStyle: answers.responseStyle.choice };
+  const responseStyle = answers.responseStyle.choice;
+  const homeCommand =
+    choice === HOME_AGENT_ID && responseStyle === 'command' && answers.homeAction && answers.homeArea
+      ? homeCommandFrom({ homeAction: answers.homeAction, homeArea: answers.homeArea }, areas, FAST_PATH_CONFIDENCE)
+      : undefined;
+
+  return { agentId: choice, responseStyle, ...(homeCommand && { homeCommand }) };
 }
 
 let routingClassifier: Classifier | undefined;
@@ -136,13 +164,14 @@ export async function classifyRequest(
   userQuery: string,
   agents: RoutableAgentSummary[],
   openQuestions: OpenQuestion[],
+  areas: HomeArea[],
   abortSignal?: AbortSignal,
 ): Promise<FastRoute | undefined> {
   const { answers } = await classifier.evaluate({
     state: userQuery,
-    questions: routingQuestions(agents, openQuestions),
+    questions: routingQuestions(agents, openQuestions, areas),
     abortSignal,
   });
 
-  return fastRouteFrom(answers, new Set(agents.map((agent) => agent.id)));
+  return fastRouteFrom(answers, new Set(agents.map((agent) => agent.id)), areas);
 }

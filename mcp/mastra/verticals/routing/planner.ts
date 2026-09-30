@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { createAgent, getModel } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
 import { getPublicAgents } from '..';
+import type { HomeCommand } from '../internet-of-things/home-commands.js';
+import { getHomeAreas } from '../internet-of-things/tools.js';
 import { classifyRequest, type FastRoute, getRoutingClassifier, type RoutableAgentSummary } from './classifier.js';
 import type { PlannedChain } from './plan.js';
 import type { OpenQuestion } from './questions.js';
@@ -253,6 +255,11 @@ export interface RoutingDecision {
   chains: PlannedChain[];
   answers: PlannedAnswer[];
   responseStyle: ResponseStyle;
+  /**
+   * A smart home command to carry out directly instead of running `chains`, which are then the
+   * fallback should Home Assistant refuse it (see `internet-of-things/home-commands.ts`).
+   */
+  homeCommand?: HomeCommand;
 }
 
 /** Asks the planner for a plan. */
@@ -299,6 +306,7 @@ export async function planFromFastRoute(route: FastRoute, userQuery: string): Pr
     ),
     answers: [],
     responseStyle: route.responseStyle,
+    ...(route.homeCommand && { homeCommand: route.homeCommand }),
   };
 }
 
@@ -323,10 +331,11 @@ export async function planDelegations(
   }
 
   // Before either starts, so nothing is awaited between starting the planner and handling it.
-  const agents = await getRoutableAgents();
+  // Areas are cached, and an empty list when Home Assistant is slow, so this never waits long.
+  const [agents, areas] = await Promise.all([getRoutableAgents(), getHomeAreas()]);
   const planned = planWithPlanner(planner, userQuery, openQuestions, abortPlanner.signal);
   const abortClassifier = new AbortController();
-  const fastRoute = classifyRequest(classifier, userQuery, agents, openQuestions, abortClassifier.signal).catch(
+  const fastRoute = classifyRequest(classifier, userQuery, agents, openQuestions, areas, abortClassifier.signal).catch(
     (error: unknown) => {
       if (!abortClassifier.signal.aborted) {
         logger.warn('Routing classifier failed; using the planner', { error });

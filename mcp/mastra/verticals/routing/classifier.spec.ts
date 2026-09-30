@@ -52,55 +52,103 @@ function answers(overrides: {
 
 describe('routingQuestions', () => {
   it('offers every routable agent, plus several and none', () => {
-    const { route } = routingQuestions(AGENTS, []);
+    const { route } = routingQuestions(AGENTS, [], []);
 
     expect(Object.keys(route.criteria)).toEqual(['internetOfThings', 'weather', 'several', 'none']);
     expect(route.criteria.weather).toBe('Current conditions and forecasts');
   });
 
   it('offers the same response styles the planner does', () => {
-    expect(Object.keys(routingQuestions(AGENTS, []).responseStyle.criteria)).toEqual([...RESPONSE_STYLES]);
+    expect(Object.keys(routingQuestions(AGENTS, [], []).responseStyle.criteria)).toEqual([...RESPONSE_STYLES]);
   });
 
   it('asks about waiting questions only when there are some, and names them', () => {
-    expect(routingQuestions(AGENTS, [])).not.toHaveProperty('answersWaitingQuestion');
+    expect(routingQuestions(AGENTS, [], [])).not.toHaveProperty('answersWaitingQuestion');
 
-    const { answersWaitingQuestion } = routingQuestions(AGENTS, [WAITING_QUESTION]);
+    const { answersWaitingQuestion } = routingQuestions(AGENTS, [WAITING_QUESTION], []);
     expect(answersWaitingQuestion?.instructions).toContain('Email, or a push notification?');
+  });
+});
+
+describe('home command questions', () => {
+  const AREAS = [{ id: 'living_room', name: 'Living Room' }];
+
+  it('ride along on the routing call when the areas are known', () => {
+    const questions = routingQuestions(AGENTS, [], AREAS);
+
+    expect(questions.homeAction?.criteria).toHaveProperty(['light.turn_off']);
+    expect(questions.homeArea?.criteria).toHaveProperty('living_room', 'Living Room');
+  });
+
+  it('are left out when the areas are not known, or there is no smart home agent', () => {
+    expect(routingQuestions(AGENTS, [], [])).not.toHaveProperty('homeAction');
+    expect(routingQuestions([AGENTS[1]], [], AREAS)).not.toHaveProperty('homeAction');
+  });
+
+  it('turn a sure smart home command into one to carry out without the agent', () => {
+    const route = fastRouteFrom(
+      {
+        ...answers({}),
+        homeAction: { type: 'choice', choice: 'light.turn_off', probabilities: { 'light.turn_off': 0.95 } },
+        homeArea: { type: 'choice', choice: 'living_room', probabilities: { living_room: 0.93 } },
+      },
+      AGENT_IDS,
+      AREAS,
+    );
+
+    expect(route).toEqual({
+      agentId: 'internetOfThings',
+      responseStyle: 'command',
+      homeCommand: { action: 'light.turn_off', area: AREAS[0] },
+    });
+  });
+
+  it('are ignored for anything that is not a command', () => {
+    const route = fastRouteFrom(
+      {
+        ...answers({ style: 'lookup' }),
+        homeAction: { type: 'choice', choice: 'light.turn_off', probabilities: { 'light.turn_off': 0.95 } },
+        homeArea: { type: 'choice', choice: 'living_room', probabilities: { living_room: 0.93 } },
+      },
+      AGENT_IDS,
+      AREAS,
+    );
+
+    expect(route).toEqual({ agentId: 'internetOfThings', responseStyle: 'lookup' });
   });
 });
 
 describe('fastRouteFrom', () => {
   it('takes a single agent it is sure of, with the style it chose', () => {
-    expect(fastRouteFrom(answers({ style: 'lookup' }), AGENT_IDS)).toEqual({
+    expect(fastRouteFrom(answers({ style: 'lookup' }), AGENT_IDS, [])).toEqual({
       agentId: 'internetOfThings',
       responseStyle: 'lookup',
     });
   });
 
   it('leaves the request to the planner when it is not sure enough', () => {
-    expect(fastRouteFrom(answers({ confidence: FAST_PATH_CONFIDENCE - 0.01 }), AGENT_IDS)).toBeUndefined();
+    expect(fastRouteFrom(answers({ confidence: FAST_PATH_CONFIDENCE - 0.01 }), AGENT_IDS, [])).toBeUndefined();
   });
 
   it('leaves the request to the planner when it gives no distribution to be sure by', () => {
     const withoutProbabilities = answers({});
     withoutProbabilities.route = { type: 'choice', choice: 'internetOfThings' };
 
-    expect(fastRouteFrom(withoutProbabilities, AGENT_IDS)).toBeUndefined();
+    expect(fastRouteFrom(withoutProbabilities, AGENT_IDS, [])).toBeUndefined();
   });
 
   it('leaves requests needing several agents, or none, to the planner however sure it is', () => {
-    expect(fastRouteFrom(answers({ route: 'several', confidence: 1 }), AGENT_IDS)).toBeUndefined();
-    expect(fastRouteFrom(answers({ route: 'none', confidence: 1 }), AGENT_IDS)).toBeUndefined();
+    expect(fastRouteFrom(answers({ route: 'several', confidence: 1 }), AGENT_IDS, [])).toBeUndefined();
+    expect(fastRouteFrom(answers({ route: 'none', confidence: 1 }), AGENT_IDS, [])).toBeUndefined();
   });
 
   it('never routes to an agent the planner could not', () => {
-    expect(fastRouteFrom(answers({ route: 'coding', confidence: 1 }), AGENT_IDS)).toBeUndefined();
+    expect(fastRouteFrom(answers({ route: 'coding', confidence: 1 }), AGENT_IDS, [])).toBeUndefined();
   });
 
   it('leaves a request that might answer a waiting question to the planner', () => {
-    expect(fastRouteFrom(answers({ answersWaitingQuestion: 0.5 }), AGENT_IDS)).toBeUndefined();
-    expect(fastRouteFrom(answers({ answersWaitingQuestion: 0.02 }), AGENT_IDS)).toEqual({
+    expect(fastRouteFrom(answers({ answersWaitingQuestion: 0.5 }), AGENT_IDS, [])).toBeUndefined();
+    expect(fastRouteFrom(answers({ answersWaitingQuestion: 0.02 }), AGENT_IDS, [])).toEqual({
       agentId: 'internetOfThings',
       responseStyle: 'command',
     });
@@ -138,7 +186,7 @@ describe('classifyRequest', () => {
       },
     });
 
-    const route = await classifyRequest(classifier, 'Turn off the living room lights', AGENTS, []);
+    const route = await classifyRequest(classifier, 'Turn off the living room lights', AGENTS, [], []);
 
     expect(route).toEqual({ agentId: 'internetOfThings', responseStyle: 'command' });
     expect(evaluated).toEqual([{ state: 'Turn off the living room lights', questionIds: ['route', 'responseStyle'] }]);

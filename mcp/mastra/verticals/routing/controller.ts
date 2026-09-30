@@ -2,6 +2,7 @@ import type { Mastra } from '@mastra/core';
 import type { Agent } from '@mastra/core/agent';
 import { logger } from '../../utils/logger.js';
 import { isSlowTask } from '../../utils/slow-tasks.js';
+import { describeHomeCommand, type HomeCommand, runHomeCommand } from '../internet-of-things/home-commands.js';
 import { sendCompletionNotice } from './completion-notice.js';
 import { buildRoutingPlan, type PlannedChain, type RoutingPlan } from './plan.js';
 import { sweepOldRoutingPlans } from './plan-retention.js';
@@ -811,6 +812,46 @@ async function runPlan(
   await consumed;
 }
 
+/**
+ * Carries out a smart home command straight away, or runs the plan when Home Assistant refuses it.
+ *
+ * The plan is the same one-agent chain the request would have run anyway, so a refused command
+ * costs the round trip it tried and nothing else: the agent then looks at the house and does what
+ * it can. Reported as the chain's own task, so a poll reads it like any other delegation. It is
+ * started and ended together once the call is back, which is a matter of milliseconds -- and a
+ * refused call then leaves nothing half-reported behind for the plan to contradict.
+ */
+async function runHomeCommandOrPlan(
+  mastra: Mastra,
+  sessionId: string,
+  progress: RoutingProgress,
+  userQuery: string,
+  chains: PlannedChain[],
+  command: HomeCommand,
+  signal: AbortSignal,
+): Promise<void> {
+  const [delegation] = chains[0]?.delegations ?? [];
+  if (!delegation) {
+    return runPlan(mastra, sessionId, progress, userQuery, chains, signal);
+  }
+
+  let text: string;
+  try {
+    text = await runHomeCommand(command);
+  } catch (error) {
+    logger.warn('Home command refused; handing the request to the agent', {
+      sessionId,
+      command: describeHomeCommand(command),
+      error,
+    });
+    return runPlan(mastra, sessionId, progress, userQuery, chains, signal);
+  }
+
+  const delegationId = `home-command-${delegation.taskId}`;
+  progress.handle({ type: 'delegation_start', delegationId, taskId: delegation.taskId, agentId: delegation.agentId });
+  progress.handle({ type: 'delegation_end', delegationId, result: { text }, isError: false });
+}
+
 /** The delegation an answer is reported as, which is the task that asked the question. */
 function answerDelegationId(question: OpenQuestion): string {
   return `answer-${question.id}`;
@@ -920,7 +961,7 @@ async function runRequest(
   userQuery: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const { chains, answers, responseStyle } = await planDelegations(
+  const { chains, answers, responseStyle, homeCommand } = await planDelegations(
     await resolvePlannerAgent(mastra),
     userQuery,
     listOpenQuestions(),
@@ -930,6 +971,7 @@ async function runRequest(
     sessionId,
     chains: chains.length,
     answers: answers.length,
+    ...(homeCommand && { homeCommand: describeHomeCommand(homeCommand) }),
     elapsedMs: progress.elapsedMs(),
   });
 
@@ -966,7 +1008,13 @@ async function runRequest(
         ? deliverAnswer(progress, question, answer)
         : resumeWithAnswer(mastra, progress, question, answer, signal),
     ),
-    ...(chains.length > 0 ? [runPlan(mastra, sessionId, progress, userQuery, chains, signal)] : []),
+    ...(chains.length > 0
+      ? [
+          homeCommand
+            ? runHomeCommandOrPlan(mastra, sessionId, progress, userQuery, chains, homeCommand, signal)
+            : runPlan(mastra, sessionId, progress, userQuery, chains, signal),
+        ]
+      : []),
   ]);
 
   // Kept for the next request to answer -- unless this one was superseded, in which case its
