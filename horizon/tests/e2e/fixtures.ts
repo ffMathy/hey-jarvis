@@ -86,7 +86,8 @@ function isLocal(url: URL) {
   return url.hostname === 'localhost' || url.hostname === '127.0.0.1';
 }
 
-async function keepOffline(page: Page) {
+/** Aborts every request and socket that leaves the machine; `.scripts/render-demo.ts` keeps its page offline with it too. */
+export async function keepOffline(page: Page) {
   await page.route(
     (url) => !isLocal(url) && url.protocol !== 'data:' && url.protocol !== 'blob:',
     (route) => route.abort(),
