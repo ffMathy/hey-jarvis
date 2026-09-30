@@ -328,7 +328,15 @@ describe('a delegation whose tool touched things', () => {
 
   it('ignores a tool nobody marked, and a result its reader cannot read', () => {
     expect(asRoutingEvents(toolResultOutput(LOCATION_STEP, 'getAllDevices', SWITCHED), PLAN)).toEqual([]);
-    expect(asRoutingEvents(toolResultOutput(LOCATION_STEP, 'switchTheSpecLamps', { error: true }), PLAN)).toEqual([]);
+    expect(
+      asRoutingEvents(toolResultOutput(LOCATION_STEP, 'switchTheSpecLamps', { switched: 'everything' }), PLAN),
+    ).toEqual([]);
+  });
+
+  it('ignores a call Mastra refused before it ran, which it streams as a result rather than an error', () => {
+    const refused = { error: true, message: 'Tool input validation failed', validationErrors: {} };
+
+    expect(asRoutingEvents(toolResultOutput(LOCATION_STEP, 'switchTheSpecLamps', refused), PLAN)).toEqual([]);
   });
 
   it('ignores a step that is not one of the plan’s delegations', () => {

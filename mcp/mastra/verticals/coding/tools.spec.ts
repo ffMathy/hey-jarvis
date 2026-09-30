@@ -229,9 +229,19 @@ describe('the repository a coding request touches', () => {
       readAffectedEntities(
         `workflow-${implementFeatureWorkflow.id}`,
         { inputData: { initialRequest: 'Add a tool' } },
-        {},
+        { result: { success: true, message: 'Started a Claude Code session.' }, runId: 'run-1' },
       ),
     ).toEqual([jarvis]);
+  });
+
+  it('is nothing for an implementation whose session did not start, as for the tool that starts one', () => {
+    expect(
+      readAffectedEntities(
+        `workflow-${implementFeatureWorkflow.id}`,
+        { inputData: { initialRequest: 'Add a tool' } },
+        { result: { success: false, message: 'The Claude Code session did not start: no host' }, runId: 'run-1' },
+      ),
+    ).toEqual([]);
   });
 
   it('is nothing for a session that did not start, or for a list of every repository', () => {

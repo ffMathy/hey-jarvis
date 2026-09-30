@@ -59,6 +59,20 @@ export type AffectedEntityReader = (toolArguments: unknown, toolResult: unknown)
 const readersByTaskId = new Map<string, AffectedEntityReader>();
 
 /**
+ * What Mastra hands back as a tool's result when the call never ran.
+ *
+ * Neither reaches routing as a `tool-error`: input that failed validation comes back as
+ * `{ error: true, message, validationErrors }`, and a workflow called as a tool that failed as
+ * `{ error, runId }`, both as ordinary `tool-result` chunks. A reader that looks only at the
+ * arguments, or reports a fixed thing such as Sent Items, would light those up all the same -- with
+ * whatever the model wrote into arguments that were just rejected.
+ */
+const callThatNeverRanSchema = z.union([
+  z.object({ error: z.literal(true) }),
+  z.object({ error: z.string(), runId: z.string() }),
+]);
+
+/**
  * Marks a tool as one that touches things, and returns it unchanged.
  *
  * @example
@@ -84,9 +98,10 @@ export function affectedEntityReaderOf(taskId: string): AffectedEntityReader | u
 /**
  * The things one tool call touched, as an agent names the tool when calling it.
  *
- * Never throws. A tool that was not marked touched nothing as far as anyone is told, and a reader
- * that cannot read what it was given is logged and read as touching nothing -- a missed glow on
- * the headset is the whole cost, and a request must never fail over one.
+ * Never throws. A tool that was not marked touched nothing as far as anyone is told, nor did a call
+ * that never ran (see {@link callThatNeverRanSchema}), and a reader that cannot read what it was
+ * given is logged and read as touching nothing -- a missed glow on the headset is the whole cost,
+ * and a request must never fail over one.
  */
 export function readAffectedEntities(toolName: string, toolArguments: unknown, toolResult: unknown): AffectedEntity[] {
   const read =
@@ -94,7 +109,7 @@ export function readAffectedEntities(toolName: string, toolArguments: unknown, t
     (toolName.startsWith(WORKFLOW_TOOL_PREFIX)
       ? readersByTaskId.get(toolName.slice(WORKFLOW_TOOL_PREFIX.length))
       : undefined);
-  if (!read) {
+  if (!read || callThatNeverRanSchema.safeParse(toolResult).success) {
     return [];
   }
 

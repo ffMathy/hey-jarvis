@@ -988,6 +988,9 @@ than 200 characters are dropped and names are cut at 120.
 1. Routing reads every `tool-result` chunk the way it reads slow tool calls: forwarded by the agent
    step as `workflow-step-output`, or, for an answer carried back to a question, off the resumed
    agent's own stream. Whatever the readers name becomes a `delegation_affected_entities` event.
+   A call that never ran touched nothing, whatever its reader would say: Mastra streams input that
+   failed validation (`{ error: true, … }`) and a failed workflow tool (`{ error, runId }`) as
+   ordinary results, and `readAffectedEntities` skips both before a reader sees them.
 2. Each thing is reported once per request, at most `MOST_AFFECTED_ENTITIES_PER_REQUEST` (20) of
    them, and nothing is recorded once the user has asked to be notified. A new one wakes a parked
    poll.

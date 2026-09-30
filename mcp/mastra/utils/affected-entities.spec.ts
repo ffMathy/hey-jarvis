@@ -48,9 +48,42 @@ describe('affected entities', () => {
   it('reads a result it does not recognise as touching nothing, rather than throwing', () => {
     markAsAffectingEntities(lampTool('affectedSpecMalformed'), readLamp);
 
-    expect(readAffectedEntities('affectedSpecMalformed', {}, { error: true, message: 'validation failed' })).toEqual(
-      [],
-    );
+    expect(readAffectedEntities('affectedSpecMalformed', {}, { lamp: 'the sofa one' })).toEqual([]);
+  });
+
+  /**
+   * Mastra hands a call that never ran back as the tool's result rather than as an error: input
+   * that failed validation, and a workflow called as a tool that failed. A reader that looks only at
+   * the arguments, or reports a fixed thing, would otherwise light up what the call never reached.
+   */
+  describe('a call that never ran', () => {
+    markAsAffectingEntities({ id: 'affectedSpecArgumentsOnly' }, () => [{ id: 'sent-items', name: 'Sent Items' }]);
+    markAsAffectingEntities({ id: 'affectedSpecFailingWorkflow' }, () => [{ id: 'ffmathy/hey-jarvis' }]);
+
+    it('touches nothing when its input failed validation', () => {
+      const validationFailure = {
+        error: true,
+        message: 'Tool input validation failed for affectedSpecArgumentsOnly.',
+        validationErrors: { errors: [], fields: {} },
+      };
+
+      expect(readAffectedEntities('affectedSpecArgumentsOnly', { to: 'nobody' }, validationFailure)).toEqual([]);
+    });
+
+    it('touches nothing when it was a workflow that failed', () => {
+      expect(
+        readAffectedEntities('workflow-affectedSpecFailingWorkflow', {}, { error: 'the step threw', runId: 'run-1' }),
+      ).toEqual([]);
+    });
+
+    it('still touches what it names when it ran, whatever else its result says', () => {
+      expect(readAffectedEntities('affectedSpecArgumentsOnly', {}, { success: true, message: 'Sent.' })).toEqual([
+        { id: 'sent-items', name: 'Sent Items' },
+      ]);
+      expect(readAffectedEntities('workflow-affectedSpecFailingWorkflow', {}, { result: {}, runId: 'run-1' })).toEqual([
+        { id: 'ffmathy/hey-jarvis' },
+      ]);
+    });
   });
 
   it('reads a marked workflow by the name an agent calls it', () => {

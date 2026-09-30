@@ -125,10 +125,17 @@ const implementFeatureArgumentsSchema = z.object({
   inputData: z.object({ owner: z.string().optional(), repository: z.string().optional() }),
 });
 
+/** What the coding agent is handed back when the workflow ran and its session started. */
+const implementationStartedSchema = z.object({ result: z.object({ success: z.literal(true) }) });
+
 // The coding agent starts an implementation by calling this workflow as a tool, so the repository
 // it names is read off that call -- the session inside it is started by a workflow step, whose result
-// never reaches the agent's stream.
-markAsAffectingEntities(implementFeatureWorkflow, (toolArguments) => {
+// never reaches the agent's stream. Only a session that started counts, as for `startCodingSession`
+// itself: a workflow that ran but reports the session did not start never touched the repository.
+markAsAffectingEntities(implementFeatureWorkflow, (toolArguments, toolResult) => {
+  if (!implementationStartedSchema.safeParse(toolResult).success) {
+    return [];
+  }
   const { owner, repository } = implementFeatureArgumentsSchema.parse(toolArguments).inputData;
   return [describeRepository(owner, repository)];
 });
