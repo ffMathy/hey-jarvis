@@ -10,6 +10,7 @@ import {
 } from '../../utils/workflows/workflow-factory.js';
 import { parseFormRequestSubject } from '../human-in-the-loop/workflows.js';
 import { registerStateChange } from '../synapse/tools.js';
+import { triageEmails } from './classifier.js';
 import { findNewEmailsSinceLastCheck, updateLastSeenEmail } from './tools.js';
 import { processEmailTriggers } from './triggers.js';
 
@@ -88,6 +89,11 @@ const sharedEmailStateSchema = z
         errors: z.array(z.string()),
       })
       .optional(),
+    /**
+     * Whether the new emails were filed for the reactor. Not simply "were there any", because
+     * triage can leave every one of them out.
+     */
+    stateChangeRegistered: z.boolean(),
   })
   .partial();
 
@@ -690,7 +696,11 @@ const processFormReplies = createStep({
 /**
  * Register emails as state change for notification system
  *
- * This step triggers the state reactor to analyze emails and potentially notify users.
+ * This step triggers the state reactor to analyze emails and potentially notify users. Each email
+ * is triaged by a classifier first (see `classifier.ts`): the ones it is sure are newsletters, or
+ * sure need nobody, are left out and counted; the ones it is sure of carry their kind; and one it
+ * is sure needs the user now marks the filing high priority. Without a classifier, or wherever it
+ * is not sure, the emails are filed exactly as they always were.
  */
 const registerEmailsStateChange = createStep({
   id: 'register-emails-state-change',
@@ -708,7 +718,7 @@ const registerEmailsStateChange = createStep({
     duplicate: z.boolean(),
     message: z.string(),
   }),
-  execute: async ({ state, inputData, mastra }) => {
+  execute: async ({ state, setState, inputData, mastra }) => {
     const emails = state.newEmails ?? [];
 
     if (emails.length === 0) {
@@ -720,25 +730,51 @@ const registerEmailsStateChange = createStep({
       };
     }
 
+    const filing = await triageEmails(
+      emails.map((email) => ({
+        from: email.from.address,
+        subject: email.subject,
+        bodyPreview: email.bodyPreview,
+        receivedDateTime: email.receivedDateTime,
+      })),
+    );
+
+    if (filing.kept.length === 0) {
+      console.log(`⏭️  All ${emails.length} email(s) were newsletters or needed nobody; nothing to register`);
+      setState({ ...state, stateChangeRegistered: false });
+      return {
+        registered: false,
+        duplicate: false,
+        message: `Triage left out all ${emails.length} email(s)`,
+      };
+    }
+
     const stateChangeData = {
       source: 'email',
       stateType: 'new_emails_received',
       stateData: {
-        emailCount: emails.length,
+        emailCount: filing.kept.length,
+        ...(filing.droppedEmailCount > 0 && { droppedEmailCount: filing.droppedEmailCount }),
+        // Only in the payload for now, where the reactor reads it: the notifier files every
+        // change as low until it takes a priority from its caller.
+        ...(filing.priority !== 'low' && { priority: filing.priority }),
         formRepliesFound: inputData.formRepliesFound,
         workflowsResumed: inputData.workflowsResumed,
         repliesRejected: inputData.repliesRejected,
-        emails: emails.map((email: z.infer<typeof emailObjectSchema>) => ({
+        emails: filing.kept.map(({ email, kind }) => ({
           subject: email.subject,
-          from: email.from.address,
+          from: email.from,
           receivedDateTime: email.receivedDateTime,
+          ...(kind && { kind }),
         })),
         timestamp: new Date().toISOString(),
       },
     };
 
-    console.log(`📝 Registering ${emails.length} email(s) with state reactor...`);
-    return await executeTool(registerStateChange, stateChangeData, { mastra });
+    console.log(`📝 Registering ${filing.kept.length} email(s) with state reactor...`);
+    const result = await executeTool(registerStateChange, stateChangeData, { mastra });
+    setState({ ...state, stateChangeRegistered: result.registered });
+    return result;
   },
 });
 
@@ -848,7 +884,7 @@ const formatFormRepliesOutput = createStep({
       workflowsResumed: outcome.workflowsResumed,
       repliesRejected: outcome.repliesRejected,
       errors: outcome.errors,
-      stateChangeRegistered: emails.length > 0,
+      stateChangeRegistered: params.state.stateChangeRegistered ?? false,
       message:
         emails.length === 0
           ? 'No new emails to analyze'

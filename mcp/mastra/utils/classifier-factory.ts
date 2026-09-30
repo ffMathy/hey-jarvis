@@ -17,3 +17,23 @@ export function createClassifier(id: string): Classifier | undefined {
 
   return new Classifier({ id, model: getEvaluationModel() });
 }
+
+/**
+ * A getter for one classifier per process, built the first time it is asked for.
+ *
+ * Built lazily because the key is read when it is built, and a module that is only imported
+ * should not decide whether there is one. Kept to one instance so that the classifier registered
+ * on the Mastra instance, which is what Studio traces, is the same one the code evaluates with.
+ */
+export function createLazyClassifier(id: string): () => Classifier | undefined {
+  let classifier: Classifier | undefined;
+  let classifierBuilt = false;
+
+  return () => {
+    if (!classifierBuilt) {
+      classifier = createClassifier(id);
+      classifierBuilt = true;
+    }
+    return classifier;
+  };
+}
