@@ -1112,6 +1112,37 @@ function runChains(
 }
 
 /**
+ * Closes a request that planned no work and answered no question.
+ *
+ * "Nothing, never mind" about a photo is a reply that has been dealt with, not a request no agent
+ * could handle: the plan did what was asked of it, which was nothing.
+ */
+function finishWithNothingToRun(sessionId: string, progress: RoutingProgress, dismissedAPhoto: boolean): void {
+  bringUpEarlierQuestions(sessionId, progress);
+  if (dismissedAPhoto) {
+    progress.handle({ type: 'finished' });
+    return;
+  }
+  progress.fail('none of the specialized agents can handle this request');
+}
+
+/**
+ * Keeps a request's questions for the next request to answer -- unless it was superseded, in which
+ * case its closing report will never be read and sir will never hear what it asked. A request he is
+ * to be notified about is never superseded: he hears its questions in the notification.
+ */
+function keepQuestionsForTheNextRequest(sessionId: string, progress: RoutingProgress): void {
+  if (progressBySessionId.get(sessionId) === progress || progress.notifyWhenDone) {
+    rememberOpenQuestions(progress.questions);
+  } else if (progress.questions.length > 0) {
+    logger.warn('Dropping questions from a superseded routing request', {
+      sessionId,
+      questionIds: progress.questions.map((question) => question.id),
+    });
+  }
+}
+
+/**
  * Does everything a decided request asks: the new work in a plan run, and each answer it gives to
  * an open question carried back to the agent that asked.
  */
@@ -1159,14 +1190,7 @@ async function carryOut(
   }
 
   if (chains.length === 0 && answered.length === 0) {
-    bringUpEarlierQuestions(sessionId, progress);
-    // "Nothing, never mind" about a photo is a reply that has been dealt with, not a request no
-    // agent could handle: the plan did what was asked of it, which was nothing.
-    if (dismissedPhotoIds.length > 0) {
-      progress.handle({ type: 'finished' });
-      return;
-    }
-    progress.fail('none of the specialized agents can handle this request');
+    finishWithNothingToRun(sessionId, progress, dismissedPhotoIds.length > 0);
     return;
   }
 
@@ -1201,17 +1225,7 @@ async function carryOut(
     ...photosToAskAbout.filter((photoId) => findPhoto(photoId)?.lookedAt !== undefined),
   ]);
 
-  // Kept for the next request to answer -- unless this one was superseded, in which case its
-  // closing report will never be read and sir will never hear what it asked. A request he is to
-  // be notified about is never superseded: he hears its questions in the notification.
-  if (progressBySessionId.get(sessionId) === progress || progress.notifyWhenDone) {
-    rememberOpenQuestions(progress.questions);
-  } else if (progress.questions.length > 0) {
-    logger.warn('Dropping questions from a superseded routing request', {
-      sessionId,
-      questionIds: progress.questions.map((question) => question.id),
-    });
-  }
+  keepQuestionsForTheNextRequest(sessionId, progress);
   bringUpEarlierQuestions(sessionId, progress);
 
   const failure = outcomes.find((outcome) => outcome.status === 'rejected');
