@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { askQuestion } from '../notification/tools.js';
 import { forgetOpenQuestions, isAnsweredByQuestion, listOpenQuestions } from '../routing/questions.js';
 import type { StateChange } from '../synapse/state-change.js';
+import type { SessionProseQuestionReader } from './classifier.js';
 import type { ClaudeSessionEvent } from './claude-sessions.js';
 import type { PublishTarget, SessionWorkPublication } from './publish-session-work.js';
 import {
@@ -148,6 +149,8 @@ describe('ClaudeSessionWatcher', () => {
     events: ClaudeSessionEvent[][],
     publishWork?: SessionWorkPublisher,
     askSessionQuestion?: SessionQuestionAsker,
+    // Never the real classifier: whether it runs would depend on a key in the environment.
+    readProseQuestion: SessionProseQuestionReader = async () => undefined,
   ): {
     watcher: ClaudeSessionWatcher;
     published: StateChange[];
@@ -179,6 +182,7 @@ describe('ClaudeSessionWatcher', () => {
       async (notice) => {
         notices.push(notice);
       },
+      readProseQuestion,
     );
 
     return { watcher, published, notices, streamedSessionIds };
@@ -404,6 +408,69 @@ describe('ClaudeSessionWatcher', () => {
       stateType: 'coding_session_question_asked',
       stateData: { question: 'Should it be in Danish, or English?', questionId: 'q1', channel: 'phone-call' },
     });
+  });
+
+  it('asks a question the classifier caught in prose the way a fenced one is asked, and publishes nothing', async () => {
+    const { calls, publishWork } = recordingPublisher();
+    const asked: string[] = [];
+    const readFrom: { sessionId: string; finalMessage: string }[] = [];
+    const finalMessage = 'I read the code.\n\nShould the greeting be in Danish, or English?';
+    const { watcher, published } = watcherOver(
+      [[runningEvent('sevt_1'), messageEvent('sevt_2', finalMessage), idleEvent('sevt_3')]],
+      publishWork,
+      async (_sessionId, question) => {
+        asked.push(question);
+        return { status: 'asked', questionId: 'q1', channel: 'phone-call', reason: 'He is in the car.' };
+      },
+      async (sessionId, message) => {
+        readFrom.push({ sessionId, finalMessage: message });
+        return 'Should the greeting be in Danish, or English?';
+      },
+    );
+
+    watcher.watch('sess_1', { publishTo: PUBLISH_TO });
+    await settle();
+
+    expect(readFrom).toEqual([{ sessionId: 'sess_1', finalMessage }]);
+    expect(asked).toEqual(['Should the greeting be in Danish, or English?']);
+    expect(calls).toEqual([]);
+    expect(published[published.length - 1]).toMatchObject({
+      stateType: 'coding_session_question_asked',
+      stateData: { question: 'Should the greeting be in Danish, or English?', questionId: 'q1' },
+    });
+  });
+
+  it('publishes a turn the classifier does not read as a question, as before', async () => {
+    const { calls, publishWork } = recordingPublisher();
+    const { watcher } = watcherOver(
+      [[runningEvent('sevt_1'), messageEvent('sevt_2', 'Done: the greeting is in.'), idleEvent('sevt_3')]],
+      publishWork,
+      undefined,
+      async () => undefined,
+    );
+
+    watcher.watch('sess_1', { publishTo: PUBLISH_TO });
+    await settle();
+
+    expect(calls).toEqual([{ sessionId: 'sess_1', target: PUBLISH_TO, finalMessage: 'Done: the greeting is in.' }]);
+  });
+
+  it('never asks the classifier about a turn that ended on the block', async () => {
+    let classifierConsulted = false;
+    const { watcher } = watcherOver(
+      [[runningEvent('sevt_1'), messageEvent('sevt_2', '```jarvis-question\nDanish?\n```'), idleEvent('sevt_3')]],
+      async () => undefined,
+      async () => ({ status: 'asked', questionId: 'q1', channel: 'phone-call', reason: 'He is in the car.' }),
+      async () => {
+        classifierConsulted = true;
+        return 'Something else?';
+      },
+    );
+
+    watcher.watch('sess_1', { publishTo: PUBLISH_TO });
+    await settle();
+
+    expect(classifierConsulted).toBe(false);
   });
 
   it('reports a question that could not be asked', async () => {
