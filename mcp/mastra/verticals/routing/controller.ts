@@ -2,6 +2,7 @@ import type { Mastra } from '@mastra/core';
 import type { Agent } from '@mastra/core/agent';
 import { logger } from '../../utils/logger.js';
 import { isSlowTask } from '../../utils/slow-tasks.js';
+import { dismissPhoto, photosWaiting } from '../vision/photos.js';
 import { sendCompletionNotice } from './completion-notice.js';
 import { buildRoutingPlan, type PlannedChain, type RoutingPlan } from './plan.js';
 import { sweepOldRoutingPlans } from './plan-retention.js';
@@ -27,6 +28,7 @@ import {
   takeOpenQuestion,
   takeQuestionsToBringUp,
 } from './questions.js';
+import { forgetWaitingPhotoReminders, type PhotoToBringUp, takePhotosToBringUp } from './waiting-photos.js';
 
 /**
  * The routing runtime: plan a request, register the plan as a workflow, run it, report it.
@@ -120,6 +122,11 @@ export class RoutingProgress {
    * he moved on from -- and not answered by it. See `takeQuestionsToBringUp`.
    */
   earlierQuestions: OpenQuestion[] = [];
+  /**
+   * Photos he sent that nobody has looked at yet, which the closing report brings up beside the
+   * earlier questions: what Jarvis asks about each, by photo id. See `waiting-photos.ts`.
+   */
+  waitingPhotos: PhotoToBringUp[] = [];
   /** Tasks that started something slow, which the caller has not been told about yet. */
   unannouncedSlowTaskIds: string[] = [];
   /** Every task that started something slow, so each is announced once. */
@@ -372,6 +379,8 @@ export interface RoutingSnapshot {
   questions: OpenQuestion[];
   /** Questions work started earlier is waiting on, to bring up once the request is done. */
   earlierQuestions: OpenQuestion[];
+  /** Photos nobody has looked at yet, to ask him about once the request is done. */
+  waitingPhotos: PhotoToBringUp[];
   /** Tasks that have started something slow since the last poll. */
   newlySlow: string[];
   /** How the planner said the request should be answered. */
@@ -398,6 +407,7 @@ export function buildSnapshot(progress: RoutingProgress): RoutingSnapshot {
     finished: progress.isFinished(),
     questions: progress.questions,
     earlierQuestions: progress.earlierQuestions,
+    waitingPhotos: progress.waitingPhotos,
     newlySlow,
     responseStyle: progress.responseStyle,
     error: progress.error,
@@ -895,11 +905,15 @@ function takeAnsweredQuestions(answers: PlannedAnswer[]): { question: OpenQuesti
 }
 
 /**
- * Hands the request's closing report the questions earlier work is still waiting on.
+ * Hands the request's closing report the questions earlier work is still waiting on, and the
+ * photos he sent that nobody has looked at yet.
  *
  * Only for a request whose report will be heard: a superseded one is never read, and one the user
  * is notified about sends its own questions and no others. Taking them marks them as brought up,
  * so doing it for a report nobody hears would silence the reminder for nothing.
+ *
+ * Taken once the request's own work is done, so a photo this request looked at is no longer
+ * waiting by then, and is not asked about in the reply that answers what it showed.
  */
 function bringUpEarlierQuestions(sessionId: string, progress: RoutingProgress): void {
   if (progressBySessionId.get(sessionId) !== progress || progress.notifyWhenDone) {
@@ -907,6 +921,7 @@ function bringUpEarlierQuestions(sessionId: string, progress: RoutingProgress): 
   }
 
   progress.earlierQuestions = takeQuestionsToBringUp(new Set(progress.questions.map((question) => question.id)));
+  progress.waitingPhotos = takePhotosToBringUp();
 }
 
 /**
@@ -920,29 +935,45 @@ async function runRequest(
   userQuery: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const { chains, answers, responseStyle } = await planDelegations(
+  // Every waiting photo, however recent: the grace before one is brought up only keeps Jarvis from
+  // asking about a photo just sent, and the request that says what it is for is that very reply.
+  const { chains, answers, dismissedPhotoIds, responseStyle } = await planDelegations(
     await resolvePlannerAgent(mastra),
     userQuery,
     listOpenQuestions(),
+    photosWaiting(),
   );
   progress.responseStyle = responseStyle;
   logger.info('Routing request planned', {
     sessionId,
     chains: chains.length,
     answers: answers.length,
+    dismissedPhotos: dismissedPhotoIds.length,
     elapsedMs: progress.elapsedMs(),
   });
 
   // Superseded while it was being planned: nothing will read this request, so it must not
-  // start work -- and above all must not take the questions its answers are for.
+  // start work -- and above all must not take the questions its answers are for, or dismiss the
+  // photos it names.
   if (signal.aborted) {
     return;
   }
 
   const answered = takeAnsweredQuestions(answers);
+  // Before the reminders are taken, so a photo he has just waved away is not asked about in the
+  // very reply to his waving it away.
+  for (const photoId of dismissedPhotoIds) {
+    dismissPhoto(photoId);
+  }
 
   if (chains.length === 0 && answered.length === 0) {
     bringUpEarlierQuestions(sessionId, progress);
+    // "Nothing, never mind" about a photo is a reply that has been dealt with, not a request no
+    // agent could handle: the plan did what was asked of it, which was nothing.
+    if (dismissedPhotoIds.length > 0) {
+      progress.handle({ type: 'finished' });
+      return;
+    }
     progress.fail('none of the specialized agents can handle this request');
     return;
   }
@@ -1085,6 +1116,7 @@ export function resetRoutingRuntime(): void {
   progressBySessionId.clear();
   abortBySessionId.clear();
   forgetOpenQuestions();
+  forgetWaitingPhotoReminders();
   latestStartedSessionId = undefined;
   registry = undefined;
 }

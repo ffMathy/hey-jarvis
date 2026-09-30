@@ -28,7 +28,7 @@ const STILL_HERE_EVERY_MS = 5_000;
  * breath (`SHOWING_YOU_SOMETHING`). The photo is sent when a call and a photo are both in hand,
  * whichever came second — `photo-request.ts` decides, and says why — and the call is answered with
  * the id Mastra filed it under, or with what happened instead. The agent then asks about it through
- * `routePromptWorkflow`, where a model that can see is.
+ * `routePromptWorkflow`, where a model that can see is, once sir has said what he wants done with it.
  *
  * **Nothing here throws at the SDK.** A client tool that throws is reported through `onError`, which
  * on a phone is a failed conversation in red and a toast — so a camera closed empty-handed, a URL

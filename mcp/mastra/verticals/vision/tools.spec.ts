@@ -8,7 +8,15 @@ import { createScriptedModel } from '../../../tests/utils/scripted-model.js';
 import { createAgent } from '../../utils/agent-factory.js';
 import { executeTool } from '../../utils/tool-factory.js';
 import { PHOTO_READER_AGENT_ID } from './agents.js';
-import { claimUploadSlot, findPhoto, forgetPhotos, keepPhoto, MAX_OPEN_SLOTS, openUploadSlot } from './photos.js';
+import {
+  claimUploadSlot,
+  findPhoto,
+  forgetPhotos,
+  keepPhoto,
+  MAX_OPEN_SLOTS,
+  openUploadSlot,
+  photosWaiting,
+} from './photos.js';
 import {
   lookAtPhoto,
   NO_PHOTO_TO_LOOK_AT,
@@ -205,7 +213,12 @@ describe('what the voice agent is told', () => {
 describe('looking at a photo', () => {
   /** The photo reader on a scripted model, registered where `lookAtPhoto` looks for it. */
   async function readerAnswering(text: string) {
-    const scripted = createScriptedModel(() => ({ text }));
+    return readerPlaying(() => ({ text }));
+  }
+
+  /** The photo reader playing whatever script it is given, which may be to fail. */
+  async function readerPlaying(respond: Parameters<typeof createScriptedModel>[0]) {
+    const scripted = createScriptedModel(respond);
     const mastra = new Mastra({
       storage: new InMemoryStore(),
       logger: false,
@@ -254,5 +267,44 @@ describe('looking at a photo', () => {
     expect(answer).toBe(NO_PHOTO_TO_LOOK_AT);
     expect(calls).toHaveLength(0);
     expect(findPhoto(undefined)).toBeUndefined();
+  });
+
+  /**
+   * A photo nobody has looked at is brought up in a later conversation (`routing/waiting-photos.ts`),
+   * so what counts as looking at it decides whether sir is asked about a photo he already had read.
+   */
+  it('stops the photo waiting once the reader has answered', async () => {
+    const { mastra } = await readerAnswering('The total is 243.50 DKK.');
+    keepPhoto(Buffer.from([0xff, 0xd8]), 'image/jpeg');
+    keepPhoto(Buffer.from([0xff, 0xd8]), 'image/jpeg');
+
+    await executeTool(lookAtPhoto, { photoId: 'Photo 1', question: 'What is the total?' }, { mastra });
+
+    expect(photosWaiting().map((photo) => photo.photoId)).toEqual(['photo2']);
+    expect(findPhoto('photo1')?.lookedAt).toBeNumber();
+  });
+
+  it('leaves the photo waiting when the reader failed, since sir has been told nothing about it', async () => {
+    const { mastra, calls } = await readerPlaying(() => {
+      throw new Error('The photo reader could not be reached.');
+    });
+    keepPhoto(Buffer.from([0xff, 0xd8]), 'image/jpeg');
+
+    await expect(
+      executeTool(lookAtPhoto, { photoId: 'photo1', question: 'What is it?' }, { mastra }),
+    ).rejects.toThrow();
+
+    expect(calls.length).toBeGreaterThan(0);
+    expect(photosWaiting().map((photo) => photo.photoId)).toEqual(['photo1']);
+  });
+
+  it('marks nothing when there was no such photo to look at', async () => {
+    const { mastra } = await readerAnswering('Anything.');
+    keepPhoto(Buffer.from([0xff, 0xd8]), 'image/jpeg');
+
+    const { answer } = await executeTool(lookAtPhoto, { photoId: 'photo9', question: 'What is it?' }, { mastra });
+
+    expect(answer).toBe(NO_PHOTO_TO_LOOK_AT);
+    expect(photosWaiting().map((photo) => photo.photoId)).toEqual(['photo1']);
   });
 });

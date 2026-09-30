@@ -2,6 +2,7 @@
 export { getPhotoReaderAgent, getVisionAgent, PHOTO_READER_AGENT_ID } from './agents.js';
 export {
   claimUploadSlot,
+  dismissPhoto,
   findPhoto,
   forgetPhotos,
   KEEP_PHOTO_MS,
@@ -11,10 +12,13 @@ export {
   MAX_KEPT_PHOTOS,
   MAX_OPEN_SLOTS,
   MAX_PHOTO_BYTES,
+  markPhotoLookedAt,
   openUploadSlot,
   PHOTO_MEDIA_TYPES,
   type PhotoMediaType,
+  photosWaiting,
   UPLOAD_SLOT_MS,
+  type WaitingPhoto,
 } from './photos.js';
 export {
   lookAtPhoto,

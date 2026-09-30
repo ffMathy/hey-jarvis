@@ -24,6 +24,13 @@ import { randomBytes } from 'node:crypto';
  * {@link MAX_PHOTO_BYTES}, the oldest let go first, and nothing kept past {@link KEEP_PHOTO_MS}.
  * Pruning happens whenever the store is touched rather than on a timer, as the other short-lived
  * state in this server does.
+ *
+ * **A photo nobody has looked at yet is waiting** ({@link photosWaiting}). Sir can take one and
+ * say nothing about it, or the conversation that sent it can end before anything asks — so a photo
+ * is not tied to the conversation it arrived in. Routing shows every waiting photo to the planner, and
+ * brings one up in a later reply to ask what he would like done with it (`routing/waiting-photos.ts`);
+ * `lookAtPhoto` is what stops it waiting ({@link markPhotoLookedAt}), and so does sir saying he wants
+ * nothing done with it ({@link dismissPhoto}).
  */
 
 /** How long a slot waits for its photo: the camera, the shot and the upload all fit inside it. */
@@ -67,6 +74,21 @@ export interface KeptPhoto {
   photoId: string;
   data: Buffer;
   mediaType: PhotoMediaType;
+  /** When it arrived, in milliseconds. */
+  keptAt: number;
+  /** When an agent first looked at it, in milliseconds — or `undefined` while nobody has. */
+  lookedAt: number | undefined;
+  /**
+   * When sir said he wants nothing done with it, in milliseconds — or `undefined` if he has not.
+   * Kept apart from {@link lookedAt} because nobody has looked at such a photo: it has only stopped
+   * waiting.
+   */
+  dismissedAt: number | undefined;
+}
+
+/** A photo nobody has looked at yet, as far as anything outside this store needs to know it. */
+export interface WaitingPhoto {
+  photoId: string;
   /** When it arrived, in milliseconds. */
   keptAt: number;
 }
@@ -133,9 +155,21 @@ export function keepPhoto(data: Buffer, mediaType: PhotoMediaType, now = Date.no
   makeRoom(keptPhotos, MAX_KEPT_PHOTOS);
 
   photosKept += 1;
-  const photo: KeptPhoto = { photoId: `photo${photosKept}`, data, mediaType, keptAt: now };
+  const photo: KeptPhoto = {
+    photoId: `photo${photosKept}`,
+    data,
+    mediaType,
+    keptAt: now,
+    lookedAt: undefined,
+    dismissedAt: undefined,
+  };
   keptPhotos.set(photo.photoId, photo);
   return photo;
+}
+
+/** A photo id as it is kept, from however a model wrote it: "Photo 3" is `photo3`. */
+function canonicalPhotoId(photoId: string): string {
+  return photoId.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 /**
@@ -153,7 +187,7 @@ export function keepPhoto(data: Buffer, mediaType: PhotoMediaType, now = Date.no
  */
 export function findPhoto(photoId: string | undefined, now = Date.now()): KeptPhoto | undefined {
   prune(now);
-  const wanted = photoId?.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const wanted = photoId === undefined ? undefined : canonicalPhotoId(photoId);
   if (wanted) {
     return keptPhotos.get(wanted);
   }
@@ -162,7 +196,60 @@ export function findPhoto(photoId: string | undefined, now = Date.now()): KeptPh
   return latest && now - latest.keptAt < LATEST_PHOTO_STANDS_IN_MS ? latest : undefined;
 }
 
-/** Forgets every slot and photo, and starts the ids again. For tests. */
+/**
+ * Records that an agent has looked at a photo, so it is no longer waiting.
+ *
+ * The first look is the one kept: what matters is only whether anyone has, and a follow-up question
+ * about the same photo is not a reason to think it was ever overlooked.
+ */
+export function markPhotoLookedAt(photoId: string, now = Date.now()): void {
+  prune(now);
+  const photo = keptPhotos.get(canonicalPhotoId(photoId));
+  if (photo && photo.lookedAt === undefined) {
+    photo.lookedAt = now;
+  }
+}
+
+/**
+ * Records that sir wants nothing done with a photo, so it is no longer waiting.
+ *
+ * "Nothing, I was only testing" is a reply to being asked about a photo like any other, and without
+ * this it had nowhere to go: routed, it planned no work, and was reported to him as a request that
+ * could not be completed. The photo is kept rather than let go of, so a question about it that he
+ * thinks better of a minute later still finds it — it is only no longer brought up.
+ */
+export function dismissPhoto(photoId: string, now = Date.now()): void {
+  prune(now);
+  const photo = keptPhotos.get(canonicalPhotoId(photoId));
+  if (photo && photo.dismissedAt === undefined) {
+    photo.dismissedAt = now;
+  }
+}
+
+/**
+ * The photos kept that nobody has looked at yet, and that sir has not said he wants nothing done
+ * with, oldest first.
+ *
+ * Only while they are kept: a photo let go of is not waiting on anyone, since nothing could look at
+ * it any more.
+ */
+export function photosWaiting(now = Date.now()): WaitingPhoto[] {
+  prune(now);
+  return [...keptPhotos.values()]
+    .filter((photo) => photo.lookedAt === undefined && photo.dismissedAt === undefined)
+    .map(({ photoId, keptAt }) => ({ photoId, keptAt }));
+}
+
+/** How long ago something happened, in words for an answer that will be read out. */
+export function howLongAgo(milliseconds: number): string {
+  const minutes = Math.floor(milliseconds / 60_000);
+  if (minutes < 1) {
+    return 'just now';
+  }
+  return minutes === 1 ? 'a minute ago' : `${minutes} minutes ago`;
+}
+
+/** Forgets every slot and photo — and with them which were looked at — and starts the ids again. For tests. */
 export function forgetPhotos(): void {
   openSlots.clear();
   keptPhotos.clear();

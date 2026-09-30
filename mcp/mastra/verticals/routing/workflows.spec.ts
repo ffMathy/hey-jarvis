@@ -21,6 +21,7 @@ import {
   setRoutingRuntime,
 } from './controller.js';
 import type { OpenQuestion } from './questions.js';
+import type { PhotoToBringUp } from './waiting-photos.js';
 import {
   FINISHED_REQUEST_INSTRUCTIONS,
   getNextInstructionsWorkflow,
@@ -370,6 +371,151 @@ describe('a request made while earlier work is waiting on the user', () => {
     expect(closing.instructions).toContain('work he started earlier is still waiting on him');
     expect(closing.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
     expect(closing.questionsForUser).toEqual([{ id: EARLIER.taskId, question: EARLIER.question }]);
+  });
+});
+
+/**
+ * A photo sir sent that nobody has looked at yet, brought up by a later request's closing report the
+ * way an earlier question is (see `waiting-photos.ts`). Which photos are due is decided there; this
+ * is what Jarvis is handed once they are.
+ */
+describe('a request made while a photo he sent is waiting on him', () => {
+  const PHOTO: PhotoToBringUp = {
+    id: 'photo3',
+    question:
+      'Sir sent you a photo 4 minutes ago (photo3) that nobody has looked at yet: ask him what he would like done with it.',
+  };
+  const EARLIER: OpenQuestion = {
+    id: 'q7',
+    taskId: 'Push reminders for tasks',
+    agentId: 'coding',
+    question: 'Should the reminder go out by email, or as a push notification?',
+    deliverAnswer: async () => 'Passed on.',
+  };
+
+  it('answers the request, then asks what he would like done with the photo', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
+    progress.waitingPhotos = [PHOTO];
+    endPlanRun(progress);
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
+    // The id is the photo's, which is what his reply has to name it by.
+    expect(closing.questionsForUser).toEqual([PHOTO]);
+    expect(closing.instructions).toStartWith(
+      'This request has finished, but work he started earlier, or a photo he sent, is still waiting on him',
+    );
+    expect(closing.instructions).toContain('Then remind him of it and ask him the question');
+    expect(closing.instructions).toContain('send his answer through routePromptWorkflow');
+    expect(closing.instructions).toContain('the photo named by its id');
+    expect(closing.instructions).toContain('"(photo photo3)"');
+    // "Nothing" goes back too: routed, it dismisses the photo, where left unrouted it would go on
+    // waiting.
+    expect(closing.instructions).toContain('That includes wanting nothing done with it: routed, it lets the photo go');
+    // Still waiting on him, so the call must not hang up under the question.
+    expect(closing.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
+    expect(closing.instructions).toContain('end_call');
+  });
+
+  it('asks about the photo beside earlier work’s questions, and before this request’s own', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'remind me before tasks are due', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    suspendDelegation(DEFAULT_ROUTING_SESSION_ID, startDelegation(DEFAULT_ROUTING_SESSION_ID, 'coding'), 'How early?');
+    progress.earlierQuestions = [EARLIER];
+    progress.waitingPhotos = [PHOTO];
+    endPlanRun(progress);
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.questionsForUser).toEqual([
+      { id: EARLIER.taskId, question: EARLIER.question },
+      PHOTO,
+      { id: 'coding', question: 'How early?' },
+    ]);
+    expect(closing.instructions).toStartWith('Part of this request cannot go on');
+    expect(closing.instructions).toContain('If there is more than one, ask them together');
+    expect(closing.instructions).toContain('"(photo photo3)"');
+  });
+
+  it('brings the photo up beside an earlier question when nothing of this request is waiting', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    progress.earlierQuestions = [EARLIER];
+    progress.waitingPhotos = [PHOTO];
+    endPlanRun(progress);
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.questionsForUser).toEqual([{ id: EARLIER.taskId, question: EARLIER.question }, PHOTO]);
+    expect(closing.instructions).toStartWith(
+      'This request has finished, but work he started earlier, or a photo he sent',
+    );
+    expect(closing.instructions).toContain('Remind him of it and ask him the question');
+  });
+
+  it('still brings the photo up when the request failed', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the meaning of life', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    progress.waitingPhotos = [PHOTO];
+    progress.fail('none of the specialized agents can handle this request');
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.instructions).toStartWith('The request could not be completed');
+    expect(closing.instructions).toContain('work he started earlier, or a photo he sent, is still waiting on him');
+    expect(closing.instructions).toContain('"(photo photo3)"');
+    expect(closing.instructions).toContain('That includes wanting nothing done with it');
+    expect(closing.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
+    expect(closing.questionsForUser).toEqual([PHOTO]);
+  });
+
+  it('brings both up after a failure, the earlier question first', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the meaning of life', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    progress.earlierQuestions = [EARLIER];
+    progress.waitingPhotos = [PHOTO];
+    progress.fail('none of the specialized agents can handle this request');
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.questionsForUser).toEqual([{ id: EARLIER.taskId, question: EARLIER.question }, PHOTO]);
+  });
+
+  /**
+   * The photo wording is added only when a photo is there, so every report that has none is word for
+   * word what it was before photos could wait.
+   */
+  it('says nothing of photos when none is waiting', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    const answered = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
+    answered.earlierQuestions = [EARLIER];
+    endPlanRun(answered);
+    const withEarlierQuestion = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the meaning of life', async: false });
+    const failed = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    failed.earlierQuestions = [EARLIER];
+    failed.fail('none of the specialized agents can handle this request');
+    const afterFailure = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is on my calendar', async: false });
+    const plain = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'calendar', 'Dentist at four.');
+    endPlanRun(plain);
+    const allDone = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    for (const closing of [withEarlierQuestion, afterFailure, allDone]) {
+      expect(closing.instructions).not.toMatch(/photo/i);
+    }
+    expect(withEarlierQuestion.instructions).toStartWith(
+      'This request has finished, but work he started earlier is still waiting on him to answer a question',
+    );
+    expect(allDone.instructions).toStartWith('All tasks have completed');
+    expect(allDone.questionsForUser).toBeUndefined();
   });
 });
 

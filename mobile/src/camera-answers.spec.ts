@@ -122,8 +122,54 @@ describe('what the agent is told', () => {
     expect(told.instructions).toContain('(photo photo3)');
   });
 
-  it('says what to ask when sir showed it without a question, rather than leaving the agent to guess', () => {
-    expect(JSON.parse(photoShown('photo3')).instructions).toContain('"What does this photo show? (photo photo3)"');
+  it('routes it at once when sir has already said what he wants done with it', () => {
+    const told = JSON.parse(photoShown('photo3')).instructions;
+
+    expect(told).toContain('If he has already said what he wants done with it, call routePromptWorkflow now');
+    expect(told).toContain('"What is the total on this receipt? (photo photo3)"');
+  });
+
+  it('asks sir what to do with a photo he showed without a question, rather than routing a guess', () => {
+    // A guessed question spends a look on a description he may not have wanted; his answer is the
+    // request, and it is routed with the photo's name like any other.
+    const told = JSON.parse(photoShown('photo3')).instructions;
+
+    expect(told).toContain('ask him in a few words what he would like done with it');
+    expect(told).toContain('route his answer the same way');
+    expect(told).not.toContain('What does this photo show?');
+  });
+
+  it('keeps naming the photo, and carries whatever he asked before it along', () => {
+    const told = JSON.parse(photoShown('photo3')).instructions;
+
+    expect(told).toContain('Name the photo that way in every later question about it');
+    expect(told).toContain('if something he asked before this is still unanswered, ask it in the same call');
+  });
+
+  it('routes "nothing" too, since that is what lets the photo go', () => {
+    // Left unrouted, Mastra would go on holding it as waiting, and bring it up again later.
+    const told = JSON.parse(photoShown('photo3')).instructions;
+
+    expect(told).toContain('even if it is that he wants nothing done with it, which is what lets the photo go');
+  });
+
+  it('waits for his answer rather than hanging up under its own question', () => {
+    // The conversation is waiting on him. The turn timeout comes after three seconds, and ending on
+    // it would close the line while he is still deciding — so the prompt's rule for a question
+    // asked (keep waiting) applies, not the ending of a finished request.
+    const told = JSON.parse(photoShown('photo3')).instructions;
+
+    expect(told).toContain('wait for his answer as you would after any question');
+    expect(told).not.toContain(END_QUIETLY);
+    expect(told).not.toContain('end_call');
+  });
+
+  it('leaves a photo he never answers about for later', () => {
+    // Mastra keeps it unlooked-at, and routing brings it up in the closing report of a later request.
+    const told = JSON.parse(photoShown('photo3')).instructions;
+
+    expect(told).toContain('If he never answers, leave the photo be');
+    expect(told).toContain('you will be reminded to ask him about it later');
   });
 
   it('ends every camera outcome that closes the request the way a finished request ends', () => {

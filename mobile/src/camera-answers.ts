@@ -17,7 +17,8 @@
  * 3. The agent calls `openCamera` (`OPEN_CAMERA_TOOL` in `hologram`). The device opens the camera, sends the photo to the
  *    URL it kept with the photo upload key, and answers with the id Mastra filed it under
  *    ({@link photoShown}) — or with why there is none.
- * 4. The agent asks `routePromptWorkflow` about the photo by that id.
+ * 4. The agent asks `routePromptWorkflow` about the photo by that id — at once if sir has said what
+ *    he wants done with it, and otherwise once he has answered being asked ({@link photoShown}).
  *
  * **The URL never passes through the model.** It could have — as a parameter of `openCamera`, copied
  * out of the MCP answer — and then anything that can put words in the model's mouth could have sent
@@ -150,11 +151,38 @@ function answer(fields: Record<string, string>): string {
   return JSON.stringify(fields);
 }
 
-/** The photo is with Mastra: the agent can now ask about it by id. */
+/**
+ * The photo is with Mastra: the agent can now ask about it by id.
+ *
+ * **What is done with it is sir's to say, and he need not say it now.** If he asked for the photo
+ * with a question ("what's the total on this receipt?"), it is routed at once. If he only showed
+ * it — the camera button, "look at this" — he is asked what he would like done with it, and his
+ * answer is itself the request ("add everything on it to the shopping list"). The agent used to
+ * route "What does this photo show?" instead, which spent a look on a description he may not have
+ * wanted and left the photo only ever as useful as the conversation it was taken in.
+ *
+ * **"Nothing" is an answer, and is routed like one.** It is what tells Mastra to let the photo be
+ * (`dismissedPhotoIds` in the routing planner), so he is not asked about it again; left unrouted,
+ * the photo would go on waiting to be brought up.
+ *
+ * **A question asked here is waited on like any other**, so this does not end on
+ * {@link END_QUIETLY}, as the answers that close a request do. The agent's turn timeout asks it to
+ * speak again after three seconds, and a hang-up there closed the line while sir was still deciding
+ * — the failure `FINISHED_REQUEST_INSTRUCTIONS` in `mcp` describes. The agent's prompt keeps a line
+ * open while a question of its own is waiting, and ElevenLabs' silence timeout closes one nobody
+ * answers.
+ *
+ * **A photo he never answers about is not lost with the conversation.** Mastra keeps it, marked as
+ * one nobody has looked at yet, and routing brings it up in the closing report of a later request —
+ * once it has waited a minute, so the conversation that sent it is not asked about it while still
+ * getting round to it (`mcp/AGENTS.md`, "Vision" and "Routing"). If he moves on to something else
+ * instead of answering, a report in this same conversation can bring it up again after that minute,
+ * as it would any question he moved on from.
+ */
 export function photoShown(photoId: string): string {
   return answer({
     photoId,
-    instructions: `Sir has taken the photo, filed as ${photoId}. Call routePromptWorkflow now with what he wants to know about it and "(photo ${photoId})" — for example "What is the total on this receipt? (photo ${photoId})" — and name the photo that way in every later question about it. If he has not said, ask "What does this photo show? (photo ${photoId})". If something he asked before this is still unanswered, ask it in the same call.`,
+    instructions: `Sir has taken the photo, filed as ${photoId}. If he has already said what he wants done with it, call routePromptWorkflow now with that and "(photo ${photoId})" — for example "What is the total on this receipt? (photo ${photoId})". If he has not, ask him in a few words what he would like done with it, and route his answer the same way — even if it is that he wants nothing done with it, which is what lets the photo go. Name the photo that way in every later question about it, and if something he asked before this is still unanswered, ask it in the same call. Having asked, wait for his answer as you would after any question: he may take a moment to decide. If he never answers, leave the photo be: it is kept, and you will be reminded to ask him about it later.`,
   });
 }
 

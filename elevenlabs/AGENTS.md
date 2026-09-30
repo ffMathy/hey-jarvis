@@ -267,6 +267,23 @@ behind `routePromptWorkflow`, and the prompt says so; the photo is the exception
 URL has to be ready the moment sir raises the camera, not after the planner has run. What the photo
 *shows* is routed like anything else.
 
+**A photo nobody asked about is not lost with the conversation.** The phone's answer to `openCamera`
+(`photoShown`) has the agent route the photo at once only when sir has said what he wants done with
+it; otherwise it asks him, and routes his answer — itself a request, "add everything on it to the
+shopping list" — with the photo's id like any other. "Nothing" is routed too: the planner dismisses
+the photo, so he is not asked about it again, and the request finishes rather than failing. Having
+asked, the agent waits for him as after any question of its own — `photoShown` carries no `end_call`
+line, because the three-second turn timeout would hang up while he is still deciding — and if he
+never answers, the photo stays with Mastra as one nobody has looked at. Routing then brings it up in
+the closing report of the next request it answers, in whichever conversation that is, the way it
+brings up earlier work still waiting on sir — and his reply is planned as work on the photo, or as
+dismissing it (`mcp/AGENTS.md`, "Vision" and "Routing"). A photo is only brought up once it has
+waited a minute unlooked-at, so the conversation that just sent it is not asked about it while still
+getting round to it; if sir answers the question with another request that runs past that minute,
+its report can ask again, as it would about any question he moved on from. None of this is in the
+prompt: it arrives in `instructions`, beside the rest of routing's run-time mechanics, when it
+applies.
+
 **`openCamera` waits as long as ElevenLabs allows, and cannot be interrupted while it does** —
 `expectsResponse: true`, `responseTimeoutSecs: 120`, `interruptionMode: disable_during_tool` (with
 the deprecated `disableInterruptions` set to agree) — so the agent holds the turn while sir frames

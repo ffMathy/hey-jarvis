@@ -65,7 +65,7 @@ const PHOTO_ID = 'photo1';
 const PHOTO_SHOWN = JSON.stringify({
   photoId: PHOTO_ID,
   instructions:
-    'Sir has taken the photo, filed as photo1. Call routePromptWorkflow now with what he wants to know about it and "(photo photo1)" — for example "What is the total on this receipt? (photo photo1)" — and name the photo that way in every later question about it. If he has not said, ask "What does this photo show? (photo photo1)". If something he asked before this is still unanswered, ask it in the same call.',
+    'Sir has taken the photo, filed as photo1. If he has already said what he wants done with it, call routePromptWorkflow now with that and "(photo photo1)" — for example "What is the total on this receipt? (photo photo1)". If he has not, ask him in a few words what he would like done with it, and route his answer the same way — even if it is that he wants nothing done with it, which is what lets the photo go. Name the photo that way in every later question about it, and if something he asked before this is still unanswered, ask it in the same call. Having asked, wait for his answer as you would after any question: he may take a moment to decide. If he never answers, leave the photo be: it is kept, and you will be reminded to ask him about it later.',
 });
 
 /** A request that can only be answered by looking at something. */

@@ -2,6 +2,7 @@ import type { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
 import { createAgent, getModel } from '../../utils/index.js';
 import { getPublicAgents } from '..';
+import { howLongAgo, type WaitingPhoto } from '../vision/photos.js';
 import type { PlannedChain } from './plan.js';
 import type { OpenQuestion } from './questions.js';
 import { chainsFromTasks } from './task-chains.js';
@@ -56,6 +57,10 @@ export { PLANNER_AGENT_ID };
  * the user by Jarvis, so the reply arrives as an ordinary request -- "push, please" -- and the
  * planner, which reads every request anyway and is shown the questions still open, is the one
  * place that can tell an answer from a new errand without Jarvis having to label it.
+ *
+ * `dismissedPhotoIds` is the one reply about a waiting photo that is not work: "nothing, never
+ * mind". Without it such a reply planned no task and no answer, and the empty plan was reported to
+ * sir as a request no agent could handle. Required and empty-when-absent, like `answers`.
  */
 /**
  * How long, and in what voice, Jarvis should answer a request.
@@ -107,6 +112,9 @@ const planSchema = z.object({
       }),
     )
     .describe('Answers this request gives to the questions listed as waiting, if any; empty otherwise'),
+  dismissedPhotoIds: z
+    .array(z.string())
+    .describe('The ids of listed photos the user wants nothing done with, if any; empty otherwise'),
 });
 
 export { planSchema };
@@ -170,6 +178,15 @@ Sometimes work started earlier — an agent on an earlier request, or a coding s
 - A request can answer a question and ask for something else at the same time; plan the something else as usual
 - If the request answers none of them, or none are listed, leave \`answers\` empty. Never answer a question on the user's behalf, and never treat a new request as an answer just because a question is waiting
 
+# Photos nobody has looked at yet
+The user can show Jarvis something with his phone's camera. Photos he has sent that nobody has looked at yet are listed after the request, each by its id and how long ago he sent it. Jarvis may have asked him what he would like done with one, so the request can be his reply ("Answer to 'what would you like done with the photo?': add everything on it to the shopping list").
+
+- If the request says what to do with one of them, or asks about a photo he sent, plan it as ordinary tasks: the \`vision\` agent looks at the photo, and its prompt names the photo the way a request does — "(photo photo3)" — beside what to find out from it. Any task that acts on what the photo shows needs that task
+- "The photo", "the picture" or "it" means the one listed when there is one, and the one sent last when there are several
+- A photo is never a waiting question: never put one in \`answers\`, even when the request replies to being asked about it
+- If he wants nothing done with one — "nothing", "never mind", "I was only testing" — put its id in \`dismissedPhotoIds\` and write no task for it: it stops waiting, and he is not asked about it again. Only for a photo he said so about; otherwise leave \`dismissedPhotoIds\` empty
+- A request about something else leaves them alone: write no task for a photo the request does not mention
+
 # How the answer should sound
 Set \`responseStyle\` to how Jarvis should answer once the plan has run. Ask where the value of the request lands:
 - \`command\` — it changes something in the world, and the words only confirm it: lights, blinds, music, scenes, heating, an alarm or timer, adding to the shopping or to-do list, sending a message. He wants it done, not described
@@ -177,7 +194,7 @@ Set \`responseStyle\` to how Jarvis should answer once the plan has run. Ask whe
 - \`briefing\` — it asks for several facts or a summary: the calendar for the week, new emails, research, a recipe, a status report
 - \`conversation\` — it is open-ended: an opinion, advice, planning something together, chat
 
-When a request mixes kinds, pick the one that needs the most words — a command and a lookup together is a \`lookup\`; anything with a briefing in it is a \`briefing\`. An answer to a waiting question takes the style of the work it resumes. With no tasks at all, use \`conversation\`.
+When a request mixes kinds, pick the one that needs the most words — a command and a lookup together is a \`lookup\`; anything with a briefing in it is a \`briefing\`. An answer to a waiting question takes the style of the work it resumes. A request that only dismisses photos is a \`command\`. With no tasks at all otherwise, use \`conversation\`.
 
 # Critical rules
 - If no agent can handle part of the request, leave it out rather than misassigning it
@@ -224,8 +241,8 @@ export async function getRoutingPlannerAgent(): Promise<Agent> {
     model: getModel(PLANNER_MODEL),
     // Planning one request has nothing to recall from the last one, and memory here would
     // buy an embedding round trip on the one path that cannot afford any. The questions still
-    // waiting on the user are the one thing it does need from earlier requests, and those are
-    // handed to it in the prompt (see `plannerPrompt`).
+    // waiting on the user, and the photos nobody has looked at, are the one thing it does need
+    // from earlier requests, and those are handed to it in the prompt (see `plannerPrompt`).
     memory: undefined,
   });
 }
@@ -237,30 +254,63 @@ export interface PlannedAnswer {
 }
 
 /**
- * What the planner is given: the request, and the questions still waiting on the user.
+ * What the planner is given: the request, the questions still waiting on the user, and the photos
+ * he has sent that nobody has looked at yet.
  *
  * With nothing waiting it is the request alone, exactly as it always was, so the common case is
  * planned from the same input as before questions existed.
+ *
+ * Photos are listed with their age, oldest first, so "the photo" can be read as the one sent last,
+ * and each by the id a vision task has to be handed (see `routing/waiting-photos.ts`).
  */
-export function plannerPrompt(userQuery: string, openQuestions: OpenQuestion[]): string {
-  if (openQuestions.length === 0) {
+export function plannerPrompt(
+  userQuery: string,
+  openQuestions: OpenQuestion[],
+  waitingPhotos: readonly WaitingPhoto[] = [],
+  now = Date.now(),
+): string {
+  if (openQuestions.length === 0 && waitingPhotos.length === 0) {
     return userQuery;
   }
 
-  const waiting = openQuestions
-    .map((question) => `- id "${question.id}", asked by ${question.agentId}: ${question.question}`)
-    .join('\n');
+  const sections = [`The request:\n${userQuery}`];
+  if (openQuestions.length > 0) {
+    const waiting = openQuestions
+      .map((question) => `- id "${question.id}", asked by ${question.agentId}: ${question.question}`)
+      .join('\n');
+    sections.push(`Questions waiting for the user's answer:\n${waiting}`);
+  }
+  if (waitingPhotos.length > 0) {
+    const photos = waitingPhotos
+      .map((photo) => `- ${photo.photoId}, sent ${howLongAgo(now - photo.keptAt)}`)
+      .join('\n');
+    sections.push(`Photos the user has sent that nobody has looked at yet:\n${photos}`);
+  }
 
-  return `The request:\n${userQuery}\n\nQuestions waiting for the user's answer:\n${waiting}`;
+  return sections.join('\n\n');
 }
 
-/** Asks the planner for a plan: the chains it runs as, and any answers the request gave. */
+/**
+ * Asks the planner for a plan: the chains it runs as, any answers the request gave, and any waiting
+ * photos it said sir wants nothing done with.
+ *
+ * A waiting photo is shown to the planner but never answered: sir's reply about one is a request
+ * of its own, planned as work on the photo, so an answer naming a photo's id is dropped below with
+ * any other id that names no open question. Only a reply that he wants nothing done with it is not
+ * work, and that comes back as a dismissal instead.
+ */
 export async function planDelegations(
   planner: Agent,
   userQuery: string,
   openQuestions: OpenQuestion[] = [],
-): Promise<{ chains: PlannedChain[]; answers: PlannedAnswer[]; responseStyle: ResponseStyle }> {
-  const response = await planner.generate(plannerPrompt(userQuery, openQuestions), {
+  waitingPhotos: readonly WaitingPhoto[] = [],
+): Promise<{
+  chains: PlannedChain[];
+  answers: PlannedAnswer[];
+  dismissedPhotoIds: string[];
+  responseStyle: ResponseStyle;
+}> {
+  const response = await planner.generate(plannerPrompt(userQuery, openQuestions, waitingPhotos), {
     structuredOutput: { schema: planSchema },
     toolChoice: 'none',
   });
@@ -275,9 +325,15 @@ export async function planDelegations(
   const openIds = new Set(openQuestions.map((question) => question.id));
   const answers = plan.answers.filter((answer) => openIds.has(answer.questionId) && answer.answer.trim().length > 0);
 
+  // Only photos it was shown, for the same reason: a made-up id would dismiss nothing, and would
+  // still let an otherwise empty plan pass for one that did something.
+  const waitingIds = new Set(waitingPhotos.map((photo) => photo.photoId));
+  const dismissedPhotoIds = [...new Set(plan.dismissedPhotoIds)].filter((photoId) => waitingIds.has(photoId));
+
   return {
     chains: chainsFromTasks(plan.tasks, await getRoutableAgentIds()),
     answers,
+    dismissedPhotoIds,
     responseStyle: plan.responseStyle,
   };
 }

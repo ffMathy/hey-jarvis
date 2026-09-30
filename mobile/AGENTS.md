@@ -301,6 +301,7 @@ phone  keeps the upload URL (camera-answers.ts readOfferedUploadUrl)
 agent ─ openCamera (client tool, no parameters) ──▶ phone opens the camera
 phone  PUT image/jpeg, Authorization: Bearer <photo upload key> ──▶ Mastra /api/photos/<token> ──▶ { photoId }
 phone  answers openCamera with the id ──▶ agent asks routePromptWorkflow "… (photo photo3)"
+                                          (or first asks sir what he wants done with it)
 ```
 
 Five decisions carry it, and each has a reason:
@@ -365,6 +366,23 @@ because ElevenLabs ends a call thirty seconds after the user last spoke — whet
 time behind the camera app, where JavaScript's timers stop, is still to be checked on a device. A
 photo not taken, or a tap that never came, ends the conversation the way a finished request does:
 said nothing about, and `end_call` if sir stays quiet.
+
+**A photo sir says nothing about is not lost with the conversation.** `photoShown` has the agent
+route the photo at once only when sir has already said what he wants done with it. If he only
+showed it — the button, "look at this" — the agent asks him what he would like done with it, and
+routes his answer with "(photo photo3)" like any other request — "nothing" included, which is what
+lets the photo go, so he is not asked about it again. It used to route "What does this photo show?"
+instead, which spent a look on a description he may not have wanted and left the photo only as
+useful as the conversation it was taken in. Now a photo nobody has looked at waits on the Mastra
+server for as long as it is kept, and routing brings it up in the closing report of whatever request
+comes next — in this conversation or a later one, on any device — the way it brings up earlier work
+still waiting on him (`mcp/AGENTS.md`, "Vision" and "Routing"). It is left alone for its first
+minute, so the conversation that just sent it is not asked about it while still getting round to it;
+if sir answers the question with another request that runs past that minute, its report can ask
+again, as it would about any question he moved on from. Unlike the outcomes above, the question does
+not end on `END_QUIETLY`: the conversation is waiting on him, and a hang-up at the three-second turn
+timeout would close the line while he is still deciding. The prompt keeps a line open after a
+question it asked, and ElevenLabs' silence timeout ends one nobody answers.
 
 **Only the phone is asked, and only with the key.** Once connected, a phone that has the photo
 upload key tells the agent it has a camera (`CAMERA_ON_THIS_DEVICE`, a contextual update); the

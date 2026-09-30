@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { withRetry } from '../../utils/retry.js';
 import { createTool, type ToolMastra } from '../../utils/tool-factory.js';
 import { getPhotoReaderAgent, PHOTO_READER_AGENT_ID } from './agents.js';
-import { findPhoto, openUploadSlot } from './photos.js';
+import { findPhoto, howLongAgo, markPhotoLookedAt, openUploadSlot } from './photos.js';
 import { configuredPhotoUploadKey } from './upload-key.js';
 
 /**
@@ -24,7 +24,7 @@ export const PHOTO_UPLOAD_PATH = '/api/photos';
  * model might pass on — so a model talked into naming some other address cannot send sir's photo
  * there.
  */
-export const PHOTO_UPLOAD_READY = `Now call ${OPEN_CAMERA_TOOL}, with no parameters: sir's phone opens its camera, sends the photo here, and hands you back the photo's id. Then ask routePromptWorkflow what he wants to know about it, naming the photo by that id.`;
+export const PHOTO_UPLOAD_READY = `Now call ${OPEN_CAMERA_TOOL}, with no parameters: sir's phone opens its camera, sends the photo here, and hands you back the photo's id with what to do next — routing it through routePromptWorkflow, naming the photo by that id, once sir has said what he wants done with it.`;
 
 /** What the voice agent is told when this server cannot say where it is. */
 export const PHOTO_UPLOAD_UNAVAILABLE =
@@ -127,15 +127,6 @@ export const preparePhotoUpload = createTool({
 export const NO_PHOTO_TO_LOOK_AT =
   'There is no such photo to look at: photos are kept for half an hour, and a question that names none only means one shown in the last few minutes. Sir can show one with the camera on his phone.';
 
-/** How long ago something happened, in words for an answer that will be read out. */
-function howLongAgo(milliseconds: number): string {
-  const minutes = Math.floor(milliseconds / 60_000);
-  if (minutes < 1) {
-    return 'just now';
-  }
-  return minutes === 1 ? 'a minute ago' : `${minutes} minutes ago`;
-}
-
 /**
  * The photo reader, as registered on this Mastra instance — or a fresh one, where there is none.
  *
@@ -163,6 +154,10 @@ async function resolvePhotoReader(mastra: ToolMastra | undefined): Promise<Agent
  * content*, quoted, because text in a photo is written by whoever made the thing photographed — a
  * flyer, a letter, a sign — and must reach the agents after this one as something to report, never
  * as something to do.
+ *
+ * **A reading is what stops a photo waiting** (see `photosWaiting` in `photos.ts`). Only once the
+ * reader has answered: a reading that failed has told sir nothing about his photo, so it is still
+ * worth bringing up.
  */
 export const lookAtPhoto = createTool({
   id: 'lookAtPhoto',
@@ -198,6 +193,7 @@ export const lookAtPhoto = createTool({
         ]),
       { label: 'lookAtPhoto' },
     );
+    markPhotoLookedAt(photo.photoId);
 
     // Its age too, so the agent reading this can tell a photo just taken from one shown earlier.
     return {

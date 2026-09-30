@@ -64,7 +64,7 @@ mcp/
 │   │   │   └── index.ts
 │   │   ├── vision/          # Photos shown from the phone's camera, and the agents that read them
 │   │   │   ├── agents.ts
-│   │   │   ├── photos.ts    # The in-memory store and its upload slots
+│   │   │   ├── photos.ts    # The in-memory store, its upload slots, and which photos are waiting
 │   │   │   ├── tools.ts
 │   │   │   ├── upload-key.ts # The key the phone sends with every photo
 │   │   │   └── index.ts
@@ -429,8 +429,36 @@ and ask about it. The camera and the shot are the phone's (see "Showing him some
 3. The phone `PUT`s the JPEG to the URL with the **photo upload key** from its settings, as
    `Authorization: Bearer <key>`. The first body sent to a slot within five minutes, with the key, is
    the photo; it answers `201` with `{ photoId }`, which `openCamera` hands back to the agent.
-4. The agent calls `routePromptWorkflow` with sir's question and `(photo <id>)` in it, and the
-   planner routes it to the vision agent.
+4. The agent calls `routePromptWorkflow` with what sir wants done with it and `(photo <id>)` in it —
+   asking him first if he has not said — and the planner routes it to the vision agent.
+
+**A photo nobody has looked at is not lost with the conversation.** Sir can take one and say nothing,
+or hang up before saying what it was for. Until `lookAtPhoto` has a reading for it
+(`markPhotoLookedAt`), or sir says he wants nothing done with it (`dismissPhoto`), a photo is
+*waiting* (`photosWaiting` in `vision/photos.ts`), and routing picks it up from there
+(`routing/waiting-photos.ts` — routing depends on vision, never the other way):
+- **The planner is shown every waiting photo**, after the request, by id and age (`- photo3, sent 4
+  minutes ago`). A request that says what to do with one is planned as work on it: the vision agent
+  reading `(photo photo3)`, and anything acting on what it shows chained after it. "The photo" means
+  the one listed, or the one sent last. A photo is never an `answers` entry, since nothing is
+  suspended on it; his reply is a request of its own.
+- **"Nothing, never mind" dismisses it.** That reply is not work, and with nowhere to put it the
+  planner used to return an empty plan, which was reported to sir as a request no agent could
+  handle. The plan's `dismissedPhotoIds` (required, empty-when-absent, like `answers`) takes it
+  instead: the controller dismisses those photos, and a plan that does nothing else finishes as done
+  rather than failing. A dismissed photo is still kept, so a question he thinks better of finds it;
+  it is only no longer waiting.
+- **A later request's closing report brings it up**, in `questionsForUser` with the photo id as its
+  id: `Sir sent you a photo 4 minutes ago (photo3) that nobody has looked at yet: ask him what he
+  would like done with it.` Only once it has waited a minute unlooked-at (`PHOTO_WAITING_GRACE_MS`),
+  because the conversation that sent it routes it within seconds, and then left alone for
+  `QUESTION_REMINDER_INTERVAL_MS` like a question. A photo is kept for just as long, so in practice
+  it is brought up once. The grace is not tied to a conversation, which nothing here knows: if sir
+  answers "what would you like done with it?" with another request that runs past the minute, its
+  report asks again, as it would about any question he moved on from. See **Questions for the user**
+  under [Routing](#routing).
+- **Only a reading counts.** A reader that failed has told sir nothing about his photo, so it stays
+  waiting; a question about a photo that is not kept marks nothing.
 
 **The photo upload key** (`vision/upload-key.ts`) is a shared secret: `HEY_JARVIS_PHOTO_UPLOAD_KEY`
 on the server, and the same value typed into the phone's settings. It is there because the upload
@@ -459,7 +487,8 @@ contract test in `mobile` reads it and the variable's name from `upload-key.ts`.
 - **`lookAtPhoto`**: fetches the photo by id and shows it, beside the question, to the photo reader.
   The only way any agent here sees a photo, since a routed agent is handed text and nothing else.
   Its answer is the reading quoted as the photo's content, with the photo's age:
-  `Photo photo1, taken just now, shows: «…»`.
+  `Photo photo1, taken just now, shows: «…»`. Once the reader has answered, the photo is no longer
+  waiting.
 
 **Agents** (`vision/agents.ts`):
 - **`vision`** is public, so the planner routes to it. It finds the id and the question in its
@@ -1036,6 +1065,16 @@ brought up is left alone for 30 minutes (`QUESTION_REMINDER_INTERVAL_MS`), so a 
 it once rather than after every request, and a superseded request or one he is to be notified about
 brings nothing up, since nobody hears its report. Open questions live in memory, so a restart forgets them while the
 suspended run stays in storage; the request then has to be made again.
+
+**A photo he sent that nobody has looked at yet** is brought up the same way (`takePhotosToBringUp`
+in `routing/waiting-photos.ts`, into `waitingPhotos` beside `earlierQuestions`): after the earlier
+questions and before the request's own in `questionsForUser`, under the same conditions, and in the
+failure path too. The instructions name a photo — "work he started earlier, or a photo he sent" — and
+ask for its id in the reply as `(photo photo3)` only when one is waiting, so every other report reads
+as it did. The difference is the reply: it is not an answer to hand back but a request, which the
+planner, shown every waiting photo, plans as work on that photo — or, for "nothing", as dismissing it
+(`dismissedPhotoIds`), which the instructions ask to be routed like any other reply. See **A photo
+nobody has looked at is not lost with the conversation** under [Vision Vertical](#vision-vertical).
 
 A reply given on a call or on the house speakers only reaches the work if the ElevenLabs agent
 routes it, so its prompt (`elevenlabs/src/assets/agent-prompt.md`) says a reply to a question the

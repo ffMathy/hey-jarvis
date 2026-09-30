@@ -63,6 +63,7 @@ function scriptedPlanner() {
           responseStyle: 'command',
           tasks: [],
           answers: [{ questionId: waitingQuestionId, answer: ANSWER }],
+          dismissedPhotoIds: [],
         }),
       };
     }
@@ -73,12 +74,13 @@ function scriptedPlanner() {
           responseStyle: 'briefing',
           tasks: [{ id: 'feature', agentId: 'coding', prompt: FEATURE_REQUEST, needs: '' }],
           answers: [],
+          dismissedPhotoIds: [],
         }),
       };
     }
 
     // Nothing any agent can do, and no answer to anything.
-    return { text: JSON.stringify({ responseStyle: 'conversation', tasks: [], answers: [] }) };
+    return { text: JSON.stringify({ responseStyle: 'conversation', tasks: [], answers: [], dismissedPhotoIds: [] }) };
   });
 }
 

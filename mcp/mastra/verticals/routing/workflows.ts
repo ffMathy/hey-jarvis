@@ -88,12 +88,14 @@ const instructionsOutputSchema = z.object({
   questionsForUser: z
     .array(
       z.object({
-        id: z.string().describe('The task that asked'),
+        id: z.string().describe('The task that asked, or the photo it is about'),
         question: z.string().describe('What to ask the user'),
       }),
     )
     .optional()
-    .describe('Questions only the user can answer, which this request or work started earlier is waiting on'),
+    .describe(
+      'Questions only the user can answer, which this request, work started earlier or a photo he sent is waiting on',
+    ),
   slowTaskIds: z
     .array(z.string())
     .optional()
@@ -265,6 +267,21 @@ function allTasksCompletedInstructions(style: ResponseStyle): string {
 }
 
 /**
+ * How sir's reply about a waiting photo goes back, beside everything else he answers.
+ *
+ * With the photo's id in it, as the phone names a photo it has just sent: a planner reading "add
+ * everything on it" with two photos waiting has to be told which "it" is.
+ *
+ * "Nothing" goes back too. It is the likeliest reply to being asked about a photo in a conversation
+ * about something else, and routing it is what lets the photo go (`dismissedPhotoIds` in
+ * `planner.ts`) rather than leaving it waiting — and it is planned as done, not as a failure.
+ */
+const PHOTO_ANSWER_INSTRUCTIONS =
+  'What he says about a photo goes the same way, with the photo named by its id as you name any photo — ' +
+  '"(photo photo3)" — so that whatever he asks for is done with that one. That includes wanting nothing done ' +
+  'with it: routed, it lets the photo go, and he is not asked about it again. ';
+
+/**
  * The closing instruction when part of the request stopped to ask sir something.
  *
  * Three things have to survive the trip into a voice model that is otherwise told never to ask
@@ -275,13 +292,28 @@ function allTasksCompletedInstructions(style: ResponseStyle): string {
  * the reply as an answer to one of them (see `verticals/routing/questions.ts`).
  *
  * The question comes last so that his answer is the next thing he says.
+ *
+ * A photo he sent that nobody has looked at yet is brought up the same way (see
+ * `routing/waiting-photos.ts`), and the wording names it only when one is there — so a report with no
+ * photo waiting reads exactly as it did before photos could wait. His reply about a photo is routed
+ * like any other; what it needs beyond that is the photo's id, since that is what the planner hands
+ * the vision agent.
  */
-function askTheUserInstructions(hasResults: boolean, style: ResponseStyle, waitingOnThisRequest: boolean): string {
+function askTheUserInstructions(
+  hasResults: boolean,
+  style: ResponseStyle,
+  waitingOnThisRequest: boolean,
+  hasWaitingPhotos: boolean,
+): string {
+  const leadFromEarlier = hasWaitingPhotos
+    ? 'This request has finished, but work he started earlier, or a photo he sent, is still waiting on him: what to ' +
+      'ask him is in questionsForUser, and its id says which work or which photo it is about. '
+    : 'This request has finished, but work he started earlier is still waiting on him to answer a question, which ' +
+      'is in questionsForUser; its id says what the work is. ';
   const lead = waitingOnThisRequest
     ? 'Part of this request cannot go on until the user answers a question, which is in questionsForUser. ' +
       (hasResults ? `Everything else has finished. ${recapInstructions(style)}Then ` : '')
-    : 'This request has finished, but work he started earlier is still waiting on him to answer a question, which ' +
-      'is in questionsForUser; its id says what the work is. ' +
+    : leadFromEarlier +
       (hasResults ? `${recapInstructions(style)}Then remind him of it and ` : 'Remind him of it and ');
 
   return (
@@ -292,8 +324,9 @@ function askTheUserInstructions(hasResults: boolean, style: ResponseStyle, waiti
     'though you otherwise never ask him anything, and never answer it for him or guess what he would say. ' +
     'If there is more than one, ask them together, saying what each is about. ' +
     'When he answers, send his answer through routePromptWorkflow in his own words, exactly as you would any other ' +
-    'request: that is what carries it back to the work that asked. If he asks for something else instead, route that ' +
-    'as usual, and the question stays open. ' +
+    'request: that is what carries it back to the work that asked. ' +
+    (hasWaitingPhotos ? PHOTO_ANSWER_INSTRUCTIONS : '') +
+    'If he asks for something else instead, route that as usual, and the question stays open. ' +
     CONVERSATION_CONTROL_EXCEPTION
   );
 }
@@ -394,11 +427,21 @@ export function resetPollDeadlineForTest(): void {
 }
 
 /**
- * What the closing report says about questions earlier work is waiting on, when the request failed.
+ * What the closing report says about questions earlier work is waiting on, and photos nobody has
+ * looked at, when the request failed.
  *
- * A failed request is still a reply sir hears, and the question may be the reason he called.
+ * A failed request is still a reply sir hears, and the question may be the reason he called. As in
+ * `askTheUserInstructions`, a photo is named only when one is waiting.
  */
-function earlierQuestionsAfterFailure(): string {
+function earlierQuestionsAfterFailure(hasWaitingPhotos: boolean): string {
+  if (hasWaitingPhotos) {
+    return (
+      'Then remind him that work he started earlier, or a photo he sent, is still waiting on him — what to ask him ' +
+      'is in questionsForUser, and its id says which work or which photo it is about — and ask it as the last thing ' +
+      `you say. If he answers, send his answer through routePromptWorkflow in his own words. ${PHOTO_ANSWER_INSTRUCTIONS}`
+    );
+  }
+
   return (
     'Then remind him that work he started earlier is still waiting on him to answer the question in ' +
     'questionsForUser — its id says what the work is — and ask it as the last thing you say. If he answers, send ' +
@@ -409,6 +452,14 @@ function earlierQuestionsAfterFailure(): string {
 /** The questions a closing report asks, as Jarvis is handed them. */
 function questionsForUser(questions: OpenQuestion[]): { id: string; question: string }[] {
   return questions.map((question) => ({ id: question.taskId, question: question.question }));
+}
+
+/**
+ * What a closing report brings up from before this request: the questions earlier work is waiting
+ * on, then the photos nobody has looked at (see `bringUpEarlierQuestions` in `controller.ts`).
+ */
+function waitingFromEarlier(snapshot: RoutingSnapshot): { id: string; question: string }[] {
+  return [...questionsForUser(snapshot.earlierQuestions), ...snapshot.waitingPhotos];
 }
 
 /**
@@ -428,6 +479,9 @@ function questionsForUser(questions: OpenQuestion[]): { id: string; question: st
  * — and this one sweeps up anything that went missing on the way.
  */
 function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructionsOutputSchema> {
+  const fromEarlier = waitingFromEarlier(snapshot);
+  const hasWaitingPhotos = snapshot.waitingPhotos.length > 0;
+
   if (snapshot.error) {
     // Whatever landed before the failure is still the user's answer to part of what he
     // asked, so it goes with the apology rather than being dropped alongside the rest.
@@ -436,32 +490,34 @@ function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructi
       instructions:
         `The request could not be completed: ${snapshot.error}. Tell him plainly, in a sentence, what could not be ` +
         `done, then anything that did finish: ${speakingInstructions(snapshot.responseStyle)} ` +
-        (snapshot.earlierQuestions.length > 0
-          ? earlierQuestionsAfterFailure() + CONVERSATION_CONTROL_EXCEPTION
+        (fromEarlier.length > 0
+          ? earlierQuestionsAfterFailure(hasWaitingPhotos) + CONVERSATION_CONTROL_EXCEPTION
           : FINISHED_REQUEST_INSTRUCTIONS + CONVERSATION_CONTROL_EXCEPTION),
       ...(answered.length > 0 && {
         completedTaskResults: answered.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
       }),
       taskIdsInProgress: [],
-      ...(snapshot.earlierQuestions.length > 0 && { questionsForUser: questionsForUser(snapshot.earlierQuestions) }),
+      ...(fromEarlier.length > 0 && { questionsForUser: fromEarlier }),
     };
   }
 
   const completedTaskResults = snapshot.all.map((outcome) => ({ id: outcome.taskId, result: outcome.result }));
 
-  // Earlier work's questions first and this request's own last: his next words most likely answer
-  // the last thing he was asked, and that should be the question he has just been working with.
-  const questions = [...snapshot.earlierQuestions, ...snapshot.questions];
+  // Earlier work's questions and waiting photos first, and this request's own last: his next words
+  // most likely answer the last thing he was asked, and that should be the question he has just been
+  // working with.
+  const questions = [...fromEarlier, ...questionsForUser(snapshot.questions)];
   if (questions.length > 0) {
     return {
       instructions: askTheUserInstructions(
         completedTaskResults.length > 0,
         snapshot.responseStyle,
         snapshot.questions.length > 0,
+        hasWaitingPhotos,
       ),
       ...(completedTaskResults.length > 0 && { completedTaskResults }),
       taskIdsInProgress: [],
-      questionsForUser: questionsForUser(questions),
+      questionsForUser: questions,
     };
   }
 

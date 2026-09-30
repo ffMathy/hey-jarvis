@@ -1,14 +1,18 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 import {
   claimUploadSlot,
+  dismissPhoto,
   findPhoto,
   forgetPhotos,
+  howLongAgo,
   KEEP_PHOTO_MS,
   keepPhoto,
   LATEST_PHOTO_STANDS_IN_MS,
   MAX_KEPT_PHOTOS,
   MAX_OPEN_SLOTS,
+  markPhotoLookedAt,
   openUploadSlot,
+  photosWaiting,
   UPLOAD_SLOT_MS,
 } from './photos.js';
 
@@ -119,5 +123,102 @@ describe('the photos kept', () => {
   it('are nothing to find when none has been kept', () => {
     expect(findPhoto(undefined, 0)).toBeUndefined();
     expect(findPhoto('photo1', 0)).toBeUndefined();
+  });
+});
+
+describe('a photo nobody has looked at yet', () => {
+  it('is waiting from the moment it is kept', () => {
+    const photo = keepPhoto(PHOTO, 'image/jpeg', 1_000);
+
+    expect(photo.lookedAt).toBeUndefined();
+    expect(photosWaiting(1_000)).toEqual([{ photoId: 'photo1', keptAt: 1_000 }]);
+  });
+
+  it('stops waiting once it has been looked at, and remembers when that first was', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0);
+
+    markPhotoLookedAt('photo1', 5_000);
+    markPhotoLookedAt('photo1', 9_000);
+
+    expect(photosWaiting(9_000)).toEqual([]);
+    expect(findPhoto('photo1', 9_000)?.lookedAt).toBe(5_000);
+  });
+
+  it('is marked by an id that lost its shape on the way through two models', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0);
+
+    markPhotoLookedAt('Photo 1', 0);
+
+    expect(photosWaiting(0)).toEqual([]);
+  });
+
+  it('leaves the others waiting, oldest first', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0);
+    keepPhoto(PHOTO, 'image/jpeg', 10);
+    keepPhoto(PHOTO, 'image/jpeg', 20);
+
+    markPhotoLookedAt('photo2', 30);
+
+    expect(photosWaiting(30)).toEqual([
+      { photoId: 'photo1', keptAt: 0 },
+      { photoId: 'photo3', keptAt: 20 },
+    ]);
+  });
+
+  it('is marked for nothing when the id names no photo kept', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0);
+
+    markPhotoLookedAt('photo99', 0);
+
+    expect(photosWaiting(0)).toEqual([{ photoId: 'photo1', keptAt: 0 }]);
+  });
+
+  it('stops waiting once sir says he wants nothing done with it, without counting as looked at', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0);
+    keepPhoto(PHOTO, 'image/jpeg', 10);
+
+    dismissPhoto('Photo 1', 5_000);
+    dismissPhoto('photo1', 9_000);
+
+    expect(photosWaiting(9_000)).toEqual([{ photoId: 'photo2', keptAt: 10 }]);
+    // Still kept, so a question he thinks better of a minute later finds it.
+    expect(findPhoto('photo1', 9_000)?.dismissedAt).toBe(5_000);
+    expect(findPhoto('photo1', 9_000)?.lookedAt).toBeUndefined();
+  });
+
+  it('is dismissed for nothing when the id names no photo kept', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0);
+
+    dismissPhoto('photo99', 0);
+
+    expect(photosWaiting(0)).toEqual([{ photoId: 'photo1', keptAt: 0 }]);
+  });
+
+  it('stops waiting once it is let go of, since nothing could look at it any more', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0);
+    keepPhoto(PHOTO, 'image/jpeg', 60_000);
+
+    expect(photosWaiting(KEEP_PHOTO_MS)).toEqual([{ photoId: 'photo2', keptAt: 60_000 }]);
+  });
+
+  it('is forgotten with every other photo, and a new one waits afresh under the first id', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0);
+    markPhotoLookedAt('photo1', 0);
+
+    forgetPhotos();
+    const fresh = keepPhoto(PHOTO, 'image/jpeg', 0);
+
+    expect(fresh.photoId).toBe('photo1');
+    expect(fresh.lookedAt).toBeUndefined();
+    expect(fresh.dismissedAt).toBeUndefined();
+    expect(photosWaiting(0)).toEqual([{ photoId: 'photo1', keptAt: 0 }]);
+  });
+});
+
+describe('how long ago, in words to be read out', () => {
+  it('is "just now" inside a minute, and whole minutes after that', () => {
+    expect(howLongAgo(59_999)).toBe('just now');
+    expect(howLongAgo(60_000)).toBe('a minute ago');
+    expect(howLongAgo(4 * 60_000 + 59_999)).toBe('4 minutes ago');
   });
 });
