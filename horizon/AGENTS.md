@@ -182,8 +182,9 @@ after. The product rules pinned in `app-state.spec.ts`:
 events so each step sees the model the previous one left, and carries out the
 effects: it places him in the next XR frame (the head, the gaze or the ray of the
 select that summoned him, the depth probes), anchors the spot, drives the
-hologram from the conversation or from sample mode (`app/sample-driver.ts`, built
-from hologram's `moodOf` / `fillSimulatedSpectrum` / `simulatedUserAt`), and
+hologram from the conversation or from sample mode (`app/sample-driver.ts`, which
+only remembers the mood and takes what it hands the hologram from hologram's
+`createSampleDrive`, the code the phone's and the watch's sample hooks wrap), and
 arranges the panels: what is about him is world-locked under him; the hint and
 status line follow the gaze with a lag. A select also calls the wake engine's
 `rebuild` when it needs a gesture to get audio going again, since a select is the
