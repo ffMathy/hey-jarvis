@@ -56,3 +56,43 @@ export function readSessionQuestion(finalMessage: string): string | undefined {
 
   return truncate(question, { length: MAXIMUM_QUESTION_LENGTH });
 }
+
+/**
+ * Reads the question out of a turn that asked in prose instead of in the block — which a session
+ * sometimes does despite its instructions, and which only the coding session question classifier
+ * (`classifier.ts`) can tell apart from a turn that simply finished.
+ *
+ * A question in prose sits at the end, so the last paragraph is taken, on one line. When that is
+ * longer than a question may be, its closing sentences are kept rather than its opening ones,
+ * because that is where the question itself is.
+ *
+ * @returns The question, or `undefined` when the message has no text in it
+ */
+export function readProseQuestion(finalMessage: string): string | undefined {
+  const paragraphs = finalMessage
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.replace(/\s+/g, ' ').trim())
+    .filter((paragraph) => paragraph.length > 0);
+  const lastParagraph = paragraphs[paragraphs.length - 1];
+  if (!lastParagraph) {
+    return undefined;
+  }
+
+  if (lastParagraph.length <= MAXIMUM_QUESTION_LENGTH) {
+    return lastParagraph;
+  }
+
+  const sentences = lastParagraph.split(/(?<=[.!?])\s+/);
+  let closingSentences = '';
+  for (const sentence of [...sentences].reverse()) {
+    const longer = closingSentences ? `${sentence} ${closingSentences}` : sentence;
+    if (longer.length > MAXIMUM_QUESTION_LENGTH) {
+      break;
+    }
+    closingSentences = longer;
+  }
+
+  return (
+    closingSentences || truncate(sentences[sentences.length - 1], { length: MAXIMUM_QUESTION_LENGTH, separator: ' ' })
+  );
+}

@@ -403,6 +403,27 @@ function notifyWhenDoneInstructions(hasResults: boolean, style: ResponseStyle): 
 }
 
 /**
+ * What a request about the conversation itself is answered with, when the routing classifier
+ * recognised it (see `classifier.ts`).
+ *
+ * A goodbye used to reach the planner whenever the voice model routed it despite being told not
+ * to, and the planner, finding no agent for it, reported that none could handle it -- so Jarvis
+ * told sir he could not hang up, on a line that stayed open. Recognised, it is handed straight back
+ * to the one tool that can end the call. A request that only stops the one before it has nothing
+ * to report but that it stopped.
+ */
+const CONVERSATION_CONTROL_INSTRUCTIONS = {
+  endCall:
+    'He is ending the conversation. Say one short goodbye in your own voice, then call end_call. Do not send ' +
+    'anything further through routePromptWorkflow.',
+  cancelled:
+    'He asked you to stop what he asked for before, and it has been stopped. Tell him so in a few words, and ' +
+    'nothing more. ' +
+    FINISHED_REQUEST_INSTRUCTIONS +
+    CONVERSATION_CONTROL_EXCEPTION,
+} as const;
+
+/**
  * How long a single poll may block before we tell Jarvis to call again.
  *
  * This has to fit inside the caller's own tool-call budget, which is the shorter of the
@@ -507,6 +528,10 @@ function waitingFromEarlier(
  * — and this one sweeps up anything that went missing on the way.
  */
 function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructionsOutputSchema> {
+  if (snapshot.conversationControl) {
+    return { instructions: CONVERSATION_CONTROL_INSTRUCTIONS[snapshot.conversationControl], taskIdsInProgress: [] };
+  }
+
   // A request that failed has not said what its photos show, so it asks nothing about them: a photo
   // it did not get to look at is still waiting, and is brought up that way.
   const photosAskedAbout = new Set(snapshot.error ? [] : snapshot.photosToAskAbout);

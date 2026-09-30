@@ -1,8 +1,11 @@
 import type { Mastra } from '@mastra/core';
 import type { Agent } from '@mastra/core/agent';
+import { uniq } from 'lodash-es';
 import { logger } from '../../utils/logger.js';
 import { isSlowTask } from '../../utils/slow-tasks.js';
+import { type HomeService, runHomeCommand } from '../internet-of-things/home-commands.js';
 import { dismissPhoto, findPhoto, photosWaiting } from '../vision/photos.js';
+import { FAST_PATH_CONFIDENCE, getRoutingClassifier } from './classifier.js';
 import { sendCompletionNotice } from './completion-notice.js';
 import { buildRoutingPlan, type PlannedChain, type RoutingPlan } from './plan.js';
 import { sweepOldRoutingPlans } from './plan-retention.js';
@@ -12,6 +15,7 @@ import {
   type PlannedAnswer,
   planDelegations,
   type ResponseStyle,
+  type RoutingDecision,
 } from './planner.js';
 import {
   type AnsweredByQuestion,
@@ -159,6 +163,20 @@ export class RoutingProgress {
   runFinished = false;
   error?: string;
   /**
+   * Set when the request was about the conversation rather than the world: a goodbye, or a request
+   * to stop the one still running. The closing report then says only that (see `workflows.ts`).
+   */
+  conversationControl?: 'endCall' | 'cancelled';
+  /** What was asked, so a request arriving while this one runs can be judged against it. */
+  userQuery?: string;
+  /**
+   * How many requests are reporting into this one.
+   *
+   * One, unless a later request was a separate errand that joined it rather than replacing it
+   * (see `join`). The request is finished only when every one of them is.
+   */
+  private activeRuns = 1;
+  /**
    * When the request was started, which every timing this request logs is measured from.
    *
    * Time to action is what a voice request is judged by, and it is spread across the planner, the
@@ -211,6 +229,18 @@ export class RoutingProgress {
     );
   }
 
+  /**
+   * Has another request report into this one, rather than replace it.
+   *
+   * A second errand asked for while the first still runs -- "and turn on the lights" while the
+   * weather is being looked up -- should not cost the first its answer, and the caller polls a
+   * session rather than a request, so the second's results land in the same report as the first's.
+   */
+  join(userQuery: string): void {
+    this.activeRuns += 1;
+    this.userQuery = userQuery;
+  }
+
   /** Folds one event from the plan run into the buffer. */
   handle(event: RoutingEvent): void {
     switch (event.type) {
@@ -230,6 +260,10 @@ export class RoutingProgress {
         this.fail(event.message);
         return;
       case 'finished':
+        this.activeRuns -= 1;
+        if (this.activeRuns > 0) {
+          return;
+        }
         logger.info('Routing plan run settled', {
           delegations: this.all.length,
           unanswered: this.outstandingByDelegationId.size,
@@ -397,6 +431,8 @@ export interface RoutingSnapshot {
   newlySlow: string[];
   /** How the planner said the request should be answered. */
   responseStyle: ResponseStyle;
+  /** Set when the request was a goodbye, or only stopped the one before it. */
+  conversationControl?: 'endCall' | 'cancelled';
   error?: string;
 }
 
@@ -423,6 +459,7 @@ export function buildSnapshot(progress: RoutingProgress): RoutingSnapshot {
     photosToAskAbout: progress.photosToAskAbout,
     newlySlow,
     responseStyle: progress.responseStyle,
+    ...(progress.conversationControl && { conversationControl: progress.conversationControl }),
     error: progress.error,
   };
 }
@@ -834,6 +871,44 @@ async function runPlan(
   await consumed;
 }
 
+/**
+ * Carries out a smart home command straight away, or runs the plan when that declines or fails.
+ *
+ * The plan is the same one-agent chain the request would have run anyway, so a declined or refused
+ * command costs the round trip it tried and nothing else: the agent then looks at the house and
+ * does what it can. Reported as the chain's own task, so a poll reads it like any other delegation. It is
+ * started and ended together once the call is back, which is a matter of milliseconds -- and a
+ * refused call then leaves nothing half-reported behind for the plan to contradict.
+ */
+async function runHomeCommandOrPlan(
+  mastra: Mastra,
+  sessionId: string,
+  progress: RoutingProgress,
+  userQuery: string,
+  chains: PlannedChain[],
+  service: HomeService,
+  signal: AbortSignal,
+): Promise<void> {
+  const [delegation] = chains[0]?.delegations ?? [];
+  if (!delegation) {
+    return runPlan(mastra, sessionId, progress, userQuery, chains, signal);
+  }
+
+  let text: string | undefined;
+  try {
+    text = await runHomeCommand(userQuery, service, FAST_PATH_CONFIDENCE);
+  } catch (error) {
+    logger.warn('Home command failed; handing the request to the agent', { sessionId, service: service.id, error });
+  }
+  if (text === undefined || signal.aborted) {
+    return signal.aborted ? undefined : runPlan(mastra, sessionId, progress, userQuery, chains, signal);
+  }
+
+  const delegationId = `home-command-${delegation.taskId}`;
+  progress.handle({ type: 'delegation_start', delegationId, taskId: delegation.taskId, agentId: delegation.agentId });
+  progress.handle({ type: 'delegation_end', delegationId, result: { text }, isError: false });
+}
+
 /** The delegation an answer is reported as, which is the task that asked the question. */
 function answerDelegationId(question: OpenQuestion): string {
   return `answer-${question.id}`;
@@ -951,12 +1026,106 @@ async function runRequest(
 ): Promise<void> {
   // Every waiting photo, however recent: the grace before one is brought up only keeps Jarvis from
   // asking about a photo just sent, and the request that says what it is for is that very reply.
-  const { chains, answers, dismissedPhotoIds, photosToAskAbout, responseStyle } = await planDelegations(
+  const decision = await planDelegations(
     await resolvePlannerAgent(mastra),
     userQuery,
     listOpenQuestions(),
     photosWaiting(),
   );
+  await carryOut(mastra, sessionId, progress, userQuery, decision, signal);
+}
+
+/**
+ * Plans a request that arrived while another was still running, and settles how the two relate.
+ *
+ * The request has joined the running one's report while it is planned (see `join`), and the
+ * decision says what it becomes:
+ *
+ * - **adds**: it stays joined, and both are reported together once both are done.
+ * - **cancels**: the running request is stopped, and all that is said is that it was.
+ * - **anything else**, a correction or not sure: the running request is superseded, exactly as
+ *   every request superseded the one before it before there was a classifier.
+ *
+ * Resolves to the report the request ended up in, which is the one the user may be notified of.
+ */
+async function runJoinedRequest(
+  mastra: Mastra,
+  sessionId: string,
+  running: RoutingProgress,
+  runningAbort: AbortController,
+  userQuery: string,
+): Promise<RoutingProgress> {
+  const decision = await planDelegations(
+    await resolvePlannerAgent(mastra),
+    userQuery,
+    listOpenQuestions(),
+    photosWaiting(),
+    running.userQuery,
+  );
+  logger.info('Routing request arrived while another was running', {
+    sessionId,
+    relation: decision.relationToRunningRequest ?? 'unsure',
+  });
+
+  if (decision.relationToRunningRequest === 'adds' && !decision.endsCall) {
+    // An errand no agent can take adds nothing, and failing the shared report over it would cost
+    // the running request its answer. Waving a photo away is not nothing: it is carried out too.
+    if (decision.chains.length > 0 || decision.answers.length > 0 || decision.dismissedPhotoIds?.length) {
+      await carryOut(mastra, sessionId, running, userQuery, decision, runningAbort.signal);
+    } else {
+      running.handle({ type: 'finished' });
+    }
+    return running;
+  }
+
+  runningAbort.abort();
+  if (decision.relationToRunningRequest === 'cancels') {
+    running.conversationControl = 'cancelled';
+    running.handle({ type: 'finished' });
+    return running;
+  }
+
+  // Released rather than finished: the running request is superseded, and nothing reads it now.
+  running.handle({ type: 'finished' });
+  if (progressBySessionId.get(sessionId) !== running) {
+    // A newer request has arrived since, and superseded this one in turn.
+    return running;
+  }
+  const { progress, abort } = beginRequest(sessionId, userQuery);
+  await carryOut(mastra, sessionId, progress, userQuery, decision, abort.signal);
+  return progress;
+}
+
+/** Runs a request's new work: straight through Home Assistant when it can be, as a plan otherwise. */
+function runChains(
+  mastra: Mastra,
+  sessionId: string,
+  progress: RoutingProgress,
+  userQuery: string,
+  chains: PlannedChain[],
+  homeService: HomeService | undefined,
+  signal: AbortSignal,
+): Promise<void> {
+  return homeService
+    ? runHomeCommandOrPlan(mastra, sessionId, progress, userQuery, chains, homeService, signal)
+    : runPlan(mastra, sessionId, progress, userQuery, chains, signal);
+}
+
+/**
+ * Does everything a decided request asks: the new work in a plan run, and each answer it gives to
+ * an open question carried back to the agent that asked.
+ */
+async function carryOut(
+  mastra: Mastra,
+  sessionId: string,
+  progress: RoutingProgress,
+  userQuery: string,
+  decision: RoutingDecision,
+  signal: AbortSignal,
+): Promise<void> {
+  const { answers, responseStyle, homeService, dismissedPhotoIds = [], photosToAskAbout = [] } = decision;
+  // A request that only stops the running one runs nothing, whatever the planner made of it.
+  const chains = decision.relationToRunningRequest === 'cancels' ? [] : decision.chains;
   progress.responseStyle = responseStyle;
   logger.info('Routing request planned', {
     sessionId,
@@ -964,6 +1133,7 @@ async function runRequest(
     answers: answers.length,
     dismissedPhotos: dismissedPhotoIds.length,
     photosToAskAbout: photosToAskAbout.length,
+    ...(homeService && { homeService: homeService.id }),
     elapsedMs: progress.elapsedMs(),
   });
 
@@ -971,6 +1141,13 @@ async function runRequest(
   // start work -- and above all must not take the questions its answers are for, or dismiss the
   // photos it names.
   if (signal.aborted) {
+    return;
+  }
+
+  if (decision.endsCall) {
+    logger.info('Routing request only ends the call', { sessionId });
+    progress.conversationControl = 'endCall';
+    progress.handle({ type: 'finished' });
     return;
   }
 
@@ -1012,13 +1189,17 @@ async function runRequest(
         ? deliverAnswer(progress, question, answer)
         : resumeWithAnswer(mastra, progress, question, answer, signal),
     ),
-    ...(chains.length > 0 ? [runPlan(mastra, sessionId, progress, userQuery, chains, signal)] : []),
+    ...(chains.length > 0 ? [runChains(mastra, sessionId, progress, userQuery, chains, homeService, signal)] : []),
   ]);
 
   // Asked about only once the plan's look has read them -- which is also what keeps a photo from
   // being asked about twice, here and as a waiting photo below: one that was read is no longer
-  // waiting, and one that was not is left to be brought up that way.
-  progress.photosToAskAbout = photosToAskAbout.filter((photoId) => findPhoto(photoId)?.lookedAt !== undefined);
+  // waiting, and one that was not is left to be brought up that way. Added to rather than replaced,
+  // since a request that adds to a running one shares its report, and both may have sent one.
+  progress.photosToAskAbout = uniq([
+    ...progress.photosToAskAbout,
+    ...photosToAskAbout.filter((photoId) => findPhoto(photoId)?.lookedAt !== undefined),
+  ]);
 
   // Kept for the next request to answer -- unless this one was superseded, in which case its
   // closing report will never be read and sir will never hear what it asked. A request he is to
@@ -1042,30 +1223,56 @@ async function runRequest(
   progress.handle({ type: 'finished' });
 }
 
+/**
+ * Opens a fresh report for a request in a session, with its own way to be stopped.
+ *
+ * A fresh buffer rather than a cleared one. Cancelling a run does not stop it instantly, and its
+ * reader holds whatever buffer it was started with -- so clearing in place would let the old run's
+ * last few events land in the new request's report.
+ */
+function beginRequest(sessionId: string, userQuery: string): { progress: RoutingProgress; abort: AbortController } {
+  const abort = new AbortController();
+  abortBySessionId.set(sessionId, abort);
+  const progress = new RoutingProgress();
+  progress.userQuery = userQuery;
+  progressBySessionId.set(sessionId, progress);
+  latestStartedSessionId = sessionId;
+  return { progress, abort };
+}
+
 const planRuntime: RoutingRuntime = {
   async start(sessionId, userQuery) {
     const previous = progressFor(sessionId);
+    const abortPrevious = abortBySessionId.get(sessionId);
+    const previousIsRunning =
+      abortPrevious !== undefined && !previous.runFinished && !previous.isIdle() && !previous.notifyWhenDone;
+    const mastra = registry;
+
+    // With a classifier to ask, a request arriving while another runs is not assumed to replace
+    // it: it joins the running one's report until it is known whether it replaces, cancels or
+    // adds to it (see `runJoinedRequest`).
+    if (previousIsRunning && mastra && getRoutingClassifier()) {
+      previous.join(userQuery);
+      latestStartedSessionId = sessionId;
+      void runJoinedRequest(mastra, sessionId, previous, abortPrevious, userQuery)
+        .catch((error: unknown) => {
+          previous.fail(error instanceof Error ? error.message : String(error));
+          return previous;
+        })
+        .then((progress) => notifyIfAsked(progress));
+      return;
+    }
 
     // A new request supersedes the one before it, which is what the caller means: the voice
     // assistant has moved on. Cancelling is what makes that true rather than leaving the
     // previous plan running behind it -- except for a request the user asked to be notified
     // about, which he expects to finish however the conversation goes on.
-    const abortPrevious = abortBySessionId.get(sessionId);
-    if (abortPrevious && !previous.runFinished && !previous.isIdle() && !previous.notifyWhenDone) {
+    if (previousIsRunning) {
       logger.info('Superseding a routing request that was still running', { sessionId });
       abortPrevious.abort();
     }
-    const abort = new AbortController();
-    abortBySessionId.set(sessionId, abort);
+    const { progress, abort } = beginRequest(sessionId, userQuery);
 
-    // A fresh buffer rather than a cleared one. Cancelling a run does not stop it
-    // instantly, and its reader holds whatever buffer it was started with -- so clearing in
-    // place would let the old run's last few events land in the new request's report.
-    const progress = new RoutingProgress();
-    progressBySessionId.set(sessionId, progress);
-    latestStartedSessionId = sessionId;
-
-    const mastra = registry;
     if (!mastra) {
       progress.fail('routing has no Mastra instance to plan against');
       return;

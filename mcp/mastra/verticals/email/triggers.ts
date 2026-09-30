@@ -10,6 +10,12 @@ export interface EmailTriggerConfig {
   sender: string;
   /** Function to filter emails by subject line */
   subjectFilter: (subject: string) => boolean;
+  /**
+   * Asked only when the sender matches and the subject filter does not, for a trigger whose
+   * subject line a sender may reword. It never overrides the subject filter's yes, so an email
+   * that matched before still matches without waiting on it, and one it throws on does not match.
+   */
+  fallbackFilter?: (email: TriggerableEmail) => Promise<boolean>;
   /** The workflow to trigger when a matching email is received */
   workflow: AnyWorkflow;
 }
@@ -108,6 +114,30 @@ export function getRegisteredEmailTriggers(): RegisteredEmailTrigger[] {
 }
 
 /**
+ * Whether an email from a trigger's sender matches it: by its subject, or failing that by the
+ * trigger's fallback filter when it has one.
+ */
+async function subjectOrFallbackMatches(trigger: RegisteredEmailTrigger, email: TriggerableEmail): Promise<boolean> {
+  if (trigger.subjectFilter(email.subject)) {
+    return true;
+  }
+  if (!trigger.fallbackFilter) {
+    return false;
+  }
+
+  try {
+    const matched = await trigger.fallbackFilter(email);
+    if (matched) {
+      logger.info('Email trigger matched by its fallback filter, not its subject', { triggerId: trigger.id });
+    }
+    return matched;
+  } catch (error: unknown) {
+    logger.warn('Email trigger fallback filter failed; not matching', { triggerId: trigger.id, error });
+    return false;
+  }
+}
+
+/**
  * Processes an incoming email against all registered triggers.
  * For each matching trigger, executes the associated workflow.
  *
@@ -121,14 +151,18 @@ export async function processEmailTriggers(email: TriggerableEmail): Promise<str
 
   for (const trigger of emailTriggerRegistry.values()) {
     const triggerSender = trigger.sender.toLowerCase();
-    if (senderAddress === triggerSender && trigger.subjectFilter(email.subject)) {
-      // PRIVACY: Do not log email subject or content
-      logger.info('Email trigger matched', {
-        triggerId: trigger.id,
-        sender: senderAddress,
-      });
+    if (senderAddress === triggerSender) {
       workflowPromises.push(
         (async (): Promise<string | null> => {
+          if (!(await subjectOrFallbackMatches(trigger, email))) {
+            return null;
+          }
+
+          // PRIVACY: Do not log email subject or content
+          logger.info('Email trigger matched', {
+            triggerId: trigger.id,
+            sender: senderAddress,
+          });
           try {
             const run = await trigger.workflow.createRun();
             const result = await run.start({

@@ -23,9 +23,17 @@ export const registerStateChange = createTool({
       .string()
       .describe('Type of state change (e.g., "weather_update", "task_completed", "significant_temperature_change")'),
     stateData: z.record(z.string(), z.unknown()).describe('State change data payload containing relevant information'),
+    priority: z
+      .enum(['low', 'high'])
+      .optional()
+      .describe(
+        'Leave unset for almost everything, which is rolled up for the reactor. Set "high" only for something that cannot wait -- a warning, an alarm, a safety or security event -- so it is delivered at once.',
+      ),
   }),
   outputSchema: z.object({
-    registered: z.boolean(),
+    registered: z
+      .boolean()
+      .describe('False when the change was judged not worth the attention of the reactor, and held back'),
     duplicate: z.boolean().describe('True if this collapsed into a change that was already waiting'),
     message: z.string(),
   }),
@@ -43,7 +51,16 @@ export const registerStateChange = createTool({
         stateData: inputData.stateData,
       },
       context.mastra,
+      inputData.priority,
     );
+
+    if (!result.filed) {
+      return {
+        registered: false,
+        duplicate: false,
+        message: `State change ${inputData.stateType} held back from the reactor: ${result.reason}.`,
+      };
+    }
 
     return {
       registered: true,

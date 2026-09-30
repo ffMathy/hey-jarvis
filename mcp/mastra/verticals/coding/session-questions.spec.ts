@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import { buildSessionQuestionInstructions, readSessionQuestion, SESSION_QUESTION_FENCE } from './session-questions.js';
+import {
+  buildSessionQuestionInstructions,
+  readProseQuestion,
+  readSessionQuestion,
+  SESSION_QUESTION_FENCE,
+} from './session-questions.js';
 
 describe('readSessionQuestion', () => {
   it('reads the question a turn ended on', () => {
@@ -40,5 +45,35 @@ describe('buildSessionQuestionInstructions', () => {
 
   it('shows the block the session asks with', () => {
     expect(buildSessionQuestionInstructions()).toContain(`\`\`\`${SESSION_QUESTION_FENCE}`);
+  });
+});
+
+describe('readProseQuestion', () => {
+  it('takes the last paragraph, on one line', () => {
+    expect(readProseQuestion('I read the code.\n\nShould the greeting be\nin Danish, or English?\n')).toBe(
+      'Should the greeting be in Danish, or English?',
+    );
+  });
+
+  it('reads nothing from a message with no text', () => {
+    expect(readProseQuestion('')).toBeUndefined();
+    expect(readProseQuestion(' \n\n ')).toBeUndefined();
+  });
+
+  it('keeps the closing sentences of a long paragraph, where the question is', () => {
+    const opening = 'I looked through the notification routing and the settings it reads. '.repeat(5);
+    const question = readProseQuestion(`${opening}Should it be email, or a push notification?`);
+
+    expect(question?.endsWith('Should it be email, or a push notification?')).toBe(true);
+    expect(question?.length).toBeLessThanOrEqual(300);
+    expect(question?.startsWith('I looked')).toBe(true);
+  });
+
+  it('cuts a single overlong sentence on a word', () => {
+    const question = readProseQuestion(`Should it ${'really '.repeat(60)}be email?`);
+
+    expect(question?.length).toBeLessThanOrEqual(300);
+    expect(question?.endsWith('...')).toBe(true);
+    expect(question).not.toContain('reall...');
   });
 });

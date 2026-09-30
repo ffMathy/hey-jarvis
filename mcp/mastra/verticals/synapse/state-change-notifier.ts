@@ -5,7 +5,14 @@ import { embedTexts } from '../../utils/static-embedder.js';
 import type { ToolMastra } from '../../utils/tool-factory.js';
 import { findRulesForStateChange } from './rules.js';
 import { describeStateChangeFacets, type StateChange } from './state-change.js';
-import { formatSubscriptionMatches, rankSubscriptions } from './subscription-matcher.js';
+import {
+  assessStateChange,
+  getStateChangeClassifier,
+  type StateChangeAssessment,
+  type StateChangePriority,
+  triageStateChange,
+} from './state-change-classifier.js';
+import { formatSubscriptionMatches, rankSubscriptions, type SubscriptionMatch } from './subscription-matcher.js';
 
 export type { StateChange } from './state-change.js';
 
@@ -90,7 +97,7 @@ function buildDedupeKey(change: StateChange): string {
  * kind of model that does better with the shortlist already in front of it than with one
  * more tool it has to remember to call.
  */
-async function matchSubscriptions(change: StateChange): Promise<string> {
+async function matchSubscriptions(change: StateChange): Promise<SubscriptionMatch[]> {
   const storage = await getSubscriptionStorage();
 
   // Housekeeping on the way past. Lapsed subscriptions are already filtered out of
@@ -106,7 +113,7 @@ async function matchSubscriptions(change: StateChange): Promise<string> {
 
   const subscriptions = await storage.getAllEmbedded();
   if (subscriptions.length === 0) {
-    return formatSubscriptionMatches([]);
+    return [];
   }
 
   // The change is rendered into several overlapping facets and scored on its best one,
@@ -114,7 +121,34 @@ async function matchSubscriptions(change: StateChange): Promise<string> {
   const facets = describeStateChangeFacets(change);
   const embeddings = await embedTexts(facets);
 
-  return formatSubscriptionMatches(rankSubscriptions(embeddings, subscriptions));
+  return rankSubscriptions(embeddings, subscriptions);
+}
+
+/**
+ * What the state change classifier makes of a change, or nothing when it cannot say.
+ *
+ * Nothing -- no key, or a call that failed -- is not an error to the caller: it files the change
+ * exactly as it did before the classifier existed. See `state-change-classifier.ts`.
+ */
+async function assessWithClassifier(
+  change: StateChange,
+  matches: SubscriptionMatch[],
+): Promise<StateChangeAssessment | undefined> {
+  const classifier = getStateChangeClassifier();
+  if (!classifier) {
+    return undefined;
+  }
+
+  try {
+    return await assessStateChange(classifier, change, matches);
+  } catch (error) {
+    logger.warn('State change classifier failed; filing the change as before', {
+      stateType: change.stateType,
+      source: change.source,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
 }
 
 /**
@@ -164,24 +198,38 @@ async function saveToMemory(change: StateChange): Promise<void> {
 const STATE_CHANGE_REACTOR_AGENT_ID = 'stateChangeReactor';
 
 /** What {@link registerStateChangeNotification} reports back to its caller. */
-export interface RegisteredStateChange {
-  /** The inbox record the change was filed as. Repeats of one change share an id. */
-  recordId: string;
-  /** Whether this call collapsed into a record that was already waiting. */
-  duplicate: boolean;
-  /** What the delivery policy decided to do with it. */
-  action: string;
-}
+export type RegisteredStateChange =
+  | {
+      filed: true;
+      /** The inbox record the change was filed as. Repeats of one change share an id. */
+      recordId: string;
+      /** Whether this call collapsed into a record that was already waiting. */
+      duplicate: boolean;
+      /** What the delivery policy decided to do with it. */
+      action: string;
+    }
+  | {
+      /** The classifier was sure nothing would come of it, so the reactor was never woken. */
+      filed: false;
+      reason: string;
+    };
 
 /**
  * Files a state change as a notification for the State Change Reactor.
  *
  * Returns as soon as the record is stored. Whether the reactor is woken now or the change
- * is rolled into the next summary is the delivery policy's decision, not this function's.
+ * is rolled into the next summary is the delivery policy's decision, not this function's --
+ * except that the state change classifier may raise its priority, or hold back a change it
+ * is sure the reactor would dismiss (see `state-change-classifier.ts`).
+ *
+ * @param requestedPriority - What the caller already knows about the change. `high` is for
+ *   something that cannot wait for the next rollup; it is never held back, and the classifier
+ *   can only raise a priority, never lower it.
  */
 export async function registerStateChangeNotification(
   change: StateChange,
   mastra: ToolMastra,
+  requestedPriority: StateChangePriority = 'low',
 ): Promise<RegisteredStateChange> {
   logger.info('Registering state change', {
     stateType: change.stateType,
@@ -189,8 +237,29 @@ export async function registerStateChangeNotification(
   });
 
   const reactorAgent = mastra.getAgentById(STATE_CHANGE_REACTOR_AGENT_ID);
-  const [matchedSubscriptions] = await Promise.all([matchSubscriptions(change), saveToMemory(change)]);
+  // Saved to memory whatever the gate decides: the other agents recall recent changes from
+  // there, and a change the reactor did not need to see is still something that happened.
+  const [matches] = await Promise.all([matchSubscriptions(change), saveToMemory(change)]);
   const rules = findRulesForStateChange(change);
+  const assessment = await assessWithClassifier(change, matches);
+  const triage = triageStateChange({ assessment, matches, ruleCount: rules.length, requestedPriority });
+
+  if (!triage.file) {
+    logger.info('State change held back from the reactor by the classifier', {
+      stateType: change.stateType,
+      source: change.source,
+      reason: triage.reason,
+      candidateSubscriptions: matches.length,
+    });
+    return { filed: false, reason: triage.reason };
+  }
+
+  if (triage.escalated) {
+    logger.info('State change escalated to high priority by the classifier', {
+      stateType: change.stateType,
+      source: change.source,
+    });
+  }
 
   const result = await reactorAgent.sendNotificationSignal(
     {
@@ -205,14 +274,16 @@ export async function registerStateChangeNotification(
         source: change.source,
         stateType: change.stateType,
         stateData: change.stateData,
-        matchedSubscriptions,
+        matchedSubscriptions: formatSubscriptionMatches(matches, assessment?.fireProbabilities),
         rules,
+        ...(assessment?.attention && { attention: assessment.attention }),
       },
-      // Everything arrives low, which is what makes the default policy roll changes up
-      // instead of waking the reactor once each -- the job the batch timer used to do.
-      // Urgency is the reactor's call to make once it has the context, not the caller's
-      // at the point of detection.
-      priority: 'low',
+      // Low by default, which is what makes the default policy roll changes up instead of
+      // waking the reactor once each -- the job the batch timer used to do. High only when
+      // the caller knew it could not wait, or the classifier is sure it needs attention now:
+      // the default policy delivers a high one at once when the reactor is idle, and right
+      // after a summary when it is busy.
+      priority: triage.priority,
       dedupeKey: buildDedupeKey(change),
     },
     {
@@ -230,10 +301,12 @@ export async function registerStateChangeNotification(
     source: change.source,
     recordId: result.record.id,
     action: result.decision.action,
+    priority: triage.priority,
     duplicate,
   });
 
   return {
+    filed: true,
     recordId: result.record.id,
     duplicate,
     action: result.decision.action,

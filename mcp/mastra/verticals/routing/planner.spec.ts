@@ -10,15 +10,19 @@
  */
 
 import { describe, expect, it } from 'bun:test';
+import { Classifier } from '@mastra/core/classifier';
 import { createScriptedModel } from '../../../tests/utils/scripted-model.js';
 import { createAgent } from '../../utils/agent-factory.js';
 import {
+  decisionFromClassification,
   PLANNER_AGENT_ID,
   planDelegations,
   plannerInstructions,
   plannerPrompt,
   planSchema,
+  preferFastPlan,
   RESPONSE_STYLES,
+  type RoutingDecision,
 } from './planner.js';
 import type { OpenQuestion } from './questions.js';
 
@@ -288,5 +292,155 @@ describe('a photo he sent without saying what he wants', () => {
     });
 
     expect((await planDelegations(planner, BARE_PHOTO)).photosToAskAbout).toEqual([]);
+  });
+});
+
+/**
+ * The routing classifier is never shown the photos, so a request about one is the planner's to
+ * decide: a fast route would hand an agent sir's words with no photo to go with them.
+ *
+ * The planner here fails, which makes the race decided: a fast plan wins even over a planner that
+ * has failed (see `preferFastPlan`), so a failure that stands means the classifier's route was
+ * never taken.
+ */
+describe('a photo, with the routing classifier sure of a fast route', () => {
+  const WAITING = [{ photoId: 'photo3', keptAt: Date.now() - 2_000 }];
+
+  /** A classifier sure of the one agent or answer it was told to be sure of. */
+  function classifierSureOf(route: string) {
+    return new Classifier({
+      id: 'routingClassifier',
+      model: {
+        specificationVersion: 'v4',
+        provider: 'fake',
+        modelId: 'jev-fake',
+        supportedQuestionTypes: ['choice', 'boolean'],
+        doEvaluate: async () => ({
+          answers: {
+            route: { type: 'choice', choice: route, probabilities: { [route]: 0.97 } },
+            responseStyle: { type: 'choice', choice: 'command', probabilities: { command: 0.97 } },
+          },
+          warnings: [],
+        }),
+      },
+    });
+  }
+
+  it('takes the fast route when no photo is in play', async () => {
+    const decision = await planDelegations(
+      await plannerReplying({ nothing: 'like a plan' }),
+      'What is the weather like?',
+      [],
+      [],
+      undefined,
+      classifierSureOf('weather'),
+    );
+
+    expect(decision.chains.flatMap((chain) => chain.delegations.map((delegation) => delegation.agentId))).toEqual([
+      'weather',
+    ]);
+  });
+
+  it('leaves the request to the planner while a photo is waiting', async () => {
+    await expect(
+      planDelegations(
+        await plannerReplying({ nothing: 'like a plan' }),
+        'Add everything on it to the shopping list.',
+        [],
+        WAITING,
+        undefined,
+        classifierSureOf('weather'),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('leaves the request to the planner when it names a photo, even one no longer waiting', async () => {
+    await expect(
+      planDelegations(
+        await plannerReplying({ nothing: 'like a plan' }),
+        'What was the total on it? (photo photo3)',
+        [],
+        [],
+        undefined,
+        classifierSureOf('weather'),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('still lets a goodbye end the call, leaving the photo waiting for next time', async () => {
+    const decision = await planDelegations(
+      await plannerReplying({ nothing: 'like a plan' }),
+      'That will be all.',
+      [],
+      WAITING,
+      undefined,
+      classifierSureOf('endCall'),
+    );
+
+    expect(decision.endsCall).toBe(true);
+    expect(decision.dismissedPhotoIds).toBeUndefined();
+  });
+});
+
+describe('preferFastPlan', () => {
+  const fromPlanner: RoutingDecision = { chains: [], answers: [], responseStyle: 'briefing' };
+  const fromClassifier: RoutingDecision = { chains: [], answers: [], responseStyle: 'command' };
+
+  /** A promise that never settles, standing in for a call still in flight. */
+  function pending<T>(): Promise<T> {
+    return new Promise<T>(() => {});
+  }
+
+  it('takes the fast plan without waiting for the planner', async () => {
+    expect(await preferFastPlan(pending(), Promise.resolve(fromClassifier))).toBe(fromClassifier);
+  });
+
+  it('waits for the planner when the classifier declines', async () => {
+    expect(await preferFastPlan(Promise.resolve(fromPlanner), Promise.resolve(undefined))).toBe(fromPlanner);
+  });
+
+  it('takes a planner that answers first without waiting for the classifier', async () => {
+    expect(await preferFastPlan(Promise.resolve(fromPlanner), pending())).toBe(fromPlanner);
+  });
+
+  it('survives a failed planner when the classifier is sure', async () => {
+    expect(await preferFastPlan(Promise.reject(new Error('planner down')), Promise.resolve(fromClassifier))).toBe(
+      fromClassifier,
+    );
+  });
+
+  it('fails with the planner when the classifier declines too', async () => {
+    await expect(preferFastPlan(Promise.reject(new Error('planner down')), Promise.resolve(undefined))).rejects.toThrow(
+      'planner down',
+    );
+  });
+});
+
+describe('decisionFromClassification', () => {
+  it("carries an answer back in the user's own words, with nothing else to run", async () => {
+    expect(
+      await decisionFromClassification({ responseStyle: 'command', answeredQuestionId: 'q1' }, 'push, please'),
+    ).toEqual({ chains: [], answers: [{ questionId: 'q1', answer: 'push, please' }], responseStyle: 'command' });
+  });
+
+  it('runs nothing for a goodbye', async () => {
+    expect(
+      await decisionFromClassification({ responseStyle: 'conversation', endsCall: true }, 'that will be all'),
+    ).toEqual({ chains: [], answers: [], responseStyle: 'conversation', endsCall: true });
+  });
+
+  it('runs nothing for a request that only stops the running one', async () => {
+    expect(
+      await decisionFromClassification(
+        { responseStyle: 'conversation', relationToRunningRequest: 'cancels' },
+        'never mind',
+      ),
+    ).toEqual({ chains: [], answers: [], responseStyle: 'command', relationToRunningRequest: 'cancels' });
+  });
+
+  it('leaves the request to the planner when the classifier settled nothing', async () => {
+    expect(
+      await decisionFromClassification({ responseStyle: 'briefing', relationToRunningRequest: 'adds' }, 'and the news'),
+    ).toBeUndefined();
   });
 });
