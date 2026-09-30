@@ -27,7 +27,7 @@ import { expect, test } from './fixtures';
  * armed again, hears the clip come round and summons him a second time.
  */
 
-/** `CONNECTION_PROBLEM` in `src/conversation/failure-text.ts`: LiveKit's room refusing to open, in words about the network. */
+/** `CONNECTION_PROBLEM` in `hologram/src/failure-text.ts`: LiveKit's room refusing to open, in words about the network. */
 const NETWORK_PROBLEM = 'The connection to ElevenLabs could not be opened. The network may be blocking it.';
 
 test('"Hey Jarvis" summons him into the room, and after a failed call it is listened for again', async ({
