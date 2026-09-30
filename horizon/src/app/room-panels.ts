@@ -49,17 +49,18 @@ export interface RoomPanels {
   dispose(): void;
 }
 
-export function createRoomPanels(): RoomPanels {
+/** `anisotropy` is the renderer's most anisotropic filtering, for every canvas (see `ui3d/ui-canvas.ts`). */
+export function createRoomPanels(anisotropy: number): RoomPanels {
   const text: Record<Exclude<PanelName, 'keyboard'>, TextPanel> = {
-    hint: createTextPanel({ widthMetres: 0.7, tone: 'hint' }),
-    status: createTextPanel({ widthMetres: 0.8, tone: 'status' }),
-    guide: createTextPanel({ widthMetres: 0.95, tone: 'guide' }),
-    error: createTextPanel({ widthMetres: 0.6, tone: 'error' }),
-    toast: createTextPanel({ widthMetres: 0.5, tone: 'toast' }),
-    caption: createTextPanel({ widthMetres: 0.7, tone: 'caption' }),
-    readout: createTextPanel({ widthMetres: 0.5, tone: 'hud' }),
+    hint: createTextPanel({ widthMetres: 0.7, tone: 'hint', anisotropy }),
+    status: createTextPanel({ widthMetres: 0.8, tone: 'status', anisotropy }),
+    guide: createTextPanel({ widthMetres: 0.95, tone: 'guide', anisotropy }),
+    error: createTextPanel({ widthMetres: 0.6, tone: 'error', anisotropy }),
+    toast: createTextPanel({ widthMetres: 0.5, tone: 'toast', anisotropy }),
+    caption: createTextPanel({ widthMetres: 0.7, tone: 'caption', anisotropy }),
+    readout: createTextPanel({ widthMetres: 0.5, tone: 'hud', anisotropy }),
   };
-  const keyboard = createKeyboardGlyph();
+  const keyboard = createKeyboardGlyph({ anisotropy });
   const arrow: PointerArrow = createPointerArrow();
   const hintTag: TagAlong = createTagAlong();
   const statusTag: TagAlong = createTagAlong();

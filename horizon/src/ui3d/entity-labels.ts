@@ -45,7 +45,12 @@ export function labelScaleAt(distance: number): number {
   return Math.max(1, distance / LABEL_TRUE_SIZE_METRES);
 }
 
-export function createEntityLabels(): EntityLabels {
+export interface EntityLabelsOptions {
+  /** The renderer's most anisotropic filtering (see `ui-canvas.ts`). */
+  anisotropy: number;
+}
+
+export function createEntityLabels(options: EntityLabelsOptions): EntityLabels {
   const group = new Group();
   const panels: TextPanel[] = [];
   // Each panel hangs in a holder of its own, which is what is moved and scaled: the panel's own
@@ -60,7 +65,7 @@ export function createEntityLabels(): EntityLabels {
     const index = free >= 0 ? free : panels.length < MAX_LABELS ? panels.length : -1;
     if (index < 0) return undefined;
     if (index === panels.length) {
-      const panel = createTextPanel({ widthMetres: LABEL_WIDTH_METRES, tone: 'label' });
+      const panel = createTextPanel({ widthMetres: LABEL_WIDTH_METRES, tone: 'label', anisotropy: options.anisotropy });
       const holder = new Group();
       holder.add(panel.object);
       panels.push(panel);

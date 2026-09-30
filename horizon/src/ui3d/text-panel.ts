@@ -1,5 +1,15 @@
-import { CanvasTexture, Mesh, MeshBasicMaterial, type Object3D, PlaneGeometry, SRGBColorSpace } from 'three';
+import { type CanvasTexture, Mesh, type Object3D, PlaneGeometry } from 'three';
 import { layoutPanel } from './text-layout';
+import {
+  CANVAS_MARGIN_PIXELS,
+  canvasMetres,
+  canvasPixels,
+  createCanvasMaterial,
+  createCanvasTexture,
+  drawingContext,
+  roundedRectangle,
+  withMargin,
+} from './ui-canvas';
 import { UI_COLOURS } from './ui-colours';
 
 /**
@@ -8,7 +18,8 @@ import { UI_COLOURS } from './ui-colours';
  * Drawn with a 2D canvas into a texture on a plane, because there is no DOM in an immersive
  * session and three has no text of its own. The canvas is sized in pixels per metre of panel, at
  * about the density a Quest 3 shows at arm's length, so text read from a metre away is as crisp as
- * the display can make it and no crisper — a larger canvas would only be filtered back down.
+ * the display can make it and no crisper — a larger canvas would only be filtered back down. How it
+ * is filtered, and why its outline is drawn inside a transparent margin, is `ui-canvas.ts`'s.
  *
  * Every panel has a translucent dark backing. Passthrough is whatever the room happens to be, and
  * light text straight over a white wall or a window cannot be read; the backing hides a little of
@@ -28,15 +39,6 @@ export interface TextPanel {
   readonly heightMetres: number;
   dispose(): void;
 }
-
-/**
- * Canvas pixels per metre of panel.
- *
- * A Quest 3 shows about 25 pixels per degree; a metre-wide panel a metre away spans some 53°, so
- * about 1300 display pixels. A little over that leaves room for the panel being nearer than a
- * metre, and for the texture filtering to have something to average.
- */
-export const PIXELS_PER_METRE = 1500;
 
 interface ToneStyle {
   /** Letter height, in metres. */
@@ -170,37 +172,27 @@ const TONES: Record<PanelTone, ToneStyle> = {
   },
 };
 
-/** Traces a rounded rectangle, by hand: `roundRect` is newer than some 2D contexts. */
-function roundedRectangle(context: CanvasRenderingContext2D, width: number, height: number, radius: number) {
-  const corner = Math.min(radius, width / 2, height / 2);
-  context.beginPath();
-  context.moveTo(corner, 0);
-  context.arcTo(width, 0, width, height, corner);
-  context.arcTo(width, height, 0, height, corner);
-  context.arcTo(0, height, 0, 0, corner);
-  context.arcTo(0, 0, width, 0, corner);
-  context.closePath();
-}
-
-/** The canvas's 2D context, which every browser with WebXR has. */
-export function drawingContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
-  const context = canvas.getContext('2d');
-  if (context === null) throw new Error('This browser cannot draw text for the room.');
-  return context;
+export interface TextPanelOptions {
+  /** The widest it may be, in metres; lines wrap to fit. */
+  widthMetres: number;
+  tone: PanelTone;
+  /** The renderer's most anisotropic filtering (see `ui-canvas.ts`). */
+  anisotropy: number;
 }
 
 /** A panel `widthMetres` wide at most, in `tone`. Hidden until it has text. */
-export function createTextPanel(options: { widthMetres: number; tone: PanelTone }): TextPanel {
+export function createTextPanel(options: TextPanelOptions): TextPanel {
   const style = TONES[options.tone];
   const canvas = document.createElement('canvas');
   const context = drawingContext(canvas);
 
-  const fontPixels = Math.round(style.fontMetres * PIXELS_PER_METRE);
+  const fontPixels = canvasPixels(style.fontMetres);
   const lineHeight = Math.round(fontPixels * style.lineSpacing);
   const padding = Math.round(fontPixels * 0.7);
   const font = `${style.weight} ${fontPixels}px ${style.font}`;
+  const borderPixels = Math.max(2, Math.round(fontPixels * 0.08));
 
-  const material = new MeshBasicMaterial({ transparent: true, depthWrite: false, depthTest: false, toneMapped: false });
+  const material = createCanvasMaterial(null);
   const mesh = new Mesh(new PlaneGeometry(1, 1), material);
   // Drawn after everything else, and never hidden by it: text that his glow could cover is text
   // that could not be read at the moment it matters.
@@ -215,7 +207,7 @@ export function createTextPanel(options: { widthMetres: number; tone: PanelTone 
     context.font = font;
     const text = style.uppercase ? lines.map((line) => line.toUpperCase()) : lines;
     const layout = layoutPanel(text, {
-      maxWidth: Math.round(options.widthMetres * PIXELS_PER_METRE) - 2 * padding,
+      maxWidth: canvasPixels(options.widthMetres) - 2 * padding,
       measure: (line) => context.measureText(line).width,
       lineHeight,
       padding,
@@ -225,17 +217,22 @@ export function createTextPanel(options: { widthMetres: number; tone: PanelTone 
     const width = Math.ceil(layout.width);
     const height = Math.ceil(layout.height);
     // A canvas changing size needs a texture of the new size; the same size keeps the texture and
-    // only uploads it again.
-    const resized = canvas.width !== width || canvas.height !== height;
-    canvas.width = width;
-    canvas.height = height;
+    // only uploads it again. Setting the size clears the canvas and its drawing state either way.
+    const canvasWidth = withMargin(width);
+    const canvasHeight = withMargin(height);
+    const resized = canvas.width !== canvasWidth || canvas.height !== canvasHeight;
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    context.translate(CANVAS_MARGIN_PIXELS, CANVAS_MARGIN_PIXELS);
 
-    context.clearRect(0, 0, width, height);
-    roundedRectangle(context, width, height, padding);
+    roundedRectangle(context, 0, 0, width, height, padding);
     context.fillStyle = style.backing;
     context.fill();
     if (style.border !== undefined) {
-      context.lineWidth = Math.max(2, Math.round(fontPixels * 0.08));
+      // Inside the backing's outline, so the border's outer edge is the panel's.
+      const inset = borderPixels / 2;
+      roundedRectangle(context, inset, inset, width - borderPixels, height - borderPixels, padding - inset);
+      context.lineWidth = borderPixels;
       context.strokeStyle = style.border;
       context.stroke();
     }
@@ -250,16 +247,15 @@ export function createTextPanel(options: { widthMetres: number; tone: PanelTone 
 
     if (resized || texture === undefined) {
       texture?.dispose();
-      texture = new CanvasTexture(canvas);
-      texture.colorSpace = SRGBColorSpace;
-      material.map = texture;
-      material.needsUpdate = true;
+      texture = createCanvasTexture(canvas, options.anisotropy);
+      material.uniforms.picture.value = texture;
     } else {
       texture.needsUpdate = true;
     }
-    widthMetres = width / PIXELS_PER_METRE;
-    heightMetres = height / PIXELS_PER_METRE;
-    mesh.scale.set(widthMetres, heightMetres, 1);
+    // The panel's size is its backing's; the plane is a margin larger all round.
+    widthMetres = canvasMetres(width);
+    heightMetres = canvasMetres(height);
+    mesh.scale.set(canvasMetres(canvasWidth), canvasMetres(canvasHeight), 1);
   }
 
   return {

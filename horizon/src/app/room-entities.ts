@@ -158,6 +158,8 @@ export interface RoomEntities {
 export interface RoomEntitiesOptions {
   session: XRSession;
   storage: KeyValueStorage;
+  /** The renderer's most anisotropic filtering, for the drawer's, the names' and the wrist button's canvases. */
+  anisotropy: number;
   /** Epoch milliseconds, for the registry, whose times have to mean the same thing next session. */
   clock?: () => number;
 }
@@ -188,11 +190,11 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
     options.session,
     (position) => new XRRigidTransform(position),
   );
-  const drawer = createEntityDrawer();
+  const drawer = createEntityDrawer({ anisotropy: options.anisotropy });
   const tokens = createEntityTokens();
-  const labels = createEntityLabels();
+  const labels = createEntityLabels({ anisotropy: options.anisotropy });
   const reticle = createPointingReticle();
-  const wrist = createWristButton();
+  const wrist = createWristButton({ anisotropy: options.anisotropy });
   const coronas = createCoronas();
   const object = new Group();
   object.add(drawer.object, ...tokens.objects, labels.object, reticle.object, wrist.object, coronas.object);
