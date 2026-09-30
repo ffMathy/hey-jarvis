@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.4.2](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.4.1...elevenlabs-v2.4.2) (2026-09-30)
+
+
+### Bug Fixes
+
+* **elevenlabs:** ground jarvis's tone and always trust sir's request ([#921](https://github.com/ffMathy/hey-jarvis/issues/921)) ([c38759d](https://github.com/ffMathy/hey-jarvis/commit/c38759da11a6dfa190823c31a4765a2bbf88f07f))
+
 ## [2.4.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.4.0...elevenlabs-v2.4.1) (2026-09-29)
 
 
