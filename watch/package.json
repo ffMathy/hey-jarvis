@@ -14,6 +14,7 @@
     "native:prebuild": "bunx expo prebuild --platform android"
   },
   "dependencies": {
+    "@elevenlabs/client": "1.24.0",
     "@elevenlabs/react-native": "1.2.26",
     "@livekit/react-native": "2.12.0",
     "@livekit/react-native-expo-plugin": "1.0.2",

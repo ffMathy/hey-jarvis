@@ -1,33 +1,32 @@
-import { useConversationControls, useConversationMode, useConversationStatus } from '@elevenlabs/react-native';
 import * as Linking from 'expo-linking';
 import {
+  afterStatus,
   type ElevenLabsSettings,
+  isLive,
+  MICROPHONE_PROBLEM,
+  NOT_YET_OPEN,
   PHONE_PARTICIPANT_NAME,
-  requestConversationToken,
-  requestSignedConversationUrl,
+  type ProblemSource,
+  type SessionPhase,
 } from 'hologram';
-import { useGreeting, useToolActivity, useUserVoice } from 'hologram/conversation';
+import { useJarvisSession } from 'hologram/conversation';
 import { LEAVING_SECONDS } from 'hologram/react/lifecycle';
 import { useSimulatedVoice } from 'hologram/react/sample';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, ToastAndroid, View } from 'react-native';
+import { roomOfConversation } from './agent-audio-track';
 import { createAssistLaunchClaim } from './assist-link';
 import { CameraButton } from './camera-button';
-import { useCameraTool } from './camera-tool';
-import { afterStatus, isLive, NOT_YET_OPEN } from './conversation-life';
+import { type CameraSessionOptions, useCameraTool } from './camera-tool';
 import { ConversationFrame, useConversationSheet } from './conversation-sheet';
 import { JarvisHologram } from './jarvis-hologram';
-import { useJarvisVoice } from './jarvis-voice';
+import { followJarvisVoice, useJarvisVoice } from './jarvis-voice';
 import { requestMicrophoneAccess } from './microphone-permission';
-import type { MicrophoneAccess } from './platform-contracts';
 import { usePreferredHeadset } from './preferred-microphone';
-import { useQueuedAudio } from './queued-audio';
 import { useSparkDensity } from './spark-density';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
-import { useTextMode } from './text-mode';
 import { theme } from './theme';
 import { TypedMessageField } from './typed-message-field';
-import { afterMessage, afterSpokenMessage, SAYING_NOTHING } from './written-reply';
 import { WrittenReplyLine } from './written-reply-line';
 
 interface ConversationScreenProps {
@@ -62,24 +61,9 @@ const SCREEN_LABEL = ON_A_PHONE
   : 'Jarvis. Press and hold for ElevenLabs settings.';
 
 /**
- * How long the screen waits for a conversation to open before saying it has not.
- *
- * **Nothing below this screen has a deadline.** The ElevenLabs SDK reports `connecting`, then
- * either `connected` or an error — except when it reports neither, which is what a session that
- * cannot finish coming up does: it waits on a room event that never arrives, with no timeout of
- * its own, for ever. A screen whose only signal is the SDK eventually saying something therefore
- * has a state in which it says nothing at all, which is precisely how this looked with the
- * microphone switched off: "Connecting…" and no more, indefinitely.
- *
- * So the wait is bounded here. Twenty seconds is far longer than a session takes — a token, a
- * socket and a handshake are a second or two on a bad connection — and long enough that a slow
- * network is never mistaken for a failure.
- */
-const GIVE_UP_CONNECTING_AFTER_MS = 20_000;
-
-/**
  * What tapping the screen does: on a phone, once there is a conversation that has not ended, it
- * switches between talking and writing (see `text-mode.ts`). Anywhere else, nothing.
+ * switches between talking and writing (see `createTextModeCaption` in `hologram`). Anywhere else,
+ * nothing.
  */
 function tapToSwitchModes({
   canType,
@@ -137,16 +121,11 @@ function showsCameraButton({
 }
 
 /**
- * Starts the greeting while the microphone is still held, and lets go of it once the greeting has
- * started or been refused. Holding it is what lets a browser tab nobody has clicked play a sound at
- * all; see `microphone-permission.web.ts`.
+ * Whether a summoning is under way — greeting, connecting or talking — and so is shown again rather
+ * than replaced when he is summoned once more.
  */
-async function greetHolding(microphone: MicrophoneAccess, beginGreeting: () => Promise<boolean>): Promise<boolean> {
-  try {
-    return await beginGreeting();
-  } finally {
-    microphone.release();
-  }
+function isUnderWay(phase: SessionPhase): boolean {
+  return phase === 'greeting' || phase === 'connecting' || phase === 'live';
 }
 
 /**
@@ -182,7 +161,7 @@ async function greetHolding(microphone: MicrophoneAccess, beginGreeting: () => P
  * **On a phone it is there only when asked for.** It used to sit under him as an empty bar on
  * every summoning — something on the assistant's screen that was not him, for a keyboard nobody
  * summoning an assistant is holding — and the user asked for it gone. Tapping him now switches the
- * conversation into writing and back (see `text-mode.ts`), and the field comes with it. A browser
+ * conversation into writing and back (see `toggleTextMode`), and the field comes with it. A browser
  * keeps it always: that is where Jarvis is developed and demonstrated, the keyboard is right there,
  * and it is the only way into the text-only conversation a refused microphone falls back to.
  *
@@ -193,9 +172,10 @@ async function greetHolding(microphone: MicrophoneAccess, beginGreeting: () => P
  *
  * **That one now shows what he wrote**, which it never did. His reply arrived over the socket and
  * nothing rendered it, so typing into the fallback sent the line, got an answer and displayed
- * nothing at all — a conversation you could talk into and never hear back from. `written-reply.ts`
- * keeps the last thing he said and `WrittenReplyLine` puts it above the field. It is the one screen
- * where there is something to read, because it is the one where there is nothing to listen to.
+ * nothing at all — a conversation you could talk into and never hear back from.
+ * `hologram/src/written-reply.ts` keeps the last thing he said and `WrittenReplyLine` puts it above
+ * the field. It is the one screen where there is something to read, because it is the one where
+ * there is nothing to listen to.
  *
  * **And he delivers it.** With no audio the sphere had nothing to follow and idled through the
  * whole exchange, which is an assistant answering you while looking exactly like one who has not
@@ -224,81 +204,116 @@ export function ConversationScreen({
   inAssistantWindow = false,
   showing,
 }: ConversationScreenProps) {
-  const { startSession, sendUserMessage, endSession } = useConversationControls();
-  const { status } = useConversationStatus();
-  const { mode } = useConversationMode();
-  const liveVoice = useJarvisVoice();
+  const [problem, setProblem] = useState<string | undefined>(undefined);
+
+  /**
+   * Says what went wrong. A problem and the wait for a conversation are the same fact seen twice,
+   * and the session stops waiting — and ends whatever it was waiting for — before it says so.
+   */
+  const reportProblem = useCallback((message: string) => {
+    setProblem(message);
+  }, []);
+
+  /**
+   * Says what went wrong with the session itself, and on a phone says it in a toast as well.
+   *
+   * **The line alone was not enough there.** A session that fails once it is open — an account out
+   * of credits is the one that was hit: ElevenLabs accepts the token, opens the room, then closes it
+   * with `quota_exceeded` — is also a conversation that has ended, so Jarvis fades and, summoned,
+   * the sheet and the assistant's window go with him, taking the line along before it can be read.
+   * All anyone saw was him vanishing a second after greeting. A toast belongs to the system rather
+   * than to this window, so it outlives him. A browser keeps its screen, and the line on it.
+   *
+   * Only the session's own failures are toasted — a start that failed, an error before it opened,
+   * and one that ended with an error, which the SDK reports through `onDisconnect` with `reason:
+   * "error"` rather than through `onError`. Problems before there is a session, and the deadline,
+   * stay on the line alone, under a sphere that is still there.
+   */
+  const reportSessionFailure = useCallback((message: string) => {
+    setProblem(message);
+    if (Platform.OS === 'android') {
+      ToastAndroid.show(message, ToastAndroid.LONG);
+    }
+  }, []);
+
+  /**
+   * The camera's hold on the session: its `openCamera` tool, and the MCP calls it takes its upload
+   * URL from. A ref because the camera is made below the session — it needs the conversation to
+   * speak into, as the conversation needs its tool to dial with — and the session asks for neither
+   * while rendering, only as it dials and as calls arrive, by when the camera has put them here.
+   */
+  const cameraInSession = useRef<CameraSessionOptions | undefined>(undefined);
+
+  /**
+   * The conversation itself: hologram's session, which the headset and the watch hold too (see
+   * `useJarvisSession` in `hologram/conversation`).
+   *
+   * The rules are all there — one start at a time, the greeting from the recording while the token
+   * is fetched beside it and the session dialled behind it, the twenty seconds a conversation gets
+   * to open (and the ending of one that opens after them), failures said in words, tool calls,
+   * interruptions, the listening lattice's score. What this screen hands it is only what is this
+   * app's: its name in the history, its own check that a room is a `Room` of the `livekit-client`
+   * it bundles (`agent-audio-track.ts`), how it listens to his track (`jarvis-voice.ts`, natively on
+   * Android and through Web Audio in a browser), its text mode's rule for his written lines, and
+   * its camera.
+   */
+  const conversation = useJarvisSession({
+    settings,
+    participantName: PHONE_PARTICIPANT_NAME,
+    findRoom: roomOfConversation,
+    followAgentVoice: followJarvisVoice,
+    captions: 'while-typing',
+    onProblem: (message: string, source: ProblemSource) =>
+      source === 'session' ? reportSessionFailure(message) : reportProblem(message),
+    // The camera's, made below: see `cameraInSession`.
+    get clientTools() {
+      return cameraInSession.current?.clientTools;
+    },
+    onMCPToolCall: (event) => cameraInSession.current?.onMCPToolCall(event),
+  });
+  const { phase, status, writtenReply, setTyping, summon, sendText, hangUp } = conversation;
+
+  /**
+   * The camera the agent may ask for with its `openCamera` client tool, and the faint button beside
+   * him that opens it from sir's side. See `camera-tool.ts`.
+   */
+  const { cameraSessionOptions, cameraBusy, cameraWanted, canSendPhotos, showJarvisSomething } = useCameraTool({
+    inAssistantWindow,
+    photoUploadKey,
+    conversation,
+  });
+  useEffect(() => {
+    cameraInSession.current = cameraSessionOptions;
+  }, [cameraSessionOptions]);
+  const textMode = conversation.typing;
+  const liveVoice = useJarvisVoice(conversation.voice);
   const { frameRate, buildMilliseconds, particleShare, provenShare, startingShare } = useSparkDensity();
   // Onto the AirPods, if there are any. Only once the call is up, because the list of routes is
   // empty until LiveKit has started the audio session. See `preferred-microphone.ts`.
   usePreferredHeadset(status === 'connected');
-  // What he is doing between hearing you and answering. See `tool-activity.ts`.
-  const { thinking, toolHandlers, forgetToolCalls } = useToolActivity();
-  // And what happens to the sentence he was cut off in. See `queued-audio.ts`.
-  const { playbackHandlers } = useQueuedAudio();
-  // "Hello sir, how can I help?", from a recording, while the session is dialled behind it. See
-  // `greeting.ts` in `hologram/conversation`, and `start` below.
-  const {
-    greeting,
-    greetingVoice,
-    beginGreeting,
-    stopGreeting,
-    untilCallMayTakeTheAudio,
-    releaseCallAudio,
-    greetingSessionOptions,
-  } = useGreeting();
-  // You, as the conversation hears you, for the sphere's listening animation. See `user-voice.ts`.
-  const { user, userVoiceHandlers } = useUserVoice({ greeting });
 
-  const [problem, setProblem] = useState<string | undefined>(undefined);
   const [isStarting, setIsStarting] = useState(false);
-  // Set once a conversation has actually been opened, which is what puts the text field on this
-  // screen in a browser — either kind of conversation, since both take a typed line. It is not the same question
-  // as whether one is *connected*: a session that opened and then dropped still has a field, saying
-  // so, which is how a browser reports an ElevenLabs it could not finish reaching. What has no
-  // field is a `start` that never got as far as a session at all — a phone with the microphone
-  // refused, which says that in one line and is done. See `start` below.
+  // Set once a conversation has actually been dialled, which is what puts the text field on this
+  // screen in a browser — either kind of conversation, since both take a typed line. It is not the
+  // same question as whether one is *connected*: a session that was dialled and then dropped still
+  // has a field, saying so, which is how a browser reports an ElevenLabs it could not finish
+  // reaching. What has no field is a `start` that never got as far as a session at all — a phone
+  // with the microphone refused, or a key ElevenLabs rejected, which says that in one line and is
+  // done. See `start` below.
   const [canType, setCanType] = useState(false);
-  /**
-   * The last thing Jarvis said, in the conversations where you are writing to him.
-   *
-   * Set from the text-only session, and from a phone's voice session while it is held in writing —
-   * see `written-reply.ts` and `text-mode.ts`. In a spoken conversation his answer is his voice, and
-   * putting it on screen as well would be a transcript under a sphere drawn precisely so there
-   * would not have to be one.
-   */
-  const [writtenReply, setWrittenReply] = useState(SAYING_NOTHING);
-  const rememberWhatHeSaid = useCallback((incoming: { message: string; role: string }) => {
-    setWrittenReply((reply) => afterMessage(reply, incoming, Date.now()));
-  }, []);
-  // Held in writing, a phone still hears him, so his line is shown but not mimed: the sphere
-  // follows his real voice. See `afterSpokenMessage`.
-  const rememberWhatHeSaidAloud = useCallback((incoming: { message: string; role: string }) => {
-    setWrittenReply((reply) => afterSpokenMessage(reply, incoming));
-  }, []);
-  // Tapping him switches a phone's conversation between talking and writing. See `text-mode.ts`.
-  const clearWrittenReply = useCallback(() => setWrittenReply(SAYING_NOTHING), []);
-  const { textMode, toggleTextMode, resetTextMode, rememberInTextMode } = useTextMode({
-    connected: status === 'connected',
-    onSwitch: clearWrittenReply,
-    remember: rememberWhatHeSaidAloud,
-  });
-  /**
-   * When to stop waiting for the conversation to open, or `undefined` once nothing is waited for.
-   *
-   * A moment rather than a countdown, so that anything which re-arms the wait — the status moving
-   * from `disconnected` to `connecting`, say — re-arms it with the time that is actually left
-   * rather than starting the twenty seconds again.
-   */
-  const [connectingUntil, setConnectingUntil] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (conversation.dialled) {
+      setCanType(true);
+    }
+  }, [conversation.dialled]);
 
   /**
    * Whether Jarvis is still delivering his written answer.
    *
    * A boolean derived from the moment rather than the moment itself, because what reads it is a
    * hook and not the drawing: the sphere is handed one voice or the other, and swapping them is a
-   * render. See `written-reply.ts` for where the moment comes from, and the voice below for what
-   * is done with it.
+   * render. See `hologram/src/written-reply.ts` for where the moment comes from, and the voice below
+   * for what is done with it.
    */
   const [readingAloud, setReadingAloud] = useState(false);
   useEffect(() => {
@@ -315,7 +330,7 @@ export function ConversationScreen({
   /**
    * The voice the sphere follows: his own, or one made up when there is none to follow.
    *
-   * **A text-only conversation carries no audio at all**, so `liveVoice` reads silence throughout
+   * **A text-only conversation carries no audio at all**, so his voice reads silence throughout
    * and the sphere idled through the entire exchange — Jarvis answering you while looking exactly
    * like an assistant who had not heard you. For as long as he is delivering a written answer the
    * drawing is pointed at the same simulated voice sample mode uses, which is a spectrum built
@@ -325,11 +340,10 @@ export function ConversationScreen({
    *
    * **It is a fiction, and only ever where there is nothing to be honest about.** The words are
    * really his; only the delivery is invented, and it is invented only in the session ElevenLabs
-   * was asked not to speak in. A conversation with a voice never reaches this: `readingAloud` is
-   * only ever set by the text-only session's `onMessage`, and a phone held in writing — which
-   * still speaks — shows his line through `afterSpokenMessage`, which never sets it. So the sphere
-   * goes on following his real voice everywhere else, where it would be wrong to overrule it with
-   * a clock.
+   * was asked not to speak in. A conversation with a voice never reaches this: only the text-only
+   * session's lines come with a `readingUntil`, and a phone held in writing — which still speaks —
+   * shows his line without one (`afterSpokenMessage`). So the sphere goes on following his real
+   * voice everywhere else, where it would be wrong to overrule it with a clock.
    */
   const simulatedVoice = useSimulatedVoice(readingAloud ? 'speaking' : undefined);
   /**
@@ -337,175 +351,27 @@ export function ConversationScreen({
    * so the sphere says the words as they are heard. The agent's voice has nothing to say yet: its
    * first message is switched off for exactly as long as this plays.
    */
-  const voice = readingAloud ? simulatedVoice : greeting ? greetingVoice : liveVoice;
+  const voice = readingAloud ? simulatedVoice : conversation.greeting ? conversation.voice : liveVoice;
 
   /**
-   * Hangs up when the user asks: tapping beside the sheet or pressing back. The quiet after a
-   * finished request is not the screen's to judge — the agent ends that call itself, with its
-   * `turnTimeout` and `end_call`.
-   *
-   * Summoned, there is a window to retract as well, and nothing behind it but what the user was
-   * doing before — so the end of the conversation is the end of the window. Opened as an app or in
-   * a browser there is none, and the screen simply stays, dark and still reachable by a long press.
-   * The same two ways out sample mode has; see its `finish`. Both live in `conversation-sheet.tsx`,
-   * with everything else that differs when he is summoned into the sheet.
+   * Tapping him switches a phone's conversation between talking and writing: the microphone muted,
+   * the field under him, his answers written above it as well as spoken. See
+   * `createTextModeCaption` in `hologram/src/written-caption.ts`.
    */
-  const hangUpSession = useCallback(() => {
-    setConnectingUntil(undefined);
-    // Dismissed mid-greeting, he stops talking rather than finishing the sentence to nobody.
-    stopGreeting();
-    endSession();
-  }, [endSession, stopGreeting]);
-
-  /**
-   * The camera the agent may ask for with its `openCamera` client tool, and the faint button beside
-   * him that opens it from sir's side. See `camera-tool.ts`.
-   */
-  const { cameraSessionOptions, cameraBusy, cameraWanted, canSendPhotos, showJarvisSomething } = useCameraTool({
-    inAssistantWindow,
-    photoUploadKey,
-  });
-
-  /**
-   * Every MCP call the agent makes, handed to both that want it: the sphere thinks while one runs,
-   * and the camera keeps the upload URL `preparePhotoUpload` mints. `startSession` takes one handler
-   * per event, so two spread side by side would leave only the second.
-   */
-  const onMCPToolCall = useCallback(
-    (mcpToolCall: Parameters<typeof toolHandlers.onMCPToolCall>[0]) => {
-      toolHandlers.onMCPToolCall(mcpToolCall);
-      cameraSessionOptions.onMCPToolCall(mcpToolCall);
-    },
-    [toolHandlers, cameraSessionOptions],
-  );
-
-  /**
-   * Sends what was typed, and forgets the answer to the last thing.
-   *
-   * **The clearing is done here rather than left to the message coming back**, because in a
-   * text-only session it does not come back. `onMessage` reports a user line from a
-   * `user_transcript`, which is what ASR produces — and a conversation held as text runs no ASR,
-   * so a line you typed may never be echoed at all. Left to that, a stale answer would sit under
-   * the question you just asked for as long as Jarvis took to answer it, reading as his reply to
-   * it. `afterMessage` still handles a user line for the session that does echo one; this is what
-   * makes the screen right in the session that does not.
-   */
-  const sendTypedMessage = useCallback(
-    (message: string) => {
-      setWrittenReply(SAYING_NOTHING);
-      sendUserMessage(message);
-    },
-    [sendUserMessage],
-  );
+  const toggleTextMode = useCallback(() => setTyping(!textMode), [setTyping, textMode]);
 
   const launchUrl = Linking.useURL();
-
-  /**
-   * Says what went wrong, and stops waiting for the conversation that is not coming.
-   *
-   * Every failure goes through here rather than setting the message directly, because a problem
-   * and a wait are the same fact seen twice: leaving the deadline armed would let the generic
-   * "took too long" replace a message that said exactly which key was rejected.
-   */
-  const reportProblem = useCallback((message: string) => {
-    setConnectingUntil(undefined);
-    setProblem(message);
-  }, []);
-
-  /**
-   * Says what went wrong with the session itself, and on a phone says it in a toast as well.
-   *
-   * **The line alone was not enough there.** A session that fails once it is open — an account out
-   * of credits is the one that was hit: ElevenLabs accepts the token, opens the room, then closes it
-   * with `quota_exceeded` — is also a conversation that has ended, so Jarvis fades and, summoned,
-   * the sheet and the assistant's window go with him, taking the line along before it can be read.
-   * All anyone saw was him vanishing a second after greeting. A toast belongs to the system rather
-   * than to this window, so it outlives him. A browser keeps its screen, and the line on it.
-   */
-  const reportSessionFailure = useCallback(
-    (message: string) => {
-      reportProblem(message);
-      if (Platform.OS === 'android') {
-        ToastAndroid.show(message, ToastAndroid.LONG);
-      }
-    },
-    [reportProblem],
-  );
-
-  /**
-   * Says why a conversation ended, when it ended for a reason worth saying.
-   *
-   * **The SDK does not route this through `onError`**, and that is the whole reason this exists.
-   * A server that closes the socket — a rejected override, an agent that is not reachable, a
-   * connection dropped mid-sentence — reaches `onDisconnect` carrying `reason: "error"` and a
-   * message, and reaches `onError` not at all. So the screen went dark and said nothing: Jarvis
-   * faded out, because a conversation really had ended, and there was no line to explain it.
-   *
-   * A conversation that simply finished is not a failure and gets no line. The agent hanging up
-   * after saying goodbye is `reason: "agent"`, and being told so in red would be the screen
-   * arguing with him.
-   */
-  const reportEnding = useCallback(
-    (details: { reason: string; message?: string }) => {
-      if (details.reason === 'error') {
-        reportSessionFailure(details.message || 'The conversation with Jarvis ended unexpectedly.');
-      }
-    },
-    [reportSessionFailure],
-  );
 
   /**
    * Whether a `start` is already under way, as a ref so that two callers in the same commit see it.
    *
    * `isStarting` is state, and state is only seen on the next render — so two effects that both
-   * decide to start in one commit would both see it false and open two WebRTC sessions, the second
-   * tearing down the first. There are three such effects now: opening the screen, a summoning with
-   * a launch URL, and the assistant's window being shown again.
+   * decide to start in one commit would both see it false and ask for the microphone twice. There
+   * are three such effects: opening the screen, a summoning with a launch URL, and the assistant's
+   * window being shown again. The session itself holds one summoning at a time; this covers the
+   * asking before it.
    */
   const startingNow = useRef(false);
-
-  /**
-   * Greets you, and dials the voice session behind him — though on a phone it is only started once
-   * he has finished; see the note in `start`. Nothing is started if he was hung up on mid-greeting.
-   */
-  const openVoiceSession = useCallback(
-    async (microphone: MicrophoneAccess) => {
-      const greeted = await greetHolding(microphone, beginGreeting);
-      const { token } = await requestConversationToken({ settings, participantName: PHONE_PARTICIPANT_NAME });
-      if (!(await untilCallMayTakeTheAudio())) {
-        return;
-      }
-      startSession({
-        conversationToken: token,
-        connectionType: 'webrtc',
-        onError: reportSessionFailure,
-        onDisconnect: reportEnding,
-        ...toolHandlers,
-        onMCPToolCall,
-        ...playbackHandlers,
-        ...userVoiceHandlers,
-        clientTools: cameraSessionOptions.clientTools,
-        // Only kept while the conversation is held in writing; see `text-mode.ts`.
-        onMessage: rememberInTextMode,
-        ...(greeted ? greetingSessionOptions : {}),
-      });
-    },
-    [
-      settings,
-      startSession,
-      beginGreeting,
-      untilCallMayTakeTheAudio,
-      greetingSessionOptions,
-      toolHandlers,
-      playbackHandlers,
-      userVoiceHandlers,
-      onMCPToolCall,
-      cameraSessionOptions,
-      rememberInTextMode,
-      reportSessionFailure,
-      reportEnding,
-    ],
-  );
 
   const start = useCallback(async () => {
     if (startingNow.current) {
@@ -513,10 +379,9 @@ export function ConversationScreen({
     }
     startingNow.current = true;
     setProblem(undefined);
-    // Every summoning starts in voice, and with nothing written; see `text-mode.ts`.
-    resetTextMode();
+    // Every summoning starts in voice, and with nothing written; see `createTextModeCaption`.
+    setTyping(false);
     setIsStarting(true);
-    setConnectingUntil(Date.now() + GIVE_UP_CONNECTING_AFTER_MS);
 
     try {
       const microphone = await requestMicrophoneAccess();
@@ -527,46 +392,46 @@ export function ConversationScreen({
       // and demonstrated, the keyboard is right there, and refusing the microphone is a thing you
       // do on purpose when you are in a call, in an open office, or want the same input twice.
       if (!microphone && ON_A_PHONE) {
-        reportProblem('Jarvis needs the microphone in order to listen.');
+        reportProblem(MICROPHONE_PROBLEM);
         return;
       }
 
-      // Both halves are minted here rather than at launch, and neither is kept: a conversation
-      // token and a signed URL are short-lived, and one fetched when the app opened may already be
-      // dead by the time it is used.
+      // The session mints what it dials with rather than this screen at launch, and keeps neither:
+      // a conversation token and a signed URL are short-lived, and one fetched when the app opened
+      // may already be dead by the time it is used.
+      //
       // **A typed line into this session is answered out loud.** `sendUserMessage` belongs to the
       // conversation rather than to the text-only flavour of it, so what the keyboard sends takes
       // exactly the turn the microphone would have: he speaks the reply, and the sphere follows it,
       // because nothing downstream of here knows how the turn was started.
       //
       // **And he answers before it is even dialled.** The greeting is a recording, so it starts the
-      // moment the microphone is granted, and the token request goes out beside it rather than after
-      // it: by the time he has said "how can I help?" the session is usually up and listening. The
-      // session is told not to greet a second time, and its microphone is kept muted until he has
-      // finished, so the agent does not hear him through the speaker and take it for you. If the
-      // session is slower than the greeting, the screen simply goes on connecting as it always did.
+      // moment the microphone is granted, and the token request goes out beside it: by the time he
+      // has said "how can I help?" the session is usually up and listening. The session is told
+      // not to greet a second time, and its microphone is kept muted until he has finished, so the
+      // agent does not hear him through the speaker and take it for you. If the session is slower
+      // than the greeting, the screen simply goes on connecting as it always did.
       //
-      // **On a phone the session itself waits for him to finish**, because starting it switches
-      // Android into call audio and that turned the rest of the recording into a clipped, thin voice
-      // that did not sound like him. See `untilCallMayTakeTheAudio`.
+      // **On a phone he greets inside the call's audio and the session waits for him to finish**,
+      // because starting the session switches Android into call audio and that turned the rest of
+      // the recording into a clipped, thin voice that did not sound like him. See
+      // `hologram/src/conversation/call-audio.ts`.
       //
       // **In a browser the microphone is still held open while he starts**, which is what lets a tab
       // nobody has clicked play him at all; it is let go as soon as the greeting has started, or been
       // refused. See `microphone-permission.web.ts`.
       if (microphone) {
-        await openVoiceSession(microphone);
+        summon({ onGreetingAnswered: microphone.release });
       } else {
         // **This is what makes a conversation possible with no microphone at all**, and the one
         // place Jarvis still answers in writing. ElevenLabs runs the session as text on both sides:
-        // nothing is captured, and the reply comes back written rather than spoken. That second
-        // half is the cost — with no speech to track, the sphere idles rather than answering — so
-        // it is only ever asked for when there is no alternative, which since the field appears
-        // beside a live microphone too means exactly one case: a browser that refused one.
-        // He still visibly thinks, because a tool call is reported over the same channel and
-        // `useToolActivity` does not care how the conversation is being held.
+        // nothing is captured, and the reply comes back written rather than spoken — so his lines
+        // are shown, and mimed on the sphere. It is only ever asked for when there is no
+        // alternative, which since the field appears beside a live microphone too means exactly one
+        // case: a browser that refused one. He still visibly thinks, because a tool call is
+        // reported over the same channel.
         //
-        // And it is held over a socket rather than over WebRTC, which is the whole reason this is
-        // a branch rather than one flag on the call above: a room nobody publishes audio into
+        // And it is held over a socket rather than over WebRTC: a room nobody publishes audio into
         // never finishes coming up, so a typed conversation dialled over WebRTC sat on
         // "Connecting…" for ever. See `requestSignedConversationUrl`.
         //
@@ -574,97 +439,28 @@ export function ConversationScreen({
         // did it to keep this conversation silent — in a call, in an open office — and it is the one
         // session where he answers in writing. So he greets in writing too: the agent's own first
         // message arrives as his first written reply, exactly as it did before there was a greeting.
-        const signedUrl = await requestSignedConversationUrl(settings);
-        startSession({
-          signedUrl,
-          connectionType: 'websocket',
-          textOnly: true,
-          onError: reportSessionFailure,
-          onDisconnect: reportEnding,
-          ...toolHandlers,
-          onMCPToolCall,
-          // The camera too: a browser's picker takes a photo in writing as readily as in voice.
-          clientTools: cameraSessionOptions.clientTools,
-          // The only place his line is mimed as well as shown, because it is the only place there
-          // is no voice for the sphere to follow: his reply arrives written here and as audio
-          // everywhere else.
-          onMessage: rememberWhatHeSaid,
-        });
+        summon({ textOnly: true });
       }
-      setCanType(true);
     } catch (error: unknown) {
-      // Nothing is coming to take the call's audio the greeting started, so it is let go here.
-      stopGreeting();
-      releaseCallAudio();
       reportProblem(error instanceof Error ? error.message : 'Jarvis could not be reached.');
     } finally {
       startingNow.current = false;
       setIsStarting(false);
     }
-  }, [
-    settings,
-    startSession,
-    openVoiceSession,
-    stopGreeting,
-    releaseCallAudio,
-    resetTextMode,
-    toolHandlers,
-    onMCPToolCall,
-    cameraSessionOptions,
-    reportProblem,
-    reportSessionFailure,
-    reportEnding,
-    rememberWhatHeSaid,
-  ]);
-
-  /**
-   * Gives up on a conversation that is taking too long to open, and says so.
-   *
-   * The one thing on this screen that does not wait to be told. See
-   * {@link GIVE_UP_CONNECTING_AFTER_MS} for why a screen that only ever reacts to the SDK has a
-   * state it can never leave.
-   */
-  useEffect(() => {
-    if (connectingUntil === undefined) {
-      return;
-    }
-    if (status === 'connected') {
-      setConnectingUntil(undefined);
-      return;
-    }
-
-    const givingUp = setTimeout(
-      () => {
-        setConnectingUntil(undefined);
-        setProblem('Jarvis did not answer. ElevenLabs may be unreachable, or the settings may be wrong.');
-      },
-      Math.max(0, connectingUntil - Date.now()),
-    );
-    return () => clearTimeout(givingUp);
-  }, [connectingUntil, status]);
+  }, [setTyping, summon, reportProblem]);
 
   /**
    * Opens the conversation as soon as there is a screen to open it on.
    *
    * Once, and only once, however this screen was reached — from the launcher, from the assistant
    * gesture, or by coming back from settings. `tried` is a ref rather than state because it must
-   * not cause a render and must not reset when one happens: two starts in flight at the same time
-   * is two WebRTC sessions, and the second tears down the first.
+   * not cause a render and must not reset when one happens.
    *
    * Nothing retries. A conversation that failed to open failed for a reason — no microphone, no
    * network, a rejected key — and hammering ElevenLabs until one of those changes would be rude to
    * them and useless to the user, who can press and hold to fix the only one of those that is
    * fixable here.
    */
-  // A call still running when the conversation drops never gets its answer, so the sphere would be
-  // left mid-thought — and the next conversation would open with him already thinking about
-  // something that stopped happening.
-  useEffect(() => {
-    if (!isLive(status)) {
-      forgetToolCalls();
-    }
-  }, [status, forgetToolCalls]);
-
   const tried = useRef(false);
   useEffect(() => {
     if (tried.current || isLive(status) || isStarting) {
@@ -685,7 +481,9 @@ export function ConversationScreen({
    * *Was* open is the whole of the condition, and it is why this is a fold over the statuses
    * rather than a look at the current one: a conversation that never opened is a different state
    * with a different answer — the line saying why, under a sphere that is still there — and both
-   * of them read `disconnected`. See `conversation-life.ts`.
+   * of them read `disconnected`. See `hologram/src/conversation-life.ts`. The statuses are the
+   * session's, which only ever come from the SDK's status callbacks: an error while he is talking is
+   * not him leaving.
    */
   const [life, setLife] = useState(NOT_YET_OPEN);
   useEffect(() => {
@@ -718,7 +516,13 @@ export function ConversationScreen({
     inAssistantWindow,
     gone,
     opened: life.open,
-    endConversation: hangUpSession,
+    // Hangs up when the user asks: tapping beside the sheet or pressing back. Dismissed
+    // mid-greeting, he stops talking rather than finishing the sentence to nobody. The quiet after
+    // a finished request is not the screen's to judge — the agent ends that call itself, with its
+    // `turnTimeout` and `end_call`. Summoned, the end of the conversation is the end of the window
+    // as well; opened as an app or in a browser, the screen simply stays, dark and still reachable
+    // by a long press. See `conversation-sheet.tsx`.
+    endConversation: hangUp,
     goNow,
   });
   const { hologramSize, canvas, settled } = sheet;
@@ -735,13 +539,13 @@ export function ConversationScreen({
    * and nothing to look at.
    */
   const summonAgain = useCallback(() => {
-    if (isLive(status) || startingNow.current) {
+    if (isUnderWay(phase) || isLive(status) || startingNow.current) {
       return;
     }
     setLife(NOT_YET_OPEN);
     setGone(false);
     void start();
-  }, [start, status]);
+  }, [start, phase, status]);
 
   // Summoned by the plain assist intent, into the app's own activity: each summoning is a new URL,
   // claimed so it is acted on once. Never in the assistant's window, whose tree hears the activity's
@@ -787,9 +591,9 @@ export function ConversationScreen({
             <JarvisHologram
               size={hologramSize}
               voice={voice}
-              user={user}
+              user={conversation.user}
               quietestSpeech={QUIETEST_SPEECH_HERE}
-              thinking={thinking}
+              thinking={conversation.thinking}
               leaving={ended}
               frameRate={frameRate}
               buildMilliseconds={buildMilliseconds}
@@ -814,7 +618,7 @@ export function ConversationScreen({
       {/*
         The other way in, in a browser, wherever there is a conversation to type into — a live
         microphone as readily as a refused one. Only a `start` that never opened a session at all
-        has none. On a phone only while the conversation is held in writing: see `text-mode.ts`.
+        has none. On a phone only while the conversation is held in writing: see `toggleTextMode`.
 
         It leaves with him rather than before him, so the screen empties in one movement. A field
         left behind on a conversation that has ended is somewhere to type that nothing is listening
@@ -833,9 +637,12 @@ export function ConversationScreen({
 
       {showsTypedField({ canType, gone, textMode }) ? (
         <TypedMessageField
-          onSend={sendTypedMessage}
+          // Sent into the session, which clears the answer to the last line as it goes: a text-only
+          // session runs no speech recognition, so a typed line may never come back to clear it,
+          // and a stale answer would sit under the new question reading as a reply to it.
+          onSend={sendText}
           enabled={status === 'connected'}
-          opening={connectingUntil !== undefined}
+          opening={isStarting || phase === 'greeting' || phase === 'connecting'}
           // Switched into writing with a tap, the keyboard is what was asked for.
           autoFocus={ON_A_PHONE}
         />
@@ -848,10 +655,10 @@ export function ConversationScreen({
           connected: status === 'connected',
           gone,
           settled,
-          greeting,
+          greeting: conversation.greeting,
           textMode,
-          thinking,
-          speaking: mode === 'speaking',
+          thinking: conversation.thinking,
+          speaking: conversation.mode === 'speaking',
           wanted: cameraWanted,
         })}
         hologramSize={hologramSize}

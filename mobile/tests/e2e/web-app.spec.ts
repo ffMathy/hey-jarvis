@@ -822,8 +822,9 @@ function sinceTheLastConversationOpened(heard: unknown[]): unknown[] {
  *
  * **The key is given the way sir would give it**: ElevenLabs set up on the tour, a conversation
  * opened without a camera, and the key saved on the settings screen while that conversation is still
- * connected. Saving a new key ends it, and the conversation screen opens another built with the key
- * (see `settings-screen.tsx`), so what this returns is the second conversation, and `say` speaks on it.
+ * connected. Going to the settings ends it, since the session is the conversation screen's, and the
+ * screen opens another on coming back, built with the key (see `settings-screen.tsx`), so what this
+ * returns is the second conversation, and `say` speaks on it.
  */
 async function openAConversationToShowThingsTo(
   page: Page,

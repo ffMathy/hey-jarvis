@@ -1,5 +1,5 @@
-import { useConversationControls, useConversationStatus } from '@elevenlabs/react-native';
-import { OPEN_CAMERA_TOOL } from 'hologram';
+import { type ClientTools, type MCPToolCallEvent, OPEN_CAMERA_TOOL } from 'hologram';
+import type { JarvisConversation } from 'hologram/conversation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CAMERA_ON_THIS_DEVICE,
@@ -18,21 +18,34 @@ import { CAMERA_OPENS_WITHOUT_A_TAP, takePhoto } from './take-photo';
 /** How often sir is said to be still there while the camera is open. See the heartbeat below. */
 const STILL_HERE_EVERY_MS = 5_000;
 
+/** As much of the screen's conversation (`useJarvisSession`) as the camera uses. */
+export type CameraConversation = Pick<
+  JarvisConversation,
+  'status' | 'sendText' | 'sendContextualUpdate' | 'sendUserActivity'
+>;
+
+/** What the camera hands the session: its tool, and an ear for the MCP call that carries its upload URL. */
+export interface CameraSessionOptions {
+  clientTools: ClientTools;
+  onMCPToolCall: (event: MCPToolCallEvent) => void;
+}
+
 /**
  * Showing Jarvis something: the agent's `openCamera` client tool, answered here, and the camera
  * button beside him that does the same from sir's side.
  *
  * **Jarvis asks, or sir offers, and either way it is one photo to one call.** Before the agent calls,
  * it has Mastra mint an upload URL, and the answer reaches this device as an MCP tool event — which
- * is the only place the URL is taken from, never from the model (see `camera-answers.ts` for why). Sir's tap opens the camera at once and asks Jarvis to do all that in the same
- * breath (`SHOWING_YOU_SOMETHING`). The photo is sent when a call and a photo are both in hand,
+ * is the only place the URL is taken from, never from the model (see `camera-answers.ts` for why).
+ * Sir's tap opens the camera at once and asks Jarvis to do all that in the same breath
+ * (`SHOWING_YOU_SOMETHING`). The photo is sent when a call and a photo are both in hand,
  * whichever came second — `photo-request.ts` decides, and says why — and the call is answered with
  * the id Mastra filed it under, or with what happened instead. The agent then asks about it through
  * `routePromptWorkflow`, where a model that can see is, once sir has said what he wants done with it.
  *
- * **Nothing here throws at the SDK.** A client tool that throws is reported through `onError`, which
- * on a phone is a failed conversation in red and a toast — so a camera closed empty-handed, a URL
- * that is not an upload URL and a photo that could not be sent are all *answers*.
+ * **Nothing here throws at the SDK.** A client tool that throws is answered by the SDK itself, in
+ * its own words, which tell the agent nothing it can act on — so a camera closed empty-handed, a URL
+ * that is not an upload URL and a photo that could not be sent are all *answers*, saying what to do.
  *
  * **Only this device's camera is offered.** Once connected, it tells the agent it has one
  * (`CAMERA_ON_THIS_DEVICE`); the agent's prompt asks for photos only where it has heard that, so the
@@ -45,11 +58,11 @@ const STILL_HERE_EVERY_MS = 5_000;
  * for a photo that could only be turned away. A key the server refuses is answered apart from any
  * other failure (`PHOTO_KEY_REFUSED`), because it is the one sir can fix and retrying cannot.
  *
- * **The key a conversation uses is the one this hook was given, as it is now.** The session keeps
- * the tool and the MCP handler of the screen that started it, even after that screen has gone, so a
- * key changed on the settings screen ends the conversation there and the next is built with the new
- * one (`settings-screen.tsx`). The one change that reaches a conversation still running here is a
- * summoning reading the key again (`app.tsx`), and the tool and `send` read it through a ref for that.
+ * **The key a conversation uses is the one this hook was given, as it is now.** The session is the
+ * conversation screen's and ends with it, so a key changed on the settings screen reaches the next
+ * conversation — the one the screen opens on coming back. The one change that reaches a conversation
+ * still running here is a summoning reading the key again (`app.tsx`), and the tool and `send` read
+ * it through a ref for that.
  *
  * **Nothing here holds the call open while sir frames the shot; the agent does.** A finished
  * request is hung up on by the agent itself, after its `turnTimeout`, and while the camera is open
@@ -58,22 +71,21 @@ const STILL_HERE_EVERY_MS = 5_000;
  * which fades while the camera is open or its photo is on the way. `cameraWanted` is a browser's:
  * the agent has asked, the camera cannot open without a tap there, and the button says so.
  *
- * The session options go to `startSession` beside the other hooks' — `clientTools` as they are,
- * since this is the only client tool the agent has, and `onMCPToolCall` combined with the sphere's,
- * never spread, or one replaces the other. Both are built once per session and read everything live
- * through refs, the key included.
+ * The session options go to the screen's session (`useJarvisSession` in `hologram`), which dials
+ * with the tool and hands on every MCP call once it has read it for his thinking. Both are built
+ * once and read everything live through refs, the key included.
  */
 export function useCameraTool({
   inAssistantWindow,
   photoUploadKey,
+  conversation: { status, sendText, sendContextualUpdate, sendUserActivity },
 }: {
   inAssistantWindow: boolean;
   /** The key Mastra asks for before it takes a photo, or `undefined` when sir has not given one. */
   photoUploadKey: string | undefined;
+  /** The conversation the photo is for: its status, and the ways the camera speaks into it. */
+  conversation: CameraConversation;
 }) {
-  const { status } = useConversationStatus();
-  const { sendUserMessage, sendContextualUpdate, sendUserActivity } = useConversationControls();
-
   // Refs rather than state: the tool is handed to the session once, and has to find these without
   // a render. What the screen draws from is mirrored into state below.
   const request = useRef(NOTHING_REQUESTED);
@@ -82,7 +94,7 @@ export function useCameraTool({
   /** A photo sir took before the call asking for it had arrived. */
   const heldPhoto = useRef<Blob | undefined>(undefined);
   /** Which conversation a photo in flight belongs to, so one that lands after the end is dropped. */
-  const conversation = useRef(0);
+  const conversationNumber = useRef(0);
   /**
    * The key as it is now, for a tool handed to the session before it may have changed — which it
    * does under a live conversation when a summoning finds this one still open and reads the key
@@ -123,10 +135,10 @@ export function useCameraTool({
         return;
       }
 
-      const sentIn = conversation.current;
+      const sentIn = conversationNumber.current;
       setSending(true);
       void sendPhoto({ photo, uploadUrl, photoUploadKey: photoUploadKeyNow }).then((delivery) => {
-        if (sentIn !== conversation.current) {
+        if (sentIn !== conversationNumber.current) {
           return;
         }
         setSending(false);
@@ -200,14 +212,14 @@ export function useCameraTool({
     if (request.current.cameraOpen) {
       return;
     }
-    const takenIn = conversation.current;
-    const photo = takePhoto({ inAssistantWindow, stillTalking: () => takenIn === conversation.current });
+    const takenIn = conversationNumber.current;
+    const photo = takePhoto({ inAssistantWindow, stillTalking: () => takenIn === conversationNumber.current });
     setWanted(false);
     setCameraOpen(true);
     happen({ type: 'cameraOpened' });
 
     void photo.then((taken) => {
-      if (takenIn !== conversation.current) {
+      if (takenIn !== conversationNumber.current) {
         return;
       }
       setCameraOpen(false);
@@ -230,15 +242,10 @@ export function useCameraTool({
   const showJarvisSomething = useCallback(() => {
     const nobodyAsked = request.current.askedAt === undefined;
     openTheCamera();
-    if (!nobodyAsked) {
-      return;
+    if (nobodyAsked) {
+      sendText(SHOWING_YOU_SOMETHING);
     }
-    try {
-      sendUserMessage(SHOWING_YOU_SOMETHING);
-    } catch {
-      // The conversation went between the tap and this; the session ending lets go of the photo.
-    }
-  }, [openTheCamera, sendUserMessage]);
+  }, [openTheCamera, sendText]);
 
   const connected = status === 'connected';
   /** Whether there is a photo this phone could send that Mastra would take. */
@@ -247,13 +254,8 @@ export function useCameraTool({
   // A device with a camera, and the key to send its photos with, says so once per conversation, so
   // the agent knows it may ask. One without the key says nothing, and is not asked.
   useEffect(() => {
-    if (!connected || !canSendPhotos) {
-      return;
-    }
-    try {
+    if (connected && canSendPhotos) {
       sendContextualUpdate(CAMERA_ON_THIS_DEVICE);
-    } catch {
-      // Gone between the status and this; the next conversation says it again.
     }
   }, [connected, canSendPhotos, sendContextualUpdate]);
 
@@ -263,7 +265,7 @@ export function useCameraTool({
     if (connected) {
       return;
     }
-    conversation.current += 1;
+    conversationNumber.current += 1;
     happen({ type: 'sessionOver' });
   }, [connected, happen]);
 
@@ -290,17 +292,11 @@ export function useCameraTool({
     if (!busy && !wanted) {
       return;
     }
-    const stillHere = setInterval(() => {
-      try {
-        sendUserActivity();
-      } catch {
-        // The conversation went; the session ending lets go of the rest.
-      }
-    }, STILL_HERE_EVERY_MS);
+    const stillHere = setInterval(sendUserActivity, STILL_HERE_EVERY_MS);
     return () => clearInterval(stillHere);
   }, [busy, wanted, sendUserActivity]);
 
-  const cameraSessionOptions = useMemo(
+  const cameraSessionOptions = useMemo<CameraSessionOptions>(
     () => ({
       clientTools: {
         // Whatever the model put in the parameters is ignored: where the photo goes is Mastra's to say.
@@ -317,7 +313,7 @@ export function useCameraTool({
         },
       },
       // Every MCP call the agent makes is relayed here; the one that mints an upload URL is kept.
-      onMCPToolCall: (mcpToolCall: unknown) => {
+      onMCPToolCall: (mcpToolCall) => {
         const uploadUrl = readOfferedUploadUrl(mcpToolCall);
         if (uploadUrl) {
           happen({ type: 'offered', uploadUrl, at: Date.now() });

@@ -1,4 +1,3 @@
-import { useConversationControls } from '@elevenlabs/react-native';
 import type { ElevenLabsSettings } from 'hologram';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { ElevenLabsFields } from './elevenlabs-fields';
@@ -28,14 +27,10 @@ interface SettingsScreenProps {
  * somebody meeting Jarvis for the first time does not have yet. Somebody who does comes back here
  * for it, which is also where the agent sends him when he asks for a photo it cannot have.
  *
- * **Changing it ends the conversation still running beneath this screen.** Holding the conversation
- * screen to come here unmounts it, but not its session: ElevenLabs keeps the `openCamera` tool and
- * the MCP handler it was started with, which belong to the screen that started it and read the key
- * that screen had. Nothing else can reach them, so a key added here was answered with "sir has not
- * given this phone the key", and one cleared here was still sent with a photo. So a save that
- * changes the key hangs that conversation up, and the conversation screen it returns to opens a new
- * one, built with the new key — and told of a camera, or not, to match. A save that leaves the key
- * alone leaves the conversation alone too.
+ * **A changed key reaches the next conversation.** Holding the conversation screen to come here
+ * ends the conversation on it, since the session lasts only as long as its screen
+ * (`useJarvisSession` in `hologram`), and the screen this returns to opens a new one, dialled with
+ * the camera tool of the key as it is then — and told of a camera, or not, to match.
  *
  * **This is no longer the first thing a new install sees** — `onboarding-screen.tsx` is, and it
  * explains what an ElevenLabs agent is before asking for one. What is left here is the screen you
@@ -44,17 +39,6 @@ interface SettingsScreenProps {
  * been walked, which is why it keeps its own way into sample mode.
  */
 export function SettingsScreen({ settings, photoUploadKey, onSave, onCancel, onTrySample }: SettingsScreenProps) {
-  const { endSession } = useConversationControls();
-
-  const save = (saved: ElevenLabsSettings, photoUploadKeyChange: PhotoUploadKeyChange | undefined) => {
-    if (photoUploadKeyChange) {
-      // Before `onSave` swaps the screens, in the same event: the SDK reports the session gone as
-      // soon as it is told, so the conversation screen mounts on no conversation and opens its own.
-      endSession();
-    }
-    onSave(saved, photoUploadKeyChange);
-  };
-
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>ElevenLabs</Text>
@@ -63,7 +47,7 @@ export function SettingsScreen({ settings, photoUploadKey, onSave, onCancel, onT
         that a lost phone means revoking one key.
       </Text>
 
-      <ElevenLabsFields settings={settings} photos={{ storedKey: photoUploadKey }} submitLabel="Save" onSubmit={save} />
+      <ElevenLabsFields settings={settings} photos={{ storedKey: photoUploadKey }} submitLabel="Save" onSubmit={onSave} />
 
       {onCancel ? (
         <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={onCancel}>

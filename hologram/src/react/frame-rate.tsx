@@ -16,10 +16,9 @@ const READ_INTERVAL_MS = 500;
  * builds a new drawing worklet — which Reanimated then re-serialises, scene and all. Held here,
  * the re-render stops at this line.
  *
- * It says what is achieved, not what is asked for: the cap is forty (`MINIMUM_FRAME_SECONDS`), so
- * forty means the device is keeping up and anything less is what it managed. On a 60 Hz screen the
- * most it can read is thirty, which is not the device struggling — a frame gate can only produce
- * the refresh rate divided by a whole number, and 60 Hz has no forty in it.
+ * It says what is achieved, not what is asked for. The view draws every frame the screen offers, up
+ * to a hundred and twenty-eight a second (`MINIMUM_FRAME_SECONDS` in `frame-timing.ts`), so the
+ * screen's own refresh rate means the device is keeping up and anything less is what it managed.
  *
  * The spark count is not a setting. The hologram steers it to hold the frame rate — see
  * `density-control.ts` — so watching it settle is watching the device being measured.

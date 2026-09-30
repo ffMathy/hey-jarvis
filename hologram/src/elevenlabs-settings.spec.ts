@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'bun:test';
-import { describeAgentIdProblem, describeApiKeyProblem, parseElevenLabsSettings } from './elevenlabs-settings';
+import {
+  describeAgentIdProblem,
+  describeApiKeyProblem,
+  ELEVENLABS_SETTINGS_STORAGE_KEY,
+  parseElevenLabsSettings,
+  parseStoredElevenLabsSettings,
+  serialiseElevenLabsSettings,
+} from './elevenlabs-settings';
 
 describe('describeApiKeyProblem', () => {
   it('accepts a key', () => {
@@ -55,5 +62,55 @@ describe('parseElevenLabsSettings', () => {
 
   it('reports a missing agent ID once the key is fine', () => {
     expect(parseElevenLabsSettings('sk_key', '')).toEqual({ problem: 'Enter the ID of the Jarvis agent.' });
+  });
+});
+
+/**
+ * What is kept in the device's key-value store, which the phone app and the headset's page both
+ * read — the page shares the phone's web build's `localStorage`, so a change here reaches both.
+ */
+describe('the stored settings', () => {
+  it('are kept under the key every app reads them from', () => {
+    // Renaming it strands every install's saved settings, on the phone and in the headset alike.
+    expect(ELEVENLABS_SETTINGS_STORAGE_KEY).toBe('jarvis.elevenlabs-settings');
+  });
+
+  it('read back exactly what was written', () => {
+    const settings = { apiKey: 'sk_0123456789abcdef', agentId: 'agent_01jz0123456789' };
+
+    expect(parseStoredElevenLabsSettings(serialiseElevenLabsSettings(settings))).toEqual(settings);
+  });
+
+  it('are written as the JSON the phone has always kept', () => {
+    // Installs already have this on them, so the shape is fixed, not a detail.
+    expect(serialiseElevenLabsSettings({ apiKey: 'sk_key', agentId: 'agent_01jz' })).toBe(
+      '{"apiKey":"sk_key","agentId":"agent_01jz"}',
+    );
+  });
+
+  it('read as nothing when either value is missing, empty or not text', () => {
+    for (const stored of [
+      '{"apiKey":"sk_key"}',
+      '{"agentId":"agent_01jz"}',
+      '{"apiKey":"","agentId":"agent_01jz"}',
+      '{"apiKey":"sk_key","agentId":""}',
+      '{"apiKey":7,"agentId":"agent_01jz"}',
+      'null',
+      '"sk_key"',
+      '[]',
+    ]) {
+      expect(parseStoredElevenLabsSettings(stored)).toBeUndefined();
+    }
+  });
+
+  it('keep only the two values, whatever else was stored beside them', () => {
+    expect(parseStoredElevenLabsSettings('{"apiKey":"sk_key","agentId":"agent_01jz","serverUrl":"x"}')).toEqual({
+      apiKey: 'sk_key',
+      agentId: 'agent_01jz',
+    });
+  });
+
+  it('throw on text that is not JSON at all, leaving the caller to say what that means', () => {
+    expect(() => parseStoredElevenLabsSettings('not json')).toThrow();
   });
 });

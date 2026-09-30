@@ -1,98 +1,23 @@
-import { Room, type RoomEventCallbacks } from 'livekit-client';
+import {
+  type AgentTrackRoom,
+  agentAudioTracks,
+  followAgentTrack,
+  type NativeTrackIds,
+  nativeTrackIds,
+  roomOfConversation as roomOfConversationWhere,
+} from 'hologram';
+import { Room } from 'livekit-client';
 
-/** What native code needs to find a WebRTC track: its peer connection, and its id on it. */
-export interface NativeTrackIds {
-  peerConnectionId: number;
-  trackId: string;
-}
-
-/** Everything that can change which track is Jarvis's. */
-const TRACK_EVENTS = [
-  'trackSubscribed',
-  'trackUnsubscribed',
-  'participantDisconnected',
-  'disconnected',
-] as const satisfies readonly (keyof RoomEventCallbacks)[];
-
-type TrackEvent = (typeof TRACK_EVENTS)[number];
+export type { NativeTrackIds } from 'hologram';
 
 /**
- * One of Jarvis's published audio tracks, as little of it as this app needs to name.
+ * The half of finding Jarvis's track that is this app's own.
  *
- * `mediaStreamTrack` is deliberately the only field: what it *is* differs by platform, and each
- * caller narrows it for itself. Everything else a caller wants of the track — LiveKit's
- * `attachedElements`, say — it reads off the same object structurally, because `RemoteAudioTrack`
- * carries far more than is worth restating here.
+ * Walking the room for the agent's publications is shared with every other device that listens to
+ * him, and lives in `hologram/src/agent-audio-track.ts`. What stays here is what only this app can
+ * answer: whether the room the SDK hands over is a real `Room` of the `livekit-client` this app
+ * bundles, and, for Android, which native track a publication is.
  */
-export interface AgentTrack {
-  mediaStreamTrack: unknown;
-}
-
-/** The parts of a LiveKit room the agent's track is looked for in. `Room` has them all. */
-export interface AgentTrackRoom {
-  remoteParticipants: ReadonlyMap<
-    string,
-    {
-      identity: string;
-      audioTrackPublications: ReadonlyMap<string, { track?: AgentTrack | undefined }>;
-    }
-  >;
-  on(event: TrackEvent, listener: () => void): unknown;
-  off(event: TrackEvent, listener: () => void): unknown;
-}
-
-/**
- * The native ids of a track, if it is a React Native WebRTC track that native
- * code can find by them: one received on a peer connection, which a
- * microphone's own track is not.
- */
-export function nativeTrackIds(mediaStreamTrack: unknown): NativeTrackIds | undefined {
-  if (typeof mediaStreamTrack !== 'object' || mediaStreamTrack === null) {
-    return undefined;
-  }
-  if (!('id' in mediaStreamTrack) || typeof mediaStreamTrack.id !== 'string') {
-    return undefined;
-  }
-  if (!('_peerConnectionId' in mediaStreamTrack) || typeof mediaStreamTrack._peerConnectionId !== 'number') {
-    return undefined;
-  }
-  if (mediaStreamTrack._peerConnectionId < 0) {
-    return undefined;
-  }
-  return { peerConnectionId: mediaStreamTrack._peerConnectionId, trackId: mediaStreamTrack.id };
-}
-
-/**
- * Whether a participant is the agent. ElevenLabs gives the agent an identity
- * containing "agent", and its own SDK tells them apart the same way.
- */
-export function isAgentIdentity(identity: string): boolean {
-  return identity.includes('agent');
-}
-
-/**
- * Every audio track Jarvis has published in `room`.
- *
- * Deliberately not narrowed here. On Android a track is a handle onto something only native code
- * can read, and `nativeTrackIds` turns it into the pair of numbers that finds it; in a browser the
- * track *is* the audio, and `jarvis-voice.web.ts` checks it is the browser's own object before
- * pointing Web Audio at it, while `queued-audio.ts` reads the elements it is playing through. The
- * answers have nothing in common but where they come from, which is this.
- */
-export function agentAudioTracks(room: AgentTrackRoom): AgentTrack[] {
-  const tracks: AgentTrack[] = [];
-  for (const participant of room.remoteParticipants.values()) {
-    if (!isAgentIdentity(participant.identity)) {
-      continue;
-    }
-    for (const publication of participant.audioTrackPublications.values()) {
-      if (publication.track) {
-        tracks.push(publication.track);
-      }
-    }
-  }
-  return tracks;
-}
 
 /** Jarvis's audio track in `room` right now, if he has one. */
 export function findAgentAudioTrack(room: AgentTrackRoom): NativeTrackIds | undefined {
@@ -103,46 +28,6 @@ export function findAgentAudioTrack(room: AgentTrackRoom): NativeTrackIds | unde
     }
   }
   return undefined;
-}
-
-/**
- * Tells `onChange` what `read` finds in `room`, now and whenever the tracks change, until the
- * returned function is called — which reports it gone, if there was anything.
- *
- * `isSame` is what decides whether anything changed, because the two platforms read the same
- * publication as different things: Android as a pair of native ids, a browser as the track object
- * itself.
- */
-export function followAgentTrack<Found>(
-  room: AgentTrackRoom,
-  read: (room: AgentTrackRoom) => Found | undefined,
-  isSame: (one: Found | undefined, other: Found | undefined) => boolean,
-  onChange: (found: Found | undefined) => void,
-): () => void {
-  let current: Found | undefined;
-  const update = () => {
-    const next = read(room);
-    if (isSame(next, current)) {
-      return;
-    }
-    current = next;
-    onChange(next);
-  };
-
-  for (const event of TRACK_EVENTS) {
-    room.on(event, update);
-  }
-  update();
-
-  return () => {
-    for (const event of TRACK_EVENTS) {
-      room.off(event, update);
-    }
-    if (current) {
-      current = undefined;
-      onChange(undefined);
-    }
-  };
 }
 
 /**
@@ -163,6 +48,16 @@ export function followAgentAudioTrack(
 }
 
 /**
+ * Whether something is a room of the `livekit-client` this app imports.
+ *
+ * Which is the copy the SDK builds its rooms from, or this could never be true:
+ * `agent-audio-track.contract.spec.ts` fails if the two ever stop being the same.
+ */
+function isLiveKitRoom(candidate: unknown): candidate is Room {
+  return candidate instanceof Room;
+}
+
+/**
  * The LiveKit room a conversation runs in.
  *
  * The SDK keeps it on the conversation's `connection`, which it declares
@@ -173,13 +68,5 @@ export function followAgentAudioTrack(
  * breaking.
  */
 export function roomOfConversation(conversation: object): Room | undefined {
-  const connection: unknown = Reflect.get(conversation, 'connection');
-  if (typeof connection !== 'object' || connection === null || !('getRoom' in connection)) {
-    return undefined;
-  }
-  if (typeof connection.getRoom !== 'function') {
-    return undefined;
-  }
-  const room: unknown = connection.getRoom();
-  return room instanceof Room ? room : undefined;
+  return roomOfConversationWhere(conversation, isLiveKitRoom);
 }

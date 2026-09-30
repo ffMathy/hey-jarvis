@@ -1,12 +1,15 @@
 // This import has to come first, and it has to be this package.
 //
 // `@elevenlabs/react-native` is a side-effect module: importing it installs the
-// WebRTC globals and registers the React Native voice session strategy. Reaching
-// for `@elevenlabs/react` or `@elevenlabs/client` instead — or importing one of
-// them before this line — leaves the strategy unregistered, and the first
-// attempt to talk fails at runtime with "No voice session setup strategy
-// registered".
-import { ConversationProvider } from '@elevenlabs/react-native';
+// WebRTC globals and registers the React Native voice session strategy on
+// `@elevenlabs/client` — which is what the conversation dials with, through
+// `useJarvisSession` in `hologram/conversation`. Nothing else is taken from it
+// any more (the conversation no longer goes through its React provider), but
+// without this line the strategy is never registered, and the first attempt to
+// talk fails at runtime with "No voice session setup strategy registered". In
+// the web build the same import resolves to the SDK's browser build, and it is
+// `@elevenlabs/client`'s own browser entry that registers the browser's strategy.
+import '@elevenlabs/react-native';
 import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import type { ElevenLabsSettings } from 'hologram';
@@ -254,7 +257,7 @@ export function App({ summoned = false, showing }: AppProps) {
   const isSeeThrough = isScreenSeeThrough(screen, conversationInSheet);
 
   return (
-    <ConversationProvider>
+    <>
       <StatusBar style="light" />
       <View style={[styles.root, isSeeThrough ? styles.seeThrough : styles.opaque]}>
         {screen === 'loading' ? <ActivityIndicator color={theme.colors.accent} /> : null}
@@ -289,7 +292,7 @@ export function App({ summoned = false, showing }: AppProps) {
           />
         ) : null}
       </View>
-    </ConversationProvider>
+    </>
   );
 }
 

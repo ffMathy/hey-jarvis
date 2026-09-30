@@ -23,14 +23,14 @@ import {
   drawHologram,
   GREETING_SECONDS,
   MATERIALISE_SECONDS,
+  SCENE_SEED,
+  THOUGHT_FADE_SECONDS,
 } from '../src/index';
 import { createPerformance, type SimulatedMoment } from './simulated-performance';
 
 const SIZE = 540;
 const FPS = 60;
 const FRAME_SECONDS = 1 / FPS;
-/** `THOUGHT_FADE_SECONDS` in `hologram-view.tsx`. */
-const THOUGHT_FADE_SECONDS = 0.45;
 /** A beat of black before he appears, so the start of the arrival is seen. */
 const BEFORE_SECONDS = 0.4;
 
@@ -78,7 +78,7 @@ async function main() {
     throw new Error('CanvasKit did not load');
   }
   const skia = JsiSkApi(globalThis.CanvasKit);
-  const scene = createHologramScene(1337);
+  const scene = createHologramScene(SCENE_SEED);
   const resources = createHologramResources(skia, scene);
   const surface = skia.Surface.Make(SIZE, SIZE);
   if (!surface) {

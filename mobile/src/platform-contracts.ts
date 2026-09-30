@@ -18,7 +18,7 @@
  * it and the sphere is shared with the watch. Re-exported here so the rest of the app carries on
  * asking this file what a voice looks like.
  */
-import type { JarvisVoice } from 'hologram';
+import type { FollowAgentVoice, JarvisVoice } from 'hologram';
 
 export type { JarvisVoice };
 
@@ -48,8 +48,17 @@ export interface MicrophoneAccess {
  */
 export type RequestMicrophoneAccess = () => Promise<MicrophoneAccess | undefined>;
 
-/** Jarvis's voice in the open conversation, if there is one. Must be used inside the ElevenLabs `ConversationProvider`. */
-export type UseJarvisVoice = () => JarvisVoice;
+/**
+ * How this platform listens to Jarvis's track in the conversation's LiveKit room, for the session's
+ * `followAgentVoice`: natively on Android, through Web Audio in a browser.
+ */
+export type FollowJarvisVoice = FollowAgentVoice;
+
+/**
+ * The voice the sphere follows in a conversation, given the session's. Both platforms hand the
+ * session's straight back; it is a hook of its own so the emulator check can swap in a recording.
+ */
+export type UseJarvisVoice = (sessionVoice: JarvisVoice) => JarvisVoice;
 
 /**
  * Moves the conversation onto a headset, if one is connected, for as long as `inCall` is true.

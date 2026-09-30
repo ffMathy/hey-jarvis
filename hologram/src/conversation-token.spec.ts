@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   CONVERSATION_TOKEN_URL,
   type ConversationRequest,
+  HEADSET_PARTICIPANT_NAME,
   PHONE_PARTICIPANT_NAME,
   requestConversationToken,
   requestSignedConversationUrl,
@@ -81,6 +82,15 @@ describe('requestConversationToken', () => {
 
     expect(new URL(fetchStub.calls[0]?.url ?? '').searchParams.get('participant_name')).toBe(WATCH_PARTICIPANT_NAME);
     expect(WATCH_PARTICIPANT_NAME).not.toBe(PHONE_PARTICIPANT_NAME);
+  });
+
+  it('gives the headset a name of its own, told apart from the phone and the watch', async () => {
+    const fetchStub = createFetchStub(jsonResponse(TOKEN_BODY));
+
+    await requestConversationToken({ settings: SETTINGS, participantName: HEADSET_PARTICIPANT_NAME }, fetchStub);
+
+    expect(new URL(fetchStub.calls[0]?.url ?? '').searchParams.get('participant_name')).toBe('jarvis-horizon');
+    expect(new Set([PHONE_PARTICIPANT_NAME, WATCH_PARTICIPANT_NAME, HEADSET_PARTICIPANT_NAME]).size).toBe(3);
   });
 
   it('escapes an agent ID rather than letting it rewrite the query', async () => {

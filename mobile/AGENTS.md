@@ -65,15 +65,17 @@ The agent on the other end is the same one `elevenlabs/` deploys, with the same 
 ├── voice-levels.ts               # spectrum folding, easing, and the agitation/burst tracker
 ├── voice-contract.ts             # JarvisVoice: the two questions the sphere asks a voice
 ├── greeting-handover.ts          # when the recorded greeting is over, and the override it comes with
+├── jarvis-session.ts             # the conversation itself — the phone's, the watch's and the headset's
+├── failure-text.ts               # what each failure says, in words rather than the SDK's
+├── written-caption.ts            # which of his lines are written down: text mode, and the text-only session
 ├── react/                        # `hologram/react`, the half that needs a framework
 │   ├── hologram-view.tsx         # Skia canvas, Reanimated clocks, reading the voice every frame
 │   └── is-foreground.ts          # stops the clock and the microphone when nobody is looking
 └── conversation/                 # `hologram/conversation`, the half that needs the ElevenLabs SDK
-    ├── agent-voice.ts            # his voice as the SDK hears it — the whole voice on web and watch
-    ├── sdk-voice-readers.ts      # the SDK's analysers, safe to call before a session exists
-    ├── tool-activity.ts          # which tool calls are in flight, and how long he keeps thinking after
-    ├── greeting.ts               # "Hello sir, how can I help?" while the session is dialled behind it
-    └── user-voice.ts             # the user's vad_score and microphone level, for the listening lattice
+    ├── session.ts                # useJarvisSession: the session, the SDK, the greeting's player, the call's audio
+    ├── greeting-player.ts        # "Hello sir, how can I help?" as call audio, by hologram's native module …
+    ├── greeting-player.web.ts    # … and through expo-audio in a browser
+    └── call-audio.ts             # the call's audio session, switched into before he greets
 
 mobile/
 ├── app.config.ts                 # Expo config: package name, scheme, permissions, plugins
@@ -90,9 +92,9 @@ mobile/
     ├── onboarding.ts             # its steps, which of them this device has, and every link
     ├── onboarding-storage.ts     # whether the tour has been walked
     ├── conversation-screen.tsx   # the hologram, and nothing else on the screen but a faint camera
-    ├── settings-screen.tsx       # the two fields with no tour around them, and the photo upload key
+    ├── settings-screen.tsx       # the two fields with no tour around them, for coming back to, and the photo upload key
     ├── elevenlabs-fields.tsx     # the fields themselves, shared with the tour (which skips the key)
-    ├── settings-storage.ts       # platform-agnostic half of persistence
+    ├── settings-storage.ts       # platform-agnostic half of persistence (the key and format are hologram's)
     ├── read-again.ts             # reading the keystore again when the reading, not the value, failed
     ├── watch-card.tsx            # whether Jarvis is on the paired watch, and the key handover
     ├── answer-the-watch.ts       # sends the credentials across whenever the watch asks
@@ -107,13 +109,10 @@ mobile/
     ├── hologram-size.ts          # how big it is drawn on this screen
     ├── spark-density.ts          # how many particles this phone can manage …
     ├── spark-memory.ts           # … and remembering what it managed last time
-    ├── jarvis-voice.ts           # Jarvis's voice on Android: his track, tapped and analysed …
+    ├── jarvis-voice.ts           # following Jarvis's track for the session on Android: tapped and analysed …
     ├── jarvis-voice.web.ts       # … and in a browser, the same track through Web Audio
-    ├── agent-audio-track.ts      # finding Jarvis's track in the conversation's LiveKit room
+    ├── agent-audio-track.ts      # this app's Room check, and Android's native ids for Jarvis's track
     ├── tapped-voice.ts           # raw samples from modules/jarvis-audio → volume and spectrum
-    ├── played-voice.ts           # the same, from the samples a browser is playing
-    ├── queued-audio.ts           # dropping what a browser still has queued when he is cut off
-    ├── conversation-life.ts      # whether a conversation is open, and whether one has ended
     ├── camera-tool.ts            # showing Jarvis something: the `openCamera` tool and the button's tap
     ├── camera-answers.ts         # what the agent is told, and where a photo may be sent
     ├── photo-request.ts          # the tool call, the photo and the upload URL meeting, in any order
@@ -123,9 +122,7 @@ mobile/
     ├── take-photo.ts             # the phone's own camera app, through modules/jarvis-assistant …
     ├── take-photo.web.ts         # … and a file picker in a browser
     ├── typed-message-field.tsx   # writing to Jarvis instead of talking, and he still answers aloud
-    ├── text-mode.ts              # tapping him on a phone: the voice session held in writing, and back
-    ├── written-reply.ts          # the last thing he said in writing, and how long he takes to say it …
-    ├── written-reply-line.tsx    # … and the one thing on this screen there is to read
+    ├── written-reply-line.tsx    # the last thing he said in writing: the one thing on this screen to read
     ├── theme.ts                  # the one place colours and spacing are defined
     ├── platform-contracts.ts     # the shapes the .web.ts pairs below must keep
     ├── key-value-store.ts        # keystore on Android …
@@ -138,6 +135,28 @@ mobile/
     └── speech-floor.web.ts           # … and, now both measure an RMS, the same in a browser
 ```
 
+Most of what this screen runs is not in this tree, because the watch and the headset (`horizon/`)
+run it too: **the conversation itself** is `hologram`'s session (`jarvis-session.ts`), which this
+screen holds with `useJarvisSession` from `hologram/conversation` — the greeting, the token, the
+twenty-second deadline, the failures in words, the tool calls, the listening lattice's score, the
+dropping of what an interruption leaves queued, text mode's muted microphone and written lines. See
+"One conversation, three devices" in `../hologram/AGENTS.md`. So are whether a conversation is open
+or has ended (`conversation-life.ts`), his voice analysed from what a browser plays
+(`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), his last written line
+(`written-reply.ts`), and the settings' storage key and format (`elevenlabs-settings.ts`). They are
+in `hologram/src/`, with their specs. What this app hands the session is only what is its own: its
+name in the history, its `Room` check, how it follows his track (`jarvis-voice.ts`), its toast, and
+the microphone it asks for before summoning him.
+
+**There is no ElevenLabs React provider any more.** `@elevenlabs/react-native` is still the first
+import in `app.tsx`, for its side effects — it registers the native session strategy on
+`@elevenlabs/client`, whose `Conversation.startSession` the session dials with — but nothing else is
+taken from it. The provider reported any `onError` as the conversation's status, so a non-fatal
+error once connected faded Jarvis out while his voice played on; its twenty-second deadline showed a
+line but never ended a session that connected late; and the SDK's and LiveKit's own words reached the
+screen. The session gets all three right. It lasts as long as the screen: opening settings ends the
+conversation.
+
 ## The hologram
 
 The conversation screen is built around Jarvis as the film drew him: the golden sphere from the *Avengers: Age of Ultron* lab scene. A round, see-through, warm amber ball, brightest at its core and never dark inside, textured with short bright strokes, bounded by one rim element at a time — a bright crescent on the left limb, a segmented ladder ring, or a thin ring — and a hooked ring at the core. The film's slow protrusions are deliberately not drawn: on a phone they read as an arm swinging out of the ball on a loop, and the user asked for them gone. It turns on its own — the body about the vertical axis, the rim rolling the other way — it spirals out of its core when it first appears, and when Jarvis talks it grows agitated, glows and swells.
@@ -147,7 +166,7 @@ None of those numbers are a guess. The proportions, the colours, the rotation sp
 ```
 Android, in a conversation     Jarvis's WebRTC track ─ modules/jarvis-audio (AudioTap) ─ tapped-voice.ts ─ hologram/src/voice-analysis.ts
 Android, in sample mode        WebRTC's recorder ────── modules/jarvis-audio (AudioTap) ─ tapped-voice.ts ─ hologram/src/voice-analysis.ts
-Browser, in a conversation     Jarvis's WebRTC track ─ AnalyserNode (time domain) ─ played-voice.ts ─ hologram/src/voice-analysis.ts
+Browser, in a conversation     Jarvis's WebRTC track ─ AnalyserNode (time domain) ─ hologram/src/played-voice.ts ─ hologram/src/voice-analysis.ts
 Browser, in sample mode        getUserMedia ─ AnalyserNode
   └─ a JarvisVoice (platform-contracts.ts), read every 40 ms on the JS thread
        └─ hologram/src/voice-levels.ts perceivedLevel + foldSpectrum → 24 log-spaced bands (targets)
@@ -162,7 +181,7 @@ Every source hands the hologram the same two readings — a volume, and 1024 byt
 
 Both did once, and on both it was the wrong quantity — for different reasons, which is why each has its own way of getting at the samples.
 
-**In a browser the SDK's volume is not a loudness at all.** `getOutputVolume` is the mean of an `AnalyserNode`'s *byte* spectrum, and a byte of that spectrum is a decibel reading between −100 dB and −30 dB. So the quietest thing the scale can express is −100 dB, and everything above it reads as something: the hiss under a recording, the comfort noise a codec sends between words, the room the voice was recorded in. Read as a level that says Jarvis is talking for as long as a conversation is open, and the gaps between his words never reach the tracker's speech threshold — the sphere stayed agitated through his pauses and the rim threw chips into his silences. `played-voice.ts` reads the time-domain samples off an `AnalyserNode` of its own instead and puts them through the same analysis the phone uses, where silence is zero. It used to be covered up by doubling the browser's speech floor; a floor that means something different on every surface cannot be reasoned about, and covering it was all that did.
+**In a browser the SDK's volume is not a loudness at all.** `getOutputVolume` is the mean of an `AnalyserNode`'s *byte* spectrum, and a byte of that spectrum is a decibel reading between −100 dB and −30 dB. So the quietest thing the scale can express is −100 dB, and everything above it reads as something: the hiss under a recording, the comfort noise a codec sends between words, the room the voice was recorded in. Read as a level that says Jarvis is talking for as long as a conversation is open, and the gaps between his words never reach the tracker's speech threshold — the sphere stayed agitated through his pauses and the rim threw chips into his silences. `hologram/src/played-voice.ts` reads the time-domain samples off an `AnalyserNode` of its own instead and puts them through the same analysis the phone uses, where silence is zero. It used to be covered up by doubling the browser's speech floor; a floor that means something different on every surface cannot be reasoned about, and covering it was all that did.
 
 ### What happens when the conversation ends
 
@@ -184,7 +203,8 @@ recording and the token request goes out beside it, so by the time he has asked,
 usually up. The session is opened with the agent's first message switched off and its microphone
 muted until the recording ends; if it is slower than that, the screen goes on connecting exactly as
 before, under the same `GIVE_UP_CONNECTING_AFTER_MS`. Hanging up mid-greeting stops it. How it
-works, and the three ways to break it, are in `useGreeting`'s note and `../hologram/AGENTS.md`.
+works, and the ways to break it, are in `../hologram/AGENTS.md` ("Summoned, he greets you before he is
+connected"): the session does all of it.
 
 Two places it deliberately does not play. **The text-only session**, a browser that refused the
 microphone: that was a choice to keep the conversation quiet, so he greets in writing there — the
@@ -204,18 +224,18 @@ device. Dialled behind him, `startSession` started LiveKit's audio session — t
 turned thin and clipped from there. Held back until he had finished, he was not heard at all:
 played by expo-audio, as media, the recording was not heard on its own. Starting the call's audio
 session before him and still playing him as media was tested next, and was silent too. So on a
-phone and a watch he is no longer played by expo-audio at all. `beginGreeting` starts the call's audio session
-(`hologram/src/conversation/call-audio.ts`) and plays the recording through `hologram`'s own native
-module, `JarvisGreeting`, with `USAGE_VOICE_COMMUNICATION` — as the call's own audio, on the speaker,
-at call volume. The token is fetched beside him and `startSession` waits for
-`untilCallMayTakeTheAudio`. A browser plays it with expo-audio and goes on dialling behind him.
+phone and a watch he is no longer played by expo-audio at all. The session starts the call's audio
+session first (`hologram/src/conversation/call-audio.ts`) and plays the recording through
+`hologram`'s own native module, `JarvisGreeting`, with `USAGE_VOICE_COMMUNICATION` — as the call's own
+audio, on the speaker, at call volume. The token is fetched beside him, and the session is dialled
+only once he has finished. A browser plays it with expo-audio and goes on dialling behind him.
 Still to settle on a device: that he is heard this way, and that `vad_score` events arrive over
 WebRTC as they do over the firmware's socket.
 
 The sphere also shows the user being heard: while ElevenLabs' `vad_score` says someone is
 speaking, his particles snap onto a lattice that turns inside him, breathing harder the louder the
-microphone is. `useUserVoice` feeds it,
-and it ignores the score while Jarvis speaks, since the microphone hears him too.
+microphone is. The session's `user` feeds it, and it ignores the score while Jarvis speaks, since
+the microphone hears him too.
 
 ### Summoned, he arrives in a sheet
 
@@ -246,15 +266,18 @@ launch URL, the window's tree ignores launch URLs, and only the tree drawn in th
 **A session that fails once open also says so in a toast.** An account out of credits is
 accepted, connects, and is then closed by ElevenLabs with `quota_exceeded` — which is a
 conversation ending, so he fades and the sheet goes, and the red line went with it before anyone
-could read it. Errors from the session itself (`onError`, and `onDisconnect` with `reason:
-"error"`) go through `reportSessionFailure`, which also shows them as an Android toast that
-outlives the window. Problems before a session exists stay on the line alone, under a sphere that
-is still there.
+could read it. Failures of the session itself — the session reports them with the source
+`session`: a start that failed, an error before it opened, and `onDisconnect` with `reason: "error"`
+— go through `reportSessionFailure`, which also shows them as an Android toast that outlives the
+window. Problems before a session exists, and the deadline, stay on the line alone, under a sphere
+that is still there. An error once the conversation is open is not a failure at all: it used to be,
+through the SDK's React provider, which faded Jarvis out while his voice played on.
 
 **Ending is not the same as never starting**, and both read `disconnected`. A conversation that
 never opened has failed, and the answer to that is the line saying why *under a sphere that is
-still there*. So `conversation-life.ts` folds the statuses rather than looking at the current one,
-and only a conversation that was open can end.
+still there*. So `hologram/src/conversation-life.ts` folds the statuses rather than looking at the
+current one, and only a conversation that was open can end. The statuses are the session's, which
+come from the SDK's status callbacks alone and read `disconnected` once a summoning is over.
 
 ### What happens to a sentence he is cut off in
 
@@ -266,7 +289,8 @@ There is no queue to clear in this app or in the SDK. Over WebRTC the SDK's `int
 documented no-op, because audio is a live LiveKit track rather than chunks the client buffers, and
 audio arriving on the data channel is deliberately not re-played. (The `audioConcatProcessor` queue
 that *does* have this shape is the WebSocket transport's, which here carries no audio at all.) The
-only queue left is the media element's own, so `queued-audio.ts` empties it: clearing `srcObject`
+only queue left is the media element's own, so the session empties it on every interruption, through
+`flushQueuedAudio` in `hologram/src/queued-audio.ts`: clearing `srcObject`
 tears the element's renderer down and takes the queued audio with it, and putting the same live
 stream back builds a new one at the live edge. It hangs off the SDK's `onInterruption` — which the
 agent sends because `interruption` is in its `clientEvents` — and an interruption is exactly the
@@ -284,7 +308,7 @@ On Android the SDK's two readers come from LiveKit's native processors (`@liveki
 
 So `modules/jarvis-audio` hangs its own `AudioTap` off the same audio — Jarvis's remote track in a conversation, or WebRTC's recorder in sample mode — reading the bytes little-endian into a ring of the last third of a second, and JavaScript pulls from it and analyses it with `hologram/src/voice-analysis.ts`. That is the same code that turns the emulator check's recorded voice into its replayed readings, so what the replay shows is what a phone computes.
 
-Finding Jarvis's track takes one step outside the SDK's public surface, and **both platforms take the same step**: `useRawConversation()` is public, but the LiveKit room is on the conversation's protected `connection`. `agent-audio-track.ts` reaches it with `Reflect.get`, checks it is a real `livekit-client` `Room`, and follows the participant whose identity contains "agent" — as the SDK's own code does. What each platform then does with the publication differs, so that is where they part: Android turns it into the pair of native ids its `AudioTap` needs, and `jarvis-voice.web.ts` checks it is the browser's own `MediaStreamTrack` and points Web Audio at it. `agent-audio-track.contract.spec.ts` reads the installed SDK and fails if any of that moves. If the track cannot be found anyway, the hologram falls back to the SDK's readers described above: it still draws and nothing fails, but the sphere answers a reading that is barely a voice — on Android a volume that reads near full scale for any sound at all, in a browser one that never reads silence — and on Android two of its bands stay dark.
+Finding Jarvis's track takes one step outside the SDK's public surface, and **both platforms take the same step**: the session hands over the conversation the SDK created, but the LiveKit room is on its protected `connection`. `roomOfConversation` in `hologram/src/agent-audio-track.ts` reaches it with `Reflect.get` and follows the participant whose identity contains "agent" — as the SDK's own code does — and this app's `agent-audio-track.ts` hands it the check that the room is a real `Room` of the `livekit-client` this app bundles, since an `instanceof` against any other copy would never be true. What each platform then does with the publication differs, so that is where they part: Android turns it into the pair of native ids its `AudioTap` needs, and `jarvis-voice.web.ts` checks it is the browser's own `MediaStreamTrack` and points Web Audio at it. `agent-audio-track.contract.spec.ts` reads the installed SDK and fails if any of that moves. If the track cannot be found anyway, the hologram falls back to the SDK's readers described above: it still draws and nothing fails, but the sphere answers a reading that is barely a voice — on Android a volume that reads near full scale for any sound at all, in a browser one that never reads silence — and on Android two of its bands stay dark.
 
 ## Showing him something
 
@@ -344,9 +368,18 @@ Five decisions carry it, and each has a reason:
 - **Every call is answered, once.** The agent waits on `openCamera` for up to two minutes, so a
   photo not taken, a camera app missing, a newer request, a capture left open for 110 s (timed on
   the main looper, since JavaScript's timers stop behind the camera) and a URL that never arrives
-  are all answers rather than silence — and never thrown, because a client tool that throws is a
-  failed conversation in red. `photo-request.ts` decides what to do as the tool call, the photo and
-  the URL arrive in whatever order; its spec walks every order.
+  are all answers rather than silence — and never thrown, because a client tool that throws is
+  answered by the SDK in its own words, which give the agent nothing to tell sir. `photo-request.ts`
+  decides what to do as the tool call, the photo and the URL arrive in whatever order; its spec
+  walks every order.
+
+**It plugs into the session every device holds.** The phone hands `useJarvisSession` its
+`openCamera` tool, read at every dial, and an ear for MCP calls (`onMCPToolCall`), told of each one
+once the session has read it for his thinking. The camera speaks into the conversation through the
+session's `sendText`, `sendContextualUpdate` and `sendUserActivity`, each ignored unless it is
+connected. It is made after the session, since it needs the conversation to speak into, so the
+screen keeps its half in a ref (`cameraInSession`) that the session reads only as it dials and as
+calls arrive.
 
 **The button.** A small outline of a camera at the sphere's lower right, half strength, drawn from
 views (no icon library, and no Skia before CanvasKit has loaded in a browser). It is there only while
@@ -387,15 +420,13 @@ question it asked, and ElevenLabs' silence timeout ends one nobody answers.
 **Only the phone is asked, and only with the key.** Once connected, a phone that has the photo
 upload key tells the agent it has a camera (`CAMERA_ON_THIS_DEVICE`, a contextual update); the
 prompt asks for photos only where it has heard that. A phone without the key says nothing, and the
-watch answers `openCamera` with "no camera here" anyway, as does the voice firmware.
+watch and the headset answer `openCamera` with "no camera here" anyway — the session does, on any
+device that hands it no client tools of its own — as does the voice firmware.
 
-**A key changed on the settings screen takes a new conversation.** Holding the conversation screen
-to reach the settings unmounts it but not its session, and ElevenLabs keeps the `openCamera` tool
-and MCP handler the session was started with — the old screen's, reading the old screen's key. A key
-added there went on being answered with `NO_PHOTO_UPLOAD_KEY`, and a cleared one went on being sent.
-So a save that changes the key ends that conversation (`settings-screen.tsx`), and the conversation
-screen it returns to opens a new one built with the new key; a save that leaves the key as it was
-leaves the conversation alone. The key is also read again on every summoning after the first
+**A key changed on the settings screen reaches the next conversation.** The session is the
+conversation screen's and ends with it, so holding the screen to reach the settings ends the
+conversation, and the screen it returns to opens a new one, dialled with the camera tool of the key
+as it is then — and told of a camera, or not, to match. The key is also read again on every summoning after the first
 (`app.tsx`), because the assistant's window is kept between summonings and the key is as often
 changed in the app's own window — which is where the agent sends sir to add it.
 
@@ -410,7 +441,7 @@ sir changed the field: saving an untouched one would have erased a key that had 
 
 Before the app is set up there is nothing for the hologram to follow, so the settings screen offers **"No key yet? Try the hologram"**. It opens `sample-screen.tsx`: the same hologram, in a sheet, walking through what Jarvis does.
 
-The moods, their order and names, the simulated voice, the mood toast and the frame-rate readout are not this app's: they are `hologram`'s (`sample-mode.ts` in the main entry, and `hologram/react/sample`), because the watch's waiting screen is a sample mode too. Only where they sit on the screen is decided here.
+The moods, their order and names, the simulated voice, the mood toast and the frame-rate readout are not this app's: they are `hologram`'s (`sample-mode.ts` and `sample-drive.ts` in the main entry, and `hologram/react/sample`), because the watch's waiting screen is a sample mode too. Only where they sit on the screen is decided here.
 
 **It used to listen to you, and it does not any more.** There was a fourth mood, `microphone`, that opened the phone's microphone and drove the sphere from your own voice — with a recorder of its own on Android (`MicrophoneRecorder`, `AudioRecord` with `VOICE_RECOGNITION`), a browser path through an `AnalyserNode`, a permission prompt, a recording indicator, and an end-to-end emulator check that played a tone in and compared what the app heard against Android's own audio HAL. All of it is gone, along with `sample-voice.ts`, `sample-voice.web.ts`, `UseSampleVoice`, and the emulator harness's `microphone` run.
 
@@ -488,13 +519,13 @@ For each conversation the app asks `GET https://api.elevenlabs.io/v1/convai/conv
 
 **Except for a text-only conversation, which asks `GET /v1/convai/conversation/get-signed-url` instead and runs on a WebSocket.** That is the one case where the transport cannot be WebRTC: a text-only session publishes no audio, ElevenLabs' room waits for the client to publish some before it finishes coming up, and a conversation token can only be spent on a room. Dialled over WebRTC it therefore never connected *and never failed* — the screen sat on "Connecting…" indefinitely, which is what a browser with the microphone switched off used to show. Only a browser ever takes this branch: a phone with no microphone says so and stops, and `@elevenlabs/react-native` refuses a signed URL on a device outright.
 
-**That branch was write-only until it learned to show his answer.** A text-only session returns the reply as an `agent_response` over the socket and never as audio, and nothing in the app rendered it — no transcript, no `onMessage`, nothing. So a browser with the microphone refused could send a line, get an answer, and display absolutely nothing: a silent sphere and an empty screen, indistinguishable from a conversation that had failed. `written-reply.ts` keeps the last thing he said — the last, not a transcript, and cleared the moment you send again so a stale answer never sits under a fresh question — and `written-reply-line.tsx` puts it above the field. It is the only screen in the app with something to read on it, because it is the only one with nothing to listen to.
+**That branch was write-only until it learned to show his answer.** A text-only session returns the reply as an `agent_response` over the socket and never as audio, and nothing in the app rendered it — no transcript, no `onMessage`, nothing. So a browser with the microphone refused could send a line, get an answer, and display absolutely nothing: a silent sphere and an empty screen, indistinguishable from a conversation that had failed. `hologram/src/written-reply.ts` keeps the last thing he said — the last, not a transcript, and cleared the moment you send again so a stale answer never sits under a fresh question — and `written-reply-line.tsx` puts it above the field. It is the only screen in the app with something to read on it, because it is the only one with nothing to listen to.
 
-**The sphere speaks it, out of the clock.** With no audio there is nothing for the hologram to follow, so it idled through the whole exchange: Jarvis answering you while looking exactly like an assistant who had not heard you. `written-reply.ts` also says how long he should look like he is delivering an answer — its length at fourteen characters a second, floored at 0.9 s so "Yes." is still a beat and capped at 12 s so a long answer is not mimed at length over text you have already read — and for that long the screen hands the drawing the same simulated voice sample mode uses (`useSimulatedVoice` from `hologram/react/sample`, shapes in `hologram/src/simulated-voice.ts`). It is a spectrum built from the clock, so it goes through the fold into bands, the easing, the agitation envelope and the chip bursts exactly as a real voice does, and nothing downstream knows the difference — which is the whole reason those moods are written as spectra rather than as flags on the drawing.
+**The sphere speaks it, out of the clock.** With no audio there is nothing for the hologram to follow, so it idled through the whole exchange: Jarvis answering you while looking exactly like an assistant who had not heard you. `hologram/src/written-reply.ts` also says how long he should look like he is delivering an answer — its length at fourteen characters a second, floored at 0.9 s so "Yes." is still a beat and capped at 12 s so a long answer is not mimed at length over text you have already read — and for that long the screen hands the drawing the same simulated voice sample mode uses (`useSimulatedVoice` from `hologram/react/sample`, shapes in `hologram/src/simulated-voice.ts`). It is a spectrum built from the clock, so it goes through the fold into bands, the easing, the agitation envelope and the chip bursts exactly as a real voice does, and nothing downstream knows the difference — which is the whole reason those moods are written as spectra rather than as flags on the drawing.
 
 Only ever here. `readingAloud` is set from `onMessage`, which is wired on the text-only session alone, so every conversation that has a voice goes on following Jarvis's real one. The words are genuinely his; the only invented thing is the delivery, and it is invented only where ElevenLabs was asked not to provide one.
 
-**Typing to Jarvis is not that branch, and has not been since he started answering typed lines out loud.** The two were the same thing for as long as the field existed only where the microphone had been refused, and the confusion cost the feature its voice: `textOnly` is what makes ElevenLabs write the reply instead of speaking it, and that override was the only session the field ever appeared in. It is not needed to *send* text. `sendUserMessage` is on `BaseConversation` rather than on `TextConversation`, so a typed line into an ordinary WebRTC session takes exactly the turn a spoken one would — Jarvis speaks the reply, and the sphere follows his voice, because `jarvis-voice.ts` reads his audio track and `mode` and neither knows how the turn began. So in a browser the field is beside a working microphone as readily as without one, and the text-only fallback is what is left when there is no microphone to hold a voice conversation with at all. **A phone has no field until asked for**: it sat under him as an empty bar on every summoning, and the user asked for it gone. Tapping Jarvis now switches a phone's conversation into writing and back (`text-mode.ts`). A phone cannot open the text-only session — `@elevenlabs/react-native` refuses WebSocket sessions on a device — so the voice session stays up with the microphone muted, the field appears with the keyboard, and his replies are written above it (`onMessage` is wired on the voice session, but only kept while in writing). **He still answers out loud**, exactly as a typed line into a browser's voice session is answered, and as ElevenLabs' own preview answers one: writing to him is a way to be heard without speaking, not a request for silence. It used to turn his volume to zero and mime the written line on the sphere, and the user asked for his voice back. So the volume is left alone, and the written line goes through `afterSpokenMessage` rather than `afterMessage`, which shows it without starting the mime — the sphere follows his real voice, and a clock on top of it would keep it moving after he had stopped. The mode is applied whenever the session is connected, so a tap during the greeting lands once it is up, and it is never remembered: every conversation starts in voice.
+**Typing to Jarvis is not that branch, and has not been since he started answering typed lines out loud.** The two were the same thing for as long as the field existed only where the microphone had been refused, and the confusion cost the feature its voice: `textOnly` is what makes ElevenLabs write the reply instead of speaking it, and that override was the only session the field ever appeared in. It is not needed to *send* text. `sendUserMessage` is on `BaseConversation` rather than on `TextConversation`, so a typed line into an ordinary WebRTC session takes exactly the turn a spoken one would — Jarvis speaks the reply, and the sphere follows his voice, because the session follows his audio track (`jarvis-voice.ts`) and `mode` and neither knows how the turn began. So in a browser the field is beside a working microphone as readily as without one, and the text-only fallback is what is left when there is no microphone to hold a voice conversation with at all. **A phone has no field until asked for**: it sat under him as an empty bar on every summoning, and the user asked for it gone. Tapping Jarvis now switches a phone's conversation into writing and back (the session's `setTyping`, and `createTextModeCaption` in `hologram/src/written-caption.ts`). A phone cannot open the text-only session — `@elevenlabs/react-native` refuses WebSocket sessions on a device — so the voice session stays up with the microphone muted, the field appears with the keyboard, and his replies are written above it (his lines are only kept while in writing). **He still answers out loud**, exactly as a typed line into a browser's voice session is answered, and as ElevenLabs' own preview answers one: writing to him is a way to be heard without speaking, not a request for silence. It used to turn his volume to zero and mime the written line on the sphere, and the user asked for his voice back. So the volume is left alone, and the written line goes through `afterSpokenMessage` rather than `afterMessage`, which shows it without starting the mime — the sphere follows his real voice, and a clock on top of it would keep it moving after he had stopped. The mode is applied whenever the session is connected, so a tap during the greeting lands once it is up, and it is never remembered: every conversation starts in voice.
 
 **It also needs the agent's permission.** A typed conversation is asked for by sending the `text_only` override, and overrides are an allow-list: send one the agent does not permit and the server closes the conversation rather than ignoring it. So the session connects, drops immediately, and — because the SDK reports a server-side close through `onDisconnect` and *not* through `onError` — used to say nothing at all: Jarvis faded out because a conversation really had ended, and no line explained why. The screen listens for the ending now, and `platformSettings.overrides.conversationConfigOverride.conversation.textOnly` is on in `elevenlabs/src/assets/agent-config.json`, which reaches the agent only once that project is deployed.
 
@@ -580,7 +611,7 @@ The hologram adds three native packages, each at the version Expo 57 pins in `bu
 
 ## Web
 
-`platforms` includes `web`, and the conversation genuinely works there: `@elevenlabs/react-native` resolves through its `browser` export condition to the plain `@elevenlabs/react` build, which speaks WebRTC through the browser rather than through LiveKit's native modules. The same components, the same provider, no branching in the screens.
+`platforms` includes `web`, and the conversation genuinely works there: `@elevenlabs/client` resolves through its `browser` export condition to the build that speaks WebRTC through the browser rather than through LiveKit's native modules. The same components and the same session; what differs is decided in `useJarvisSession` by platform (no call audio, dialled behind the greeting) and in the platform pairs below.
 
 Three things do differ, and each is a pair of files Metro picks between rather than a conditional:
 

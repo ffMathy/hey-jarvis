@@ -4,9 +4,10 @@
  * **Only the phone has a camera**, and everything about taking and sending a photo — where it may
  * go, what the agent is told after — is the phone's, in `mobile/src/camera-answers.ts`. What is
  * shared is the tool's name, and the answer a device without a camera gives: the same agent talks to
- * the watch, and the SDK reports a tool nobody registered through `onError`, which a watch would put
- * on its face in red. So the watch answers it too, with {@link NO_CAMERA_HERE}; the voice firmware
- * spells the same answer in `elevenlabs_stream.cpp`.
+ * the watch and the headset, and the SDK answers a tool nobody registered with an error in its own
+ * words, which gives the agent nothing to tell sir. So the session every device holds answers it
+ * with {@link NO_CAMERA_HERE} wherever it is handed no client tools of its own (`jarvis-session.ts`);
+ * the voice firmware spells the same answer in `elevenlabs_stream.cpp`.
  *
  * Kept free of imports like the rest of this entry.
  */

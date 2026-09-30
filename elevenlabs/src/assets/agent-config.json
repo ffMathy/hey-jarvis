@@ -104,10 +104,11 @@
         "agent_response",
         "agent_response_correction",
         "audio",
+        "agent_tool_request",
         "agent_tool_response",
+        "mcp_tool_call",
         "vad_score",
         "agent_chat_response_part",
-        "mcp_tool_call",
         "client_tool_call"
       ],
       "fileInput": {

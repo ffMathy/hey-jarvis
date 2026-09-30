@@ -20,19 +20,22 @@ export interface ConversationToken {
 /**
  * What each device calls itself in the ElevenLabs conversation history.
  *
- * Both names live here rather than in the app that uses them, because the point of them is to be
+ * Every name lives here rather than in the app that uses it, because the point of them is to be
  * told apart: a conversation held on the wrist should be distinguishable in the history from one
- * held on the phone, from one held through the house speakers, and from one held over the phone
- * line. Two apps each naming themselves would drift into two names for the same thing.
+ * held on the phone, from one held in a headset, from one held through the house speakers, and from
+ * one held over the phone line. Apps each naming themselves would drift into two names for the same
+ * thing.
  */
 export const PHONE_PARTICIPANT_NAME = 'jarvis-android';
 export const WATCH_PARTICIPANT_NAME = 'jarvis-wear';
+/** The Quest headset's, where he stands in the room with you (`horizon/`). */
+export const HEADSET_PARTICIPANT_NAME = 'jarvis-horizon';
 
 /** Everything one conversation needs before it can be asked for: whose agent, and who is asking. */
 export interface ConversationRequest {
   /** The API key to ask with, and the agent to ask for. */
   settings: ElevenLabsSettings;
-  /** Which device this is — one of the two names above. Required, so neither app can borrow the other's. */
+  /** Which device this is — one of the names above. Required, so no app can borrow another's. */
   participantName: string;
 }
 

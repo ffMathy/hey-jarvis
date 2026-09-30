@@ -37,7 +37,10 @@ bunx turbo build
 
 - `mcp` — Mastra AI-powered Model Context Protocol server
 - `elevenlabs` — ElevenLabs voice interface integration
+- `hologram` — Jarvis himself: the sphere, the voice tracking and the conversation, shared by the apps below
 - `mobile` — Expo app that registers as the phone's default assistant
+- `watch` — Expo app that is the Wear OS watch's assistant
+- `horizon` — WebXR app for Meta Horizon OS (Quest) that stands Jarvis in your room
 - `home-assistant-voice-firmware` — ESPHome firmware
 
 ## Timeouts
