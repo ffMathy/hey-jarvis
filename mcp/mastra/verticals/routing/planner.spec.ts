@@ -28,3 +28,16 @@ describe('responseStyle', () => {
     expect(instructions).toContain('where the value of the request lands');
   });
 });
+
+/**
+ * What sir points at on his headset reaches the request as a name and an id, and only the planner's
+ * prompt reaches the agent that acts on it -- so the id has to survive that step untouched.
+ */
+describe('an id in the request', () => {
+  it('is copied into the acting agent’s prompt exactly as written', () => {
+    const instructions = plannerInstructions([]);
+
+    expect(instructions).toContain('pointing at "Kitchen ceiling", light.kitchen_ceiling');
+    expect(instructions).toContain('copy the id into its prompt exactly as written');
+  });
+});

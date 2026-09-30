@@ -21,6 +21,16 @@ import { getDefaultScorers } from './scorers-config.js';
 const MAX_AGENT_STEPS = 20;
 
 /**
+ * What every agent is told about an id it is given, such as `light.kitchen_ceiling`.
+ *
+ * Stated here because any agent can be handed one: whatever sir points at on his headset reaches
+ * the agent that owns it by its id (see `verticals/routing/workflows.ts`), and the owning tools take
+ * exactly that id.
+ */
+export const POINTED_AT_ID_GUIDELINE =
+  'When the request gives the id of the thing to act on, act on exactly that id, without looking it up first.';
+
+/**
  * An agent's own instructions, followed by the guidelines every agent is given.
  *
  * Called for every request rather than once when the agent is built. Agents are built once, at
@@ -30,6 +40,9 @@ const MAX_AGENT_STEPS = 20;
 function withSharedGuidelines(instructions: string): string {
   const guidelines = [
     'Never ask questions. Always make best-guess assumptions.',
+    // An id in a request is the user saying which thing he means -- on his headset, the thing he is
+    // pointing at -- so looking it up again can only lose it, or land on the wrong one of two.
+    POINTED_AT_ID_GUIDELINE,
     `The time is currently: \`${new Date().toString()}\`.`,
   ];
 
