@@ -356,8 +356,9 @@ function leaveToExit(model: AppModel): Transition {
  * Whatever select is still held was the placing's: Done is pressed as a trigger or a pinch goes
  * down, so it is spent here, before its release reaches a waiting room that would summon him.
  *
- * A room that closes keeps it open while a drop is still waiting on its new anchor, since the
- * frames that settle it stop with the session. A room with a conversation stays open anyway.
+ * A room opened only to place things is kept open — `keeping` — while a drop is still waiting on
+ * its new anchor, since the frames that settle it stop with the session. A room with a
+ * conversation stays open anyway.
  */
 function leaveEditing(model: AppModel, now: number): Transition {
   const spend: AppEffect = { type: 'consume-held-selects' };
