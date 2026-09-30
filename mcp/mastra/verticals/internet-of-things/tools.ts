@@ -5,6 +5,7 @@ import {
   type AffectedEntity,
   affectedEntitySchema,
   cleanAffectedEntities,
+  lookUpWithinTimeLimit,
   markAsAffectingEntities,
 } from '../../utils/affected-entities.js';
 import { logger } from '../../utils/logger.js';
@@ -171,14 +172,6 @@ const serviceTargetSchema = z.object({
  */
 const ENTITY_ID_KEYWORDS = new Set(['all', 'none']);
 
-/**
- * How long a service call waits for its targets to be resolved.
- *
- * The call is what sir is waiting for, and its targets only light them up on his headset, so a
- * slow render gives up on the glow rather than holding up the answer.
- */
-const TARGET_RESOLUTION_TIMEOUT_MS = 1_500;
-
 function idsOf(value: z.infer<typeof serviceTargetIdsSchema>): string[] {
   const ids = typeof value === 'string' ? value.split(',') : (value ?? []);
   return ids.map((id) => id.trim()).filter((id) => id.length > 0);
@@ -239,32 +232,16 @@ async function renderServiceTargets(domain: string, data: Record<string, unknown
 /**
  * The entities a service call reaches, for sir's headset to light up. Never rejects.
  *
- * Asked for alongside the call rather than after it, and given up on after
- * {@link TARGET_RESOLUTION_TIMEOUT_MS}: an area's lights are only known to Home Assistant, and the
- * call must never wait long on the answer, let alone fail over it.
+ * Asked for alongside the call rather than after it, and given up on at the lookup's time limit (see
+ * `lookUpWithinTimeLimit`): an area's lights are only known to Home Assistant, and the call must
+ * never wait long on the answer, let alone fail over it.
  */
 async function resolveServiceTargets(domain: string, data: Record<string, unknown>): Promise<AffectedEntity[]> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timedOut = new Promise<AffectedEntity[]>((resolve) => {
-    timer = setTimeout(() => {
-      logger.warn('Gave up resolving the targets of a Home Assistant service call', { domain });
-      resolve([]);
-    }, TARGET_RESOLUTION_TIMEOUT_MS);
-  });
-
-  const resolved = renderServiceTargets(domain, data).catch((error: unknown) => {
-    logger.warn('Could not resolve the targets of a Home Assistant service call', {
-      domain,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return [];
-  });
-
-  try {
-    return await Promise.race([resolved, timedOut]);
-  } finally {
-    clearTimeout(timer);
-  }
+  return await lookUpWithinTimeLimit(
+    `the targets of a ${domain} service call`,
+    () => renderServiceTargets(domain, data),
+    [],
+  );
 }
 
 const serviceCallResultSchema = z.object({ targets: z.array(affectedEntitySchema) });

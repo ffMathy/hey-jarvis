@@ -4,8 +4,10 @@
  * changed. Neither reaches Google.
  */
 
-import { describe, expect, it } from 'bun:test';
-import { readAffectedEntities } from '../../utils/affected-entities.js';
+import { afterEach, describe, expect, it } from 'bun:test';
+import { type FakeGoogle, fakeGoogle, googleJson } from '../../../tests/utils/fake-google.js';
+import { AFFECTED_ENTITY_LOOKUP_TIMEOUT_MS, readAffectedEntities } from '../../utils/affected-entities.js';
+import { executeTool } from '../../utils/tool-factory.js';
 import {
   buildTaskPatch,
   createTask,
@@ -80,5 +82,72 @@ describe('the task lists a request touches', () => {
   it('is nothing when the list could not be looked up, or for the list of every list, which is a survey', () => {
     expect(readAffectedEntities(getAllTasks.id, {}, { tasks: [] })).toEqual([]);
     expect(readAffectedEntities(getAllTaskLists.id, {}, { taskLists: [{ ...groceries, selfLink: '' }] })).toEqual([]);
+  });
+});
+
+/**
+ * The task list, when it is looked up only to name the list a tool touched.
+ *
+ * The task sir asked for is what he is waiting on; the title only lights the list up on his headset.
+ * So the lookup is asked once, with no retries, and is given up on at the lookup's time limit -- and
+ * the list is then named by the id it was asked for.
+ */
+describe('the task list, looked up alongside a task being added', () => {
+  const ADDED = { id: 't1', title: 'Buy milk', status: 'needsAction', selfLink: 'https://tasks/t1' };
+
+  let google: FakeGoogle | undefined;
+
+  afterEach(() => {
+    google?.restore();
+    google = undefined;
+  });
+
+  /** Adds a task to a list of its own, so no other spec's cached lookup of it can answer. */
+  async function addTask(taskListId: string) {
+    const startedAt = Date.now();
+    const added = await executeTool(createTask, { taskListId, title: 'Buy milk' });
+    return { added, elapsedMs: Date.now() - startedAt };
+  }
+
+  function lookUps(): URL[] {
+    return (google?.requests ?? []).filter((url) => url.pathname.includes('/users/@me/lists/'));
+  }
+
+  it('asks once and does not wait on Google retrying a list that fails', async () => {
+    google = await fakeGoogle(({ url }) =>
+      url.pathname.includes('/users/@me/lists/')
+        ? new Response('Service Unavailable', { status: 503 })
+        : googleJson(ADDED),
+    );
+
+    const { added, elapsedMs } = await addTask('failing-list');
+
+    expect(added.id).toBe('t1');
+    expect(added.taskList).toEqual({ id: 'failing-list' });
+    expect(lookUps()).toHaveLength(1);
+    expect(elapsedMs).toBeLessThan(AFFECTED_ENTITY_LOOKUP_TIMEOUT_MS);
+  });
+
+  it('never holds the task up while the lookup hangs', async () => {
+    google = await fakeGoogle(({ url, hang }) =>
+      url.pathname.includes('/users/@me/lists/') ? hang() : googleJson(ADDED),
+    );
+
+    const { added, elapsedMs } = await addTask('hanging-list');
+
+    expect(added.taskList).toEqual({ id: 'hanging-list' });
+    expect(elapsedMs).toBeLessThan(AFFECTED_ENTITY_LOOKUP_TIMEOUT_MS + 1_000);
+  });
+
+  it('still names the list by its real id and title when the lookup answers', async () => {
+    google = await fakeGoogle(({ url }) =>
+      url.pathname.includes('/users/@me/lists/')
+        ? googleJson({ id: 'MDk1NTEw', title: 'Groceries' })
+        : googleJson(ADDED),
+    );
+
+    const { added } = await addTask('@default');
+
+    expect(added.taskList).toEqual({ id: 'MDk1NTEw', name: 'Groceries' });
   });
 });

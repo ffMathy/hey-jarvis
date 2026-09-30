@@ -2,8 +2,12 @@ import { type calendar_v3, google } from 'googleapis';
 import { chunk } from 'lodash-es';
 import { z } from 'zod';
 import { getGoogleAuth } from '../../credentials/google-auth.js';
-import { type AffectedEntity, affectedEntitySchema, markAsAffectingEntities } from '../../utils/affected-entities.js';
-import { logger } from '../../utils/logger.js';
+import {
+  type AffectedEntity,
+  affectedEntitySchema,
+  lookUpWithinTimeLimit,
+  markAsAffectingEntities,
+} from '../../utils/affected-entities.js';
 import { createTool } from '../../utils/tool-factory.js';
 import { createTtlCache } from '../../utils/ttl-cache.js';
 
@@ -277,15 +281,26 @@ export interface CalendarListEntry {
   backgroundColor?: string;
 }
 
+/**
+ * How long one request for the calendar list may take.
+ *
+ * The list is the answer to "which calendars do I have?" as well as how a tool names the calendar it
+ * touched, so it keeps Google's retries. But the load is shared through the cache, and without a
+ * timeout a connection that hangs would hold every caller waiting on it for as long as it hangs --
+ * the TTL keeps a load that is still running, and forgets only one that has failed.
+ */
+const CALENDAR_LIST_TIMEOUT_MS = 5_000;
+
 const calendarListCache = createTtlCache<CalendarListEntry[]>({ ttlMs: CALENDAR_LIST_TTL_MS, maxEntries: 1 });
 
 async function loadCalendarList(): Promise<CalendarListEntry[]> {
   const auth = await getGoogleAuth();
   const calendar = google.calendar({ version: 'v3', auth });
 
-  const response = await calendar.calendarList.list({
-    fields: 'items(id,summary,description,primary,backgroundColor)',
-  });
+  const response = await calendar.calendarList.list(
+    { fields: 'items(id,summary,description,primary,backgroundColor)' },
+    { timeout: CALENDAR_LIST_TIMEOUT_MS },
+  );
 
   return (response.data.items || []).map((entry) => ({
     id: entry.id!,
@@ -321,22 +336,20 @@ export function describeCalendar(calendars: CalendarListEntry[], calendarId: str
 
 /**
  * The calendar a tool touched, looked up in the cached list alongside the tool's own call. Never
- * rejects.
+ * rejects, and never holds the tool up past the lookup's time limit (see `lookUpWithinTimeLimit`):
+ * the event is what sir asked for, and the calendar's name only lights it up on his headset.
  *
- * A calendar the list cannot describe is still reported by the id it was asked for -- except the
- * alias, which would be recorded as a calendar of its own.
+ * A calendar the list cannot describe in time is still reported by the id it was asked for -- except
+ * the alias, which would be recorded as a calendar of its own.
  */
 async function lookUpCalendar(calendarId: string): Promise<AffectedEntity | undefined> {
   const asAsked = calendarId === PRIMARY_CALENDAR_ID ? undefined : { id: calendarId };
 
-  try {
-    return describeCalendar(await getCalendarList(), calendarId) ?? asAsked;
-  } catch (error) {
-    logger.warn('Could not look up the calendar a tool touched', {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return asAsked;
-  }
+  return await lookUpWithinTimeLimit(
+    'the calendar a tool touched',
+    async () => describeCalendar(await getCalendarList(), calendarId) ?? asAsked,
+    asAsked,
+  );
 }
 
 // Tool to get calendar events

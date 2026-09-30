@@ -37,6 +37,17 @@ const MAX_ENTITY_NAME_LENGTH = 120;
 /** The prefix Mastra gives a workflow when an agent is handed it as a tool. */
 const WORKFLOW_TOOL_PREFIX = 'workflow-';
 
+/**
+ * How long a tool waits on a lookup it makes only to name what it touched.
+ *
+ * A few tools have to ask for the real id or the name of the thing they touched -- the lights an
+ * area's service call reached, the calendar an event went into, the task list a task was added to
+ * -- and they ask alongside their own call. That call is what sir is waiting for, while the answer
+ * only lights something up on his headset, so a slow or failing lookup gives up on the glow rather
+ * than holding up the answer.
+ */
+export const AFFECTED_ENTITY_LOOKUP_TIMEOUT_MS = 1_500;
+
 export const affectedEntitySchema = z.object({
   id: z
     .string()
@@ -121,6 +132,42 @@ export function readAffectedEntities(toolName: string, toolArguments: unknown, t
       error: error instanceof Error ? error.message : String(error),
     });
     return [];
+  }
+}
+
+/**
+ * What a lookup made only to name what a tool touched came to -- or `fallback` once it has failed, or
+ * has taken {@link AFFECTED_ENTITY_LOOKUP_TIMEOUT_MS}. Never rejects.
+ *
+ * The lookup is left to finish on its own when it is given up on, so whatever it would have cached
+ * is still there for the next call.
+ *
+ * @param about - What is being looked up, for the line a slow or failed lookup logs
+ */
+export async function lookUpWithinTimeLimit<T>(about: string, lookup: () => Promise<T>, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<T>((resolve) => {
+    timer = setTimeout(() => {
+      logger.warn('Gave up on a lookup that only names what a tool touched', { about });
+      resolve(fallback);
+    }, AFFECTED_ENTITY_LOOKUP_TIMEOUT_MS);
+  });
+
+  // Started through a promise so that a lookup which throws before it returns one is caught too.
+  const lookedUp = Promise.resolve()
+    .then(lookup)
+    .catch((error: unknown) => {
+      logger.warn('A lookup that only names what a tool touched failed', {
+        about,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return fallback;
+    });
+
+  try {
+    return await Promise.race([lookedUp, timedOut]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 

@@ -8,7 +8,9 @@
  */
 
 import { afterEach, describe, expect, it, setSystemTime } from 'bun:test';
-import { readAffectedEntities } from '../../utils/affected-entities.js';
+import { type FakeGoogle, fakeGoogle, googleJson } from '../../../tests/utils/fake-google.js';
+import { AFFECTED_ENTITY_LOOKUP_TIMEOUT_MS, readAffectedEntities } from '../../utils/affected-entities.js';
+import { executeTool } from '../../utils/tool-factory.js';
 import {
   buildEventPatch,
   type CalendarEvent,
@@ -172,5 +174,48 @@ describe('the calendars a request touches', () => {
 
   it('is nothing for the list of every calendar, which is a survey', () => {
     expect(readAffectedEntities(getAllCalendars.id, {}, { calendars: list })).toEqual([]);
+  });
+});
+
+/**
+ * The calendar list, when it is looked up only to name the calendar a tool touched.
+ *
+ * The event sir asked for is what he is waiting on; the name only lights the calendar up on his
+ * headset. So a list that hangs must cost the tool no more than the lookup's time limit, and the
+ * calendar is then named by the id it was asked for.
+ */
+describe('the calendar list, looked up alongside an event being created', () => {
+  let google: FakeGoogle | undefined;
+
+  afterEach(() => {
+    google?.restore();
+    google = undefined;
+  });
+
+  it('never holds the event up while the list hangs', async () => {
+    google = await fakeGoogle(({ url, hang }) =>
+      url.pathname.endsWith('/calendarList')
+        ? hang()
+        : googleJson({
+            id: 'dinner',
+            summary: 'Dinner',
+            start: { dateTime: '2026-09-30T18:00:00Z' },
+            end: { dateTime: '2026-09-30T19:00:00Z' },
+            htmlLink: 'https://calendar/dinner',
+            status: 'confirmed',
+          }),
+    );
+
+    const startedAt = Date.now();
+    const created = await executeTool(createCalendarEvent, {
+      calendarId: 'family@group',
+      summary: 'Dinner',
+      start: '2026-09-30T18:00:00Z',
+      end: '2026-09-30T19:00:00Z',
+    });
+
+    expect(created.id).toBe('dinner');
+    expect(created.calendar).toEqual({ id: 'family@group' });
+    expect(Date.now() - startedAt).toBeLessThan(AFFECTED_ENTITY_LOOKUP_TIMEOUT_MS + 1_000);
   });
 });

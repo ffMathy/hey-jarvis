@@ -985,6 +985,14 @@ tool accepts (`primary`, `@default`) is reported by the real id it stands for, o
 record one thing twice and never light the copy he placed. `name` is only for display. Ids longer
 than 200 characters are dropped and names are cut at 120.
 
+Some tools have to ask for the real id or the name of what they touched — the lights an area's
+service call reached, a calendar's name, a task list's title. They ask alongside their own call,
+through `lookUpWithinTimeLimit`, which gives up after `AFFECTED_ENTITY_LOOKUP_TIMEOUT_MS` (1.5 s)
+and falls back to the id as asked: the call is what sir is waiting for, and the answer only lights
+something up. The task-list lookup is also asked once, with no retries and a timeout, since nothing
+but the glow waits on it. The calendar list keeps Google's retries, because it is
+`getAllCalendars`' answer too, but has a timeout of its own so a hanging load cannot hold the cache.
+
 1. Routing reads every `tool-result` chunk the way it reads slow tool calls: forwarded by the agent
    step as `workflow-step-output`, or, for an answer carried back to a question, off the resumed
    agent's own stream. Whatever the readers name becomes a `delegation_affected_entities` event.

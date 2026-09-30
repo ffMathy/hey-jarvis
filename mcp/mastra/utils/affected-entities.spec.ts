@@ -5,8 +5,10 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import {
+  AFFECTED_ENTITY_LOOKUP_TIMEOUT_MS,
   affectedEntityReaderOf,
   cleanAffectedEntities,
+  lookUpWithinTimeLimit,
   markAsAffectingEntities,
   readAffectedEntities,
 } from './affected-entities.js';
@@ -116,6 +118,40 @@ describe('affected entities', () => {
     });
 
     expect(affectedEntityReaderOf(shortcut.id)).toBeUndefined();
+  });
+});
+
+/**
+ * A lookup a tool makes only to name what it touched runs alongside the call sir is waiting on, so it
+ * must never hold that call up for long, nor fail it.
+ */
+describe('a lookup made only to name what a tool touched', () => {
+  it('answers with what it found when it is quick', async () => {
+    expect(await lookUpWithinTimeLimit('the sofa lamp', async () => ({ id: 'light.sofa_lamp' }), undefined)).toEqual({
+      id: 'light.sofa_lamp',
+    });
+  });
+
+  it('answers with the fallback when it fails, even before it has returned a promise', async () => {
+    const failing = async (): Promise<string> => {
+      throw new Error('Service Unavailable');
+    };
+    const throwing = (): Promise<string> => {
+      throw new Error('no client');
+    };
+
+    expect(await lookUpWithinTimeLimit('a calendar', failing, 'as asked')).toBe('as asked');
+    expect(await lookUpWithinTimeLimit('a calendar', throwing, 'as asked')).toBe('as asked');
+  });
+
+  it(`gives up after ${AFFECTED_ENTITY_LOOKUP_TIMEOUT_MS} ms, answering with the fallback`, async () => {
+    const startedAt = Date.now();
+
+    expect(await lookUpWithinTimeLimit('a calendar', () => new Promise<string>(() => {}), 'as asked')).toBe('as asked');
+
+    const elapsedMs = Date.now() - startedAt;
+    expect(elapsedMs).toBeGreaterThanOrEqual(AFFECTED_ENTITY_LOOKUP_TIMEOUT_MS - 50);
+    expect(elapsedMs).toBeLessThan(AFFECTED_ENTITY_LOOKUP_TIMEOUT_MS + 1_000);
   });
 });
 

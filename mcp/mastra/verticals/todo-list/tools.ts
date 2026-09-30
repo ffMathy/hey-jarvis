@@ -1,8 +1,13 @@
 import { google, type tasks_v1 } from 'googleapis';
 import { z } from 'zod';
 import { getGoogleAuth } from '../../credentials/google-auth.js';
-import { type AffectedEntity, affectedEntitySchema, markAsAffectingEntities } from '../../utils/affected-entities.js';
-import { logger } from '../../utils/logger.js';
+import {
+  AFFECTED_ENTITY_LOOKUP_TIMEOUT_MS,
+  type AffectedEntity,
+  affectedEntitySchema,
+  lookUpWithinTimeLimit,
+  markAsAffectingEntities,
+} from '../../utils/affected-entities.js';
 import { createTool } from '../../utils/tool-factory.js';
 import { createTtlCache } from '../../utils/ttl-cache.js';
 
@@ -32,24 +37,29 @@ export function describeTaskList(taskList: tasks_v1.Schema$TaskList, askedFor: s
 }
 
 /**
- * The task list a tool touched, looked up alongside the tool's own call. Never rejects.
+ * The task list a tool touched, looked up alongside the tool's own call. Never rejects, and never
+ * holds the tool up past the lookup's time limit (see `lookUpWithinTimeLimit`): the task is what sir
+ * asked for, and the list's title only lights it up on his headset.
  *
- * A list that cannot be looked up is still reported by the id it was asked for -- except the alias,
- * which would be recorded as a list of its own.
+ * The request is asked once, with no retries, and times out with the limit, because nothing but the
+ * glow waits on it: Google's client would otherwise retry a failing list for seconds, and wait on a
+ * hanging one for as long as it hangs. A list that cannot be looked up in time is still reported by
+ * the id it was asked for -- except the alias, which would be recorded as a list of its own.
  */
 async function lookUpTaskList(taskListId: string): Promise<AffectedEntity | undefined> {
-  try {
-    return await taskListCache.get(taskListId, async () => {
-      const tasks = google.tasks({ version: 'v1', auth: await getGoogleAuth() });
-      const response = await tasks.tasklists.get({ tasklist: taskListId, fields: 'id,title' });
-      return describeTaskList(response.data, taskListId);
-    });
-  } catch (error) {
-    logger.warn('Could not look up the task list a tool touched', {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return taskListId === DEFAULT_TASK_LIST_ID ? undefined : { id: taskListId };
-  }
+  return await lookUpWithinTimeLimit(
+    'the task list a tool touched',
+    () =>
+      taskListCache.get(taskListId, async () => {
+        const tasks = google.tasks({ version: 'v1', auth: await getGoogleAuth() });
+        const response = await tasks.tasklists.get(
+          { tasklist: taskListId, fields: 'id,title' },
+          { retry: false, timeout: AFFECTED_ENTITY_LOOKUP_TIMEOUT_MS },
+        );
+        return describeTaskList(response.data, taskListId);
+      }),
+    taskListId === DEFAULT_TASK_LIST_ID ? undefined : { id: taskListId },
+  );
 }
 
 /** The task list a tool reports it touched. */
