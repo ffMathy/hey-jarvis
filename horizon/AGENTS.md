@@ -683,9 +683,11 @@ stands in the room. **Taking one** is a pinch (joint distance, 1.5 cm on and 3 c
 anything out of reach, a pinch or a trigger pull along the ray, after which it rides the ray to
 where the depth hit test meets a surface (the thumbstick pushes it out or pulls it in) until the
 next pinch or pull drops it. Let go in the room, it is dropped on the room anchors and written to
-the registry; let go on the drawer, it goes back in. Tokens are drawn in the accent, sir's colour,
-through walls, with names over the carried one and every placed one; no hand meshes, since
-passthrough shows the real hands (and three's hand models load from a CDN).
+the registry; let go on the drawer, it goes back in. A drop still waiting on a new anchor that is
+taken back, or dropped again, gives that anchor back — at once, or as soon as the headset hands out
+its handle (`RoomAnchors.cancel`) — since no placement would ever name it. Tokens are drawn in the
+accent, sir's colour, through walls, with names over the carried one and every placed one; no hand
+meshes, since passthrough shows the real hands (and three's hand models load from a CDN).
 
 **The wrist button**, for hands without a controller's A or X, stands off the back of a wrist
 raised as if to read a watch (the back towards the eyes within 40°, 0.15–0.7 m from them), and is

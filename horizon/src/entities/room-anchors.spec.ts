@@ -343,6 +343,70 @@ describe('dropping far from every anchor', () => {
     expect(session.deleted).toEqual([B]);
     expect(anchor.deleted).toBe(true);
   });
+
+  it('gives back the new anchor of a drop replaced after its handle came, before it was located', async () => {
+    const { anchors, frame, session, registry } = await farDrop();
+    const anchor = new FakeAnchor('space-new');
+    frame.created[0]?.resolve(anchor);
+    await settle();
+    anchor.handle?.resolve(B);
+    await settle();
+    expect(anchors.status(6).anchors[B]).toBe('unlocated');
+    anchors.drop(frame, 'local-floor', 'light.kitchen', { x: 0.2, y: 0.5, z: 0.3 }, registry, 6);
+    await settle();
+    expect(session.deleted).toEqual([B]);
+    expect(anchor.deleted).toBe(true);
+    expect(anchors.status(6).anchors[B]).toBeUndefined();
+  });
+});
+
+describe('taking back a drop still waiting on its anchor', () => {
+  async function farDrop() {
+    const setup = await restored([A], [poseFromQuaternion({ x: 0, y: 0, z: 0 }, LEVEL)]);
+    setup.anchors.drop(setup.frame, 'local-floor', 'light.kitchen', { x: 0, y: 2.2, z: -4 }, setup.registry, 5);
+    return setup;
+  }
+
+  it('forgets the drop, and gives its anchor back as soon as the headset hands out the handle', async () => {
+    const { anchors, frame, session } = await farDrop();
+    anchors.cancel('light.kitchen');
+    expect(anchors.pendingDrops()).toEqual([]);
+    expect(anchors.status(5).pending).toBe(0);
+    const anchor = new FakeAnchor('space-new');
+    frame.created[0]?.resolve(anchor);
+    await settle();
+    anchor.handle?.resolve(B);
+    await settle();
+    expect(session.deleted).toEqual([B]);
+    expect(anchor.deleted).toBe(true);
+    expect(anchors.status(6).anchors[B]).toBeUndefined();
+    expect(anchors.update(frame, 'local-floor', 6)).toEqual([]);
+  });
+
+  it('gives its anchor back at once when the handle has already come', async () => {
+    const { anchors, frame, session } = await farDrop();
+    const anchor = new FakeAnchor('space-new');
+    frame.created[0]?.resolve(anchor);
+    await settle();
+    anchor.handle?.resolve(B);
+    await settle();
+    anchors.cancel('light.kitchen');
+    await settle();
+    expect(session.deleted).toEqual([B]);
+    expect(anchor.deleted).toBe(true);
+    // Located after all, it settles nothing: nobody is waiting for it.
+    frame.poses.set('space-new', poseFromQuaternion({ x: 0, y: 2.2, z: -4 }, LEVEL));
+    expect(anchors.update(frame, 'local-floor', 6)).toEqual([]);
+    expect(anchors.status(6).anchors[B]).toBeUndefined();
+  });
+
+  it('leaves every other drop, and a drop never made, alone', async () => {
+    const { anchors, frame, registry } = await farDrop();
+    anchors.drop(frame, 'local-floor', 'inbox:work', { x: 0, y: 2.2, z: 4 }, registry, 5);
+    anchors.cancel('light.kitchen');
+    anchors.cancel('calendar:family');
+    expect(anchors.pendingDrops().map((drop) => drop.id)).toEqual(['inbox:work']);
+  });
 });
 
 describe('the anchor budget', () => {

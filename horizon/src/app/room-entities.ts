@@ -273,8 +273,15 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
       releaseAnchors(unusedAnchors(store.registry));
     }
     for (const settled of anchors.update(frame.frame, frame.space, time)) {
-      // Taken back into the drawer, or dropped again, while its anchor was being made.
-      if (awaitingAnchor.has(settled.id)) keep(settled);
+      if (awaitingAnchor.has(settled.id)) {
+        keep(settled);
+        continue;
+      }
+      // Nobody waits for it any more, so an anchor no placement names — the one made for this drop —
+      // is given back rather than left holding one of the origin's eight with nothing to find it by.
+      if (settled.kind === 'placed' && !Object.hasOwn(store.registry.anchors, settled.anchor)) {
+        releaseAnchors([settled.anchor]);
+      }
     }
   }
 
@@ -367,7 +374,9 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
     if (event.kind === 'placed') {
       keep(anchors.drop(frame.frame, frame.space, event.id, event.position, store.registry, time));
     } else if (event.kind === 'unplaced') {
+      // Back in the drawer before its anchor was made: the drop, and the anchor on its way, are let go.
       awaitingAnchor.delete(event.id);
+      anchors.cancel(event.id);
       if (placementStateOf(store.registry, event.id) === 'unplaced') return;
       store.update((registry) => unplaceEntity(registry, event.id));
       say(`${labelOf(event.id)} is back in the drawer.`);
@@ -622,6 +631,9 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
       store.flush();
     },
     dispose() {
+      // Drops the session ended under: their anchors will never be written down, so they are given
+      // back — as far as a session that has ended still allows.
+      for (const id of awaitingAnchor) anchors.cancel(id);
       store.flush();
       drawer.dispose();
       tokens.dispose();

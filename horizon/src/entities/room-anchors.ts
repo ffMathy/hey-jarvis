@@ -130,6 +130,12 @@ export interface RoomAnchors<Space, Transform> {
     registry: EntityRegistry,
     now: number,
   ): DropResult;
+  /**
+   * Takes back entity `id`'s drop still waiting on its new anchor — it went back into the drawer —
+   * and gives that anchor back: at once when its handle has come, or as soon as it does. Nothing
+   * else would ever give it back, since no placement will name it.
+   */
+  cancel(id: string): void;
   /** Where a placement is in the last frame updated, or undefined while its anchor is not located. */
   positionOf(placement: EntityPlacement): Vector3Like | undefined;
   /** Where each drop still waiting on a new anchor was dropped, so it can be drawn there meanwhile. */
@@ -251,8 +257,8 @@ export function createRoomAnchors<Space, Transform>(
         persist.call(anchor).then(
           (uuid) => {
             track(uuid, anchor, now);
-            // A drop that has been replaced meanwhile no longer wants the anchor, so its handle is
-            // given back at once rather than left using one of the few the origin has.
+            // A drop that has been replaced or taken back meanwhile no longer wants the anchor, so
+            // its handle is given back at once rather than left using one of the few the origin has.
             if (pending.includes(drop)) drop.anchor = uuid;
             else void release([uuid]);
           },
@@ -264,6 +270,19 @@ export function createRoomAnchors<Space, Transform>(
       },
       () => fail('The headset would not anchor that spot.'),
     );
+  }
+
+  /**
+   * Takes entity `id`'s waiting drop out of the list, and gives back its new anchor if the handle
+   * has come; a handle still on its way is given back when it arrives (`createFor`). That anchor is
+   * never located here — once located, it would have settled the drop in this frame's `update` —
+   * so no later drop could have been put on it instead.
+   */
+  function takeBack(id: string) {
+    const index = pending.findIndex((drop) => drop.id === id);
+    if (index < 0) return;
+    const [drop] = pending.splice(index, 1);
+    if (drop?.anchor !== undefined) void release([drop.anchor]);
   }
 
   /** Whether the headset still lists `uuid`; undefined when it cannot say. */
@@ -392,8 +411,7 @@ export function createRoomAnchors<Space, Transform>(
     drop(frame, space, id, point, registry, now) {
       const where = { x: point.x, y: point.y, z: point.z };
       // A later drop of the same entity replaces one still waiting on its anchor.
-      const earlier = pending.findIndex((drop) => drop.id === id);
-      if (earlier >= 0) pending.splice(earlier, 1);
+      takeBack(id);
       const nearest = nearestLocated(where);
       const nearestPose = nearest === undefined ? undefined : located(nearest.uuid);
       if (nearest !== undefined && nearestPose !== undefined && nearest.distance <= ANCHOR_REUSE_METRES) {
@@ -407,6 +425,7 @@ export function createRoomAnchors<Space, Transform>(
       createFor(drop, frame, space, now);
       return { kind: 'pending', id };
     },
+    cancel: takeBack,
     positionOf(placement) {
       const pose = located(placement.anchor);
       if (pose === undefined) return undefined;
