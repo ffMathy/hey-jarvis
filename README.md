@@ -34,6 +34,23 @@ The picture at the top is the same drawing again: one still, mid-sentence, at th
 
 The devices are real frames rather than drawings: Google's own Pixel 10 Pro device art, and a community vector of a Pixel Watch 3 — Google publishes art for every Pixel phone and none for its watch. [`hologram/.scripts/device-art/NOTICE.md`](./hologram/.scripts/device-art/NOTICE.md) says where each came from and under what licence, **including that the two watch clips are themselves CC BY-SA 4.0** because the frame in them is.
 
+## Jarvis in your room
+
+On a Meta Quest he stands in the room with you. Say "Hey Jarvis" and he appears where there is space for him — worked out from the headset's own scan of the room — greets you, speaks from where he stands, and holds the same conversation as the phone. This is the [`horizon`](./horizon) app in Meta's headset emulator and one of its scanned rooms (the grey is the scan, standing in for passthrough): waiting for the wake word, arriving, then a walk up to him and once round him while he listens, thinks and speaks.
+
+<p align="center">
+  <picture>
+    <source srcset="./docs/jarvis-in-a-room.webp" type="image/webp" />
+    <img width="640" alt="Jarvis standing in a living room, seen through a Meta Quest while walking up to him and round him" src="./docs/jarvis-in-a-room.gif" />
+  </picture>
+</p>
+
+The clip above is silent — a README can show an animated image but no video. **The full video, with his voice coming from where he stands, is [docs/jarvis-in-a-room.webm](./docs/jarvis-in-a-room.webm)**: download it and play it with headphones. It is rendered frame by frame from the real app with [`horizon/.scripts/render-demo.ts`](./horizon/.scripts/render-demo.ts):
+
+```bash
+bun horizon/.scripts/render-demo.ts --out docs/jarvis-in-a-room.webm --readme
+```
+
 ## Architecture
 
 ```

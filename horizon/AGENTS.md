@@ -675,7 +675,10 @@ encodes a WebM (VP9 and Opus):
 36 s at 1280x720 and 30 fps takes about a quarter of an hour. `--seconds N` stretches or squeezes
 the whole shot (`--seconds 8` is a five-minute draft with every beat); `--size`, `--fps` and `--fov`
 (vertical, 66° by default — IWER's 90° leaves him a speck) set the picture; `--frames dir` and
-`--keep-frames` keep the PNGs, which are otherwise deleted after the encode. It needs an ffmpeg with
+`--keep-frames` keep the PNGs, which are otherwise deleted after the encode; `--readme` also writes the
+README's copies beside the WebM — an animated WebP (quality 95, every frame, 1280 wide) and a 640-wide
+15 fps GIF behind it — because GitHub plays no video from a repository, and the README links the WebM for
+the sound. The README's copies are `docs/jarvis-in-a-room.{webm,webp,gif}`. It needs an ffmpeg with
 libvpx-vp9 and libopus — FFMPEG_PATH, else the one on the PATH; Playwright's own is VP8-only.
 CHROMIUM_EXECUTABLE_PATH works as it does for the browser tests.
 
