@@ -15,6 +15,7 @@ import {
   createFrameClockState,
   createHologramResources,
   createHologramScene,
+  createReleasableHologramResources,
   type DensityPace,
   drawHologram,
   foldSpectrum,
@@ -257,6 +258,19 @@ const DRAWN_RESOLUTION = 0.45;
  */
 const DRAWN_IN_A_LAYER = Platform.OS === 'android';
 
+/**
+ * Whether the paths each frame makes have to be deleted by hand once the picture is recorded.
+ *
+ * In a browser they do. There React Native Skia's API is a thin layer over CanvasKit's WebAssembly
+ * objects, which nothing ever frees: no finalizer, no garbage collection reaching into the wasm heap.
+ * The drawing makes a few dozen paths a frame, so a page left showing Jarvis grew by some 84 KB a
+ * frame at full density — measured headlessly over CanvasKit — until the tab ran out of memory. The
+ * recorded picture holds its own reference to every path it drew, so deleting ours afterwards costs
+ * the picture nothing. On a phone and a watch the JSI objects are freed with their JavaScript wrappers,
+ * so nothing changes there: the resources are the plain ones and nothing is released.
+ */
+const RELEASES_PATHS_BY_HAND = Platform.OS === 'web';
+
 /** How long the frame rate is averaged over before it is reported. Long enough not to flicker. */
 const FRAME_RATE_OVER_SECONDS = 0.5;
 
@@ -329,7 +343,15 @@ function JarvisHologramView({
   const isForeground = useIsForeground();
   const drawnSize = Math.round(size * DRAWN_RESOLUTION);
   const scene = useMemo(() => createHologramScene(SCENE_SEED, particleCount), [particleCount]);
-  const resources = useMemo(() => createHologramResources(Skia, scene), [scene]);
+  // In a browser, resources that remember the paths each frame makes, so they can be deleted once
+  // the picture is recorded: see RELEASES_PATHS_BY_HAND. Undefined on a device, where the worklet
+  // then captures nothing it could not carry to the UI thread.
+  const releasable = useMemo(
+    () => (RELEASES_PATHS_BY_HAND ? createReleasableHologramResources(Skia, scene) : undefined),
+    [scene],
+  );
+  const resources = useMemo(() => releasable?.resources ?? createHologramResources(Skia, scene), [releasable, scene]);
+  useEffect(() => () => releasable?.dispose(), [releasable]);
 
   const targetLevel = useSharedValue(0);
   // The person talking to him, as last read: see `user`.
@@ -587,6 +609,9 @@ function JarvisHologramView({
       canvas.restore();
     }
     const recorded = recorder.finishRecordingAsPicture();
+    if (RELEASES_PATHS_BY_HAND) {
+      releasable?.release();
+    }
     const took = performance.now() - startedAt;
     built.value += 1;
     buildingFor.value += took;

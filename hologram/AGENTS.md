@@ -315,7 +315,11 @@ Its conversation is the same session the phone and the watch hold theirs in
 directly: the headset hands it its browser parts — his track analysed on the
 app's `AudioContext`, the greeting's `<audio>` element, the orphaned audio a
 dropped call leaves on a page that lives for hours — through
-`createHeadsetSession` in `horizon/src/conversation/`. `roomOfConversation`
+`createHeadsetSession` in `horizon/src/conversation/`. A renderer drawing over CanvasKit — the headset's flat layer, and the phone's own web build —
+takes its resources from `createReleasableHologramResources` and calls `release()` once each
+frame has been flushed or recorded: CanvasKit's objects live in the WebAssembly heap, which nothing
+garbage-collects, and the drawing makes a few dozen paths a frame. On a device the JSI objects free
+themselves and the view keeps the plain `createHologramResources`. `roomOfConversation`
 takes each app's own `Room` guard rather than importing `livekit-client`,
 because an `instanceof` is only true against the copy the app's SDK built the
 room from.
