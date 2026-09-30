@@ -1,6 +1,7 @@
 // Synapse vertical exports
 export { getStateChangeReactorAgent } from './agent.js';
 export { describeStateChange, type StateChange } from './state-change.js';
+export { getStateChangeClassifier } from './state-change-classifier.js';
 export {
   registerStateChangeNotification,
   STATE_CHANGE_RESOURCE_ID,

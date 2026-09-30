@@ -24,9 +24,15 @@ const catalogProductSchema = z.object({
   brand: z.string(),
   price: z.number(),
   attributes: z.array(z.string()),
+  size: z.string().optional().describe('How much one of the product is, like "1 l", when the catalogue says'),
 });
 
 type CatalogProduct = z.infer<typeof catalogProductSchema>;
+
+/** How much one of a product is, like "1 l", or nothing when either half is missing. */
+export function formatProductSize(units: number | null | undefined, unitsOfMeasure: string | null | undefined) {
+  return units && unitsOfMeasure ? `${units} ${unitsOfMeasure}` : undefined;
+}
 
 /**
  * The products for one search: those of the most preferred filter that has any.
@@ -45,6 +51,7 @@ export async function findPreferredProducts(searchQuery: string): Promise<Catalo
     brand: `${hit.brand ?? ''} ${hit.subBrand ?? ''}`.trim(),
     price: hit.price / 100,
     attributes: (hit.attributes ?? []).map((attribute) => attribute.attributeName),
+    size: formatProductSize(hit.units, hit.unitsOfMeasure),
   }));
 }
 

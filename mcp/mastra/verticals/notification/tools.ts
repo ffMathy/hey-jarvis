@@ -10,6 +10,7 @@ import {
   callPrimaryUserNotifyService,
   DEFAULT_ANNOUNCE_SILENCE_SECONDS,
 } from './channels.js';
+import { getNotificationUrgencyClassifier, reviewAgentUrgency } from './classifier.js';
 import { getUserPresence } from './presence.js';
 import { decideNotificationChannel, decideQuestionChannel, type NotificationChannel } from './routing.js';
 import {
@@ -198,7 +199,8 @@ export const getPrimaryUserPresence = createTool({
  * Send a notification to somebody, over whichever channel actually reaches them.
  *
  * The choice of channel is deterministic and lives in `routing.ts`; this tool gathers what that
- * decision needs (for the user: where he is) and then carries it out.
+ * decision needs (for the user: where he is) and then carries it out. When an agent is the one
+ * sending, the urgency it chose is checked by the urgency classifier first (`classifier.ts`).
  */
 export const sendNotification = createTool({
   id: 'sendNotification',
@@ -229,8 +231,15 @@ export const sendNotification = createTool({
     reason: z.string(),
     message: z.string(),
   }),
-  execute: async (inputData) => {
-    const { target, message, isUrgent = false, title } = inputData;
+  execute: async (inputData, context) => {
+    const { target, message, title } = inputData;
+    const requestedUrgency = inputData.isUrgent ?? false;
+
+    // Only an agent's judgement is checked by the urgency classifier: code that sends a
+    // notification chose its urgency on purpose, and keeps it.
+    const isUrgent = context?.agent
+      ? await reviewAgentUrgency(getNotificationUrgencyClassifier(), { message, title, isUrgent: requestedUrgency })
+      : requestedUrgency;
 
     const presence = isUserTarget(target) ? await getUserPresence() : undefined;
     const { channel, reason } = decideNotificationChannel({ target, isUrgent, presence });

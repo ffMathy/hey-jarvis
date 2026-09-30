@@ -16,7 +16,7 @@
  * only if one of his subscriptions happens to match it.
  *
  * And it is how a session asks the user something. A turn that ends on a question
- * (`session-questions.ts`) is not published: the question is put to the user over a channel his
+ * (`session-questions.ts`), or asks one in prose that the classifier catches (`classifier.ts`), is not published: the question is put to the user over a channel his
  * answer can come back on, and the answer resumes the session. So a session can ask at any point
  * in its work — before it has changed a line, or halfway through — and carry on from there.
  */
@@ -27,6 +27,7 @@ import { executeTool } from '../../utils/tool-factory.js';
 import { askUserQuestion, sendNotification } from '../notification/tools.js';
 import type { StateChange } from '../synapse/state-change.js';
 import { registerStateChange } from '../synapse/tools.js';
+import { createProseQuestionReader, type SessionProseQuestionReader } from './classifier.js';
 import { type ClaudeSessionEvent, sendClaudeSessionMessage, streamClaudeSessionEvents } from './claude-sessions.js';
 import { type PublishTarget, publishSessionWork, type SessionWorkPublication } from './publish-session-work.js';
 import { readSessionQuestion } from './session-questions.js';
@@ -298,6 +299,7 @@ export class ClaudeSessionWatcher {
     private readonly publishWork: SessionWorkPublisher = publishSessionWork,
     private readonly askQuestion: SessionQuestionAsker = createSessionQuestionAsker(),
     private readonly notifyUser: SessionOutcomeNotifier = notifyUserOfSessionOutcome,
+    private readonly readProseQuestion: SessionProseQuestionReader = createProseQuestionReader(),
   ) {}
 
   /**
@@ -405,8 +407,9 @@ export class ClaudeSessionWatcher {
     }
 
     // A turn that ended on a question is waiting for the user, not done: it is asked, and the
-    // answer resumes the session.
-    const question = readSessionQuestion(finalMessage);
+    // answer resumes the session. One that asked in prose rather than in the block is caught by the
+    // session question classifier, and asked the same way.
+    const question = readSessionQuestion(finalMessage) ?? (await this.readProseQuestion(sessionId, finalMessage));
     if (question) {
       const asking = await this.askQuestion(sessionId, question, context).catch(
         (error: unknown): SessionQuestionAsking => ({

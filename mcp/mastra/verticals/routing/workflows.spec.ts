@@ -724,3 +724,26 @@ describe('failed delegations', () => {
     expect(ids).toEqual(['weather', 'calendar']);
   });
 });
+
+describe('a request about the conversation itself', () => {
+  async function closingReportFor(conversationControl: 'endCall' | 'cancelled') {
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    progress.conversationControl = conversationControl;
+    endPlanRun(progress);
+    return resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+  }
+
+  it('hands a goodbye straight back to end_call, rather than reporting that no agent could take it', async () => {
+    const report = await closingReportFor('endCall');
+
+    expect(report.instructions).toContain('call end_call');
+    expect(report.instructions).not.toContain('could not be completed');
+  });
+
+  it('says only that the earlier request was stopped', async () => {
+    const report = await closingReportFor('cancelled');
+
+    expect(report.instructions).toContain('stopped');
+    expect(report.completedTaskResults).toBeUndefined();
+  });
+});

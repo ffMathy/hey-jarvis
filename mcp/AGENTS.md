@@ -834,6 +834,43 @@ repeating a lookup costs time and quota, while dropping one of the edges costs a
 The common shapes — a location before a weather lookup, a recipe before a reminder — are paths
 and pay nothing for it.
 
+**Most requests skip the planner.** A Jev classifier (`routing/classifier.ts`, on TypeSafe AI's
+evaluation model through Mastra's `Classifier`) is asked at the same time as the planner: which
+single agent can carry out the whole request as it was said — or `several`, or `none` — and how
+the answer should sound. When it is at least `FAST_PATH_CONFIDENCE` sure of one agent, the planner
+is cancelled and that agent gets the user's own words as its prompt. Anything else is left to the
+planner: several agents, one that needs another's answer first, a request that might answer a
+waiting question, or a classifier that is not sure. The planner's result is used whenever it
+lands first, and a failing classifier is logged and ignored, so the classifier can only make a
+request faster, never slower. Without `HEY_JARVIS_TYPESAFE_AI_API_KEY` there is no classifier and
+every request is planned as before. The response-style wording lives in `response-styles.ts`, so
+the planner and the classifier describe the four styles identically.
+
+**Smart home commands skip the agent too.** Home Assistant's own services, every one that
+targets entities with its name and description, fetched live and cached for ten minutes, ride
+along on the same Jev call: which service carries the request out, and whether the request gives a
+setting (a brightness, temperature, colour). When the request is routed to `internetOfThings` as a
+`command`, the service is sure, needs no required field and no setting was given, every entity
+that service can act on is fetched live and put to Jev as one yes/no each, with its name, area and
+state (`internet-of-things/home-commands.ts`). If every entity is settled one way or the other and
+at least one is chosen, the service is called on exactly those, with no language model involved.
+The result says how many devices changed state, and does not claim success when none did. Anything
+else (an unsure service or entity, a setting, more than 150 candidate entities, Home Assistant
+refusing the call) runs the same one-agent chain the request would have run anyway. Jev only picks
+from what Home Assistant listed, so it cannot call a service or touch an entity that does not exist.
+
+**The same call settles three more decisions** that used to fall to the planner or a rule of thumb:
+
+- **An answer to a waiting question.** When Jev is sure the request answers one of the open
+  questions and is nothing but that answer, it goes straight back to the work that asked, in the
+  user's own words, with no planner.
+- **A goodbye.** `endCall` is a route choice. A goodbye that reaches routing is handed straight
+  back to the voice agent's `end_call`, rather than reported as a request no agent could handle.
+- **A request arriving while another runs.** It joins the running request's report while it is
+  classified against it: `adds` keeps both and reports them together, `cancels` stops the running
+  one and says so, and a correction, or an unsure answer, supersedes it as every request used to.
+  `RoutingProgress.join` counts the requests reporting into it, and it finishes only when all do.
+
 Routing has been three things. A task DAG with a wave scheduler this vertical owned; then a
 supervisor agent delegating inside its own tool-call loop; now a plan. The middle one is why:
 its loop was opaque, so a request could not be looked at, and it could not say what was
@@ -1648,6 +1685,86 @@ and when the parsing agent cannot read an answer out of them. Each is counted in
 `repliesRejected` rather than reported as an error, because nothing has gone wrong with the
 system. Only a token naming a run that does not exist is reported as an error.
 
+## Jev Classifiers
+
+Decisions that are a choice from a list, a place on a scale, or a yes/no are answered by Jev, TypeSafe
+AI's evaluation model, through Mastra's `Classifier` instead of a language model (see
+`.claude/rules/jev-classifiers.md`). Every classifier is built with `createLazyClassifier` in
+`utils/classifier-factory.ts`, registered on the Mastra instance so Studio traces it, and read through
+a pure policy function that acts only above a confidence bar (`confidentChoice` / `confidentScoreLevel`
+in `utils/classifier-answers.ts`). Without `HEY_JARVIS_TYPESAFE_AI_API_KEY`, on a failed call, or on an
+unsure answer, each decision is made exactly as it was before there was a classifier.
+
+| Classifier | Where | Decides |
+| --- | --- | --- |
+| `routingClassifier` | `routing/classifier.ts` | Single-agent fast path, answers to waiting questions, goodbyes, replace/cancel/add, Home Assistant service |
+| `homeCommandClassifier` | `internet-of-things/home-commands.ts` | Which entities a smart home command acts on |
+| `changeRelevanceClassifier` | `internet-of-things/change-relevance.ts` | What kind of Home Assistant change a report is |
+| `stateChangeClassifier` | `synapse/state-change-classifier.ts` | How much attention a state change needs, and which subscriptions it fires |
+| `weatherNotabilityClassifier` | `weather/classifier.ts` | Whether an hourly weather update is worth filing |
+| `emailTriageClassifier` | `email/classifier.ts` | Each new email's kind and urgency |
+| `orderChangeClassifier` | `shopping/classifier.ts` | Whether a Bilka email reports an order change the subject match missed |
+| `productChoiceClassifier` | `shopping/classifier.ts` | Which catalogue product a shopping list item is |
+| `emailReplyClassifier` | `human-in-the-loop/classifier.ts` | The yes/no fields of an emailed answer |
+| `codingSessionQuestionClassifier` | `coding/classifier.ts` | Whether a Claude session ended on a question in prose |
+| `notificationUrgencyClassifier` | `notification/classifier.ts` | Whether a message the agent sends is urgent |
+
+**Synapse state change gate.** Before a state change is filed for the State Change Reactor,
+`synapse/state-change-classifier.ts` asks Jev in one call how much attention the change deserves
+(ignore / fyi / soon / now), and, for each subscription vector recall shortlisted, whether the change
+really fires it. A confident "now" is filed at high priority. A confident "ignore" that no candidate
+subscription can plausibly fire (below 0.15) and no rule covers is held back from the reactor and
+logged; it is still saved to memory. Everything else is filed as before, with each candidate's fire
+probability written under it. `registerStateChange` takes an optional `priority: 'high'` for callers
+that already know a change cannot wait; it is a floor, and such a change is never held back. With
+Mastra's default delivery policy, `high` is delivered at once when the reactor is idle, and as a
+summary followed by the record when it is busy.
+
+**Weather monitoring.** The hourly update is compared with the last one filed, kept in memory, by a
+Jev score: routine / notable_change / warning. Confident routine is not filed, a warning is filed at
+high priority, and anything else is filed as before. The first update after a restart is never
+dropped. The state data no longer carries a timestamp, so identical updates collapse under the
+notifier's dedupe key.
+
+**Home Assistant report relevance.** The event monitor classifies each entity (id, friendly name,
+domain, device class) or event type once and keeps the answer for a day: safety_security / presence /
+comfort_control / energy_telemetry / diagnostics. Confident diagnostics are not reported unless a
+synapse subscription matches them, and confident safety_security is filed at high priority.
+
+**Email triage.** Before new emails are filed for the reactor, each is classified in parallel by kind
+and urgency from its sender, subject and preview. Confident newsletters and promotions, and emails
+that need nobody, are left out and counted in `droppedEmailCount`; emails it is sure of carry a
+`kind`; one it is sure needs the user now files the batch at high priority. When nothing is left,
+nothing is filed.
+
+**Email trigger fallback filters.** A trigger may have a `fallbackFilter`, asked only when the sender
+matches and the subject filter does not; it never overrides or delays a subject match. The Bilka
+order-change trigger keeps its exact subject match and falls back to Jev, so a reworded subject still
+notifies.
+
+**Shopping list product choice.** For items that are a whole count of something to set ("2 stk
+agurk"), the workflow searches the catalogue in code and asks Jev which basket line or result the
+item is, or none. Confident items are set without the mutator agent. Removals, weights and volumes,
+zero or fractional quantities, unsure items, failed searches, and two items settling on the same
+product go to the agent as before, which is skipped when nothing is left for it.
+
+**Email replies.** When every field of an emailed answer is a required boolean, with at most optional
+strings beside it, `parseEmailReply` first asks Jev one boolean per field plus whether the reply
+decides anything at all, over the person's own words (`human-in-the-loop/reply-text.ts` strips HTML
+and quoted history). At least 90% sure either way on everything becomes the answer; sure it decides
+nothing refuses the reply like an unreadable one. Anything else, including any answer with a required
+string such as meal-plan feedback, is read by the Gemini parsing agent as before.
+
+**Coding session questions.** When a Claude session's turn ends without a fenced `jarvis-question`
+block, Jev is asked whether the message ends by asking the user to decide something before the work
+can continue. Above 85%, the last paragraph is asked exactly like a fenced question and nothing is
+published.
+
+**Notification urgency.** When an agent calls `sendNotification`, Jev checks the agent's `isUrgent`
+against the same guidance the agent is given (`notification/classifier.ts`), and overrides it only
+when at least 90% sure of the opposite, logging the override. Code callers keep the urgency they
+passed.
+
 ## Processors
 
 ### 🔍 **Output Processors**
@@ -1901,6 +2018,7 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **Weather**: `HEY_JARVIS_OPENWEATHERMAP_API_KEY` for weather data
 - **Google Maps**: `HEY_JARVIS_GOOGLE_MAPS_API_KEY` for navigation, travel time estimation and place search
 - **Google Gemini**: `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` for language models and embeddings. Deliberately separate from the Maps key -- they are restricted to different APIs and are not interchangeable.
+- **TypeSafe AI (optional)**: `HEY_JARVIS_TYPESAFE_AI_API_KEY` for Jev, the evaluation model behind the routing classifier. Resolved from `op://Jarvis/TypeSafe AI/API key` through `mcp/op.optional.env`; without it routing plans every request with the planner.
 - **Google OAuth2 (Calendar, Tasks & Contacts)**: `HEY_JARVIS_GOOGLE_CLIENT_ID`, `HEY_JARVIS_GOOGLE_CLIENT_SECRET`, `HEY_JARVIS_GOOGLE_REFRESH_TOKEN` for accessing the Google Calendar, Tasks and People APIs (see [Google OAuth2 Setup](#google-oauth2-setup) below)
 - **Shopping (Bilka)**: `HEY_JARVIS_BILKA_EMAIL`, `HEY_JARVIS_BILKA_PASSWORD`, `HEY_JARVIS_BILKA_API_KEY` for authentication
 - **Shopping (Search)**: `HEY_JARVIS_ALGOLIA_API_KEY`, `HEY_JARVIS_ALGOLIA_APPLICATION_ID`, `HEY_JARVIS_BILKA_USER_TOKEN` for product search

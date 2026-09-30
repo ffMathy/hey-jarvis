@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { registerEmailTrigger } from '../email/triggers.js';
 import { getNotificationAgent } from '../notification/agent.js';
+import { reportsOrderChange } from './classifier.js';
 
 // Email schema for incoming trigger emails (includes full HTML body)
 const emailInputSchema = z.object({
@@ -84,7 +85,9 @@ export const orderChangedWorkflow = createWorkflow({
  * Currently registers:
  * - Bilka order change notifications: Triggers when an email from
  *   "info@kundeservice.bilkatogo.dk" with subject containing
- *   "Din ordre er klar med følgende ændringer" is received.
+ *   "Din ordre er klar med følgende ændringer" is received. When Bilka words the subject
+ *   differently, a classifier is asked whether the email reports changes to the order instead
+ *   (see `classifier.ts`), so a reworded subject does not silently stop the notification.
  */
 export function registerShoppingTriggers(): void {
   console.log('🛒 Registering shopping email triggers...');
@@ -92,6 +95,7 @@ export function registerShoppingTriggers(): void {
   registerEmailTrigger({
     sender: 'info@kundeservice.bilkatogo.dk',
     subjectFilter: (subject) => subject.includes('Din ordre er klar med følgende ændringer'),
+    fallbackFilter: (email) => reportsOrderChange(email),
     workflow: orderChangedWorkflow,
   });
 
