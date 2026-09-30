@@ -59,8 +59,10 @@ export function afterStatus(life: ConversationLife, status: string): Conversatio
  * microphone switched off: "Connecting…" and no more, indefinitely. On a watch the Bluetooth proxy
  * produces the same thing, and a sphere turning in silence is indistinguishable from one listening.
  *
- * So the wait is bounded by whoever holds the conversation, and by this. Twenty seconds is far
- * longer than a session takes — a token, a socket and a handshake are a second or two on a bad
- * connection — and long enough that a slow network is never mistaken for a failure.
+ * So the wait is bounded by the session every device holds its conversation in (`jarvis-session.ts`),
+ * and by this — and a conversation that only opens after it has given up is ended, since nobody is
+ * waiting for it any more. Twenty seconds is far longer than a session takes — a token, a socket and
+ * a handshake are a second or two on a bad connection — and long enough that a slow network is never
+ * mistaken for a failure.
  */
 export const GIVE_UP_CONNECTING_AFTER_MS = 20_000;

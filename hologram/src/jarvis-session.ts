@@ -365,7 +365,9 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
 
   /**
    * Keeps the score deaf while he speaks or greets — his voice through the speaker scores as the
-   * user's — and forgets it whenever nobody is being listened to, as `useUserVoice` does.
+   * user's — and forgets it whenever nobody is being listened to: a score that arrived just before
+   * the microphone closed must not outlive it, or the next time it opens the sphere would start out
+   * believing someone was already speaking.
    */
   const updateHearing = (current: Attempt<Timer>) => {
     vadScore.jarvisSpeaking(current.greeting !== 'over' || current.mode === 'speaking');

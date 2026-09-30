@@ -62,8 +62,7 @@ export const MCP_TOOL_STILL_RUNNING = 'loading';
  *
  * It costs nothing when a thought really is over: the sphere idles two seconds later than it
  * strictly could, which is far cheaper than the alternative of it strobing through a long
- * request. The end of the *conversation* does not wait — see `forget` below, and
- * `forgetToolCalls` in `conversation/tool-activity.ts`.
+ * request. The end of the *conversation* does not wait — see `forget` below.
  */
 export const KEEP_THINKING_AFTER_LAST_ANSWER_MS = 2_000;
 
@@ -105,18 +104,25 @@ export interface ToolActivity {
 /**
  * Turns Jarvis's tool calls into the hologram's thinking state, with no framework underneath.
  *
- * The same rules as `useToolActivity` in `conversation/tool-activity.ts`, which is the phone's and
- * the watch's: thinking while any call is in flight, held for
- * {@link KEEP_THINKING_AFTER_LAST_ANSWER_MS} past the last answer so a stream of polls reads as one
- * thought, continued rather than restarted by a call inside that window, and dropped at once by
- * {@link ToolActivity.forget}. This is the shape for a client with no React in it — the headset
- * holds its conversation through the SDK's own client and draws Jarvis from a frame loop — and the
- * hook keeps its own state machine in React state rather than wrapping this, so that the apps
- * already shipped do not change.
+ * Thinking while any call is in flight, held for {@link KEEP_THINKING_AFTER_LAST_ANSWER_MS} past
+ * the last answer so a stream of polls reads as one thought, continued rather than restarted by a
+ * call inside that window, and dropped at once by {@link ToolActivity.forget}. The session every
+ * device runs (`jarvis-session.ts`) keeps one, on the timers it is handed, and tells a screen as it
+ * changes.
+ *
+ * **The same shape the voice firmware uses**, which is where the idea comes from: ESPHome's
+ * assistant is a phase machine — idle, listening, thinking, replying — and `on_processing` is what
+ * lights the thinking animation on the LED ring (see
+ * `home-assistant-voice-firmware/home-assistant-voice.elevenlabs.yaml`). The sphere is the ring. What
+ * counts as thinking here is narrower, and deliberately so: a conversation over WebRTC streams, so
+ * the gap between you finishing and him replying is usually nothing at all, and what genuinely takes
+ * time is a tool call — asking Home Assistant what the lights are doing, or the calendar what
+ * tomorrow looks like. That is the wait worth showing, and the only one this reports.
  *
  * `inFlight` stays the exact list of what is running, and the window is kept apart from it as
- * `settling`, for the reason the hook gives: a fake id parked in the list to hold the drawing would
- * corrupt the one fact here to serve a presentation decision.
+ * `settling`, because they answer different questions and only one of them is a fact: a fake id
+ * parked in the list to hold the drawing would corrupt the one fact here to serve a presentation
+ * decision.
  */
 export function createToolActivity<Timer>({
   onChange,

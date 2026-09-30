@@ -53,15 +53,14 @@ describe('keeping track of the tool calls Jarvis has in flight', () => {
     // and the next going out — which is the voice model reading a response and deciding, well
     // under a second — while still being short enough that one quick lookup visibly ends.
     //
-    // What the window does is pinned below, against `createToolActivity`. The phone's and the
-    // watch's `useToolActivity` keeps the same window in React state, which `bun test` has no
-    // renderer for; for them this pins the number, and looking at the sphere covers the rest.
+    // What the window does is pinned below, against `createToolActivity`, which the session every
+    // device runs keeps; this pins the number.
     expect(KEEP_THINKING_AFTER_LAST_ANSWER_MS).toBe(2_000);
   });
 
   it('leaves what it was given alone', () => {
-    // These run inside a React state updater, where mutating the previous value is how a render
-    // gets silently skipped.
+    // A list that changed in place would look unchanged to whoever compares it with the last one,
+    // and the settling window would never start.
     const before: readonly string[] = ['weather'];
     toolCallStarted(before, 'calendar');
     toolCallFinished(before, 'weather');
@@ -123,8 +122,8 @@ function followedActivity(): {
 }
 
 /**
- * The same state machine as `useToolActivity`, with no React underneath: the headset's. What the
- * hook does in effects and state, this does on the clock it is handed.
+ * The thinking state with no React underneath, as the session every device runs keeps it, on the
+ * clock it is handed.
  */
 describe('createToolActivity', () => {
   it('is not thinking until a call begins, and says nothing until then', () => {

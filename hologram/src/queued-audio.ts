@@ -52,8 +52,9 @@ function playingElements(track: AgentTrack): QueuedAudioElement[] {
  * worth playing, and the next thing to come down the track is a fresh sentence.
  *
  * In the main entry because every browser client plays him through LiveKit's elements and has the
- * same tail to drop: the phone app's web build (`useQueuedAudio` in `mobile/src/queued-audio.ts`)
- * and the headset. The elements are named structurally, so nothing here touches the DOM's types.
+ * same tail to drop — the phone app's web build and the headset — and the session they both run
+ * (`jarvis-session.ts`) calls it on every interruption. The elements are named structurally, so
+ * nothing here touches the DOM's types.
  */
 export function flushQueuedAudio(tracks: readonly AgentTrack[]): number {
   let flushed = 0;

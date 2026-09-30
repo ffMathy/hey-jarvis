@@ -34,7 +34,8 @@ interface TypedMessageFieldProps {
  * — and one whose input is repeatable from one run to the next in a way that speaking never is,
  * which is what makes it a debugging affordance as well. **On a phone only on request**: it was an
  * empty bar under him on every summoning, and the user asked for it gone, so there it appears when
- * a tap on him switches the conversation into writing. See `text-mode.ts`.
+ * a tap on him switches the conversation into writing. See `toggleTextMode` in
+ * `conversation-screen.tsx`.
  *
  * The microphone is left listening while it is on screen. Muting it would be a second, invisible
  * mode on a screen whose whole argument is that it has none: somebody who types a line and then

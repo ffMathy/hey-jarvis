@@ -55,17 +55,17 @@ export interface JarvisConversation extends SessionSnapshot {
 const startSession: StartSession = (options) => Conversation.startSession(options);
 
 /**
- * The greeting's player as the session drives it, whatever the platform plays it with: this
- * package's own native module as call audio on a device, expo-audio in a browser.
+ * The greeting's player as the session holds it: whichever the screen rendered last, so a player
+ * remade by its hook is the one played. Whether there is a headset's link to wait for is the
+ * platform's, and so is decided by the first one.
  */
-function asSessionGreeting(player: () => ReturnType<typeof useGreetingPlayer>): GreetingPlayer {
+function latestOf(player: () => GreetingPlayer): GreetingPlayer {
+  const waitsForRoute = player().untilAudible !== undefined;
   return {
-    untilAudible: () => player().untilAudible(),
+    ...(waitsForRoute ? { untilAudible: () => player().untilAudible?.() ?? Promise.resolve() } : {}),
     playFromStart: () => player().playFromStart(),
-    stop: () => player().pause(),
-    // Silence until the recording is actually playing, and after it stops: the sphere follows what
-    // can be heard, not what was asked for.
-    position: () => (player().playing ? player().currentTime : -1),
+    stop: () => player().stop(),
+    position: () => player().position(),
     get duration() {
       return player().duration;
     },
@@ -118,7 +118,7 @@ export function useJarvisSession(options: JarvisSessionOptions): JarvisConversat
       },
       participantName: latest.current.participantName,
       startSession,
-      greeting: asSessionGreeting(() => latestPlayer.current),
+      greeting: latestOf(() => latestPlayer.current),
       events: {
         onProblem: (message, source) => latest.current.onProblem(message, source),
       },
