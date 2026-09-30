@@ -78,14 +78,19 @@ function distance(first: Vector3Tuple, second: ArrayLike<number>, offset: number
 }
 
 /** What the CPU reference makes of every row, in the rows' order: the body's, then the stream's. */
-function referenceRows(scene: ReturnType<typeof createHologramScene>, frame: HologramFrame, basis: ViewBasis) {
+function referenceRows(
+  scene: ReturnType<typeof createHologramScene>,
+  frame: HologramFrame,
+  basis: ViewBasis,
+  eyeDistance: number,
+) {
   const state = analyseFrame(frame, 1, scene);
   const placed: (PlacedFragment | null)[] = [];
   for (let offset = 0; offset < scene.body.length; offset += BODY_STRIDE) {
-    placed.push(placeBodyFragment(scene.body, offset, state, basis));
+    placed.push(placeBodyFragment(scene.body, offset, state, basis, eyeDistance));
   }
   for (let offset = 0; offset < scene.stream.length; offset += STREAM_STRIDE) {
-    placed.push(placeStreamFragment(scene.stream, offset, state, basis));
+    placed.push(placeStreamFragment(scene.stream, offset, state, basis, eyeDistance));
   }
   return { state, placed };
 }
@@ -95,7 +100,12 @@ function referenceRows(scene: ReturnType<typeof createHologramScene>, frame: Hol
  * placed back out of a float target, and compares it with what `fragment-3d.ts` places for the same
  * frame and view. The browser tests call it through the preview's hook; nothing in the app does.
  */
-export function checkPort(renderer: WebGLRenderer, frame: HologramFrame, basis: ViewBasis): PortCheck {
+export function checkPort(
+  renderer: WebGLRenderer,
+  frame: HologramFrame,
+  basis: ViewBasis,
+  eyeDistance: number,
+): PortCheck {
   const scene = createHologramScene(SCENE_SEED);
   const rows = buildHologramRows(scene);
   const height = Math.ceil(rows.count / READBACK_WIDTH);
@@ -107,8 +117,8 @@ export function checkPort(renderer: WebGLRenderer, frame: HologramFrame, basis: 
     magFilter: NearestFilter,
   });
   const uniforms = createFragmentUniforms();
-  const { state, placed } = referenceRows(scene, frame, basis);
-  writeFragmentUniforms(uniforms, state, basis, 1);
+  const { state, placed } = referenceRows(scene, frame, basis, eyeDistance);
+  writeFragmentUniforms(uniforms, state, basis, 1, eyeDistance);
   const channel = { value: 0 };
   const material = new RawShaderMaterial({
     glslVersion: GLSL3,

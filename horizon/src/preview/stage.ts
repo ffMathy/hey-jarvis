@@ -51,6 +51,11 @@ export interface Stage {
   setView(view: StageView): void;
   /** Stops the live loop, draws one still from a fresh arrival, and measures it. */
   still(request: StillRequest): Promise<StillResult>;
+  /**
+   * Stops the live loop and draws a stereo pair for parallel viewing — the left eye's picture on
+   * the left — `separation` metres apart, as a base64 PNG.
+   */
+  stereo(request: StillRequest, separation: number): Promise<string>;
   /** Stops the live loop and compares the GPU's fragment arithmetic with the CPU reference. */
   checkPort(request: PortCheckRequest): PortCheck;
   /** Back to the live loop, from `phase`. */
@@ -183,9 +188,9 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
     );
   }
 
-  async function still(request: StillRequest): Promise<StillResult> {
+  /** A fresh hologram — no voice tracker, thought or lattice carried over — stepped to the moment asked for. */
+  async function prepareStill(request: StillRequest) {
     running = false;
-    // A fresh hologram, so no voice tracker, thought or lattice carries over from the last still.
     hologram.dispose();
     hologram = await newHologram(renderer, painter);
     hologram.mode = request.mode;
@@ -193,9 +198,39 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
     scene.add(hologram.object);
     resize();
     frameFrom('front', 0);
-    const drive = drives[request.phase];
     hologram.arrive(camera.position);
     stepToMoment(request.phase, request.seconds, hologram);
+  }
+
+  async function stereo(request: StillRequest, separation: number): Promise<string> {
+    await prepareStill(request);
+    // Drawn for the centre eye once, as a headset's frame is, then seen from each eye.
+    frameFrom(request.view, 0);
+    hologram.update(0, drives[request.phase].drive, { position: camera.position, orientation: camera.quaternion });
+    const size = renderer.getDrawingBufferSize(new Vector2());
+    const pair = new OffscreenCanvas(size.x * 2, size.y);
+    const context = pair.getContext('2d');
+    if (context === null) throw new Error('No 2D canvas to lay the pair out on.');
+    context.fillStyle = request.background === 'grey' ? '#8c8c8c' : '#000000';
+    context.fillRect(0, 0, pair.width, pair.height);
+    for (const [eye, offset] of [
+      [0, -separation / 2],
+      [1, separation / 2],
+    ]) {
+      frameFrom(request.view, offset);
+      renderer.render(scene, camera);
+      context.drawImage(canvas, eye * size.x, 0);
+    }
+    const blob = await pair.convertToBlob({ type: 'image/png' });
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary);
+  }
+
+  async function still(request: StillRequest): Promise<StillResult> {
+    await prepareStill(request);
+    const drive = drives[request.phase];
     frameFrom(request.view, request.eyeOffset ?? 0);
     render(0, drive.drive);
     const frame = hologram.frame;
@@ -243,6 +278,7 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
       controls.update();
     },
     still,
+    stereo,
     checkPort(request) {
       running = false;
       const clock = createFrameClock();
@@ -253,7 +289,12 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
         y: Math.sin(elevation),
         z: Math.cos(angle) * Math.cos(elevation),
       };
-      return checkPort(renderer, clock.frame(1), viewBasisTowards({ x: 0, y: 0, z: 0 }, eye, null));
+      return checkPort(
+        renderer,
+        clock.frame(1),
+        viewBasisTowards({ x: 0, y: 0, z: 0 }, eye, null),
+        request.eyeDistance,
+      );
     },
     resume() {
       hologram.mode = mode;

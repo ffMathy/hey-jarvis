@@ -2,7 +2,14 @@ import { PerspectiveCamera, Scene, WebGLRenderer } from 'three';
 import { createJarvisHologram3D, DISTANCE_AHEAD_METRES, type JarvisHologram3D, type Painter } from '../hologram3d';
 import { type CentreEye, centreEyeOf, pointAhead } from '../xr/viewer-pose';
 import { createPhaseDrives } from './phase-drives';
-import { PREVIEW_PHASES, type PreviewMode, type PreviewPhase, type RoomTimings } from './preview-hook';
+import {
+  PREVIEW_PHASES,
+  type PreviewMode,
+  type PreviewPhase,
+  type RoomPoint,
+  type RoomStatus,
+  type RoomTimings,
+} from './preview-hook';
 
 /** How many frames' timings are kept for the readout and the browser tests. */
 const TIMINGS_KEPT = 240;
@@ -11,10 +18,10 @@ const TIMINGS_KEPT = 240;
 const FOVEATION = 0.3;
 
 export interface PreviewRoom {
-  readonly entered: boolean;
-  readonly phase: PreviewPhase;
-  readonly timings: RoomTimings;
-  setPhase(phase: PreviewPhase): void;
+  /** A copy of where the room is now. */
+  status(): RoomStatus;
+  /** What he does from now on; see `HologramPreviewHook.setRoomPhase` for `holdAtSeconds`. */
+  setPhase(phase: PreviewPhase, holdAtSeconds?: number): void;
   setMode(mode: PreviewMode): void;
   setAlphaFactor(share: number): void;
   /** Stands him in the room of `session`, 1.6 m ahead, until the session ends. */
@@ -37,16 +44,20 @@ export function createPreviewRoom(painter: Painter): PreviewRoom {
   let entered = false;
   let phase: PreviewPhase = 'greeting';
   let secondsIntoPhase = 0;
+  let holdAtSeconds = Number.POSITIVE_INFINITY;
   let mode: PreviewMode = 'volumetric';
   let alphaFactor: number | null = null;
   let hologram: JarvisHologram3D | null = null;
-  let head: { x: number; y: number; z: number } | null = null;
+  let head: RoomPoint | null = null;
+  let placedAt: RoomPoint | null = null;
+  let headAtPlacement: RoomPoint | null = null;
   const drives = createPhaseDrives(() => secondsIntoPhase);
   const timings: RoomTimings = { frames: 0, intervals: [], updates: [], canvasKit: [] };
 
-  function setPhase(next: PreviewPhase) {
+  function setPhase(next: PreviewPhase, holdAt = Number.POSITIVE_INFINITY) {
     phase = next;
     secondsIntoPhase = 0;
+    holdAtSeconds = holdAt;
     if (hologram !== null && (drives[next].arrives || hologram.presence <= 0)) {
       hologram.arrive(head ?? undefined);
     }
@@ -80,15 +91,18 @@ export function createPreviewRoom(painter: Painter): PreviewRoom {
     let placed = false;
     let lastTime: number | null = null;
     const standHimAhead = (eye: CentreEye) => {
-      shown.object.position.copy(pointAhead(eye, DISTANCE_AHEAD_METRES));
+      const { x, y, z } = pointAhead(eye, DISTANCE_AHEAD_METRES);
+      shown.object.position.set(x, y, z);
       shown.arrive(eye.position);
+      placedAt = { x, y, z };
+      headAtPlacement = head;
       placed = true;
     };
     const draw = (time: number, eye: CentreEye) => {
       const deltaSeconds = lastTime === null ? 0 : (time - lastTime) / 1000;
       if (lastTime !== null) keep(timings.intervals, time - lastTime);
       lastTime = time;
-      secondsIntoPhase += deltaSeconds;
+      secondsIntoPhase = Math.min(holdAtSeconds, secondsIntoPhase + deltaSeconds);
       shown.update(deltaSeconds, drives[phase].drive, eye);
       keep(timings.updates, shown.diagnostics.cpuMilliseconds);
       keep(timings.canvasKit, shown.diagnostics.canvasKitMilliseconds);
@@ -114,13 +128,19 @@ export function createPreviewRoom(painter: Painter): PreviewRoom {
   }
 
   return {
-    get entered() {
-      return entered;
+    status() {
+      return {
+        ...timings,
+        intervals: [...timings.intervals],
+        updates: [...timings.updates],
+        canvasKit: [...timings.canvasKit],
+        entered,
+        phase,
+        secondsIntoPhase,
+        placedAt,
+        headAtPlacement,
+      };
     },
-    get phase() {
-      return phase;
-    },
-    timings,
     setPhase,
     setMode(next) {
       mode = next;

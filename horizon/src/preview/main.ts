@@ -139,11 +139,15 @@ async function start(): Promise<HologramPreviewHook> {
     async checkPort(request) {
       return stage.checkPort(request);
     },
-    setRoomPhase(phase) {
-      room.setPhase(phase);
+    stereo(request, separation) {
+      setBackground(request.background);
+      return stage.stereo(request, separation);
+    },
+    setRoomPhase(phase, holdAtSeconds) {
+      room.setPhase(phase, holdAtSeconds);
     },
     get room() {
-      return { ...room.timings, entered: room.entered, phase: room.phase };
+      return room.status();
     },
   };
 }
@@ -156,6 +160,9 @@ const NOT_IN_ROOM: HologramPreviewHook['room'] = {
   canvasKit: [],
   entered: false,
   phase: 'greeting',
+  secondsIntoPhase: 0,
+  placedAt: null,
+  headAtPlacement: null,
 };
 
 const starting = start();
@@ -164,8 +171,9 @@ window.__hologramPreview = {
   ready: starting.then(() => undefined),
   show: (request) => starting.then((hook) => hook.show(request)),
   checkPort: (request) => starting.then((hook) => hook.checkPort(request)),
-  setRoomPhase: (phase) => {
-    starting.then((hook) => hook.setRoomPhase(phase));
+  stereo: (request, separation) => starting.then((hook) => hook.stereo(request, separation)),
+  setRoomPhase: (phase, holdAtSeconds) => {
+    starting.then((hook) => hook.setRoomPhase(phase, holdAtSeconds));
   },
   get room() {
     return NOT_IN_ROOM;
