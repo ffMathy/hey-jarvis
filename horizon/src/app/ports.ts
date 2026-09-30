@@ -5,8 +5,8 @@ import type { PoseLike, Vector3Like } from '../xr/ray';
 import type { SessionPhase, WakeReadiness } from './app-state';
 
 /**
- * Where the rest of the app plugs into the room: the wake word, the conversation, the hologram and
- * placement, each as the few calls the room makes of it.
+ * Where the rest of the app plugs into the room: the wake word, the conversation and his voice, the
+ * hologram and placement, each as the few calls the room makes of it.
  *
  * Each mirrors the surface of the module that fills it (`src/wake/`, `src/conversation/`,
  * `src/hologram3d/`, `src/room/`) — the same names and shapes, so the wake engine, the session and
@@ -118,6 +118,17 @@ export function createSilentConversation(): ConversationPort {
     quietFor: () => true,
     dispose: () => undefined,
   };
+}
+
+// ─────────────────────────── where his voice comes from (src/conversation/) ───────────────────────────
+
+/**
+ * His voice from where he stands (`conversation/spatial-voice.ts`): told every frame where the head
+ * is and where he is, so the listener and the panner follow them.
+ */
+export interface VoicePort {
+  /** `speaker` is his centre, following his anchor, or undefined while he is not in the room. */
+  follow(listener: PoseLike, speaker: Vector3Like | undefined): void;
 }
 
 // ─────────────────────────── the hologram (src/hologram3d/) ───────────────────────────

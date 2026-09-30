@@ -4,6 +4,7 @@ import type { MicrophoneGate } from './microphone';
 import { type PreparationTask, runPreparation } from './preparation';
 import { canTrySample, microphoneHelp, type PageFacts, primaryButton } from './prerequisites';
 import { checkSettings, type KeyValueStorage, loadSettings, saveSettings } from './settings';
+import { loadVoiceFromWhereHeStands, saveVoiceFromWhereHeStands } from './voice-setting';
 
 /**
  * The 2D page: the one place a headset session can start from — entering an immersive session
@@ -12,8 +13,9 @@ import { checkSettings, type KeyValueStorage, loadSettings, saveSettings } from 
  * Plain DOM over the markup in `index.html`. What the big button says comes from
  * `prerequisites.ts`; this file keeps the facts it is worked out from current and draws the result:
  * whether this browser can open a room, whether there are settings, how far getting ready has got,
- * the microphone permission, and whether the user is in the room. It also owns the settings form
- * and the status line, which after a room closes says what went wrong in it, if anything did.
+ * the microphone permission, and whether the user is in the room. It also owns the settings form,
+ * the "His voice from where he stands" switch (`voice-setting.ts`, read again on every Enter), and
+ * the status line, which after a room closes says what went wrong in it, if anything did.
  */
 
 /** Which room to open: the real one, or sample mode. */
@@ -68,6 +70,7 @@ export function startPage(document: Document, dependencies: PageDependencies): v
   const settingsProblem = required(document, '#settings-problem', HTMLElement);
   const settingsSaved = required(document, '#settings-saved', HTMLElement);
   const saveButton = required(document, '#save-settings', HTMLButtonElement);
+  const spatialVoice = required(document, '#spatial-voice', HTMLInputElement);
 
   const stored = loadSettings(storage);
   const facts: PageFacts = {
@@ -79,6 +82,7 @@ export function startPage(document: Document, dependencies: PageDependencies): v
   };
   const completedPreparations = new Set<PreparationTask>();
 
+  spatialVoice.checked = loadVoiceFromWhereHeStands(storage);
   apiKeyField.value = stored?.apiKey ?? '';
   agentIdField.value = stored?.agentId ?? '';
   // Open when there is something to fill in; folded away once there is not, so the button is the page.
@@ -173,6 +177,11 @@ export function startPage(document: Document, dependencies: PageDependencies): v
 
   sample.addEventListener('click', () => {
     if (canTrySample(facts)) enterRoom('sample');
+  });
+
+  spatialVoice.addEventListener('change', () => {
+    const problem = saveVoiceFromWhereHeStands(storage, spatialVoice.checked);
+    if (problem !== undefined) say(problem);
   });
 
   showKey.addEventListener('click', () => {

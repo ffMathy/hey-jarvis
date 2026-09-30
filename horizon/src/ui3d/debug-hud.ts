@@ -52,6 +52,18 @@ export interface Diagnostics {
     /** The last error the SDK reported without ending the conversation. */
     lastError?: string;
   };
+  /** Where his voice comes from (`conversation/voice-route.ts`). */
+  voice?: {
+    /** `spatial` or `element`. */
+    route: string;
+    /** Why, in words. */
+    reason: string;
+    /** What the wake word's microphone said about the echo canceller. */
+    echoCanceller: string;
+    /** The SDK's `<audio>` elements, and the volume they are kept at. */
+    elements: number;
+    elementVolume: number;
+  };
   room?: {
     planes: number;
     meshes: number;
@@ -112,6 +124,19 @@ function conversationLines(conversation: NonNullable<Diagnostics['conversation']
   return lines;
 }
 
+/**
+ * The voice's tier on one line: spatial, element, or element with the session's half-duplex fallback
+ * on top — the third tier, which the session decides and the conversation line also shows.
+ */
+function voiceLine(voice: NonNullable<Diagnostics['voice']>, halfDuplex: boolean): string {
+  const tier = voice.route === 'element' && halfDuplex ? 'element + half-duplex' : voice.route;
+  const elements = voice.elements === 1 ? 'element' : 'elements';
+  return (
+    `voice ${tier} (${voice.reason})  echo canceller ${voice.echoCanceller}  ` +
+    `${voice.elements} sdk ${elements} at volume ${fixed(voice.elementVolume, 0)}`
+  );
+}
+
 function roomLines(room: NonNullable<Diagnostics['room']>): string[] {
   const voxels = room.voxels === undefined ? '' : `  ${room.voxels} voxels`;
   const lines = [
@@ -166,7 +191,7 @@ function featuresLine(features: readonly string[]): string {
 
 /** Everything known, as short lines; parts with nothing to report are left out. */
 export function describeDiagnostics(diagnostics: Diagnostics): string[] {
-  const { scene, wake, wakeAudio, conversation, room, hologram, webglExtensions, xrFeatures } = diagnostics;
+  const { scene, wake, wakeAudio, conversation, voice, room, hologram, webglExtensions, xrFeatures } = diagnostics;
   return [
     scene === undefined ? undefined : `scene ${scene}`,
     visibilityLine(diagnostics),
@@ -174,6 +199,7 @@ export function describeDiagnostics(diagnostics: Diagnostics): string[] {
     ...(wake === undefined ? [] : wakeLines(wake)),
     wakeAudio === undefined ? undefined : wakeAudioLine(wakeAudio),
     ...(conversation === undefined ? [] : conversationLines(conversation)),
+    voice === undefined ? undefined : voiceLine(voice, conversation?.halfDuplex === true),
     ...(room === undefined ? [] : roomLines(room)),
     frameLine(diagnostics),
     hologram === undefined ? undefined : hologramLine(hologram),

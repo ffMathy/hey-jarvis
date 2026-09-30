@@ -2,12 +2,14 @@ import type { ElevenLabsSettings } from 'hologram';
 import type { RoomOptions } from './app/room-runtime';
 import { createGreetingPlayer } from './conversation/greeting-player';
 import { greetingRecordingUrl } from './conversation/greeting-recording';
+import type { SpatialVoice } from './conversation/spatial-voice';
 import { initialDebugState, publishDebugState } from './debug-hook';
 import type { Painter } from './hologram3d/canvaskit';
 import { createBrowserMicrophoneKeeper } from './page/microphone';
 import { type RoomOutcome, startPage } from './page/page';
 import type { PreparationTask } from './page/preparation';
 import type { KeyValueStorage } from './page/settings';
+import { loadVoiceFromWhereHeStands } from './page/voice-setting';
 import type { Diagnostics } from './ui3d/debug-hud';
 import {
   createWakeEngine,
@@ -38,8 +40,10 @@ import { canEnterRoom, requestRoomSession } from './xr/room-session';
  * page never needs.
  *
  * URL flags: `?debug` shows the diagnostics HUD in the room, `?flat` draws him as the phone's flat
- * picture instead of in 3D, and `?microphone=raw` listens for the wake word without echo
- * cancellation, noise suppression or gain control, to try on a headset whether it hears better.
+ * picture instead of in 3D, `?microphone=raw` listens for the wake word without echo cancellation,
+ * noise suppression or gain control, to try on a headset whether it hears better, and
+ * `?voice=spatial` plays his voice from where he stands even when the microphone says the headset
+ * has no echo canceller of its own that could keep it out (see `conversation/voice-route.ts`).
  */
 
 const debug = publishDebugState(initialDebugState());
@@ -60,7 +64,10 @@ conversationLoading.catch(() => undefined);
 const microphoneProfile: MicrophoneProfile = flags.get('microphone') === 'raw' ? 'raw' : 'processed';
 const wake = createWakeEngine({ assetBase, profile: microphoneProfile });
 const microphone = createBrowserMicrophoneKeeper(microphoneProfile);
-const greeting = createGreetingPlayer(greetingRecordingUrl());
+// Made here rather than inside the player, because his spatial voice takes this very element into
+// the AudioContext to place the greeting where he stands (`conversation/spatial-voice.ts`).
+const greetingElement = new Audio();
+const greeting = createGreetingPlayer(greetingRecordingUrl(), () => greetingElement);
 
 /**
  * CanvasKit's download is about 8 MB, a third of the wake word's; the two weight the page's one
@@ -101,6 +108,13 @@ const preparations: PreparationTask[] = [
 ];
 
 let listeningAudio: AudioContext | undefined;
+
+/**
+ * His voice from where he stands, made once for the page: it can take the greeting's element into
+ * the AudioContext only once, and a demotion it has seen — his voice coming back through the
+ * microphone — should hold for every room after it.
+ */
+let spatialVoice: SpatialVoice | undefined;
 
 /**
  * The app's one AudioContext, which his voice is analysed on once he is connected (the wake engine
@@ -146,6 +160,7 @@ function roomDiagnostics(): Partial<Diagnostics> {
   const audio = wake.diagnostics;
   return {
     audioContext: listeningAudio?.state,
+    voice: spatialVoice?.diagnostics(),
     microphonePermission: lastPermission,
     microphoneTrack: audio.trackMuted ? 'muted' : audio.trackState,
     wakeAudio: {
@@ -206,6 +221,7 @@ async function openConversationRoom(
   settings: ElevenLabsSettings,
   audioContext: AudioContext,
   listening: Promise<MediaStream>,
+  voiceFromWhereHeStands: boolean,
   onInside: () => void,
 ): Promise<RoomOutcome> {
   let stream: MediaStream | undefined;
@@ -218,17 +234,34 @@ async function openConversationRoom(
   try {
     session = await sessionRequest;
     stream = await listening;
-    const [modules, [{ Conversation }, { createHeadsetSession }]] = await Promise.all([
-      roomLoading,
-      conversationLoading,
-    ]);
+    const [modules, [{ Conversation }, conversation]] = await Promise.all([roomLoading, conversationLoading]);
     const [{ runRoom }] = modules;
+    // The wake word's own microphone says which echo canceller the call's capture will have, since
+    // both ask for the same processing from the same device.
+    const choice = {
+      setting: voiceFromWhereHeStands,
+      forced: flags.get('voice') === 'spatial',
+      echoCanceller: conversation.probeEchoCanceller(stream.getAudioTracks()[0]),
+      webAudio: conversation.hasSpatialAudio(audioContext),
+    };
+    const voice = spatialVoice ?? conversation.createPageSpatialVoice(audioContext, greetingElement, choice);
+    spatialVoice = voice;
+    voice.choose(choice);
+    debug.voice = voice.report;
     return await runRoom(session, {
       ...sharedRoomOptions(modules, onInside),
       mode: 'conversation',
       wake,
+      voice,
       createConversation: (events) =>
-        createHeadsetSession({ settings, startSession: Conversation.startSession, greeting, audioContext, events }),
+        conversation.createHeadsetSession({
+          settings,
+          startSession: Conversation.startSession,
+          greeting,
+          audioContext,
+          events,
+          voice,
+        }),
       stopMicrophone,
       diagnostics: flags.has('debug') ? roomDiagnostics : undefined,
     });
@@ -271,7 +304,15 @@ startPage(document, {
     const audioContext = resumeListeningAudio();
     void greeting.prime();
     const listening = startListening();
-    return openConversationRoom(requestRoomSession(xr), settings, audioContext, listening, onInside);
+    const voiceFromWhereHeStands = loadVoiceFromWhereHeStands(browserStorage);
+    return openConversationRoom(
+      requestRoomSession(xr),
+      settings,
+      audioContext,
+      listening,
+      voiceFromWhereHeStands,
+      onInside,
+    );
   },
   debug,
 });

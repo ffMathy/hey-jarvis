@@ -123,6 +123,32 @@ describe('describeDiagnostics', () => {
       'gl none of interest',
     ]);
   });
+
+  it('says which tier his voice is on, why, and what the microphone said about echo', () => {
+    const spatial = {
+      route: 'spatial',
+      reason: 'the headset cancels echo',
+      echoCanceller: 'platform',
+      elements: 1,
+      elementVolume: 0,
+    };
+    expect(describeDiagnostics({ voice: spatial, conversation: { phase: 'live' } })).toEqual([
+      'call live',
+      'voice spatial (the headset cancels echo)  echo canceller platform  1 sdk element at volume 0',
+    ]);
+
+    const demoted = { ...spatial, route: 'element', reason: 'echo: he heard himself', elementVolume: 1 };
+    expect(describeDiagnostics({ voice: demoted })).toEqual([
+      'voice element (echo: he heard himself)  echo canceller platform  1 sdk element at volume 1',
+    ]);
+    // The third tier: the session muting the microphone while he speaks, on top of the element.
+    expect(
+      describeDiagnostics({ voice: { ...demoted, elements: 2 }, conversation: { phase: 'live', halfDuplex: true } }),
+    ).toEqual([
+      'call live  half-duplex',
+      'voice element + half-duplex (echo: he heard himself)  echo canceller platform  2 sdk elements at volume 1',
+    ]);
+  });
 });
 
 describe('extensionsOfInterest', () => {

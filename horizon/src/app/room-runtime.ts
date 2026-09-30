@@ -35,6 +35,7 @@ import {
   type PlacementLike,
   type PlacementPort,
   readinessOf,
+  type VoicePort,
   type WakePort,
 } from './ports';
 import { publishRoomDebugState } from './room-debug-hook';
@@ -68,6 +69,8 @@ export interface RoomOptions {
   wake?: WakePort;
   /** Absent in a room with no ElevenLabs session to hold — sample mode's; he then stays silent. */
   createConversation?: ConversationFactory;
+  /** Where his voice comes from, told where the head and he are every frame. Absent in sample mode. */
+  voice?: VoicePort;
   /** Stops the microphone the wake word listened on, when the session ends. */
   stopMicrophone?: () => void;
   /** The `?debug` HUD. */
@@ -506,6 +509,8 @@ function onFrame(room: Room, tick: XrFrameTick) {
   }
   drawHologram(room, tick);
   const spot = room.hologramState === 'hidden' ? undefined : copyPoint(room.holder.position);
+  // After the hologram has followed his anchor this frame, so his voice is where he is drawn.
+  room.options.voice?.follow(tick.centreEye, spot);
   const pointTo = room.hologramState === 'shown' && room.spot?.needsPointer === true;
   room.panels.arrange(tick.centreEye, spot, room.hologram.radius, tick.deltaSeconds, pointTo);
   room.hud?.follow(tick.centreEye);

@@ -3,12 +3,13 @@ import {
   agentAudioTracks,
   createPlayedVoiceReaders,
   followAgentTrack,
+  isAgentIdentity,
   type JarvisVoiceReaders,
   type PlayedAudioSource,
   readingWindowSize,
   roomOfConversation,
 } from 'hologram';
-import { Room } from 'livekit-client';
+import { Room, Track, TrackEvent } from 'livekit-client';
 
 /**
  * Jarvis's voice as the headset plays it, read from his track in the conversation's LiveKit room.
@@ -68,16 +69,28 @@ interface OpenedAudio {
 }
 
 /**
+ * Plays his track's source node from where he stands, as well as reading it; returns how to stop.
+ * The spatial voice's (`spatial-voice.ts`), when there is one.
+ */
+export type PlayAgentSource = (source: MediaStreamAudioSourceNode) => () => void;
+
+/**
  * Points an analyser on the app's context at a track the SDK is already playing.
  *
- * Nothing goes to the destination, as on the phone's web build: the SDK plays the track through a
- * hidden `<audio>` element of its own, which is also what keeps Chrome feeding a remote WebRTC
- * track to Web Audio at all, and what keeps his voice inside the browser's echo cancellation. The
- * context is the app's, not one of its own: a headset page lives for hours, and a context per call
- * would be one more each time the SDK failed to close its own. So closing disconnects the nodes
- * and leaves the context running.
+ * Nothing goes to the destination from here, as on the phone's web build: the SDK plays the track
+ * through a hidden `<audio>` element of its own, which is also what keeps Chrome feeding a remote
+ * WebRTC track to Web Audio at all. When his voice comes from where he stands, the same source node
+ * is handed to `play` as well, which takes it through a panner (`spatial-voice.ts`) — one source,
+ * fanned out, so the sphere and the ears follow the very same samples. The context is the app's,
+ * not one of its own: a headset page lives for hours, and a context per call would be one more each
+ * time the SDK failed to close its own. So closing disconnects the nodes and leaves the context
+ * running.
  */
-function listenToTrack(track: MediaStreamTrack, context: ListeningAudioContext): OpenedAudio | undefined {
+function listenToTrack(
+  track: MediaStreamTrack,
+  context: ListeningAudioContext,
+  play: PlayAgentSource | undefined,
+): OpenedAudio | undefined {
   try {
     const analyser = context.createAnalyser();
     analyser.fftSize = readingWindowSize(context.sampleRate);
@@ -88,6 +101,7 @@ function listenToTrack(track: MediaStreamTrack, context: ListeningAudioContext):
       // not, the readings are silence rather than wrong.
       context.resume().catch(() => undefined);
     }
+    const stopPlaying = play?.(media);
     return {
       source: {
         sampleRate: () => context.sampleRate,
@@ -95,6 +109,7 @@ function listenToTrack(track: MediaStreamTrack, context: ListeningAudioContext):
         readLatest: (into) => analyser.getFloatTimeDomainData(into),
       },
       close: () => {
+        stopPlaying?.();
         media.disconnect();
         analyser.disconnect();
       },
@@ -106,12 +121,14 @@ function listenToTrack(track: MediaStreamTrack, context: ListeningAudioContext):
 
 /**
  * Hands `onReaders` readers for Jarvis's voice in `room` whenever his track changes — `undefined`
- * while there is none, or it cannot be listened to — until the returned function is called.
+ * while there is none, or it cannot be listened to — until the returned function is called; and
+ * hands the same track's source to `play`, when there is one, to be heard from where he stands.
  */
 export function followAgentVoice(
   room: AgentTrackRoom,
   context: ListeningAudioContext,
   onReaders: (readers: JarvisVoiceReaders | undefined) => void,
+  play?: PlayAgentSource,
 ): () => void {
   let opened: OpenedAudio | undefined;
   const stopFollowing = followAgentTrack(
@@ -120,7 +137,7 @@ export function followAgentVoice(
     (one, other) => one === other,
     (track) => {
       opened?.close();
-      opened = track ? listenToTrack(track, context) : undefined;
+      opened = track ? listenToTrack(track, context, play) : undefined;
       onReaders(opened ? createPlayedVoiceReaders(opened.source) : undefined);
     },
   );
@@ -128,5 +145,63 @@ export function followAgentVoice(
     stopFollowing();
     opened?.close();
     opened = undefined;
+  };
+}
+
+/** His LiveKit tracks in `room`: the objects that say when they are attached to an element. */
+function agentTracksOf(room: AgentTrackRoom): Track[] {
+  return agentAudioTracks(room).filter((track): track is Track => track instanceof Track);
+}
+
+function sameTracks(one: Track[] | undefined, other: Track[] | undefined): boolean {
+  if (one === undefined || other === undefined) return one === other;
+  return one.length === other.length && one.every((track, index) => track === other[index]);
+}
+
+/** What watching his room for the spatial voice hands over. */
+export interface AgentRoomWatch {
+  /**
+   * Whether LiveKit's server says he is speaking right now. The server measures what it receives,
+   * so this holds whether or not the page is pulling his audio, which is what makes it the judge of
+   * a spatial voice gone silent (`voice-watch.ts`).
+   */
+  serverSaysSpeaking(): boolean;
+  stop(): void;
+}
+
+/**
+ * Tells `onElement` of every element LiveKit attaches one of his tracks to, from now on and every
+ * one attached already, until stopped — the earliest word there is of an element that has to be
+ * made inaudible while his voice comes from where he stands (`agent-element-volume.ts`).
+ */
+export function watchAgentRoom(room: AgentTrackRoom, onElement: (element: HTMLMediaElement) => void): AgentRoomWatch {
+  const unhooks = new Map<Track, () => void>();
+  const stopFollowing = followAgentTrack(room, agentTracksOf, sameTracks, (tracks) => {
+    const current = new Set(tracks ?? []);
+    for (const [track, unhook] of unhooks) {
+      if (current.has(track)) continue;
+      unhook();
+      unhooks.delete(track);
+    }
+    for (const track of current) {
+      if (unhooks.has(track)) continue;
+      const attached = (element: HTMLMediaElement) => onElement(element);
+      track.on(TrackEvent.ElementAttached, attached);
+      unhooks.set(track, () => track.off(TrackEvent.ElementAttached, attached));
+      for (const element of track.attachedElements) onElement(element);
+    }
+  });
+  return {
+    serverSaysSpeaking: () => {
+      for (const participant of room.remoteParticipants.values()) {
+        if (isAgentIdentity(participant.identity) && Reflect.get(participant, 'isSpeaking') === true) return true;
+      }
+      return false;
+    },
+    stop: () => {
+      stopFollowing();
+      for (const unhook of unhooks.values()) unhook();
+      unhooks.clear();
+    },
   };
 }

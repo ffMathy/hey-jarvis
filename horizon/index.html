@@ -125,6 +125,26 @@
         background: var(--surface);
         text-align: left;
       }
+      .option {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+      /* Big enough to point at with a ray: the whole line is the label, and the box is large. */
+      .toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .toggle input {
+        width: 1.4rem;
+        height: 1.4rem;
+        margin: 0;
+        flex: none;
+        accent-color: var(--accent);
+      }
       details {
         border: 1px solid var(--border);
         border-radius: var(--radius);
@@ -219,6 +239,17 @@
         <p id="microphone-help" class="help" hidden></p>
         <button id="sample" class="secondary" type="button" disabled>Try him in your room</button>
         <p class="note">No key and no microphone needed: select him to see him speak, listen and think.</p>
+      </section>
+
+      <section class="option" aria-label="His voice">
+        <label class="toggle" for="spatial-voice">
+          <input id="spatial-voice" type="checkbox" checked />
+          His voice from where he stands
+        </label>
+        <p class="note">
+          When the headset can keep his voice out of its own microphone, you hear him from his spot in the room.
+          Otherwise, or with this off, you hear him from the headset.
+        </p>
       </section>
 
       <details id="settings">

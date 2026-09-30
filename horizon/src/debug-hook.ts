@@ -48,6 +48,26 @@ export interface RoomReport {
   recentEffects: string[];
 }
 
+/** Where his voice comes from (see `conversation/voice-route.ts`), and where it was last put. */
+export interface VoiceReport {
+  /** `spatial`, from where he stands, or `element`, from the headset. */
+  route: string;
+  /** Why, as `voice-route.ts` names it: `platform-echo-canceller`, `setting-off`, `echo-transcript`… */
+  reason: string;
+  /** What the wake word's microphone said about the echo canceller: `platform`, `browser` or `unknown`. */
+  echoCanceller: string;
+  /** The page's "His voice from where he stands". */
+  setting: boolean;
+  /** Whether `?voice=spatial` asked for it whatever the microphone said. */
+  forced: boolean;
+  /** How the greeting is heard: from its own element, through the panner, or centred through Web Audio. */
+  greeting: 'element' | 'spatial' | 'dry';
+  /** Where the listener was last put — the centre eye — or null before his voice was ever placed. */
+  listener: RoomPoint | null;
+  /** Where the panner was last put — his centre — or null before his voice was ever placed. */
+  speaker: RoomPoint | null;
+}
+
 export interface JarvisDebugState {
   phase: JarvisPhase;
   /** Frames drawn in the room since the session started. */
@@ -63,6 +83,8 @@ export interface JarvisDebugState {
   room: RoomReport | null;
   /** The last thing that went wrong, as shown on the page. */
   problem: string | null;
+  /** Where his voice comes from, once a conversation room has been opened. */
+  voice: VoiceReport | null;
 }
 
 declare global {
@@ -82,6 +104,7 @@ export function initialDebugState(): JarvisDebugState {
     wakes: 0,
     room: null,
     problem: null,
+    voice: null,
   };
 }
 
