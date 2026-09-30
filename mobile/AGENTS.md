@@ -424,8 +424,12 @@ follow in the same tap.
 
 **The call is not hung up on while sir frames the shot.** A finished request is ended by the agent
 itself, after its `turnTimeout` (see `hologram/AGENTS.md`). The note that the camera is open
-(`CAMERA_OPENED`) is what the prompt waits on instead: asked to speak again before the photo or a
-word from sir has come, the agent calls `skip_turn`, never `end_call`. `user_activity` is sent in the
+(`CAMERA_OPENED`) is what the prompt waits on instead, on a device that has said it has a camera
+button (`CAMERA_BUTTON_HERE`): asked to speak again before the photo has come, before a message that it
+did not reach him (`photoNotSent`), before the note that he closed the camera without one
+(`CAMERA_CLOSED`) and before he says it is not coming, the agent calls `skip_turn`, never `end_call` —
+whatever else he says meanwhile. The same wait follows his saying he is about to send one; the wording
+is in the prompt, both tool descriptions and routing, in the same words. `user_activity` is sent in the
 tap, beside that note, and then every five seconds while the camera is open or the photo on its way,
 because ElevenLabs ends a call a while after the user last spoke and `user_activity` may hold that off.
 ElevenLabs does not document that it does: whether it does, and whether it covers the time behind the

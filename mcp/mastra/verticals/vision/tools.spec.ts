@@ -132,6 +132,27 @@ describe('looking at a photo', () => {
     expect(handedSignals[0]?.aborted).toBe(true);
   });
 
+  /**
+   * A stopped look comes back from Mastra as an empty reading rather than an error, and without this
+   * case it was marked as looked at: a total-of-receipt look sir talked over left its photo neither
+   * read out nor waiting, so it was never brought up again.
+   */
+  it('leaves the photo waiting when the request that asked for the look was stopped', async () => {
+    const { mastra } = await readerAnswering('The total is 243.50 DKK.');
+    keepPhoto(Buffer.from([0xff, 0xd8]), 'image/jpeg');
+
+    await expect(
+      executeTool(
+        lookAtPhoto,
+        { photoId: 'photo1', question: 'What is the total?' },
+        { mastra, abortSignal: AbortSignal.abort() },
+      ),
+    ).rejects.toThrow('stopped');
+
+    expect(findPhoto('photo1')?.lookedAt).toBeUndefined();
+    expect(photosWaiting().map((photo) => photo.photoId)).toEqual(['photo1']);
+  });
+
   it('marks nothing when there was no such photo to look at', async () => {
     const { mastra } = await readerAnswering('Anything.');
     keepPhoto(Buffer.from([0xff, 0xd8]), 'image/jpeg');

@@ -482,7 +482,8 @@ up from there (`routing/waiting-photos.ts` — routing depends on vision, never 
   has described; a question about a photo that is not kept marks nothing.
 - **And only a reading sir hears.** What a look read reaches him in its request's closing report,
   and a request he talks over is superseded and never read. So the reader is stopped with the
-  request (the tool's abort signal), and a look that did finish is taken back
+  request (the tool's abort signal) — a stopped look throws rather than marking the photo, since
+  Mastra hands an aborted generation back as an empty reading — and a look that did finish is taken back
   (`unmarkPhotoLookedAt`, called from `carryOut`): the photo is waiting again, and is brought up
   later rather than lost.
 
@@ -544,7 +545,8 @@ the phone ever sees it, and there is no key.
   Its answer is the reading quoted as the photo's content, with the photo's age:
   `Photo photo1, taken just now, shows: «…»`. Once the reader has answered, the photo is no longer
   waiting. The reader is handed the tool's abort signal, so a request that is cancelled stops its
-  look too.
+  look too, and a stopped look throws instead of marking the photo: Mastra resolves an aborted
+  generation with no text, which would otherwise pass for a reading.
 
 **Agents** (`vision/agents.ts`):
 - **`vision`** is public, so the planner routes to it. It finds the id and the question in its

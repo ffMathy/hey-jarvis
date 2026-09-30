@@ -40,11 +40,15 @@ export const CAMERA_BUTTON_HERE =
  *
  * Nothing is asked of the agent yet but to wait: ElevenLabs asks it to speak again after a few
  * seconds of silence, and a finished request is ended then — so the prompt, having heard this, calls
- * `skip_turn` rather than `end_call` until the photo or a word from sir arrives.
+ * `skip_turn` rather than `end_call` until the photo arrives, a message says it did not
+ * ({@link photoNotSent}), {@link CAMERA_CLOSED} says he backed out, or he says it is not coming.
  */
 export const CAMERA_OPENED = 'Sir has opened the camera on his phone to send you a photo.';
 
-/** He put the camera away without taking a photo, and the conversation carries on as it was. */
+/**
+ * He put the camera away without taking a photo. It ends the wait {@link CAMERA_OPENED} began, so the
+ * next silence after a finished request is ended as any other would be.
+ */
 export const CAMERA_CLOSED = 'Sir closed the camera without sending a photo.';
 
 /**

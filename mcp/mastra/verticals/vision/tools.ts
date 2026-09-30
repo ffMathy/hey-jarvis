@@ -81,6 +81,12 @@ export const lookAtPhoto = createTool({
         ),
       { label: 'lookAtPhoto' },
     );
+    // A look stopped with the request that asked for it does not fail: Mastra hands back an aborted
+    // generation with no text. Having told sir nothing about his photo, it must neither stop the photo
+    // waiting nor be passed on as what the photo shows.
+    if (context?.abortSignal?.aborted || reading.finishReason === 'aborted') {
+      throw new Error('The look at the photo was stopped with the request that asked for it');
+    }
     markPhotoLookedAt(photo.photoId);
 
     // Its age too, so the agent reading this can tell a photo just taken from one shown earlier.
