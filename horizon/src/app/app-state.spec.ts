@@ -637,6 +637,24 @@ describe('sample mode', () => {
     expect(room.scene).toEqual({ kind: 'sample', mode: 'speaking' });
   });
 
+  it('goes without the frame-rate readout in a room opened to be filmed, and only there', () => {
+    const filmed = new Room();
+    filmed.send({ type: 'entered', mode: 'sample', readout: false });
+    expect(filmed.send({ type: 'placed' })).toEqual([
+      { type: 'arrive' },
+      { type: 'start-sample', mode: 'speaking' },
+      { type: 'hologram', state: 'shown' },
+    ]);
+    expect(filmed.view.panels.readout).toBeNull();
+    expect(filmed.send({ type: 'dismiss-button' })).toEqual([{ type: 'hologram', state: 'leaving' }]);
+    filmed.send({ type: 'presence-gone' });
+    filmed.send({ type: 'session-ended' });
+
+    // Every room decides afresh: the next one, entered without saying so, has its readout again.
+    filmed.send({ type: 'entered', mode: 'sample' });
+    expect(filmed.send({ type: 'placed' })).toContainEqual({ type: 'show-panel', panel: 'readout', lines: [] });
+  });
+
   it('walks every mood on selects on him, naming each for a moment, and wraps round', () => {
     const room = new Room().inSample();
     const seen = [];

@@ -127,6 +127,13 @@ export interface AppModel {
   pendingProblem: string | undefined;
   /** Sample mode's mood name, until it fades. */
   toast: { text: string; until: number } | undefined;
+  /**
+   * Whether sample mode shows its frame-rate readout under him. It always does, except in a room
+   * opened to be filmed (`?film`, which the demo video's renderer passes): a film is shot on a
+   * faked clock, so the readout would only report that clock — a steady 30 fps and a build of
+   * 0.0 ms — which says nothing about him or about a headset.
+   */
+  showsReadout: boolean;
 }
 
 /** A select, already told apart by how long it was held and what its ray hit. */
@@ -144,6 +151,8 @@ export type AppEvent =
       mode: RoomMode;
       /** Whether the session can show the system keyboard (`XRSession.isSystemKeyboardSupported`). */
       canType?: boolean;
+      /** Whether sample mode shows its frame-rate readout; shown unless this says otherwise. */
+      readout?: boolean;
     }
   | { type: 'wake' }
   | SelectEvent
@@ -228,6 +237,7 @@ export function initialAppModel(wake: WakeReadiness = { kind: 'absent' }): AppMo
     caption: undefined,
     pendingProblem: undefined,
     toast: undefined,
+    showsReadout: true,
   };
 }
 
@@ -284,6 +294,7 @@ function onEntered(model: AppModel, event: Extract<AppEvent, { type: 'entered' }
     ...initialAppModel(model.wake),
     mode: event.mode,
     canType: event.canType ?? false,
+    showsReadout: event.readout ?? true,
     scene: { kind: 'waiting' },
   };
   if (event.mode === 'sample') {
@@ -591,7 +602,7 @@ function panelsOf(model: AppModel): AppView['panels'] {
     toast: scene.kind === 'sample' && model.toast !== undefined ? [model.toast.text] : null,
     caption: scene.kind === 'present' && model.caption !== undefined ? [model.caption] : null,
     keyboard: keyboardOf(model),
-    readout: scene.kind === 'sample' ? [] : null,
+    readout: scene.kind === 'sample' && model.showsReadout ? [] : null,
   };
 }
 

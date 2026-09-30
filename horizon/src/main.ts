@@ -43,7 +43,9 @@ import { canEnterRoom, requestRoomSession } from './xr/room-session';
  * picture instead of in 3D, `?microphone=raw` listens for the wake word without echo cancellation,
  * noise suppression or gain control, to try on a headset whether it hears better, and
  * `?voice=spatial` plays his voice from where he stands even when the microphone says the headset
- * has no echo canceller of its own that could keep it out (see `conversation/voice-route.ts`).
+ * has no echo canceller of its own that could keep it out (see `conversation/voice-route.ts`), and
+ * `?film` is for recordings: sample mode goes without its frame-rate readout, which in the demo
+ * video (`.scripts/render-demo.ts`, shot on a faked clock) would only report that clock.
  */
 
 const debug = publishDebugState(initialDebugState());
@@ -195,6 +197,7 @@ function sharedRoomOptions(modules: RoomModules, onInside: () => void) {
         clearTimeout: (handle) => window.clearTimeout(handle),
       }),
     showHud: flags.has('debug'),
+    showReadout: !flags.has('film'),
     debug,
     onInside,
   } satisfies Omit<RoomOptions, 'mode'>;

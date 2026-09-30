@@ -37,6 +37,20 @@ import { expect, photograph, test } from './fixtures';
 /** hologram's `describeFailure` for a 401, the phone's words for a key ElevenLabs refused. */
 const REJECTED_KEY = 'ElevenLabs rejected the API key. Check it in the settings.';
 
+test('a page opened to be filmed shows sample mode without its frame-rate readout', async ({ page }) => {
+  const problems = collectProblems(page);
+  // What the demo video's renderer opens (`.scripts/render-demo.ts`).
+  await page.goto('/hey-jarvis/horizon/?film');
+  await page.evaluate(() => window.__xrHarness?.ready);
+  await page.getByRole('button', { name: 'Try him in your room' }).click();
+  await expect.poll(() => scene(page), { timeout: 90000 }).toBe('sample:speaking');
+  await frames(page, 2);
+  const report = await roomReport(page);
+  expect(report.view.panels.readout).toBeNull();
+  expect(report.view.hologram).toBe('shown');
+  expect(problems).toEqual([]);
+});
+
 test('sample mode walks every mood in the room on a select on him, and leaves on a select anywhere else', async ({
   page,
 }, testInfo) => {

@@ -75,6 +75,8 @@ export interface RoomOptions {
   stopMicrophone?: () => void;
   /** The `?debug` HUD. */
   showHud?: boolean;
+  /** Sample mode's frame-rate readout, which a room opened to be filmed (`?film`) goes without. */
+  showReadout?: boolean;
   /**
    * What the other modules can add to the HUD that the room cannot see itself: the microphone's
    * permission and track, the AudioContexts' states.
@@ -262,6 +264,7 @@ function startRoom(
     type: 'entered',
     mode: options.mode,
     canType: stage.session.isSystemKeyboardSupported === true,
+    readout: options.showReadout,
   });
 }
 
