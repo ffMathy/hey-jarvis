@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { pinchHandPose } from 'iwer/lib/device/configs/hand/pinch.js';
-import { pointHandPose } from 'iwer/lib/device/configs/hand/point.js';
-import { relaxedHandPose } from 'iwer/lib/device/configs/hand/relaxed.js';
-import { poseFromQuaternion, toReference } from '../room/pose-matrix';
-import type { Vector3Like } from '../xr/ray';
+import { emulated, held, PINCH_POSE, POINT_POSE, RELAXED_POSE, turn } from './emulated-hands.fakes';
 import {
   backOfHandNormal,
   CURLED_RATIO,
@@ -11,8 +7,6 @@ import {
   fingerExtension,
   fingerRay,
   HAND_JOINTS,
-  type Handedness,
-  type HandJointName,
   type HandJoints,
   isPressingWristButton,
   jointsFromPoses,
@@ -28,53 +22,9 @@ import {
   wristButtonPosition,
 } from './hand-pose';
 
-/**
- * The hands Meta's emulator poses — relaxed, pointing and pinching — as joint positions in the
- * hand's target-ray space. The emulator's poses are of the left hand; it mirrors x for the right.
- */
-interface EmulatedPose {
-  jointTransforms: Record<string, { offsetMatrix: ArrayLike<number> }>;
-}
-
-function isJointName(name: string): name is HandJointName {
-  return HAND_JOINTS.some((joint) => joint === name);
-}
-
-function emulated(pose: EmulatedPose, handedness: Handedness = 'left'): HandJoints {
-  const mirror = handedness === 'left' ? 1 : -1;
-  const joints: Partial<Record<HandJointName, Vector3Like>> = {};
-  for (const [name, transform] of Object.entries(pose.jointTransforms)) {
-    if (!isJointName(name)) continue;
-    const matrix = transform.offsetMatrix;
-    joints[name] = { x: mirror * matrix[12], y: matrix[13], z: matrix[14] };
-  }
-  return joints;
-}
-
-/** `joints` carried by the pose of a hand at `position`, turned by `orientation`. */
-function held(
-  joints: HandJoints,
-  position: Vector3Like,
-  orientation: { x: number; y: number; z: number; w: number },
-): HandJoints {
-  const pose = poseFromQuaternion(position, orientation);
-  const moved: Partial<Record<HandJointName, Vector3Like>> = {};
-  for (const name of HAND_JOINTS) {
-    const joint = joints[name];
-    if (joint !== undefined) moved[name] = toReference(pose, joint.x, joint.y, joint.z);
-  }
-  return moved;
-}
-
-/** A turn of `degrees` about the unit axis `axis`. */
-function turn(axis: Vector3Like, degrees: number) {
-  const half = (degrees * Math.PI) / 360;
-  return { x: axis.x * Math.sin(half), y: axis.y * Math.sin(half), z: axis.z * Math.sin(half), w: Math.cos(half) };
-}
-
-const RELAXED = emulated(relaxedHandPose);
-const POINTING = emulated(pointHandPose);
-const PINCHING = emulated(pinchHandPose);
+const RELAXED = emulated(RELAXED_POSE);
+const POINTING = emulated(POINT_POSE);
+const PINCHING = emulated(PINCH_POSE);
 
 /** The joints with the thumb tip moved to `distance` from the index tip, along x. */
 function thumbAt(distance: number): HandJoints {
@@ -136,7 +86,7 @@ describe('pointing', () => {
     expect(nextPointPose(false, POINTING)).toBe(true);
     expect(nextPointPose(false, RELAXED)).toBe(false);
     expect(nextPointPose(false, PINCHING)).toBe(false);
-    expect(nextPointPose(false, emulated(pointHandPose, 'right'))).toBe(true);
+    expect(nextPointPose(false, emulated(POINT_POSE, 'right'))).toBe(true);
   });
 
   it('measures a straight finger near 1.9 and a curled one under 0.9', () => {
@@ -183,7 +133,7 @@ describe('pointing', () => {
 describe('the back of the hand', () => {
   it("faces up out of either of the emulator's relaxed hands, held palm down", () => {
     expect(backOfHandNormal(RELAXED, 'left')?.y).toBeGreaterThan(0.9);
-    expect(backOfHandNormal(emulated(relaxedHandPose, 'right'), 'right')?.y).toBeGreaterThan(0.9);
+    expect(backOfHandNormal(emulated(RELAXED_POSE, 'right'), 'right')?.y).toBeGreaterThan(0.9);
   });
 
   it('turns with the hand', () => {
@@ -238,6 +188,19 @@ describe('the wrist raised to look at', () => {
     expect(nextWristRaised(false, between, 'left', EYES)).toBe(false);
     expect(nextWristRaised(true, between, 'left', EYES)).toBe(true);
     expect(nextWristRaised(true, tiltFacing(60), 'left', EYES)).toBe(false);
+  });
+
+  it('counts a wrist turned to read a watch: the fingers across the body, the back towards the eyes', () => {
+    // The left hand's fingers turned to point right, across the chest, then rolled to face the eyes.
+    const across = turn({ x: 0, y: 1, z: 0 }, -90);
+    const rolled = turn({ x: 1, y: 0, z: 0 }, 50);
+    const watch = held(RELAXED, WRIST_AT, {
+      w: rolled.w * across.w - rolled.x * across.x - rolled.y * across.y - rolled.z * across.z,
+      x: rolled.w * across.x + rolled.x * across.w + rolled.y * across.z - rolled.z * across.y,
+      y: rolled.w * across.y - rolled.x * across.z + rolled.y * across.w + rolled.z * across.x,
+      z: rolled.w * across.z + rolled.x * across.y - rolled.y * across.x + rolled.z * across.w,
+    });
+    expect(nextWristRaised(false, watch, 'left', EYES)).toBe(true);
   });
 
   it('never counts a palm turned up, which is where the system menu pinch lives', () => {

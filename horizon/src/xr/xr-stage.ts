@@ -1,5 +1,6 @@
 import { PerspectiveCamera, Scene, WebGLRenderer } from 'three';
 import { chooseFrameRate, type FrameRateTarget } from './frame-rate';
+import { type OriginOffset, originPose } from './origin-offset';
 import { type CentreEye, centreEyeOfPose } from './viewer-pose';
 
 /**
@@ -15,6 +16,9 @@ import { type CentreEye, centreEyeOfPose } from './viewer-pose';
  * how many times the reference space has been reset under it (a recentre moves every pose, and
  * anything cached against the old origin is stale — the count is the epoch that says so); and the
  * display rate it has been asked for.
+ *
+ * The browser tests can open it with its origin moved (`?origin`, `origin-offset.ts`), so a
+ * session in the emulator starts somewhere new in the room as one on a headset does.
  */
 
 /**
@@ -52,7 +56,7 @@ export interface XrStage {
   readonly session: XRSession;
   readonly renderer: WebGLRenderer;
   readonly scene: Scene;
-  /** The session's `local-floor` space. */
+  /** The session's `local-floor` space — moved by the origin offset, when there is one. */
   readonly referenceSpace: XRReferenceSpace;
   readonly visibility: XRVisibilityState;
   readonly epoch: number;
@@ -72,6 +76,13 @@ export interface XrStage {
   dispose(): void;
 }
 
+/** `floor` with its origin moved by `origin`, or `floor` itself when there is nothing to move. */
+function moveOrigin(floor: XRReferenceSpace, origin: OriginOffset | undefined): XRReferenceSpace {
+  if (origin === undefined) return floor;
+  const { position, orientation } = originPose(origin);
+  return floor.getOffsetReferenceSpace(new XRRigidTransform({ ...position, w: 1 }, orientation));
+}
+
 /** Calls each listener, so that one that throws cannot stop the others or the frame. */
 function notify<Value>(listeners: Set<(value: Value) => void>, value: Value) {
   for (const listener of listeners) {
@@ -84,8 +95,13 @@ function notify<Value>(listeners: Set<(value: Value) => void>, value: Value) {
   }
 }
 
+export interface XrStageOptions {
+  /** `?origin`: where the room's space starts, from where the headset put it (see `origin-offset.ts`). */
+  origin?: OriginOffset;
+}
+
 /** Sets up the renderer on `session` and starts the frame loop. */
-export async function createXrStage(session: XRSession): Promise<XrStage> {
+export async function createXrStage(session: XRSession, options: XrStageOptions = {}): Promise<XrStage> {
   // Transparent, so the passthrough shows through everywhere he is not; premultiplied, which is
   // how the compositor reads the layer anyway; no multisampling, because what is drawn here is
   // antialiased by its own shaders and by Skia.
@@ -106,8 +122,11 @@ export async function createXrStage(session: XRSession): Promise<XrStage> {
 
   await renderer.xr.setSession(session);
   renderer.xr.setFoveation(FOVEATION);
-  const referenceSpace = renderer.xr.getReferenceSpace();
-  if (referenceSpace === null) throw new Error('The headset gave the room no floor to stand things on.');
+  const floor = renderer.xr.getReferenceSpace();
+  if (floor === null) throw new Error('The headset gave the room no floor to stand things on.');
+  const referenceSpace = moveOrigin(floor, options.origin);
+  // three draws the eyes from the space it is given, so the room and its drawing agree.
+  if (referenceSpace !== floor) renderer.xr.setReferenceSpace(referenceSpace);
 
   const frameListeners = new Set<(tick: XrFrameTick) => void>();
   const visibilityListeners = new Set<(state: XRVisibilityState) => void>();
@@ -116,7 +135,8 @@ export async function createXrStage(session: XRSession): Promise<XrStage> {
   let requestedFrameRate: number | undefined;
   let previousTime: number | undefined;
 
-  referenceSpace.addEventListener('reset', () => {
+  // The headset's own space: a recentre resets it, and every space offset from it with it.
+  floor.addEventListener('reset', () => {
     epoch += 1;
     notify(resetListeners, epoch);
   });

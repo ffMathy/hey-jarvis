@@ -16,7 +16,7 @@ import { UI_COLOURS } from './ui-colours';
  */
 
 /** What a panel is for, which decides its size, colour and backing. */
-export type PanelTone = 'hint' | 'status' | 'error' | 'caption' | 'toast' | 'hud';
+export type PanelTone = 'hint' | 'status' | 'guide' | 'error' | 'caption' | 'toast' | 'hud' | 'label';
 
 export interface TextPanel {
   readonly object: Object3D;
@@ -57,9 +57,10 @@ const SANS = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const MONOSPACE = 'ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace';
 
 /**
- * The tones. Sizes are chosen for the distance each is read from: the hint and the status line
- * a little over a metre ahead, the error and the caption at his spot (1–2.5 m), the HUD at arm's
- * length and only by whoever asked for it.
+ * The tones. Sizes are chosen for the distance each is read from: the hint, the status line and
+ * the placing guide a little over a metre ahead, the error and the caption at his spot (1–2.5 m),
+ * the HUD at arm's length and only by whoever asked for it, and a label on a thing sir placed from
+ * wherever he stands — near enough to reach, or across the room at what he points at.
  */
 const TONES: Record<PanelTone, ToneStyle> = {
   hint: {
@@ -84,6 +85,20 @@ const TONES: Record<PanelTone, ToneStyle> = {
     backing: 'rgba(5, 7, 13, 0.7)',
     border: UI_COLOURS.danger,
     maxLines: 4,
+    fitToText: true,
+    align: 'center',
+    uppercase: false,
+  },
+  // The status line's size, framed in the colour of sir's own doing rather than of a warning.
+  guide: {
+    fontMetres: 0.024,
+    lineSpacing: 1.35,
+    font: SANS,
+    weight: 400,
+    text: UI_COLOURS.text,
+    backing: 'rgba(5, 7, 13, 0.7)',
+    border: UI_COLOURS.accent,
+    maxLines: 5,
     fitToText: true,
     align: 'center',
     uppercase: false,
@@ -138,6 +153,19 @@ const TONES: Record<PanelTone, ToneStyle> = {
     maxLines: 40,
     fitToText: false,
     align: 'left',
+    uppercase: false,
+  },
+  label: {
+    fontMetres: 0.018,
+    lineSpacing: 1.25,
+    font: SANS,
+    weight: 500,
+    text: UI_COLOURS.text,
+    backing: 'rgba(5, 7, 13, 0.72)',
+    border: UI_COLOURS.accent,
+    maxLines: 2,
+    fitToText: true,
+    align: 'center',
     uppercase: false,
   },
 };

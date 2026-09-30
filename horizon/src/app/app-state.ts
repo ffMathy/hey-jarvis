@@ -14,6 +14,15 @@ import type { Ray } from '../xr/ray';
  * (nothing drawn), `placing` for the one frame it takes to find him a spot, `present` while the
  * conversation runs through its phases, `failed` while an error hangs where he stands, and
  * `leaving` while he shrinks away. Sample mode has a scene of its own, `sample`, walking the moods.
+ * `editing` is sir placing the things Jarvis works on in the room (`src/entities/`): entered from
+ * `waiting` with A or X or the button on the back of the wrist, or straight from the 2D page's
+ * "Place entities", and left with B or Y, the same button again, or the drawer's Done.
+ *
+ * **Placing things never summons him or hangs up.** Taking a token is a pinch or a trigger pull,
+ * and both are selects: while editing every select is the placing's own, and the state machine
+ * ignores it. He can only be summoned from `waiting` and editing is entered only from there, so a
+ * grab held for a second can never be read as the hold that hangs up. The wake word is disarmed
+ * for as long as it lasts.
  *
  * **Dismissing him** is voice first (the agent's own `end_call`), and otherwise a select held for
  * at least 0.8 s or the B/Y button — never a short select, because hands pinch by accident while
@@ -44,8 +53,11 @@ export type SessionPhase = 'idle' | 'greeting' | 'connecting' | 'live' | 'ended'
 /** The XR session's visibility state. */
 export type XrVisibility = 'visible' | 'visible-blurred' | 'hidden';
 
-/** Which room the page opened: the real one with a conversation, or sample mode (no key, no microphone). */
-export type RoomMode = 'conversation' | 'sample';
+/**
+ * Which room the page opened: the real one with a conversation, sample mode (no key, no
+ * microphone), or placing things (no key, no microphone, and straight into `editing`).
+ */
+export type RoomMode = 'conversation' | 'sample' | 'placement';
 
 /** What is being summoned while a spot is found: a conversation, or sample mode's first mood. */
 export type PlacingPurpose = 'conversation' | 'sample';
@@ -58,7 +70,8 @@ export type Scene =
   | { kind: 'present'; sessionPhase: SessionPhase }
   | { kind: 'failed'; problem: string; until: number }
   | { kind: 'leaving'; afterwards: 'wait' | 'exit' }
-  | { kind: 'sample'; mode: SampleMode };
+  | { kind: 'sample'; mode: SampleMode }
+  | { kind: 'editing' };
 
 /**
  * What the wake engine last said about itself.
@@ -100,6 +113,14 @@ export const HINT_LINES: readonly string[] = ['Say “Hey Jarvis”', 'or pinch 
 
 /** The first line of the status shown whenever the wake engine is not listening; the second is its problem. */
 export const NOT_LISTENING_LINE = 'Not listening for “Hey Jarvis”';
+
+/** What to do while placing things, on a line that follows the gaze. */
+export const EDITING_GUIDE_LINES: readonly string[] = [
+  'Placing what Jarvis works on',
+  'Pinch or grip one in the drawer, and let go where it is in the room',
+  'Or point, pinch or pull the trigger, and do it again where it goes',
+  'Done, B or Y when you have finished',
+];
 
 export interface AppModel {
   scene: Scene;
@@ -157,6 +178,10 @@ export type AppEvent =
   | { type: 'wake' }
   | SelectEvent
   | { type: 'dismiss-button' }
+  /** A or X, or the button on the back of the wrist: opens placing things, and closes it. */
+  | { type: 'edit-button' }
+  /** The drawer's Done. */
+  | { type: 'edit-done' }
   | { type: 'placed' }
   | { type: 'session-phase'; phase: SessionPhase }
   | { type: 'problem'; message: string }
@@ -172,7 +197,7 @@ export type AppEvent =
   | { type: 'typed'; text: string };
 
 /** The 3D panels the room can show. */
-export type PanelName = 'hint' | 'status' | 'error' | 'toast' | 'caption' | 'keyboard' | 'readout';
+export type PanelName = 'hint' | 'status' | 'guide' | 'error' | 'toast' | 'caption' | 'keyboard' | 'readout';
 
 /**
  * What the room looks like in a model, derived rather than stored so it can never disagree with
@@ -189,6 +214,8 @@ export interface AppView {
   /** Undefined outside the room, where there is no session to ask. */
   frameRate: 'lowest' | 'highest' | undefined;
   wakeArmed: boolean;
+  /** Whether sir is placing things: the drawer is out, and selects are the placing's. */
+  editing: boolean;
 }
 
 export type AppEffect =
@@ -204,6 +231,7 @@ export type AppEffect =
   | { type: 'show-panel'; panel: PanelName; lines: readonly string[] }
   | { type: 'hide-panel'; panel: PanelName }
   | { type: 'set-frame-rate'; target: 'lowest' | 'highest' }
+  | { type: 'editing'; active: boolean }
   | { type: 'start-sample'; mode: SampleMode }
   | { type: 'cycle-sample'; mode: SampleMode }
   | { type: 'stop-sample' }
@@ -289,6 +317,15 @@ function leaveToExit(model: AppModel): Transition {
   return go(model, { scene: { kind: 'leaving', afterwards: 'exit' } });
 }
 
+/**
+ * Placing things is over: back to waiting for the wake word, or — in a room opened only to place
+ * things, which has nothing to wait for — back to the page, at once, since there is nobody to fade.
+ */
+function leaveEditing(model: AppModel): Transition {
+  if (model.mode === 'placement') return go(model, { scene: { kind: 'outside' } }, { type: 'exit-xr' });
+  return go(model, { scene: { kind: 'waiting' } });
+}
+
 function onEntered(model: AppModel, event: Extract<AppEvent, { type: 'entered' }>): Transition {
   const fresh: AppModel = {
     ...initialAppModel(model.wake),
@@ -304,6 +341,7 @@ function onEntered(model: AppModel, event: Extract<AppEvent, { type: 'entered' }
       { type: 'place', towards: undefined },
     );
   }
+  if (event.mode === 'placement') return go(fresh, { scene: { kind: 'editing' } });
   return stay(fresh);
 }
 
@@ -360,6 +398,7 @@ function onSelect(model: AppModel, event: SelectEvent, now: number): Transition 
     case 'sample':
       return selectInSample(model, event, scene.mode, now);
     default:
+      // Editing among them: a pinch or a trigger pull there takes, carries or drops a token.
       return stay(model);
   }
 }
@@ -373,9 +412,23 @@ function onDismissButton(model: AppModel): Transition {
       return leaveToWait(model);
     case 'sample':
       return leaveToExit(model);
+    case 'editing':
+      return leaveEditing(model);
     default:
       return stay(model);
   }
+}
+
+function onEditButton(model: AppModel): Transition {
+  if (!attending(model)) return stay(model);
+  // Only from waiting: never over a conversation, a failure or sample mode's moods.
+  if (model.scene.kind === 'waiting') return go(model, { scene: { kind: 'editing' } });
+  if (model.scene.kind === 'editing') return leaveEditing(model);
+  return stay(model);
+}
+
+function onEditDone(model: AppModel): Transition {
+  return model.scene.kind === 'editing' && attending(model) ? leaveEditing(model) : stay(model);
 }
 
 function onPlaced(model: AppModel): Transition {
@@ -473,7 +526,7 @@ function onSessionEnded(model: AppModel): Transition {
   if (model.mode === 'conversation') {
     if (mayHaveCall(model.scene) || model.scene.kind === 'placing') commands.push({ type: 'hang-up' });
     commands.push({ type: 'stop-microphone' });
-  } else if (model.scene.kind !== 'outside') {
+  } else if (model.mode === 'sample' && model.scene.kind !== 'outside') {
     commands.push({ type: 'stop-sample' });
   }
   commands.push({ type: 'return-to-page' });
@@ -511,6 +564,10 @@ function handle(model: AppModel, event: AppEvent, now: number): Transition {
       return onSelect(model, event, now);
     case 'dismiss-button':
       return onDismissButton(model);
+    case 'edit-button':
+      return onEditButton(model);
+    case 'edit-done':
+      return onEditDone(model);
     case 'placed':
       return onPlaced(model);
     case 'session-phase':
@@ -588,6 +645,10 @@ function statusOf(model: AppModel): readonly string[] | null {
   return [NOT_LISTENING_LINE, model.wake.problem];
 }
 
+function guideOf(model: AppModel): readonly string[] | null {
+  return model.scene.kind === 'editing' ? EDITING_GUIDE_LINES : null;
+}
+
 function keyboardOf(model: AppModel): readonly string[] | null {
   const live = model.scene.kind === 'present' && model.scene.sessionPhase === 'live';
   return live && model.canType && !model.keyboardOpen && attending(model) ? [] : null;
@@ -598,6 +659,7 @@ function panelsOf(model: AppModel): AppView['panels'] {
   return {
     hint: hintOf(model),
     status: statusOf(model),
+    guide: guideOf(model),
     error: scene.kind === 'failed' ? [scene.problem] : null,
     toast: scene.kind === 'sample' && model.toast !== undefined ? [model.toast.text] : null,
     caption: scene.kind === 'present' && model.caption !== undefined ? [model.caption] : null,
@@ -627,12 +689,23 @@ export function viewOf(model: AppModel): AppView {
     panels: panelsOf(model),
     // Nothing to draw while waiting, so the headset is asked for as few frames as it will give;
     // the moment he is on his way it is asked for as many as it will (up to 90).
+    // Placing things asks for the highest too: a token carried in the hand has to keep up with it.
     frameRate: outside ? undefined : model.scene.kind === 'waiting' ? 'lowest' : 'highest',
     wakeArmed: wakeArmedOf(model),
+    editing: model.scene.kind === 'editing',
   };
 }
 
-const PANEL_NAMES: readonly PanelName[] = ['hint', 'status', 'error', 'toast', 'caption', 'keyboard', 'readout'];
+const PANEL_NAMES: readonly PanelName[] = [
+  'hint',
+  'status',
+  'guide',
+  'error',
+  'toast',
+  'caption',
+  'keyboard',
+  'readout',
+];
 
 function sameLines(before: readonly string[] | null, after: readonly string[] | null): boolean {
   if (before === null || after === null) return before === after;
@@ -652,6 +725,7 @@ export function viewChanges(before: AppView, after: AppView): AppEffect[] {
     effects.push({ type: 'set-frame-rate', target: after.frameRate });
   }
   if (before.wakeArmed !== after.wakeArmed) effects.push({ type: after.wakeArmed ? 'arm-wake' : 'disarm-wake' });
+  if (before.editing !== after.editing) effects.push({ type: 'editing', active: after.editing });
   return effects;
 }
 

@@ -12,13 +12,20 @@ import type { PanelName } from './app-state';
  *
  * Which of them are showing, and what they say, is `app-state.ts`'s to decide; this only carries
  * out its show and hide effects and keeps each panel where it belongs — the ones about Jarvis
- * under him, the ones about the room tagging along after the gaze (see `panel-placement.ts`).
+ * under him, the ones about the room — the hint, the status line and the placing guide — tagging
+ * along after the gaze (see `panel-placement.ts`).
  */
 
 /** How far ahead the hint and the status line drift, and how far below eye level. */
 const TAG_ALONG_AHEAD_METRES = 1.3;
 const HINT_DROP_METRES = 0.18;
 const STATUS_DROP_METRES = 0.32;
+
+/**
+ * The placing guide rides higher than the status line: the drawer opens below the eyes within
+ * reach, and what to do with it should be read above it, not over it.
+ */
+const GUIDE_DROP_METRES = 0.08;
 
 /** How far his content reaches, in radii: what is under him has to clear it. */
 const REACH_IN_RADII = 1.9;
@@ -46,6 +53,7 @@ export function createRoomPanels(): RoomPanels {
   const text: Record<Exclude<PanelName, 'keyboard'>, TextPanel> = {
     hint: createTextPanel({ widthMetres: 0.7, tone: 'hint' }),
     status: createTextPanel({ widthMetres: 0.8, tone: 'status' }),
+    guide: createTextPanel({ widthMetres: 0.8, tone: 'guide' }),
     error: createTextPanel({ widthMetres: 0.6, tone: 'error' }),
     toast: createTextPanel({ widthMetres: 0.5, tone: 'toast' }),
     caption: createTextPanel({ widthMetres: 0.7, tone: 'caption' }),
@@ -55,6 +63,10 @@ export function createRoomPanels(): RoomPanels {
   const arrow: PointerArrow = createPointerArrow();
   const hintTag: TagAlong = createTagAlong();
   const statusTag: TagAlong = createTagAlong();
+  const guideTag: TagAlong = createTagAlong();
+  // Each panel that follows the gaze jumps into place when it is shown again, rather than sliding in
+  // from wherever it was last.
+  const tags: Partial<Record<PanelName, TagAlong>> = { hint: hintTag, status: statusTag, guide: guideTag };
   let readout = '';
   let readoutShown = false;
 
@@ -87,8 +99,7 @@ export function createRoomPanels(): RoomPanels {
         text.readout.setText(readout ? [readout] : ['…']);
         return;
       }
-      if (panel === 'hint' && !text.hint.visible) hintTag.reset();
-      if (panel === 'status' && !text.status.visible) statusTag.reset();
+      if (!text[panel].visible) tags[panel]?.reset();
       text[panel].setText(lines);
     },
     hide(panel) {
@@ -109,6 +120,10 @@ export function createRoomPanels(): RoomPanels {
       if (text.status.visible) {
         const target = { x: ahead.x, y: ahead.y - STATUS_DROP_METRES, z: ahead.z };
         statusTag.follow(text.status.object, target, eye.position, deltaSeconds);
+      }
+      if (text.guide.visible) {
+        const target = { x: ahead.x, y: ahead.y - GUIDE_DROP_METRES, z: ahead.z };
+        guideTag.follow(text.guide.object, target, eye.position, deltaSeconds);
       }
       if (spot !== undefined) {
         // The error hangs where he stands, pulled towards the viewer so it is in front of him, not in him.
