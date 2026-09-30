@@ -326,12 +326,14 @@ export async function planDelegations(
   const agents = await getRoutableAgents();
   const planned = planWithPlanner(planner, userQuery, openQuestions, abortPlanner.signal);
   const abortClassifier = new AbortController();
-  const fastRoute = classifyRequest(classifier, userQuery, agents, openQuestions, abortClassifier.signal).catch((error: unknown) => {
-    if (!abortClassifier.signal.aborted) {
-      logger.warn('Routing classifier failed; using the planner', { error });
-    }
-    return undefined;
-  });
+  const fastRoute = classifyRequest(classifier, userQuery, agents, openQuestions, abortClassifier.signal).catch(
+    (error: unknown) => {
+      if (!abortClassifier.signal.aborted) {
+        logger.warn('Routing classifier failed; using the planner', { error });
+      }
+      return undefined;
+    },
+  );
 
   try {
     return await preferFastPlan(

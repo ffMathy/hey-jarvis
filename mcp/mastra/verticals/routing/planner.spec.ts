@@ -57,8 +57,8 @@ describe('preferFastPlan', () => {
   });
 
   it('fails with the planner when the classifier declines too', async () => {
-    await expect(
-      preferFastPlan(Promise.reject(new Error('planner down')), Promise.resolve(undefined)),
-    ).rejects.toThrow('planner down');
+    await expect(preferFastPlan(Promise.reject(new Error('planner down')), Promise.resolve(undefined))).rejects.toThrow(
+      'planner down',
+    );
   });
 });

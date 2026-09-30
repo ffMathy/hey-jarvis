@@ -1,4 +1,4 @@
-import { createTypeSafeAi } from '@ai-sdk/typesafe-ai';
+import { createTypeSafeAi, type TypeSafeAiProvider } from '@ai-sdk/typesafe-ai';
 
 /**
  * TypeSafe AI's evaluation models -- Jev -- configured with HEY_JARVIS_TYPESAFE_AI_API_KEY.
@@ -26,7 +26,12 @@ export function isEvaluationModelConfigured(): boolean {
   return Boolean(typeSafeApiKey);
 }
 
-/** The evaluation model every classifier runs on. */
-export function getEvaluationModel() {
+/**
+ * The evaluation model every classifier runs on.
+ *
+ * Annotated because the inferred type names `@ai-sdk/provider` v4, which only the TypeSafe
+ * package depends on and so cannot be named from here.
+ */
+export function getEvaluationModel(): ReturnType<TypeSafeAiProvider['evaluationModel']> {
   return typeSafeAi.evaluationModel(EVALUATION_MODEL);
 }
