@@ -18,6 +18,17 @@ import type { WakeState } from './types';
 /** How often the engine looks. */
 export const WATCHDOG_INTERVAL_MILLISECONDS = 500;
 
+/**
+ * How much later than due a watchdog tick may come and still be trusted to judge the audio.
+ *
+ * The worker's reports reach the page as messages, so a page held up for a second — a long frame,
+ * a garbage collection, a software-rendered room in the browser tests — reads them a second late,
+ * and a tick that fires the moment it is free, before the reports queued behind it, would see a
+ * stream that stopped. A tick later than this judges nothing; the next one, on time, judges with
+ * the reports read.
+ */
+export const LATE_TICK_MILLISECONDS = WATCHDOG_INTERVAL_MILLISECONDS / 2;
+
 /** The window chunk rates and inference times are measured over. */
 export const STATS_WINDOW_MILLISECONDS = 2000;
 

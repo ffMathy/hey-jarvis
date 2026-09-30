@@ -4,6 +4,7 @@ import {
   type AudioObservation,
   createStatsHistory,
   judgeWakeHealth,
+  LATE_TICK_MILLISECONDS,
   type ModelState,
   WAKE_PROBLEMS,
   WATCHDOG_INTERVAL_MILLISECONDS,
@@ -178,6 +179,8 @@ export function assembleWakeEngine<Stream extends WakeStream>(
   let recoveriesInARow = 0;
   let recoveries = 0;
   let watchdog: ReturnType<typeof setInterval> | undefined;
+  /** When the watchdog last ticked, to tell a tick the page held up from one on time. */
+  let lastTickAt = 0;
   let disposed = false;
   let health: WakeHealth = {
     state: 'unloaded',
@@ -241,6 +244,12 @@ export function assembleWakeEngine<Stream extends WakeStream>(
   }
 
   function tick() {
+    const now = dependencies.now();
+    const late = now - lastTickAt > WATCHDOG_INTERVAL_MILLISECONDS + LATE_TICK_MILLISECONDS;
+    lastTickAt = now;
+    // The page was held up, and the worker's reports from meanwhile are still waiting to be read:
+    // judged now, its own stall would read as the microphone's (see LATE_TICK_MILLISECONDS).
+    if (late) return;
     const verdict = evaluate();
     const due = dependencies.now() - lastRecoveryAt >= recoveryDelay();
     if (verdict.recover && listening && !connecting && recovering === undefined && due) {
@@ -250,6 +259,7 @@ export function assembleWakeEngine<Stream extends WakeStream>(
   }
 
   function startWatchdog() {
+    if (watchdog === undefined) lastTickAt = dependencies.now();
     watchdog ??= dependencies.setInterval(tick, WATCHDOG_INTERVAL_MILLISECONDS);
   }
 

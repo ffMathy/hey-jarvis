@@ -205,6 +205,17 @@ function scenario(options: { permission?: MicrophonePermission } = {}) {
         await flush();
       }
     },
+    /**
+     * The page held up for `milliseconds` while the audio went on: the clock moves on with no
+     * report read, the watchdog's overdue tick fires first, and then the worker's reports from
+     * meanwhile — every chunk it went on scoring — are read.
+     */
+    async holdUpPage(milliseconds: number) {
+      clock += milliseconds;
+      tick?.();
+      report(context.worker(), Math.round(milliseconds / 80), {});
+      await flush();
+    },
     /** The worker reporting a healthy, scored stream for `milliseconds`, four times a second. */
     async flow(milliseconds: number, overrides: Partial<WorkerCounters> = {}) {
       const worker = context.worker();
@@ -439,6 +450,24 @@ describe('the watchdog', () => {
     await context.advance(1500);
     expect(context.opened).toHaveLength(1);
     expect(context.worker().generation()).toBe(2);
+  });
+
+  it('does not take the page being held up for the microphone stopping', async () => {
+    const context = await listening();
+    await context.holdUpPage(1500);
+    expect(context.engine.health.state).toBe('listening');
+    // The reports that were waiting are read, and the next tick, on time, finds the stream flowing.
+    await context.flow(1000);
+    expect(context.engine.health.state).toBe('listening');
+    expect(context.opened).toHaveLength(0);
+    expect(context.healths.some((health) => health.state === 'broken')).toBe(false);
+  });
+
+  it('still judges the stream once the ticks come on time again', async () => {
+    const context = await listening();
+    await context.holdUpPage(1500);
+    await context.advance(1500);
+    expect(context.opened).toHaveLength(1);
   });
 
   it('resumes a suspended context and keeps the same microphone', async () => {
