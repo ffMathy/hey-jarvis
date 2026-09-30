@@ -36,6 +36,8 @@ export interface JarvisSessionOptions {
   deadlineProblem?: () => string;
   /** Resolves once the device is on a network that carries a conversation (the watch's Wi-Fi). */
   untilOnline?: () => Promise<void>;
+  /** Lets go of that network once the summoning is over. */
+  leaveNetwork?: () => void;
 }
 
 /** Everything a screen draws from its conversation, and everything it can do to it. */
@@ -131,6 +133,7 @@ export function useJarvisSession(options: JarvisSessionOptions): JarvisConversat
       ...(captions ? { captions } : {}),
       deadlineProblem: () => latest.current.deadlineProblem?.() ?? DEADLINE_PROBLEM,
       ...(untilOnline ? { untilOnline: () => latest.current.untilOnline?.() ?? Promise.resolve() } : {}),
+      leaveNetwork: () => latest.current.leaveNetwork?.(),
     });
   });
   useEffect(() => () => session.endQuietly(), [session]);

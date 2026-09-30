@@ -470,16 +470,22 @@ describe('in a browser', () => {
 describe('on a watch, which has to get off its phone’s Bluetooth first', () => {
   function onAWatch(deadlineProblem?: () => string) {
     const networks: Array<() => void> = [];
+    /** How many times the network has been let go of. */
+    const left = { times: 0 };
     const watch = onAPhone({
       participantName: WATCH_PARTICIPANT_NAME,
       untilOnline: () =>
         new Promise<void>((online) => {
           networks.push(online);
         }),
+      leaveNetwork: () => {
+        left.times++;
+      },
       ...(deadlineProblem ? { deadlineProblem } : {}),
     });
     return Object.assign(watch, {
       networks,
+      left,
       online() {
         const online = networks.at(-1);
         if (!online) {
@@ -538,6 +544,49 @@ describe('on a watch, which has to get off its phone’s Bluetooth first', () =>
     await settle();
 
     expect(watch.networks).toHaveLength(1);
+  });
+
+  it('lets the network go once the conversation is over, and only once', async () => {
+    const watch = onAWatch();
+    await greetOn(watch);
+    watch.online();
+    await settle();
+    watch.tokens.grant();
+    await settle();
+    await watch.clock.advance(watch.greeting.durationMilliseconds + 100);
+    await watch.sdk.latest.connect();
+    expect(watch.left.times).toBe(0);
+
+    watch.sdk.latest.agentHangsUp();
+    watch.session.hangUp();
+
+    expect(watch.left.times).toBe(1);
+  });
+
+  it('lets the network go when the token is refused', async () => {
+    const watch = onAWatch();
+    await greetOn(watch);
+    watch.online();
+    await settle();
+
+    watch.tokens.refuse(429);
+    await settle();
+
+    expect(watch.left.times).toBe(1);
+    expect(watch.session.phase).toBe('failed');
+  });
+
+  it('lets go of a network that only came up after the wrist had dropped', async () => {
+    const watch = onAWatch();
+    await greetOn(watch);
+    watch.session.endQuietly();
+    expect(watch.left.times).toBe(0);
+
+    watch.online();
+    await settle();
+
+    expect(watch.left.times).toBe(1);
+    expect(watch.tokens.requests).toHaveLength(0);
   });
 
   it('never asks for a network when the wrist drops before he has greeted', async () => {

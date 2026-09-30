@@ -312,6 +312,12 @@ export interface JarvisSessionDependencies<Timer> {
    */
   untilOnline?: () => Promise<void>;
   /**
+   * Lets go of the network `untilOnline` brought up, once the summoning it was brought up for is
+   * over, however it ended — including one that ended while the network was still coming up, which
+   * is let go of the moment it has.
+   */
+  leaveNetwork?: () => void;
+  /**
    * The LiveKit room an open conversation runs in, checked against the app's own `livekit-client`
    * (see `roomOfConversation`). Without one, his voice is the SDK's own readings and nothing is
    * dropped from a media element when he is interrupted.

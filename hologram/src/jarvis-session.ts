@@ -93,6 +93,8 @@ interface Attempt<Timer> {
   onGreetingAnswered?: () => void;
   /** Whether the token has been asked for yet: at once, or once `untilOnline` has answered. */
   reaching: boolean;
+  /** Where the network `untilOnline` brings up is: not asked for, coming up, or up and held. */
+  network: 'unasked' | 'coming-up' | 'held';
   credential?: Credential;
   dialled: boolean;
   /** Whether `startSession` has been called and has not yet resolved or rejected. */
@@ -135,7 +137,7 @@ interface Attempt<Timer> {
  * network first asks for it once he has started (`untilOnline`).
  */
 export function createJarvisSession<Timer>(dependencies: JarvisSessionDependencies<Timer>): JarvisSession {
-  const { participantName, startSession, greeting, events, callAudio, untilOnline } = dependencies;
+  const { participantName, startSession, greeting, events, callAudio, untilOnline, leaveNetwork } = dependencies;
   const now = dependencies.now ?? (() => performance.now());
   const schedule = dependencies.setTimeout;
   const cancel = dependencies.clearTimeout;
@@ -482,6 +484,11 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     toolActivity.forget();
     vadScore.forget();
     caption.ended();
+    if (current.network === 'held') {
+      // One still coming up is let go of once it is up, in `startReaching`.
+      current.network = 'unasked';
+      leaveNetwork?.();
+    }
     if (current.conversation) {
       releaseAfter(current, current.conversation.endSession());
     } else if (!current.starting) {
@@ -758,6 +765,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       reachOut(current);
       return;
     }
+    current.network = 'coming-up';
     let online: Promise<void>;
     try {
       online = untilOnline();
@@ -767,9 +775,14 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     online
       .catch(() => undefined)
       .then(() => {
-        if (isCurrent(current)) {
-          reachOut(current);
+        if (!isCurrent(current)) {
+          // Over while the network was still coming up: nobody is left to hold it for.
+          current.network = 'unasked';
+          leaveNetwork?.();
+          return;
         }
+        current.network = 'held';
+        reachOut(current);
       });
   };
 
@@ -963,6 +976,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       askedAt: now(),
       onGreetingAnswered: options.onGreetingAnswered,
       reaching: false,
+      network: 'unasked',
       dialled: false,
       starting: false,
       callAudio: 'nobody',
