@@ -292,8 +292,11 @@ Each rule lives in exactly one place:
   `Sir is pointing at "<name>" (<id>).` under the context id `pointing`, and clears it with
   "Sir is not pointing at anything." under the same id. ElevenLabs drops a superseded update from
   what the model sees, so only the current target is ever in front of it. The agent puts that
-  entity's name and id into the `routePromptWorkflow` query — "Is that on? (pointing at Kitchen
-  ceiling light, id light.kitchen_ceiling)" — and Mastra carries the id on to the agent that acts.
+  entity's name and id into the `routePromptWorkflow` query — `Is that on? (pointing at "Kitchen
+  ceiling light", id light.kitchen_ceiling)`, the form the MCP `userQuery` description and planner
+  expect — and Mastra carries the id on to the agent that acts. `horizon`'s
+  `agent-contract.spec.ts` reads this prompt, `tests/utils/headset.ts` and the MCP routing files as
+  text, and fails if the headset's sentences or that form drift apart.
 
 The test agent keeps its client tools (`toTestAgentTools` in `src/main.ts`) and always emits
 `client_tool_call` and `mcp_tool_call` (`toTestAgentClientEvents`). The loop names `markAffected`,

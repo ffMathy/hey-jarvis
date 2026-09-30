@@ -220,6 +220,8 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
   /** Entities dropped onto an anchor still being made; a later unplacing takes one out again. */
   const awaitingAnchor = new Set<string>();
   let message: { text: string; until: number } | undefined;
+  /** What the drawer was last shown, so it is sorted and handed over again only when that changes. */
+  let shown: { registry: EntityRegistry; message: string | undefined } | undefined;
   let positions = new Map<string, Vector3Like>();
   let slots: DrawerSlot[] = [];
   let drawnCoronas: { id: string; level: number; position: Vector3Like }[] = [];
@@ -368,7 +370,10 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
       drawer.open(drawerPoseFacing(frame.eye.position, ahead));
     }
     if (message !== undefined && time >= message.until) message = undefined;
-    drawer.show(drawerEntries(store.registry), message?.text);
+    if (shown?.registry !== store.registry || shown.message !== message?.text) {
+      shown = { registry: store.registry, message: message?.text };
+      drawer.show(drawerEntries(store.registry), message?.text);
+    }
     // One token per entity: an entity standing in the room is taken from there, not from its slot.
     slots = drawer.slots();
     const fromDrawer = slots.filter((slot) => !positions.has(slot.id));
@@ -524,6 +529,7 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
       editing = active;
       if (active) {
         openDrawer = true;
+        shown = undefined;
         pointing = NOT_POINTING;
         reticle.show(undefined, { x: 0, y: 0, z: 0 }, 0);
       } else {

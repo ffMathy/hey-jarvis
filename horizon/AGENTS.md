@@ -651,7 +651,7 @@ src/entities/affected.ts        how long a corona stays lit
 src/entities/pointing.ts        what sir points at, and what the conversation is told about it
 src/entities/hand-pose.ts       pinches, pointing fingers and a raised wrist, from joints
 src/entities/grab.ts            taking a token near or far, carrying it, putting it down or back
-src/entities/entity-input.ts    one frame's hands and controllers, as the three above read them
+src/entities/entity-input.ts    one frame's hands and controllers, as grabbing, pointing and the wrist button read them
 src/app/room-entities.ts        the room's controller: all of it, every frame
 src/hologram3d/corona.ts        Jarvis's light round an entity, one instanced draw
 src/ui3d/drawer-layout.ts       where everything on the drawer is (entity-drawer.ts draws it)
@@ -981,7 +981,11 @@ the models first.
   **silently does nothing** unless installed with
   `installRuntime({ forceInstall: true })`. It fires `select` when the trigger goes
   down, before `selectstart`; a Quest fires it on release. The room reads a
-  `select` with no start as a tap, so a quick press is a tap on both.
+  `select` with no start as a tap, so a quick press is a tap on both. Its
+  `getOffsetReferenceSpace` takes a bare matrix, against the spec, and turns the
+  spec's `XRRigidTransform` into NaNs — which leaves the new space silently where
+  the old one was — so `xr-harness.ts` hands it the transform's matrix, and the
+  `?origin` seam works as it does on a headset.
 - **The room.** `@iwer/sem`'s Synthetic Environment Module with its bundled
   `living_room` capture (`device.installSEM(SyntheticEnvironmentModule)`, then
   `await device.sem.loadDefaultEnvironment('living_room')` — the README's
@@ -1013,7 +1017,21 @@ the models first.
   placement went (level, clearance, radius), how many wakes there have been, the
   room's scene, view and recent effects, the last problem, and where his voice
   comes from (route, tier, reason, the probe, the setting, how the greeting is
-  heard, and where the listener and the panner were last put).
+  heard, and where the listener and the panner were last put), and the entities
+  (see "Entities placed in the room").
+- **Placing things.** `app-entities.spec.ts` walks the whole feature in four
+  visits sharing one browser's `localStorage`, where both the registry and the
+  emulator's persistent anchors live: **Place entities** and a controller's grip,
+  Done; a new session opened with `?origin` moved and turned, where the entity must
+  be found at the same spot of the room — the emulator's `local-floor` is its
+  global space, so without a moved origin a position kept in `local-floor` would
+  come back right for the wrong reason; a controller's ray and a pointing finger;
+  A, a pinch, B; the wrist button; and sample mode's thinking lighting a corona
+  round each placed entity. `entities-driver.ts` holds the emulated head, hands and
+  controllers, converts between the emulator's space and the room's, and measures
+  where a hand pinches or a controller grips from the app's own report rather than
+  copying the emulator's poses. `corona.spec.ts` photographs and measures the corona
+  on a bare page (`corona-probe.ts`).
 - **His voice.** `app-voice.spec.ts` makes the fake microphone offer `'all'`, as a
   headset with its own echo canceller would, records the panners and the elements
   the page takes into Web Audio, and checks the greeting goes through an HRTF
@@ -1030,15 +1048,20 @@ the models first.
   for six, counts only if the panel is still up once the picture is back —
   otherwise the next failure is photographed.
 - **Pictures.** The app specs photograph the view — waiting with the hint,
-  arriving, greeting, both error panels and every sample mood — and the hologram
+  arriving, greeting, both error panels, every sample mood, and the drawer, a
+  carried and a placed token, the pointing reticle and a corona round a placed
+  entity (`entities-*.png`) — and the hologram
   specs every phase; each is attached to the report, and copied to
   `HOLOGRAM_SCREENS_DIR` when that is set. `hologram-room.spec.ts` logs the
   emulator's frame times, which say nothing about a Quest's.
 
 What IWER does not cover: projection layers (it only has `XRWebGLLayer`, so the
 path Quest actually composites is not exercised), `fixedFoveation`,
-`initiateRoomCapture`, and anything about the microphone inside an immersive
-session. `@iwer/sem` also brings its own three.js 0.184 — test-only, since the
+`initiateRoomCapture`, anything about the microphone inside an immersive
+session, the eight-anchor limit, a persistent anchor that fails to restore or
+takes time to relocalise (its anchors are unlimited and always located), and a
+squeeze from a hand. Its hands are three rigid poses — relaxed, pointing,
+pinching — blended by the pinch value. `@iwer/sem` also brings its own three.js 0.184 — test-only, since the
 harness is only ever bundled into an init script.
 
 ## Publishing: GitHub Pages, shared with the phone
