@@ -3,7 +3,7 @@ import { type AffectedEntity, type AgentTrackRoom, type GreetingPlayer, HEADSET_
 import { findAgentRoom, type ListeningAudioContext } from './agent-room';
 import {
   HEADSET_OFFLINE_PROBLEM,
-  type HeadsetSessionOptions,
+  type HeadsetSessionDependencyOptions,
   type HeadsetVoice,
   headsetSessionDependencies,
   NO_CONNECTION_DELAY,
@@ -35,7 +35,7 @@ const greetingPlayer: GreetingPlayer = {
   duration: 0,
 };
 
-function optionsWith(overrides: Partial<HeadsetSessionOptions> = {}): HeadsetSessionOptions {
+function optionsWith(overrides: Partial<HeadsetSessionDependencyOptions> = {}): HeadsetSessionDependencyOptions {
   return {
     settings: { apiKey: 'sk_a-secret-key', agentId: 'agent_01jz0123456789' },
     startSession: () => Promise.reject(new Error('Nothing is dialled here.')),
