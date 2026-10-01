@@ -7,7 +7,6 @@ name: Mobile Web
 #
 #   /hey-jarvis/           the phone app's web build (mobile/)
 #   /hey-jarvis/vr/        the Meta Quest app that puts him in your room (vr/)
-#   /hey-jarvis/horizon/   a redirect to vr/, where that app was published before it was renamed
 #
 # What is at the root is the real phone app: the same conversation screen, the
 # same hologram, drawn by CanvasKit instead of native Skia. Taking over the assist
@@ -106,15 +105,12 @@ jobs:
         working-directory: mobile
 
       # One folder for the one site: the phone app at its root, the headset app in
-      # vr/. Nothing in the phone's export is called vr, so they never clash. The
-      # headset app used to be published at horizon/, and a headset keeps that address
-      # bookmarked, so horizon/ stays as a page that sends it on to vr/.
+      # vr/. Nothing in the phone's export is called vr, so they never clash.
       - name: Assemble the site
         run: |
-          mkdir -p _site _site/horizon
+          mkdir -p _site
           cp -r mobile/dist/. _site/
           cp -r dist/vr _site/vr
-          printf '%s\n' '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=../vr/"><link rel="canonical" href="../vr/"><a href="../vr/">Jarvis has moved to /vr/</a>' > _site/horizon/index.html
 
       - name: Upload the site
         uses: actions/upload-pages-artifact@v5.0.0
