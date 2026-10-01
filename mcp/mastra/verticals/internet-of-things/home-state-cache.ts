@@ -231,7 +231,7 @@ export function entityName(entity: HassEntity): string {
   if (typeof friendlyName === 'string' && friendlyName.length > 0) {
     return friendlyName;
   }
-  return entity.entity_id.slice(entity.entity_id.indexOf('.') + 1).replaceAll('_', ' ');
+  return entity.entity_id.slice(entity.entity_id.indexOf('.') + 1).replace(/_/g, ' ');
 }
 
 /**

@@ -250,8 +250,12 @@ function serveFakeHomeAssistant(states: Record<string, CompressedState>) {
     fetch: (request, httpServer) =>
       accepting && httpServer.upgrade(request) ? undefined : new Response('Unavailable', { status: 503 }),
     websocket: {
-      open: (socket) => socket.send(JSON.stringify({ type: 'auth_required', ha_version: '2026.9.0' })),
-      close: (socket) => entitySubscriptions.delete(socket),
+      open: (socket) => {
+        socket.send(JSON.stringify({ type: 'auth_required', ha_version: '2026.9.0' }));
+      },
+      close: (socket) => {
+        entitySubscriptions.delete(socket);
+      },
       message: (socket, raw) => {
         const message = JSON.parse(String(raw));
         if (message.type === 'auth') {
