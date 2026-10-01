@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { AFFECTED_ENTITY_ID_MAX_LENGTH, AFFECTED_ENTITY_NAME_MAX_LENGTH } from './affected-entities';
 import {
   FIRST_RETRY_MS,
   followConversationOnServer,
@@ -83,6 +84,26 @@ function fakePlatform() {
   return { platform, sockets, advance, latest };
 }
 
+/** A session whose live conversation is set by hand, telling its listeners each time. */
+function fakeSession() {
+  let conversationId: string | undefined;
+  const listeners = new Set<() => void>();
+  return {
+    session: {
+      liveConversationId: () => conversationId,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    },
+    setConversation: (next: string | undefined) => {
+      conversationId = next;
+      for (const listener of listeners) listener();
+    },
+    listeners,
+  };
+}
+
 describe('the socket address', () => {
   it('is wss for an https server, and ws for this computer', () => {
     expect(serverSocketUrl('https://jarvis.example.com')).toBe('wss://jarvis.example.com/api/live');
@@ -116,6 +137,60 @@ describe('a line to the server', () => {
     socket.receive('not json');
     socket.receive(new ArrayBuffer(4));
     expect(received).toEqual([{ type: 'ready' }]);
+  });
+
+  it('passes on the entities a request touched, as the server names them', () => {
+    const { platform, latest } = fakePlatform();
+    const received: JarvisServerMessage[] = [];
+    openServerLink(
+      {
+        address: ADDRESS,
+        conversationId: CONVERSATION_ID,
+        device: 'vr',
+        onMessage: (message) => received.push(message),
+      },
+      platform,
+    );
+    latest().open();
+
+    latest().receive(
+      JSON.stringify({
+        type: 'affectedEntities',
+        entities: [{ id: 'light.kitchen_ceiling', name: 'Kitchen ceiling' }, { id: 'inbox:work' }],
+      }),
+    );
+
+    expect(received).toEqual([
+      {
+        type: 'affectedEntities',
+        entities: [{ id: 'light.kitchen_ceiling', name: 'Kitchen ceiling' }, { id: 'inbox:work' }],
+      },
+    ]);
+  });
+
+  it('keeps only the usable entities of a frame, and drops a frame with none', () => {
+    const { platform, latest } = fakePlatform();
+    const received: JarvisServerMessage[] = [];
+    openServerLink(
+      {
+        address: ADDRESS,
+        conversationId: CONVERSATION_ID,
+        device: 'vr',
+        onMessage: (message) => received.push(message),
+      },
+      platform,
+    );
+    latest().open();
+
+    latest().receive(
+      JSON.stringify({ type: 'affectedEntities', entities: [{ id: '  light.hall  ', name: 7 }, { id: '' }, 42] }),
+    );
+    latest().receive(JSON.stringify({ type: 'affectedEntities', entities: [{ id: '   ' }, { name: 'No id' }] }));
+    latest().receive(JSON.stringify({ type: 'affectedEntities', entities: [] }));
+    latest().receive(JSON.stringify({ type: 'affectedEntities' }));
+    latest().receive(JSON.stringify({ type: 'affectedEntities', entities: 'light.hall' }));
+
+    expect(received).toEqual([{ type: 'affectedEntities', entities: [{ id: 'light.hall' }] }]);
   });
 
   it('tries again after a drop, waiting twice as long each time up to a limit, and from the start once ready', () => {
@@ -177,27 +252,123 @@ describe('a line to the server', () => {
   });
 });
 
-describe('following the conversation', () => {
-  /** A session whose live conversation is set by hand, telling its listeners each time. */
-  function fakeSession() {
-    let conversationId: string | undefined;
-    const listeners = new Set<() => void>();
-    return {
-      session: {
-        liveConversationId: () => conversationId,
-        subscribe: (listener: () => void) => {
-          listeners.add(listener);
-          return () => listeners.delete(listener);
-        },
-      },
-      setConversation: (next: string | undefined) => {
-        conversationId = next;
-        for (const listener of listeners) listener();
-      },
-      listeners,
-    };
+describe('telling the server what sir points at', () => {
+  const KITCHEN = { id: 'light.kitchen_ceiling', name: 'Kitchen ceiling' };
+
+  /** The pointing frames a socket was sent, parsed. */
+  function pointingSent(socket: FakeSocket): unknown[] {
+    return socket.sent.map((frame) => JSON.parse(frame)).filter((frame) => frame.type === 'pointing');
   }
 
+  it('sends nothing before the server is ready, and the latest once it is', () => {
+    const { platform, latest } = fakePlatform();
+    const link = openServerLink({ address: ADDRESS, conversationId: CONVERSATION_ID, device: 'vr' }, platform);
+
+    link.point({ id: 'light.hall' });
+    latest().open();
+    link.point(KITCHEN);
+    expect(pointingSent(latest())).toEqual([]);
+
+    latest().receive('{"type":"ready"}');
+    expect(pointingSent(latest())).toEqual([{ type: 'pointing', entity: KITCHEN }]);
+  });
+
+  it('sends at once once ready, and null when sir points at nothing', () => {
+    const { platform, latest } = fakePlatform();
+    const link = openServerLink({ address: ADDRESS, conversationId: CONVERSATION_ID, device: 'vr' }, platform);
+    latest().open();
+    latest().receive('{"type":"ready"}');
+    expect(pointingSent(latest())).toEqual([]);
+
+    link.point(KITCHEN);
+    link.point(undefined);
+
+    expect(pointingSent(latest())).toEqual([
+      { type: 'pointing', entity: KITCHEN },
+      { type: 'pointing', entity: null },
+    ]);
+  });
+
+  it('sends the latest again after a reconnect, once the new socket is ready', () => {
+    const { platform, advance, latest } = fakePlatform();
+    const link = openServerLink({ address: ADDRESS, conversationId: CONVERSATION_ID, device: 'vr' }, platform);
+    latest().open();
+    latest().receive('{"type":"ready"}');
+    link.point(KITCHEN);
+
+    latest().drop(1006);
+    link.point({ id: 'inbox:work' });
+    advance(FIRST_RETRY_MS);
+    latest().open();
+    expect(pointingSent(latest())).toEqual([]);
+    latest().receive('{"type":"ready"}');
+
+    expect(pointingSent(latest())).toEqual([{ type: 'pointing', entity: { id: 'inbox:work' } }]);
+  });
+
+  it('holds an entity to the limits of what a request touches', () => {
+    const { platform, latest } = fakePlatform();
+    const link = openServerLink({ address: ADDRESS, conversationId: CONVERSATION_ID, device: 'vr' }, platform);
+    latest().open();
+    latest().receive('{"type":"ready"}');
+
+    link.point({ id: '  light.hall  ', name: 'x'.repeat(AFFECTED_ENTITY_NAME_MAX_LENGTH + 1) });
+    link.point({ id: 'a'.repeat(AFFECTED_ENTITY_ID_MAX_LENGTH + 1), name: 'Too long' });
+
+    expect(pointingSent(latest())).toEqual([
+      { type: 'pointing', entity: { id: 'light.hall' } },
+      { type: 'pointing', entity: null },
+    ]);
+  });
+
+  it('remembers what sir points at across conversations, for the next one’s line', () => {
+    const { platform, latest } = fakePlatform();
+    const { session, setConversation } = fakeSession();
+    const following = followConversationOnServer(session, { address: ADDRESS, device: 'vr' }, platform);
+
+    following.point(KITCHEN);
+    setConversation(CONVERSATION_ID);
+    latest().open();
+    latest().receive('{"type":"ready"}');
+    expect(pointingSent(latest())).toEqual([{ type: 'pointing', entity: KITCHEN }]);
+
+    following.point(undefined);
+    expect(pointingSent(latest())).toEqual([
+      { type: 'pointing', entity: KITCHEN },
+      { type: 'pointing', entity: null },
+    ]);
+
+    setConversation(undefined);
+    setConversation('conv_fedcba9876543210');
+    latest().open();
+    latest().receive('{"type":"ready"}');
+    expect(pointingSent(latest())).toEqual([{ type: 'pointing', entity: null }]);
+  });
+
+  it('tells a line nothing about pointing when nothing has been said', () => {
+    const { platform, latest } = fakePlatform();
+    const { session, setConversation } = fakeSession();
+    followConversationOnServer(session, { address: ADDRESS, device: 'vr' }, platform);
+    setConversation(CONVERSATION_ID);
+    latest().open();
+    latest().receive('{"type":"ready"}');
+
+    expect(pointingSent(latest())).toEqual([]);
+  });
+
+  it('sends nothing at all on a device with no server address', () => {
+    const { platform, sockets } = fakePlatform();
+    const { session, setConversation } = fakeSession();
+    const following = followConversationOnServer(session, { address: undefined, device: 'vr' }, platform);
+
+    following.point(KITCHEN);
+    setConversation(CONVERSATION_ID);
+
+    expect(sockets).toHaveLength(0);
+  });
+});
+
+describe('following the conversation', () => {
   it('opens a line when a conversation connects, keeps the one line while it lasts, and closes it when it ends', () => {
     const { platform, sockets } = fakePlatform();
     const { session, setConversation } = fakeSession();
@@ -217,6 +388,29 @@ describe('following the conversation', () => {
     expect(JSON.parse(sockets[1]?.sent[0] ?? '{}').conversationId).toBe('conv_fedcba9876543210');
   });
 
+  it('hands every message on the line it follows to the device', () => {
+    const { platform, latest } = fakePlatform();
+    const { session, setConversation } = fakeSession();
+    const received: JarvisServerMessage[] = [];
+    followConversationOnServer(
+      session,
+      { address: ADDRESS, device: 'vr', onMessage: (message) => received.push(message) },
+      platform,
+    );
+    setConversation(CONVERSATION_ID);
+    latest().open();
+
+    latest().receive('{"type":"ready"}');
+    latest().receive(
+      '{"type":"affectedEntities","entities":[{"id":"light.kitchen_ceiling","name":"Kitchen ceiling"}]}',
+    );
+
+    expect(received).toEqual([
+      { type: 'ready' },
+      { type: 'affectedEntities', entities: [{ id: 'light.kitchen_ceiling', name: 'Kitchen ceiling' }] },
+    ]);
+  });
+
   it('opens nothing on a device with no server address', () => {
     const { platform, sockets } = fakePlatform();
     const { session, setConversation, listeners } = fakeSession();
@@ -230,9 +424,9 @@ describe('following the conversation', () => {
     const { platform, sockets } = fakePlatform();
     const { session, setConversation, listeners } = fakeSession();
     setConversation(CONVERSATION_ID);
-    const stop = followConversationOnServer(session, { address: ADDRESS, device: 'vr' }, platform);
+    const following = followConversationOnServer(session, { address: ADDRESS, device: 'vr' }, platform);
     expect(sockets).toHaveLength(1);
-    stop();
+    following.stop();
     expect(sockets[0]?.closedByDevice).toBe(true);
     expect(listeners.size).toBe(0);
   });

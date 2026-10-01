@@ -1,7 +1,6 @@
 import { describeFrameRate, PARTICLE_COUNT } from 'hologram';
 import { Group } from 'three';
 import { type JarvisDebugState, toRoomPoint } from '../debug-hook';
-import { POINTING_CONTEXT_ID } from '../entities/pointing';
 import type { KeyValueStorage } from '../page/settings';
 import { createDebugHud, type DebugHud, type Diagnostics, extensionsOfInterest } from '../ui3d/debug-hud';
 import { KEYBOARD_GLYPH_REACH_METRES } from '../ui3d/keyboard-glyph';
@@ -619,7 +618,7 @@ function updateEntities(room: Room, tick: XrFrameTick) {
     live: room.conversation.phase === 'live',
     pretendWorking: scene.kind === 'sample' && scene.mode === 'thinking',
   });
-  if (outcome.context !== undefined) room.conversation.sendContextualUpdate(outcome.context, POINTING_CONTEXT_ID);
+  if (outcome.pointing !== undefined) room.conversation.point(outcome.pointing.entity);
   // Before Done, which this very frame may also have pressed with the drop that is still settling.
   if (outcome.settling !== room.lastSettling) {
     room.lastSettling = outcome.settling;

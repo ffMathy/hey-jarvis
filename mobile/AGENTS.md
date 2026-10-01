@@ -414,8 +414,9 @@ Six decisions carry it, and each has a reason:
 `liveConversationId()`, `sendContextualUpdate` for notes that take no turn, `sendText` for what takes
 one, and `sendUserActivity`. `sendText` and `sendUserActivity` are ignored unless the conversation is
 connected, and a note said before then waits until it connects (the button is only there once it
-has). The session dials with no tools of the phone's own: the one client tool it answers,
-`markAffected`, is the session's on every device (see `hologram/AGENTS.md`).
+has). The session dials with no client tools at all. The live line to the server also carries the
+`affectedEntities` frames the server broadcasts, which the phone simply ignores (see
+`hologram/AGENTS.md`).
 
 **The button.** A small outline of a camera at the sphere's lower right, half strength, drawn from
 views (no icon library, and no Skia before CanvasKit has loaded in a browser). It is there only while

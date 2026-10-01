@@ -5,7 +5,7 @@ import {
   type AffectedState,
   affectedIds,
   coronaLevels,
-  markAffected,
+  lightAffected,
   NOTHING_AFFECTED,
   releaseAffected,
   stepAffected,
@@ -35,11 +35,12 @@ import {
   NOT_POINTING,
   NOTHING_TOLD,
   type PointedEntity,
-  type PointingContextState,
   type PointingState,
-  pendingPointingContext,
+  type PointingUpdate,
+  type PointingUpdateState,
+  pendingPointingUpdate,
   stepPointing,
-  stepPointingContext,
+  stepPointingUpdate,
 } from '../entities/pointing';
 import {
   createEntityStore,
@@ -81,8 +82,8 @@ import { distanceBetween, type Ray, type Vector3Like } from '../xr/ray';
 import { type CentreEye, pointAhead } from '../xr/viewer-pose';
 
 /**
- * The things Jarvis works on, in the room: what the agent marks, where sir puts it, the corona
- * that lights round it while Jarvis is working on it, and what sir points at.
+ * The things Jarvis works on, in the room: what the server says a request touched, where sir puts
+ * it, the corona that lights round it while Jarvis is working on it, and what sir points at.
  *
  * One controller per room, called from the room's frame loop. Every frame it:
  *
@@ -93,11 +94,11 @@ import { type CentreEye, pointAhead } from '../xr/viewer-pose';
  * 4. **while placing things**, runs the drawer and the grab (`entities/grab.ts`) — a token let go in
  *    the room is dropped on the nearest room anchor and written to the registry, one let go on the
  *    drawer is taken out of the room — and **otherwise** works out what sir points at
- *    (`entities/pointing.ts`), rings it, and says what the conversation should be told about it;
+ *    (`entities/pointing.ts`), rings it, and says what the Jarvis server should be told about it;
  * 5. lights the coronas (`entities/affected.ts`, `hologram3d/corona.ts`) round the placed entities
  *    Jarvis has marked, held while he is thinking.
  *
- * Every mark the agent makes is recorded in the registry whatever the room is doing, placed or not,
+ * Every mark the server sends is recorded in the registry whatever the room is doing, placed or not,
  * because the drawer offers what has ever been marked. The registry is written a moment after each
  * change and at once when the room closes or the page is hidden (`flush`).
  *
@@ -132,8 +133,8 @@ export interface EntitiesFrame {
 
 /** What the room has to act on after a frame. */
 export interface EntitiesOutcome {
-  /** An update for the conversation about what sir points at, under `POINTING_CONTEXT_ID`. */
-  context?: string;
+  /** What sir points at now, for the Jarvis server, when it has to be told. */
+  pointing?: PointingUpdate;
   /** The wrist button was pressed: it opens placing things, and closes it. */
   editButton: boolean;
   /** The drawer's Done was pressed. */
@@ -148,7 +149,7 @@ export interface EntitiesOutcome {
 export interface RoomEntities {
   /** Everything it draws, added to the scene as it is. */
   readonly object: Group;
-  /** A `markAffected` call named these: recorded, and lit where they are placed. */
+  /** The server's `affectedEntities` message named these: recorded, and lit where they are placed. */
   affected(entities: readonly AffectedEntity[]): void;
   /** The conversation is over: every corona fades, whatever was holding it. */
   conversationEnded(): void;
@@ -226,7 +227,7 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
   let grab: GrabState = NOTHING_GRABBED;
   let carried: CarriedToken[] = [];
   let pointing: PointingState = NOT_POINTING;
-  let told: PointingContextState = NOTHING_TOLD;
+  let told: PointingUpdateState = NOTHING_TOLD;
   let lit: AffectedState = NOTHING_AFFECTED;
   const marks: string[] = [];
   /** Entities dropped onto an anchor still being made; a later unplacing takes one out again. */
@@ -462,21 +463,21 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
     labels.set(named, frame.eye.position);
   }
 
-  /** The entity `id` as the conversation is told about it: its id to act on, and its name to say. */
+  /** The entity `id` as the server is told about it: its id to act on, and its name to say. */
   function pointedEntity(id: string | undefined): PointedEntity | undefined {
     const entity = id === undefined ? undefined : knownEntity(store.registry, id);
     if (entity === undefined) return undefined;
     return entity.name === undefined ? { id: entity.id } : { id: entity.id, name: entity.name };
   }
 
-  /** What sir points at: chosen, ringed, named, and what the conversation should be told about it. */
+  /** What sir points at: chosen, ringed, named, and what the server should be told about it. */
   function point(frame: EntitiesFrame, outcome: EntitiesOutcome) {
     const targets = [...positions].map(([id, position]) => ({ id, position }));
     pointing = stepPointing(pointing, pointersFrom(frame.inputs, hands), targets, time);
     const pointed = pointing.pointed;
-    const contextStep = stepPointingContext(told, pointedEntity(pointed?.id), frame.live, time);
-    told = contextStep.state;
-    if (contextStep.send !== undefined) outcome.context = contextStep.send;
+    const update = stepPointingUpdate(told, pointedEntity(pointed?.id), frame.live, time);
+    told = update.state;
+    if (update.send !== undefined) outcome.pointing = update.send;
     const position = pointed === undefined ? undefined : positions.get(pointed.id);
     reticle.show(position, frame.eye.position, pointed === undefined ? 0 : time - pointed.since);
     if (pointed === undefined || position === undefined) {
@@ -499,8 +500,8 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
 
   /** The coronas: lit by marks, held while he thinks, drawn round the placed ones. */
   function light(frame: EntitiesFrame) {
-    if (marks.length > 0) lit = markAffected(lit, marks.splice(0), time);
-    if (frame.pretendWorking) lit = markAffected(lit, [...positions.keys()], time);
+    if (marks.length > 0) lit = lightAffected(lit, marks.splice(0), time);
+    if (frame.pretendWorking) lit = lightAffected(lit, [...positions.keys()], time);
     lit = stepAffected(lit, time, frame.thinking || frame.pretendWorking);
     drawnCoronas = coronaLevels(lit).flatMap(({ id, level }) => {
       const position = positions.get(id);
@@ -557,7 +558,7 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
       marks.push(...entities.map((entity) => entity.id));
     },
     conversationEnded() {
-      if (marks.length > 0) lit = markAffected(lit, marks.splice(0), time);
+      if (marks.length > 0) lit = lightAffected(lit, marks.splice(0), time);
       lit = releaseAffected(lit);
     },
     setEditing(active) {
@@ -602,7 +603,7 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
         affected: affectedIds(lit),
         coronas: drawnCoronas.map((corona) => ({ ...corona, position: roomPoint(corona.position) })),
         pointed: pointing.pointed?.id ?? null,
-        pendingContext: pendingPointingContext(told, time) ?? null,
+        pendingPointing: pendingPointingUpdate(told, time) ?? null,
         drawer: {
           open: drawer.pose !== undefined,
           page: drawer.page,

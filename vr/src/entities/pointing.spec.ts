@@ -10,21 +10,19 @@ import {
   HAND_CONE_DEGREES,
   MIN_SEND_INTERVAL_SECONDS,
   NOT_POINTING,
-  NOT_POINTING_TEXT,
   NOTHING_TOLD,
   OCCLUSION_SLACK_METRES,
   type PointedEntity,
   type PointerKind,
   type PointerSource,
-  type PointingContextState,
   type PointingState,
   type PointingTarget,
-  pendingPointingContext,
-  pointingText,
+  type PointingUpdateState,
+  pendingPointingUpdate,
   QUEUED_FOR_SECONDS,
   SWITCH_MARGIN_DEGREES,
   stepPointing,
-  stepPointingContext,
+  stepPointingUpdate,
 } from './pointing';
 
 const EYE = { x: 0, y: 1.5, z: 0 };
@@ -164,30 +162,24 @@ describe('choosing what is pointed at', () => {
   });
 });
 
-describe('telling the conversation', () => {
+describe('telling the server', () => {
   const LAMP: PointedEntity = { id: 'light.kitchen_ceiling', name: 'Kitchen ceiling light' };
   const INBOX: PointedEntity = { id: 'inbox:work', name: 'Work inbox' };
 
-  /** Steps the context policy through `steps`, collecting what it sends and when. */
+  /** Steps the policy through `steps`, collecting what it sends and when (`null`: nothing pointed at). */
   function run(
     steps: { at: number; pointed?: PointedEntity; live: boolean }[],
-    start: PointingContextState = NOTHING_TOLD,
+    start: PointingUpdateState = NOTHING_TOLD,
   ) {
     let state = start;
-    const sent: { at: number; text: string }[] = [];
+    const sent: { at: number; entity: PointedEntity | null }[] = [];
     for (const step of steps) {
-      const result = stepPointingContext(state, step.pointed, step.live, step.at);
+      const result = stepPointingUpdate(state, step.pointed, step.live, step.at);
       state = result.state;
-      if (result.send !== undefined) sent.push({ at: step.at, text: result.send });
+      if (result.send !== undefined) sent.push({ at: step.at, entity: result.send.entity ?? null });
     }
     return { state, sent };
   }
-
-  it('names the entity and gives its id', () => {
-    expect(pointingText(LAMP)).toBe('Sir is pointing at "Kitchen ceiling light" (light.kitchen_ceiling).');
-    expect(pointingText({ id: 'calendar:home' })).toBe('Sir is pointing at "calendar:home" (calendar:home).');
-    expect(pointingText({ id: 'x', name: 'The "big" lamp' })).toBe(`Sir is pointing at "The 'big' lamp" (x).`);
-  });
 
   it('sends a target the moment it is pointed at while the call is live, once', () => {
     const { sent } = run([
@@ -196,7 +188,7 @@ describe('telling the conversation', () => {
       { at: 2, pointed: LAMP, live: true },
       { at: 3, pointed: LAMP, live: true },
     ]);
-    expect(sent).toEqual([{ at: 1, text: pointingText(LAMP) }]);
+    expect(sent).toEqual([{ at: 1, entity: LAMP }]);
   });
 
   it('sends nothing while the call is not live, and the latest target once it is', () => {
@@ -205,7 +197,7 @@ describe('telling the conversation', () => {
       { at: 1, live: false },
       { at: 6, live: true },
     ]);
-    expect(sent).toEqual([{ at: 6, text: pointingText(LAMP) }]);
+    expect(sent).toEqual([{ at: 6, entity: LAMP }]);
   });
 
   it(`drops a target pointed at more than ${QUEUED_FOR_SECONDS} s before the call went live`, () => {
@@ -217,7 +209,7 @@ describe('telling the conversation', () => {
     expect(sent).toEqual([]);
   });
 
-  it(`clears the context ${CLEAR_AFTER_SECONDS} s after the pointing stops`, () => {
+  it(`clears the target ${CLEAR_AFTER_SECONDS} s after the pointing stops`, () => {
     const { sent } = run([
       { at: 0, live: true },
       { at: 1, pointed: LAMP, live: true },
@@ -227,8 +219,8 @@ describe('telling the conversation', () => {
       { at: 2 + CLEAR_AFTER_SECONDS + 5, live: true },
     ]);
     expect(sent).toEqual([
-      { at: 1, text: pointingText(LAMP) },
-      { at: 2 + CLEAR_AFTER_SECONDS + 0.1, text: NOT_POINTING_TEXT },
+      { at: 1, entity: LAMP },
+      { at: 2 + CLEAR_AFTER_SECONDS + 0.1, entity: null },
     ]);
   });
 
@@ -240,8 +232,8 @@ describe('telling the conversation', () => {
       { at: 11 + CLEAR_AFTER_SECONDS + 0.1, live: true },
     ]);
     expect(sent).toEqual([
-      { at: 11, text: pointingText(LAMP) },
-      { at: 11 + CLEAR_AFTER_SECONDS + 0.1, text: NOT_POINTING_TEXT },
+      { at: 11, entity: LAMP },
+      { at: 11 + CLEAR_AFTER_SECONDS + 0.1, entity: null },
     ]);
   });
 
@@ -254,8 +246,8 @@ describe('telling the conversation', () => {
       { at: 2.1, pointed: INBOX, live: true },
     ]);
     expect(sent).toEqual([
-      { at: 1, text: pointingText(LAMP) },
-      { at: 2.1, text: pointingText(INBOX) },
+      { at: 1, entity: LAMP },
+      { at: 2.1, entity: INBOX },
     ]);
   });
 
@@ -267,7 +259,7 @@ describe('telling the conversation', () => {
     expect(sent).toEqual([]);
   });
 
-  it('tells a new conversation again, and says nothing to one that has ended', () => {
+  it('says nothing to a conversation that has ended, and leaves a new one to the line, which remembers', () => {
     const { sent } = run([
       { at: 0, live: true },
       { at: 1, pointed: LAMP, live: true },
@@ -275,18 +267,29 @@ describe('telling the conversation', () => {
       { at: 3, pointed: LAMP, live: false },
       { at: 5, pointed: LAMP, live: true },
     ]);
+    expect(sent).toEqual([{ at: 1, entity: LAMP }]);
+  });
+
+  it('clears a target a new conversation would inherit once it has gone stale, the moment it is live', () => {
+    const { sent } = run([
+      { at: 0, live: true },
+      { at: 1, pointed: LAMP, live: true },
+      { at: 2, live: false },
+      { at: 60, live: true },
+      { at: 61, live: true },
+    ]);
     expect(sent).toEqual([
-      { at: 1, text: pointingText(LAMP) },
-      { at: 5, text: pointingText(LAMP) },
+      { at: 1, entity: LAMP },
+      { at: 60, entity: null },
     ]);
   });
 
   it('shows the debug hook what would be sent once the call is live', () => {
     const { state } = run([{ at: 0, pointed: LAMP, live: false }]);
-    expect(pendingPointingContext(state, 5)).toBe(pointingText(LAMP));
-    expect(pendingPointingContext(state, QUEUED_FOR_SECONDS + 1)).toBeUndefined();
+    expect(pendingPointingUpdate(state, 5)).toEqual(LAMP);
+    expect(pendingPointingUpdate(state, QUEUED_FOR_SECONDS + 1)).toBeUndefined();
     const told = run([{ at: 0, pointed: LAMP, live: true }]).state;
-    expect(pendingPointingContext(told, 1)).toBeUndefined();
-    expect(pendingPointingContext(NOTHING_TOLD, 0)).toBeUndefined();
+    expect(pendingPointingUpdate(told, 1)).toBeUndefined();
+    expect(pendingPointingUpdate(NOTHING_TOLD, 0)).toBeUndefined();
   });
 });

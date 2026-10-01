@@ -1,14 +1,17 @@
 import {
+  type AffectedEntity,
   type AgentTrackRoom,
   createJarvisSession,
   type ElevenLabsSettings,
   followConversationOnServer,
   type GreetingPlayer,
   HEADSET_PARTICIPANT_NAME,
+  type JarvisServerMessage,
   type JarvisSession,
   type JarvisSessionDependencies,
   type JarvisSessionEvents,
   type JarvisVoiceReaders,
+  type ServerFollowing,
   type StartSession,
 } from 'hologram';
 import { findAgentRoom, followAgentVoice, type ListeningAudioContext, watchAgentRoom } from './agent-room';
@@ -25,15 +28,6 @@ export const NO_CONNECTION_DELAY = { default: 0, android: 0 };
 export const HEADSET_OFFLINE_PROBLEM =
   'ElevenLabs could not be reached. Check that the headset is connected to the internet.';
 
-/**
- * What the headset tells the agent about itself the moment each conversation connects (the
- * session's `deviceContext`). The agent's prompt waits for it before calling `markAffected` or
- * reading anything into what sir points at, because on the phone and the watch nothing lights up
- * and nothing can be pointed at.
- */
-export const HEADSET_DEVICE_CONTEXT =
-  "This conversation is on sir's headset, which lights up what you are working on and tells you what he is pointing at.";
-
 /** What the room hands over for each session; the rest is the headset's and is filled in here. */
 export interface HeadsetSessionOptions {
   settings: ElevenLabsSettings;
@@ -49,11 +43,6 @@ export interface HeadsetSessionOptions {
    */
   voice?: HeadsetVoice;
   /**
-   * What the agent is told about the device on connecting: {@link HEADSET_DEVICE_CONTEXT} from a
-   * room that lights up what he works on and says what sir points at. Without it, nothing.
-   */
-  deviceContext?: string;
-  /**
    * How long a summoning waits for its conversation to open, when not the session's own deadline:
    * only ever `Infinity`, from the browser tests' `?deadline=never` (`test-seams.ts`).
    */
@@ -64,7 +53,16 @@ export interface HeadsetSessionOptions {
    * `hologram`). Without it, none.
    */
   serverAddress?: string;
+  /**
+   * The entities a request touched, every time the server says so over that line (its
+   * `affectedEntities` message, validated and never empty): the room records them and lights them
+   * up where they stand. Without a server address it is never called.
+   */
+  onAffected?(entities: readonly AffectedEntity[]): void;
 }
+
+/** What {@link headsetSessionDependencies} makes the session from: everything but the server's line. */
+export type HeadsetSessionDependencyOptions = Omit<HeadsetSessionOptions, 'serverAddress' | 'onAffected'>;
 
 /** As much of the spatial voice as a conversation reaches for. */
 export type HeadsetVoice = Pick<
@@ -133,15 +131,15 @@ function eventsFor(events: JarvisSessionEvents, voice: HeadsetVoice | undefined)
  * what it watches for its echo passed on, and the half-duplex fallback told to wait while it is
  * spatial. And the SDK's orphaned `<audio>` elements swept away after a dropped call
  * (`orphaned-audio.ts`), because this page stays open for hours of summonings. The room's events
- * (`onAffected` among them), what it tells the agent about the device (`deviceContext`) and the
- * deadline the browser tests hold open (`giveUpConnectingAfterMs`) pass through as the room hands
- * them over.
+ * and the deadline the browser tests hold open (`giveUpConnectingAfterMs`) pass through as the room
+ * hands them over. The agent is told nothing about the headset: what sir points at goes to the
+ * Jarvis server instead (see {@link createHeadsetSession}).
  */
 export function headsetSessionDependencies({
   audioContext,
   voice,
   ...options
-}: HeadsetSessionOptions): JarvisSessionDependencies<number> {
+}: HeadsetSessionDependencyOptions): JarvisSessionDependencies<number> {
   return {
     ...options,
     greeting: voice === undefined ? options.greeting : voice.greeting(options.greeting),
@@ -161,16 +159,39 @@ export function headsetSessionDependencies({
 }
 
 /**
- * Jarvis's conversation on the headset: `hologram`'s session, with the headset's parts, and the line
- * to the server it keeps while a conversation is live — closed with the session.
+ * What the headset does with a message from the server: the entities a request touched go to the
+ * room's `onAffected`, and everything else (`ready`) is the line's own business.
  */
-export function createHeadsetSession({ serverAddress, ...options }: HeadsetSessionOptions): JarvisSession {
-  const session = createJarvisSession(headsetSessionDependencies(options));
-  const stopFollowing = followConversationOnServer(session, { address: serverAddress, device: 'vr' });
-  const dispose = session.dispose;
-  session.dispose = () => {
-    stopFollowing();
-    dispose();
+export function serverMessageHandler(
+  onAffected: HeadsetSessionOptions['onAffected'],
+): (message: JarvisServerMessage) => void {
+  return (message) => {
+    if (message.type === 'affectedEntities') onAffected?.(message.entities);
   };
-  return session;
+}
+
+/** The headset's conversation: the session, and a way to tell the server what sir points at. */
+export type HeadsetSession = JarvisSession & Pick<ServerFollowing, 'point'>;
+
+/**
+ * Jarvis's conversation on the headset: `hologram`'s session, with the headset's parts, and the line
+ * to the server it keeps while a conversation is live — closed with the session. That line is where
+ * the room hears what he is working on (`onAffected`), and where it says what sir points at
+ * (`point`), which the server writes into the requests it routes.
+ */
+export function createHeadsetSession({ serverAddress, onAffected, ...options }: HeadsetSessionOptions): HeadsetSession {
+  const session = createJarvisSession(headsetSessionDependencies(options));
+  const following = followConversationOnServer(session, {
+    address: serverAddress,
+    device: 'vr',
+    onMessage: serverMessageHandler(onAffected),
+  });
+  const dispose = session.dispose;
+  return Object.assign(session, {
+    point: following.point,
+    dispose: () => {
+      following.stop();
+      dispose();
+    },
+  });
 }

@@ -1,7 +1,7 @@
 import type { Ray, Vector3Like } from '../xr/ray';
 
 /**
- * What sir is pointing at, and what the conversation is told about it.
+ * What sir is pointing at, and what the Jarvis server is told about it.
  *
  * **Choosing.** A placed entity is pointed at when it lies inside a narrow cone around a pointing
  * ray — a hand's index finger in a point pose, or a controller's ray. A cone rather than a sphere of
@@ -16,13 +16,17 @@ import type { Ray, Vector3Like } from '../xr/ray';
  * - an entity well beyond what the ray hit — behind the wall it is pointing at — is passed over,
  *   when the caller knows where the ray hit.
  *
- * **Telling the conversation.** People point and then speak, and the call may not be live yet when
- * they point — "Hey Jarvis" comes after the finger — so the latest target is remembered: sent the
- * moment the call is live if it was pointed at within {@link QUEUED_FOR_SECONDS}, kept as the
- * conversation's context for {@link CLEAR_AFTER_SECONDS} after the pointing stops, and then cleared.
- * The same target is never sent twice in one conversation, and nothing is sent more often than once
- * every {@link MIN_SEND_INTERVAL_SECONDS}. Every update goes under one context id, so a newer one
- * supersedes the older.
+ * **Telling the server.** What sir points at goes to the Jarvis server, over the line the headset
+ * keeps open during a conversation (`jarvis-server-link.ts` in `hologram`), as an entity or as
+ * nothing; the server keeps the latest and adds it to the requests it routes. People point and then
+ * speak, and the call may not be live yet when they point — "Hey Jarvis" comes after the finger — so
+ * the latest target is remembered: sent the moment the call is live if it was pointed at within
+ * {@link QUEUED_FOR_SECONDS}, kept for {@link CLEAR_AFTER_SECONDS} after the pointing stops, and
+ * then cleared. The line remembers what it was last told, a new conversation's line included, so
+ * what was last sent is remembered here too, across conversations: the same target is never sent
+ * twice in a row, and a target a new conversation would inherit after it has gone stale is
+ * cleared the moment that conversation is live. Nothing is sent more often than once every
+ * {@link MIN_SEND_INTERVAL_SECONDS}.
  *
  * Pure: a state in, a state out, times in seconds on any steady clock.
  */
@@ -162,56 +166,50 @@ export function stepPointing(
   return { pointed, candidate, strayingSince: dropped ? undefined : strayingSince };
 }
 
-/** The context id every pointing update goes under, so each supersedes the last. */
-export const POINTING_CONTEXT_ID = 'pointing';
-
 /** How long a target pointed at before the call was live is still sent once it is. */
 export const QUEUED_FOR_SECONDS = 15;
 
-/** How long the conversation keeps a target as its context after the pointing stops. */
+/** How long the server keeps a target after the pointing stops. */
 export const CLEAR_AFTER_SECONDS = 12;
 
 /** The least time between two updates. */
 export const MIN_SEND_INTERVAL_SECONDS = 1;
 
-/** What is sent once nothing is pointed at any more. */
-export const NOT_POINTING_TEXT = 'Sir is not pointing at anything.';
-
-/** An entity pointed at, as the conversation is told about it. */
+/** An entity pointed at, as the server is told about it: its id to act on, and its name to say. */
 export interface PointedEntity {
   id: string;
   name?: string;
 }
 
-/**
- * What the conversation is told about `entity`: its name to talk about it by and its id to act on.
- * A double quote in the name would end the quoted name early, so it is turned into a single one.
- */
-export function pointingText(entity: PointedEntity): string {
-  const label = (entity.name ?? entity.id).replaceAll('"', "'");
-  return `Sir is pointing at "${label}" (${entity.id}).`;
+/** One update for the server: what sir points at now, or `undefined` for nothing at all. */
+export interface PointingUpdate {
+  entity: PointedEntity | undefined;
 }
 
-export interface PointingContextState {
+export interface PointingUpdateState {
   /** Whether the call was live at the last step. */
   readonly live: boolean;
   /** The last entity pointed at, and when it last was. */
   readonly latest?: { entity: PointedEntity; seenAt: number };
-  /** What this conversation was last told, and when: an entity's id, or that there is nothing. */
+  /**
+   * What the line was last told, and when: an entity's id, or that there is nothing. Kept across
+   * conversations, as the line keeps it.
+   */
   readonly told?: { id: string | null; at: number };
+  /** When this conversation was last sent an update. */
   readonly lastSentAt?: number;
 }
 
-export const NOTHING_TOLD: PointingContextState = { live: false };
+export const NOTHING_TOLD: PointingUpdateState = { live: false };
 
-export interface PointingContextStep {
-  state: PointingContextState;
-  /** An update to send now, under POINTING_CONTEXT_ID. */
-  send?: string;
+export interface PointingUpdateStep {
+  state: PointingUpdateState;
+  /** An update to send now. */
+  send?: PointingUpdate;
 }
 
-/** What the conversation should hold now: an entity, or nothing (null). */
-function wanted(state: PointingContextState, pointing: boolean, now: number): PointedEntity | null {
+/** What the server should hold now: an entity, or nothing (null). */
+function wanted(state: PointingUpdateState, pointing: boolean, now: number): PointedEntity | null {
   const latest = state.latest;
   if (latest === undefined) return null;
   if (pointing) return latest.entity;
@@ -226,41 +224,38 @@ function wanted(state: PointingContextState, pointing: boolean, now: number): Po
  * The next state, and the update to send if there is one, given what is pointed at this frame and
  * whether the call is live.
  */
-export function stepPointingContext(
-  previous: PointingContextState,
+export function stepPointingUpdate(
+  previous: PointingUpdateState,
   pointed: PointedEntity | undefined,
   live: boolean,
   now: number,
-): PointingContextStep {
-  // A call that has just gone live, or just ended, is a conversation that has been told nothing.
+): PointingUpdateStep {
+  // A call that has just gone live, or just ended, has been sent nothing yet.
   const fresh = live !== previous.live;
-  const state: PointingContextState = {
+  const state: PointingUpdateState = {
     live,
     latest: pointed === undefined ? previous.latest : { entity: pointed, seenAt: now },
-    told: fresh ? undefined : previous.told,
+    told: previous.told,
     lastSentAt: fresh ? undefined : previous.lastSentAt,
   };
   if (!live) return { state };
   const entity = wanted(state, pointed !== undefined, now);
   const toldId = state.told?.id ?? null;
-  const message =
-    entity !== null && entity.id !== toldId
-      ? pointingText(entity)
-      : entity === null && toldId !== null
-        ? NOT_POINTING_TEXT
-        : undefined;
-  if (message === undefined) return { state };
+  if ((entity?.id ?? null) === toldId) return { state };
   if (state.lastSentAt !== undefined && now - state.lastSentAt < MIN_SEND_INTERVAL_SECONDS) return { state };
-  return { state: { ...state, told: { id: entity?.id ?? null, at: now }, lastSentAt: now }, send: message };
+  return {
+    state: { ...state, told: { id: entity?.id ?? null, at: now }, lastSentAt: now },
+    send: { entity: entity ?? undefined },
+  };
 }
 
 /**
  * What would be sent the moment the call went live: for the debug hook, since offline — in the
  * browser tests — the call never is.
  */
-export function pendingPointingContext(state: PointingContextState, now: number): string | undefined {
+export function pendingPointingUpdate(state: PointingUpdateState, now: number): PointedEntity | undefined {
   const latest = state.latest;
   if (latest === undefined || now - latest.seenAt >= QUEUED_FOR_SECONDS) return undefined;
   if (state.live && state.told?.id === latest.entity.id) return undefined;
-  return pointingText(latest.entity);
+  return latest.entity;
 }

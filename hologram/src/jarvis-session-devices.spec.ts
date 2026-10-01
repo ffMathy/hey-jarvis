@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'bun:test';
-import { MARK_AFFECTED_TOOL, MARKED_RESULT } from './affected-entities';
 import { GIVE_UP_CONNECTING_AFTER_MS } from './conversation-life';
 import { PHONE_PARTICIPANT_NAME, WATCH_PARTICIPANT_NAME } from './conversation-token';
 import { DEADLINE_PROBLEM, DROPPED_PROBLEM, OFFLINE_PROBLEM } from './failure-text';
 import { createFakeCallAudio, createHarness, settle } from './jarvis-session.fakes';
-import type { JarvisSessionDependencies, SessionDiagnostics } from './session-contract';
+import type { JarvisSessionDependencies } from './session-contract';
 
 /**
  * The same session, set up as the phone and the watch set it up: the greeting played inside the
@@ -706,66 +705,20 @@ describe('the half-duplex fallback, which only the headset asks for', () => {
   });
 });
 
-describe('what he is working on, which only the headset shows', () => {
-  /** The events `useJarvisSession` hands the session on a phone and a watch, and a diagnostics log. */
-  function phoneEvents() {
-    const problems: string[] = [];
-    const diagnostics: SessionDiagnostics[] = [];
-    return {
-      problems,
-      diagnostics,
-      events: {
-        onProblem: (message: string) => problems.push(message),
-        onDiagnostics: (reported: SessionDiagnostics) => diagnostics.push(reported),
-      },
-    };
-  }
-
-  it('is answered on a phone without an error, and without anything on its screen moving', async () => {
-    const told = phoneEvents();
-    const phone = onAPhone({ events: told.events });
+describe('what a device tells the agent, and answers for it', () => {
+  it('dials with no client tools, spoken or held in writing: what he works on comes from the server', async () => {
+    const phone = onAPhone();
     await goLiveOn(phone);
-    let changes = 0;
-    phone.session.subscribe(() => changes++);
-    const before = phone.session.snapshot;
 
-    const answer = await phone.sdk.latest.callClientTool(MARK_AFFECTED_TOOL, {
-      entities: [{ id: 'light.hall', name: 'Hall' }],
-    });
-
-    expect(answer).toEqual({ result: MARKED_RESULT, isError: false });
-    expect(changes).toBe(0);
-    expect(phone.session.snapshot).toBe(before);
-    expect(phone.session.phase).toBe('live');
-    expect(told.problems).toEqual([]);
-    expect(told.diagnostics.at(-1)?.lastError).toBeUndefined();
-  });
-
-  it('is answered in a browser, spoken or held in writing', async () => {
-    const spoken = inABrowser({ events: phoneEvents().events });
-    spoken.session.summon();
-    spoken.greeting.allow();
-    spoken.tokens.grant();
-    await settle();
-    await spoken.sdk.latest.connect();
-    const spokenAnswer = await spoken.sdk.latest.callClientTool(MARK_AFFECTED_TOOL, {
-      entities: [{ id: 'inbox:work' }],
-    });
-
-    const told = phoneEvents();
-    const written = inABrowser({ events: told.events });
+    const written = inABrowser();
     written.session.summon({ textOnly: true });
     written.tokens.sign();
     await settle();
     await written.sdk.latest.connect();
-    const writtenAnswer = await written.sdk.latest.callClientTool(MARK_AFFECTED_TOOL, {
-      entities: [{ id: 'calendar/primary' }],
-    });
 
-    expect(spokenAnswer).toEqual({ result: MARKED_RESULT, isError: false });
+    expect(Object.keys(phone.sdk.latest.options)).not.toContain('clientTools');
     expect(written.sdk.latest.written?.textOnly).toBe(true);
-    expect(writtenAnswer).toEqual({ result: MARKED_RESULT, isError: false });
-    expect(told.diagnostics.at(-1)?.lastError).toBeUndefined();
+    expect(Object.keys(written.sdk.latest.options)).not.toContain('clientTools');
   });
 
   it('tells a phone’s agent nothing about the device, which has nothing of its own to say', async () => {

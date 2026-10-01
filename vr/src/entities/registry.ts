@@ -4,8 +4,9 @@ import type { KeyValueStorage } from '../page/settings';
  * Every entity Jarvis has ever said he was working on, and where sir put the ones he placed.
  *
  * An entity is whatever one of the agents behind the conversation touched: a Home Assistant light,
- * an email inbox, a calendar, anything with a name. It reaches the headset through the voice agent's
- * `markAffected` client tool as an opaque `id` and, often, a display `name`. The id is never parsed —
+ * an email inbox, a calendar, anything with a name. It reaches the headset from the Jarvis server, in
+ * the `affectedEntities` message it pushes over the socket the headset keeps open during a
+ * conversation, as an opaque `id` and, often, a display `name`. The id is never parsed —
  * it may come from any agent, in any shape — and the name is only ever shown.
  *
  * Kept in `localStorage` under a key of this app's own (the origin is shared with the phone's web
@@ -47,10 +48,10 @@ export const MAX_ENTITY_ID_LENGTH = 200;
 /** The longest name kept; a longer one is cut, since a name is only ever shown. */
 export const MAX_ENTITY_NAME_LENGTH = 120;
 
-/** How many entities one mark takes: a call naming more is not a call about things sir can see. */
+/** How many entities one mark takes: a message naming more is not one about things sir can see. */
 export const MAX_ENTITIES_PER_MARK = 50;
 
-/** One entity as a `markAffected` call names it. */
+/** One entity as an `affectedEntities` message names it. */
 export interface EntityReport {
   id: string;
   name?: string;

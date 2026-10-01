@@ -2,12 +2,12 @@ import { describe, expect, it } from 'bun:test';
 import { type AffectedEntity, type AgentTrackRoom, type GreetingPlayer, HEADSET_PARTICIPANT_NAME } from 'hologram';
 import { findAgentRoom, type ListeningAudioContext } from './agent-room';
 import {
-  HEADSET_DEVICE_CONTEXT,
   HEADSET_OFFLINE_PROBLEM,
   type HeadsetSessionOptions,
   type HeadsetVoice,
   headsetSessionDependencies,
   NO_CONNECTION_DELAY,
+  serverMessageHandler,
 } from './headset-session';
 import { removeOrphanedAudioFromPage } from './orphaned-audio';
 
@@ -71,17 +71,6 @@ describe('the headset’s session', () => {
     expect(dependencies.removeOrphanedAudio).toBe(removeOrphanedAudioFromPage);
   });
 
-  it('tells the agent about the headset only when the room hands that over', () => {
-    expect(dependencies.deviceContext).toBeUndefined();
-
-    const told = headsetSessionDependencies(optionsWith({ deviceContext: HEADSET_DEVICE_CONTEXT }));
-
-    expect(told.deviceContext).toBe(HEADSET_DEVICE_CONTEXT);
-    // What the agent's prompt looks for before it lights anything up.
-    expect(HEADSET_DEVICE_CONTEXT).toContain('headset');
-    expect(HEADSET_DEVICE_CONTEXT).toContain('pointing at');
-  });
-
   it('waits for a conversation on the session’s own deadline, unless the room holds it open', () => {
     // Left to the session, which gives up after GIVE_UP_CONNECTING_AFTER_MS on every device.
     expect(dependencies.giveUpConnectingAfterMs).toBeUndefined();
@@ -93,44 +82,23 @@ describe('the headset’s session', () => {
 });
 
 describe('what the room hears of what he is working on', () => {
-  const marked: AffectedEntity[] = [{ id: 'light.kitchen_ceiling', name: 'Kitchen ceiling' }, { id: 'inbox:work' }];
+  const touched: AffectedEntity[] = [{ id: 'light.kitchen_ceiling', name: 'Kitchen ceiling' }, { id: 'inbox:work' }];
 
-  /** The room's events, recording every report of what a request affects. */
-  function recordingEvents() {
+  it('is every affectedEntities message the server sends, passed on as it came', () => {
     const reports: Array<readonly AffectedEntity[]> = [];
-    return {
-      reports,
-      events: { onPhase: () => undefined, onAffected: (entities: readonly AffectedEntity[]) => reports.push(entities) },
-    };
-  }
+    const handle = serverMessageHandler((entities) => reports.push(entities));
 
-  it('is passed on untouched without a spatial voice', () => {
-    const recording = recordingEvents();
+    handle({ type: 'ready' });
+    handle({ type: 'affectedEntities', entities: touched });
+    handle({ type: 'affectedEntities', entities: [{ id: 'calendar/primary' }] });
 
-    const dependencies = headsetSessionDependencies(optionsWith({ events: recording.events }));
-    dependencies.events.onAffected?.(marked);
-
-    expect(dependencies.events.onAffected).toBe(recording.events.onAffected);
-    expect(recording.reports).toEqual([marked]);
+    expect(reports).toEqual([touched, [{ id: 'calendar/primary' }]]);
   });
 
-  it('is passed on with one, whose own events are wrapped around the room’s', () => {
-    const recording = recordingEvents();
-    const voice: HeadsetVoice = {
-      greeting: (player) => player,
-      playAgent: () => () => undefined,
-      conversationOpened: () => () => undefined,
-      attached: () => undefined,
-      interrupted: () => undefined,
-      heard: () => undefined,
-      halfDuplexMayJudge: () => true,
-      halfDuplexChanged: () => undefined,
-    };
+  it('is nothing at all for a room that does not ask', () => {
+    const handle = serverMessageHandler(undefined);
 
-    const dependencies = headsetSessionDependencies(optionsWith({ events: recording.events, voice }));
-    dependencies.events.onAffected?.(marked);
-
-    expect(recording.reports).toEqual([marked]);
+    expect(() => handle({ type: 'affectedEntities', entities: touched })).not.toThrow();
   });
 });
 

@@ -80,9 +80,9 @@ export interface ConversationEvents {
   onCaption(text: string | undefined): void;
   onDiagnostics?(diagnostics: ConversationDiagnostics): void;
   /**
-   * The entities the agent says the request under way affects, every time it marks them with its
-   * `markAffected` tool: opaque ids from whichever agent took the request, with a name to show when
-   * it had one, validated and never empty.
+   * The entities a request touched, every time the Jarvis server says so over the line the headset
+   * keeps open during a conversation (its `affectedEntities` message): opaque ids from whichever
+   * agent took the request, with a name to show when it had one, validated and never empty.
    */
   onAffected?(entities: readonly AffectedEntity[]): void;
 }
@@ -94,12 +94,11 @@ export interface ConversationPort {
   sendText(text: string): void;
   setTyping(typing: boolean): void;
   /**
-   * Tells the agent something without asking it anything — what sir is pointing at — under
-   * `contextId`, so that a newer update for the same id replaces the last in the agent's view. Sent
-   * while connected; before that the latest for each id waits for the summoning under way, and
-   * with none under way nothing is kept.
+   * Tells the Jarvis server what sir is pointing at — an entity, or `undefined` for nothing — over
+   * the line the headset keeps open while a conversation is live. The latest is remembered and sent
+   * once the server is ready, again after every reconnect, and on the next conversation's line too.
    */
-  sendContextualUpdate(text: string, contextId?: string): void;
+  point(entity: AffectedEntity | undefined): void;
   readonly phase: SessionPhase;
   readonly voice: JarvisVoice;
   readonly user: UserVoice;
@@ -124,7 +123,7 @@ export function createSilentConversation(): ConversationPort {
     endQuietly: () => undefined,
     sendText: () => undefined,
     setTyping: () => undefined,
-    sendContextualUpdate: () => undefined,
+    point: () => undefined,
     phase: 'idle',
     voice: SILENT_VOICE,
     user: NOBODY,

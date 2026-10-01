@@ -15,8 +15,8 @@ export { createGreetingPlayer, type GreetingElement, type PrimableGreetingPlayer
 export { greetingRecordingUrl } from './greeting-recording';
 export {
   createHeadsetSession,
-  HEADSET_DEVICE_CONTEXT,
   HEADSET_OFFLINE_PROBLEM,
+  type HeadsetSession,
   type HeadsetSessionOptions,
   headsetSessionDependencies,
   NO_CONNECTION_DELAY,

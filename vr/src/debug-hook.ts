@@ -107,10 +107,10 @@ export interface EntitiesReport {
   /** What sir is pointing at, by id. */
   pointed: string | null;
   /**
-   * What the conversation would be told about it the moment the call is live — offline, in the
-   * browser tests, the call never is.
+   * What the Jarvis server would be told sir points at the moment the call is live — offline, in
+   * the browser tests, the call never is.
    */
-  pendingContext: string | null;
+  pendingPointing: { id: string; name?: string } | null;
   /** The drawer, and the entities on the page it shows, each with where its token floats. */
   drawer: {
     open: boolean;

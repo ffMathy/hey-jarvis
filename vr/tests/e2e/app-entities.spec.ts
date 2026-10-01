@@ -48,9 +48,9 @@ import { expect, photograph, ROOM_PICTURE_VIEWPORT, test } from './fixtures';
  * headset starts somewhere new — without that, the emulator's `local-floor` is the same in every
  * session and a position kept in it would come back right for the wrong reason.
  *
- * Nothing here reaches ElevenLabs: what the conversation would be told about what sir points at is
- * read from the debug hook's `pendingContext`, and the corona is lit by sample mode's thinking mood,
- * which lights every placed entity as a real mark would.
+ * Nothing here reaches ElevenLabs or a Jarvis server: what the server would be told sir points at
+ * is read from the debug hook's `pendingPointing`, and the corona is lit by sample mode's thinking
+ * mood, which lights every placed entity as a real mark would.
  */
 
 const KITCHEN = { id: 'light.kitchen_ceiling', name: 'Kitchen ceiling light' };
@@ -246,7 +246,7 @@ test('what Jarvis works on is placed in the room by hand and controller, kept, p
     await holdController(page, 'left', { x: -0.25, y: 1.3, z: 0.95 }, POINTING_UP);
     await aim(page, KITCHEN_SPOT);
     await expect.poll(async () => (await entities(page)).pointed, { timeout: 30000 }).toBe(KITCHEN.id);
-    expect((await entities(page)).pendingContext).toBe(`Sir is pointing at "${KITCHEN.name}" (${KITCHEN.id}).`);
+    expect((await entities(page)).pendingPointing).toEqual(KITCHEN);
     await lookAt(page, { x: KITCHEN_SPOT.x + 0.15, y: KITCHEN_SPOT.y, z: KITCHEN_SPOT.z });
     await frames(page, 3);
     await photograph(page, testInfo, 'entities-pointing.png');
@@ -259,7 +259,7 @@ test('what Jarvis works on is placed in the room by hand and controller, kept, p
     await pointHandAt(page, 'right', { x: 0.2, y: 1.3, z: 0.9 }, KITCHEN_SPOT, MOVED);
     await expect.poll(async () => (await entities(page)).pointed, { timeout: 30000 }).toBe(KITCHEN.id);
     expect((await inputReport(page, 'right-hand')).pointing).toBe(true);
-    expect((await entities(page)).pendingContext).toBe(`Sir is pointing at "${KITCHEN.name}" (${KITCHEN.id}).`);
+    expect((await entities(page)).pendingPointing).toEqual(KITCHEN);
     await holdHand(page, 'right', { position: { x: 0.2, y: 1.1, z: 0.9 }, rotation: POINTING_UP, pose: 'default' });
     await expect.poll(async () => (await entities(page)).pointed, { timeout: 30000 }).toBeNull();
   });

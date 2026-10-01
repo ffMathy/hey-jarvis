@@ -150,7 +150,11 @@ export function useJarvisSession(options: JarvisSessionOptions): JarvisConversat
   useEffect(() => () => session.endQuietly(), [session]);
 
   const { address, device } = options.server;
-  useEffect(() => followConversationOnServer(session, { address, device }), [session, address, device]);
+  useEffect(() => {
+    // The phone and the watch point at nothing, and show nothing of what a request touches.
+    const following = followConversationOnServer(session, { address, device });
+    return following.stop;
+  }, [session, address, device]);
 
   const snapshot = useSyncExternalStore(session.subscribe, () => session.snapshot);
   const actions = useMemo(

@@ -505,14 +505,26 @@ what is the headset's: its name (`jarvis-vr`), no platform delay before
 dialling, the half-duplex fallback, its words for being offline, his track
 analysed on the app's `AudioContext` (`agent-room.ts`), the greeting's `<audio>`
 element (`greeting-player.ts`) and the orphaned-audio sweep
-(`orphaned-audio.ts`). It also passes the room's `onAffected` — the entities the
-agent marks with its `markAffected` client tool, which `hologram`'s session
-answers on every device — and, from `main.ts`, `deviceContext:
-HEADSET_DEVICE_CONTEXT`, said to the agent under the `device` context id each
-time a conversation connects; the agent's prompt waits for it before marking
-anything. `ConversationPort.sendContextualUpdate(text, contextId)` is how the room
-tells the agent what sir points at: sent while connected, the latest per context
-id held until the summoning connects, dropped when it ends. It holds one summoning
+(`orphaned-audio.ts`). It tells the agent nothing about the headset.
+
+**The line to the Jarvis server is where the room meets the server.**
+`createHeadsetSession` keeps `hologram`'s line open while a conversation is live
+(`followConversationOnServer`, when the phone's web build has kept a server
+address on this origin), and returns the session with a `point` of its own.
+- **What he is working on comes in on it.** The server broadcasts an
+  `affectedEntities` frame to every device that has said hello as soon as a tool
+  in a request reports what it touched; `serverMessageHandler` hands those
+  entities to the room's `onAffected` (passed from `main.ts`, the one
+  `ConversationEvents` names), which feeds its entities controller
+  (`room.entities.affected`).
+- **What sir points at goes out on it.** `ConversationPort.point(entity)` sends a
+  `pointing` frame — an entity, or nothing — which the server keeps and writes
+  into the requests it routes; the line sends the latest once the server is
+  ready, again after a reconnect, and on the next conversation's line too.
+- **Without a server address,** nothing is lit by a conversation and pointing
+  reaches nobody.
+
+The session holds one summoning
 at a time on the ElevenLabs SDK's
 own client (`Conversation.startSession` from `@elevenlabs/client`, passed in as
 `startSession`), with no React provider, and keeps that provider's guarantees:
@@ -652,8 +664,7 @@ still keeps the room on `connection.getRoom()`, that it builds that room from th
 same `livekit-client` this app imports (so `instanceof Room` can match), that it
 still uses the disconnect wording `describeDisconnect` looks for, and, at compile
 time, that `Conversation.startSession` still fits `StartSession`; it also pins how
-the SDK answers a client tool and sends a context id, which `hologram`'s fakes
-copy. The session's own
+the SDK sends a context id, which `hologram`'s fakes copy. The session's own
 behaviour is pinned in `hologram` (`jarvis-session.spec.ts` and
 `jarvis-session-conversation.spec.ts`, set up the way `createHeadsetSession` sets
 it up, driven by the fakes in `jarvis-session.fakes.ts`, which fire callbacks in
@@ -665,18 +676,19 @@ only `*.mp3?url`, never hologram's numeric `*.mp3`, which vr must not reach.
 ## Entities placed in the room (`src/entities/`, `app/room-entities.ts`, `hologram3d/corona.ts`)
 
 An entity is whatever an agent behind the conversation read or changed for sir — a Home Assistant
-light, an email folder, a calendar — reported by the voice agent's `markAffected` client tool as an
-opaque id, which may come from any agent and is never parsed, and an optional display name. The
-MCP side decides what a request touches (`../mcp/AGENTS.md`, "What a request touches"), the
-ElevenLabs prompt decides when to call the tool (`../elevenlabs/AGENTS.md`), and `hologram`'s
-session answers it on every device; this app keeps them, lets sir put them in the room, lights them
-while Jarvis works on them, and tells the agent what sir points at.
+light, an email folder, a calendar — pushed by the Jarvis server in an `affectedEntities` frame over
+the socket the headset holds open during a conversation, as an opaque id, which may come from any
+agent and is never parsed, and an optional display name. The MCP side decides what a request
+touches and broadcasts it (`../mcp/AGENTS.md`, "What a request touches"), and `hologram` reads the
+frame (`jarvis-server-link.ts`, validated by `affected-entities.ts`); the phone and the watch ignore
+it. This app keeps them, lets sir put them in the room, lights them while Jarvis works on them, and
+tells the server what sir points at.
 
 ```
 src/entities/registry.ts        every entity ever marked, and where each placed one is kept (localStorage)
 src/entities/room-anchors.ts    a few persistent anchors, placements as offsets from them, restored each session
 src/entities/affected.ts        how long a corona stays lit
-src/entities/pointing.ts        what sir points at, and what the conversation is told about it
+src/entities/pointing.ts        what sir points at, and what the Jarvis server is told about it
 src/entities/hand-pose.ts       pinches, pointing fingers and a raised wrist, from joints
 src/entities/grab.ts            taking a token near or far, carrying it, putting it down or back
 src/entities/entity-input.ts    one frame's hands and controllers, as grabbing, pointing and the wrist button read them
@@ -687,8 +699,8 @@ src/ui3d/entity-tokens.ts       the orbs, entity-labels.ts their names, pointing
 ```
 
 **The registry** (`jarvis.horizon.entities`, version 1) keeps every entity ever marked, at most
-300, and never forgets a placed one; every `markAffected` report is recorded whatever the room is
-doing. An id is any string the model sent, `__proto__` and `constructor` included, so entries are
+300, and never forgets a placed one; every `affectedEntities` frame is recorded whatever the room is
+doing. An id is any string the server sent, `__proto__` and `constructor` included, so entries are
 read only as the object's own (`knownEntity`, `hasAnchor`) and defined, never assigned, even when
 parsed. It is written half a second after a change, and at once when placing things ends, when the
 room closes and on `pagehide`. A placement is an offset in the space of one of at most four
@@ -734,13 +746,15 @@ out of the room.
 pose (index straight, the rest curled — a hand's system ray is there whether it points or not),
 picks the placed entity inside a cone of 4° or 7° round it, after a 0.28 s dwell, with a 2° margin
 before switching and a drop 0.2 s outside 1.5 times the cone; one beyond a controller's depth hit is
-passed over. It is ringed in the accent with its name over it. The conversation is told
-`Sir is pointing at "<name>" (<id>).` under the context id `pointing` while the call is live — held
-for 15 s when it is not yet, since people point and then say "Hey Jarvis", and cleared with
-`Sir is not pointing at anything.` 12 s after the pointing stops. `agent-contract.spec.ts` reads the
-ElevenLabs prompt, the evals' copy of these sentences and the MCP routing workflow and planner as
-text, and fails if the device context, the pointing update or the `(pointing at "<name>", id <id>)`
-form they teach drift apart.
+passed over. It is ringed in the accent with its name over it. The Jarvis server is told the entity
+(`ConversationPort.point`, a `pointing` frame on `hologram`'s line) while the call is live — held for
+15 s when it is not yet, since people point and then say "Hey Jarvis", and cleared (`point(undefined)`)
+12 s after the pointing stops. The line remembers the last one across conversations, so the room
+does too (`stepPointingUpdate`): the same target is never sent twice in a row, and one a new
+conversation would inherit after it has gone stale is cleared the moment that conversation is live.
+The agent hears none of it: the server writes `(pointing at "<name>", id <id>)` into each request it
+routes. `agent-contract.spec.ts` reads the server's template and the routing planner's example as
+text, and fails if the form the server writes and the one the planner is taught drift apart.
 
 **The corona** (`hologram3d/corona.ts`, drawn in his palette on his thinking scan's rhythm, its
 radius never under 1.5°, so never under 3° across) lights round a placed entity for at least 2.5 s
@@ -749,8 +763,8 @@ his leave time, or at once when the conversation ends. Sample mode's thinking mo
 placed entity: the corona without a call, and a beat for the demo.
 
 **What the tests see:** `window.__jarvis.entities` — what is known, placed (with each anchor and
-where it is now), lit and pointed at, the context that would be sent, the drawer's slots and buttons
-with their positions, the tokens in hand, each hand and controller as placing reads it (pinch point,
+where it is now), lit and pointed at, what the server would be told sir points at
+(`pendingPointing`), the drawer's slots and buttons with their positions, the tokens in hand, each hand and controller as placing reads it (pinch point,
 grip, index tip, rays), the wrist button, and every anchor's state — worked out only when read. The
 HUD has one `entities` line.
 

@@ -3,10 +3,10 @@ import { LEAVING_SECONDS } from 'hologram';
 /**
  * How long a corona stays lit around an entity Jarvis said he was working on.
  *
- * A `markAffected` call says which entities a request touches, and nothing ever says the work is
- * done: the agents' tools finish on the server, and the voice agent's own tool events only say when
- * he is waiting on the routing workflow. So a corona is lit by a mark and kept by the evidence at
- * hand:
+ * The Jarvis server's `affectedEntities` message says which entities a request touches, the moment
+ * a tool reports them, and nothing ever says the work is done: the agents' tools finish on the
+ * server, and the voice agent's own tool events only say when he is waiting on the routing
+ * workflow. So a corona is lit by a mark — one such message — and kept by the evidence at hand:
  *
  * - **Every mark shows for at least {@link MIN_SHOWN_SECONDS}**, so a quick request still visibly
  *   lands on the lamp it was about.
@@ -54,7 +54,7 @@ export interface CoronaLevel {
 }
 
 /** Marks `ids` as being worked on at `now`, lighting a corona for each from the next step. */
-export function markAffected(state: AffectedState, ids: readonly string[], now: number): AffectedState {
+export function lightAffected(state: AffectedState, ids: readonly string[], now: number): AffectedState {
   if (ids.length === 0) return state;
   const entries = new Map(state.entries);
   for (const id of ids) {
