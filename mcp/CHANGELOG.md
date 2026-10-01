@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.16.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.15.1...mcp-v2.16.0) (2026-10-01)
+
+
+### Features
+
+* **elevenlabs:** add the markAffected client tool and pointing context ([#925](https://github.com/ffMathy/hey-jarvis/issues/925)) ([f9ad2fb](https://github.com/ffMathy/hey-jarvis/commit/f9ad2fb85aa06b5af069f08253b2e2116bda1c52))
+
 ## [2.15.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.15.0...mcp-v2.15.1) (2026-10-01)
 
 

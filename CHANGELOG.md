@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.18.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.17.1...root-v4.18.0) (2026-10-01)
+
+
+### Features
+
+* **elevenlabs:** add the markAffected client tool and pointing context ([#925](https://github.com/ffMathy/hey-jarvis/issues/925)) ([f9ad2fb](https://github.com/ffMathy/hey-jarvis/commit/f9ad2fb85aa06b5af069f08253b2e2116bda1c52))
+
 ## [4.17.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.17.0...root-v4.17.1) (2026-10-01)
 
 
