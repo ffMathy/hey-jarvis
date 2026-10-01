@@ -27,9 +27,9 @@ export function serverStatusText(connected: boolean): string {
 
 /** The parts of the page this fills in, by only what it writes on each, which the page's elements are. */
 export interface ServerStatusElements {
-  section: { hidden: boolean };
+  section: Pick<HTMLElement, 'hidden'>;
   status: { textContent: string | null };
-  signIn: { hidden: boolean };
+  signIn: Pick<HTMLElement, 'hidden'>;
   signInLink: { href: string };
 }
 
