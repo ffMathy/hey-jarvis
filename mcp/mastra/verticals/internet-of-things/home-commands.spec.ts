@@ -10,9 +10,13 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { Classifier } from '@mastra/core/classifier';
 import {
+  answerHomeQuestion,
+  describeEntities,
   entitiesFrom,
   entityQuestions,
   type HomeService,
+  homeQuestionDomainFrom,
+  homeQuestionQuestions,
   homeServiceFrom,
   homeServiceQuestions,
   homeServicesFrom,
@@ -154,12 +158,50 @@ describe('entitiesFrom', () => {
 
 describe('entityQuestions', () => {
   it('asks about each entity by name, area and state', () => {
-    const questions = entityQuestions('turn off the kitchen lights', lightTurnOff, ENTITIES);
+    const questions = entityQuestions('Should it act on', ENTITIES);
 
     expect(Object.keys(questions)).toEqual(['entity0', 'entity1']);
     expect(questions.entity0?.instructions).toContain(
       'Kitchen ceiling (light.kitchen), in Kitchen, which is currently on',
     );
+  });
+});
+
+describe('homeQuestionQuestions', () => {
+  it('offers each domain in words where it can, with a way out', () => {
+    const { homeQuestionDomain } = homeQuestionQuestions(['lock', 'vacuum']);
+
+    expect(homeQuestionDomain.criteria).toEqual({ lock: 'Door locks', vacuum: 'vacuum', other: expect.any(String) });
+  });
+});
+
+describe('homeQuestionDomainFrom', () => {
+  function answers(choice: string, confidence: number, aboutNow = 0.97) {
+    return {
+      homeQuestionDomain: { choice, probabilities: { [choice]: confidence } },
+      homeQuestionIsAboutNow: { probability: aboutNow },
+    };
+  }
+
+  it('takes a domain it is sure of, for a question about now', () => {
+    expect(homeQuestionDomainFrom(answers('lock', 0.95), ['lock'], SURE)).toBe('lock');
+  });
+
+  it('leaves history, unsure answers and unknown domains to the agent', () => {
+    expect(homeQuestionDomainFrom(answers('lock', 0.95, 0.3), ['lock'], SURE)).toBeUndefined();
+    expect(homeQuestionDomainFrom(answers('lock', 0.6), ['lock'], SURE)).toBeUndefined();
+    expect(homeQuestionDomainFrom(answers('garage', 0.99), ['lock'], SURE)).toBeUndefined();
+  });
+});
+
+describe('describeEntities', () => {
+  it('lists each entity with its area, state and unit, for the voice model to phrase', () => {
+    expect(
+      describeEntities([
+        { id: 'sensor.living_temp', name: 'Living room temperature', area: 'Living Room', state: '21.5', unit: '°C' },
+        { id: 'lock.front', name: 'Front door', area: null, state: 'locked' },
+      ]),
+    ).toBe('Living room temperature (Living Room): 21.5 °C\nFront door: locked');
   });
 });
 
@@ -270,6 +312,17 @@ describe('runHomeCommand', () => {
       await runHomeCommand('turn off some lights', lightTurnOff, SURE, classifierAnswering([0.97, 0.5])),
     ).toBeUndefined();
     expect(serviceCalls).toEqual([]);
+  });
+
+  it('answers a question from the states of the entities Jev chose, calling no service', async () => {
+    const text = await answerHomeQuestion('is the kitchen light on', 'light', SURE, classifierAnswering([0.97, 0.02]));
+
+    expect(text).toBe('Kitchen ceiling (Kitchen): on');
+    expect(serviceCalls).toEqual([]);
+  });
+
+  it('leaves a question to the agent when Jev is unsure which entity it is about', async () => {
+    expect(await answerHomeQuestion('is a light on', 'light', SURE, classifierAnswering([0.6, 0.02]))).toBeUndefined();
   });
 
   it('declines when there is no classifier', async () => {

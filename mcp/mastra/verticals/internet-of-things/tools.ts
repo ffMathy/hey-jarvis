@@ -569,6 +569,8 @@ export interface EntitySummary {
   name: string;
   area: string | null;
   state: string;
+  /** What the state is measured in, for a sensor: "°C", "%", "kWh". */
+  unit?: string | null;
 }
 
 /**
@@ -591,7 +593,7 @@ function buildEntitySummaryTemplate(entityIds: string[]): string {
 {%- for e in ${JSON.stringify(entityIds)} -%}
   {%- set st = states[e] -%}
   {%- if st -%}
-    {%- set ns.items = ns.items + [{"id":e,"name":st.name|string,"area":area_name(e),"state":st.state|string}] -%}
+    {%- set ns.items = ns.items + [{"id":e,"name":st.name|string,"area":area_name(e),"state":st.state|string,"unit":st.attributes.get('unit_of_measurement')}] -%}
   {%- endif -%}
 {%- endfor -%}
 {{ ns.items | to_json }}
@@ -626,7 +628,14 @@ export function filterEntities(
 }
 
 const entitySummariesSchema = z.array(
-  z.object({ id: z.string(), name: z.string(), area: z.string().nullable(), state: z.string() }),
+  z.object({
+    id: z.string(),
+    name: z.string(),
+    area: z.string().nullable(),
+    state: z.string(),
+    // Only ever descriptive, so a unit in a shape this does not expect is read as none.
+    unit: z.string().nullish().catch(undefined),
+  }),
 );
 
 /**
@@ -1145,6 +1154,11 @@ export function batchEntityIdsForHistory(entityIds: string[], maxLength = MAX_HI
  *
  * @param domain - Already passed through {@link normalizeDomain}, since it is written into the template
  */
+/** Every domain the house has an entity in: "light", "lock", "sensor", ... */
+export async function listDomains(): Promise<string[]> {
+  return await renderStringList("{{ states | map(attribute='domain') | unique | list | to_json }}");
+}
+
 async function fetchEntityIds(domain?: string): Promise<string[]> {
   const source = domain ? `states.${domain}` : 'states';
   return await renderStringList(`{{ ${source}|map(attribute='entity_id')|list|to_json }}`);

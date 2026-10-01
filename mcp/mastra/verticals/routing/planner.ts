@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createAgent, getModel } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
 import { getPublicAgents } from '..';
-import { getHomeServices, type HomeService } from '../internet-of-things/home-commands.js';
+import { getHomeDomains, getHomeServices } from '../internet-of-things/home-commands.js';
 import { findPhoto, howLongAgo, type WaitingPhoto } from '../vision/photos.js';
 import {
   classifyRequest,
@@ -13,6 +13,7 @@ import {
   type RequestClassification,
   type RoutableAgentSummary,
 } from './classifier.js';
+import type { DirectAnswer } from './direct-answers.js';
 import type { PlannedChain } from './plan.js';
 import type { OpenQuestion } from './questions.js';
 import { RESPONSE_STYLE_DESCRIPTIONS, RESPONSE_STYLES, type ResponseStyle } from './response-styles.js';
@@ -365,10 +366,10 @@ export interface RoutingDecision {
   answers: PlannedAnswer[];
   responseStyle: ResponseStyle;
   /**
-   * The service a smart home command is carried out with, directly rather than through `chains`,
-   * which are then the fallback should that decline or fail (see `internet-of-things/home-commands.ts`).
+   * How the request is answered without its agent, rather than through `chains`, which are then the
+   * fallback should that decline or fail (see `direct-answers.ts`).
    */
-  homeService?: HomeService;
+  direct?: DirectAnswer;
   /** The request is only about ending the call, so there is nothing to run. */
   endsCall?: boolean;
   /**
@@ -466,7 +467,7 @@ export async function planFromFastRoute(route: FastRoute, userQuery: string): Pr
     ),
     answers: [],
     responseStyle: route.responseStyle,
-    ...(route.homeService && { homeService: route.homeService }),
+    ...(route.direct && { direct: route.direct }),
   };
 }
 
@@ -549,14 +550,14 @@ export async function planDelegations(
   const photosInPlay = waitingPhotos.length > 0 || NAMES_A_PHOTO.test(userQuery);
 
   // Before either starts, so nothing is awaited between starting the planner and handling it.
-  // Services are cached, and an empty list when Home Assistant is slow, so this never waits long.
-  const [agents, services] = await Promise.all([getRoutableAgents(), getHomeServices()]);
+  // Services and domains are cached, and empty when Home Assistant is slow, so this never waits long.
+  const [agents, services, domains] = await Promise.all([getRoutableAgents(), getHomeServices(), getHomeDomains()]);
   const planned = planWithPlanner(planner, userQuery, openQuestions, waitingPhotos, namedPhotos, abortPlanner.signal);
   const abortClassifier = new AbortController();
   const classified = classifyRequest(
     classifier,
     userQuery,
-    { agents, openQuestions, services, runningRequest },
+    { agents, openQuestions, services, domains, runningRequest },
     abortClassifier.signal,
   ).catch((error: unknown) => {
     if (!abortClassifier.signal.aborted) {

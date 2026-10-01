@@ -43,7 +43,7 @@ const LIGHT_TURN_OFF: HomeService = {
   entityDomains: ['light'],
 };
 
-const NOTHING_ELSE: RoutingContext = { agents: AGENTS, openQuestions: [], services: [] };
+const NOTHING_ELSE: RoutingContext = { agents: AGENTS, openQuestions: [], services: [], domains: [] };
 
 /** A distribution with the given confidence on `choice`, which is all the policy reads. */
 function sure(choice: string, confidence = 0.97) {
@@ -70,6 +70,7 @@ describe('routingQuestions', () => {
     expect(plain).not.toHaveProperty('answeredQuestion');
     expect(plain).not.toHaveProperty('relationToRunningRequest');
     expect(plain).not.toHaveProperty('homeService');
+    expect(plain).not.toHaveProperty('homeQuestionDomain');
 
     const full = routingQuestions({
       agents: AGENTS,
@@ -186,8 +187,44 @@ describe('readClassification', () => {
     expect(classification.fastRoute).toEqual({
       agentId: 'internetOfThings',
       responseStyle: 'command',
-      homeService: LIGHT_TURN_OFF,
+      direct: { kind: 'homeCommand', service: LIGHT_TURN_OFF },
     });
+  });
+
+  it('answers a question about how the house is now from the kind of device it is about', () => {
+    const classification = readClassification(
+      answers(
+        'internetOfThings',
+        { homeQuestionDomain: sure('lock'), homeQuestionIsAboutNow: { type: 'boolean', probability: 0.97 } },
+        'lookup',
+      ),
+      { ...NOTHING_ELSE, domains: ['lock', 'light'] },
+    );
+
+    expect(classification.fastRoute?.direct).toEqual({ kind: 'homeQuestion', domain: 'lock' });
+  });
+
+  it('leaves a question about history, or an unsure kind of device, to the agent', () => {
+    const context = { ...NOTHING_ELSE, domains: ['lock'] };
+    const aboutHistory = readClassification(
+      answers(
+        'internetOfThings',
+        { homeQuestionDomain: sure('lock'), homeQuestionIsAboutNow: { type: 'boolean', probability: 0.2 } },
+        'lookup',
+      ),
+      context,
+    );
+    const unsure = readClassification(
+      answers(
+        'internetOfThings',
+        { homeQuestionDomain: sure('lock', 0.6), homeQuestionIsAboutNow: { type: 'boolean', probability: 0.97 } },
+        'lookup',
+      ),
+      context,
+    );
+
+    expect(aboutHistory.fastRoute).not.toHaveProperty('direct');
+    expect(unsure.fastRoute).not.toHaveProperty('direct');
   });
 
   it('never picks a service for anything that is not a command', () => {
