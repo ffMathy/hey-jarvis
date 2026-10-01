@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.16.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.16.0...mcp-v2.16.1) (2026-10-01)
+
+
+### Performance Improvements
+
+* **mcp:** answer home assistant lookups from a websocket cache ([#931](https://github.com/ffMathy/hey-jarvis/issues/931)) ([5b34f69](https://github.com/ffMathy/hey-jarvis/commit/5b34f693cad0f8a8bcc24540354625655120ab69))
+
 ## [2.16.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.15.1...mcp-v2.16.0) (2026-10-01)
 
 
