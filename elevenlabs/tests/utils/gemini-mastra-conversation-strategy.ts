@@ -4,7 +4,6 @@ import { readFile } from 'fs/promises';
 import { getPublicAgents } from 'mcp/mastra/mcp-server.js';
 import {
   type ConversationStrategy,
-  latestContextualUpdates,
   mcpToolNamesIn,
   type ServerMessage,
   transcriptOf,
@@ -61,10 +60,9 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
 
       const agentPrompt = await this.readAgentPrompt();
       // This stand-in keeps no memory between turns, so the background a device sent has to
-      // travel with every call — and the instructions are what every call carries. Only the
-      // latest update of each context goes, as ElevenLabs drops the ones it superseded.
-      const contextualUpdates = latestContextualUpdates(this.messages).map(
-        (update) => `Context update: ${update.text}`,
+      // travel with every call — and the instructions are what every call carries.
+      const contextualUpdates = this.messages.flatMap((message) =>
+        message.type === 'contextual_update' ? [`Context update: ${message.text}`] : [],
       );
       const agentsArray = await getPublicAgents();
 
@@ -159,16 +157,12 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
     return responseText;
   }
 
-  async sendContextualUpdate(text: string, contextId?: string): Promise<void> {
+  async sendContextualUpdate(text: string): Promise<void> {
     if (!this.isConnected) {
       throw new Error('Not connected. Call connect() first.');
     }
 
-    this.messages.push(
-      contextId === undefined
-        ? { type: 'contextual_update', text }
-        : { type: 'contextual_update', text, context_id: contextId },
-    );
+    this.messages.push({ type: 'contextual_update', text });
     // Built again on the next turn, with the update in its instructions.
     this.agent = undefined;
   }

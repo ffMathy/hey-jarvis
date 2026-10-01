@@ -7,14 +7,7 @@ export {
   LOOKUP_PROMISE_PATTERNS,
   stripAudioTags,
 } from './acknowledgement-timing';
-export {
-  type ClientToolAnswerer,
-  type ClientToolCall,
-  clientToolNamesIn,
-  latestContextualUpdates,
-  mcpToolNamesIn,
-  transcriptOf,
-} from './conversation-strategy';
+export { mcpToolNamesIn, transcriptOf } from './conversation-strategy';
 export {
   type ElevenLabsConversationOptions,
   ElevenLabsConversationStrategy,
@@ -23,20 +16,6 @@ export {
   type GeminiMastraConversationOptions,
   GeminiMastraConversationStrategy,
 } from './gemini-mastra-conversation-strategy';
-export {
-  type AffectedEntity,
-  DEVICE_CONTEXT_ID,
-  findUnrelayedMarks,
-  HEADSET_DEVICE_CONTEXT,
-  MARK_AFFECTED_TOOL_NAME,
-  type MarkAffectedCall,
-  NOT_POINTING_CONTEXT,
-  POINTING_CONTEXT_ID,
-  pointingContext,
-  readMarkAffectedCalls,
-  readRelayedAffectedEntities,
-  readRoutedQueries,
-} from './headset';
 export {
   assertMcpServerConnected,
   findDisconnectedIntegrations,
