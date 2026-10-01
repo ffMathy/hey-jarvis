@@ -1,4 +1,5 @@
 import type { Mastra } from '@mastra/core';
+import { HOUSEHOLD_TIME_ZONE } from './utils/household.js';
 import { logger } from './utils/logger.js';
 import { CronPatterns } from './utils/workflows/cron-patterns.js';
 import {
@@ -56,7 +57,7 @@ export function ownsSchedules(environment: Record<string, string | undefined> = 
 }
 
 /** The timezone every cadence here is written in. */
-export const TIMEZONE = 'Europe/Copenhagen';
+export const TIMEZONE = HOUSEHOLD_TIME_ZONE;
 
 /**
  * Marks the rows this file owns.

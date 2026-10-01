@@ -1,6 +1,14 @@
 import type { Classifier, ClassifierAnswers } from '@mastra/core/classifier';
+import type { DirectLookup } from '../../utils/direct-lookup-factory.js';
 import { confidentChoice, createLazyClassifier } from '../../utils/index.js';
-import { type HomeService, homeServiceFrom, homeServiceQuestions } from '../internet-of-things/home-commands.js';
+import {
+  type HomeService,
+  homeQuestionDomainFrom,
+  homeQuestionQuestions,
+  homeServiceFrom,
+  homeServiceQuestions,
+} from '../internet-of-things/home-commands.js';
+import type { DirectAnswer } from './direct-answers.js';
 import type { OpenQuestion } from './questions.js';
 import { RESPONSE_STYLE_DESCRIPTIONS, type ResponseStyle } from './response-styles.js';
 
@@ -72,6 +80,10 @@ export interface RoutingContext {
   agents: RoutableAgentSummary[];
   openQuestions: OpenQuestion[];
   services: HomeService[];
+  /** The domains Home Assistant has entities in, which a question about the house can be about. */
+  domains: string[];
+  /** The lookups a request can be answered with directly (see `direct-lookups.ts`). */
+  lookups: readonly DirectLookup[];
   /** The request still running in this session, if there is one. */
   runningRequest?: string;
 }
@@ -85,7 +97,15 @@ export interface RoutingContext {
  * requests this is meant to speed up. The questions a request does not need -- no question waiting,
  * nothing running, services unknown -- are left out.
  */
-export function routingQuestions({ agents, openQuestions, services, runningRequest }: RoutingContext) {
+export function routingQuestions({
+  agents,
+  openQuestions,
+  services,
+  domains,
+  lookups,
+  runningRequest,
+}: RoutingContext) {
+  const homeAgentIsRoutable = agents.some((agent) => agent.id === HOME_AGENT_ID);
   // Keyed by whatever the agents are called, so the choice is any string and is checked against
   // the routable ids when it is read (see `readClassification`).
   const routeCriteria: Record<string, string | null> = {
@@ -118,7 +138,9 @@ export function routingQuestions({ agents, openQuestions, services, runningReque
         'kinds, pick the one that needs the most words.',
       criteria: RESPONSE_STYLE_DESCRIPTIONS,
     },
-    ...(services.length > 0 && agents.some((agent) => agent.id === HOME_AGENT_ID) && homeServiceQuestions(services)),
+    ...(services.length > 0 && homeAgentIsRoutable && homeServiceQuestions(services)),
+    ...(domains.length > 0 && homeAgentIsRoutable && homeQuestionQuestions(domains)),
+    ...(lookups.length > 0 && lookupQuestions(lookups)),
     ...(openQuestions.length > 0 && {
       answeredQuestion: {
         type: 'choice' as const,
@@ -154,10 +176,11 @@ export interface FastRoute {
   agentId: string;
   responseStyle: ResponseStyle;
   /**
-   * Set when the request is a smart home command and Jev is sure which service carries it out. The
-   * entities it acts on are chosen next (see `internet-of-things/home-commands.ts`).
+   * Set when the request can be answered without the agent: a smart home command Jev is sure of the
+   * service for, or a question about the house it is sure of the kind of device for (see
+   * `direct-answers.ts`).
    */
-  homeService?: HomeService;
+  direct?: DirectAnswer;
 }
 
 /**
@@ -190,7 +213,7 @@ function isRelationToRunningRequest(value: string): value is RelationToRunningRe
  */
 export function readClassification(
   answers: RoutingAnswers,
-  { agents, openQuestions, services }: Omit<RoutingContext, 'runningRequest'>,
+  { agents, openQuestions, services, domains, lookups }: Omit<RoutingContext, 'runningRequest'>,
 ): RequestClassification {
   const responseStyle = answers.responseStyle.choice;
   const relation =
@@ -224,16 +247,83 @@ export function readClassification(
     return classification;
   }
 
-  const homeService =
-    route === HOME_AGENT_ID && responseStyle === 'command' && answers.homeService && answers.homeCommandGivesSetting
-      ? homeServiceFrom(
-          { homeService: answers.homeService, homeCommandGivesSetting: answers.homeCommandGivesSetting },
-          services,
-          FAST_PATH_CONFIDENCE,
-        )
-      : undefined;
+  const direct =
+    route === HOME_AGENT_ID
+      ? homeDirectAnswerFrom(answers, responseStyle, services, domains)
+      : lookupDirectAnswerFrom(answers, route, responseStyle, lookups);
+  return { ...classification, fastRoute: { agentId: route, responseStyle, ...(direct && { direct }) } };
+}
 
-  return { ...classification, fastRoute: { agentId: route, responseStyle, ...(homeService && { homeService }) } };
+/** The choice for a request that none of the lookups answers as it stands. */
+const NO_LOOKUP = 'none';
+
+/** The question that picks the lookup a request is, from every lookup there is. */
+function lookupQuestions(lookups: readonly DirectLookup[]) {
+  const lookupCriteria: Record<string, string> = {
+    ...Object.fromEntries(lookups.map((lookup) => [lookup.id, lookup.description])),
+    [NO_LOOKUP]:
+      'None of these exactly: it asks something more specific, about another place, person or time, or for more than one of them',
+  };
+
+  return {
+    directLookup: {
+      type: 'choice' as const,
+      instructions:
+        'Is this request exactly one of these questions, with nothing more specific in it? Choose none if it narrows ' +
+        'it down in any way these do not -- a search word, another place, a particular person or a different time.',
+      criteria: lookupCriteria,
+    },
+  };
+}
+
+/**
+ * A request that one of the agent's own lookups answers as it stands: a question, not a command or a
+ * conversation, and a lookup Jev is sure of that belongs to the agent the request was routed to.
+ */
+function lookupDirectAnswerFrom(
+  answers: RoutingAnswers,
+  route: string,
+  responseStyle: ResponseStyle,
+  lookups: readonly DirectLookup[],
+): DirectAnswer | undefined {
+  if (responseStyle !== 'lookup' && responseStyle !== 'briefing') {
+    return undefined;
+  }
+
+  const lookupId = answers.directLookup && confidentChoice(answers.directLookup, FAST_PATH_CONFIDENCE);
+  const lookup = lookups.find((candidate) => candidate.id === lookupId);
+  return lookup && lookup.agentId === route ? { kind: 'lookup', lookupId: lookup.id } : undefined;
+}
+
+/**
+ * A request for the smart home agent that can be answered without it: a command whose service Jev
+ * is sure of, or a question about how things are now whose kind of device it is sure of.
+ */
+function homeDirectAnswerFrom(
+  answers: RoutingAnswers,
+  responseStyle: ResponseStyle,
+  services: HomeService[],
+  domains: string[],
+): DirectAnswer | undefined {
+  if (responseStyle === 'command') {
+    const { homeService, homeCommandGivesSetting } = answers;
+    const service =
+      homeService &&
+      homeCommandGivesSetting &&
+      homeServiceFrom({ homeService, homeCommandGivesSetting }, services, FAST_PATH_CONFIDENCE);
+    return service ? { kind: 'homeCommand', service } : undefined;
+  }
+
+  if (responseStyle === 'lookup' || responseStyle === 'briefing') {
+    const { homeQuestionDomain, homeQuestionIsAboutNow } = answers;
+    const domain =
+      homeQuestionDomain &&
+      homeQuestionIsAboutNow &&
+      homeQuestionDomainFrom({ homeQuestionDomain, homeQuestionIsAboutNow }, domains, FAST_PATH_CONFIDENCE);
+    return domain ? { kind: 'homeQuestion', domain } : undefined;
+  }
+
+  return undefined;
 }
 
 const buildRoutingClassifier = createLazyClassifier(ROUTING_CLASSIFIER_ID);

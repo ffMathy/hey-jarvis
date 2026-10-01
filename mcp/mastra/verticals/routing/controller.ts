@@ -3,10 +3,10 @@ import type { Agent } from '@mastra/core/agent';
 import { uniq, uniqBy } from 'lodash-es';
 import { logger } from '../../utils/logger.js';
 import { isSlowTask } from '../../utils/slow-tasks.js';
-import { type HomeService, runHomeCommand } from '../internet-of-things/home-commands.js';
 import { dismissPhoto, findPhoto, photosWaiting, unmarkPhotoLookedAt } from '../vision/photos.js';
-import { FAST_PATH_CONFIDENCE, getRoutingClassifier } from './classifier.js';
+import { getRoutingClassifier } from './classifier.js';
 import { sendCompletionNotice } from './completion-notice.js';
+import { answerDirectly, type DirectAnswer, describeDirectAnswer } from './direct-answers.js';
 import { buildRoutingPlan, type PlannedChain, type RoutingPlan } from './plan.js';
 import { sweepOldRoutingPlans } from './plan-retention.js';
 import {
@@ -893,21 +893,21 @@ async function runPlan(
 }
 
 /**
- * Carries out a smart home command straight away, or runs the plan when that declines or fails.
+ * Answers a request without its agent, or runs the plan when that declines or fails.
  *
- * The plan is the same one-agent chain the request would have run anyway, so a declined or refused
- * command costs the round trip it tried and nothing else: the agent then looks at the house and
- * does what it can. Reported as the chain's own task, so a poll reads it like any other delegation. It is
- * started and ended together once the call is back, which is a matter of milliseconds -- and a
- * refused call then leaves nothing half-reported behind for the plan to contradict.
+ * The plan is the same one-agent chain the request would have run anyway, so a declined or failed
+ * direct answer costs the round trip it tried and nothing else: the agent then does what it would
+ * have done. Reported as the chain's own task, so a poll reads it like any other delegation. It is
+ * started and ended together once the answer is in, which is a matter of milliseconds -- and one
+ * that declines then leaves nothing half-reported behind for the plan to contradict.
  */
-async function runHomeCommandOrPlan(
+async function runDirectOrPlan(
   mastra: Mastra,
   sessionId: string,
   progress: RoutingProgress,
   userQuery: string,
   chains: PlannedChain[],
-  service: HomeService,
+  direct: DirectAnswer,
   signal: AbortSignal,
 ): Promise<void> {
   const [delegation] = chains[0]?.delegations ?? [];
@@ -917,15 +917,19 @@ async function runHomeCommandOrPlan(
 
   let text: string | undefined;
   try {
-    text = await runHomeCommand(userQuery, service, FAST_PATH_CONFIDENCE);
+    text = await answerDirectly(direct, userQuery);
   } catch (error) {
-    logger.warn('Home command failed; handing the request to the agent', { sessionId, service: service.id, error });
+    logger.warn('Direct answer failed; handing the request to the agent', {
+      sessionId,
+      direct: describeDirectAnswer(direct),
+      error,
+    });
   }
   if (text === undefined || signal.aborted) {
     return signal.aborted ? undefined : runPlan(mastra, sessionId, progress, userQuery, chains, signal);
   }
 
-  const delegationId = `home-command-${delegation.taskId}`;
+  const delegationId = `direct-${delegation.taskId}`;
   progress.handle({ type: 'delegation_start', delegationId, taskId: delegation.taskId, agentId: delegation.agentId });
   progress.handle({ type: 'delegation_end', delegationId, result: { text }, isError: false });
 }
@@ -1215,18 +1219,18 @@ function followThePhotoWait(progress: RoutingProgress, decision: RoutingDecision
   }
 }
 
-/** Runs a request's new work: straight through Home Assistant when it can be, as a plan otherwise. */
+/** Runs a request's new work: answered directly when it can be, as a plan otherwise. */
 function runChains(
   mastra: Mastra,
   sessionId: string,
   progress: RoutingProgress,
   userQuery: string,
   chains: PlannedChain[],
-  homeService: HomeService | undefined,
+  direct: DirectAnswer | undefined,
   signal: AbortSignal,
 ): Promise<void> {
-  return homeService
-    ? runHomeCommandOrPlan(mastra, sessionId, progress, userQuery, chains, homeService, signal)
+  return direct
+    ? runDirectOrPlan(mastra, sessionId, progress, userQuery, chains, direct, signal)
     : runPlan(mastra, sessionId, progress, userQuery, chains, signal);
 }
 
@@ -1305,7 +1309,7 @@ async function carryOut(
   decision: RoutingDecision,
   signal: AbortSignal,
 ): Promise<void> {
-  const { answers, responseStyle, homeService, dismissedPhotoIds = [], photosToAskAbout = [] } = decision;
+  const { answers, responseStyle, direct, dismissedPhotoIds = [], photosToAskAbout = [] } = decision;
   // A request that only stops the running one runs nothing, whatever the planner made of it.
   const chains = decision.relationToRunningRequest === 'cancels' ? [] : decision.chains;
   progress.responseStyle = responseStyle;
@@ -1316,7 +1320,7 @@ async function carryOut(
     dismissedPhotos: dismissedPhotoIds.length,
     photosToAskAbout: photosToAskAbout.length,
     ...(decision.awaitsPhoto && { awaitsPhoto: true }),
-    ...(homeService && { homeService: homeService.id }),
+    ...(direct && { direct: describeDirectAnswer(direct) }),
     elapsedMs: progress.elapsedMs(),
   });
 
@@ -1364,7 +1368,7 @@ async function carryOut(
         ? deliverAnswer(progress, question, answer)
         : resumeWithAnswer(mastra, progress, question, answer, signal),
     ),
-    ...(chains.length > 0 ? [runChains(mastra, sessionId, progress, userQuery, chains, homeService, signal)] : []),
+    ...(chains.length > 0 ? [runChains(mastra, sessionId, progress, userQuery, chains, direct, signal)] : []),
   ]);
 
   keepPhotosToAskAbout(sessionId, progress, photosToAskAbout);

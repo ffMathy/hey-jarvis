@@ -17,6 +17,23 @@ A decision is a classifier question when it is one of:
 
 Keep a language model for anything that has to **write** something: a message, a prompt, a summary, or a value pulled out of free text.
 
+## Answer lookups directly, without the agent
+
+A question an agent answers by calling one read-only tool with inputs known in advance needs no
+language model at all: **Jev picks, code fetches, the voice model phrases.** The voice model phrases
+every result anyway, so the server only has to hand back facts.
+
+- Give the vertical a `lookups.ts` of `createDirectLookup({ id: '<agentId>.<what>', agentId, description, answer })`
+  entries, and add them to `DIRECT_LOOKUPS` in `verticals/routing/direct-lookups.ts`. Routing's
+  classifier offers them on the call it already makes, so a lookup costs no extra round trip.
+- Make a lookup per fixed variant ("today", "tomorrow", "this week") rather than a lookup with a
+  free-text input. Anything that needs a search word, a place or a name stays with the agent.
+- Answer with compact facts (`asFacts`): only the fields a spoken answer needs.
+- When the options come from live data rather than a fixed list (Home Assistant's devices), ask Jev
+  about each option instead, as `internet-of-things/home-commands.ts` does.
+
+**ALWAYS consider a lookup when adding a read-only tool to an agent.**
+
 ## How
 
 - Build it with `createClassifier(id)` from `mcp/mastra/utils/classifier-factory.ts`. It returns `undefined` when `HEY_JARVIS_TYPESAFE_AI_API_KEY` is not set.
