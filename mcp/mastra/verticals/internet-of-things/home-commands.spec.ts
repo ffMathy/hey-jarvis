@@ -169,9 +169,9 @@ describe('entityQuestions', () => {
 
 describe('homeQuestionQuestions', () => {
   it('offers each domain in words where it can, with a way out', () => {
-    const { homeQuestionDomain } = homeQuestionQuestions(['lock', 'vacuum']);
+    const { homeQuestionDomain } = homeQuestionQuestions(['lock', 'camera']);
 
-    expect(homeQuestionDomain.criteria).toEqual({ lock: 'Door locks', vacuum: 'vacuum', other: expect.any(String) });
+    expect(homeQuestionDomain.criteria).toEqual({ lock: 'Door locks', camera: 'camera', other: expect.any(String) });
   });
 });
 

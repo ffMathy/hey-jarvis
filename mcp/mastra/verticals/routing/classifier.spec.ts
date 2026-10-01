@@ -76,6 +76,8 @@ describe('routingQuestions', () => {
       agents: AGENTS,
       openQuestions: [WAITING_QUESTION],
       services: [LIGHT_TURN_OFF],
+      domains: [],
+      lookups: [],
       runningRequest: 'what is the weather',
     });
     expect(full.answeredQuestion?.criteria).toEqual({ q1: 'Email, or a push notification?', none: expect.any(String) });

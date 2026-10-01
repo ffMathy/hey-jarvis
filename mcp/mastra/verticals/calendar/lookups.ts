@@ -19,9 +19,10 @@ const MAX_EVENTS = 25;
 /** The span of days, starting `startInDays` from today, as the times a calendar search takes. */
 export function householdDays(startInDays: number, dayCount: number, now = new Date()) {
   const today = startOfDay(new TZDate(now, HOUSEHOLD_TIME_ZONE));
+  // In UTC, which the rest of the calendar vertical speaks: a TZDate writes its own offset otherwise.
   return {
-    timeMin: addDays(today, startInDays).toISOString(),
-    timeMax: addDays(today, startInDays + dayCount).toISOString(),
+    timeMin: new Date(addDays(today, startInDays).getTime()).toISOString(),
+    timeMax: new Date(addDays(today, startInDays + dayCount).getTime()).toISOString(),
   };
 }
 
