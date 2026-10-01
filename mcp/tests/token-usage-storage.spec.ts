@@ -1,31 +1,24 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdir, rm } from 'fs/promises';
+import { mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
 import path from 'path';
 import { TokenUsageStorage } from '../mastra/storage/token-usage.js';
 
-// Use a test-specific database file
-const TEST_DB_DIR = '/tmp/token-usage-tests';
-const TEST_DB_PATH = path.join(TEST_DB_DIR, 'test.db');
-
 describe('Token Usage Storage Tests', () => {
   let storage: TokenUsageStorage;
+  let testDbDir: string;
 
   beforeEach(async () => {
-    // Create test directory
-    await mkdir(TEST_DB_DIR, { recursive: true });
-
-    // Create new storage instance for each test
-    storage = new TokenUsageStorage(TEST_DB_PATH);
+    // A directory of its own for every test, so two runs of this suite at once never share a
+    // database -- a fixed path let one run delete the file under the other's open connection.
+    testDbDir = await mkdtemp(path.join(tmpdir(), 'token-usage-tests-'));
+    storage = new TokenUsageStorage(path.join(testDbDir, 'test.db'));
   });
 
   afterEach(async () => {
     // Close database connection first
     await storage.close();
-
-    // Clean up test database files
-    await rm(TEST_DB_PATH, { force: true });
-    await rm(`${TEST_DB_PATH}-shm`, { force: true });
-    await rm(`${TEST_DB_PATH}-wal`, { force: true });
+    await rm(testDbDir, { recursive: true, force: true });
   });
 
   describe('recordUsage', () => {

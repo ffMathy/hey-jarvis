@@ -3,6 +3,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import WebSocket from 'ws';
 import { publishLiveEvent } from '../../utils/live-events.js';
+import { currentPointing, resetPointingForTest } from '../../utils/pointing.js';
 import {
   attachLiveSocket,
   LIVE_SOCKET_CLOSE_CODES,
@@ -18,7 +19,16 @@ let server: Server | undefined;
 let live: LiveSockets | undefined;
 const opened: WebSocket[] = [];
 
+/** Waits for `condition`, for up to a second. */
+async function until(condition: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100 && !condition(); attempt += 1) {
+    await Bun.sleep(10);
+  }
+  expect(condition()).toBe(true);
+}
+
 afterEach(async () => {
+  resetPointingForTest();
   for (const socket of opened.splice(0)) {
     socket.terminate();
   }
@@ -139,6 +149,27 @@ describe('the live socket', () => {
     }
     expect(live?.listening).toBe(0);
     publishLiveEvent({ type: 'affectedEntities', entities: [{ id: 'light.hall' }] });
+  });
+
+  it('keeps what a socket says sir points at until it says otherwise or closes', async () => {
+    const { url } = await serve();
+    const socket = await connect(url());
+    const ready = nextEvent(socket);
+    socket.send(hello());
+    await ready;
+
+    socket.send(JSON.stringify({ type: 'pointing', entity: { id: 'light.kitchen_ceiling', name: 'Kitchen ceiling' } }));
+    await until(() => currentPointing() !== undefined);
+    expect(currentPointing()).toEqual({ id: 'light.kitchen_ceiling', name: 'Kitchen ceiling' });
+
+    socket.send(JSON.stringify({ type: 'pointing', entity: null }));
+    await until(() => currentPointing() === undefined);
+
+    socket.send(JSON.stringify({ type: 'pointing', entity: { id: 'light.porch' } }));
+    await until(() => currentPointing() !== undefined);
+    socket.close();
+    await until(() => currentPointing() === undefined);
+    expect(currentPointing()).toBeUndefined();
   });
 
   it('closes a socket whose first frame is not a hello naming a conversation', async () => {

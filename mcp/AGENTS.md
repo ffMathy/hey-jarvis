@@ -1375,10 +1375,12 @@ ever glow. It also answers a question, to pin the resumed-agent path.
 
 <a id="pointing"></a>
 **What sir points at:**
-On the headset, a context update names the thing sir is pointing at, and "turn that on" means it.
-The `userQuery` description asks the voice agent to add its name and id —
-`Turn that on (pointing at "Kitchen ceiling", id light.kitchen_ceiling)` — because nothing but that
-string reaches the agents. The planner copies an id in the request verbatim into the prompt of the
+On the headset, "turn that on" means the thing sir is pointing at. The headset says what that is over
+the WebSocket API — `{"type":"pointing","entity":{"id":…,"name":…}}`, or `"entity": null` — whenever it
+changes, and the server keeps the newest report of any socket until that socket says otherwise or
+closes (`utils/pointing.ts`). The moment a request is routed, `withPointing` writes it after the
+request — `Turn that on (pointing at "Kitchen ceiling", id light.kitchen_ceiling)` — because nothing
+but that string reaches the agents. The voice agent hears none of this. The planner copies an id in the request verbatim into the prompt of the
 agent that owns the thing, and every agent is told in the shared guidelines to act on an id it is
 given without looking it up. A request the routing classifier settles on its own never reaches the
 planner, and needs it not to: its one agent is handed the user's words as they are, id included. A
@@ -3095,7 +3097,9 @@ credentials, and read by the headset from the storage it shares with the phone's
 | Direction | Frame | Meaning |
 | --- | --- | --- |
 | device → server | `{"type":"hello","conversationId":"conv_…","device":"phone"\|"watch"\|"vr"}` | The first frame, within 10 seconds |
-| server → device | `{"type":"ready"}` | This socket is now told what concerns that conversation |
+| server → device | `{"type":"ready"}` | This socket is now sent every live event |
+| server → device | `{"type":"affectedEntities","entities":[{"id":"…","name":"…"}]}` | A request's tool just read or changed these |
+| device → server | `{"type":"pointing","entity":{"id":"…","name":"…"}}` or `"entity":null` | What sir points at now, or nothing |
 
 **No authentication**: the hello is an address, not a credential. A refusal is a close: `4400` a
 first frame that is not a hello naming a conversation, `4408` no hello in time; an upgrade past 32
@@ -3105,7 +3109,8 @@ every 30 seconds, which also keeps Cloudflare from closing a quiet one after 100
 After `ready`, a socket is sent every event published on `utils/live-events.ts`, whatever conversation
 its hello named — today `{"type":"affectedEntities","entities":[{"id":"…","name":"…"}]}`, see
 [What a request touches](#affected-entities). A device acts on the events it cares about and ignores
-the rest.
+the rest. What a socket says sir points at is kept until it says otherwise or closes, and written into
+the next request routed — see [What sir points at](#pointing).
 
 ## Integration Capabilities
 

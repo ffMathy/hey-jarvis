@@ -1,6 +1,7 @@
 import { upperFirst } from 'lodash-es';
 import z from 'zod';
 import { createStep, createWorkflow } from '../../utils';
+import { withPointing } from '../../utils/pointing.js';
 import {
   DEFAULT_ROUTING_SESSION_ID,
   getRoutingRuntime,
@@ -45,14 +46,13 @@ const inputSchema = z.object({
   // buys nothing. The description is where this has to be said, because it is what the voice model
   // reads when it decides what to put in the field.
   //
-  // **What he points at travels here too.** On his headset, a context update names the thing sir is
-  // pointing at, and "turn that on" means it. Nothing but this string reaches the agents, so the
-  // thing has to be written into it, and by its id: the planner copies an id into the prompt it
-  // writes, and the agent acts on exactly that id rather than guessing which light "that" was.
+  //
+  // What sir points at on his headset is not the voice model's to write in: the server adds it,
+  // by its id, the moment the request arrives (`withPointing` in `utils/pointing.ts`).
   userQuery: z
     .string()
     .describe(
-      'Everything the user asked for in this turn, in one call. If they asked for two things — their calendar and their email, say — both belong in this one string: the plan splits the work itself and runs the independent parts at the same time, so a request sent in pieces is answered in pieces and later. When he means something he is pointing at ("that", "this", "it") and a context update named it, add its name and id exactly as given: \'Turn that on (pointing at "Kitchen ceiling", id light.kitchen_ceiling)\'.',
+      'Everything the user asked for in this turn, in one call. If they asked for two things — their calendar and their email, say — both belong in this one string: the plan splits the work itself and runs the independent parts at the same time, so a request sent in pieces is answered in pieces and later.',
     ),
   async: z
     .boolean()
@@ -751,7 +751,7 @@ const routePromptStep = createStep({
   execute: async ({ inputData, mastra }) => {
     rememberMastraRegistry(mastra);
     const sessionId = inputData.sessionId ?? DEFAULT_ROUTING_SESSION_ID;
-    await getRoutingRuntime().start(sessionId, inputData.userQuery);
+    await getRoutingRuntime().start(sessionId, withPointing(inputData.userQuery));
 
     return {
       instructions: inputData.async ? INSTRUCTIONS.async : INSTRUCTIONS.poll,

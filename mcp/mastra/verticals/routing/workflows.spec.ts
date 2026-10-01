@@ -13,6 +13,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { onLiveEvent } from '../../utils/live-events.js';
+import { forgetPointing, reportPointing } from '../../utils/pointing.js';
 import {
   buildSnapshot,
   DEFAULT_ROUTING_SESSION_ID,
@@ -82,8 +83,12 @@ function delegate(sessionId: string, agentId: string, text: string): void {
   finishDelegation(sessionId, startDelegation(sessionId, agentId), { text });
 }
 
+/** Every request the fake runtime was started with, as routing handed it over. */
+const startedQueries: string[] = [];
+
 const fakeRuntime: RoutingRuntime = {
-  async start(sessionId) {
+  async start(sessionId, userQuery) {
+    startedQueries.push(userQuery);
     // A fresh buffer, the way the real runtime starts one: a superseded run keeps folding
     // into the buffer it was handed, so a new request must not be handed the same object.
     progressBySessionId.set(sessionId, new RoutingProgress());
@@ -827,10 +832,17 @@ describe('a request whose tools touch things', () => {
     expect(outcome.instructions).toContain('Still processing');
   });
 
-  it('tells the voice agent to route what sir points at by its id', () => {
-    expect(inputSchema.shape.userQuery.description).toContain(
-      'Turn that on (pointing at "Kitchen ceiling", id light.kitchen_ceiling)',
-    );
+  it('routes what sir points at by its id, written in by the server rather than the voice agent', async () => {
+    const headset = {};
+    reportPointing(headset, { id: 'light.kitchen_ceiling', name: 'Kitchen ceiling' });
+    try {
+      await runWorkflow(routePromptWorkflow, { userQuery: 'Turn that on', async: false });
+    } finally {
+      forgetPointing(headset);
+    }
+
+    expect(startedQueries).toContain('Turn that on (pointing at "Kitchen ceiling", id light.kitchen_ceiling)');
+    expect(inputSchema.shape.userQuery.description).not.toContain('pointing');
   });
 });
 

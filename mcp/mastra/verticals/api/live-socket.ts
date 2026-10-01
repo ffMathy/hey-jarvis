@@ -4,6 +4,7 @@ import { type RawData, type WebSocket, WebSocketServer } from 'ws';
 import { z } from 'zod';
 import { type LiveEvent, onLiveEvent } from '../../utils/live-events.js';
 import { logger } from '../../utils/logger.js';
+import { forgetPointing, reportPointing } from '../../utils/pointing.js';
 
 /**
  * The WebSocket API: a line from this server to each device sir is talking to Jarvis on — the phone,
@@ -26,11 +27,13 @@ import { logger } from '../../utils/logger.js';
  * | device → server | `{ type: "hello", conversationId, device }` | The first frame, within {@link HELLO_TIMEOUT_MS} |
  * | server → device | `{ type: "ready" }` | This socket will now be sent every live event |
  * | server → device | `{ type: "affectedEntities", entities: [{ id, name? }] }` | A request's tool just read or changed these |
+ * | device → server | `{ type: "pointing", entity: { id, name? } \| null }` | What sir is pointing at now, or nothing |
  *
  * Every event published on `utils/live-events.ts` goes to every socket that has said hello: a
- * device subscribes by holding a socket open, and acts on the events it cares about. Everything else
- * a device sends after its hello is ignored, so a device built for a later version of this protocol
- * can still be talked to. A refusal is a close, with one of {@link LIVE_SOCKET_CLOSE_CODES}.
+ * device subscribes by holding a socket open, and acts on the events it cares about. What a socket
+ * says it points at is kept until it says otherwise or closes, and written into the next request
+ * routed (`utils/pointing.ts`). Anything else a device sends after its hello is ignored, so a device
+ * built for a later version of this protocol can still be talked to. A refusal is a close, with one of {@link LIVE_SOCKET_CLOSE_CODES}.
  *
  * **Bounded for the Pi.** At most {@link MAX_LIVE_SOCKETS} at once, of which a socket still to say
  * hello is one; a frame over {@link MAX_FRAME_BYTES} closes its socket; and every socket is pinged
@@ -77,6 +80,11 @@ const helloSchema = z.object({
   device: z.enum(LIVE_SOCKET_DEVICES).optional(),
 });
 
+const pointingSchema = z.object({
+  type: z.literal('pointing'),
+  entity: z.object({ id: z.string(), name: z.string().optional() }).nullable(),
+});
+
 /** What the server sends a device: `ready` once it has said hello, then every live event. */
 export type LiveServerMessage = { type: 'ready' } | LiveEvent;
 
@@ -118,13 +126,17 @@ function byteLengthOf(data: RawData): number {
   return data.byteLength;
 }
 
-/** The hello in a frame, or `undefined` for anything else. */
-function readHello(data: RawData, isBinary: boolean): z.infer<typeof helloSchema> | undefined {
+/** A text frame read by `schema`, or `undefined` for anything else. */
+function readFrame<Schema extends z.ZodType>(
+  schema: Schema,
+  data: RawData,
+  isBinary: boolean,
+): z.infer<Schema> | undefined {
   if (isBinary) {
     return undefined;
   }
   try {
-    const parsed = helloSchema.safeParse(JSON.parse(data.toString()));
+    const parsed = schema.safeParse(JSON.parse(data.toString()));
     return parsed.success ? parsed.data : undefined;
   } catch {
     return undefined;
@@ -156,19 +168,26 @@ export function attachLiveSocket(server: Server, options: LiveSocketOptions = {}
         return;
       }
       if (saidHello) {
+        const pointing = readFrame(pointingSchema, data, isBinary);
+        if (pointing) {
+          reportPointing(socket, pointing.entity ?? undefined);
+        }
         return;
       }
       saidHello = true;
       clearTimeout(helloTimer);
 
-      const hello = readHello(data, isBinary);
+      const hello = readFrame(helloSchema, data, isBinary);
       if (!hello) {
         socket.close(LIVE_SOCKET_CLOSE_CODES.badHello);
         return;
       }
 
       listening.add(socket);
-      socket.once('close', () => listening.delete(socket));
+      socket.once('close', () => {
+        listening.delete(socket);
+        forgetPointing(socket);
+      });
       logger.info('[Live] Socket ready', { device: hello.device, open: sockets.clients.size });
       socket.send(JSON.stringify({ type: 'ready' } satisfies LiveServerMessage));
     });
