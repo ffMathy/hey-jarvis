@@ -11,6 +11,17 @@ import {
 import { logger } from '../../utils/logger.js';
 import { createTool } from '../../utils/tool-factory.js';
 import { createTtlCache } from '../../utils/ttl-cache.js';
+import {
+  areasInSnapshot,
+  changedSinceInSnapshot,
+  describeDevicesInSnapshot,
+  domainsInSnapshot,
+  entityIdsInSnapshot,
+  getHomeSnapshot,
+  peopleAndZonesInSnapshot,
+  serviceTargetsInSnapshot,
+  summarizeEntitiesInSnapshot,
+} from './home-state-cache.js';
 
 // Interface for Home Assistant logbook entry
 interface LogbookEntry {
@@ -57,7 +68,7 @@ export interface DeviceState {
 }
 
 // Interface for changed device state (n8n format with device info)
-interface ChangedDeviceState {
+export interface ChangedDeviceState {
   device_id: string;
   device_name: string;
   device_label_ids: string[];
@@ -220,6 +231,13 @@ async function renderServiceTargets(domain: string, data: Record<string, unknown
   const deviceIds = idsOf(target.device_id);
   if (entityIds.length + areaIds.length + deviceIds.length === 0) {
     return [];
+  }
+
+  const snapshot = getHomeSnapshot();
+  if (snapshot) {
+    return cleanAffectedEntities(
+      serviceTargetsInSnapshot(snapshot, normalizeDomain(domain), { entityIds, areaIds, deviceIds }),
+    );
   }
 
   const template = buildServiceTargetTemplate(normalizeDomain(domain), { entityIds, areaIds, deviceIds });
@@ -405,6 +423,11 @@ export const getAllDevices = createTool({
   }),
   execute: async (inputData) => {
     const domain = inputData.domain ? normalizeDomain(inputData.domain) : undefined;
+    const snapshot = getHomeSnapshot();
+    if (snapshot) {
+      return { devices: describeDevicesInSnapshot(snapshot, { domain }) };
+    }
+
     const deviceIds = await fetchDeviceIds(domain);
     const devices = await fetchDevicesInBatches(deviceIds, domain);
 
@@ -435,6 +458,10 @@ const DEVICE_BATCH_SIZE = 25;
  * Devices Home Assistant no longer knows, or that have no entity left, are absent from the result.
  */
 export async function renderDevicesById(deviceIds: string[]): Promise<DeviceState[]> {
+  const snapshot = getHomeSnapshot();
+  if (snapshot) {
+    return describeDevicesInSnapshot(snapshot, { deviceIds });
+  }
   return await fetchDevicesInBatches(deviceIds);
 }
 
@@ -793,6 +820,11 @@ const entitySummariesSchema = z.array(
  * `home-commands.ts`), which put the same list in front of a classifier.
  */
 export async function listEntities(domain?: string): Promise<EntitySummary[]> {
+  const snapshot = getHomeSnapshot();
+  if (snapshot) {
+    return summarizeEntitiesInSnapshot(snapshot, domain);
+  }
+
   const entityIds = await fetchEntityIds(domain);
   return await renderInBatches(entityIds, ENTITY_SUMMARY_BATCH_SIZE, async (batch) => {
     const response = await callHomeAssistantApi('template', 'POST', { template: buildEntitySummaryTemplate(batch) });
@@ -920,6 +952,11 @@ function refreshAreas(): Promise<HomeArea[]> {
  * Assistant, and then for {@link AREA_LOOKUP_TIMEOUT_MS} at most.
  */
 export async function getHomeAreas(): Promise<HomeArea[]> {
+  const snapshot = getHomeSnapshot();
+  if (snapshot) {
+    return areasInSnapshot(snapshot);
+  }
+
   const now = Date.now();
 
   if (cachedAreas) {
@@ -979,7 +1016,18 @@ export const getChangedDevicesSince = createTool({
     total_changed: z.number(),
   }),
   execute: async (inputData) => {
-    const domainFilter = inputData.domain ? `and s.domain == '${inputData.domain}'` : '';
+    const domain = inputData.domain ? normalizeDomain(inputData.domain) : undefined;
+    const snapshot = getHomeSnapshot();
+    if (snapshot) {
+      const changedDevices = changedSinceInSnapshot(snapshot, inputData.sinceSeconds, domain);
+      return {
+        changed_devices: changedDevices,
+        since_seconds: inputData.sinceSeconds,
+        total_changed: changedDevices.length,
+      };
+    }
+
+    const domainFilter = domain ? `and s.domain == '${domain}'` : '';
 
     const template = `
 {%- set nowts = as_timestamp(now()) -%}
@@ -1024,17 +1072,38 @@ export interface UserLocation {
   }>;
 }
 
+const renderedPersonSchema = z.object({
+  entity_id: z.string(),
+  state: z.string(),
+  friendly_name: z.string(),
+  latitude: z.number().nullable(),
+  longitude: z.number().nullable(),
+  gps_accuracy: z.number().nullable(),
+  source: z.string(),
+  last_changed: z.string(),
+});
+
+const renderedZoneSchema = z.object({
+  entity_id: z.string(),
+  friendly_name: z.string(),
+  latitude: z.number(),
+  longitude: z.number(),
+  radius: z.number(),
+});
+
+const renderedPeopleAndZonesSchema = z.object({
+  persons: z.array(renderedPersonSchema),
+  zones: z.array(renderedZoneSchema),
+});
+
 /**
- * A zone as the presence template renders it: Home Assistant's own snake_case, straight out of
+ * A person as the presence template renders it: Home Assistant's own snake_case, straight out of
  * the JSON.
  */
-interface RenderedZone {
-  entity_id: string;
-  friendly_name: string;
-  latitude: number;
-  longitude: number;
-  radius: number;
-}
+export type RenderedPerson = z.infer<typeof renderedPersonSchema>;
+
+/** A zone as the presence template renders it, in the same snake_case. */
+export type RenderedZone = z.infer<typeof renderedZoneSchema>;
 
 // Interface for zone data
 interface ZoneData {
@@ -1062,6 +1131,52 @@ export function toZoneData(rendered: RenderedZone[]): ZoneData[] {
     longitude: zone.longitude,
     radius: zone.radius,
   }));
+}
+
+/** Every person and zone, from the cached copy of the house when there is one. */
+async function fetchPeopleAndZones(): Promise<{ persons: RenderedPerson[]; zones: RenderedZone[] }> {
+  const snapshot = getHomeSnapshot();
+  if (snapshot) {
+    return peopleAndZonesInSnapshot(snapshot);
+  }
+
+  const template = `
+{%- set persons = states.person | list -%}
+{%- set zones_list = states.zone | list -%}
+{
+  "persons": [
+    {%- for p in persons -%}
+    {
+      "entity_id": "{{ p.entity_id }}",
+      "state": "{{ p.state }}",
+      "friendly_name": "{{ p.attributes.friendly_name | default(p.entity_id) }}",
+      "latitude": {{ p.attributes.latitude | default('null') }},
+      "longitude": {{ p.attributes.longitude | default('null') }},
+      "gps_accuracy": {{ p.attributes.gps_accuracy | default('null') }},
+      "source": "{{ p.attributes.source | default('') }}",
+      "last_changed": "{{ p.last_changed.isoformat() }}"
+    }{%- if not loop.last -%},{%- endif -%}
+    {%- endfor -%}
+  ],
+  "zones": [
+    {%- for z in zones_list -%}
+    {
+      "entity_id": "{{ z.entity_id }}",
+      "friendly_name": "{{ z.attributes.friendly_name | default(z.entity_id) }}",
+      "latitude": {{ z.attributes.latitude | default(0) }},
+      "longitude": {{ z.attributes.longitude | default(0) }},
+      "radius": {{ z.attributes.radius | default(100) }}
+    }{%- if not loop.last -%},{%- endif -%}
+    {%- endfor -%}
+  ]
+}
+    `
+    .split('\n')
+    .map((line) => line.trim())
+    .join('\n');
+
+  const response = await callHomeAssistantApi('template', 'POST', { template });
+  return renderedPeopleAndZonesSchema.parse(typeof response === 'string' ? JSON.parse(response) : response);
 }
 
 /**
@@ -1114,104 +1229,54 @@ export const inferUserLocation = createTool({
     timestamp: z.string(),
   }),
   execute: async (inputData) => {
-    // Fetch all person entities and zones using a Jinja template
-    const template = `
-{%- set persons = states.person | list -%}
-{%- set zones_list = states.zone | list -%}
-{
-  "persons": [
-    {%- for p in persons -%}
-    {
-      "entity_id": "{{ p.entity_id }}",
-      "state": "{{ p.state }}",
-      "friendly_name": "{{ p.attributes.friendly_name | default(p.entity_id) }}",
-      "latitude": {{ p.attributes.latitude | default('null') }},
-      "longitude": {{ p.attributes.longitude | default('null') }},
-      "gps_accuracy": {{ p.attributes.gps_accuracy | default('null') }},
-      "source": "{{ p.attributes.source | default('') }}",
-      "last_changed": "{{ p.last_changed.isoformat() }}"
-    }{%- if not loop.last -%},{%- endif -%}
-    {%- endfor -%}
-  ],
-  "zones": [
-    {%- for z in zones_list -%}
-    {
-      "entity_id": "{{ z.entity_id }}",
-      "friendly_name": "{{ z.attributes.friendly_name | default(z.entity_id) }}",
-      "latitude": {{ z.attributes.latitude | default(0) }},
-      "longitude": {{ z.attributes.longitude | default(0) }},
-      "radius": {{ z.attributes.radius | default(100) }}
-    }{%- if not loop.last -%},{%- endif -%}
-    {%- endfor -%}
-  ]
-}
-    `
-      .split('\n')
-      .map((line) => line.trim())
-      .join('\n');
-
-    const response = await callHomeAssistantApi('template', 'POST', { template });
-    const data = typeof response === 'string' ? JSON.parse(response) : response;
-
-    const persons = data.persons || [];
-    const zones = toZoneData(data.zones || []);
+    const { persons, zones: renderedZones } = await fetchPeopleAndZones();
+    const zones = toZoneData(renderedZones);
 
     // Calculate distances from each person to each zone
     const users: UserLocation[] = persons
-      .filter((person: { friendly_name: string }) => {
+      .filter((person) => {
         if (!inputData.userName) return true;
         return person.friendly_name.toLowerCase().includes(inputData.userName.toLowerCase());
       })
-      .map(
-        (person: {
-          entity_id: string;
-          friendly_name: string;
-          state: string;
-          latitude: number | null;
-          longitude: number | null;
-          gps_accuracy: number | null;
-          source: string;
-          last_changed: string;
-        }) => {
-          const distancesFromZones = zones.map((zone) => {
-            let distanceMeters: number | null = null;
-            let isInZone = false;
+      .map((person) => {
+        const distancesFromZones = zones.map((zone) => {
+          let distanceMeters: number | null = null;
+          let isInZone = false;
 
-            if (person.latitude !== null && person.longitude !== null) {
-              distanceMeters = getDistance(
-                { latitude: person.latitude, longitude: person.longitude },
-                { latitude: zone.latitude, longitude: zone.longitude },
-              );
+          if (person.latitude !== null && person.longitude !== null) {
+            distanceMeters = getDistance(
+              { latitude: person.latitude, longitude: person.longitude },
+              { latitude: zone.latitude, longitude: zone.longitude },
+            );
 
-              isInZone = distanceMeters <= zone.radius;
-            }
+            isInZone = distanceMeters <= zone.radius;
+          }
 
-            // Also check if the person's state matches the zone name
-            if (person.state.toLowerCase() === zone.friendlyName.toLowerCase()) {
-              isInZone = true;
-            }
-
-            return {
-              zoneName: zone.friendlyName,
-              zoneId: zone.entityId,
-              distanceMeters,
-              isInZone,
-            };
-          });
+          // Also check if the person's state matches the zone name
+          if (person.state.toLowerCase() === zone.friendlyName.toLowerCase()) {
+            isInZone = true;
+          }
 
           return {
-            userId: person.entity_id,
-            userName: person.friendly_name,
-            state: person.state,
-            latitude: person.latitude,
-            longitude: person.longitude,
-            gpsAccuracy: person.gps_accuracy,
-            lastChanged: person.last_changed,
-            source: person.source,
-            distancesFromZones,
+            zoneName: zone.friendlyName,
+            zoneId: zone.entityId,
+            distanceMeters,
+            isInZone,
           };
-        },
-      );
+        });
+
+        return {
+          userId: person.entity_id,
+          userName: person.friendly_name,
+          state: person.state,
+          latitude: person.latitude,
+          longitude: person.longitude,
+          gpsAccuracy: person.gps_accuracy,
+          lastChanged: person.last_changed,
+          source: person.source,
+          distancesFromZones,
+        };
+      });
 
     return {
       users,
@@ -1316,10 +1381,19 @@ export function batchEntityIdsForHistory(entityIds: string[], maxLength = MAX_HI
  */
 /** Every domain the house has an entity in: "light", "lock", "sensor", ... */
 export async function listDomains(): Promise<string[]> {
+  const snapshot = getHomeSnapshot();
+  if (snapshot) {
+    return domainsInSnapshot(snapshot);
+  }
   return await renderStringList("{{ states | map(attribute='domain') | unique | list | to_json }}");
 }
 
 async function fetchEntityIds(domain?: string): Promise<string[]> {
+  const snapshot = getHomeSnapshot();
+  if (snapshot) {
+    return entityIdsInSnapshot(snapshot, domain);
+  }
+
   const source = domain ? `states.${domain}` : 'states';
   return await renderStringList(`{{ ${source}|map(attribute='entity_id')|list|to_json }}`);
 }
