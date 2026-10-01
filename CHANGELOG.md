@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.18.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.18.0...root-v4.18.1) (2026-10-01)
+
+
+### Performance Improvements
+
+* **mcp:** answer home assistant lookups from a websocket cache ([#931](https://github.com/ffMathy/hey-jarvis/issues/931)) ([5b34f69](https://github.com/ffMathy/hey-jarvis/commit/5b34f693cad0f8a8bcc24540354625655120ab69))
+
 ## [4.18.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.17.1...root-v4.18.0) (2026-10-01)
 
 
