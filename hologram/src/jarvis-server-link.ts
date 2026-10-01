@@ -59,8 +59,24 @@ export interface ServerLinkPlatform {
   after(milliseconds: number, callback: () => void): () => void;
 }
 
+/** The global `WebSocket`, as a {@link ServerSocket}: its handlers are called with no more than a line reads. */
+function openWebSocket(url: string): ServerSocket {
+  const webSocket = new WebSocket(url);
+  const socket: ServerSocket = {
+    onopen: null,
+    onmessage: null,
+    onclose: null,
+    send: (data) => webSocket.send(data),
+    close: () => webSocket.close(),
+  };
+  webSocket.onopen = () => socket.onopen?.();
+  webSocket.onmessage = (event) => socket.onmessage?.({ data: event.data });
+  webSocket.onclose = (event) => socket.onclose?.({ code: event.code });
+  return socket;
+}
+
 const DEFAULT_PLATFORM: ServerLinkPlatform = {
-  openSocket: (url) => new WebSocket(url),
+  openSocket: openWebSocket,
   after: (milliseconds, callback) => {
     const timer = setTimeout(callback, milliseconds);
     return () => clearTimeout(timer);
