@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.6.0...elevenlabs-v2.7.0) (2026-10-01)
+
+
+### Features
+
+* **mcp:** add a public websocket api for the phone, watch and vr ([#932](https://github.com/ffMathy/hey-jarvis/issues/932)) ([6e4d0b8](https://github.com/ffMathy/hey-jarvis/commit/6e4d0b8e8cc99aac03523dde397d1db2ea8482ba))
+
 ## [2.6.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.5.0...elevenlabs-v2.6.0) (2026-10-01)
 
 
