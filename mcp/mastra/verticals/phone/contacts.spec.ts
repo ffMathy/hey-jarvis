@@ -68,11 +68,12 @@ const actualGetGoogleAuth = realGoogleAuth.getGoogleAuth;
  *
  * `mock.module` is process-global in Bun, so this file's substitution reaches
  * every other spec sharing the process — and `credentials/google-auth.js` is
- * shared with the calendar and todo-list verticals. Those two are integration
- * specs, which run in a separate process from this one, so today nothing else in
- * the unit run reaches for it; the fallback is what keeps that from being load
- * bearing. Deferring to the real implementation whenever this file is not
- * driving keeps the mock local in effect if not in scope.
+ * shared with the calendar and todo-list verticals, whose unit specs run in this
+ * same process and fake Google underneath the real auth client (see
+ * `tests/utils/fake-google.ts`). The todo-list spec runs after this one, so the
+ * fallback is load bearing: deferring to the real implementation whenever this
+ * file is not driving is what hands it a real client to fake, and keeps the mock
+ * local in effect if not in scope.
  */
 let isAuthMocked = false;
 

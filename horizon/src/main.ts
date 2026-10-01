@@ -10,6 +10,7 @@ import { type RoomOutcome, startPage } from './page/page';
 import type { PreparationTask } from './page/preparation';
 import type { KeyValueStorage } from './page/settings';
 import { loadVoiceFromWhereHeStands } from './page/voice-setting';
+import { readTestSeams } from './test-seams';
 import type { Diagnostics } from './ui3d/debug-hud';
 import {
   createWakeEngine,
@@ -19,6 +20,7 @@ import {
   openWakeMicrophone,
 } from './wake';
 import { WAKE_FILES } from './wake/wake-assets';
+import { parseOriginOffset } from './xr/origin-offset';
 import { canEnterRoom, requestRoomSession } from './xr/room-session';
 
 /**
@@ -43,13 +45,19 @@ import { canEnterRoom, requestRoomSession } from './xr/room-session';
  * picture instead of in 3D, `?microphone=raw` listens for the wake word without echo cancellation,
  * noise suppression or gain control, to try on a headset whether it hears better, and
  * `?voice=spatial` plays his voice from where he stands even when the microphone says the headset
- * has no echo canceller of its own that could keep it out (see `conversation/voice-route.ts`), and
+ * has no echo canceller of its own that could keep it out (see `conversation/voice-route.ts`),
  * `?film` is for recordings: sample mode goes without its frame-rate readout, which in the demo
- * video (`.scripts/render-demo.ts`, shot on a faked clock) would only report that clock.
+ * video (`.scripts/render-demo.ts`, shot on a faked clock) would only report that clock, and
+ * `?origin=x,z,yawDegrees` moves the room's space from where the headset put it, which only the
+ * browser tests want (`xr/origin-offset.ts`). They alone want two more, because the emulator draws
+ * too slowly to race the budgets they hold (`test-seams.ts`): `?deadline=never`, the session never
+ * giving up on a conversation that has not opened, and `?errors=held`, an error panel staying up
+ * until it is dismissed.
  */
 
 const debug = publishDebugState(initialDebugState());
 const flags = new URLSearchParams(window.location.search);
+const seams = readTestSeams(flags);
 const assetBase = new URL('./', document.baseURI);
 
 const roomLoading = Promise.all([
@@ -110,6 +118,16 @@ const preparations: PreparationTask[] = [
 ];
 
 let listeningAudio: AudioContext | undefined;
+
+/**
+ * `localStorage`, reached for on every call rather than once: reading the property itself throws
+ * when the browser has storage switched off, and the settings code turns a throw into "nothing
+ * stored" only where it happens inside a call.
+ */
+const browserStorage: KeyValueStorage = {
+  getItem: (key) => window.localStorage.getItem(key),
+  setItem: (key, value) => window.localStorage.setItem(key, value),
+};
 
 /**
  * His voice from where he stands, made once for the page: it can take the greeting's element into
@@ -198,18 +216,29 @@ function sharedRoomOptions(modules: RoomModules, onInside: () => void) {
       }),
     showHud: flags.has('debug'),
     showReadout: !flags.has('film'),
+    // Every room remembers where sir put things: the registry and the anchors outlive the session.
+    entityStorage: browserStorage,
+    origin: parseOriginOffset(flags.get('origin')),
+    holdErrors: seams.holdErrors,
     debug,
     onInside,
   } satisfies Omit<RoomOptions, 'mode'>;
 }
 
-/** Sample mode's room: no key, no microphone, the moods driving him. */
-async function openSampleRoom(sessionRequest: Promise<XRSession>, onInside: () => void): Promise<RoomOutcome> {
+/**
+ * A room with no conversation in it: sample mode, the moods driving him, or placing things, straight
+ * into the drawer. Neither needs a key or a microphone.
+ */
+async function openRoomWithoutAgent(
+  mode: 'sample' | 'placement',
+  sessionRequest: Promise<XRSession>,
+  onInside: () => void,
+): Promise<RoomOutcome> {
   const session = await sessionRequest;
   try {
     const modules = await roomLoading;
     const [{ runRoom }] = modules;
-    return await runRoom(session, { ...sharedRoomOptions(modules, onInside), mode: 'sample' });
+    return await runRoom(session, { ...sharedRoomOptions(modules, onInside), mode });
   } catch (error) {
     // A session nothing is drawing in is an empty room the user would have to find their own way
     // out of, so one that opened before the failure is closed with it.
@@ -264,6 +293,8 @@ async function openConversationRoom(
           audioContext,
           events,
           voice,
+          deviceContext: conversation.HEADSET_DEVICE_CONTEXT,
+          giveUpConnectingAfterMs: seams.giveUpConnectingAfterMs,
         }),
       stopMicrophone,
       diagnostics: flags.has('debug') ? roomDiagnostics : undefined,
@@ -277,16 +308,6 @@ async function openConversationRoom(
   }
 }
 
-/**
- * `localStorage`, reached for on every call rather than once: reading the property itself throws
- * when the browser has storage switched off, and the settings code turns a throw into "nothing
- * stored" only where it happens inside a call.
- */
-const browserStorage: KeyValueStorage = {
-  getItem: (key) => window.localStorage.getItem(key),
-  setItem: (key, value) => window.localStorage.setItem(key, value),
-};
-
 startPage(document, {
   storage: browserStorage,
   // Handed on as the plain global and only ever called as a plain function, which is how the
@@ -298,7 +319,7 @@ startPage(document, {
   enterRoom: (mode, settings, onInside) => {
     const xr = navigator.xr;
     if (xr === undefined) return Promise.reject(new Error('This browser has no WebXR.'));
-    if (mode === 'sample') return openSampleRoom(requestRoomSession(xr), onInside);
+    if (mode !== 'conversation') return openRoomWithoutAgent(mode, requestRoomSession(xr), onInside);
     if (settings === undefined) return Promise.reject(new Error('Add your ElevenLabs key first.'));
     // All of this before anything is awaited, while the click's activation still counts: the
     // audio context his voice is analysed on, the greeting's player (an element that has played

@@ -108,7 +108,8 @@
         "agent_tool_response",
         "mcp_tool_call",
         "vad_score",
-        "agent_chat_response_part"
+        "agent_chat_response_part",
+        "client_tool_call"
       ],
       "fileInput": {
         "enabled": true,
@@ -347,6 +348,46 @@
             "params": {
               "systemToolType": "skip_turn"
             }
+          },
+          {
+            "type": "client",
+            "name": "markAffected",
+            "description": "Lights up, on sir's headset, the things the current request is reading or changing. Pass exactly the entities the instructions field listed, each as given there, and no others. It answers nothing worth reading: carry on with the rest of what the instructions said.",
+            "responseTimeoutSecs": 20,
+            "disableInterruptions": false,
+            "interruptionMode": "allow",
+            "forcePreToolSpeech": false,
+            "preToolSpeech": "off",
+            "assignments": [],
+            "toolCallSoundBehavior": "auto",
+            "toolErrorHandlingMode": "hide",
+            "parameters": {
+              "type": "object",
+              "required": ["entities"],
+              "properties": {
+                "entities": {
+                  "type": "array",
+                  "description": "Every entity the instructions listed, each exactly as given there.",
+                  "items": {
+                    "type": "object",
+                    "description": "One entity the request is reading or changing.",
+                    "required": ["id"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "Its identifier, copied character for character. It is opaque and can come from any system - a light, an inbox or a calendar - so never shorten, translate or guess one."
+                      },
+                      "name": {
+                        "type": "string",
+                        "description": "Its display name, copied as given, such as Kitchen ceiling light or Work inbox. Leave it out when the instructions gave none."
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "expectsResponse": false,
+            "executionMode": "immediate"
           }
         ]
       }

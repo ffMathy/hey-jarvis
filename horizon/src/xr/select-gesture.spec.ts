@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { createSelectGestures, HOLD_SECONDS } from './select-gesture';
+import { createSelectGestures, HOLD_SECONDS, LATE_START_SECONDS } from './select-gesture';
 
 describe('createSelectGestures', () => {
   it('calls a quick select a tap', () => {
@@ -57,6 +57,42 @@ describe('createSelectGestures', () => {
     gestures.start('right', 11);
     expect(gestures.heldLongEnough(11.5)).toEqual([]);
     expect(gestures.heldLongEnough(11 + HOLD_SECONDS)).toEqual(['right']);
+  });
+
+  it('reports nothing more for a select spent while it was held: neither its hold nor its release', () => {
+    const gestures = createSelectGestures<string>();
+    gestures.start('right', 10);
+    gestures.consumeHeld(10.2);
+    expect(gestures.heldLongEnough(10 + HOLD_SECONDS + 1)).toEqual([]);
+    expect(gestures.complete('right', 12)).toBeUndefined();
+  });
+
+  it('spends a quick release as well, the way a Quest reports a trigger that pressed a button', () => {
+    const gestures = createSelectGestures<string>();
+    gestures.start('left', 10);
+    gestures.start('right', 10.1);
+    gestures.consumeHeld(10.2);
+    expect(gestures.complete('left', 10.3)).toBeUndefined();
+    expect(gestures.complete('right', 10.3)).toBeUndefined();
+  });
+
+  it(`spends a select that starts within ${LATE_START_SECONDS} s, as part of the press already under way`, () => {
+    const gestures = createSelectGestures<string>();
+    gestures.consumeHeld(10);
+    gestures.start('right', 10 + LATE_START_SECONDS / 2);
+    expect(gestures.complete('right', 10 + LATE_START_SECONDS)).toBeUndefined();
+    // A completion reported whole, as the emulator reports one, is spent the same way.
+    expect(gestures.complete('left', 10 + LATE_START_SECONDS / 2)).toBeUndefined();
+  });
+
+  it('counts every select that starts later again', () => {
+    const gestures = createSelectGestures<string>();
+    gestures.start('right', 10);
+    gestures.consumeHeld(10.2);
+    gestures.complete('right', 10.4);
+    gestures.start('right', 10.2 + LATE_START_SECONDS);
+    expect(gestures.complete('right', 10.5 + LATE_START_SECONDS)).toBe('short');
+    expect(gestures.complete('left', 11 + LATE_START_SECONDS)).toBe('short');
   });
 
   it('takes the hold length it is given', () => {

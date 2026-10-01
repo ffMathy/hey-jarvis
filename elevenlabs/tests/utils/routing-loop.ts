@@ -42,6 +42,15 @@ const completedTaskResultSchema = z.object({
 });
 
 /**
+ * Something a request is reading or changing, as a poll relays it for `markAffected`: an opaque
+ * id from whichever agent touched it, and a display name when that agent had one.
+ */
+const affectedEntitySchema = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+});
+
+/**
  * The payload both routing tools return, as `instructionsOutputSchema` and
  * `routeAcknowledgementSchema` in `mcp/mastra/verticals/routing/workflows.ts`
  * define it. Deliberately permissive about the optional halves: a poll that
@@ -51,6 +60,9 @@ const routingReportSchema = z.object({
   instructions: z.string(),
   completedTaskResults: z.array(completedTaskResultSchema).optional(),
   taskIdsInProgress: z.array(z.string()).optional(),
+  // A malformed list is read as no list rather than as no report, so the loop's own shape can
+  // still be judged; the headset eval then fails on the entities it never saw relayed.
+  affectedEntities: z.array(affectedEntitySchema).optional().catch(undefined),
 });
 
 export type RoutingReport = z.infer<typeof routingReportSchema>;

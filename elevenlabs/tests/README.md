@@ -9,10 +9,12 @@ tests/
 ├── specs/          # Test specification files
 │   ├── agent-prompt.integration.spec.ts          # live — needs credentials + tunnel
 │   ├── camera.integration.spec.ts                # live — needs credentials + tunnel
+│   ├── headset.integration.spec.ts               # live — needs credentials + tunnel
 │   ├── routing-orchestration.integration.spec.ts # live — needs credentials + tunnel
 │   ├── acknowledgement-timing.spec.ts            # offline
 │   ├── agent-config.spec.ts                      # offline
 │   ├── conversation-config-body.spec.ts          # offline
+│   ├── headset.spec.ts                           # offline
 │   ├── procedure-version-refs.spec.ts            # offline
 │   ├── routing-loop.spec.ts                      # offline
 │   ├── spoken-tool-call.spec.ts                  # offline
@@ -23,6 +25,7 @@ tests/
     ├── elevenlabs-conversation-strategy.ts
     ├── gemini-mastra-conversation-strategy.ts
     ├── acknowledgement-timing.ts
+    ├── headset.ts
     ├── mcp-connection.ts
     ├── mcp-integration.ts
     ├── routing-loop.ts
@@ -43,8 +46,14 @@ Test utility functions are located in `tests/utils/`:
 - `conversation-strategy.ts` - Base conversation strategy interface, the message log's
   types, and the transcript the evaluator reads
 - `elevenlabs-conversation-strategy.ts` - ElevenLabs WebSocket strategy. Besides messages, it
-  can send a contextual update, background that starts no turn, as the phone does
+  can send a contextual update, background that starts no turn, as the phone and the headset
+  do — with a context id when a newer update should replace an older one — and answer client
+  tool calls the way a device would when a test passes `answerClientToolCall`; without one,
+  client tool calls are recorded and left unanswered
 - `gemini-mastra-conversation-strategy.ts` - Gemini/Mastra evaluation strategy
+- `headset.ts` - The sentences the headset sends, and what the headset eval reads off the
+  connection: the `markAffected` calls, the entities the routing loop relayed, and each
+  routed query
 - `mcp-connection.ts` - Whether the agent actually reached its MCP server, so an
   eval never scores a conversation that had no tools to call
 - `mcp-integration.ts` - Reports how ElevenLabs is configured to reach the MCP server
@@ -54,8 +63,8 @@ Test utility functions are located in `tests/utils/`:
 - `spoken-tool-call.ts` - Detects an agent reciting a tool call instead of making one
 - `test-environment.ts` - Brings the MCP server and tunnel up and down around a
   spec file. Both halves live here because every live spec file (agent-prompt,
-  camera, routing-orchestration) shares the same ports, so the teardown of one has
-  to finish before the setup of the next begins. Also
+  camera, headset, routing-orchestration) shares the same ports, so the teardown of
+  one has to finish before the setup of the next begins. Also
   `withConversationRetry`, which holds a fresh conversation for each attempt
 - `acknowledgement-timing.ts` - Whether the user heard anything before the results,
   and whether he was told twice that he is being attended to
@@ -115,26 +124,30 @@ Tests start the MCP server and Cloudflare tunnel, and only then deploy the test
 agent. ElevenLabs reads the agent's MCP tool list when the agent is updated, so
 deploying before the tunnel is up leaves the agent with no tools to call.
 
-`spoken-tool-call.spec.ts`, `acknowledgement-timing.spec.ts`, `routing-loop.spec.ts`,
-`retry-with-backoff.spec.ts`, `procedure-version-refs.spec.ts`,
-`conversation-config-body.spec.ts` and `agent-config.spec.ts` need none of this — they
-are pure logic and run offline, so they still give useful signal when the credentials or
+Every spec without the `.integration` suffix needs none of this — they are pure
+logic and run offline, so they still give useful signal when the credentials or
 the tunnel are unavailable.
 
 `agent-config.spec.ts` guards the committed config rather than a detector. The deploy
 runs only after a merge to `main`, and the apps' own specs are cached by turbo until their
-package changes, so a change to `agent-config.json` alone is never run past them. The spec
-holds it to what the devices assume: every client event is one ElevenLabs sends,
-`mcp_tool_call` — which the apps' thinking phase follows — is among them, and the agent
-declares no client tool, since no device answers one. It also holds the one exception to
-hanging up after a finished request — a photo sir said he would send, or has opened the camera
-for, on a device that has said it has a camera button, until the photo, a message that it did not
-arrive, a note that he closed the camera without one, or his word that it is not coming settles
-it — to being stated in the same phrases wherever that rule is: in the prompt's **When Sir Is
-Silent**, and in both copies of the `skip_turn` and `end_call` descriptions, which must match each
-other. Routing's copy is held to the same phrases by `workflows.spec.ts` in `mcp/`. And it holds
-the prompt to sending sir to his phone, without waiting, where there is no camera button, and to
-ending the wait on a camera closed without a photo.
+package changes, so a change to `agent-config.json` alone is never run past them. The deploy
+also strips any key the SDK does not recognise without a word, and sends an enum value it
+does not recognise on to ElevenLabs as written. So the spec runs the hand-written client
+tools in `agent-config.json` through the SDK's own serialiser with unknown keys set to fail —
+a snake_case key that would have vanished, or a misspelt enum value the deploy would have
+sent anyway, fails here on the push instead. It holds the config to what the devices assume:
+every client event is one ElevenLabs sends, `mcp_tool_call` — which the apps' thinking phase
+follows — is among them, and the agent declares no client tool but `markAffected`, which
+every app answers. It pins what the headset relies on of `markAffected`, and that the test
+agent keeps it. It also holds the one exception to hanging up after a finished request — a
+photo sir said he would send, or has opened the camera for, on a device that has said it has
+a camera button, until the photo, a message that it did not arrive, a note that he closed the
+camera without one, or his word that it is not coming settles it — to being stated in the
+same phrases wherever that rule is: in the prompt's **When Sir Is Silent**, and in both copies
+of the `skip_turn` and `end_call` descriptions, which must match each other. Routing's copy is
+held to the same phrases by `workflows.spec.ts` in `mcp/`. And it holds the prompt to sending
+sir to his phone, without waiting, where there is no camera button, and to ending the wait on
+a camera closed without a photo.
 
 ## The camera eval
 
@@ -158,6 +171,26 @@ What was routed, and when, is asserted off the socket, along with the photo's id
 aloud; the evaluator judges what Jarvis said — sending sir to the camera button, or to his phone, and
 never speaking as though he could see a photo he cannot. No photo is really uploaded, so the routed
 look finds none and the answer is never a real total, and the criteria allow for that.
+
+## The headset evals
+
+`headset.integration.spec.ts` stands in for sir's headset. Told by the headset's device
+context that it lights up what Jarvis works on, the agent has to answer "Are the kitchen
+lights on?" and, along the way, call `markAffected` with exactly the entities the routing
+loop relayed in `affectedEntities` — no id changed, none left out — without a word about
+it, and still carry the loop to its closing report. Told nothing, the same request must
+never call `markAffected`, as on the phone, the watch, the Voice speaker or a phone call,
+and must still finish. And with two pointing updates sharing a context id, "Is that on?"
+must be routed with the name and id of the second, never the first.
+
+The calls are asserted off the socket; the evaluator only judges whether Jarvis talked
+about the machinery. Every request is read-only, because the environment runs the real
+MCP server against the real house. The first two evals fail up front, naming the MCP
+half, when the routing loop relays no `affectedEntities` at all: without them the agent
+had nothing to mark, and neither a mark nor its absence says anything about the agent.
+
+`headset.spec.ts` keeps the detectors behind these evals honest offline, and checks that
+the prompt still quotes the sentences the headset sends.
 
 ## The orchestration eval
 

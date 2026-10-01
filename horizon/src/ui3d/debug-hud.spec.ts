@@ -6,6 +6,19 @@ describe('describeDiagnostics', () => {
     expect(describeDiagnostics({})).toEqual([]);
   });
 
+  it('puts what is placed in the room, what is lit and what is pointed at on one line', () => {
+    expect(
+      describeDiagnostics({
+        entities: { known: 12, placed: 3, here: 2, anchorsLocated: 1, anchors: 2, lit: 1, pointed: 'Kitchen light' },
+      }),
+    ).toEqual(['entities 12 known  3 placed, 2 here  anchors 1/2 located  lit 1  pointing at Kitchen light']);
+    expect(
+      describeDiagnostics({
+        entities: { known: 0, placed: 0, here: 0, anchorsLocated: 0, anchors: 0, lit: 0, problem: 'Not kept.' },
+      }),
+    ).toEqual(['entities 0 known  0 placed, 0 here  anchors 0/0 located  lit 0  Not kept.']);
+  });
+
   it('puts everything a headset needs looking at on short lines', () => {
     expect(
       describeDiagnostics({
@@ -161,5 +174,12 @@ describe('extensionsOfInterest', () => {
       'EXT_color_buffer_float',
     ]);
     expect(extensionsOfInterest(null)).toEqual([]);
+  });
+
+  it('says whether multisampling can go straight into the XR layer, and whether canvases filter along a tilt', () => {
+    expect(extensionsOfInterest(['EXT_texture_filter_anisotropic', 'WEBGL_multisampled_render_to_texture'])).toEqual([
+      'WEBGL_multisampled_render_to_texture',
+      'EXT_texture_filter_anisotropic',
+    ]);
   });
 });

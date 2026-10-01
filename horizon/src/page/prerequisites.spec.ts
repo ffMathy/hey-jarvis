@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { canTrySample, microphoneHelp, type PageFacts, primaryButton } from './prerequisites';
+import { canOpenWithoutAgent, microphoneHelp, type PageFacts, primaryButton } from './prerequisites';
 
 /** Everything done: the button enters the room. Each test takes one step away. */
 const READY: PageFacts = {
@@ -103,14 +103,16 @@ describe('primaryButton', () => {
   });
 });
 
-describe('canTrySample', () => {
+describe('canOpenWithoutAgent', () => {
   it('needs only a browser that can open a room, and nobody in it', () => {
-    expect(canTrySample({ ...READY, hasSettings: false, preparation: { state: 'running', fraction: 0 } })).toBe(true);
-    expect(canTrySample({ ...READY, microphone: 'denied' })).toBe(true);
-    expect(canTrySample({ ...READY, xr: 'unsupported' })).toBe(false);
-    expect(canTrySample({ ...READY, xr: 'checking' })).toBe(false);
-    expect(canTrySample({ ...READY, room: 'entering' })).toBe(false);
-    expect(canTrySample({ ...READY, room: 'inside' })).toBe(false);
+    expect(canOpenWithoutAgent({ ...READY, hasSettings: false, preparation: { state: 'running', fraction: 0 } })).toBe(
+      true,
+    );
+    expect(canOpenWithoutAgent({ ...READY, microphone: 'denied' })).toBe(true);
+    expect(canOpenWithoutAgent({ ...READY, xr: 'unsupported' })).toBe(false);
+    expect(canOpenWithoutAgent({ ...READY, xr: 'checking' })).toBe(false);
+    expect(canOpenWithoutAgent({ ...READY, room: 'entering' })).toBe(false);
+    expect(canOpenWithoutAgent({ ...READY, room: 'inside' })).toBe(false);
   });
 });
 

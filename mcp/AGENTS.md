@@ -111,9 +111,10 @@ that answers in one call rather than one per item.
 #### The shared guidelines
 
 `createAgent` follows every agent's own instructions with the same short section: never ask
-questions, make a best-guess assumption instead, and the current time. The instructions are
-resolved on every request, not at construction — agents are built once at boot and the server
-stays up for days, so a time taken then would be days stale.
+questions, make a best-guess assumption instead, act on an id the request gives without looking it
+up first (`POINTED_AT_ID_GUIDELINE` — see **What sir points at** under Routing), and the current
+time. The instructions are resolved on every request, not at construction — agents are built once
+at boot and the server stays up for days, so a time taken then would be days stale.
 
 An agent's answer usually ends the exchange, so a question in it has nowhere to go. Questions
 that do reach the user come from a tool that suspends, or from a Claude Code session that stops
@@ -166,6 +167,7 @@ Provides intelligent weather information and forecasting capabilities:
 Provides intelligent shopping list management for Bilka online store with Danish language support:
 - **4 Bilka integration tools**: Product search via Algolia, cart quantity management, cart retrieval, and cart clearing
 - **Whole lists in one call**: `findProductInCatalog` takes `search_queries` and `setProductBasketQuantity` takes `items`, so a shopping list is one tool call each rather than one model round trip per product. Each search sends all six preference filters in a single Algolia request, and callers arriving together share one Bilka sign-in
+- **Reports the basket it touches**: reading, emptying or changing the basket reports `BILKA_BASKET` (`bilka-basket`, "Shopping basket") for sir's headset to light up; a catalogue search reports nothing (see [What a request touches](#affected-entities))
 - **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing in Danish
 - **Priority-based selection**: Organic certification, Danish origin, healthier options, and price optimization
 - **Smart quantity handling**: Balances food waste reduction with requested quantities (20% tolerance)
@@ -717,6 +719,7 @@ Reads, analyses and changes code — Jarvis's own above all — and manages GitH
 - **Codebase questions**: `analyzeCodebase` has a Claude Code session read the code and answer — how something works, a review, ideas for improvement, technical debt — without changing anything. It is `runCodingTask` with a read-only brief (`buildCodebaseQuestionTask`), and it is slow like the tool it wraps. A `context` input carries what the code cannot show, most often the reflection agent's failures, which live in Mastra's storage where a session cannot reach. Before it existed, a question about Jarvis's own code had no agent to go to, and "gather ideas to improve Jarvis and visualize them" was planned onto web research. The planned shape now is reflection → coding → visualize, one chain, each handed the previous answer
 - **Workflow coordination**: Triggers requirements gathering workflow for new feature requests
 - **Smart defaults**: a task with no repository named is a task on Jarvis himself, `ffMathy/hey-jarvis` (`coding/repository.ts`). Every tool, `implementFeatureWorkflow` and the agent default to it, and the implementing session is told the repository up front and never asks which one is meant
+- **Reports the repository it works on**: the tools that take a repository, and `implementFeatureWorkflow` called as a tool, report it as its lower-cased `owner/repo` (`describeRepository`) for sir's headset to light up (see [What a request touches](#affected-entities))
 
 **Key Capabilities:**
 - List all public repositories for a GitHub user
@@ -1038,6 +1041,12 @@ The planner writes a flat list of **tasks**. Each names one agent, the prompt it
 in `needs` the id of the one task whose answer it cannot be carried out without. Tasks run at
 the same time as each other unless `needs` says otherwise.
 
+An id in the request — most often the thing sir is pointing at,
+`(pointing at "Kitchen ceiling", id light.kitchen_ceiling)` — is copied verbatim into the prompt of
+the agent that owns the thing, so it acts on that very thing rather than looking it up (see **What
+sir points at** under Routing). A request the classifier routes on its own (below) needs no copying:
+its one agent is handed the user's own words, id and all.
+
 What actually runs is **chains**, derived from that list in `task-chains.ts`: the delegations
 inside one chain run in order, and every delegation after the first is handed the previous
 answer along with its own prompt. So ordering and dependency passing are structural rather than
@@ -1078,7 +1087,9 @@ setting (a brightness, temperature, colour). When the request is routed to `inte
 that service can act on is fetched live and put to Jev as one yes/no each, with its name, area and
 state (`internet-of-things/home-commands.ts`). If every entity is settled one way or the other and
 at least one is chosen, the service is called on exactly those, with no language model involved.
-The result says how many devices changed state, and does not claim success when none did. Anything
+The result says how many devices changed state, and does not claim success when none did, and the
+entities it was called on are reported as what the request touched, exactly as the agent's
+`callIoTService` would have reported them (see [What a request touches](#affected-entities)). Anything
 else (an unsure service or entity, a setting, more than 150 candidate entities, Home Assistant
 refusing the call) runs the same one-agent chain the request would have run anyway. Jev only picks
 from what Home Assistant listed, so it cannot call a service or touch an entity that does not exist.
@@ -1133,6 +1144,9 @@ over the REST API, not through the voice model.
    dropped.
 6. A delegation that stops to ask the user something is reported in that closing report as a
    question, in `questionsForUser` — see **Questions for the user** below.
+7. What a delegation's tools read or change is reported in `affectedEntities`, the request's first
+   things shortly after a tool answers and later ones with the next report — see
+   [What a request touches](#affected-entities) below.
 
 **How long the answer is:** the planner labels every request with a `responseStyle`, by where its
 value lands (`RESPONSE_STYLES` in `routing/planner.ts`):
@@ -1282,6 +1296,121 @@ agent lists issues in a second and starts an implementation that takes ten minut
    his answer can come back. He answers it there or the next time he talks to Jarvis, through
    **Questions for the user** as usual.
 
+<a id="affected-entities"></a>
+**What a request touches (affected entities):**
+On sir's headset he places things from his home in the room — a light, his inbox, the family
+calendar — and the next time Jarvis works on one of them, it glows. For that the voice agent has to
+be told, while the request is still running, what it is touching, and the only place that knows is
+the tool an agent calls. So a tool that touches something is marked with `markAsAffectingEntities`
+(`mastra/utils/affected-entities.ts`) and a reader that picks the things out of its arguments and
+result, parsed with zod. A shortcut onto a marked tool inherits its reader, and a workflow an agent
+calls as a tool is looked up through its `workflow-` prefix, exactly as for slow tasks.
+
+An entity is `{ id, name? }`. The `id` is opaque to everything downstream, and is whatever the owning
+tools take as that thing's id, so an agent later handed one acts on it without a lookup. An alias a
+tool accepts (`primary`, `@default`) is reported by the real id it stands for, or the headset would
+record one thing twice and never light the copy he placed. `name` is only for display. Ids longer
+than 200 characters are dropped and names are cut at 120.
+
+Some tools have to ask for the real id or the name of what they touched — the lights an area's
+service call reached, a calendar's name, a task list's title. They ask alongside their own call,
+through `lookUpWithinTimeLimit`, which gives up after `AFFECTED_ENTITY_LOOKUP_TIMEOUT_MS` (1.5 s)
+and falls back to the id as asked: the call is what sir is waiting for, and the answer only lights
+something up. The task-list lookup is also asked once, with no retries and a timeout, since nothing
+but the glow waits on it. The calendar list keeps Google's retries, because it is
+`getAllCalendars`' answer too, but has a timeout of its own so a hanging load cannot hold the cache.
+
+1. Routing reads every `tool-result` chunk the way it reads slow tool calls: forwarded by the agent
+   step as `workflow-step-output`, or, for an answer carried back to a question, off the resumed
+   agent's own stream. Whatever the readers name becomes a `delegation_affected_entities` event.
+   A call that never ran touched nothing, whatever its reader would say: Mastra streams input that
+   failed validation (`{ error: true, … }`) and a failed workflow tool (`{ error, runId }`) as
+   ordinary results, and `readAffectedEntities` skips both before a reader sees them. A request
+   answered without its agent (see **Direct answers** below) streams no tool result at all, so
+   `answerDirectly` hands back what it touched beside its facts (`DirectAnswerOutcome`), and
+   `runDirectOrPlan` reports that as the same event, just before the result. One that declines or
+   fails reports nothing of what it tried: the agent it falls back to reports what it touches itself.
+2. Each thing is reported once per request, at most `MOST_AFFECTED_ENTITIES_PER_REQUEST` (20) of
+   them, and nothing is recorded once the user has asked to be notified. Only the request's
+   **first** batch may end a parked poll by itself, and only once `AFFECTED_ENTITIES_GRACE_MS`
+   (450 ms) has passed — see the rule below.
+3. The poll returns them in `affectedEntities`, and the instructions open with
+   `MARK_AFFECTED_INSTRUCTIONS`: call the `markAffected` client tool with exactly those entities,
+   silently, before anything else, and never retry it. Silent covers the call and the list, not the
+   things: "which kitchen lights are on?" is answered by naming the lights the lookup touched, so
+   only the `affectedEntities` list and its ids are kept out of what he hears, and the clause says
+   the rest of the report names things as it always would. When that is all the response has, it then
+   says to poll again at once and say nothing. Results, the slow-work offer, the closing report, the
+   reply to `notifyWhenDone` and the response a poll gives when it runs out its deadline all carry
+   whatever has not been reported yet, the instruction first.
+
+**When things touched may end a poll.** A response with nothing but entities costs the voice model
+a whole step — call `markAffected`, poll again — and routing is never told which device a
+conversation is on, so it costs that step on phones, watches and speakers that light nothing up,
+too. So it is rationed (`RoutingProgress.affectedEntitiesMayEndAPoll` and `buildSnapshot` in
+`routing/controller.ts`):
+- The request's **first** batch may end a parked poll by itself, but only after
+  `AFFECTED_ENTITIES_GRACE_MS` (450 ms). A result, the slow-work offer or the closing report landing
+  inside that window goes out in the same response, with the entities in it. That is the usual shape
+  of a command — a tool answers, then the agent does — so a quick command costs no extra step at all.
+- Once any entities have been handed over, **later ones never end a poll by themselves**. A snapshot
+  with nothing else to say leaves them waiting, and they ride on the next response: results, the
+  slow-work offer, the closing report, the reply to `notifyWhenDone`, or the one a poll gives at its
+  deadline (`answeringAnyway`), which the voice model had to take a step for regardless.
+
+The cost that remains, deliberately: at most one extra voice-model step per request, when nothing
+lands within the window — on every device, since routing cannot tell them apart; the first glow on
+the headset up to 450 ms later than it could be; and a later thing's glow waiting for the next
+response, up to the poll deadline. `affected-entities-interview.spec.ts` pins both ends: a quick
+command answers in one response carrying all it touched, and a held one gets exactly one
+entities-only response.
+
+`MARK_AFFECTED_TOOL` (`'markAffected'`) has to match the ElevenLabs agent's configuration and prompt
+and every client that registers the tool; whether a conversation is on a device that lights things
+up is for the agent prompt to say.
+
+What is marked, and what is deliberately not:
+
+| Vertical | Reports | Left unmarked, and why |
+| --- | --- | --- |
+| Internet of things | `callIoTService`: the entities it reached — the ids named, and the service domain's entities in the areas and devices named (every domain for `homeassistant`), resolved alongside the call, given up on after 1.5 s and never failing it. `findEntities`: what it found, when that is at most `MOST_ENTITIES_A_LOOKUP_AFFECTS` (10). `getEntityLogbook`: the entity. A home command carried out without the agent (`home-commands.ts`): the entities Jev chose and the service was called on. A question about the house answered without the agent: the entities it was about, under the same limit as `findEntities` (`entitiesALookupAffects`), so "what lights are on in the kitchen" lights them and "are any lights on" lights nothing | `getAllDevices`, `getChangedDevicesSince` and `inferUserLocation` are surveys; `getAllServices` names no entity; `setUserPhoneAlarm` has only a notify service, not an entity id; `entity_id: "all"` is every light in the house |
+| Calendar | the calendar an event was created, changed or deleted in; the calendar a lookup read, or with `allCalendars` only those its events came from | `getAllCalendars` is a survey |
+| Email | the folder `findEmails` read, `inbox` by default; Drafts for a draft or a reply; Sent Items for a sent message | `deleteEmail`: its folder is not known without a lookup |
+| To-do list | the task list a task was read, added, changed or deleted in | `getAllTaskLists` is a survey |
+| Shopping | the Bilka basket (`bilka-basket`, given an id because there is only one) when it is read, emptied or changed | `findProductInCatalog`: nothing in the catalogue is his yet |
+| Coding | the repository, as its lower-cased `owner/repo`, of `listRepositoryIssues`, `analyzeCodebase`, `startCodingSession`, the issue tools and `implementFeatureWorkflow` | listing or searching every repository; a session's status and messages are about the session |
+| Cooking, commute, weather, web research, visualize, reflection | nothing | recipes, places, forecasts and search results are looked up from the outside world, pages expire after a day, and Jarvis's own internals are not a thing in sir's home to place |
+
+Events, messages and tasks are not reported themselves, only what holds them: the headset places
+lasting things, and an event placed in the room would never glow again.
+
+A lookup answered without its agent (`routing/direct-lookups.ts`) reports exactly what the agent's
+call of the same tool would have, because it makes that call: its `answer` is handed a `callTool`,
+and `answerLookup` (`utils/direct-lookup-factory.ts`) reads every call made through it with the tool's
+own reader. So the rules stay on the tools, and no lookup has a list of its own: the calendar lookups
+report the calendars their events came from, unread email the inbox, the to-do list the default list
+by its real id, the shopping list the basket, open issues Jarvis's repository, and the weather nothing.
+A lookup that calls a tool with `executeTool` instead lights nothing up, so every call goes through
+`callTool`. `direct-lookups.spec.ts` lists what each lookup reports, and fails for one that is not
+listed.
+
+`affected-entities-interview.spec.ts` runs a light switch through both MCP tools on a real plan run,
+because a mismatch in the chunk shape would be silent: the request would answer, and nothing would
+ever glow. It also answers a question, to pin the resumed-agent path.
+
+<a id="pointing"></a>
+**What sir points at:**
+On the headset, a context update names the thing sir is pointing at, and "turn that on" means it.
+The `userQuery` description asks the voice agent to add its name and id —
+`Turn that on (pointing at "Kitchen ceiling", id light.kitchen_ceiling)` — because nothing but that
+string reaches the agents. The planner copies an id in the request verbatim into the prompt of the
+agent that owns the thing, and every agent is told in the shared guidelines to act on an id it is
+given without looking it up. A request the routing classifier settles on its own never reaches the
+planner, and needs it not to: its one agent is handed the user's words as they are, id included. A
+smart home command carried out without the agent puts every candidate entity to Jev with its id
+beside its name, so the command names the one he points at for it. The tool call on that id, or the
+home command, then lights the thing up by the path above.
+
 **Why a workflow per request:**
 Which agents a request needs is known only once it arrives, so a request that is a workflow has
 to be built per request. What that buys: Studio graphs it, so what a request did — the root, its
@@ -1337,6 +1466,10 @@ The voice model gets `routePromptWorkflow` and `getNextInstructionsWorkflow` and
 That is a hard constraint, not an accident of the current design: the model on the call is
 chosen for speed, and every extra tool is surface it has to reason about on a latency budget
 that has no room for it.
+
+`markAffected` does not change that. It is a client tool on the ElevenLabs agent, answered by
+sir's devices rather than by this server, which he asked for by name, and the voice model only
+reaches for it when a response here tells it to (see [What a request touches](#affected-entities)).
 
 It is also why a question's answer comes back through `routePromptWorkflow` rather than a tool
 of its own (see **Questions for the user** above): the planner already reads every request, so it
@@ -2010,6 +2143,11 @@ to phrase (`routing/direct-answers.ts`). Three kinds:
   question rather than a command, and with nothing more specific in it than the lookup covers.
 
 Any direct answer that declines or fails runs the same one-agent chain the request would have run anyway.
+
+Every direct answer also says what it read or changed (`DirectAnswerOutcome`, `{ text, entities }`), the same
+things the agent's tool calls would have reported, and routing reports them just before the answer (see
+[What a request touches](#affected-entities)): a command the entities it was carried out on, a question about
+the house the entities it was about, and a lookup whatever the tools it called through `callTool` report.
 
 **Synapse state change gate.** Before a state change is filed for the State Change Reactor,
 `synapse/state-change-classifier.ts` asks Jev in one call how much attention the change deserves
@@ -2978,6 +3116,15 @@ spelling alike.
   loop is a wait before the house changes. Routing logs `elapsedMs` for the plan, its
   registration and each delegation, and `callIoTService` logs the service call itself, so a slow
   request can be read back as a breakdown
+- **Reports the entities it touches**, for sir's headset to light up (see
+  [What a request touches](#affected-entities)). `callIoTService` resolves the entities a call
+  reaches alongside the call itself, with one template render (`resolveServiceTargets`): the ids it
+  names, and the service domain's entities in the areas and devices it names. The render is given up
+  on after 1.5 seconds and can never fail the call, and its result is also returned to the agent as
+  `targets`. `findEntities` reports a handful of matches and `getEntityLogbook` the entity it read.
+  A command carried out without the agent (`runHomeCommand` in `home-commands.ts`) reports the
+  entities it called the service on. Given an entity id — the thing sir is pointing at — the agent
+  acts on exactly that id with no lookup
 - Sensor data processing and analysis
 - Scene and routine management
 
@@ -3133,6 +3280,11 @@ export const myVerticalShortcuts = {
   myShortcut,
 };
 ```
+
+A shortcut also inherits the underlying tool's marks: one onto a slow tool is slow (see
+[Slow tasks](#slow-tasks)), and one onto a tool that reports what it touches reports it with the
+same reader (see [What a request touches](#affected-entities)). A shortcut that reshapes the result
+is read as touching nothing.
 
 **Agent integration:**
 Shortcuts are merged with regular tools when creating agents:

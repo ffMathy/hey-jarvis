@@ -47,6 +47,20 @@ export function bundle(entry: string): Promise<string> {
 }
 
 /**
+ * The window a spec that photographs the room opens: twice the default 1280 by 720 each way.
+ *
+ * The emulator's XR framebuffer is the window's size in CSS pixels — IWER sets its canvas to
+ * `innerWidth` by `innerHeight` when the layer is set, whatever the device pixel ratio, and three
+ * takes the layer's size as it is — and the synthetic room is drawn at that size too (at any
+ * device pixel ratio but 1 it would size its canvas again on every frame). So a larger window is
+ * the only way to more pixels per degree. IWER's view is 90° high: 720 pixels high is about 6
+ * pixels per degree at its middle, a quarter of a Quest 3's 25, and every edge looked four times as
+ * jagged as a headset would show it; 1440 is about 12.6, half. Four times the pixels slows every
+ * frame SwiftShader draws, so only the specs whose pictures are for looking at use it.
+ */
+export const ROOM_PICTURE_VIEWPORT = { width: 2560, height: 1440 } as const;
+
+/**
  * Where a copy of every picture the specs take goes as well as the test's own output folder, for a
  * person to look through: set HOLOGRAM_SCREENS_DIR to a folder.
  */
@@ -98,11 +112,29 @@ export async function keepOffline(page: Page) {
   );
 }
 
+/**
+ * How slowly the emulator drew the room in the test just run, reported beside its result: the
+ * median time between XR frames on the page as it was left, and how many there were. Frame times
+ * vary with the machine far more than with the app, so a failure on a slow run (a loaded laptop, a
+ * CI runner) says so here. Nothing is reported for a page that never opened a room.
+ */
+async function reportFrameTimes(page: Page, testInfo: TestInfo) {
+  const times = await page.evaluate(() => window.__xrHarness?.frameTimes ?? []).catch((): number[] => []);
+  if (times.length < 2) return;
+  const intervals = times.slice(1).map((time, index) => time - (times[index] ?? time));
+  const sorted = [...intervals].sort((first, second) => first - second);
+  const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
+  const description = `median interval ${median.toFixed(1)} ms over ${times.length} frames`;
+  testInfo.annotations.push({ type: 'emulator frame times (SwiftShader, not a Quest)', description });
+  console.log(`Emulator frame times in "${testInfo.title}": ${description}`);
+}
+
 export const test = base.extend({
-  page: async ({ page }, use) => {
+  page: async ({ page }, use, testInfo) => {
     await keepOffline(page);
     await page.addInitScript({ content: await bundle('xr-harness.ts') });
     await use(page);
+    await reportFrameTimes(page, testInfo);
   },
 });
 

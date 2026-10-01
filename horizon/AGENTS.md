@@ -44,7 +44,19 @@ listening, a status line saying why and what to do about it.
   is closed.
 - **Try him in your room** is sample mode: no key and no microphone. Select him
   to walk his moods (speaking, listening, thinking, idle); select anywhere else to
-  leave.
+  leave. While he thinks there, everything you have placed lights up, as it would
+  while he worked on it.
+- **Placing what he works on:** whatever Jarvis works on for you — a light, an
+  inbox, a calendar — goes into a drawer, by name. **Place entities** on the 2D
+  page (no key, no microphone), or A/X or the button on the back of a raised wrist
+  while he is waiting, opens it in front of you: take one with a pinch or a
+  controller's grip and let go where it is in the room, or point at something out
+  of reach and pinch or pull the trigger, and again where it goes. Let go on the
+  drawer and it goes back in. Done, B/Y or the same button again closes it. The
+  next time he works on something you placed, his orange corona lights round it;
+  point at one — a controller, or an index finger with the others curled — and a
+  blue ring and its name say that "turn that on" now means it (see "Entities
+  placed in the room" below).
 - **No headset?** https://ffmathy.github.io/hey-jarvis/horizon/preview.html shows
   him in 3D on a desktop, phase by phase (see "The preview page" below).
 - **His voice from where he stands:** on a headset with an echo canceller of its
@@ -57,7 +69,12 @@ listening, a status line saying why and what to do about it.
   try on a headset whether it hears better that way; `?voice=spatial` plays his
   voice from where he stands even when the microphone says the headset has no
   echo canceller of its own, to hear what that does; `?film` is for recordings,
-  and leaves sample mode's frame-rate readout out (see "The demo video").
+  and leaves sample mode's frame-rate readout out (see "The demo video");
+  `?origin=x,z,yawDegrees` moves the room's space from where the headset put it,
+  for the browser tests only (`xr/origin-offset.ts`), as are `?deadline=never`,
+  which keeps a summoning waiting for a conversation that never opens, and
+  `?errors=held`, which keeps an error panel up until a select or B
+  (`test-seams.ts`; see "The browser tests").
 
 ## What is in here
 
@@ -66,10 +83,16 @@ index.html                 the 2D page: settings, the walk to the room, the mode
 preview.html               the desktop preview (src/preview/)
 src/main.ts                chooses the parts, wires the page to the room, owns the Enter tap
 src/debug-hook.ts          window.__jarvis, what the browser tests read (see below)
+src/test-seams.ts          ?deadline=never and ?errors=held, the clocks the browser tests hold (see below)
 src/page/                  the 2D page: settings, preparations, the microphone step
-src/app/                   the room's state machine, its runtime, the ports, sample mode, placement's adapter
-src/xr/                    the XR stage and frame loop, input, depth probes, anchors, frame rate, keyboard
-src/ui3d/                  text in the room: the hint, status line, error panel, captions, debug HUD
+src/app/                   the room's state machine, its runtime, the ports, sample mode, placement's adapter,
+                           the entities controller
+src/xr/                    the XR stage and frame loop, input (selects, buttons, hands and controllers per frame),
+                           depth probes, anchors, frame rate, keyboard, the ?origin seam
+src/ui3d/                  text in the room: the hint, status line, guide, error panel, captions, debug HUD; the
+                           drawer, tokens, names, pointing reticle and wrist button
+src/entities/              what Jarvis works on, placed in the room: registry, room anchors, corona lifetime,
+                           pointing, hand poses, grabbing, what the hands and controllers mean to them
 src/wake/                  "Hey Jarvis": the microphone, the worklet, the onnxruntime-web worker, the watchdog
 src/room/                  where he stands: room snapshots, the occupancy grid, placement and its worker
 src/conversation/          hologram's session with the headset's parts: the greeting, his track, his voice from where he stands, orphaned audio
@@ -163,6 +186,9 @@ them: the key, getting ready, **Allow the microphone**, **Enter your room**.
   in `localStorage`. **Check and save** mints one token as `jarvis-horizon` before
   keeping anything, so a mistyped key shows next to the field, not as an error
   panel in the room.
+- **Two rooms need no key and no microphone:** **Try him in your room** (sample
+  mode) and **Place entities**, which opens straight into the drawer and back to
+  the page when it is done (`RoomMode` `'placement'`).
 - **"His voice from where he stands"** is the headset's one setting of its own
   (`page/voice-setting.ts`, under `jarvis.horizon.voice-from-where-he-stands`):
   on by default, and read again on every Enter. Off keeps his voice on the
@@ -191,6 +217,19 @@ after. The product rules pinned in `app-state.spec.ts`:
 - **Session end:** hangs up, stops the microphone and brings the page back.
 - **The hint** shows only when the wake engine is really listening, and only until
   the first summon. A status line shows whenever it is not listening.
+- **Placing things (`editing`):** entered from `waiting` only — A/X, the wrist
+  button — or straight from the page's **Place entities**, and left with B/Y, the
+  same button again or the drawer's Done: back to waiting, or, in a room opened
+  only to place things, back to the page at once — unless a drop is still waiting
+  on its new anchor, when the room stays open (`keeping`, with "Keeping what you
+  placed…" on the guide line) until the drop settles, or 11 s at most, since the
+  frames that settle it stop with the session. Every select while editing is
+  the placing's own, so a pinch never summons him, and since editing never opens
+  over a call, a grab held for a second can never be read as the hold that hangs
+  up. A select still held as it closes — the trigger or pinch that pressed Done
+  on its way down — is spent (`consumeHeld` in `xr/select-gesture.ts`), so letting
+  it go in the waiting room does not summon him either. The wake word is
+  disarmed, the frame rate is the highest, and a guide line says what to do.
 
 **`app/room-runtime.ts` is where the parts meet.** It opens the stage, queues
 events so each step sees the model the previous one left, and carries out the
@@ -205,31 +244,64 @@ status line follow the gaze with a lag. A select also calls the wake engine's
 only user activation there is inside the room.
 
 **The XR layer (`src/xr/`).**
-- `xr-stage.ts` sets up the renderer (alpha, no antialiasing, premultiplied,
-  foveation 0.3). It runs one frame loop whose subscribers get the frame, the
-  space, the viewer pose, the centre eye and a time step capped at 0.1 s. It also
+- `xr-stage.ts` sets up the renderer (`RENDERER_PARAMETERS`: alpha, premultiplied,
+  four samples a pixel; foveation 0.3), and the preview's renderers are made the
+  same way. The samples are for the room's plain triangles — the tokens, the
+  reticle, the arrow, a canvas's plane seen edge on — whose edges nothing else
+  smooths; his strokes and CanvasKit's picture smooth themselves and are drawn
+  exactly as before, since fragments are still shaded once a pixel, and the
+  canvases' outlines are smoothed in their pictures (see "Text in the room" below).
+  Meta recommends four samples on Quest's tiled GPUs as nearly free. With WebXR
+  layers, three renders each eye into a four-sample target: straight into the
+  projection layer through `WEBGL_multisampled_render_to_texture` when the GPU has
+  it and the layer ignores depth, otherwise resolved into it by a blit at the end of
+  the frame (the HUD's `gl` line says whether the extension is there). It runs one
+  frame loop whose subscribers get the frame, the space, the viewer pose, the
+  centre eye and a time step capped at 0.1 s. It also
   keeps the reference-space reset epoch, the visibility state and the frame rate:
   the lowest while waiting, the highest up to 90 while he is there.
 - `xr-input.ts` turns selects into taps and holds, and reads B and Y (`buttons[5]`)
-  from the gamepads each frame.
+  and A and X (`buttons[4]`) from the gamepads each frame; `gamepad-buttons.ts`
+  notices one press per source, for any button.
+- `input-snapshots.ts` reads every hand and controller each frame: target ray and
+  grip, a hand's 25 joints (`fillPoses`, declared locally since `@types/webxr`
+  lacks it, or `getJointPose` where it is missing), a controller's trigger, grip
+  and thumbstick, and how far along its ray a hit-test source of its own finds the
+  room.
 - `depth-probes.ts` is five viewer-space hit-test rays.
 - `anchor-keeper.ts` creates an anchor in the placement's frame and deletes the
-  previous one.
+  previous one; his spot is never kept past its conversation. Placed entities have
+  persistent anchors of their own (`entities/room-anchors.ts`).
+- `origin-offset.ts` is the `?origin` test seam: `xr-stage.ts` hands out an offset
+  reference space instead of `local-floor` (three draws from it too), so a session
+  in the emulator starts somewhere new, as one on a headset does.
 - `system-keyboard.ts` is a hidden `<textarea>`. Quest Browser shows its keyboard
   inside WebXR when the textarea is focused.
 
 **Text in the room (`src/ui3d/`).** Panels are canvas-drawn text on planes at
 1500 px per metre, which is about what a Quest 3 shows at arm's length, each with
 a translucent backing so it can be read over any passthrough, drawn after
-everything else and never hidden by his glow. There is also a drawn keyboard
-button, a head-locked arrow for a spot out of view, and `?debug`'s HUD, whose
+everything else and never hidden by his glow. Every canvas — panels, names, the
+drawer, the keyboard and wrist buttons — goes through `ui-canvas.ts`: uploaded
+premultiplied, as raw sRGB bytes, mipmapped and read trilinearly with the
+renderer's most anisotropic filtering (handed in from `room-runtime.ts`, where the
+renderer is known), half a mipmap level sharper than the display alone would ask
+for, and drawn inside an eight-pixel transparent margin, so what ends a panel is
+its picture's alpha, which filtering smooths, rather than the edge of its plane.
+Without mipmaps, words shown smaller than their canvas skipped texels and broke
+up; unpremultiplied, every outline had a dark fringe. There is also a drawn keyboard
+button, a head-locked arrow for a spot out of view, the drawer, tokens, names,
+reticle and wrist button of placing things (see "Entities placed in the room"),
+and `?debug`'s HUD, whose
 lines come from `describeDiagnostics` and are left out for parts with nothing to
 report: the scene, XR and page visibility, the AudioContexts, the microphone's
 permission and track, the wake engine's health and audio, the SDK's status and
 mode, interruptions, half-duplex and the last error, the vad score, where his
 voice comes from (its tier, why, what the microphone said about the echo
 canceller, and the SDK's elements and their volume), the room's
-planes, meshes, labels, triangles and grid, where he was placed, frame rates, his
+planes, meshes, labels, triangles and grid, where he was placed, the entities
+(known, placed, found in this room, anchors located, coronas lit, what is pointed
+at), frame rates, his
 CPU and CanvasKit time and surface, the granted session features and the WebGL
 extensions of interest.
 
@@ -433,7 +505,15 @@ what is the headset's: its name (`jarvis-horizon`), no platform delay before
 dialling, the half-duplex fallback, its words for being offline, his track
 analysed on the app's `AudioContext` (`agent-room.ts`), the greeting's `<audio>`
 element (`greeting-player.ts`) and the orphaned-audio sweep
-(`orphaned-audio.ts`). It holds one summoning at a time on the ElevenLabs SDK's
+(`orphaned-audio.ts`). It also passes the room's `onAffected` — the entities the
+agent marks with its `markAffected` client tool, which `hologram`'s session
+answers on every device — and, from `main.ts`, `deviceContext:
+HEADSET_DEVICE_CONTEXT`, said to the agent under the `device` context id each
+time a conversation connects; the agent's prompt waits for it before marking
+anything. `ConversationPort.sendContextualUpdate(text, contextId)` is how the room
+tells the agent what sir points at: sent while connected, the latest per context
+id held until the summoning connects, dropped when it ends. It holds one summoning
+at a time on the ElevenLabs SDK's
 own client (`Conversation.startSession` from `@elevenlabs/client`, passed in as
 `startSession`), with no React provider, and keeps that provider's guarantees:
 
@@ -571,7 +651,9 @@ shown.
 still keeps the room on `connection.getRoom()`, that it builds that room from the
 same `livekit-client` this app imports (so `instanceof Room` can match), that it
 still uses the disconnect wording `describeDisconnect` looks for, and, at compile
-time, that `Conversation.startSession` still fits `StartSession`. The session's own
+time, that `Conversation.startSession` still fits `StartSession`; it also pins how
+the SDK answers a client tool and sends a context id, which `hologram`'s fakes
+copy. The session's own
 behaviour is pinned in `hologram` (`jarvis-session.spec.ts` and
 `jarvis-session-conversation.spec.ts`, set up the way `createHeadsetSession` sets
 it up, driven by the fakes in `jarvis-session.fakes.ts`, which fire callbacks in
@@ -579,6 +661,98 @@ the SDK's own order); `headset-session.spec.ts` checks the headset really does s
 it up that way. `greeting-recording.ts` is the only
 file that imports `?url`, so `bun test` never loads it; `mp3-url.d.ts` declares
 only `*.mp3?url`, never hologram's numeric `*.mp3`, which horizon must not reach.
+
+## Entities placed in the room (`src/entities/`, `app/room-entities.ts`, `hologram3d/corona.ts`)
+
+An entity is whatever an agent behind the conversation read or changed for sir — a Home Assistant
+light, an email folder, a calendar — reported by the voice agent's `markAffected` client tool as an
+opaque id, which may come from any agent and is never parsed, and an optional display name. The
+MCP side decides what a request touches (`../mcp/AGENTS.md`, "What a request touches"), the
+ElevenLabs prompt decides when to call the tool (`../elevenlabs/AGENTS.md`), and `hologram`'s
+session answers it on every device; this app keeps them, lets sir put them in the room, lights them
+while Jarvis works on them, and tells the agent what sir points at.
+
+```
+src/entities/registry.ts        every entity ever marked, and where each placed one is kept (localStorage)
+src/entities/room-anchors.ts    a few persistent anchors, placements as offsets from them, restored each session
+src/entities/affected.ts        how long a corona stays lit
+src/entities/pointing.ts        what sir points at, and what the conversation is told about it
+src/entities/hand-pose.ts       pinches, pointing fingers and a raised wrist, from joints
+src/entities/grab.ts            taking a token near or far, carrying it, putting it down or back
+src/entities/entity-input.ts    one frame's hands and controllers, as grabbing, pointing and the wrist button read them
+src/app/room-entities.ts        the room's controller: all of it, every frame
+src/hologram3d/corona.ts        Jarvis's light round an entity, one instanced draw
+src/ui3d/drawer-layout.ts       where everything on the drawer is (entity-drawer.ts draws it)
+src/ui3d/entity-tokens.ts       the orbs, entity-labels.ts their names, pointing-reticle.ts, wrist-button.ts
+```
+
+**The registry** (`jarvis.horizon.entities`, version 1) keeps every entity ever marked, at most
+300, and never forgets a placed one; every `markAffected` report is recorded whatever the room is
+doing. An id is any string the model sent, `__proto__` and `constructor` included, so entries are
+read only as the object's own (`knownEntity`, `hasAnchor`) and defined, never assigned, even when
+parsed. It is written half a second after a change, and at once when placing things ends, when the
+room closes and on `pagehide`. A placement is an offset in the space of one of at most four
+persistent anchors, because `local-floor` starts somewhere new every session: a drop reuses a
+located anchor within 2.5 m, otherwise makes a new one while the budget lasts, and falls back to
+the nearest. A drop on a new anchor is kept at no offset from it, since the anchor was made at the
+spot; a recentre before that anchor is found (the stage's reset epoch, passed in every frame)
+leaves the drop's point naming a spot that has moved, so it is then kept on its own anchor or not
+at all, never on another by that point. A handle the headset no longer lists makes its entities
+"lost", and the drawer asks for them again. An anchor no placement uses is given back when placing
+things ends — before the session is ended, since an ended one may refuse (`reduceApp` puts
+`exit-xr` after every other effect) — and forgotten only once the headset has let go of it; one it
+refused stays in the registry and is given back at the start of the next session, which restores
+only the anchors placements use. Until its anchor is located, an entity is not shown and cannot be
+pointed at: it may be in another room.
+
+**The drawer** opens world-locked where sir faces, 0.42 m ahead and 0.3 m below the eyes, tilted to
+face them like a lectern: hands have to reach it, and a board that followed the gaze would move away
+from the hand reaching for it. It shows a page of twelve names, what still needs a place first
+(never placed, or lost), a line for what just happened, the page buttons and Done, pressed by a
+fingertip or by a select along a ray. Every entity has exactly one token: in its slot, or where it
+stands in the room. **Taking one** is a pinch (joint distance, 1.5 cm on and 3 cm off — never the
+`select` event, which Quest fires on release) or a controller's grip, within 5–6 cm of it; or, for
+anything out of reach, a pinch or a trigger pull along the ray, after which it rides the ray to
+where the depth hit test meets a surface (the thumbstick pushes it out or pulls it in) until the
+next pinch or pull drops it. Let go in the room, it is dropped on the room anchors and written to
+the registry; let go on the drawer, it goes back in. A drop still waiting on a new anchor that is
+taken back, or dropped again, gives that anchor back — at once, or as soon as the headset hands out
+its handle (`RoomAnchors.cancel`) — since no placement would ever name it. Tokens are drawn in the
+accent, sir's colour, through walls, with names over the carried one and every placed one; no hand
+meshes, since passthrough shows the real hands (and three's hand models load from a CDN). A token is
+a disc and a ring turned to the eyes, and the reticle a ring, smoothed by the renderer's four
+samples: at half a headset's density the emulator's pictures show no steps along them, so, unlike
+his strokes and coronas, they are not distance fields.
+
+**The wrist button**, for hands without a controller's A or X, stands off the back of a wrist
+raised as if to read a watch (the back towards the eyes within 40°, 0.15–0.7 m from them), and is
+pressed by the other hand's index tip; only while waiting or placing things. On the back and not
+the palm, because Meta keeps a palm-up pinch for itself on both hands, and on the left it takes sir
+out of the room.
+
+**Pointing**, whenever sir is not placing things: a controller's ray, or an index finger in a point
+pose (index straight, the rest curled — a hand's system ray is there whether it points or not),
+picks the placed entity inside a cone of 4° or 7° round it, after a 0.28 s dwell, with a 2° margin
+before switching and a drop 0.2 s outside 1.5 times the cone; one beyond a controller's depth hit is
+passed over. It is ringed in the accent with its name over it. The conversation is told
+`Sir is pointing at "<name>" (<id>).` under the context id `pointing` while the call is live — held
+for 15 s when it is not yet, since people point and then say "Hey Jarvis", and cleared with
+`Sir is not pointing at anything.` 12 s after the pointing stops. `agent-contract.spec.ts` reads the
+ElevenLabs prompt, the evals' copy of these sentences and the MCP routing workflow and planner as
+text, and fails if the device context, the pointing update or the `(pointing at "<name>", id <id>)`
+form they teach drift apart.
+
+**The corona** (`hologram3d/corona.ts`, drawn in his palette on his thinking scan's rhythm, its
+radius never under 1.5°, so never under 3° across) lights round a placed entity for at least 2.5 s
+after it is marked, is held while he is thinking for up to 25 s after the last mark, and fades over
+his leave time, or at once when the conversation ends. Sample mode's thinking mood lights every
+placed entity: the corona without a call, and a beat for the demo.
+
+**What the tests see:** `window.__jarvis.entities` — what is known, placed (with each anchor and
+where it is now), lit and pointed at, the context that would be sent, the drawer's slots and buttons
+with their positions, the tokens in hand, each hand and controller as placing reads it (pinch point,
+grip, index tip, rays), the wrist button, and every anchor's state — worked out only when read. The
+HUD has one `entities` line.
 
 ## How he is drawn (`src/hologram3d/`)
 
@@ -634,6 +808,11 @@ the centre eye sees them line up, the thinking plane is level with the floor.
 its vertex shader (three 0.186 has no transform feedback, and a float state pass
 needs an extension a Quest may not have). The unit tests hold `fragment-3d.ts` to
 the phone; `hologram-port.spec.ts` holds the GLSL to `fragment-3d.ts`.
+
+The renderer takes four samples a pixel (`xr/xr-stage.ts`), for the room's plain
+triangles; fragments are still shaded once a pixel, so none of these passes looks
+any different for it, and the halo union renders into a target of its own that is
+never multisampled.
 
 Blending (`layer-blending.ts`): Screen in colour and alpha, raw encoded sRGB — no
 three.js colour management anywhere between Skia's bytes and the layer — and
@@ -808,6 +987,30 @@ the models first.
   passes' cost at 0.8, 1.6 and 2.6 m; the alpha factor in a bright and a dim room;
   whether 1.2-pixel hot cores shimmer; whether the projection layer composites as
   the spec says; stereo comfort; whether `updateTargetFrameRate` behaves.
+- **Smooth edges and text.** What four samples a pixel cost in Quest Browser
+  (the HUD's frame time, against a build with `antialias: false`), and whether its
+  projection layer takes the render-to-texture path: the HUD's `gl` line has to
+  list `WEBGL_multisampled_render_to_texture`, and three only uses it when the
+  layer ignores depth. The room submits a depth buffer nothing is drawn into; if the
+  samples cost more than Meta's half to one and a half milliseconds, `depth: false`
+  in `RENDERER_PARAMETERS` is the next thing to try. Whether the panels' text is as
+  sharp as it should be at the hint's 1.3 m and the drawer's half metre, and whether
+  the half-level sharpening shimmers as the head moves; whether the tokens' rings
+  crawl across the room, where they are a pixel or two wide.
+- **Placing things.** How long persistent anchors take to restore and locate, how
+  they behave across rooms, what `requestPersistentHandle` says at the limit of
+  eight per origin, whether other Pages projects on `ffmathy.github.io` already
+  hold some, and whether `anchors` brings up the spatial permission prompt; hand-ray
+  jitter against the 7° and 4° cones and the 0.28 s dwell; the 1.5/3 cm pinch and
+  the 40°/55° wrist thresholds on real joints — in particular whether a hand held
+  palm down close under the eyes reads as a raised wrist and pops the button up
+  (only a wrist turned across the body should); whether Quest fires `squeeze` for
+  hands (the app reads joints, so it should not matter); whether the depth hit test
+  finds thin fixtures such as a pendant lamp for a far drop; how the corona's alpha
+  looks over real passthrough; and whether the system keyboard or the palm pinch
+  ever gets in the way of the drawer, the wrist button or a grab. Whether the
+  agent's server replaces a context update with the same `context_id` or adds to
+  it, and whether it reliably passes names.
 - **The rest.** Whether the system keyboard appears for a hidden textarea and
   blurs the session as Meta's docs say; holds and pinches with hand tracking;
   whether the text sizes and backings read well over real passthrough; the 2D
@@ -835,7 +1038,11 @@ the models first.
   **silently does nothing** unless installed with
   `installRuntime({ forceInstall: true })`. It fires `select` when the trigger goes
   down, before `selectstart`; a Quest fires it on release. The room reads a
-  `select` with no start as a tap, so a quick press is a tap on both.
+  `select` with no start as a tap, so a quick press is a tap on both. Its
+  `getOffsetReferenceSpace` takes a bare matrix, against the spec, and turns the
+  spec's `XRRigidTransform` into NaNs — which leaves the new space silently where
+  the old one was — so `xr-harness.ts` hands it the transform's matrix, and the
+  `?origin` seam works as it does on a headset.
 - **The room.** `@iwer/sem`'s Synthetic Environment Module with its bundled
   `living_room` capture (`device.installSEM(SyntheticEnvironmentModule)`, then
   `await device.sem.loadDefaultEnvironment('living_room')` — the README's
@@ -867,7 +1074,24 @@ the models first.
   placement went (level, clearance, radius), how many wakes there have been, the
   room's scene, view and recent effects, the last problem, and where his voice
   comes from (route, tier, reason, the probe, the setting, how the greeting is
-  heard, and where the listener and the panner were last put).
+  heard, and where the listener and the panner were last put), and the entities
+  (see "Entities placed in the room").
+- **Placing things.** `app-entities.spec.ts` walks the whole feature in five
+  visits sharing one browser's `localStorage`, where both the registry and the
+  emulator's persistent anchors live: **Place entities** and a controller's grip,
+  Done; a new session opened with `?origin` moved and turned, where the entity must
+  be found at the same spot of the room — the emulator's `local-floor` is its
+  global space, so without a moved origin a position kept in `local-floor` would
+  come back right for the wrong reason; a controller's ray and a pointing finger;
+  A, a pinch, B; the wrist button; Done pulled with the trigger in a room with a
+  conversation, held and let go without summoning him; sample mode's thinking
+  lighting a corona round each placed entity; and **Place entities** again, with a
+  drop far from every anchor and Done in the same frame, kept before the room
+  closes. `entities-driver.ts` holds the emulated head, hands and
+  controllers, converts between the emulator's space and the room's, and measures
+  where a hand pinches or a controller grips from the app's own report rather than
+  copying the emulator's poses. `corona.spec.ts` photographs and measures the corona
+  on a bare page (`corona-probe.ts`).
 - **His voice.** `app-voice.spec.ts` makes the fake microphone offer `'all'`, as a
   headset with its own echo canceller would, records the panners and the elements
   the page takes into Web Audio, and checks the greeting goes through an HRTF
@@ -876,23 +1100,62 @@ the models first.
   played offline, so its route through the panner and the echo signs are the unit
   tests'; `element-volume-probe.ts` checks the rule for the SDK's elements on real
   elements playing real streams.
-- **Slow frames.** SwiftShader draws the room at about eight frames a second while
-  he is away and about one and a half while he is there, and his clock moves at
-  most a tenth of a second a frame. A session gives up on a token after twenty
-  seconds, so the specs that keep him greeting do their work inside that. A
-  picture takes the emulator seconds, so a picture of an error panel, which is up
-  for six, counts only if the panel is still up once the picture is back —
-  otherwise the next failure is photographed.
+- **Slow frames, and the budgets the specs hold.** SwiftShader draws the room at
+  about eight frames a second while he is away and about one and a half while he
+  is there, half that on a loaded machine (a CI runner is no faster), and his clock
+  moves at most a tenth of a second a frame. Two of the app's budgets run on the
+  wall clock instead: the twenty seconds a summoning waits for its conversation,
+  and the six seconds at least that an error panel is up. The specs that keep him
+  greeting on a token that never comes, and the ones that photograph a panel (a
+  picture takes the emulator seconds), raced them, and lost whenever the machine
+  was busy: the scene went `failed` under a spec still waiting for its frames, or
+  the panel went while its picture was taken. So the page reads two seams once,
+  beside `?origin` (`src/test-seams.ts`), and `appPage()` in `app-driver.ts` opens
+  it holding them. `?deadline=never` hands the session an infinite deadline, which
+  arms no timer; `?errors=held` keeps the failed scene until a select or B, which
+  is how those specs dismiss it. Without them the page is exactly what a headset
+  runs, and the budgets themselves are the unit tests' (`jarvis-session.spec.ts` in
+  `hologram`, `app/app-state.spec.ts`).
+- **Why seams and not a faked clock.** `.scripts/render-demo.ts` films him on
+  `page.clock`, paused, stepping each frame itself. The specs cannot: the greeting
+  and the wake word run on real audio, which a paused clock does not hold, and every
+  spec would have to step the emulator's frames by hand around every wait. For the
+  same reason the greeting a spec keeps him in is served three minutes long
+  (`lengthenTheGreeting`), longer than a test may run: it plays on the wall clock.
+  Everything else is waited for by a condition — a frame count, a scene that holds,
+  an effect, his placement — and never by a scene that lasts only as long as a
+  two-second greeting.
+- **Frame times.** The harness writes down the time of every XR frame
+  (`window.__xrHarness.frameTimes`), and `fixtures.ts` reports each test's median
+  interval with its result and in the log, so a failure on a slow machine says how
+  slow it was. They are SwiftShader's on a CPU, and say nothing about a Quest's.
 - **Pictures.** The app specs photograph the view — waiting with the hint,
-  arriving, greeting, both error panels and every sample mood — and the hologram
+  arriving, greeting, both error panels, every sample mood, and the drawer, a
+  carried and a placed token, the pointing reticle and a corona round a placed
+  entity (`entities-*.png`) — and the hologram
   specs every phase; each is attached to the report, and copied to
   `HOLOGRAM_SCREENS_DIR` when that is set. `hologram-room.spec.ts` logs the
   emulator's frame times, which say nothing about a Quest's.
+- **Pictures at a headset's density, nearly.** The emulator's XR framebuffer is
+  the window's size in CSS pixels — IWER sets its canvas to `innerWidth` by
+  `innerHeight` whatever the device pixel ratio, and its synthetic room would size
+  its own canvas again on every frame at any ratio but 1 — so only a larger window
+  gives more pixels per degree. `app-entities.spec.ts` and `hologram-room.spec.ts`,
+  whose pictures are for judging how things look, open 2560 by 1440
+  (`ROOM_PICTURE_VIEWPORT` in `fixtures.ts`): about 12.6 pixels per degree in the
+  middle of IWER's 90° view, half a Quest 3's 25, where the default 1280 by 720 has
+  a quarter and makes every edge look four times as jagged as a headset would. The
+  other specs keep the default: four times the pixels slows every SwiftShader
+  frame, and their pictures are for what is shown, not how finely.
 
 What IWER does not cover: projection layers (it only has `XRWebGLLayer`, so the
-path Quest actually composites is not exercised), `fixedFoveation`,
-`initiateRoomCapture`, and anything about the microphone inside an immersive
-session. `@iwer/sem` also brings its own three.js 0.184 — test-only, since the
+path Quest actually composites is not exercised, and the four samples in its
+pictures are the page canvas's own, not a render into a layer), `fixedFoveation`,
+`initiateRoomCapture`, anything about the microphone inside an immersive
+session, the eight-anchor limit, a persistent anchor that fails to restore or
+takes time to relocalise (its anchors are unlimited and always located), and a
+squeeze from a hand. Its hands are three rigid poses — relaxed, pointing,
+pinching — blended by the pinch value. `@iwer/sem` also brings its own three.js 0.184 — test-only, since the
 harness is only ever bundled into an init script.
 
 ## Publishing: GitHub Pages, shared with the phone

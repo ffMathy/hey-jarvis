@@ -49,7 +49,8 @@ export interface JarvisConversation extends SessionSnapshot {
   endQuietly(): void;
   sendText(text: string): void;
   setTyping(typing: boolean): void;
-  sendContextualUpdate(text: string): void;
+  /** A note the agent reads without a turn being taken: see `JarvisSession.sendContextualUpdate`. */
+  sendContextualUpdate(text: string, contextId?: string): void;
   sendUserActivity(): void;
   /** The live conversation's ElevenLabs id, read when it is needed: see `JarvisSession.liveConversationId`. */
   liveConversationId(): string | undefined;

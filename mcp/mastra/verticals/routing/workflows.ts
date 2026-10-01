@@ -1,6 +1,7 @@
 import { upperFirst } from 'lodash-es';
 import z from 'zod';
 import { createStep, createWorkflow } from '../../utils';
+import { type AffectedEntity, affectedEntitySchema } from '../../utils/affected-entities.js';
 import {
   DEFAULT_ROUTING_SESSION_ID,
   getRoutingRuntime,
@@ -31,6 +32,16 @@ import type { OpenQuestion } from './questions.js';
  * what the polls report. See ./controller.ts.
  */
 
+/**
+ * The client tool the voice agent lights things up with on sir's headset.
+ *
+ * It is not one of the routing tools: it lives on the ElevenLabs agent, and the headset answers it
+ * (see `hologram/` and `horizon/`), so the voice model keeps its two routing tools and only reaches
+ * for this one when a response here says to. The name has to match in all of those places -- here,
+ * the agent's configuration and prompt, and every client that registers it.
+ */
+export const MARK_AFFECTED_TOOL = 'markAffected';
+
 const inputSchema = z.object({
   // No default. This carried a worked example of a request -- weather, calendar, commute and
   // a lasagna recipe -- which meant a caller that forgot the field did not get an error but a
@@ -44,10 +55,15 @@ const inputSchema = z.object({
   // running side by side (see `plannerInstructions`), so splitting it here throws that away and
   // buys nothing. The description is where this has to be said, because it is what the voice model
   // reads when it decides what to put in the field.
+  //
+  // **What he points at travels here too.** On his headset, a context update names the thing sir is
+  // pointing at, and "turn that on" means it. Nothing but this string reaches the agents, so the
+  // thing has to be written into it, and by its id: the planner copies an id into the prompt it
+  // writes, and the agent acts on exactly that id rather than guessing which light "that" was.
   userQuery: z
     .string()
     .describe(
-      'Everything the user asked for in this turn, in one call. If they asked for two things — their calendar and their email, say — both belong in this one string: the plan splits the work itself and runs the independent parts at the same time, so a request sent in pieces is answered in pieces and later.',
+      'Everything the user asked for in this turn, in one call. If they asked for two things — their calendar and their email, say — both belong in this one string: the plan splits the work itself and runs the independent parts at the same time, so a request sent in pieces is answered in pieces and later. When he means something he is pointing at ("that", "this", "it") and a context update named it, add its name and id exactly as given: \'Turn that on (pointing at "Kitchen ceiling", id light.kitchen_ceiling)\'.',
     ),
   async: z
     .boolean()
@@ -100,6 +116,12 @@ const instructionsOutputSchema = z.object({
     .array(z.string())
     .optional()
     .describe('Tasks that have just started work taking minutes rather than seconds'),
+  affectedEntities: z
+    .array(affectedEntitySchema)
+    .optional()
+    .describe(
+      `Things the request has just started reading or changing, to pass to ${MARK_AFFECTED_TOOL} exactly as given`,
+    ),
 });
 
 const pollInputSchema = z.object({
@@ -184,7 +206,41 @@ const INSTRUCTIONS = {
     CONVERSATION_CONTROL_EXCEPTION,
   stillProcessing:
     'Still processing your request. Call getNextInstructionsWorkflow again to wait a bit longer for it to complete. Say nothing to the user in the meantime — he has already been told you are on it, and has no use for a running commentary on the waiting.',
+  // What follows the markAffected instruction when that is all a response has: the request's first
+  // things touched, sent early for the glow's sake, or later ones a poll carries when it runs out its
+  // deadline. Nothing has finished, so this is the waiting instruction above.
+  nothingFinishedYet:
+    'Nothing has finished yet, so say nothing to the user — he has already been told you are on it. Then call getNextInstructionsWorkflow again at once.',
 } as const;
+
+/**
+ * What a response that carries `affectedEntities` asks for before anything else.
+ *
+ * Those are the things the request has just started reading or changing, and on sir's headset
+ * `markAffected` lights up the ones he has placed in the room -- a glow that is only worth anything
+ * while the work is still going on. So the request's first things touched end a poll shortly after a
+ * tool reports them (see `AFFECTED_ENTITIES_GRACE_MS` in ./controller.ts), later ones ride on the
+ * next report, and this goes in front of whatever else the response says, so the call comes first.
+ *
+ * The rest is what a client tool needs said where it is asked for. It must be silent, because a tool
+ * call sir can hear is not one (see `agent-prompt.md`). It must copy the entities exactly, because
+ * the headset matches them by id. And it must never be retried: a client that does not know the tool
+ * -- an app built before it, or the speaker firmware -- answers it with an error, and the loop's own
+ * rule is to retry a failed call at once. Whether the conversation is on a device that lights
+ * anything up at all is the agent prompt's to say, alongside the tool itself.
+ *
+ * Silent means the call and the list, not the things. This used to say "never read an entity
+ * aloud", in front of every report on every device -- and the things are often the answer: "which
+ * lights are on in the kitchen?" is answered by naming the very lights the lookup touched, and a
+ * command's "a device not found" names one too. So only the list and its ids are kept out of what he
+ * hears, and the clause says outright that the rest of the report names things as it always would.
+ */
+export const MARK_AFFECTED_INSTRUCTIONS =
+  `affectedEntities lists what this request has just started reading or changing. Before anything else, call ` +
+  `${MARK_AFFECTED_TOOL} with exactly those entities, every id and name as given. It is silent: it only lights them ` +
+  'up on his headset, so never announce or mention it, never read out the affectedEntities list or an id from it, ' +
+  'and never call it again if it fails. Whatever the rest of these instructions ask you to say still names things ' +
+  'as it always would. ';
 
 /**
  * How to speak a result, by the style the planner gave the request (see `RESPONSE_STYLES`).
@@ -643,6 +699,28 @@ function waitingFromEarlier(
 }
 
 /**
+ * A report with the things the request has touched since the last poll put in front of it, if any.
+ *
+ * Every kind of report carries them -- a closing one included, since a command can finish in the
+ * time it takes to poll, and the headset keeps a record of everything Jarvis has touched as well as
+ * lighting it up.
+ */
+function withAffectedEntities<TReport extends { instructions: string }>(
+  report: TReport,
+  newlyAffected: AffectedEntity[],
+): TReport & { affectedEntities?: AffectedEntity[] } {
+  if (newlyAffected.length === 0) {
+    return report;
+  }
+
+  return {
+    ...report,
+    instructions: MARK_AFFECTED_INSTRUCTIONS + report.instructions,
+    affectedEntities: newlyAffected,
+  };
+}
+
+/**
  * The closing report, which carries every result the request produced rather than only the
  * ones that finished last.
  *
@@ -659,6 +737,11 @@ function waitingFromEarlier(
  * — and this one sweeps up anything that went missing on the way.
  */
 function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructionsOutputSchema> {
+  return withAffectedEntities(buildClosingReportOfResults(snapshot), snapshot.newlyAffected);
+}
+
+/** The closing report as the results and questions alone decide it. */
+function buildClosingReportOfResults(snapshot: RoutingSnapshot): z.infer<typeof instructionsOutputSchema> {
   if (snapshot.conversationControl) {
     return { instructions: CONVERSATION_CONTROL_INSTRUCTIONS[snapshot.conversationControl], taskIdsInProgress: [] };
   }
@@ -710,28 +793,36 @@ function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructi
 }
 
 /**
- * A report covering the delegations that landed since the last poll, and any that have just
- * started something slow, if there is either.
+ * A report covering the delegations that landed since the last poll, any that have just started
+ * something slow, and anything the request has just touched, if there is any of that.
  */
 function buildProgressReport(snapshot: RoutingSnapshot): z.infer<typeof instructionsOutputSchema> | undefined {
   const hasResults = snapshot.landed.length > 0;
   const hasNewlySlow = snapshot.newlySlow.length > 0;
-  if (!hasResults && !hasNewlySlow) {
+  if (!hasResults && !hasNewlySlow && snapshot.newlyAffected.length === 0) {
     return undefined;
   }
 
-  return {
-    instructions: hasNewlySlow
-      ? slowTaskOfferInstructions(hasResults, snapshot.responseStyle)
-      : moreToComeInstructions(snapshot.responseStyle),
-    ...(hasResults && {
-      completedTaskResults: snapshot.landed.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
-    }),
-    // Answerable because the plan is written down before anything runs: what is still
-    // outstanding is known, not inferred from whatever happened to start.
-    taskIdsInProgress: snapshot.inProgress,
-    ...(hasNewlySlow && { slowTaskIds: snapshot.newlySlow }),
-  };
+  let instructions: string = INSTRUCTIONS.nothingFinishedYet;
+  if (hasNewlySlow) {
+    instructions = slowTaskOfferInstructions(hasResults, snapshot.responseStyle);
+  } else if (hasResults) {
+    instructions = moreToComeInstructions(snapshot.responseStyle);
+  }
+
+  return withAffectedEntities(
+    {
+      instructions,
+      ...(hasResults && {
+        completedTaskResults: snapshot.landed.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
+      }),
+      // Answerable because the plan is written down before anything runs: what is still
+      // outstanding is known, not inferred from whatever happened to start.
+      taskIdsInProgress: snapshot.inProgress,
+      ...(hasNewlySlow && { slowTaskIds: snapshot.newlySlow }),
+    },
+    snapshot.newlyAffected,
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -779,15 +870,20 @@ const getNextInstructionsStep = createStep({
     // and the reply to that is Jarvis saying he will be told. A request that finished in the
     // meantime has nothing to notify about, and is reported by the loop below like any other.
     if (inputData.notifyWhenDone && (await runtime.notifyWhenDone(sessionId))) {
-      const snapshot = await runtime.poll(sessionId);
+      // The last response this conversation hears about the request, so it carries every thing
+      // touched that is still waiting.
+      const snapshot = await runtime.poll(sessionId, { answeringAnyway: true });
       if (!snapshot.finished) {
-        return {
-          instructions: notifyWhenDoneInstructions(snapshot.landed.length > 0, snapshot.responseStyle),
-          ...(snapshot.landed.length > 0 && {
-            completedTaskResults: snapshot.landed.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
-          }),
-          taskIdsInProgress: snapshot.inProgress,
-        };
+        return withAffectedEntities(
+          {
+            instructions: notifyWhenDoneInstructions(snapshot.landed.length > 0, snapshot.responseStyle),
+            ...(snapshot.landed.length > 0 && {
+              completedTaskResults: snapshot.landed.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
+            }),
+            taskIdsInProgress: snapshot.inProgress,
+          },
+          snapshot.newlyAffected,
+        );
       }
 
       return buildClosingReport(snapshot);
@@ -795,9 +891,12 @@ const getNextInstructionsStep = createStep({
 
     // Each pass reads the delegations afresh. A snapshot marks whatever it reports as
     // handed over, so taking one and discarding it would lose those results -- every path
-    // out of this loop returns the snapshot it just took.
+    // out of this loop returns the snapshot it just took. Things touched that cannot end a
+    // poll by themselves are left waiting by a snapshot that has nothing else to say, and the
+    // pass at the deadline, which answers whatever it finds, carries them.
     while (true) {
-      const snapshot = await runtime.poll(sessionId);
+      const answeringAnyway = Date.now() >= deadlineAt;
+      const snapshot = await runtime.poll(sessionId, { answeringAnyway });
 
       // A finished request reports everything, including what earlier polls already
       // relayed, so a dropped response cannot lose a result for good.
@@ -810,15 +909,14 @@ const getNextInstructionsStep = createStep({
         return report;
       }
 
-      const remaining = deadlineAt - Date.now();
-      if (remaining <= 0) {
+      if (answeringAnyway) {
         return {
           instructions: INSTRUCTIONS.stillProcessing,
           taskIdsInProgress: snapshot.inProgress,
         };
       }
 
-      await runtime.waitForChange(sessionId, remaining);
+      await runtime.waitForChange(sessionId, deadlineAt - Date.now());
     }
   },
 });

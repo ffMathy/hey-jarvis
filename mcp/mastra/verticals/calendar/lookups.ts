@@ -1,8 +1,7 @@
 import { TZDate } from '@date-fns/tz';
 import { addDays, startOfDay } from 'date-fns';
-import { asFacts, createDirectLookup } from '../../utils/direct-lookup-factory.js';
+import { asFacts, createDirectLookup, type LookupToolCaller } from '../../utils/direct-lookup-factory.js';
 import { HOUSEHOLD_TIME_ZONE } from '../../utils/household.js';
-import { executeTool } from '../../utils/tool-factory.js';
 import { getCalendarEvents } from './tools.js';
 
 /**
@@ -10,7 +9,8 @@ import { getCalendarEvents } from './tools.js';
  *
  * Each is the one call the agent's instructions already make for them -- `getCalendarEvents`
  * across every calendar, over the days asked about -- with the days counted in the household's
- * time zone rather than the server's.
+ * time zone rather than the server's. Like the agent's call, each reports the calendars its events
+ * came from as what it read.
  */
 
 /** The most events a lookup reports, which is more than a spoken answer can carry anyway. */
@@ -26,8 +26,8 @@ export function householdDays(startInDays: number, dayCount: number, now = new D
   };
 }
 
-async function eventsOn(startInDays: number, dayCount: number): Promise<string> {
-  const { events, unreachableCalendars } = await executeTool(getCalendarEvents, {
+async function eventsOn(callTool: LookupToolCaller, startInDays: number, dayCount: number): Promise<string> {
+  const { events, unreachableCalendars } = await callTool(getCalendarEvents, {
     calendarId: 'primary',
     allCalendars: true,
     maxResults: MAX_EVENTS,
@@ -45,18 +45,18 @@ export const calendarLookups = [
     id: 'calendar.today',
     agentId: 'calendar',
     description: 'What is on the calendar today',
-    answer: () => eventsOn(0, 1),
+    answer: (callTool) => eventsOn(callTool, 0, 1),
   }),
   createDirectLookup({
     id: 'calendar.tomorrow',
     agentId: 'calendar',
     description: 'What is on the calendar tomorrow',
-    answer: () => eventsOn(1, 1),
+    answer: (callTool) => eventsOn(callTool, 1, 1),
   }),
   createDirectLookup({
     id: 'calendar.week',
     agentId: 'calendar',
     description: 'What is on the calendar over the coming week, or coming up in general',
-    answer: () => eventsOn(0, 7),
+    answer: (callTool) => eventsOn(callTool, 0, 7),
   }),
 ];

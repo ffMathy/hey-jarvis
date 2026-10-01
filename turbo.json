@@ -30,6 +30,22 @@
       "dependsOn": ["^transit", "lint"],
       "outputs": ["../coverage/**"]
     },
+    // horizon's agent-contract.spec.ts reads the ElevenLabs prompt, the evals' copy of the
+    // headset's sentences and the MCP routing workflow and planner as text, to catch them
+    // drifting apart while every package's own tests still pass. They are other packages'
+    // files, so they are named here: otherwise a change to them alone would replay horizon's
+    // cached pass instead of running the one check written for exactly that change.
+    "horizon#test": {
+      "dependsOn": ["^transit", "lint"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/elevenlabs/src/assets/agent-prompt.md",
+        "$TURBO_ROOT$/elevenlabs/tests/utils/headset.ts",
+        "$TURBO_ROOT$/mcp/mastra/verticals/routing/workflows.ts",
+        "$TURBO_ROOT$/mcp/mastra/verticals/routing/planner.ts"
+      ],
+      "outputs": ["../coverage/**"]
+    },
     "test:integration": {
       "dependsOn": ["lint"],
       "cache": false,

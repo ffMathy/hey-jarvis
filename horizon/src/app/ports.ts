@@ -1,4 +1,4 @@
-import { type JarvisVoice, SILENT_VOICE, type UserVoice } from 'hologram';
+import { type AffectedEntity, type JarvisVoice, SILENT_VOICE, type UserVoice } from 'hologram';
 import type { Object3D, WebGLRenderer } from 'three';
 import type { DepthProbe } from '../xr/depth-probes';
 import type { PoseLike, Vector3Like } from '../xr/ray';
@@ -79,6 +79,12 @@ export interface ConversationEvents {
   onProblem(message: string): void;
   onCaption(text: string | undefined): void;
   onDiagnostics?(diagnostics: ConversationDiagnostics): void;
+  /**
+   * The entities the agent says the request under way affects, every time it marks them with its
+   * `markAffected` tool: opaque ids from whichever agent took the request, with a name to show when
+   * it had one, validated and never empty.
+   */
+  onAffected?(entities: readonly AffectedEntity[]): void;
 }
 
 export interface ConversationPort {
@@ -87,6 +93,13 @@ export interface ConversationPort {
   endQuietly(): void;
   sendText(text: string): void;
   setTyping(typing: boolean): void;
+  /**
+   * Tells the agent something without asking it anything — what sir is pointing at — under
+   * `contextId`, so that a newer update for the same id replaces the last in the agent's view. Sent
+   * while connected; before that the latest for each id waits for the summoning under way, and
+   * with none under way nothing is kept.
+   */
+  sendContextualUpdate(text: string, contextId?: string): void;
   readonly phase: SessionPhase;
   readonly voice: JarvisVoice;
   readonly user: UserVoice;
@@ -111,6 +124,7 @@ export function createSilentConversation(): ConversationPort {
     endQuietly: () => undefined,
     sendText: () => undefined,
     setTyping: () => undefined,
+    sendContextualUpdate: () => undefined,
     phase: 'idle',
     voice: SILENT_VOICE,
     user: NOBODY,

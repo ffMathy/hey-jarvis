@@ -3,6 +3,7 @@ import type { RoomPoint, VoiceReport } from '../../src/debug-hook';
 import {
   aim,
   answerTokens,
+  appPage,
   collectProblems,
   countGreetings,
   debugState,
@@ -36,6 +37,11 @@ import { bundle, expect, test } from './fixtures';
  * Chromium's fake microphone on Linux offers no platform echo canceller, which is the truth about a
  * desktop; the specs that want one say so by adding `'all'` to what the track offers, which is what
  * Quest Browser reports when the headset has one.
+ *
+ * Every spec that summons him keeps him greeting the same way: the token is never answered, the
+ * page holds the session's deadline open (`deadline=never`, see `appPage`), and the greeting is
+ * served longer than the test (`lengthenTheGreeting`). Both budgets run on the wall clock, which
+ * the emulator's frames, a second or more apart, used to lose the race against.
  */
 
 declare global {
@@ -127,6 +133,7 @@ async function head(page: Page): Promise<RoomPoint> {
   });
 }
 
+/** Summons him straight ahead, and waits until he greets: on a page holding the deadline, with the greeting lengthened. */
 async function summonAhead(page: Page) {
   await aim(page, { x: HAND.x, y: HAND.y, z: HAND.z - 2 });
   await tap(page);
@@ -141,7 +148,7 @@ test('he greets from where he stands: through an HRTF panner at his anchor, hear
   await countGreetings(page);
   await recordAudio(page, { platformEchoCanceller: true });
   await withSavedSettings(page);
-  await enterRoom(page);
+  await enterRoom(page, appPage('deadline=never'));
   await untilListening(page);
 
   expect(await voiceReport(page)).toMatchObject({
@@ -205,10 +212,11 @@ test('a stopped AudioContext moves him back to the headset, and a greeting it wo
 }) => {
   const problems = collectProblems(page);
   await answerTokens(page, 'never');
+  await lengthenTheGreeting(page);
   await countGreetings(page);
   await recordAudio(page, { platformEchoCanceller: true });
   await withSavedSettings(page);
-  await enterRoom(page);
+  await enterRoom(page, appPage('deadline=never'));
   await untilListening(page);
 
   await summonAhead(page);
@@ -235,10 +243,11 @@ test('with "His voice from where he stands" off, he greets from the headset and 
 }) => {
   const problems = collectProblems(page);
   await answerTokens(page, 'never');
+  await lengthenTheGreeting(page);
   await countGreetings(page);
   await recordAudio(page, { platformEchoCanceller: true });
   await withSavedSettings(page);
-  await page.goto('/hey-jarvis/horizon/');
+  await page.goto(appPage());
   await page.evaluate(() => window.__xrHarness?.ready);
 
   const setting = page.getByLabel('His voice from where he stands');
@@ -250,7 +259,7 @@ test('with "His voice from where he stands" off, he greets from the headset and 
   await page.evaluate(() => window.__xrHarness?.ready);
   await expect(page.getByLabel('His voice from where he stands')).not.toBeChecked();
 
-  await enterRoom(page);
+  await enterRoom(page, appPage('deadline=never'));
   await untilListening(page);
   expect(await voiceReport(page)).toMatchObject({ route: 'element', reason: 'setting-off', echoCanceller: 'platform' });
 

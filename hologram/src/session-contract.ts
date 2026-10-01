@@ -1,3 +1,4 @@
+import type { AffectedEntity } from './affected-entities';
 import type { AgentTrackRoom } from './agent-audio-track';
 import type { ElevenLabsSettings } from './elevenlabs-settings';
 import type { MCPToolCallEvent, ToolCallEvent } from './tool-activity';
@@ -72,6 +73,13 @@ export interface JarvisSessionEvents {
    * what he has just said is his own voice coming back through the microphone.
    */
   onMessage?(message: ConversationMessage): void;
+  /**
+   * The entities the agent says the request under way affects, every time it says so through its
+   * `markAffected` client tool: validated, never empty (see `affected-entities.ts`). For a device
+   * that shows what he is working on — the headset, which lights it up where it stands. The phone
+   * and the watch leave it out, and the tool is answered on them all the same.
+   */
+  onAffected?(entities: readonly AffectedEntity[]): void;
 }
 
 /** Whatever plays the recorded greeting. */
@@ -170,8 +178,16 @@ export interface JarvisSession {
   sendText(text: string): void;
   /** Mutes the microphone while the user writes instead of talking (the phone's text mode). */
   setTyping(typing: boolean): void;
-  /** Tells the agent something without taking a turn (sendContextualUpdate); ignored unless connected. */
-  sendContextualUpdate(text: string): void;
+  /**
+   * Tells the agent something it should know without answering it — what the user is pointing at,
+   * or that the phone has a camera button — as a contextual update, which takes no turn. Sent at
+   * once while connected. Before that, the latest update for each `contextId`, and every update
+   * without one, waits for the summoning under way and goes the moment it connects; whatever is
+   * still waiting when it ends is dropped, and with no summoning under way nothing is kept. The
+   * server keeps only the newest update for a context id, so a holder that says the same kind of
+   * thing again says it under the same one.
+   */
+  sendContextualUpdate(text: string, contextId?: string): void;
   /** Says the user is still there without saying anything (sendUserActivity); ignored unless connected. */
   sendUserActivity(): void;
   /**
@@ -211,7 +227,7 @@ export interface SessionConversation {
   endSession(): Promise<void>;
   setMicMuted(muted: boolean): void;
   sendUserMessage(text: string): void;
-  sendContextualUpdate(text: string): void;
+  sendContextualUpdate(text: string, options?: { contextId?: string }): void;
   sendUserActivity(): void;
   /** The conversation's ElevenLabs id, as the SDK knows it (see {@link JarvisSession.liveConversationId}). */
   getId(): string;
@@ -254,8 +270,17 @@ export interface SessionCallbacks {
   onDisconnect: (ending: SessionEnding) => void;
 }
 
+/**
+ * The client tools the session answers, by name, as the SDK's `clientTools` takes them. Each is
+ * handed the parameters exactly as the agent wrote them — model output, hence `unknown` — and
+ * returns what the agent is sent back, or nothing for the SDK's own "Client tool execution
+ * successful.". A tool that throws is reported to the agent as having failed, so none of them do.
+ */
+export type SessionClientTools = Record<string, (parameters: unknown) => string | undefined>;
+
 /** A spoken conversation: a token for a WebRTC room. */
 export interface VoiceSessionOptions extends SessionCallbacks {
+  clientTools: SessionClientTools;
   conversationToken: string;
   connectionType: 'webrtc';
   connectionDelay?: ConnectionDelay;
@@ -264,6 +289,7 @@ export interface VoiceSessionOptions extends SessionCallbacks {
 
 /** A conversation held in writing: a signed URL for a socket (see {@link SummonOptions.textOnly}). */
 export interface TextSessionOptions extends SessionCallbacks {
+  clientTools: SessionClientTools;
   signedUrl: string;
   connectionType: 'websocket';
   textOnly: true;
@@ -340,6 +366,14 @@ export interface JarvisSessionDependencies<Timer> {
   /** What the deadline says when it gives up, asked at that moment; `DEADLINE_PROBLEM` when left out. */
   deadlineProblem?: () => string;
   /**
+   * How long a summoning waits for its conversation to open before giving up, in milliseconds:
+   * `GIVE_UP_CONNECTING_AFTER_MS` when left out, which is what the phone, the watch and the headset
+   * all run with. `Number.POSITIVE_INFINITY` never gives up. Only the headset's browser tests ask
+   * for that (`?deadline=never`): they keep him greeting on a token that never comes while an
+   * emulator draws a frame a second or slower, and no fixed wait is long enough on every machine.
+   */
+  giveUpConnectingAfterMs?: number;
+  /**
    * The audio the call runs in, on a device that has to switch into it before the greeting (see
    * {@link CallAudio}). Let go once nothing uses it: at once when no conversation was dialled, and
    * otherwise once the conversation has finished ending.
@@ -368,4 +402,12 @@ export interface JarvisSessionDependencies<Timer> {
   followAgentVoice?: FollowAgentVoice;
   /** Removes the SDK's `<audio>` elements a dropped connection leaves behind, where a page lives on. */
   removeOrphanedAudio?: () => void;
+  /**
+   * What the agent should know about the device a conversation is held on, said as a contextual
+   * update under `DEVICE_CONTEXT_ID` the moment each conversation connects, before anything else
+   * the holder has to say. The headset's says it lights up what he is working on and hears what
+   * sir points at, which is what the agent's prompt waits for before it calls `markAffected`.
+   * Without it nothing is said, as on the phone and the watch.
+   */
+  deviceContext?: string;
 }

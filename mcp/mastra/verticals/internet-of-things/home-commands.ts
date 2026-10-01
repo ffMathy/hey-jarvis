@@ -1,8 +1,16 @@
 import { z } from 'zod';
+import { cleanAffectedEntities } from '../../utils/affected-entities.js';
+import type { DirectAnswerOutcome } from '../../utils/direct-lookup-factory.js';
 import { createLazyClassifier } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
 import { createTtlCache } from '../../utils/ttl-cache.js';
-import { callHomeAssistantApi, type EntitySummary, listDomains, listEntities } from './tools.js';
+import {
+  callHomeAssistantApi,
+  type EntitySummary,
+  entitiesALookupAffects,
+  listDomains,
+  listEntities,
+} from './tools.js';
 
 /**
  * Smart home commands carried out without the Internet of Things agent.
@@ -283,7 +291,13 @@ async function candidateEntities(service: HomeService): Promise<EntitySummary[] 
 }
 
 /**
- * Carries a command out, and says what came of it in words the voice model can relay.
+ * Carries a command out, and says what came of it in words the voice model can relay, and which
+ * entities it acted on.
+ *
+ * The entities are the ones the service was called on, each with its name, for sir's headset to
+ * light up. Reported here because no agent ran: `callIoTService` reports the same thing when the
+ * agent makes the call (see `utils/affected-entities.ts`), and a command taking this path must
+ * light up just as one taking that path would.
  *
  * Resolves to `undefined` when it declines -- no classifier, too many or no entities, or Jev not
  * sure which -- so the caller hands the request to the agent. Home Assistant answers a service call
@@ -297,7 +311,7 @@ export async function runHomeCommand(
   service: HomeService,
   minimumConfidence: number,
   classifier = getHomeCommandClassifier(),
-): Promise<string | undefined> {
+): Promise<DirectAnswerOutcome | undefined> {
   if (!classifier) {
     return undefined;
   }
@@ -337,9 +351,13 @@ export async function runHomeCommand(
   });
 
   const names = chosen.map((entity) => entity.name).join(', ');
-  return changedCount > 0
-    ? `Called ${service.description} on ${names}. ${changedCount} device${changedCount === 1 ? '' : 's'} changed state.`
-    : `Called ${service.description} on ${names}, and nothing changed state: they may already have been that way.`;
+  return {
+    text:
+      changedCount > 0
+        ? `Called ${service.description} on ${names}. ${changedCount} device${changedCount === 1 ? '' : 's'} changed state.`
+        : `Called ${service.description} on ${names}, and nothing changed state: they may already have been that way.`,
+    entities: cleanAffectedEntities(chosen.map(({ id, name }) => ({ id, name }))),
+  };
 }
 
 /*
@@ -475,7 +493,13 @@ export function describeEntities(entities: EntitySummary[]): string {
 }
 
 /**
- * Answers a question about the house from Home Assistant's own states, without the agent.
+ * Answers a question about the house from Home Assistant's own states, without the agent, and says
+ * which entities it read.
+ *
+ * Those are the entities the question is about, reported as the agent's `findEntities` would have
+ * reported what it found -- none at all for a question about more than a handful, which is a survey
+ * (see {@link entitiesALookupAffects}). "What lights are on in the kitchen" lights the kitchen
+ * lights up on sir's headset; "are any lights on" lights up nothing.
  *
  * Resolves to `undefined` when it declines -- no classifier, too many or no entities, or Jev not
  * sure which the question is about -- so the caller hands the request to the agent.
@@ -487,7 +511,7 @@ export async function answerHomeQuestion(
   domain: string,
   minimumConfidence: number,
   classifier = getHomeCommandClassifier(),
-): Promise<string | undefined> {
+): Promise<DirectAnswerOutcome | undefined> {
   if (!classifier) {
     return undefined;
   }
@@ -510,5 +534,5 @@ export async function answerHomeQuestion(
   }
 
   logger.info('Answered a home question without the agent', { domain, entityIds: chosen.map((entity) => entity.id) });
-  return describeEntities(chosen);
+  return { text: describeEntities(chosen), entities: cleanAffectedEntities(entitiesALookupAffects(chosen)) };
 }

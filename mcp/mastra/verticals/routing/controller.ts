@@ -1,6 +1,9 @@
 import type { Mastra } from '@mastra/core';
 import type { Agent } from '@mastra/core/agent';
 import { uniq, uniqBy } from 'lodash-es';
+import { z } from 'zod';
+import { type AffectedEntity, readAffectedEntities } from '../../utils/affected-entities.js';
+import type { DirectAnswerOutcome } from '../../utils/direct-lookup-factory.js';
 import { logger } from '../../utils/logger.js';
 import { isSlowTask } from '../../utils/slow-tasks.js';
 import { dismissPhoto, findPhoto, photosWaiting, unmarkPhotoLookedAt } from '../vision/photos.js';
@@ -74,10 +77,50 @@ export type RoutingEvent =
   | { type: 'delegation_suspended'; delegationId: string; suspension: DelegationSuspension }
   /** A delegation started something marked slow. See `utils/slow-tasks.ts`. */
   | { type: 'delegation_slow'; delegationId: string }
+  /** A delegation's tool read or changed these things. See `utils/affected-entities.ts`. */
+  | { type: 'delegation_affected_entities'; delegationId: string; entities: AffectedEntity[] }
   /** The request failed outright. */
   | { type: 'error'; message: string }
   /** The plan run ended. */
   | { type: 'finished' };
+
+/**
+ * The most things one request reports as touched.
+ *
+ * Each is copied by the voice model into a `markAffected` call, token by token, on the path to
+ * sir's answer, and a request that switched off a whole floor has already said all it needs to by
+ * the twentieth light. The rest are dropped rather than queued: a glow that arrives after the
+ * answer lights up nothing.
+ */
+export const MOST_AFFECTED_ENTITIES_PER_REQUEST = 20;
+
+/**
+ * How long a request's first things touched wait for company before a parked poll returns with them
+ * alone.
+ *
+ * A response that carries nothing but entities costs the voice model a whole step -- call
+ * `markAffected`, then poll again -- and costs it on every device, because routing is never told
+ * whether the conversation is on the headset or on a phone, a watch or a speaker that lights nothing
+ * up. The usual shape of a command is a tool answering and the agent's own answer a moment later, so
+ * holding the first batch this long lets that answer, or the closing report, go out in the same
+ * response, and the extra step never happens.
+ *
+ * The price is the glow: when nothing else arrives in time, the headset lights the first thing this
+ * much later than it could have. Under half a second is well inside how long the work itself takes,
+ * and it buys back a step of the voice model that costs a second or more. Longer would spare the
+ * step for slower agents too, but leave the glow visibly late; shorter would spare it less often.
+ */
+export const AFFECTED_ENTITIES_GRACE_MS = 450;
+
+/** How much of what is waiting a poll takes. */
+export interface PollOptions {
+  /**
+   * Whether the poll is going to answer with whatever it finds -- it has run out its deadline, or it
+   * is the reply to sir accepting the offer to be notified -- so things touched that could not end a
+   * poll by themselves ride on that answer rather than waiting for a later one.
+   */
+  answeringAnyway?: boolean;
+}
 
 /** One delegation that has finished, as the poll loop reports it. */
 export interface DelegationOutcome {
@@ -161,6 +204,37 @@ export class RoutingProgress {
   /** Every task that started something slow, so each is announced once. */
   private readonly slowTaskIds = new Set<string>();
   /**
+   * Things the request's tools have read or changed, which the caller has not been told about yet.
+   *
+   * What they are for -- a glow on sir's headset around the thing being worked on -- is only worth
+   * anything while the work is still going on, so the request's first ones may end a poll by
+   * themselves (see {@link affectedEntitiesMayEndAPoll}). Every later one rides on the next report.
+   */
+  unannouncedAffectedEntities: AffectedEntity[] = [];
+  /**
+   * Each thing this request has reported as touched, so that none is reported twice and the total
+   * stays within {@link MOST_AFFECTED_ENTITIES_PER_REQUEST}.
+   */
+  private readonly affectedEntityIds = new Set<string>();
+  /**
+   * Whether any of the things this request touched have been handed to the caller.
+   *
+   * From then on a thing touched never ends a poll by itself. Each such response costs the voice
+   * model a step on every device, the ones that light nothing up included, and the first glow is the
+   * one that tells sir what Jarvis is working on; later things go out with the next report instead.
+   */
+  private affectedEntitiesHandedOver = false;
+  /** Runs out {@link AFFECTED_ENTITIES_GRACE_MS} after the request's first things touched arrive. */
+  private firstAffectedEntitiesGrace?: ReturnType<typeof setTimeout>;
+  /**
+   * Whether the first things touched have waited out {@link AFFECTED_ENTITIES_GRACE_MS}.
+   *
+   * A flag the timer sets, rather than a comparison of clocks, because a timer can fire a moment
+   * before the millisecond clock agrees it is due -- and a poll woken to find the window not quite
+   * over would park again with nothing left to wake it before its deadline.
+   */
+  private firstAffectedEntitiesGraceOver = false;
+  /**
    * Whether the user asked to be notified when this request is done.
    *
    * Such a request no longer belongs to the conversation that started it: a newer request does
@@ -214,12 +288,47 @@ export class RoutingProgress {
 
   /** Resolves when there is something new to say, or the request has ended. */
   wait(): Promise<void> {
-    if (this.pending.length > 0 || this.unannouncedSlowTaskIds.length > 0 || this.error || this.isFinished()) {
+    if (
+      this.pending.length > 0 ||
+      this.unannouncedSlowTaskIds.length > 0 ||
+      this.affectedEntitiesMayEndAPoll() ||
+      this.error ||
+      this.isFinished()
+    ) {
       return Promise.resolve();
     }
     return new Promise<void>((resolve) => {
       this.waiters.push(resolve);
     });
+  }
+
+  /**
+   * Whether the things touched that are waiting are enough, on their own, for a poll to return with.
+   *
+   * Only the request's first ones are, and only once they have waited out
+   * {@link AFFECTED_ENTITIES_GRACE_MS}, so that the answer which usually follows close behind them
+   * goes out in the same response. Anything else a poll reports carries them regardless.
+   */
+  affectedEntitiesMayEndAPoll(): boolean {
+    return (
+      this.firstAffectedEntitiesGraceOver &&
+      !this.affectedEntitiesHandedOver &&
+      this.unannouncedAffectedEntities.length > 0
+    );
+  }
+
+  /**
+   * Hands the things touched that are waiting to the caller, and marks the request as having told
+   * it some, after which nothing touched ends a poll by itself.
+   */
+  takeUnannouncedAffectedEntities(): AffectedEntity[] {
+    const taken = this.unannouncedAffectedEntities;
+    this.unannouncedAffectedEntities = [];
+    if (taken.length > 0) {
+      this.affectedEntitiesHandedOver = true;
+      clearTimeout(this.firstAffectedEntitiesGrace);
+    }
+    return taken;
   }
 
   /**
@@ -270,6 +379,9 @@ export class RoutingProgress {
         return;
       case 'delegation_slow':
         this.handleDelegationSlow(event);
+        return;
+      case 'delegation_affected_entities':
+        this.handleDelegationAffectedEntities(event);
         return;
       case 'error':
         this.fail(event.message);
@@ -352,6 +464,64 @@ export class RoutingProgress {
       logger.info('Delegation started something slow', { ...delegation });
       this.unannouncedSlowTaskIds.push(delegation.taskId);
       this.wake();
+    }
+  }
+
+  /**
+   * Records what a delegation's tool touched, each thing once.
+   *
+   * The request's first things touched wake a parked poll once {@link AFFECTED_ENTITIES_GRACE_MS} has
+   * passed, unless something else has carried them out by then; nothing touched later wakes one at
+   * all (see {@link affectedEntitiesMayEndAPoll}).
+   *
+   * Nothing is recorded once the user has asked to be notified: the conversation has moved on, and
+   * no poll is left to carry it to his headset.
+   */
+  private handleDelegationAffectedEntities(
+    event: Extract<RoutingEvent, { type: 'delegation_affected_entities' }>,
+  ): void {
+    if (this.notifyWhenDone) {
+      return;
+    }
+
+    const fresh: AffectedEntity[] = [];
+    for (const entity of event.entities) {
+      if (this.affectedEntityIds.has(entity.id)) {
+        // A later tool can name a thing an earlier one only gave the id of, and a name not yet
+        // handed over is still worth having -- it is the only label the headset has for it.
+        const waiting = this.unannouncedAffectedEntities.find((unannounced) => unannounced.id === entity.id);
+        if (waiting && !waiting.name && entity.name) {
+          waiting.name = entity.name;
+        }
+        continue;
+      }
+      if (this.affectedEntityIds.size >= MOST_AFFECTED_ENTITIES_PER_REQUEST) {
+        logger.info('Dropping things a request touched past the most it reports', {
+          delegationId: event.delegationId,
+          most: MOST_AFFECTED_ENTITIES_PER_REQUEST,
+        });
+        break;
+      }
+      this.affectedEntityIds.add(entity.id);
+      fresh.push(entity);
+    }
+
+    if (fresh.length === 0) {
+      return;
+    }
+
+    logger.info('Delegation touched things', {
+      delegationId: event.delegationId,
+      entityIds: fresh.map((entity) => entity.id),
+      elapsedMs: this.elapsedMs(),
+    });
+    this.unannouncedAffectedEntities.push(...fresh);
+
+    if (!this.affectedEntitiesHandedOver && this.firstAffectedEntitiesGrace === undefined) {
+      this.firstAffectedEntitiesGrace = setTimeout(() => {
+        this.firstAffectedEntitiesGraceOver = true;
+        this.wake();
+      }, AFFECTED_ENTITIES_GRACE_MS);
     }
   }
 
@@ -446,6 +616,8 @@ export interface RoutingSnapshot {
   awaitsPhoto: boolean;
   /** Tasks that have started something slow since the last poll. */
   newlySlow: string[];
+  /** Things the request has read or changed that this poll hands over -- see {@link buildSnapshot}. */
+  newlyAffected: AffectedEntity[];
   /** How the planner said the request should be answered. */
   responseStyle: ResponseStyle;
   /** Set when the request was a goodbye, or only stopped the one before it. */
@@ -458,18 +630,31 @@ export interface RoutingSnapshot {
  *
  * Taking a snapshot hands its `landed` outcomes over, so one must not be taken and
  * discarded -- those results would never be reported again.
+ *
+ * Things touched are handed over with anything else the snapshot reports, on a poll that answers
+ * anyway, and on their own only when {@link RoutingProgress.affectedEntitiesMayEndAPoll} says so.
+ * Otherwise they stay waiting for whichever report comes next, which is what keeps a thing touched
+ * from ending a poll that would cost the voice model a step for nothing but a glow.
  */
-export function buildSnapshot(progress: RoutingProgress): RoutingSnapshot {
+export function buildSnapshot(progress: RoutingProgress, options: PollOptions = {}): RoutingSnapshot {
   const landed = progress.pending;
   progress.pending = [];
   const newlySlow = progress.unannouncedSlowTaskIds;
   progress.unannouncedSlowTaskIds = [];
+  const finished = progress.isFinished();
+  const handsOverAffectedEntities =
+    options.answeringAnyway === true ||
+    finished ||
+    landed.length > 0 ||
+    newlySlow.length > 0 ||
+    progress.affectedEntitiesMayEndAPoll();
+  const newlyAffected = handsOverAffectedEntities ? progress.takeUnannouncedAffectedEntities() : [];
 
   return {
     landed,
     all: progress.all,
     inProgress: [...new Set([...progress.outstandingByDelegationId.values()].map((one) => one.taskId))],
-    finished: progress.isFinished(),
+    finished,
     questions: progress.questions,
     earlierQuestions: progress.earlierQuestions,
     waitingPhotos: progress.waitingPhotos,
@@ -479,6 +664,7 @@ export function buildSnapshot(progress: RoutingProgress): RoutingSnapshot {
     // the camera for it.
     awaitsPhoto: progress.awaitsPhoto && !photoKeptSince(progress.awaitsPhotoSince),
     newlySlow,
+    newlyAffected,
     responseStyle: progress.responseStyle,
     ...(progress.conversationControl && { conversationControl: progress.conversationControl }),
     error: progress.error,
@@ -496,8 +682,8 @@ export function buildSnapshot(progress: RoutingProgress): RoutingSnapshot {
 export interface RoutingRuntime {
   /** Starts a request, replacing anything the session was already doing. */
   start(sessionId: string, userQuery: string): Promise<void>;
-  /** What the caller has not been told yet, and what is still outstanding. */
-  poll(sessionId: string): Promise<RoutingSnapshot>;
+  /** What the caller has not been told yet, and what is still outstanding. See {@link buildSnapshot}. */
+  poll(sessionId: string, options?: PollOptions): Promise<RoutingSnapshot>;
   /** Resolves when the request next changes, or after `deadlineMs`. */
   waitForChange(sessionId: string, deadlineMs: number): Promise<void>;
   /**
@@ -612,7 +798,11 @@ function asWorkflowChunk(chunk: unknown): WorkflowChunk | undefined {
 export function asRoutingEvents(chunk: unknown, plan: RoutingPlan): RoutingEvent[] {
   const parsed = asWorkflowChunk(chunk);
   if (parsed?.type === 'workflow-step-output') {
-    return [...asSlowTaskEvents(parsed.payload, plan), ...asSuspensionEvents(parsed.payload, plan)];
+    return [
+      ...asSlowTaskEvents(parsed.payload, plan),
+      ...asAffectedEntityEvents(parsed.payload, plan),
+      ...asSuspensionEvents(parsed.payload, plan),
+    ];
   }
 
   if (parsed?.type !== 'workflow-step-result') {
@@ -714,6 +904,42 @@ function asSlowTaskEvents(payload: Record<string, unknown>, plan: RoutingPlan): 
 
   const delegationId = delegationIdOfStepOutput(payload, plan);
   return delegationId ? [{ type: 'delegation_slow', delegationId }] : [];
+}
+
+/**
+ * An agent's own `tool-result` chunk, as far as reading what the tool touched needs it.
+ *
+ * Parsed rather than duck-typed, since this is Mastra's undocumented chunk shape and a mismatch
+ * here is silent: the request runs and answers, and the headset simply never lights up.
+ * `affected-entities-interview.spec.ts` runs a real plan to pin it.
+ */
+const toolResultChunkSchema = z.object({
+  type: z.literal('tool-result'),
+  payload: z.object({ toolName: z.string(), args: z.unknown(), result: z.unknown() }),
+});
+
+/** What the tool behind one of an agent's chunks touched, if the chunk is a tool's result. */
+function affectedEntitiesOfChunk(chunk: unknown): AffectedEntity[] {
+  const toolResult = toolResultChunkSchema.safeParse(chunk);
+  if (!toolResult.success) {
+    return [];
+  }
+
+  const { toolName, args, result } = toolResult.data.payload;
+  return readAffectedEntities(toolName, args, result);
+}
+
+/**
+ * Things a delegation's tool read or changed, read off a step's streamed output.
+ *
+ * Seen the same way a slow tool is -- the agent step forwards its agent's chunks -- but from the
+ * tool's *result* rather than its call: what a lookup found, or which lights an area's service call
+ * reached, is only known once the tool has answered.
+ */
+function asAffectedEntityEvents(payload: Record<string, unknown>, plan: RoutingPlan): RoutingEvent[] {
+  const entities = affectedEntitiesOfChunk(payload.output);
+  const delegationId = entities.length > 0 ? delegationIdOfStepOutput(payload, plan) : undefined;
+  return delegationId ? [{ type: 'delegation_affected_entities', delegationId, entities }] : [];
 }
 
 /**
@@ -900,6 +1126,12 @@ async function runPlan(
  * have done. Reported as the chain's own task, so a poll reads it like any other delegation. It is
  * started and ended together once the answer is in, which is a matter of milliseconds -- and one
  * that declines then leaves nothing half-reported behind for the plan to contradict.
+ *
+ * What the answer read or changed is reported with it, before its result, as the agent's own tool
+ * results would have reported it: no agent streams a tool result here for `asAffectedEntityEvents`
+ * to read, and "what lights are on in the kitchen" must light the kitchen lights on sir's headset
+ * whichever way it is answered. One that declines or fails reports nothing, and the plan's agent
+ * reports what it touches itself.
  */
 async function runDirectOrPlan(
   mastra: Mastra,
@@ -915,9 +1147,9 @@ async function runDirectOrPlan(
     return runPlan(mastra, sessionId, progress, userQuery, chains, signal);
   }
 
-  let text: string | undefined;
+  let outcome: DirectAnswerOutcome | undefined;
   try {
-    text = await answerDirectly(direct, userQuery);
+    outcome = await answerDirectly(direct, userQuery);
   } catch (error) {
     logger.warn('Direct answer failed; handing the request to the agent', {
       sessionId,
@@ -925,13 +1157,16 @@ async function runDirectOrPlan(
       error,
     });
   }
-  if (text === undefined || signal.aborted) {
+  if (outcome === undefined || signal.aborted) {
     return signal.aborted ? undefined : runPlan(mastra, sessionId, progress, userQuery, chains, signal);
   }
 
   const delegationId = `direct-${delegation.taskId}`;
   progress.handle({ type: 'delegation_start', delegationId, taskId: delegation.taskId, agentId: delegation.agentId });
-  progress.handle({ type: 'delegation_end', delegationId, result: { text }, isError: false });
+  if (outcome.entities.length > 0) {
+    progress.handle({ type: 'delegation_affected_entities', delegationId, entities: outcome.entities });
+  }
+  progress.handle({ type: 'delegation_end', delegationId, result: { text: outcome.text }, isError: false });
 }
 
 /** The delegation an answer is reported as, which is the task that asked the question. */
@@ -968,6 +1203,10 @@ async function resumeWithAnswer(
       suspension = asDelegationSuspension(chunk) ?? suspension;
       if (isSlowToolCall(chunk)) {
         progress.handle({ type: 'delegation_slow', delegationId });
+      }
+      const entities = affectedEntitiesOfChunk(chunk);
+      if (entities.length > 0) {
+        progress.handle({ type: 'delegation_affected_entities', delegationId, entities });
       }
     }
 
@@ -1459,8 +1698,8 @@ const planRuntime: RoutingRuntime = {
     return true;
   },
 
-  async poll(sessionId) {
-    return buildSnapshot(progressFor(resolvePolledSessionId(sessionId)));
+  async poll(sessionId, options) {
+    return buildSnapshot(progressFor(resolvePolledSessionId(sessionId)), options);
   },
 
   async waitForChange(sessionId, deadlineMs) {

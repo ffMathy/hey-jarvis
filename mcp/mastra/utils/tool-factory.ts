@@ -52,7 +52,7 @@ export type ToolMastra = NonNullable<ToolExecuteContext<ToolExecutionContext>['m
  * steps and other callers can pass any tool-shaped value without having to
  * thread Mastra's eight tool generics through their own signatures.
  */
-interface ExecutableTool<TInput, TOutput> {
+export interface ExecutableTool<TInput, TOutput> {
   id?: string;
   execute?: ToolExecuteFunction<TInput, TOutput, ToolExecutionContext>;
 }

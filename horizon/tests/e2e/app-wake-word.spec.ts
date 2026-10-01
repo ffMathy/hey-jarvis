@@ -1,5 +1,6 @@
 import {
   answerTokens,
+  appPage,
   collectProblems,
   countGreetings,
   debugState,
@@ -11,6 +12,7 @@ import {
   roomReport,
   SAVED_SETTINGS,
   scene,
+  tap,
   untilListening,
   withSavedSettings,
 } from './app-driver';
@@ -25,6 +27,11 @@ import { expect, test } from './fixtures';
  * and the session dials — into LiveKit's socket, which the fixture closes, so the summon fails as
  * it would on a network that blocks it. Then the failure is shown, he leaves, and the wake word,
  * armed again, hears the clip come round and summons him a second time.
+ *
+ * The page holds two of the app's wall-clock budgets (`appPage`), which the emulator's frames, a
+ * second or more apart, are too slow to race: the session's deadline, so that what fails the call
+ * is the closed socket however long LiveKit takes to give up on it, and the error panel, so that
+ * its picture is of the panel. It is dismissed with a select, as it may be on a headset at any time.
  */
 
 /** `CONNECTION_PROBLEM` in `hologram/src/failure-text.ts`: LiveKit's room refusing to open, in words about the network. */
@@ -41,13 +48,16 @@ test('"Hey Jarvis" summons him into the room, and after a failed call it is list
   });
   await countGreetings(page);
   await withSavedSettings(page);
-  await enterRoom(page);
+  await enterRoom(page, appPage('deadline=never', 'errors=held'));
   await untilListening(page);
 
-  // The clip says it every five seconds or so.
+  // The clip says it every five seconds or so. Waited for by his placement rather than by a scene,
+  // which the greeting and the closed socket may have moved on from by the time it is asked: he is
+  // summoned in the same step as he is placed.
   await expect.poll(async () => (await debugState(page)).wakes, { timeout: 60000 }).toBeGreaterThan(0);
-  await expect.poll(() => scene(page), { timeout: 60000 }).toMatch(/^present:/);
+  await expect.poll(async () => (await debugState(page)).placement, { timeout: 60000 }).not.toBeNull();
   const placed = await debugState(page);
+  expect(placed.room?.recentEffects).toContain('summon');
   const spot = placed.hologramPosition;
   const head = placed.headPositionAtPlacement;
   if (spot === null || head === null || placed.placement === null) throw new Error('He was never placed.');
@@ -64,24 +74,25 @@ test('"Hey Jarvis" summons him into the room, and after a failed call it is list
   expect(requests[0]?.apiKey).toBe(SAVED_SETTINGS.apiKey);
 
   // Dialled after the greeting, into a socket that is closed on it.
-  await expect.poll(() => scene(page), { timeout: 60000, intervals: [100] }).toBe('failed');
-  expect((await roomReport(page)).view.panels.error).toEqual([NETWORK_PROBLEM]);
+  await expect.poll(() => scene(page), { timeout: 60000 }).toBe('failed');
+  expect(await photographError(page, testInfo, 'app-error-network.png')).toEqual([NETWORK_PROBLEM]);
   const wakesBefore = (await debugState(page)).wakes;
 
-  // Once it has been read he leaves, and the wake word is armed again — while he is still fading,
-  // if his voice has been quiet long enough — and hears the clip come round: a new summons, which
-  // cancels the fade if it comes before he has gone.
-  await expect.poll(() => scene(page), { timeout: 60000 }).not.toBe('failed');
-  await expect
-    .poll(async () => effectsSince((await roomReport(page)).recentEffects, 'remember-problem'), { timeout: 60000 })
-    .toContain('arm-wake');
-  // The engine passes a detection on only while it is armed, so a new one is the room listening again.
+  // Dismissed, he leaves, and the wake word is armed again — while he is still fading, if his
+  // voice has been quiet long enough — and hears the clip come round: a new summons, which cancels
+  // the fade if it comes before he has gone. The engine passes a detection on only while it is
+  // armed, so a new one is the room listening again.
+  await tap(page);
   await expect.poll(async () => (await debugState(page)).wakes, { timeout: 60000 }).toBeGreaterThan(wakesBefore);
-  await expect.poll(() => scene(page), { timeout: 60000 }).toMatch(/^(placing|present:)/);
 
-  // That summons fails the same way, and so does every one after it while the clip plays: the
-  // picture of the panel is taken of whichever it is still up for.
-  const photographed = await photographError(page, testInfo, 'app-error-network.png', async () => undefined);
-  expect(photographed).toEqual([NETWORK_PROBLEM]);
+  // That summons fails the same way, and its panel is held in its turn, so what the room did in
+  // between can be read at leisure: armed after the first failure, then summoned and failed again.
+  await expect.poll(() => scene(page), { timeout: 60000 }).toBe('failed');
+  const again = await roomReport(page);
+  expect(again.view.panels.error).toEqual([NETWORK_PROBLEM]);
+  const rearmed = again.recentEffects.lastIndexOf('arm-wake');
+  expect(rearmed).toBeGreaterThanOrEqual(0);
+  expect(again.recentEffects.slice(0, rearmed)).toContain('remember-problem');
+  expect(effectsSince(again.recentEffects, 'arm-wake')).toEqual(expect.arrayContaining(['summon', 'remember-problem']));
   expect(problems).toEqual([]);
 });

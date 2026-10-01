@@ -70,6 +70,68 @@ export interface VoiceReport {
   speaker: RoomPoint | null;
 }
 
+/** A ray in the session's space: where it starts, and its unit direction. */
+export interface RayReport {
+  origin: RoomPoint;
+  direction: RoomPoint;
+}
+
+/** One hand or controller as placing things reads it — for the tests to aim with. */
+export interface EntityInputReport {
+  /** `left-hand`, `right-controller`… */
+  id: string;
+  kind: string;
+  pinching: boolean;
+  pointing: boolean;
+  wristRaised: boolean;
+  /** Where it holds things: a hand's pinch point, a controller's grip. */
+  grip: RoomPoint | null;
+  /** A hand's index tip, which presses buttons. */
+  indexTip: RoomPoint | null;
+  /** Its target ray: a controller's laser, a hand's system ray. */
+  ray: RayReport | null;
+  /** A pointing hand's index finger. */
+  fingerRay: RayReport | null;
+}
+
+/** The things Jarvis works on, placed in the room (`app/room-entities.ts`, `src/entities/`). */
+export interface EntitiesReport {
+  /** Every entity ever marked, by id, in the drawer's order. */
+  known: string[];
+  /** The placed ones: the anchor each is kept on, and where it is now — null while its anchor is not located. */
+  placed: { id: string; anchor: string; position: RoomPoint | null }[];
+  /** The entities with a corona lit, lighting or fading. */
+  affected: string[];
+  /** The coronas drawn in the last frame, and where. */
+  coronas: { id: string; level: number; position: RoomPoint }[];
+  /** What sir is pointing at, by id. */
+  pointed: string | null;
+  /**
+   * What the conversation would be told about it the moment the call is live — offline, in the
+   * browser tests, the call never is.
+   */
+  pendingContext: string | null;
+  /** The drawer, and the entities on the page it shows, each with where its token floats. */
+  drawer: {
+    open: boolean;
+    page: number;
+    slots: { id: string; label: string; state: string; worldPosition: RoomPoint }[];
+    /** The buttons it has — Done, and the page buttons when there are pages — and where each is. */
+    buttons: { button: string; worldPosition: RoomPoint }[];
+  };
+  /** The tokens in a hand, and where each would go if let go now. */
+  carried: { id: string; grabber: string; mode: string; over: string; position: RoomPoint }[];
+  inputs: EntityInputReport[];
+  /** Where the wrist button stands, while a wrist is raised. */
+  wristButton: RoomPoint | null;
+  /** The room anchors: each stored one's state this session, those not found, drops waiting on a new one. */
+  anchors: { states: Record<string, string>; notFound: string[]; pending: number };
+  /** What the drawer's message line says. */
+  message: string | null;
+  /** Why the registry could not be written, when it could not. */
+  writeProblem: string | null;
+}
+
 export interface JarvisDebugState {
   phase: JarvisPhase;
   /** Frames drawn in the room since the session started. */
@@ -87,6 +149,8 @@ export interface JarvisDebugState {
   problem: string | null;
   /** Where his voice comes from, once a conversation room has been opened. */
   voice: VoiceReport | null;
+  /** The things he works on, placed in the room, once a room has been opened. */
+  entities: EntitiesReport | null;
 }
 
 declare global {
@@ -107,6 +171,7 @@ export function initialDebugState(): JarvisDebugState {
     room: null,
     problem: null,
     voice: null,
+    entities: null,
   };
 }
 

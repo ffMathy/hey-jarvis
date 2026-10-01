@@ -1,3 +1,4 @@
+import { answerLookup, type DirectAnswerOutcome } from '../../utils/direct-lookup-factory.js';
 import { answerHomeQuestion, type HomeService, runHomeCommand } from '../internet-of-things/home-commands.js';
 import { FAST_PATH_CONFIDENCE } from './classifier.js';
 import { findDirectLookup } from './direct-lookups.js';
@@ -12,7 +13,10 @@ import { findDirectLookup } from './direct-lookups.js';
  * anyway. That skips the agent's tool loop, which is the slowest part of a simple request.
  *
  * Every direct answer can decline, resolving to `undefined`, or throw. Either way the request runs
- * through the agent it was routed to, exactly as it would have without a direct answer.
+ * through the agent it was routed to, exactly as it would have without a direct answer. One that
+ * answers says what it read or changed beside its facts, the same things the agent's tool calls
+ * would have reported, since no tool result is streamed here for routing to read them off (see
+ * `utils/affected-entities.ts`).
  */
 export type DirectAnswer =
   /** A smart home command, carried out with this service (see `internet-of-things/home-commands.ts`). */
@@ -23,14 +27,19 @@ export type DirectAnswer =
   | { kind: 'lookup'; lookupId: string };
 
 /** Answers a request directly, or resolves to `undefined` when the agent should after all. */
-export async function answerDirectly(direct: DirectAnswer, userQuery: string): Promise<string | undefined> {
+export async function answerDirectly(
+  direct: DirectAnswer,
+  userQuery: string,
+): Promise<DirectAnswerOutcome | undefined> {
   switch (direct.kind) {
     case 'homeCommand':
       return await runHomeCommand(userQuery, direct.service, FAST_PATH_CONFIDENCE);
     case 'homeQuestion':
       return await answerHomeQuestion(userQuery, direct.domain, FAST_PATH_CONFIDENCE);
-    case 'lookup':
-      return await findDirectLookup(direct.lookupId)?.answer();
+    case 'lookup': {
+      const lookup = findDirectLookup(direct.lookupId);
+      return lookup ? await answerLookup(lookup) : undefined;
+    }
   }
 }
 

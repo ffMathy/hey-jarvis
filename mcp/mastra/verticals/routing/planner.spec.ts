@@ -6,7 +6,9 @@
  * contract around it: that every plan must carry a style, that only the four known ones are
  * accepted, and that the instructions describe each of them — and that waiting photos reach the
  * planner by id, with the rules for what to do about them, including letting one be, asking sir
- * about one he sent with nothing said, and waiting for one he says is on its way.
+ * about one he sent with nothing said, and waiting for one he says is on its way. An id the request
+ * names, such as what sir is pointing at, reaches the acting agent exactly as written, whether the
+ * planner writes its prompt or the classifier routes the request on its own.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
@@ -20,6 +22,7 @@ import {
   getRoutableAgentIds,
   PLANNER_AGENT_ID,
   planDelegations,
+  planFromFastRoute,
   plannerInstructions,
   plannerPrompt,
   planSchema,
@@ -49,6 +52,31 @@ describe('responseStyle', () => {
       expect(instructions).toContain(`\`${style}\``);
     }
     expect(instructions).toContain('where the value of the request lands');
+  });
+});
+
+/**
+ * What sir points at on his headset reaches the request as a name and an id, and only the planner's
+ * prompt reaches the agent that acts on it -- so the id has to survive that step untouched.
+ */
+describe('an id in the request', () => {
+  it('is copied into the acting agent’s prompt exactly as written', () => {
+    const instructions = plannerInstructions([]);
+
+    expect(instructions).toContain('pointing at "Kitchen ceiling", id light.kitchen_ceiling');
+    expect(instructions).toContain('copy the id into its prompt exactly as written');
+  });
+
+  // A request the routing classifier settles on its own skips the planner, and with it the
+  // instruction above: the one agent is handed sir's words as they are, so the id is in them.
+  it('reaches the agent untouched when the classifier routes the request on its own', async () => {
+    const pointedAt = 'Turn that on (pointing at "Kitchen ceiling", id light.kitchen_ceiling)';
+
+    const decision = await planFromFastRoute({ agentId: 'internetOfThings', responseStyle: 'command' }, pointedAt);
+
+    expect(decision.chains.flatMap((chain) => chain.delegations.map((delegation) => delegation.prompt))).toEqual([
+      pointedAt,
+    ]);
   });
 });
 

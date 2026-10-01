@@ -35,7 +35,7 @@ function called(
       state,
       result: payload === undefined ? [] : [{ type: 'text', text: JSON.stringify(payload) }],
     },
-  } as unknown as ServerMessage;
+  };
 }
 
 const routed = (...taskIds: string[]): ServerMessage =>
@@ -74,7 +74,7 @@ const recapped = (allTaskIds: string[]): ServerMessage =>
  * ending on the closing report.
  */
 const healthyLoop = (): ServerMessage[] => [
-  { type: 'user_message', text: 'Weather, calendar, traffic, lasagna, and a reminder please.' } as ServerMessage,
+  { type: 'user_message', text: 'Weather, calendar, traffic, lasagna, and a reminder please.' },
   routed(
     'user-location',
     'calendar-today',
@@ -94,24 +94,22 @@ const healthyLoop = (): ServerMessage[] => [
 ];
 
 describe('parseRoutingReport', () => {
-  const report = {
+  const report: RoutingReport = {
     instructions: 'Call again.',
     completedTaskResults: [{ id: 'a', result: 'x' }],
     taskIdsInProgress: ['b'],
   };
 
   it('reads the report out of an MCP text content part', () => {
-    expect(parseRoutingReport([{ type: 'text', text: JSON.stringify(report) }])).toEqual(report as RoutingReport);
+    expect(parseRoutingReport([{ type: 'text', text: JSON.stringify(report) }])).toEqual(report);
   });
 
   it('reads a report handed over as a plain object', () => {
-    expect(parseRoutingReport([report])).toEqual(report as RoutingReport);
+    expect(parseRoutingReport([report])).toEqual(report);
   });
 
   it('reads a report nested inside a content envelope', () => {
-    expect(parseRoutingReport({ content: [{ type: 'text', text: JSON.stringify(report) }] })).toEqual(
-      report as RoutingReport,
-    );
+    expect(parseRoutingReport({ content: [{ type: 'text', text: JSON.stringify(report) }] })).toEqual(report);
   });
 
   it('reads a poll that found nothing new, which carries instructions alone', () => {
@@ -179,7 +177,7 @@ describe('readRoutingLoop', () => {
       {
         type: 'mcp_tool_call',
         mcp_tool_call: { tool_name: 'routePromptWorkflow', tool_call_id: 'call-x', state: 'loading', result: [] },
-      } as unknown as ServerMessage,
+      },
       {
         type: 'mcp_tool_call',
         mcp_tool_call: {
@@ -188,7 +186,7 @@ describe('readRoutingLoop', () => {
           state: 'success',
           result: [{ type: 'text', text: JSON.stringify({ instructions: 'Poll now.', taskIdsInProgress: ['a'] }) }],
         },
-      } as unknown as ServerMessage,
+      },
     ];
 
     const loop = readRoutingLoop(loadingThenSuccess);
@@ -351,7 +349,7 @@ describe('a call that came back failed', () => {
       {
         type: 'mcp_tool_call',
         mcp_tool_call: { tool_name: 'routePromptWorkflow', tool_call_id: 'call-y', state: 'loading', result: [] },
-      } as unknown as ServerMessage,
+      },
       {
         type: 'mcp_tool_call',
         mcp_tool_call: {
@@ -360,7 +358,7 @@ describe('a call that came back failed', () => {
           state: 'failure',
           result: [{ type: 'text', text: 'upstream refused the payload' }],
         },
-      } as unknown as ServerMessage,
+      },
     ]);
 
     expect(loop.steps).toHaveLength(1);

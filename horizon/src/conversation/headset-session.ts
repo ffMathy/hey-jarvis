@@ -24,6 +24,15 @@ export const NO_CONNECTION_DELAY = { default: 0, android: 0 };
 export const HEADSET_OFFLINE_PROBLEM =
   'ElevenLabs could not be reached. Check that the headset is connected to the internet.';
 
+/**
+ * What the headset tells the agent about itself the moment each conversation connects (the
+ * session's `deviceContext`). The agent's prompt waits for it before calling `markAffected` or
+ * reading anything into what sir points at, because on the phone and the watch nothing lights up
+ * and nothing can be pointed at.
+ */
+export const HEADSET_DEVICE_CONTEXT =
+  "This conversation is on sir's headset, which lights up what you are working on and tells you what he is pointing at.";
+
 /** What the room hands over for each session; the rest is the headset's and is filled in here. */
 export interface HeadsetSessionOptions {
   settings: ElevenLabsSettings;
@@ -38,6 +47,16 @@ export interface HeadsetSessionOptions {
    * played from the headset by the SDK's own element, as he always was.
    */
   voice?: HeadsetVoice;
+  /**
+   * What the agent is told about the device on connecting: {@link HEADSET_DEVICE_CONTEXT} from a
+   * room that lights up what he works on and says what sir points at. Without it, nothing.
+   */
+  deviceContext?: string;
+  /**
+   * How long a summoning waits for its conversation to open, when not the session's own deadline:
+   * only ever `Infinity`, from the browser tests' `?deadline=never` (`test-seams.ts`).
+   */
+  giveUpConnectingAfterMs?: number;
 }
 
 /** As much of the spatial voice as a conversation reaches for. */
@@ -106,7 +125,10 @@ function eventsFor(events: JarvisSessionEvents, voice: HeadsetVoice | undefined)
  * stands, when the room hands over a spatial voice: the greeting and his track routed through it,
  * what it watches for its echo passed on, and the half-duplex fallback told to wait while it is
  * spatial. And the SDK's orphaned `<audio>` elements swept away after a dropped call
- * (`orphaned-audio.ts`), because this page stays open for hours of summonings.
+ * (`orphaned-audio.ts`), because this page stays open for hours of summonings. The room's events
+ * (`onAffected` among them), what it tells the agent about the device (`deviceContext`) and the
+ * deadline the browser tests hold open (`giveUpConnectingAfterMs`) pass through as the room hands
+ * them over.
  */
 export function headsetSessionDependencies({
   audioContext,

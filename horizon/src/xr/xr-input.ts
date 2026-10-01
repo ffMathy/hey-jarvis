@@ -1,10 +1,10 @@
-import { createDismissButtonWatcher } from './dismiss-button';
+import { type ButtonWatcher, createButtonWatcher, DISMISS_BUTTON_INDEX, EDIT_BUTTON_INDEX } from './gamepad-buttons';
 import { type Ray, rayFromPose } from './ray';
 import { createSelectGestures, HOLD_SECONDS, type SelectHold } from './select-gesture';
 
 /**
  * The room's input, read from the session: selects told apart into taps and holds, each with the
- * ray it was made along, and presses of the B and Y buttons.
+ * ray it was made along, and presses of the B and Y buttons and of the A and X buttons.
  *
  * Selects are the session's own events. A tap is reported inside the `select` event, so whatever
  * the app does about it runs while the event's user activation still counts — which is what lets a
@@ -12,7 +12,8 @@ import { createSelectGestures, HOLD_SECONDS, type SelectHold } from './select-ge
  * the frame loop, the frame it reaches {@link HOLD_SECONDS}, with the ray from that frame.
  *
  * The buttons have no events at all; their state is read from each controller's gamepad every
- * frame (`dismiss-button.ts`).
+ * frame (`gamepad-buttons.ts`). What the hands and controllers are doing between those — pinching,
+ * pointing, squeezing, where they are — is `input-snapshots.ts`'s.
  */
 
 export interface XrSelect {
@@ -27,6 +28,13 @@ export interface XrInput {
   update(frame: XRFrame, space: XRReferenceSpace): void;
   onSelect(listener: (select: XrSelect) => void): () => void;
   onDismissButton(listener: (source: XRInputSource) => void): () => void;
+  /** A or X went down: they open placing things in the room, and close it again. */
+  onEditButton(listener: (source: XRInputSource) => void): () => void;
+  /**
+   * Spends every select under way, so neither its release nor the hold it would become is reported:
+   * the press has already done what it was for (`select-gesture.ts`).
+   */
+  consumeHeld(): void;
   dispose(): void;
 }
 
@@ -47,9 +55,11 @@ export function createXrInput(
   now: () => number = () => performance.now(),
 ): XrInput {
   const gestures = createSelectGestures<XRInputSource>(HOLD_SECONDS);
-  const buttons = createDismissButtonWatcher<XRInputSource>();
+  const dismissButtons = createButtonWatcher<XRInputSource>(DISMISS_BUTTON_INDEX);
+  const editButtons = createButtonWatcher<XRInputSource>(EDIT_BUTTON_INDEX);
   const selectListeners = new Set<(select: XrSelect) => void>();
-  const buttonListeners = new Set<(source: XRInputSource) => void>();
+  const dismissListeners = new Set<(source: XRInputSource) => void>();
+  const editListeners = new Set<(source: XRInputSource) => void>();
   const seconds = () => now() / 1000;
 
   function emitSelect(select: XrSelect) {
@@ -66,7 +76,8 @@ export function createXrInput(
   const onSourcesChange = (event: XRInputSourcesChangeEvent) => {
     for (const source of event.removed) {
       gestures.end(source);
-      buttons.forget(source);
+      dismissButtons.forget(source);
+      editButtons.forget(source);
     }
   };
 
@@ -75,23 +86,36 @@ export function createXrInput(
   session.addEventListener('select', onSelect);
   session.addEventListener('inputsourceschange', onSourcesChange);
 
+  /** Tells `listeners` about each source whose button `watcher` saw go down this frame. */
+  function readButton(watcher: ButtonWatcher<XRInputSource>, listeners: Set<(source: XRInputSource) => void>) {
+    for (const source of session.inputSources) {
+      if (!watcher.pressed(source, source.gamepad)) continue;
+      for (const listener of listeners) listener(source);
+    }
+  }
+
   return {
     update(frame, space) {
       for (const source of gestures.heldLongEnough(seconds())) {
         emitSelect({ hold: 'long', ray: rayOf(frame, source, space), source });
       }
-      for (const source of session.inputSources) {
-        if (!buttons.pressed(source, source.gamepad)) continue;
-        for (const listener of buttonListeners) listener(source);
-      }
+      readButton(dismissButtons, dismissListeners);
+      readButton(editButtons, editListeners);
     },
     onSelect(listener) {
       selectListeners.add(listener);
       return () => selectListeners.delete(listener);
     },
     onDismissButton(listener) {
-      buttonListeners.add(listener);
-      return () => buttonListeners.delete(listener);
+      dismissListeners.add(listener);
+      return () => dismissListeners.delete(listener);
+    },
+    onEditButton(listener) {
+      editListeners.add(listener);
+      return () => editListeners.delete(listener);
+    },
+    consumeHeld() {
+      gestures.consumeHeld(seconds());
     },
     dispose() {
       session.removeEventListener('selectstart', onSelectStart);
@@ -99,7 +123,8 @@ export function createXrInput(
       session.removeEventListener('select', onSelect);
       session.removeEventListener('inputsourceschange', onSourcesChange);
       selectListeners.clear();
-      buttonListeners.clear();
+      dismissListeners.clear();
+      editListeners.clear();
     },
   };
 }

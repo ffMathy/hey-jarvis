@@ -22,7 +22,7 @@ import {
   homeServicesFrom,
   runHomeCommand,
 } from './home-commands.js';
-import { resetHomeAssistantCachesForTest } from './tools.js';
+import { type EntitySummary, MOST_ENTITIES_A_LOOKUP_AFFECTS, resetHomeAssistantCachesForTest } from './tools.js';
 
 const SURE = 0.85;
 
@@ -210,6 +210,8 @@ describe('runHomeCommand', () => {
   const saved = new Map<string, string | undefined>();
   const serviceCalls: { url: string; body: unknown }[] = [];
   let serviceResponse: () => Response;
+  /** The entities the house lists, which is {@link ENTITIES} unless a test furnishes it otherwise. */
+  let houseEntities: EntitySummary[] = ENTITIES;
   let fetchSpy: ReturnType<typeof spyOn<typeof globalThis, 'fetch'>> | undefined;
 
   /** Home Assistant, answering the entity listing and recording every service call. */
@@ -221,6 +223,7 @@ describe('runHomeCommand', () => {
     process.env.HEY_JARVIS_HOME_ASSISTANT_TOKEN = 'test-token';
     resetHomeAssistantCachesForTest();
     serviceCalls.length = 0;
+    houseEntities = ENTITIES;
 
     fetchSpy = spyOn(globalThis, 'fetch').mockImplementation(
       Object.assign(
@@ -230,7 +233,9 @@ describe('runHomeCommand', () => {
           if (url.endsWith('/api/template')) {
             const template = JSON.stringify(body);
             return new Response(
-              JSON.stringify(template.includes('map(attribute') ? ENTITIES.map((entity) => entity.id) : ENTITIES),
+              JSON.stringify(
+                template.includes('map(attribute') ? houseEntities.map((entity) => entity.id) : houseEntities,
+              ),
             );
           }
           serviceCalls.push({ url, body });
@@ -278,7 +283,7 @@ describe('runHomeCommand', () => {
   it('calls the service on the entities Jev chose, and says how many changed', async () => {
     serviceResponse = () => new Response(JSON.stringify([{ entity_id: 'light.kitchen' }]));
 
-    const text = await runHomeCommand(
+    const outcome = await runHomeCommand(
       'turn off the kitchen lights',
       lightTurnOff,
       SURE,
@@ -288,21 +293,38 @@ describe('runHomeCommand', () => {
     expect(serviceCalls).toEqual([
       { url: 'http://home-assistant.test/api/services/light/turn_off', body: { entity_id: ['light.kitchen'] } },
     ]);
-    expect(text).toContain('Kitchen ceiling');
-    expect(text).toContain('1 device changed state');
+    expect(outcome?.text).toContain('Kitchen ceiling');
+    expect(outcome?.text).toContain('1 device changed state');
   });
 
-  it('does not claim success when nothing changed', async () => {
-    serviceResponse = () => new Response('[]');
+  // No agent runs, so no `callIoTService` result reports what the call reached: this does instead,
+  // or a command taking this path would never light anything up on sir's headset.
+  it('reports the entities it called the service on, by id and name, for the headset to light up', async () => {
+    serviceResponse = () => new Response(JSON.stringify([{ entity_id: 'light.kitchen' }]));
 
-    const text = await runHomeCommand(
+    const outcome = await runHomeCommand(
       'turn off the kitchen lights',
       lightTurnOff,
       SURE,
       classifierAnswering([0.97, 0.02]),
     );
 
-    expect(text).toContain('nothing changed state');
+    expect(outcome?.entities).toEqual([{ id: 'light.kitchen', name: 'Kitchen ceiling' }]);
+  });
+
+  it('does not claim success when nothing changed', async () => {
+    serviceResponse = () => new Response('[]');
+
+    const outcome = await runHomeCommand(
+      'turn off the kitchen lights',
+      lightTurnOff,
+      SURE,
+      classifierAnswering([0.97, 0.02]),
+    );
+
+    expect(outcome?.text).toContain('nothing changed state');
+    // Still the thing it worked on, changed or not, as a service call the agent made would report.
+    expect(outcome?.entities).toEqual([{ id: 'light.kitchen', name: 'Kitchen ceiling' }]);
   });
 
   it('declines without calling anything when Jev is unsure of an entity', async () => {
@@ -315,10 +337,49 @@ describe('runHomeCommand', () => {
   });
 
   it('answers a question from the states of the entities Jev chose, calling no service', async () => {
-    const text = await answerHomeQuestion('is the kitchen light on', 'light', SURE, classifierAnswering([0.97, 0.02]));
+    const outcome = await answerHomeQuestion(
+      'is the kitchen light on',
+      'light',
+      SURE,
+      classifierAnswering([0.97, 0.02]),
+    );
 
-    expect(text).toBe('Kitchen ceiling (Kitchen): on');
+    expect(outcome?.text).toBe('Kitchen ceiling (Kitchen): on');
     expect(serviceCalls).toEqual([]);
+  });
+
+  // No agent runs, so no `findEntities` result reports what the question was about: this does
+  // instead, or "what lights are on in the kitchen" answered this way would light nothing up.
+  it('reports the entities a question was about, by id and name, for the headset to light up', async () => {
+    const outcome = await answerHomeQuestion(
+      'what lights are on in the kitchen',
+      'light',
+      SURE,
+      classifierAnswering([0.97, 0.02]),
+    );
+
+    expect(outcome?.entities).toEqual([{ id: 'light.kitchen', name: 'Kitchen ceiling' }]);
+  });
+
+  it(`reports nothing for a question about more than ${MOST_ENTITIES_A_LOOKUP_AFFECTS} entities, as findEntities would not`, async () => {
+    houseEntities = Array.from({ length: MOST_ENTITIES_A_LOOKUP_AFFECTS + 1 }, (_, index) => ({
+      id: `light.number_${index}`,
+      name: `Light ${index}`,
+      area: 'Hall',
+      state: 'on',
+    }));
+
+    const outcome = await answerHomeQuestion(
+      'are any lights on',
+      'light',
+      SURE,
+      classifierAnswering(houseEntities.map(() => 0.97)),
+    );
+
+    // Still answered, every light in it -- only the glow is left out, since lighting up the whole
+    // house tells sir nothing.
+    expect(outcome?.text.split('\n')).toHaveLength(MOST_ENTITIES_A_LOOKUP_AFFECTS + 1);
+    expect(outcome?.entities).toEqual([]);
   });
 
   it('leaves a question to the agent when Jev is unsure which entity it is about', async () => {

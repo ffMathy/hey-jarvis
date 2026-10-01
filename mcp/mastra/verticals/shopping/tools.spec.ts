@@ -12,9 +12,16 @@
 
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
+import { readAffectedEntities } from '../../utils/affected-entities.js';
 import { executeTool } from '../../utils/tool-factory.js';
 import { authenticateWithBilka, resetBilkaSignInForTest } from './bilka/auth.js';
-import { findProductInCatalog, setProductBasketQuantity } from './tools.js';
+import {
+  BILKA_BASKET,
+  clearCartContents,
+  findProductInCatalog,
+  getCurrentCartContents,
+  setProductBasketQuantity,
+} from './tools.js';
 
 const BILKA_ENV = [
   'HEY_JARVIS_BILKA_EMAIL',
@@ -210,5 +217,31 @@ describe('Bilka shopping tools', () => {
       expect(tokens.map((token) => token.jwtToken)).toEqual(['jwt', 'jwt', 'jwt']);
       fetchSpy.mockRestore();
     });
+  });
+});
+
+/**
+ * What the shopping tools report as touched, which sir's headset lights up: his basket, whenever it
+ * is read or changed -- and never the catalogue, where nothing is his yet.
+ */
+describe('what a shopping request touches', () => {
+  const change = (success: boolean) => ({ product_name: 'Mælk', quantity: 1, success, message: '' });
+
+  it('is the basket, when it is read or emptied', () => {
+    expect(readAffectedEntities(getCurrentCartContents.id, {}, [])).toEqual([BILKA_BASKET]);
+    expect(readAffectedEntities(clearCartContents.id, {}, { success: true })).toEqual([BILKA_BASKET]);
+  });
+
+  it('is the basket when a change to it went through, and nothing when every change failed', () => {
+    expect(
+      readAffectedEntities(setProductBasketQuantity.id, {}, { success: false, results: [change(false), change(true)] }),
+    ).toEqual([BILKA_BASKET]);
+    expect(readAffectedEntities(setProductBasketQuantity.id, {}, { success: false, results: [change(false)] })).toEqual(
+      [],
+    );
+  });
+
+  it('is nothing for a catalogue search', () => {
+    expect(readAffectedEntities(findProductInCatalog.id, {}, [{ search_query: 'mælk', products: [] }])).toEqual([]);
   });
 });

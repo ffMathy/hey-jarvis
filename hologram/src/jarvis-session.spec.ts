@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { MARK_AFFECTED_TOOL } from './affected-entities';
 import { GIVE_UP_CONNECTING_AFTER_MS } from './conversation-life';
 import { HEADSET_PARTICIPANT_NAME } from './conversation-token';
 import { DEADLINE_PROBLEM, DROPPED_PROBLEM, MICROPHONE_PROBLEM, UNREACHABLE_PROBLEM } from './failure-text';
@@ -216,6 +217,39 @@ describe('when a summoning fails', () => {
     expect(session.phase).toBe('failed');
   });
 
+  it('gives up when its holder says to, rather than at the shared deadline', async () => {
+    const { session, greeting, clock, events } = createHarness({ giveUpConnectingAfterMs: 5_000 });
+
+    session.summon();
+    greeting.allow();
+    await clock.advance(4_999);
+    expect(session.phase).toBe('connecting');
+
+    await clock.advance(1);
+    expect(events.problems).toEqual([DEADLINE_PROBLEM]);
+    expect(session.phase).toBe('failed');
+  });
+
+  it('never gives up when told to wait for ever, and still connects when the token comes', async () => {
+    const { session, tokens, greeting, sdk, clock, events } = createHarness({
+      giveUpConnectingAfterMs: Number.POSITIVE_INFINITY,
+    });
+
+    session.summon();
+    greeting.allow();
+    // The fake clock runs a timer of `Infinity` at once, as a browser does, so a deadline armed
+    // with it would already have failed here.
+    await clock.advance(GIVE_UP_CONNECTING_AFTER_MS * 10);
+    expect(session.phase).toBe('connecting');
+    expect(events.problems).toEqual([]);
+
+    tokens.grant();
+    await settle();
+    await sdk.latest.connect();
+    expect(session.phase).toBe('live');
+    expect(events.log).toEqual(['phase:greeting', 'phase:connecting', 'phase:live']);
+  });
+
   it('ends a session that only connects after the deadline gave up on it', async () => {
     const { session, tokens, greeting, sdk, clock, events } = createHarness();
 
@@ -328,10 +362,13 @@ describe('when a summoning fails', () => {
     stale.options.onStatusChange({ status: 'connected' });
     stale.options.onDisconnect({ reason: 'error', message: 'Quota exceeded' });
     stale.options.onAgentToolRequest({ tool_call_id: 'stale-call' });
+    const staleAnswer = await stale.callClientTool(MARK_AFFECTED_TOOL, { entities: [{ id: 'light.hall' }] });
 
     expect(session.phase).toBe('greeting');
     expect(session.thinking).toBe(false);
     expect(events.problems).toEqual([DEADLINE_PROBLEM]);
+    expect(staleAnswer.isError).toBe(false);
+    expect(events.affected).toEqual([]);
   });
 });
 

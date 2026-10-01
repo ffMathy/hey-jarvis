@@ -6,8 +6,11 @@ import {
   type AppEvent,
   type AppModel,
   BLURRED_CALL_LIMIT_MS,
+  EDITING_GUIDE_LINES,
   HINT_LINES,
   initialAppModel,
+  KEEPING_LINES,
+  KEEPING_LONGEST_MS,
   NOT_LISTENING_LINE,
   reduceApp,
   SHORTEST_ERROR_MS,
@@ -54,6 +57,13 @@ class Room {
   inSample(): this {
     this.send({ type: 'entered', mode: 'sample' });
     this.send({ type: 'placed' });
+    return this;
+  }
+
+  /** Waiting in the real room, then placing things from there with A or X. */
+  editing(): this {
+    this.send({ type: 'entered', mode: 'conversation' });
+    this.send({ type: 'edit-button' });
     return this;
   }
 
@@ -350,6 +360,33 @@ describe('failures', () => {
       expect(types(room.send(event))).toEqual(['hologram', 'hide-panel', 'arm-wake']);
       expect(room.scene).toEqual({ kind: 'leaving', afterwards: 'wait' });
     }
+  });
+
+  it('keeps the problem up until it is dismissed in a room that holds errors, and only there', () => {
+    const held = new Room();
+    held.send({ type: 'entered', mode: 'conversation', holdErrors: true });
+    held.send({ type: 'wake' });
+    held.send({ type: 'placed' });
+    held.send({ type: 'session-phase', phase: 'greeting' });
+    held.send({ type: 'problem', message: 'ElevenLabs rejected the API key. Check it in the settings.' });
+    held.send({ type: 'session-phase', phase: 'failed' });
+    // An hour of ticks, which no emulator's picture of the panel takes.
+    for (let second = 0; second < 3600; second += 1) expect(held.after(1000)).toEqual([]);
+    expect(held.view.panels.error).toEqual(['ElevenLabs rejected the API key. Check it in the settings.']);
+    expect(held.view.wakeArmed).toBe(false);
+
+    expect(types(held.send({ type: 'select', hold: 'short', target: 'him' }))).toEqual([
+      'hologram',
+      'hide-panel',
+      'arm-wake',
+    ]);
+    held.send({ type: 'presence-gone' });
+    held.send({ type: 'session-ended' });
+
+    // Every room decides afresh: the next one, entered without saying so, takes it down on time.
+    held.inConversation('greeting');
+    held.send({ type: 'session-phase', phase: 'failed' });
+    expect(held.scene).toEqual({ kind: 'failed', problem: UNEXPLAINED_FAILURE, until: held.now + SHORTEST_ERROR_MS });
   });
 
   it('ignores the wake word and later phases while the problem is up', () => {
@@ -692,8 +729,8 @@ describe('sample mode', () => {
       expect(room.send({ type: 'select', hold: 'short', target: 'him' })).toEqual([]);
       expect(room.send({ type: 'presence-gone' })).toEqual([
         { type: 'stop-sample' },
-        { type: 'exit-xr' },
         { type: 'hologram', state: 'hidden' },
+        { type: 'exit-xr' },
       ]);
       expect(room.send({ type: 'session-ended' })).toEqual([{ type: 'return-to-page' }]);
     }
@@ -716,6 +753,280 @@ describe('sample mode', () => {
     room.send({ type: 'visibility', state: 'hidden' });
     expect(room.scene).toEqual({ kind: 'sample', mode: 'speaking' });
     expect(room.send({ type: 'visibility', state: 'visible' })).toEqual([]);
+  });
+});
+
+describe('placing things', () => {
+  it('opens from waiting with A or X or the wrist button: the drawer out, the wake word disarmed, the guide up', () => {
+    const room = new Room();
+    room.send({ type: 'entered', mode: 'conversation' });
+    expect(room.send({ type: 'edit-button' })).toEqual([
+      { type: 'hide-panel', panel: 'hint' },
+      { type: 'show-panel', panel: 'guide', lines: EDITING_GUIDE_LINES },
+      { type: 'set-frame-rate', target: 'highest' },
+      { type: 'disarm-wake' },
+      { type: 'editing', active: true },
+    ]);
+    expect(room.scene).toEqual({ kind: 'editing' });
+    expect(room.view.hologram).toBe('hidden');
+    expect(room.view.editing).toBe(true);
+  });
+
+  it('closes on B or Y, on the same button again, or on the drawer’s Done, back to waiting and listening', () => {
+    for (const event of [
+      { type: 'dismiss-button' },
+      { type: 'edit-button' },
+      { type: 'edit-done' },
+    ] satisfies AppEvent[]) {
+      const room = new Room().editing();
+      expect(room.send(event)).toEqual([
+        { type: 'consume-held-selects' },
+        { type: 'show-panel', panel: 'hint', lines: HINT_LINES },
+        { type: 'hide-panel', panel: 'guide' },
+        { type: 'set-frame-rate', target: 'lowest' },
+        { type: 'arm-wake' },
+        { type: 'editing', active: false },
+      ]);
+      expect(room.scene).toEqual({ kind: 'waiting' });
+    }
+  });
+
+  it('takes every select for itself: a pinch never summons him, however long it is held', () => {
+    const room = new Room().editing();
+    for (const event of [
+      { type: 'select', hold: 'short', target: 'elsewhere', ray: RAY },
+      { type: 'select', hold: 'long', target: 'elsewhere' },
+      { type: 'select', hold: 'short', target: 'him' },
+      { type: 'select', hold: 'long', target: 'keyboard' },
+    ] satisfies AppEvent[]) {
+      expect(room.send(event)).toEqual([]);
+    }
+    expect(room.scene).toEqual({ kind: 'editing' });
+  });
+
+  it('spends the select still held as it closes, so the trigger that pressed Done never summons him', () => {
+    for (const event of [
+      { type: 'edit-done' },
+      { type: 'dismiss-button' },
+      { type: 'edit-button' },
+    ] satisfies AppEvent[]) {
+      const room = new Room().editing();
+      expect(room.send(event)[0]).toEqual({ type: 'consume-held-selects' });
+      expect(room.scene).toEqual({ kind: 'waiting' });
+    }
+  });
+
+  it('goes back to waiting in a room with a conversation even while a drop is being kept: the room stays open', () => {
+    const room = new Room().editing();
+    room.send({ type: 'drops-settling', settling: true });
+    room.send({ type: 'edit-done' });
+    expect(room.scene).toEqual({ kind: 'waiting' });
+    expect(room.send({ type: 'drops-settling', settling: false })).toEqual([]);
+  });
+
+  it('hears no wake word while it is open', () => {
+    const room = new Room().editing();
+    expect(room.view.wakeArmed).toBe(false);
+    expect(room.send({ type: 'wake' })).toEqual([]);
+    expect(room.scene).toEqual({ kind: 'editing' });
+  });
+
+  it('opens from nowhere but waiting, so it can never stand in for hanging up', () => {
+    const present = new Room().inConversation('live');
+    expect(present.send({ type: 'edit-button' })).toEqual([]);
+    expect(present.scene).toEqual({ kind: 'present', sessionPhase: 'live' });
+
+    const sample = new Room().inSample();
+    expect(sample.send({ type: 'edit-button' })).toEqual([]);
+
+    const placing = new Room();
+    placing.send({ type: 'entered', mode: 'conversation' });
+    placing.send({ type: 'wake' });
+    expect(placing.send({ type: 'edit-button' })).toEqual([]);
+
+    const leaving = new Room().inConversation('live');
+    leaving.send({ type: 'dismiss-button' });
+    expect(leaving.scene.kind).toBe('leaving');
+    expect(leaving.send({ type: 'edit-button' })).toEqual([]);
+
+    const failed = new Room().inConversation('connecting');
+    failed.send({ type: 'session-phase', phase: 'failed' });
+    expect(failed.send({ type: 'edit-button' })).toEqual([]);
+    expect(failed.scene.kind).toBe('failed');
+
+    const outside = new Room();
+    expect(outside.send({ type: 'edit-button' })).toEqual([]);
+    expect(outside.send({ type: 'edit-done' })).toEqual([]);
+  });
+
+  it('ignores Done anywhere but while placing things', () => {
+    const room = new Room();
+    room.send({ type: 'entered', mode: 'conversation' });
+    expect(room.send({ type: 'edit-done' })).toEqual([]);
+    expect(room.scene).toEqual({ kind: 'waiting' });
+  });
+
+  it('ignores the buttons while the room is blurred, as it ignores every other', () => {
+    const room = new Room();
+    room.send({ type: 'entered', mode: 'conversation' });
+    room.send({ type: 'visibility', state: 'visible-blurred' });
+    expect(room.send({ type: 'edit-button' })).toEqual([]);
+    room.send({ type: 'visibility', state: 'visible' });
+    room.send({ type: 'wake-health', readiness: LISTENING });
+    room.send({ type: 'edit-button' });
+    room.send({ type: 'visibility', state: 'visible-blurred' });
+    for (const event of [
+      { type: 'edit-button' },
+      { type: 'edit-done' },
+      { type: 'dismiss-button' },
+    ] satisfies AppEvent[]) {
+      expect(room.send(event)).toEqual([]);
+    }
+    expect(room.scene).toEqual({ kind: 'editing' });
+  });
+
+  it('stays open while the room is hidden, with nothing to end', () => {
+    const room = new Room().editing();
+    expect(room.send({ type: 'visibility', state: 'hidden' })).toEqual([]);
+    expect(room.scene).toEqual({ kind: 'editing' });
+    expect(types(room.send({ type: 'visibility', state: 'visible' }))).toEqual(['check-wake']);
+    expect(room.scene).toEqual({ kind: 'editing' });
+  });
+
+  it('stops the microphone and brings the page back when the session ends while it is open', () => {
+    const room = new Room().editing();
+    expect(room.send({ type: 'session-ended' })).toEqual([
+      { type: 'stop-microphone' },
+      { type: 'return-to-page' },
+      { type: 'hide-panel', panel: 'guide' },
+      { type: 'editing', active: false },
+    ]);
+  });
+
+  describe('in a room opened only to place things', () => {
+    it('goes straight to placing, listening for nothing', () => {
+      const room = new Room({ kind: 'absent' });
+      expect(room.send({ type: 'entered', mode: 'placement' })).toEqual([
+        { type: 'show-panel', panel: 'guide', lines: EDITING_GUIDE_LINES },
+        { type: 'set-frame-rate', target: 'highest' },
+        { type: 'editing', active: true },
+      ]);
+      expect(room.scene).toEqual({ kind: 'editing' });
+      expect(room.view.wakeArmed).toBe(false);
+    });
+
+    it('closes the room when it is done, having nothing to wait for — once placing things has let go', () => {
+      for (const event of [
+        { type: 'dismiss-button' },
+        { type: 'edit-button' },
+        { type: 'edit-done' },
+      ] satisfies AppEvent[]) {
+        const room = new Room({ kind: 'absent' });
+        room.send({ type: 'entered', mode: 'placement' });
+        // Placing things gives back the anchors no placement uses as it stops, which an ended
+        // session would refuse: the session is ended last.
+        expect(room.send(event)).toEqual([
+          { type: 'consume-held-selects' },
+          { type: 'hide-panel', panel: 'guide' },
+          { type: 'editing', active: false },
+          { type: 'exit-xr' },
+        ]);
+        expect(room.scene).toEqual({ kind: 'outside' });
+        // Nothing to hang up, no microphone and no sample to stop: only the page to bring back.
+        expect(room.send({ type: 'session-ended' })).toEqual([{ type: 'return-to-page' }]);
+      }
+    });
+
+    /** Placing things with a drop just let go whose new anchor is still being made and found. */
+    function keeping(): Room {
+      const room = new Room({ kind: 'absent' });
+      room.send({ type: 'entered', mode: 'placement' });
+      expect(room.send({ type: 'drops-settling', settling: true })).toEqual([]);
+      return room;
+    }
+
+    it('stays open while a drop is still being kept, saying so, and closes once it has been', () => {
+      for (const event of [
+        { type: 'dismiss-button' },
+        { type: 'edit-button' },
+        { type: 'edit-done' },
+      ] satisfies AppEvent[]) {
+        const room = keeping();
+        expect(room.send(event)).toEqual([
+          { type: 'consume-held-selects' },
+          { type: 'show-panel', panel: 'guide', lines: KEEPING_LINES },
+          { type: 'editing', active: false },
+        ]);
+        expect(room.scene).toEqual({ kind: 'keeping', until: room.now + KEEPING_LONGEST_MS });
+        expect(room.view.frameRate).toBe('highest');
+        expect(room.send({ type: 'drops-settling', settling: false })).toEqual([
+          { type: 'hide-panel', panel: 'guide' },
+          { type: 'exit-xr' },
+        ]);
+        expect(room.scene).toEqual({ kind: 'outside' });
+      }
+    });
+
+    it('asks nothing more of sir while it keeps: selects, buttons and the wake word do nothing', () => {
+      const room = keeping();
+      room.send({ type: 'edit-done' });
+      for (const event of [
+        { type: 'select', hold: 'short', target: 'elsewhere' },
+        { type: 'select', hold: 'long', target: 'elsewhere' },
+        { type: 'dismiss-button' },
+        { type: 'edit-button' },
+        { type: 'edit-done' },
+        { type: 'wake' },
+        { type: 'drops-settling', settling: true },
+      ] satisfies AppEvent[]) {
+        expect(room.send(event)).toEqual([]);
+      }
+      expect(room.scene.kind).toBe('keeping');
+    });
+
+    it('closes anyway once a drop has had as long as the headset gets to find its new anchor', () => {
+      const room = keeping();
+      room.send({ type: 'edit-done' });
+      expect(room.after(KEEPING_LONGEST_MS - 1)).toEqual([]);
+      expect(room.after(1)).toEqual([{ type: 'hide-panel', panel: 'guide' }, { type: 'exit-xr' }]);
+      expect(room.scene).toEqual({ kind: 'outside' });
+    });
+
+    it('closes at once when every drop has been kept by the time it is done', () => {
+      const room = keeping();
+      room.send({ type: 'drops-settling', settling: false });
+      expect(types(room.send({ type: 'edit-done' }))).toEqual([
+        'consume-held-selects',
+        'hide-panel',
+        'editing',
+        'exit-xr',
+      ]);
+    });
+
+    it('brings the page back when the session ends while it keeps', () => {
+      const room = keeping();
+      room.send({ type: 'edit-done' });
+      expect(room.send({ type: 'session-ended' })).toEqual([
+        { type: 'return-to-page' },
+        { type: 'hide-panel', panel: 'guide' },
+      ]);
+    });
+
+    it('never summons him, whatever is selected or said', () => {
+      const room = new Room({ kind: 'absent' });
+      room.send({ type: 'entered', mode: 'placement' });
+      expect(room.send({ type: 'select', hold: 'short', target: 'elsewhere' })).toEqual([]);
+      expect(room.send({ type: 'wake' })).toEqual([]);
+      expect(room.send({ type: 'visibility', state: 'hidden' })).toEqual([]);
+      expect(room.send({ type: 'visibility', state: 'visible' })).toEqual([]);
+      expect(room.scene).toEqual({ kind: 'editing' });
+    });
+
+    it('brings the page back when the session ends under it, and nothing else', () => {
+      const room = new Room({ kind: 'absent' });
+      room.send({ type: 'entered', mode: 'placement' });
+      expect(types(room.send({ type: 'session-ended' }))).toEqual(['return-to-page', 'hide-panel', 'editing']);
+    });
   });
 });
 

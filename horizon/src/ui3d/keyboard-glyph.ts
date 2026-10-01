@@ -1,5 +1,13 @@
-import { CanvasTexture, Mesh, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace, Vector3 } from 'three';
-import { drawingContext, PIXELS_PER_METRE } from './text-panel';
+import { Mesh, PlaneGeometry, Vector3 } from 'three';
+import {
+  CANVAS_MARGIN_PIXELS,
+  canvasMetres,
+  canvasPixels,
+  createCanvasMaterial,
+  createCanvasTexture,
+  drawingContext,
+  withMargin,
+} from './ui-canvas';
 import { UI_COLOURS } from './ui-colours';
 
 /**
@@ -26,14 +34,17 @@ export interface KeyboardGlyph {
   dispose(): void;
 }
 
-/** Draws a keyboard: an outline with three rows of keys and a space bar, on a dark disc. */
+/**
+ * Draws a keyboard: an outline with three rows of keys and a space bar, on a dark disc `size`
+ * pixels across, the disc's rim just inside it.
+ */
 function drawGlyph(context: CanvasRenderingContext2D, size: number) {
-  context.clearRect(0, 0, size, size);
+  const rim = Math.max(2, size * 0.03);
   context.beginPath();
-  context.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
+  context.arc(size / 2, size / 2, (size - rim) / 2, 0, Math.PI * 2);
   context.fillStyle = 'rgba(16, 23, 37, 0.8)';
   context.fill();
-  context.lineWidth = Math.max(2, size * 0.03);
+  context.lineWidth = rim;
   context.strokeStyle = UI_COLOURS.accent;
   context.stroke();
 
@@ -58,23 +69,25 @@ function drawGlyph(context: CanvasRenderingContext2D, size: number) {
   }
 }
 
-export function createKeyboardGlyph(): KeyboardGlyph {
-  const size = Math.round(KEYBOARD_GLYPH_METRES * PIXELS_PER_METRE);
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  drawGlyph(drawingContext(canvas), size);
+export interface KeyboardGlyphOptions {
+  /** The renderer's most anisotropic filtering (see `ui-canvas.ts`). */
+  anisotropy: number;
+}
 
-  const texture = new CanvasTexture(canvas);
-  texture.colorSpace = SRGBColorSpace;
-  const material = new MeshBasicMaterial({
-    map: texture,
-    transparent: true,
-    depthWrite: false,
-    depthTest: false,
-    toneMapped: false,
-  });
-  const mesh = new Mesh(new PlaneGeometry(KEYBOARD_GLYPH_METRES, KEYBOARD_GLYPH_METRES), material);
+export function createKeyboardGlyph(options: KeyboardGlyphOptions): KeyboardGlyph {
+  const size = canvasPixels(KEYBOARD_GLYPH_METRES);
+  const canvas = document.createElement('canvas');
+  canvas.width = withMargin(size);
+  canvas.height = withMargin(size);
+  const context = drawingContext(canvas);
+  context.translate(CANVAS_MARGIN_PIXELS, CANVAS_MARGIN_PIXELS);
+  drawGlyph(context, size);
+
+  const texture = createCanvasTexture(canvas, options.anisotropy);
+  const material = createCanvasMaterial(texture);
+  // The glyph and its margin: the disc itself is KEYBOARD_GLYPH_METRES across.
+  const plane = canvasMetres(canvas.width);
+  const mesh = new Mesh(new PlaneGeometry(plane, plane), material);
   mesh.renderOrder = 10;
   mesh.visible = false;
 

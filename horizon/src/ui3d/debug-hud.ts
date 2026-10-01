@@ -82,6 +82,20 @@ export interface Diagnostics {
   frameMilliseconds?: number;
   /** `surface` is where CanvasKit draws: `webgl` or `cpu`. */
   hologram?: { cpuMilliseconds: number; density: number; canvasKitMilliseconds: number; surface?: string };
+  /** The things he works on, placed in the room (`app/room-entities.ts`). */
+  entities?: {
+    known: number;
+    placed: number;
+    /** Placed ones whose anchor is located this frame: the ones in this room. */
+    here: number;
+    anchorsLocated: number;
+    anchors: number;
+    /** What sir is pointing at, by name. */
+    pointed?: string;
+    lit: number;
+    /** Why the registry could not be written. */
+    problem?: string;
+  };
   webglExtensions?: readonly string[];
 }
 
@@ -180,6 +194,18 @@ function hologramLine(hologram: NonNullable<Diagnostics['hologram']>): string {
   return `hologram cpu ${fixed(cpuMilliseconds, 1)} ms  ${skia}  density ${fixed(density, 2)}`;
 }
 
+function entitiesLine(entities: NonNullable<Diagnostics['entities']>): string {
+  const parts = [
+    `entities ${entities.known} known`,
+    `${entities.placed} placed, ${entities.here} here`,
+    `anchors ${entities.anchorsLocated}/${entities.anchors} located`,
+    `lit ${entities.lit}`,
+  ];
+  if (entities.pointed !== undefined) parts.push(`pointing at ${entities.pointed}`);
+  if (entities.problem !== undefined) parts.push(entities.problem);
+  return parts.join('  ');
+}
+
 function extensionsLine(extensions: readonly string[]): string {
   return `gl ${extensions.length > 0 ? extensions.join(' ') : 'none of interest'}`;
 }
@@ -190,7 +216,8 @@ function featuresLine(features: readonly string[]): string {
 
 /** Everything known, as short lines; parts with nothing to report are left out. */
 export function describeDiagnostics(diagnostics: Diagnostics): string[] {
-  const { scene, wake, wakeAudio, conversation, voice, room, hologram, webglExtensions, xrFeatures } = diagnostics;
+  const { scene, wake, wakeAudio, conversation, voice, room, hologram, entities, webglExtensions, xrFeatures } =
+    diagnostics;
   return [
     scene === undefined ? undefined : `scene ${scene}`,
     visibilityLine(diagnostics),
@@ -200,6 +227,7 @@ export function describeDiagnostics(diagnostics: Diagnostics): string[] {
     ...(conversation === undefined ? [] : conversationLines(conversation)),
     voice === undefined ? undefined : voiceLine(voice),
     ...(room === undefined ? [] : roomLines(room)),
+    entities === undefined ? undefined : entitiesLine(entities),
     frameLine(diagnostics),
     hologram === undefined ? undefined : hologramLine(hologram),
     xrFeatures === undefined ? undefined : featuresLine(xrFeatures),
@@ -208,8 +236,10 @@ export function describeDiagnostics(diagnostics: Diagnostics): string[] {
 }
 
 /**
- * The WebGL extensions whose presence changes what the hologram can do on a headset: multiview,
- * float render targets, and the debug renderer name that says which GPU this is.
+ * The WebGL extensions whose presence changes what the room can do on a headset: multiview, float
+ * render targets, multisampling straight into the XR layer's texture (without it, every frame's
+ * samples are resolved by a blit — see `xr/xr-stage.ts`), anisotropic filtering for the canvases
+ * (`ui-canvas.ts`), and the debug renderer name that says which GPU this is.
  */
 export const EXTENSIONS_OF_INTEREST = [
   'OCULUS_multiview',
@@ -218,6 +248,8 @@ export const EXTENSIONS_OF_INTEREST = [
   'EXT_color_buffer_half_float',
   'EXT_float_blend',
   'OES_texture_float_linear',
+  'WEBGL_multisampled_render_to_texture',
+  'EXT_texture_filter_anisotropic',
   'WEBGL_debug_renderer_info',
 ] as const;
 
@@ -238,8 +270,9 @@ export interface DebugHud {
 /** Where the HUD sits in the view: ahead, down and to the left, clear of where he usually stands. */
 const HUD_OFFSET = { x: -0.28, y: -0.26, z: -0.75 };
 
-export function createDebugHud(): DebugHud {
-  const panel = createTextPanel({ widthMetres: 0.42, tone: 'hud' });
+/** `anisotropy` is the renderer's most anisotropic filtering (see `ui-canvas.ts`). */
+export function createDebugHud(anisotropy: number): DebugHud {
+  const panel = createTextPanel({ widthMetres: 0.42, tone: 'hud', anisotropy });
   return {
     object: panel.object,
     update(diagnostics) {

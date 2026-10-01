@@ -86,10 +86,11 @@ export function primaryButton(facts: PageFacts): PrimaryButton {
 }
 
 /**
- * Whether "Try him in your room" can be used: sample mode needs no key, no models and no
- * microphone, only a browser that can open a room and nobody already in it.
+ * Whether "Try him in your room" and "Place entities" can be used: sample mode and placing things
+ * need no key, no models and no microphone, only a browser that can open a room and nobody already
+ * in it.
  */
-export function canTrySample(facts: PageFacts): boolean {
+export function canOpenWithoutAgent(facts: PageFacts): boolean {
   return facts.xr === 'supported' && facts.room === 'outside';
 }
 

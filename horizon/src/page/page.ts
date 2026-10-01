@@ -2,7 +2,7 @@ import type { ElevenLabsSettings } from 'hologram';
 import type { JarvisDebugState } from '../debug-hook';
 import type { MicrophoneGate } from './microphone';
 import { type PreparationTask, runPreparation } from './preparation';
-import { canTrySample, microphoneHelp, type PageFacts, primaryButton } from './prerequisites';
+import { canOpenWithoutAgent, microphoneHelp, type PageFacts, primaryButton } from './prerequisites';
 import { checkSettings, type KeyValueStorage, loadSettings, saveSettings } from './settings';
 import { loadVoiceFromWhereHeStands, saveVoiceFromWhereHeStands } from './voice-setting';
 
@@ -15,11 +15,13 @@ import { loadVoiceFromWhereHeStands, saveVoiceFromWhereHeStands } from './voice-
  * whether this browser can open a room, whether there are settings, how far getting ready has got,
  * the microphone permission, and whether the user is in the room. It also owns the settings form,
  * the "His voice from where he stands" switch (`voice-setting.ts`, read again on every Enter), and
- * the status line, which after a room closes says what went wrong in it, if anything did.
+ * the status line, which after a room closes says what went wrong in it, if anything did. Beside the
+ * way into the real room are two that need no key and no microphone: sample mode, and placing the
+ * things Jarvis works on in the room.
  */
 
-/** Which room to open: the real one, or sample mode. */
-export type RoomMode = 'conversation' | 'sample';
+/** Which room to open: the real one, sample mode, or one to place things in. */
+export type RoomMode = 'conversation' | 'sample' | 'placement';
 
 /** What a room hands back to the page when it closes. */
 export interface RoomOutcome {
@@ -62,6 +64,7 @@ export function startPage(document: Document, dependencies: PageDependencies): v
   const status = required(document, '#status', HTMLElement);
   const help = required(document, '#microphone-help', HTMLElement);
   const sample = required(document, '#sample', HTMLButtonElement);
+  const place = required(document, '#place', HTMLButtonElement);
   const settingsSection = required(document, '#settings', HTMLDetailsElement);
   const form = required(document, '#settings-form', HTMLFormElement);
   const apiKeyField = required(document, '#api-key', HTMLInputElement);
@@ -98,7 +101,8 @@ export function startPage(document: Document, dependencies: PageDependencies): v
     primary.disabled = !button.enabled;
     progress.hidden = button.progress === undefined;
     progress.value = button.progress ?? 0;
-    sample.disabled = !canTrySample(facts);
+    sample.disabled = !canOpenWithoutAgent(facts);
+    place.disabled = !canOpenWithoutAgent(facts);
     const guidance = microphoneHelp(facts.microphone);
     help.hidden = guidance === undefined;
     help.textContent = guidance ?? '';
@@ -176,7 +180,11 @@ export function startPage(document: Document, dependencies: PageDependencies): v
   });
 
   sample.addEventListener('click', () => {
-    if (canTrySample(facts)) enterRoom('sample');
+    if (canOpenWithoutAgent(facts)) enterRoom('sample');
+  });
+
+  place.addEventListener('click', () => {
+    if (canOpenWithoutAgent(facts)) enterRoom('placement');
   });
 
   spatialVoice.addEventListener('change', () => {
