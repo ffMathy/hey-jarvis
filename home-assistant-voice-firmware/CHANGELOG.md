@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.13.1...home-assistant-voice-firmware-v0.14.0) (2026-10-01)
+
+
+### Features
+
+* **mobile:** show Jarvis a photo from the phone's camera button ([#902](https://github.com/ffMathy/hey-jarvis/issues/902)) ([b798fa9](https://github.com/ffMathy/hey-jarvis/commit/b798fa9c556a8891240b8db89bd84ad1c108b153))
+
 ## [0.13.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.13.0...home-assistant-voice-firmware-v0.13.1) (2026-09-29)
 
 
