@@ -14,6 +14,7 @@ import {
   type RoutableAgentSummary,
 } from './classifier.js';
 import type { DirectAnswer } from './direct-answers.js';
+import { DIRECT_LOOKUPS } from './direct-lookups.js';
 import type { PlannedChain } from './plan.js';
 import type { OpenQuestion } from './questions.js';
 import { RESPONSE_STYLE_DESCRIPTIONS, RESPONSE_STYLES, type ResponseStyle } from './response-styles.js';
@@ -557,7 +558,7 @@ export async function planDelegations(
   const classified = classifyRequest(
     classifier,
     userQuery,
-    { agents, openQuestions, services, domains, runningRequest },
+    { agents, openQuestions, services, domains, lookups: DIRECT_LOOKUPS, runningRequest },
     abortClassifier.signal,
   ).catch((error: unknown) => {
     if (!abortClassifier.signal.aborted) {

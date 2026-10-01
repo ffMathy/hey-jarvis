@@ -1,4 +1,5 @@
 import type { Classifier, ClassifierAnswers } from '@mastra/core/classifier';
+import type { DirectLookup } from '../../utils/direct-lookup-factory.js';
 import { confidentChoice, createLazyClassifier } from '../../utils/index.js';
 import {
   type HomeService,
@@ -81,6 +82,8 @@ export interface RoutingContext {
   services: HomeService[];
   /** The domains Home Assistant has entities in, which a question about the house can be about. */
   domains: string[];
+  /** The lookups a request can be answered with directly (see `direct-lookups.ts`). */
+  lookups: readonly DirectLookup[];
   /** The request still running in this session, if there is one. */
   runningRequest?: string;
 }
@@ -94,7 +97,14 @@ export interface RoutingContext {
  * requests this is meant to speed up. The questions a request does not need -- no question waiting,
  * nothing running, services unknown -- are left out.
  */
-export function routingQuestions({ agents, openQuestions, services, domains, runningRequest }: RoutingContext) {
+export function routingQuestions({
+  agents,
+  openQuestions,
+  services,
+  domains,
+  lookups,
+  runningRequest,
+}: RoutingContext) {
   const homeAgentIsRoutable = agents.some((agent) => agent.id === HOME_AGENT_ID);
   // Keyed by whatever the agents are called, so the choice is any string and is checked against
   // the routable ids when it is read (see `readClassification`).
@@ -130,6 +140,7 @@ export function routingQuestions({ agents, openQuestions, services, domains, run
     },
     ...(services.length > 0 && homeAgentIsRoutable && homeServiceQuestions(services)),
     ...(domains.length > 0 && homeAgentIsRoutable && homeQuestionQuestions(domains)),
+    ...(lookups.length > 0 && lookupQuestions(lookups)),
     ...(openQuestions.length > 0 && {
       answeredQuestion: {
         type: 'choice' as const,
@@ -202,7 +213,7 @@ function isRelationToRunningRequest(value: string): value is RelationToRunningRe
  */
 export function readClassification(
   answers: RoutingAnswers,
-  { agents, openQuestions, services, domains }: Omit<RoutingContext, 'runningRequest'>,
+  { agents, openQuestions, services, domains, lookups }: Omit<RoutingContext, 'runningRequest'>,
 ): RequestClassification {
   const responseStyle = answers.responseStyle.choice;
   const relation =
@@ -236,8 +247,52 @@ export function readClassification(
     return classification;
   }
 
-  const direct = route === HOME_AGENT_ID ? homeDirectAnswerFrom(answers, responseStyle, services, domains) : undefined;
+  const direct =
+    route === HOME_AGENT_ID
+      ? homeDirectAnswerFrom(answers, responseStyle, services, domains)
+      : lookupDirectAnswerFrom(answers, route, responseStyle, lookups);
   return { ...classification, fastRoute: { agentId: route, responseStyle, ...(direct && { direct }) } };
+}
+
+/** The choice for a request that none of the lookups answers as it stands. */
+const NO_LOOKUP = 'none';
+
+/** The question that picks the lookup a request is, from every lookup there is. */
+function lookupQuestions(lookups: readonly DirectLookup[]) {
+  const lookupCriteria: Record<string, string> = {
+    ...Object.fromEntries(lookups.map((lookup) => [lookup.id, lookup.description])),
+    [NO_LOOKUP]:
+      'None of these exactly: it asks something more specific, about another place, person or time, or for more than one of them',
+  };
+
+  return {
+    directLookup: {
+      type: 'choice' as const,
+      instructions:
+        'Is this request exactly one of these questions, with nothing more specific in it? Choose none if it narrows ' +
+        'it down in any way these do not -- a search word, another place, a particular person or a different time.',
+      criteria: lookupCriteria,
+    },
+  };
+}
+
+/**
+ * A request that one of the agent's own lookups answers as it stands: a question, not a command or a
+ * conversation, and a lookup Jev is sure of that belongs to the agent the request was routed to.
+ */
+function lookupDirectAnswerFrom(
+  answers: RoutingAnswers,
+  route: string,
+  responseStyle: ResponseStyle,
+  lookups: readonly DirectLookup[],
+): DirectAnswer | undefined {
+  if (responseStyle !== 'lookup' && responseStyle !== 'briefing') {
+    return undefined;
+  }
+
+  const lookupId = answers.directLookup && confidentChoice(answers.directLookup, FAST_PATH_CONFIDENCE);
+  const lookup = lookups.find((candidate) => candidate.id === lookupId);
+  return lookup && lookup.agentId === route ? { kind: 'lookup', lookupId: lookup.id } : undefined;
 }
 
 /**

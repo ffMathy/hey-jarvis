@@ -43,7 +43,7 @@ const LIGHT_TURN_OFF: HomeService = {
   entityDomains: ['light'],
 };
 
-const NOTHING_ELSE: RoutingContext = { agents: AGENTS, openQuestions: [], services: [], domains: [] };
+const NOTHING_ELSE: RoutingContext = { agents: AGENTS, openQuestions: [], services: [], domains: [], lookups: [] };
 
 /** A distribution with the given confidence on `choice`, which is all the policy reads. */
 function sure(choice: string, confidence = 0.97) {
@@ -225,6 +225,48 @@ describe('readClassification', () => {
 
     expect(aboutHistory.fastRoute).not.toHaveProperty('direct');
     expect(unsure.fastRoute).not.toHaveProperty('direct');
+  });
+
+  describe('lookups', () => {
+    const weatherNow = {
+      id: 'weather.now',
+      agentId: 'weather',
+      description: 'The weather right now',
+      answer: async () => 'sunny',
+    };
+    const withLookups = { ...NOTHING_ELSE, lookups: [weatherNow] };
+
+    it("answers a question one of the agent's own lookups covers", () => {
+      const classification = readClassification(
+        answers('weather', { directLookup: sure('weather.now') }, 'lookup'),
+        withLookups,
+      );
+
+      expect(classification.fastRoute?.direct).toEqual({ kind: 'lookup', lookupId: 'weather.now' });
+    });
+
+    it("never answers with another agent's lookup, an unsure one, or for a command", () => {
+      const wrongAgent = readClassification(
+        answers('internetOfThings', { directLookup: sure('weather.now') }, 'lookup'),
+        withLookups,
+      );
+      const unsure = readClassification(
+        answers('weather', { directLookup: sure('weather.now', 0.6) }, 'lookup'),
+        withLookups,
+      );
+      const command = readClassification(answers('weather', { directLookup: sure('weather.now') }), withLookups);
+
+      for (const classification of [wrongAgent, unsure, command]) {
+        expect(classification.fastRoute).not.toHaveProperty('direct');
+      }
+    });
+
+    it('offers every lookup by its description, with a way out', () => {
+      expect(routingQuestions(withLookups).directLookup?.criteria).toEqual({
+        'weather.now': 'The weather right now',
+        none: expect.any(String),
+      });
+    });
   });
 
   it('never picks a service for anything that is not a command', () => {

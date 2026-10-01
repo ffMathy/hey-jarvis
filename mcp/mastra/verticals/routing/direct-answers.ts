@@ -1,5 +1,6 @@
 import { answerHomeQuestion, type HomeService, runHomeCommand } from '../internet-of-things/home-commands.js';
 import { FAST_PATH_CONFIDENCE } from './classifier.js';
+import { findDirectLookup } from './direct-lookups.js';
 
 /**
  * Requests answered without the agent they were routed to.
@@ -17,7 +18,9 @@ export type DirectAnswer =
   /** A smart home command, carried out with this service (see `internet-of-things/home-commands.ts`). */
   | { kind: 'homeCommand'; service: HomeService }
   /** A question about how things are in the house right now, about devices of this domain. */
-  | { kind: 'homeQuestion'; domain: string };
+  | { kind: 'homeQuestion'; domain: string }
+  /** One of an agent's own read-only lookups (see `direct-lookups.ts`). */
+  | { kind: 'lookup'; lookupId: string };
 
 /** Answers a request directly, or resolves to `undefined` when the agent should after all. */
 export async function answerDirectly(direct: DirectAnswer, userQuery: string): Promise<string | undefined> {
@@ -26,6 +29,8 @@ export async function answerDirectly(direct: DirectAnswer, userQuery: string): P
       return await runHomeCommand(userQuery, direct.service, FAST_PATH_CONFIDENCE);
     case 'homeQuestion':
       return await answerHomeQuestion(userQuery, direct.domain, FAST_PATH_CONFIDENCE);
+    case 'lookup':
+      return await findDirectLookup(direct.lookupId)?.answer();
   }
 }
 
@@ -36,5 +41,7 @@ export function describeDirectAnswer(direct: DirectAnswer): string {
       return `home command ${direct.service.id}`;
     case 'homeQuestion':
       return `home question about ${direct.domain}`;
+    case 'lookup':
+      return `lookup ${direct.lookupId}`;
   }
 }

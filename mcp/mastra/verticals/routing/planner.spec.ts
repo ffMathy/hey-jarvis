@@ -521,7 +521,7 @@ describe('a photo, with the routing classifier sure of a fast route', () => {
   async function classifierSureOf(route: string) {
     const agents = [...(await getRoutableAgentIds())].map((id) => ({ id, description: '' }));
     const routes = Object.keys(
-      routingQuestions({ agents, openQuestions: [], services: [], domains: [] }).route.criteria,
+      routingQuestions({ agents, openQuestions: [], services: [], domains: [], lookups: [] }).route.criteria,
     );
     let evaluations = 0;
     const classifier = new Classifier({

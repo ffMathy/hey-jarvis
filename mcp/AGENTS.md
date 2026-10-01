@@ -1994,6 +1994,23 @@ unsure answer, each decision is made exactly as it was before there was a classi
 | `codingSessionQuestionClassifier` | `coding/classifier.ts` | Whether a Claude session ended on a question in prose |
 | `notificationUrgencyClassifier` | `notification/classifier.ts` | Whether a message the agent sends is urgent |
 
+**Direct answers.** When routing's Jev call is sure which agent a request is for, it can often tell what the
+request is, too, and then code answers it with no agent at all, handing back plain facts for the voice model
+to phrase (`routing/direct-answers.ts`). Three kinds:
+
+- **Smart home commands** (`internet-of-things/home-commands.ts`): the Home Assistant service, then a yes/no
+  per entity it can act on, then the service call.
+- **Questions about the house** ("is the front door locked?"): the kind of device (Home Assistant's domains,
+  fetched live), then a yes/no per entity of that kind, then their current states, units included. History,
+  locations and anything unsure stay with the agent, which has the logbook and location tools.
+- **Lookups** (`routing/direct-lookups.ts`): fixed, read-only questions a vertical declares in its
+  `lookups.ts`. Weather now and forecast (at the user's location, else Aarhus), calendar today, tomorrow and
+  this week (in the household's time zone, `utils/household.ts`), the open to-do list, the shopping basket,
+  unread email, and open issues. A lookup is offered only for a request routed to its own agent, phrased as a
+  question rather than a command, and with nothing more specific in it than the lookup covers.
+
+Any direct answer that declines or fails runs the same one-agent chain the request would have run anyway.
+
 **Synapse state change gate.** Before a state change is filed for the State Change Reactor,
 `synapse/state-change-classifier.ts` asks Jev in one call how much attention the change deserves
 (ignore / fyi / soon / now), and, for each subscription vector recall shortlisted, whether the change
