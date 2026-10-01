@@ -16,8 +16,17 @@ import {
   readNotificationAttributes,
   toNotificationStateChange,
 } from '../phone/notifications.js';
+import { findSubscriptionsForStateChange } from '../synapse/subscription-matcher.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { type BulkingPolicy, ChangeBulker, DEFAULT_BULKING_POLICY } from './change-bulker.js';
+import {
+  createRelevanceLookup,
+  type EntityDetails,
+  getChangeRelevanceClassifier,
+  type ReportTriageDependencies,
+  type TriagedReport,
+  triageReports,
+} from './change-relevance.js';
 import {
   describeEntity,
   type HomeRegistry,
@@ -48,6 +57,8 @@ import { getHomeAssistantConfig } from './tools.js';
  * Both go through the {@link ChangeBulker}, which is what keeps a chatty sensor from
  * becoming a flood: see there for the windows. Released buckets are filtered for the
  * `sensitive` label and, for states, against the entity's noise baseline before being filed.
+ * What survives is sorted by what kind of thing it is about (see `change-relevance.ts`):
+ * diagnostics nobody subscribed to are dropped, and safety and security are filed high.
  *
  * On every connect, and every reconnect after a drop, the current states are fetched and
  * compared against the last ones seen, so what changed while the process was down or the
@@ -191,6 +202,13 @@ export async function startHomeAssistantEventMonitor(
     lastKnownStates.set(entityId, stored.state);
   }
 
+  // Each entity's name and device class, as its state attributes last gave them. The change
+  // relevance classifier is told what an entity is from these, and they only arrive with a state.
+  const entityDetails = new Map<string, EntityDetails>();
+  const rememberEntityDetails = (entityId: string, attributes: HassEntity['attributes']): void => {
+    entityDetails.set(entityId, { friendlyName: attributes.friendly_name, deviceClass: attributes.device_class });
+  };
+
   let connection: Connection | undefined;
   let registry: HomeRegistry = { entities: new Map(), devices: new Map() };
   let registryStale = true;
@@ -248,6 +266,7 @@ export async function startHomeAssistantEventMonitor(
     }
 
     lastKnownStates.set(entityId, newState.state);
+    rememberEntityDetails(entityId, newState.attributes);
     bulker.addStateChange(
       { entityId, oldState: oldState.state, newState: newState.state, changedAt: newState.last_changed },
       Date.now(),
@@ -293,6 +312,7 @@ export async function startHomeAssistantEventMonitor(
 
       const known = lastKnownStates.get(entity.entity_id);
       lastKnownStates.set(entity.entity_id, entity.state);
+      rememberEntityDetails(entity.entity_id, entity.attributes);
 
       if (known === undefined) {
         await deviceStateStorage.updateState(entity.entity_id, entity.state, {}, entity.last_changed);
@@ -309,10 +329,20 @@ export async function startHomeAssistantEventMonitor(
     logger.info('Caught up on Home Assistant states', { entities: states.length, changed: caughtUp, seeded });
   };
 
-  const fileReports = async (reports: PlannedReport[]): Promise<void> => {
-    for (const report of reports) {
-      await executeTool(registerStateChange, { source: SOURCE, ...report }, { mastra });
+  const fileReports = async (reports: TriagedReport[]): Promise<void> => {
+    for (const { report, priority } of reports) {
+      await executeTool(
+        registerStateChange,
+        { source: SOURCE, stateType: report.stateType, stateData: report.stateData, priority },
+        { mastra },
+      );
     }
+  };
+
+  const triageDependencies: ReportTriageDependencies = {
+    relevanceOf: createRelevanceLookup(getChangeRelevanceClassifier()),
+    hasMatchingSubscription: async (report: PlannedReport) =>
+      (await findSubscriptionsForStateChange({ source: SOURCE, ...report })).length > 0,
   };
 
   const flush = async (force = false): Promise<void> => {
@@ -340,15 +370,28 @@ export async function startHomeAssistantEventMonitor(
       }
     }
 
-    await fileReports([...statePlan.reports, ...eventPlan.reports]);
+    const { filed, droppedAsDiagnostics } = await triageReports(
+      [...statePlan.reports, ...eventPlan.reports],
+      entityDetails,
+      triageDependencies,
+    );
+    await fileReports(filed);
+
+    if (droppedAsDiagnostics.length > 0) {
+      logger.info('Diagnostic Home Assistant changes not reported', {
+        subjects: droppedAsDiagnostics.map((report) => report.stateData.entityId ?? report.stateData.eventType),
+      });
+    }
 
     logger.info('Home Assistant changes flushed', {
       stateBuckets: states.length,
       eventBuckets: events.length,
       spammyBuckets: states.filter((change) => change.spammy).length + events.filter((event) => event.spammy).length,
-      reported: statePlan.reports.length + eventPlan.reports.length,
+      reported: filed.length,
+      reportedAsHighPriority: filed.filter((report) => report.priority === 'high').length,
       filteredAsNoise: statePlan.filteredAsNoise,
       filteredAsSensitive: statePlan.filteredAsSensitive + eventPlan.filteredAsSensitive,
+      filteredAsDiagnostics: droppedAsDiagnostics.length,
     });
   };
 

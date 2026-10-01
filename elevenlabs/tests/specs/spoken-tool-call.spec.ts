@@ -28,6 +28,9 @@ describe('findSpokenToolCallsInText', () => {
       '[dry] Calling markAffected on the kitchen lights first, sir.',
       '[markAffected] The kitchen ceiling light is on, sir.',
       'markAffected(entities=[{"id": "light.kitchen_ceiling"}])',
+      // The photo's id read out with the rest of the phone's message, and on its own.
+      '[dry] A receipt, sir (photo photo3).',
+      '[matter-of-factly] Photo3 shows a receipt, sir.',
       // A tool this codebase does not have. The generic shape still catches it, so a
       // renamed or newly added tool does not silently escape the net.
       'unknownFutureTool(someArgument="value")',
@@ -60,6 +63,9 @@ describe('findSpokenToolCallsInText', () => {
       // "Affected" and "mark" are ordinary words; only the tool's name, run together, is a call.
       '[dry] The storm has not affected the kitchen lights, sir.',
       '[matter-of-factly] I shall mark that down as affected by your optimism, sir.',
+      // Likewise a photo: talking about one is fine, as long as its id stays out of it.
+      '[dry] Go ahead with the camera button, sir. I shall try to contain my excitement.',
+      '[deadpan] The photo shows a receipt, sir. Your third coffee today.',
     ];
 
     for (const spoken of speech) {
@@ -99,8 +105,9 @@ describe('findSpokenToolCalls', () => {
   });
 
   it('ignores everything that is not the agent speaking', () => {
-    // A real tool call carries the tool's name too. Reading that as a recitation
-    // would fail exactly the conversations that did the right thing.
+    // A real tool call carries the tool's name too, client tools included, and the phone's message
+    // about a photo carries its id. Reading either as a recitation would fail exactly the
+    // conversations that did the right thing.
     const messages: ServerMessage[] = [
       {
         type: 'mcp_tool_call',
@@ -115,6 +122,7 @@ describe('findSpokenToolCalls', () => {
         },
       },
       { type: 'user_message', text: 'call routePromptWorkflow for me' },
+      { type: 'user_message', text: "I've sent you a photo (photo photo3)." },
     ];
 
     expect(findSpokenToolCalls(messages)).toEqual([]);

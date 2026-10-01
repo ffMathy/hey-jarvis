@@ -21,6 +21,10 @@ export const SPOKEN_TOOL_CALL_PATTERNS: { pattern: RegExp; description: string }
   // else, so it is the one most likely to be read out as the preamble to an answer. Written as one
   // word it is nothing Jarvis would say; "affected" on its own is ordinary English.
   { pattern: /markAffected/i, description: 'the markAffected tool name' },
+  // A photo sir sends is named by its id — "(photo photo3)" in the phone's message, and in every
+  // request routed about it — so the id is as close to hand as a tool's name, and as much a part
+  // of the machinery. Written as one word, it is nothing he would say.
+  { pattern: /\bphoto\d+\b/i, description: "a photo's id" },
   {
     // `something(argument=` — code, not speech. The opening bracket has to follow the
     // name with nothing in between, which is what separates it from the parenthetical

@@ -4,8 +4,9 @@
  * A few things in this app genuinely differ between a phone and a browser, and
  * each is a pair of files Metro picks between by platform: `key-value-store.ts`
  * against `key-value-store.web.ts`, `microphone-permission.ts` against
- * `microphone-permission.web.ts`, and the voice the hologram listens to —
- * `jarvis-voice.ts`, with a `.web.ts` beside it.
+ * `microphone-permission.web.ts`, the voice the hologram listens to —
+ * `jarvis-voice.ts`, with a `.web.ts` beside it — and the camera, `take-photo.ts`
+ * against `take-photo.web.ts`.
  *
  * The contracts live here rather than in either implementation so that neither
  * half can drift: nothing else in the app would notice if the web one grew an
@@ -67,3 +68,34 @@ export type UseJarvisVoice = (sessionVoice: JarvisVoice) => JarvisVoice;
  * through the phone's. Which is the whole point — a phone in your pocket hears your pocket.
  */
 export type UsePreferredHeadset = (inCall: boolean) => void;
+
+/**
+ * What the camera came back with, told three ways because each is told to Jarvis differently:
+ *
+ * - `photo`: the photo, as a JPEG ready to send.
+ * - `closed`: none was taken — sir went back without one, or there was no camera to take it with.
+ * - `notReadable`: sir took or picked one, and it could not be read as a photo — a file the browser
+ *   cannot decode, or a photo the camera app left that could not be made ready or read back. Not
+ *   `closed`, because he did send something, and is waiting to hear what became of it.
+ */
+export type CameraAnswer = { photo: Blob } | { closed: true } | { notReadable: true };
+
+/**
+ * Takes one photo for Jarvis, and resolves with what the camera came back with ({@link CameraAnswer}).
+ *
+ * On a phone it is the phone's own camera app, reached from wherever the conversation is drawn:
+ * `inAssistantWindow` says whether that is the assistant's window, which has to make way for it.
+ * In a browser it is the file picker, which a phone's browser opens on its camera.
+ *
+ * **Call it straight from a tap, before anything is awaited.** A browser opens its picker only
+ * inside the gesture that asked for it, so a call that comes after an `await` in the press handler
+ * is refused without a word. A phone does not mind either way.
+ */
+export type TakePhoto = (options: {
+  inAssistantWindow: boolean;
+  /**
+   * Whether the conversation is still open, asked once the camera has closed: the assistant's window
+   * was put away for it and comes back only to a conversation that is.
+   */
+  stillTalking: () => boolean;
+}) => Promise<CameraAnswer>;

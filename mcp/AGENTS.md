@@ -46,10 +46,10 @@ mcp/
 │   │   │   ├── workflows.ts
 │   │   │   └── index.ts
 │   │   ├── notification/    # Proactive notifications
-│   │       ├── agent.ts
-│   │       ├── tools.ts
-│   │       ├── workflows.ts
-│   │       └── index.ts
+│   │   │   ├── agent.ts
+│   │   │   ├── tools.ts
+│   │   │   ├── workflows.ts
+│   │   │   └── index.ts
 │   │   ├── phone/           # Phone calls, texts and contacts (tools only)
 │   │   │   ├── contacts.ts
 │   │   │   ├── tools.ts
@@ -61,6 +61,12 @@ mcp/
 │   │   │   └── index.ts
 │   │   ├── presence/        # Where the user is (shortcuts only)
 │   │   │   ├── shortcuts.ts
+│   │   │   └── index.ts
+│   │   ├── vision/          # Photos sent from the phone's camera button, and the agents that read them
+│   │   │   ├── agents.ts
+│   │   │   ├── live-conversation.ts # Asks ElevenLabs whether the phone's conversation is live, before a slot opens
+│   │   │   ├── photos.ts    # The in-memory store, its upload slots, and which photos are waiting
+│   │   │   ├── tools.ts
 │   │   │   └── index.ts
 │   │   └── reflection/      # The assistant's own errors and failed runs
 │   │       ├── agent.ts
@@ -409,6 +415,224 @@ companion-app notify service the [Notification Agent](#notification-agent) uses 
 - "Visualize the electricity prices for the rest of the day"
 - "Generate a UI for tracking my running times"
 - "Send that chart to my phone again"
+
+### Vision Vertical
+Lets sir send Jarvis a photo with the camera button on his phone — a receipt, a label, a letter, a
+screen — and ask about it, whether he says what he wants before he sends it or not at all. The camera
+and the shot are the phone's (see "Showing him something" in `mobile/AGENTS.md`); what lives here is
+the check that lets a phone send one, where the photo is kept, and how an agent gets to see it.
+
+**How a photo arrives:**
+1. Sir taps the camera button, which the phone offers only once he has entered this server's
+   address under **Jarvis server** in its settings. In that same tap, while the conversation is
+   certainly live, the phone `POST`s `{ "conversationId": "conv_…" }` — the id of the ElevenLabs
+   conversation it is in — to **`/api/photos/slots`**.
+2. The server asks ElevenLabs whether that conversation is in progress on Jarvis's agent (**the
+   live-conversation check**, below). Only then does it open a *slot* for one photo and answer `201`
+   with `{ uploadToken, uploadPath: "/api/photos/<token>", expiresAt }`: the token is 128 random bits,
+   good for five minutes and for one photo.
+3. The phone `PUT`s the JPEG to `uploadPath`, appended to the address in its own settings — it never
+   sends to a URL from anywhere else — with no key and no credentials. The first body sent to a slot
+   is the photo; it answers `201` with `{ photoId }`.
+4. The phone tells the voice agent, as a message from sir that takes a turn: `I've sent you a photo
+   (photo photo3).` The agent routes it through `routePromptWorkflow` with `(photo photo3)` in it,
+   and the planner hands it to the vision agent. Both orders work:
+   - **Told first, then sent** — "I'll send you a receipt, what's the total?" — the agent routes
+     nothing until the photo arrives, then routes the question with the id in it: ordinary work on
+     the photo. Should it route the announcement anyway, the planner plans nothing for the photo and
+     sets `awaitsPhoto`, and the request finishes — not as one no agent could handle — on
+     instructions to tell sir to go ahead with the camera button and then hold the line with
+     `skip_turn` until the photo comes or something else settles it; where the device has no camera
+     button, to send him to his phone instead (see **Ending the call** under [Routing](#routing)).
+   - **Sent first**, with nothing said — the agent routes `He sent a photo without saying what he
+     wants: look at it and say what it shows (photo photo3)`. The planner plans one vision task that
+     says what the photo shows and what in it could be acted on, and names the photo in
+     `photosToAskAbout`; the closing report then has Jarvis say what it shows, ask what sir would like
+     done with it, and wait for the answer (see **Questions for the user** under [Routing](#routing)).
+
+**A photo nobody has looked at is not lost with the conversation.** The conversation that sent a
+photo looks at it straight away, but that conversation can end before the phone gets to tell it —
+the phone's message goes into that conversation or nowhere — and the look can fail. Until
+`lookAtPhoto` has a reading for it (`markPhotoLookedAt`), or sir says he wants nothing done with it
+(`dismissPhoto`), a photo is *waiting* (`photosWaiting` in `vision/photos.ts`), and routing picks it
+up from there (`routing/waiting-photos.ts` — routing depends on vision, never the other way):
+- **The planner is shown every waiting photo**, after the request, by id and age (`- photo3, sent 4
+  minutes ago`), the one just sent included. A request that says what to do with one is planned as
+  work on it: the vision agent reading `(photo photo3)`, and anything acting on what it shows chained
+  after it. "The photo" means the one listed, or the one sent last. A photo is never an `answers`
+  entry, since nothing is suspended on it; his reply is a request of its own.
+- **"Nothing, never mind" dismisses it.** That reply is not work, and with nowhere to put it the
+  planner used to return an empty plan, which was reported to sir as a request no agent could
+  handle. The plan's `dismissedPhotoIds` (required, empty-when-absent, like `answers`) takes it
+  instead: the controller dismisses those photos, and a plan that does nothing else finishes as done
+  rather than failing. A dismissed photo is still kept, so a question he thinks better of finds it;
+  it is only no longer waiting. That goes for his answer to the question a look at a photo sent with
+  nothing said ends on, too: the look marked the photo as looked at, so it is not waiting any more,
+  but any photo still kept that the request names by its tag is listed to the planner as well, under
+  a heading of its own (`photosTheRequestNames` in `routing/planner.ts`), and his "nothing" about it
+  is a dismissal like any other. Only by the id the tag gives: never the latest photo standing in.
+- **A later request's closing report brings it up**, in `questionsForUser` with the photo id as its
+  id: `Sir sent you a photo 4 minutes ago (photo3) that nobody has looked at yet: ask him what he
+  would like done with it.` Only once it has waited a minute unlooked-at (`PHOTO_WAITING_GRACE_MS`),
+  because the conversation that sent it routes a look at it within seconds, and then left alone for
+  `QUESTION_REMINDER_INTERVAL_MS` like a question. A photo is kept for just as long, so in practice
+  it is brought up once. The grace is not tied to a conversation, which nothing here knows: a photo
+  whose first look failed can be brought up again in the conversation that sent it, as any question
+  he moved on from would be. See **Questions for the user** under [Routing](#routing).
+- **Only a reading counts.** A reader that failed has told sir nothing about his photo, so it stays
+  waiting — and a photo sent with nothing said whose look failed is not asked about as one Jarvis
+  has described; a question about a photo that is not kept marks nothing.
+- **And only a reading sir hears.** What a look read reaches him in its request's closing report,
+  and a request he talks over is superseded and never read. So the reader is stopped with the
+  request (the tool's abort signal) — a stopped look throws rather than marking the photo, since
+  Mastra hands an aborted generation back as an empty reading — and a look that did finish is taken back
+  (`unmarkPhotoLookedAt`, called from `carryOut`): the photo is waiting again, and is brought up
+  later rather than lost.
+
+**The live-conversation check** (`vision/live-conversation.ts`) is what stands in front of a slot.
+Both photo routes have to bypass Cloudflare Access, since the phone holds no Access service token,
+so anyone can ask for a slot; the phone proves it is in a conversation with Jarvis instead of
+holding a secret. The check:
+- **Refuses a malformed id before asking anything**: only `^conv_[A-Za-z0-9]{8,64}$` goes upstream.
+- **Asks ElevenLabs with a raw `fetch`**, not the SDK, which parses the whole transcript strictly and
+  has thrown on shapes it did not expect (elevenlabs-js issue #268): `GET
+  /v1/convai/conversations/{id}` with `HEY_JARVIS_ELEVENLABS_API_KEY` in `xi-api-key`, five seconds
+  at most, and a Zod schema of only `agent_id` and `status`. Live means `agent_id` is
+  `HEY_JARVIS_ELEVENLABS_AGENT_ID` or `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` — whichever are set,
+  neither preferred, unlike `initiatePhoneCall`, whose precedence would turn away every photo from
+  sir's phone on a server with the test agent configured — and `status` is `initiated` or
+  `in-progress`.
+- **Gives a call that has only just started a second chance.** Nothing documented says how soon one
+  can be looked up, so a `404` is asked again 1.5 seconds later, and then each agent's list is
+  searched (`?agent_id=…&page_size=100&call_start_after_unix=<now − 960>` with `processing`, `done`
+  and `failed` excluded; 960 is `maxDurationSeconds` and a minute).
+- **Fails closed.** A refused key (`401`/`403`), a rate limit, an ElevenLabs error, a timeout or a
+  body that cannot be read is *unverifiable*, and the slot is refused with `502`. A server without
+  the API key or either agent id refuses every slot with `503`, and `mcp-server.ts` logs one warning
+  at startup naming the missing variables (`whyPhotoSlotsAreOff`) — never a value.
+- **Is bounded**, since every check spends up to four requests on Jarvis's ElevenLabs key. A
+  verdict is remembered for a minute — live, so three photos in a row cost one check, and not live, so
+  repeating a made-up id costs nothing upstream; an unverifiable one is never remembered. A check
+  that does go upstream counts twice: against whoever asked, at most 6 a minute
+  (`MAX_CHECKS_PER_SOURCE_PER_MINUTE`), and then against the whole process, at most 30 — beyond
+  either, `429`; a check refused for its source counts against nothing else. The second is the bound
+  on Jarvis's key. Spending it all turns away every photo sir sends for as long as it lasts, and the
+  first only raises what that costs, to five sources asking at once: it does not stop a stranger
+  with a few proxies, Tor's exit nodes or several tunnels, who has that many. Behind it stand the
+  Cloudflare rate limiting rule (see [MCP Server Access](#mcp-server-access)), which turns away any
+  one address's flood at the edge, and the process-wide limit, which caps what such a stranger can
+  spend on the key. Whoever asked is `CF-Connecting-IP`, which Cloudflare sets on every request it passes to the
+  tunnel, or the socket's address for a request that did not come through it, and an IPv6 address
+  counts as its /48 (`whoIsAsking` in `api/routes.ts`): a connection is commonly delegated a /56 or
+  a /48, and a free tunnel broker routes a /48, so counting each /64 would make one stranger
+  hundreds of sources. The price of remembering
+  *not live* is a call so new that none of the three steps found it: that phone is turned away for
+  the rest of the minute too. The body holds the whole transcript, emails and calendar entries
+  included, so it is never logged: at most the status and a refusal's `detail.code`, and never the
+  conversation id.
+
+**Its limits are deliberate.** It proves only that whoever asks knows the id of a conversation live
+on Jarvis's agent. A conversation id is not a secret — it is in ElevenLabs' history, and the SDK
+sends it unauthenticated to upload a file or leave feedback — a call that has just ended can read as
+live for a moment, and a live verdict is trusted for a minute. So the upload's protection is the
+slot's token, and that is enough on its own: 128 random bits, single-use, good for five minutes,
+claimed before a byte of the photo is read, and handed straight from this server to the phone. It
+used to travel through ElevenLabs, in the result of an MCP tool the voice agent called, and a
+separate upload key typed into the phone was needed because of it; now nothing but this server and
+the phone ever sees it, and there is no key.
+
+**Available Tools** (`vision/tools.ts`):
+- **`lookAtPhoto`**: fetches the photo by id and shows it, beside the question, to the photo reader.
+  The only way any agent here sees a photo, since a routed agent is handed text and nothing else.
+  Its answer is the reading quoted as the photo's content, with the photo's age:
+  `Photo photo1, taken just now, shows: «…»`. Once the reader has answered, the photo is no longer
+  waiting. The reader is handed the tool's abort signal, so a request that is cancelled stops its
+  look too, and a stopped look throws instead of marking the photo: Mastra resolves an aborted
+  generation with no text, which would otherwise pass for a reading.
+
+**Agents** (`vision/agents.ts`):
+- **`vision`** is public, so the planner routes to it. It finds the id and the question in its
+  prompt and calls `lookAtPhoto` once, at low thinking. A chain works like any other: "add what is
+  on this receipt to the shopping list" is this agent, then the shopping list agent. Asked only what
+  a photo shows — one sent with nothing said — it says what it shows *and what in it could be acted
+  on*: items and prices, an amount due, a date, a name or number worth keeping, which is what Jarvis
+  needs to ask a useful question and to answer the ones sir asks back.
+- **`photoReader`** is not public and has no memory — a photo is never written into a thread. It
+  treats text in a photo as something to report, never as instructions, because whoever made the
+  thing photographed wrote it.
+
+**The photo store** (`vision/photos.ts`) is **in memory, in the MCP server's process, and nowhere
+else**: `/data` goes into every Home Assistant backup, and a photo of a letter does not belong there.
+Everything is bounded for the Pi — at most 20 open slots and 5 photos of at most 3 MB, oldest let go
+first, a photo kept for 30 minutes. Slots are pruned whenever the store is touched, but a photo's
+half hour is kept on an unref'd timer (`letGoOfPhotoOnTime`), because the privacy policy promises
+it: pruned only when touched, a photo shown late in the evening would stay in memory until someone
+next spoke to Jarvis. The timer carries the photo's id and nothing else, so a photo let go of early
+to make room is not held by it. An id is matched however a model wrote it ("Photo 3" is `photo3`),
+and a question that names no photo means the latest only if it is under three minutes old. Studio's process (`mastra dev`, 4111) has a store of its own that nothing fills, so photos can
+only be asked about through the MCP server.
+
+**Nor is a photo kept in a trace.** The span of the photo reader's model call records its input as
+the model was sent it, the photo base64-encoded into a `data:image/...` string that Mastra keeps up to
+128 KB of — in the trace store on `/data`, and in Mastra Cloud where that is set up. `PhotoSpanFilter`
+(`utils/photo-span-filter.ts`, on the observability config in `mastra/index.ts`) replaces every
+image's bytes in every span before it is exported, leaving the question and the rest of the span as
+they were. Its spec runs a real trace, with and without it, so it is held to the spans Mastra actually
+writes. The photo reader has no memory, which would be a second copy.
+
+**Nor in the log.** A model call that fails throws the AI SDK's `APICallError`, whose
+`requestBodyValues` is the whole request — for the photo reader, the photo as Gemini's
+`inlineData.data` — and Mastra logs that error ("Upstream LLM API error", "Error in agent stream"),
+once per attempt when a `RetryError` keeps them all. `createLogger` (`utils/logger.ts`) prints
+`[request body left out]` in its place, wherever the error sits: on its own, as a `cause`, or in a
+`RetryError`'s `errors` and `lastError`. That goes for every agent, not just the photo reader, since
+the body is every prompt in full, emails and calendar entries included. The rest of the error stays:
+the URL, the status, and what the provider answered, which for Gemini names the failure rather than
+repeating the request. An error nested deeper than the logger follows is printed by name and message
+alone, never as the raw object whose fields Pino would otherwise print. `logger.spec.ts` logs a failed
+photo read through a real logger and reads back what was written.
+
+**The photo routes** (`api/routes.ts`) are reachable by anyone — the phone holds no Cloudflare Access
+service token — and both answer in the routes' JSON envelope (`success`, `message`, `data`):
+- **`POST /api/photos/slots`** (`PHOTO_SLOTS_ROUTE`) reads its own body, JSON of at most a kilobyte
+  (`readSlotRequest`), and answers `201` with the slot; `400` for a body without a well-formed
+  conversation id — one that is not JSON, or over a kilobyte, included — `403` for a conversation not
+  live on Jarvis's agent, `429` once the minute's checks are spent — the asker's own or the whole
+  process's — `502` when ElevenLabs could not confirm it, and `503` when this server cannot check at
+  all. `registerApiRoutes(router, { isLiveJarvisConversation })` takes a stand-in for the check, which
+  is how `routes.spec.ts` covers each answer without ElevenLabs.
+- **`PUT /api/photos/:uploadToken`** (`PHOTO_UPLOAD_ROUTE`) asks for no key, and **reads nothing until
+  the request has earned it**, in this order:
+  1. `claimSlotBeforeReading`: a wrong content type is a `415`, and an unknown or used token a `404`
+     — the slot is claimed before anything else happens, so it is read from once.
+  2. Only then does `express.raw` read at most 3 MB.
+
+The JSON parser in `mcp-server.ts` skips everything under `/api/photos/` for the same reason
+(`readsItsOwnBody` in `api/routes.ts`, which `routes.spec.ts` mounts too), and the request log writes
+an upload's path without its token (`withoutUploadToken`, which leaves `/api/photos/slots` readable)
+and never with its headers or body. Both compare the path in any case, since Express routes
+`/API/PHOTOS/SLOTS` to the slot endpoint all the same: a skip that missed it would have let the
+server's parser read a hundred kilobytes, and the route's own kilobyte limit would never have
+applied. CORS allows any origin, `PUT`, `POST` and `OPTIONS`, and the `Content-Type` header: what
+lets a request through is written into it by the phone — the conversation id, the token — rather
+than anything a browser attaches by itself, and the browser build is served from GitHub Pages. Both
+paths answer an `OPTIONS` preflight.
+
+**Required Environment Variables:** none of its own. The check uses `HEY_JARVIS_ELEVENLABS_API_KEY`,
+which needs read access to the agents' conversation history, and at least one of
+`HEY_JARVIS_ELEVENLABS_AGENT_ID` and `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` — the same variables the
+phone vertical uses. Without them the server starts as usual and photo uploads are off.
+
+**Requirements:** a Cloudflare Access bypass for `/api/photos/*`, and this server's address in the
+phone's settings under **Jarvis server**; a Cloudflare rate limiting rule for `/api/photos/slots` is
+recommended — see [MCP Server Access](#mcp-server-access).
+
+**Example Use Cases:**
+- "I'll send you a receipt — what's the total?", then the photo
+- "What does this letter say I have to do?"
+- "Add everything on this receipt to the shopping list"
+- A photo with nothing said: "That's a Netto receipt for 36.95 kroner, sir, for milk and rye bread.
+  What would you like done with it?"
 
 ### Phone Vertical
 Provides outbound calling, texting and contact lookup, and feeds the phone's notifications to Synapse:
@@ -805,7 +1029,7 @@ here rather than guessed at.
 
 ### Routing Planner Agent
 Turns a voice request into a **plan** for the specialized agents to run:
-- **The twelve public agents are its catalogue**, baked into its instructions at boot
+- **The thirteen public agents are its catalogue**, baked into its instructions at boot
 - **No tools of its own**: it writes a plan, it never runs one and never sees a result
 - **No memory**: planning one request has nothing to recall from the last
 - **Flash-Lite, not Flash**: every request waits on the planner before any work starts, and
@@ -820,7 +1044,8 @@ the same time as each other unless `needs` says otherwise.
 An id in the request — most often the thing sir is pointing at,
 `(pointing at "Kitchen ceiling", id light.kitchen_ceiling)` — is copied verbatim into the prompt of
 the agent that owns the thing, so it acts on that very thing rather than looking it up (see **What
-sir points at** under Routing).
+sir points at** under Routing). A request the classifier routes on its own (below) needs no copying:
+its one agent is handed the user's own words, id and all.
 
 What actually runs is **chains**, derived from that list in `task-chains.ts`: the delegations
 inside one chain run in order, and every delegation after the first is handed the previous
@@ -842,6 +1067,49 @@ repeating a lookup costs time and quota, while dropping one of the edges costs a
 The common shapes — a location before a weather lookup, a recipe before a reminder — are paths
 and pay nothing for it.
 
+**Most requests skip the planner.** A Jev classifier (`routing/classifier.ts`, on TypeSafe AI's
+evaluation model through Mastra's `Classifier`) is asked at the same time as the planner: which
+single agent can carry out the whole request as it was said — or `several`, or `none` — and how
+the answer should sound. When it is at least `FAST_PATH_CONFIDENCE` sure of one agent, the planner
+is cancelled and that agent gets the user's own words as its prompt. Anything else is left to the
+planner: several agents, one that needs another's answer first, a request that might answer a
+waiting question, or a classifier that is not sure. The planner's result is used whenever it
+lands first, and a failing classifier is logged and ignored, so the classifier can only make a
+request faster, never slower. Without `HEY_JARVIS_TYPESAFE_AI_API_KEY` there is no classifier and
+every request is planned as before. The response-style wording lives in `response-styles.ts`, so
+the planner and the classifier describe the four styles identically.
+
+**Smart home commands skip the agent too.** Home Assistant's own services, every one that
+targets entities with its name and description, fetched live and cached for ten minutes, ride
+along on the same Jev call: which service carries the request out, and whether the request gives a
+setting (a brightness, temperature, colour). When the request is routed to `internetOfThings` as a
+`command`, the service is sure, needs no required field and no setting was given, every entity
+that service can act on is fetched live and put to Jev as one yes/no each, with its name, area and
+state (`internet-of-things/home-commands.ts`). If every entity is settled one way or the other and
+at least one is chosen, the service is called on exactly those, with no language model involved.
+The result says how many devices changed state, and does not claim success when none did, and the
+entities it was called on are reported as what the request touched, exactly as the agent's
+`callIoTService` would have reported them (see [What a request touches](#affected-entities)). Anything
+else (an unsure service or entity, a setting, more than 150 candidate entities, Home Assistant
+refusing the call) runs the same one-agent chain the request would have run anyway. Jev only picks
+from what Home Assistant listed, so it cannot call a service or touch an entity that does not exist.
+
+**The same call settles three more decisions** that used to fall to the planner or a rule of thumb:
+
+- **An answer to a waiting question.** When Jev is sure the request answers one of the open
+  questions and is nothing but that answer, it goes straight back to the work that asked, in the
+  user's own words, with no planner.
+- **A goodbye.** `endCall` is a route choice. A goodbye that reaches routing is handed straight
+  back to the voice agent's `end_call`, rather than reported as a request no agent could handle.
+- **A request arriving while another runs.** It joins the running request's report while it is
+  classified against it: `adds` keeps both and reports them together, `cancels` stops the running
+  one and says so, and a correction, or an unsure answer, supersedes it as every request used to.
+  `RoutingProgress.join` counts the requests reporting into it, and it finishes only when all do.
+  What the request says about a photo is still the planner's, whichever relation Jev picks: a photo
+  it waves away is let go of under `cancels` too, and one that only waves a photo away, or only says
+  one is on its way, is carried out beside the running request without giving the shared report its
+  own `command` style.
+
 Routing has been three things. A task DAG with a wave scheduler this vertical owned; then a
 supervisor agent delegating inside its own tool-call loop; now a plan. The middle one is why:
 its loop was opaque, so a request could not be looked at, and it could not say what was
@@ -854,7 +1122,9 @@ Studio draws it and the run is persisted — and the work is written down before
 
 ### Routing
 The entry point for every voice request. Two MCP tools, deliberately: the voice model gets a
-small, fast surface, and everything else happens behind them.
+small, fast surface, and everything else happens behind them. A photo sir sends reaches Jarvis the
+same way, as a request naming it (see [Vision Vertical](#vision-vertical)); the phone opens its slot
+over the REST API, not through the voice model.
 
 **Workflows:**
 - **`routePromptWorkflow`**: starts a request and returns at once, with the session to poll
@@ -893,8 +1163,29 @@ manner" every time, which is how "turn off the lights" earned a paragraph.
 **Ending the call:** every finished request — answered, failed, or handed to a notification — ends
 with `FINISHED_REQUEST_INSTRUCTIONS`: say nothing more, and if asked to speak again before sir has
 said anything, call `end_call` without a word. The agent's turn timeout is what asks him again.
-Nothing still waiting on sir carries it. See **Hanging up when he goes quiet** in
-`elevenlabs/AGENTS.md`.
+Nothing still waiting on sir carries it — a question the work stopped on, one from earlier, or what
+to do with a photo he sent without saying: those end on `askTheUserInstructions`, which asks last and
+waits. It makes one exception, in the same words as the prompt and the `end_call` and `skip_turn`
+descriptions (`WAITING_FOR_A_PHOTO`): while Jarvis is waiting for a photo on a device that has told
+him it has a camera button — sir said he would send one, or a note says he has opened the camera —
+silence gets `skip_turn`, until the photo comes, a message says it did not reach him, a note says
+sir closed the camera without one, or sir says it is not coming. Nothing else he says ends it: his
+answer to a question, or any other request made before the photo comes, is routed and ends on this
+instruction too, and when a word from him ended the wait, that request's silence hung up on him on
+his way to the camera. A wait nothing settles still ends at ElevenLabs' 30-second
+`silenceEndCallTimeout`. A request that said a photo is on its way (`awaitsPhoto`) does not end on
+it at all: `WAIT_FOR_THE_PHOTO` has Jarvis say what the rest of the request found, tell sir to go
+ahead with the camera button, and hold the line with `skip_turn` — or, where no note said this
+device has a camera button, send him to his phone and hang up on the silence, since that photo goes
+to the phone's own conversation. One that also asks sir something tells him to go ahead before the
+question (`GO_AHEAD_BEFORE_ASKING`), and the question is still asked last. See **Hanging up when he
+goes quiet** in `elevenlabs/AGENTS.md`.
+
+The wait lasts only until a photo is kept after the request said one was coming
+(`followThePhotoWait` in `routing/controller.ts`, asked again whenever a report is built). The photo
+can arrive while the rest of the request still runs, and be looked at by a request joined to it, and
+the report that says what it shows must not also say it has yet to come and send sir back to the
+camera for it. A photo that was already waiting when he said another was on its way does not end it.
 
 **Questions for the user:**
 Some work cannot finish on what the request said. Questions come from two places, and
@@ -937,9 +1228,43 @@ makes carries every question still waiting in `questionsForUser`, and Jarvis ans
 then reminds him of the question and asks it last (`takeQuestionsToBringUp` in `questions.ts`).
 That is what rescues a question asked on a call he missed or in a push notification. A question
 brought up is left alone for 30 minutes (`QUESTION_REMINDER_INTERVAL_MS`), so a conversation hears
-it once rather than after every request, and a superseded request or one he is to be notified about
-brings nothing up, since nobody hears its report. Open questions live in memory, so a restart forgets them while the
-suspended run stays in storage; the request then has to be made again.
+it once rather than after every request, and a superseded request, one he is to be notified about or
+one he stopped brings nothing up, since nobody hears it in that report. Two requests sharing a report
+— one joined to the other as `adds` — each bring up what is due as their own work ends, one that only
+waves a photo away included, and the report keeps what either took for as long as it still stands:
+the second to finish does not wipe out the reminder the first one took, and drops one about a question
+it has answered or a photo it has waved away. `waiting-photos.spec.ts` holds the second request's plan
+back until the first has finished, which is the order that loses them. Open questions live in memory,
+so a restart forgets them while the suspended run stays in storage; the request then has to be made
+again.
+
+**A photo he sent that nobody has looked at yet** is brought up the same way (`takePhotosToBringUp`
+in `routing/waiting-photos.ts`, into `waitingPhotos` beside `earlierQuestions`): after the earlier
+questions and before the request's own in `questionsForUser`, under the same conditions, and in the
+failure path too. The instructions name a photo — "work he started earlier, or a photo he sent" — and
+ask for its id in the reply as `(photo photo3)` only when one is waiting, so every other report reads
+as it did. The difference is the reply: it is not an answer to hand back but a request, which the
+planner, shown every waiting photo, plans as work on that photo — or, for "nothing", as dismissing it
+(`dismissedPhotoIds`), which the instructions ask to be routed like any other reply. See **A photo
+nobody has looked at is not lost with the conversation** under [Vision Vertical](#vision-vertical).
+
+**A photo he sent with nothing said** is asked about too, as this request's own question rather than
+one from earlier. The request is the look — `He sent a photo without saying what he wants: look at it
+and say what it shows (photo photo3)` — and the planner names the photo in `photosToAskAbout`
+(required, empty-when-absent, and only ever a photo it was shown and did not dismiss). Once the
+request's work is done, the controller keeps those whose look actually read them
+(`RoutingProgress.photosToAskAbout`), and the closing report adds one question per photo, last in
+`questionsForUser`, with the photo id as its id: `Now that you have told him what photo3 shows, ask
+him what he would like done with it.` (`askWhatToDoWithPhoto`). It is closed with
+`askTheUserInstructions` as a request waiting on him, photo wording included, so Jarvis speaks the
+result, asks, and waits — never `end_call`. A photo asked about that way is not also brought up as a
+waiting one, and a request that failed asks nothing about its photos: one whose look failed is still
+waiting, and is brought up later like any other. His "nothing" in reply is a dismissal: the photo is
+listed to the planner because his reply names it (see **"Nothing, never mind" dismisses it** under
+[Vision Vertical](#vision-vertical)). A request he talks over before it is heard takes its look back,
+so the photo is brought up later instead. `waiting-photos.spec.ts` drives all of this end to end on
+scripted models, from the routed message to the report that asks — and, with a stand-in classifier
+(`setRoutingClassifierForTest`), requests that join a running one.
 
 A reply given on a call or on the house speakers only reaches the work if the ElevenLabs agent
 routes it, so its prompt (`elevenlabs/src/assets/agent-prompt.md`) says a reply to a question the
@@ -1000,7 +1325,9 @@ but the glow waits on it. The calendar list keeps Google's retries, because it i
    agent's own stream. Whatever the readers name becomes a `delegation_affected_entities` event.
    A call that never ran touched nothing, whatever its reader would say: Mastra streams input that
    failed validation (`{ error: true, … }`) and a failed workflow tool (`{ error, runId }`) as
-   ordinary results, and `readAffectedEntities` skips both before a reader sees them.
+   ordinary results, and `readAffectedEntities` skips both before a reader sees them. A smart home
+   command carried out without the agent streams no tool result at all, so `runHomeCommandOrPlan`
+   reports the entities `runHomeCommand` called the service on as the same event, beside its result.
 2. Each thing is reported once per request, at most `MOST_AFFECTED_ENTITIES_PER_REQUEST` (20) of
    them, and nothing is recorded once the user has asked to be notified. Only the request's
    **first** batch may end a parked poll by itself, and only once `AFFECTED_ENTITIES_GRACE_MS`
@@ -1044,7 +1371,7 @@ What is marked, and what is deliberately not:
 
 | Vertical | Reports | Left unmarked, and why |
 | --- | --- | --- |
-| Internet of things | `callIoTService`: the entities it reached — the ids named, and the service domain's entities in the areas and devices named (every domain for `homeassistant`), resolved alongside the call, given up on after 1.5 s and never failing it. `findEntities`: what it found, when that is at most `MOST_ENTITIES_A_LOOKUP_AFFECTS` (10). `getEntityLogbook`: the entity | `getAllDevices`, `getChangedDevicesSince` and `inferUserLocation` are surveys; `getAllServices` names no entity; `setUserPhoneAlarm` has only a notify service, not an entity id; `entity_id: "all"` is every light in the house |
+| Internet of things | `callIoTService`: the entities it reached — the ids named, and the service domain's entities in the areas and devices named (every domain for `homeassistant`), resolved alongside the call, given up on after 1.5 s and never failing it. `findEntities`: what it found, when that is at most `MOST_ENTITIES_A_LOOKUP_AFFECTS` (10). `getEntityLogbook`: the entity. A home command carried out without the agent (`home-commands.ts`): the entities Jev chose and the service was called on | `getAllDevices`, `getChangedDevicesSince` and `inferUserLocation` are surveys; `getAllServices` names no entity; `setUserPhoneAlarm` has only a notify service, not an entity id; `entity_id: "all"` is every light in the house |
 | Calendar | the calendar an event was created, changed or deleted in; the calendar a lookup read, or with `allCalendars` only those its events came from | `getAllCalendars` is a survey |
 | Email | the folder `findEmails` read, `inbox` by default; Drafts for a draft or a reply; Sent Items for a sent message | `deleteEmail`: its folder is not known without a lookup |
 | To-do list | the task list a task was read, added, changed or deleted in | `getAllTaskLists` is a survey |
@@ -1066,7 +1393,11 @@ The `userQuery` description asks the voice agent to add its name and id —
 `Turn that on (pointing at "Kitchen ceiling", id light.kitchen_ceiling)` — because nothing but that
 string reaches the agents. The planner copies an id in the request verbatim into the prompt of the
 agent that owns the thing, and every agent is told in the shared guidelines to act on an id it is
-given without looking it up. The tool call on that id then lights the thing up by the path above.
+given without looking it up. A request the routing classifier settles on its own never reaches the
+planner, and needs it not to: its one agent is handed the user's words as they are, id included. A
+smart home command carried out without the agent puts every candidate entity to Jev with its id
+beside its name, so the command names the one he points at for it. The tool call on that id, or the
+home command, then lights the thing up by the path above.
 
 **Why a workflow per request:**
 Which agents a request needs is known only once it arrives, so a request that is a workflow has
@@ -1760,6 +2091,86 @@ and when the parsing agent cannot read an answer out of them. Each is counted in
 `repliesRejected` rather than reported as an error, because nothing has gone wrong with the
 system. Only a token naming a run that does not exist is reported as an error.
 
+## Jev Classifiers
+
+Decisions that are a choice from a list, a place on a scale, or a yes/no are answered by Jev, TypeSafe
+AI's evaluation model, through Mastra's `Classifier` instead of a language model (see
+`.claude/rules/jev-classifiers.md`). Every classifier is built with `createLazyClassifier` in
+`utils/classifier-factory.ts`, registered on the Mastra instance so Studio traces it, and read through
+a pure policy function that acts only above a confidence bar (`confidentChoice` / `confidentScoreLevel`
+in `utils/classifier-answers.ts`). Without `HEY_JARVIS_TYPESAFE_AI_API_KEY`, on a failed call, or on an
+unsure answer, each decision is made exactly as it was before there was a classifier.
+
+| Classifier | Where | Decides |
+| --- | --- | --- |
+| `routingClassifier` | `routing/classifier.ts` | Single-agent fast path, answers to waiting questions, goodbyes, replace/cancel/add, Home Assistant service |
+| `homeCommandClassifier` | `internet-of-things/home-commands.ts` | Which entities a smart home command acts on |
+| `changeRelevanceClassifier` | `internet-of-things/change-relevance.ts` | What kind of Home Assistant change a report is |
+| `stateChangeClassifier` | `synapse/state-change-classifier.ts` | How much attention a state change needs, and which subscriptions it fires |
+| `weatherNotabilityClassifier` | `weather/classifier.ts` | Whether an hourly weather update is worth filing |
+| `emailTriageClassifier` | `email/classifier.ts` | Each new email's kind and urgency |
+| `orderChangeClassifier` | `shopping/classifier.ts` | Whether a Bilka email reports an order change the subject match missed |
+| `productChoiceClassifier` | `shopping/classifier.ts` | Which catalogue product a shopping list item is |
+| `emailReplyClassifier` | `human-in-the-loop/classifier.ts` | The yes/no fields of an emailed answer |
+| `codingSessionQuestionClassifier` | `coding/classifier.ts` | Whether a Claude session ended on a question in prose |
+| `notificationUrgencyClassifier` | `notification/classifier.ts` | Whether a message the agent sends is urgent |
+
+**Synapse state change gate.** Before a state change is filed for the State Change Reactor,
+`synapse/state-change-classifier.ts` asks Jev in one call how much attention the change deserves
+(ignore / fyi / soon / now), and, for each subscription vector recall shortlisted, whether the change
+really fires it. A confident "now" is filed at high priority. A confident "ignore" that no candidate
+subscription can plausibly fire (below 0.15) and no rule covers is held back from the reactor and
+logged; it is still saved to memory. Everything else is filed as before, with each candidate's fire
+probability written under it. `registerStateChange` takes an optional `priority: 'high'` for callers
+that already know a change cannot wait; it is a floor, and such a change is never held back. With
+Mastra's default delivery policy, `high` is delivered at once when the reactor is idle, and as a
+summary followed by the record when it is busy.
+
+**Weather monitoring.** The hourly update is compared with the last one filed, kept in memory, by a
+Jev score: routine / notable_change / warning. Confident routine is not filed, a warning is filed at
+high priority, and anything else is filed as before. The first update after a restart is never
+dropped. The state data no longer carries a timestamp, so identical updates collapse under the
+notifier's dedupe key.
+
+**Home Assistant report relevance.** The event monitor classifies each entity (id, friendly name,
+domain, device class) or event type once and keeps the answer for a day: safety_security / presence /
+comfort_control / energy_telemetry / diagnostics. Confident diagnostics are not reported unless a
+synapse subscription matches them, and confident safety_security is filed at high priority.
+
+**Email triage.** Before new emails are filed for the reactor, each is classified in parallel by kind
+and urgency from its sender, subject and preview. Confident newsletters and promotions, and emails
+that need nobody, are left out and counted in `droppedEmailCount`; emails it is sure of carry a
+`kind`; one it is sure needs the user now files the batch at high priority. When nothing is left,
+nothing is filed.
+
+**Email trigger fallback filters.** A trigger may have a `fallbackFilter`, asked only when the sender
+matches and the subject filter does not; it never overrides or delays a subject match. The Bilka
+order-change trigger keeps its exact subject match and falls back to Jev, so a reworded subject still
+notifies.
+
+**Shopping list product choice.** For items that are a whole count of something to set ("2 stk
+agurk"), the workflow searches the catalogue in code and asks Jev which basket line or result the
+item is, or none. Confident items are set without the mutator agent. Removals, weights and volumes,
+zero or fractional quantities, unsure items, failed searches, and two items settling on the same
+product go to the agent as before, which is skipped when nothing is left for it.
+
+**Email replies.** When every field of an emailed answer is a required boolean, with at most optional
+strings beside it, `parseEmailReply` first asks Jev one boolean per field plus whether the reply
+decides anything at all, over the person's own words (`human-in-the-loop/reply-text.ts` strips HTML
+and quoted history). At least 90% sure either way on everything becomes the answer; sure it decides
+nothing refuses the reply like an unreadable one. Anything else, including any answer with a required
+string such as meal-plan feedback, is read by the Gemini parsing agent as before.
+
+**Coding session questions.** When a Claude session's turn ends without a fenced `jarvis-question`
+block, Jev is asked whether the message ends by asking the user to decide something before the work
+can continue. Above 85%, the last paragraph is asked exactly like a fenced question and nothing is
+published.
+
+**Notification urgency.** When an agent calls `sendNotification`, Jev checks the agent's `isUrgent`
+against the same guidance the agent is given (`notification/classifier.ts`), and overrides it only
+when at least 90% sure of the opposite, logging the override. Code callers keep the urgency they
+passed.
+
 ## Processors
 
 ### 🔍 **Output Processors**
@@ -2013,10 +2424,11 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **Weather**: `HEY_JARVIS_OPENWEATHERMAP_API_KEY` for weather data
 - **Google Maps**: `HEY_JARVIS_GOOGLE_MAPS_API_KEY` for navigation, travel time estimation and place search
 - **Google Gemini**: `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` for language models and embeddings. Deliberately separate from the Maps key -- they are restricted to different APIs and are not interchangeable.
+- **TypeSafe AI (optional)**: `HEY_JARVIS_TYPESAFE_AI_API_KEY` for Jev, the evaluation model behind the routing classifier. Resolved from `op://Jarvis/TypeSafe AI/API key` through `mcp/op.optional.env`; without it routing plans every request with the planner.
 - **Google OAuth2 (Calendar, Tasks & Contacts)**: `HEY_JARVIS_GOOGLE_CLIENT_ID`, `HEY_JARVIS_GOOGLE_CLIENT_SECRET`, `HEY_JARVIS_GOOGLE_REFRESH_TOKEN` for accessing the Google Calendar, Tasks and People APIs (see [Google OAuth2 Setup](#google-oauth2-setup) below)
 - **Shopping (Bilka)**: `HEY_JARVIS_BILKA_EMAIL`, `HEY_JARVIS_BILKA_PASSWORD`, `HEY_JARVIS_BILKA_API_KEY` for authentication
 - **Shopping (Search)**: `HEY_JARVIS_ALGOLIA_API_KEY`, `HEY_JARVIS_ALGOLIA_APPLICATION_ID`, `HEY_JARVIS_BILKA_USER_TOKEN` for product search
-- **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI (test agent ID `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` takes precedence for phone calls)
+- **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI (test agent ID `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` takes precedence for phone calls). The key and the agent ids also confirm that the phone's conversation is live before a photo slot is opened — there either agent counts — so without them photo uploads are off (see [Vision Vertical](#vision-vertical))
 - **Recipes**: `HEY_JARVIS_VALDEMARSRO_API_KEY` for Danish recipe data
 - **GitHub**: `HEY_JARVIS_GITHUB_API_TOKEN` for GitHub API access (coding agent and error reporting processor)
 - **Claude Code sessions**: `HEY_JARVIS_CLAUDE_CODE_SSH_TARGET`, `HEY_JARVIS_CLAUDE_CODE_SSH_PRIVATE_KEY` to reach the host whose Docker Sandbox the coding vertical runs Claude Code in, and `HEY_JARVIS_CLAUDE_CODE_OAUTH_TOKEN` to bill it to the Claude subscription
@@ -2598,7 +3010,62 @@ const PROVIDERS: OAuthProvider[] = [
 
 ## MCP Server Access
 
-The MCP server does not require authentication. All endpoints are publicly accessible on port 4112. Security is handled at the network level (e.g., Home Assistant ingress, firewall rules).
+The MCP server itself checks no credentials on port 4112. What stands in front of it is the
+Cloudflare tunnel and its **Cloudflare Access** application: ElevenLabs and the integration tests
+present a service token (`CF-Access-Client-Id` / `CF-Access-Client-Secret`), and a browser signs in
+with an identity policy.
+
+**`/api/photos/*` must bypass Access**, as `/artifacts/*` must for the visualize vertical's pages
+(see [Visualize Vertical](#visualize-vertical-shortcuts)). The phone asks for a photo slot there
+(`POST /api/photos/slots`) and sends the photo there (`PUT /api/photos/<token>`), and it cannot
+present an Access service token, so without a bypass Access answers both with its sign-in page, and
+the phone tells sir his photo did not reach Jarvis. In Zero Trust → Access → Applications, add a
+self-hosted application for `<your MCP hostname>/api/photos/*` with a single **Bypass** policy
+(include: Everyone). It covers both routes and every method, which matters because the browser build
+sends a CORS preflight (`OPTIONS`) before each.
+
+**Behind the bypass are two checks, and no credential.** Opening a slot needs the id of a
+conversation that ElevenLabs, asked with this server's own API key, reports as in progress on
+Jarvis's agent; sending the photo needs the slot's token, 128 random bits handed straight to the
+phone, good for five minutes and one photo, and claimed before a byte of the body is read (see
+[Vision Vertical](#vision-vertical)). Nothing else under `/api` is reachable without Access.
+
+**Rate-limit the slot endpoint at Cloudflare as well.** The server limits the checks it sends
+ElevenLabs per address (an IPv6 /48), 6 a minute, and 30 for the whole process (see **The
+live-conversation check** under [Vision Vertical](#vision-vertical)), but each request it turns away
+has still crossed the tunnel and woken the Pi. A rate limiting rule turns a flood away at
+Cloudflare's edge instead. Neither the rule nor the server's per-address limit stops a stranger who
+asks from many addresses at once from spending the process's 30 checks, and turning sir's photos away
+while they keep at it; what the limits bound is how much that can cost, on the Pi and on the
+ElevenLabs key. On
+the zone's **Security rules** page, **Create rule** → **Rate limiting rules**:
+- **When incoming requests match**: URI Path equals `/api/photos/slots`.
+- **With the same characteristics**: IP.
+- **When rate exceeds**: 3 requests per 10 seconds.
+- **Then take action**: Block, for 10 seconds.
+
+Those are what the Free plan allows — one rule, matched on the path, counted by IP, over ten seconds —
+and they are ample: a phone asks once per tap of the camera button, plus a CORS preflight from the
+browser build. A plan with longer periods can match the server instead, 6 requests a minute, and one
+that can match on the method can leave the preflights out by adding Request Method equals `POST`.
+The path is compared as written, so a request spelled `/API/PHOTOS/SLOTS` is not counted by the rule
+— should Access let it through at all — and meets the server's own limit, which counts every
+spelling alike.
+
+**Rolling the camera out** takes these steps, in this order:
+1. Deploy the MCP server image with the vision vertical, and add the bypass and the rate limiting
+   rule above. The startup log should not say `Photo uploads are off`; if it does, it names the
+   ElevenLabs variable missing.
+2. Redeploy the ElevenLabs agent (`bunx turbo deploy --filter=elevenlabs`), so that its prompt knows
+   the phone's photo messages and it has no client tool for the camera. An agent deployed from an
+   earlier build of this feature expects to open the camera itself, through a tool this server no
+   longer publishes.
+3. In the ElevenLabs dashboard, leave nothing on the MCP server's tool approval policy but the two
+   tools it publishes, `routePromptWorkflow` and `getNextInstructionsWorkflow`.
+4. On the phone, enter this server's `https://` address under **Jarvis server** in the settings.
+   Until it has one, the phone offers no camera button.
+5. If a 1Password item was created in the `Jarvis` vault for the earlier build's upload key, delete
+   it: nothing reads it any more.
 
 ## Integration Capabilities
 
@@ -2621,7 +3088,9 @@ The MCP server does not require authentication. All endpoints are publicly acces
   names, and the service domain's entities in the areas and devices it names. The render is given up
   on after 1.5 seconds and can never fail the call, and its result is also returned to the agent as
   `targets`. `findEntities` reports a handful of matches and `getEntityLogbook` the entity it read.
-  Given an entity id — the thing sir is pointing at — the agent acts on exactly that id with no lookup
+  A command carried out without the agent (`runHomeCommand` in `home-commands.ts`) reports the
+  entities it called the service on. Given an entity id — the thing sir is pointing at — the agent
+  acts on exactly that id with no lookup
 - Sensor data processing and analysis
 - Scene and routine management
 

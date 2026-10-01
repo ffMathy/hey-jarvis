@@ -1,5 +1,6 @@
 import { Mastra } from '@mastra/core';
 import type { Agent } from '@mastra/core/agent';
+import type { Classifier } from '@mastra/core/classifier';
 import { SpanType } from '@mastra/core/observability';
 import { MastraServer } from '@mastra/hono';
 import { CloudExporter, DefaultExporter, Observability, SamplingStrategyType } from '@mastra/observability';
@@ -10,13 +11,17 @@ import { ownsSchedules } from './schedule-reconciler.js';
 import { getMastraStorageProvider, getTokenUsageStorage } from './storage/index.js';
 import { stripTransferEncodingHeader } from './streaming-headers.js';
 import { createLogger } from './utils/logger.js';
+import { PhotoSpanFilter } from './utils/photo-span-filter.js';
 import { TokenTrackingProcessor, TokenUsageExporter } from './utils/token-usage-exporter.js';
 import { storageRetentionWorkflow, tokenUsageTools } from './verticals/api/index.js';
 import { calendarTools, getCalendarAgent } from './verticals/calendar/index.js';
+import { getCodingSessionQuestionClassifier } from './verticals/coding/classifier.js';
 import { codingTools, getCodingAgent } from './verticals/coding/index.js';
 import { commuteTools, getCommuteAgent } from './verticals/commute/index.js';
 import { cookingTools, getCookingAgent } from './verticals/cooking/index.js';
+import { getEmailTriageClassifier } from './verticals/email/classifier.js';
 import { emailTools, getEmailAgent } from './verticals/email/index.js';
+import { getEmailReplyClassifier } from './verticals/human-in-the-loop/classifier.js';
 import { getEmailParsingAgent, humanInTheLoopTools } from './verticals/human-in-the-loop/index.js';
 import {
   emailCheckingWorkflow,
@@ -29,21 +34,29 @@ import {
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow,
 } from './verticals/index.js';
+import { getChangeRelevanceClassifier } from './verticals/internet-of-things/change-relevance.js';
+import { getHomeCommandClassifier } from './verticals/internet-of-things/home-commands.js';
 import {
   getInternetOfThingsAgent,
   internetOfThingsShortcuts,
   internetOfThingsTools,
 } from './verticals/internet-of-things/index.js';
+import { getNotificationUrgencyClassifier } from './verticals/notification/classifier.js';
 import { getNotificationAgent, notificationTools } from './verticals/notification/index.js';
 import { phoneTools } from './verticals/phone/index.js';
 import { presenceShortcuts } from './verticals/presence/index.js';
 import { getReflectionAgent, reflectionTools } from './verticals/reflection/index.js';
+import { getRoutingClassifier } from './verticals/routing/classifier.js';
 import { getRoutingPlannerAgent } from './verticals/routing/planner.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
+import { getOrderChangeClassifier, getProductChoiceClassifier } from './verticals/shopping/classifier.js';
 import { getShoppingListAgent, getShoppingListSummaryAgent, shoppingTools } from './verticals/shopping/index.js';
 import { getStateChangeReactorAgent, synapseTools } from './verticals/synapse/index.js';
+import { getStateChangeClassifier } from './verticals/synapse/state-change-classifier.js';
 import { getTodoListAgent, todoListTools } from './verticals/todo-list/index.js';
+import { getPhotoReaderAgent, getVisionAgent, visionTools } from './verticals/vision/index.js';
 import { getVisualizeAgent, visualizeShortcuts, visualizeTools } from './verticals/visualize/index.js';
+import { getWeatherNotabilityClassifier } from './verticals/weather/classifier.js';
 import { getWeatherAgent, weatherTools } from './verticals/weather/index.js';
 import { getWebResearchAgent, webResearchShortcuts } from './verticals/web-research/index.js';
 import { retireUnrestartableRuns } from './workflow-run-recovery.js';
@@ -59,6 +72,12 @@ function toAgentMap(agents: Agent[]): Record<string, Agent> {
     acc[agent.id] = agent;
     return acc;
   }, {});
+}
+
+function toClassifierMap(classifiers: (Classifier | undefined)[]): Record<string, Classifier> {
+  return Object.fromEntries(
+    classifiers.filter((classifier) => classifier !== undefined).map((classifier) => [classifier.id, classifier]),
+  );
 }
 
 /**
@@ -96,7 +115,9 @@ export async function getMastra(): Promise<Mastra> {
           serviceName: 'hey-jarvis',
           sampling: { type: SamplingStrategyType.ALWAYS },
           exporters: [new DefaultExporter(), new CloudExporter(), new TokenUsageExporter()],
-          spanOutputProcessors: [new TokenTrackingProcessor()],
+          // The photo filter takes a photo's bytes out of the span of the model call that reads it,
+          // which would otherwise keep them in the trace store (see `utils/photo-span-filter.ts`).
+          spanOutputProcessors: [new TokenTrackingProcessor(), new PhotoSpanFilter()],
           // One span per streamed chunk of every model call, which nothing here reads: token usage
           // is taken from the generation spans, and the reflection agent reads failing spans. Kept,
           // they are storage writes on every call and noise in every trace that agent is handed.
@@ -128,14 +149,31 @@ export async function getMastra(): Promise<Mastra> {
       await getVisualizeAgent(),
       await getInternetOfThingsAgent(),
       await getNotificationAgent(),
+      await getPhotoReaderAgent(),
       await getReflectionAgent(),
       await getRoutingPlannerAgent(),
       await getShoppingListAgent(),
       await getShoppingListSummaryAgent(),
       await getStateChangeReactorAgent(),
       await getTodoListAgent(),
+      await getVisionAgent(),
       await getWeatherAgent(),
       await getWebResearchAgent(),
+    ]),
+    // Only when TypeSafe is configured; without it every decision falls back to what it was before.
+    // Registered so Studio traces their evaluations.
+    classifiers: toClassifierMap([
+      getRoutingClassifier(),
+      getHomeCommandClassifier(),
+      getChangeRelevanceClassifier(),
+      getStateChangeClassifier(),
+      getWeatherNotabilityClassifier(),
+      getEmailTriageClassifier(),
+      getProductChoiceClassifier(),
+      getOrderChangeClassifier(),
+      getEmailReplyClassifier(),
+      getCodingSessionQuestionClassifier(),
+      getNotificationUrgencyClassifier(),
     ]),
     tools: {
       ...tokenUsageTools,
@@ -156,6 +194,7 @@ export async function getMastra(): Promise<Mastra> {
       ...shoppingTools,
       ...synapseTools,
       ...todoListTools,
+      ...visionTools,
       ...weatherTools,
       ...webResearchShortcuts,
     },

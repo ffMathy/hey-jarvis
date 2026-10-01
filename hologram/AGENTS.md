@@ -199,18 +199,23 @@ and tells nobody. The phone and the watch pass no `onAffected`, so nothing on
 their screens moves.
 
 **`sendContextualUpdate(text, contextId?)` tells the agent something without
-asking it anything** — on the headset, what sir is pointing at. It is sent while
-connected (not only live: a browser's conversation is up behind the greeting),
-in a `try`, since a socket that is going throws. Before that, the latest update
-for each context id waits for the summoning under way and goes the moment it
-connects, before the phase moves to `live`, so anything the holder says on
-`live` lands after it; whatever is waiting when the summoning ends is dropped,
-and with no summoning under way nothing is kept. The server keeps only the
-newest update for a context id, which is what the ids are for. The optional
-`deviceContext` dependency is said first, under `DEVICE_CONTEXT_ID`, in every
-conversation that connects; only the headset passes one, and the agent's prompt
-waits for it before calling `markAffected`. Neither is exposed through
-`useJarvisSession`: the phone and the watch have nothing to point at.
+asking it anything** — on the headset, what sir is pointing at; on the phone,
+what its camera button is doing (see "What the phone's camera button needs of
+it"). It is sent while connected (not only live: a browser's conversation is up
+behind the greeting), in a `try`, since a socket that is going throws. Before
+that, the latest update for each context id, and every update said without one,
+waits for the summoning under way and goes the moment it connects, before the
+phase moves to `live`, so anything the holder says on `live` lands after it;
+whatever is waiting when the summoning ends is dropped, and with no summoning
+under way nothing is kept. The server keeps only the newest update for a context
+id, which is what the ids are for, and every update without one, which is why
+none of those replaces another while it waits. The optional `deviceContext`
+dependency is said first, under `DEVICE_CONTEXT_ID`, in every conversation that
+connects; only the headset passes one, and the agent's prompt waits for it
+before calling `markAffected`. It is not exposed through `useJarvisSession`: the
+phone and the watch say nothing about themselves on connecting, and the phone's
+camera button says it is there itself, through `sendContextualUpdate`, which
+`useJarvisSession` does expose.
 
 `jarvis-session.fakes.ts` answers a client tool call the way
 `BaseConversation.handleClientToolCall` in `@elevenlabs/client` 1.24.0 does
@@ -331,6 +336,42 @@ The apps do not decide this. A finished request that is followed by quiet is end
 itself — its `turnTimeout` of 3 s and its `end_call` tool — so no device registers a client tool
 for it, and each sees it as the agent hanging up. (The one client tool there is, `markAffected`, is
 the session's; see "What he is working on, and what the room tells him".)
+
+## What the phone's camera button needs of it
+
+Only the phone can show Jarvis something: its camera button takes a photo and sends it to sir's own
+Jarvis server, and everything about that — the button, the upload, the notes and messages the agent
+is sent — is the phone's ("Showing him something" in `mobile/AGENTS.md`). The agent has no client
+tool for it, so no device answers one (the one client tool there is, `markAffected`, is the
+session's, and has nothing to do with the camera), and the watch and the headset hold nothing for
+the camera at all. What the session gives the phone is general, and three things:
+
+- **The live conversation's id** (`liveConversationId()`, on `JarvisConversation` too). The server
+  opens an upload slot only for a conversation ElevenLabs says is in progress on Jarvis's agent, so
+  the phone sends it this id when sir taps the button. It is the SDK's own `getId()`, read once,
+  when the conversation is handed over — by then it is final on both transports: a socket takes it
+  from `conversation_initiation_metadata`, and WebRTC reads it out of the LiveKit room's name before
+  the start resolves. It is given only while the summoning under way is connected, so an ended
+  conversation's id never is, and only when it looks like an ElevenLabs id (`conv_…`): where a
+  room's name holds none, the SDK falls back to the name itself or a `room_<ms>` of its own making,
+  which the server could only refuse. It is a method rather than part of the snapshot because it is
+  read at the tap, and nothing on a screen is drawn from it.
+- **`sendContextualUpdate`**, a note the agent reads without a turn being taken: that this device
+  has a camera button, that sir has opened the camera, or that he closed it without a photo. The
+  headset tells the agent what sir points at with the same method ("What he is working on, and what
+  the room tells him"); the phone's notes carry no context id.
+- **`sendUserActivity`**, which says sir is still there while he frames a shot. It holds nothing
+  open: a quiet call is still the agent's to end (see above), and ElevenLabs does not document user
+  activity as holding off either its turn timeout or its silence timeout. What keeps the agent from
+  hanging up on the camera is its own rule, that a photo it is waiting for gets `skip_turn` ("Hanging
+  up when he goes quiet" in `elevenlabs/AGENTS.md`).
+
+The photo goes to the server, never through the session; what goes through it is the message that
+names the photo once it has arrived, or says why it did not, as a user message through `sendText`,
+which takes a turn so that Jarvis answers it at once. `sendText` and `sendUserActivity` do nothing,
+and the id is `undefined`, unless the summoning under way is connected; a note said before then
+waits for it, as every contextual update does, though the phone only says one while connected —
+`jarvis-session-conversation.spec.ts` pins the three above.
 
 ## Worklets
 

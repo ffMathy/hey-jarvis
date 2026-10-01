@@ -5,6 +5,7 @@ import express from 'express';
 import { logTokenUsageSummary, mastra } from './index.js';
 import { initializeScheduler } from './scheduler.js';
 import { createInstructionsWorkflowTool, createSimplifiedWorkflowTool } from './utils/mcp-tool-factory.js';
+import { MCP_PATH, readsItsOwnBody } from './verticals/api/routes.js';
 import { getMissingClaudeCodeHostVariables, isClaudeCodeHostConfigured } from './verticals/coding/index.js';
 import {
   getPublicAgents,
@@ -12,6 +13,8 @@ import {
   registerArtifactRoutes,
   registerShoppingTriggers,
   startHomeAssistantEventMonitor,
+  whyPhotoSlotsAreOff,
+  withoutUploadToken,
 } from './verticals/index.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 
@@ -34,16 +37,18 @@ export async function startMcpServer() {
 
   const port = parseInt(process.env.PORT || '4112', 10);
   const host = process.env.HOST || '0.0.0.0';
-  const mcpPath = '/api/mcp';
 
   const app = express();
 
-  // JSON body parsing middleware for API routes (exclude MCP endpoint and subpaths which read raw body)
+  // JSON body parsing middleware for API routes. Not for the routes that read their own body — the
+  // MCP endpoint, and the photo routes, which are open to anyone — however the path is spelled: see
+  // `readsItsOwnBody` in `verticals/api/routes.ts`, whose spec mounts this same check.
+  const parseJson = express.json();
   app.use((req, res, next) => {
-    if (req.path === mcpPath || req.path.startsWith(`${mcpPath}/`)) {
+    if (readsItsOwnBody(req.path)) {
       next();
     } else {
-      express.json()(req, res, next);
+      parseJson(req, res, next);
     }
   });
 
@@ -52,14 +57,15 @@ export async function startMcpServer() {
     const startTime = Date.now();
     const requestTimestamp = new Date().toISOString();
 
-    // Log incoming request
-    console.log(`[${requestTimestamp}] ${req.method} ${req.url}`);
+    // Log incoming request, without the key to an upload slot in it
+    const loggedUrl = withoutUploadToken(req.url);
+    console.log(`[${requestTimestamp}] ${req.method} ${loggedUrl}`);
 
     // Log response when finished
     res.on('finish', () => {
       const responseTimestamp = new Date().toISOString();
       const duration = Date.now() - startTime;
-      console.log(`[${responseTimestamp}] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
+      console.log(`[${responseTimestamp}] ${req.method} ${loggedUrl} - ${res.statusCode} (${duration}ms)`);
     });
 
     next();
@@ -74,14 +80,14 @@ export async function startMcpServer() {
   const apiRouter = express.Router();
 
   // Register API routes (shopping list, etc.) and get the registered paths
-  const registeredApiPaths = registerApiRoutes(apiRouter);
+  const registeredApiRoutes = registerApiRoutes(apiRouter);
 
   // The pages the visualize vertical builds, hosted for a day under the tunnel's public hostname
   const artifactRoutePath = registerArtifactRoutes(apiRouter);
   app.use(apiRouter);
 
   // MCP endpoint - handles both GET (for initial connection) and POST (for messages)
-  app.all(mcpPath, (req, res): void => {
+  app.all(MCP_PATH, (req, res): void => {
     const base = `http://${host}:${port}`;
     const url = new URL(req.url || '', base);
 
@@ -89,7 +95,7 @@ export async function startMcpServer() {
       try {
         await mcpServer.startHTTP({
           url,
-          httpPath: mcpPath,
+          httpPath: MCP_PATH,
           req,
           res,
         });
@@ -116,9 +122,9 @@ export async function startMcpServer() {
     },
   );
 
-  console.log(`J.A.R.V.I.S. MCP Server listening on http://${host}:${port}${mcpPath}`);
-  for (const apiPath of registeredApiPaths) {
-    console.log(`API endpoint available: POST http://${host}:${port}${apiPath}`);
+  console.log(`J.A.R.V.I.S. MCP Server listening on http://${host}:${port}${MCP_PATH}`);
+  for (const { method, path } of registeredApiRoutes) {
+    console.log(`API endpoint available: ${method} http://${host}:${port}${path}`);
   }
   console.log(`Hosted pages available: GET http://${host}:${port}${artifactRoutePath}`);
 
@@ -130,6 +136,14 @@ export async function startMcpServer() {
     console.warn(
       `⚠️ Claude Code sessions are not configured. Missing: ${getMissingClaudeCodeHostVariables().join(', ')}. Coding sessions will not start.`,
     );
+  }
+
+  // A photo slot is opened only for a conversation ElevenLabs confirms is live on Jarvis's agent, so
+  // without the ElevenLabs key or an agent id no photo is taken in: say so once, naming the missing
+  // variables — never a value
+  const photoUploadsOffBecause = whyPhotoSlotsAreOff();
+  if (photoUploadsOffBecause) {
+    console.warn(`⚠️ ${photoUploadsOffBecause}`);
   }
 
   // Log token usage summary on startup
@@ -147,7 +161,7 @@ export async function startMcpServer() {
   return new Promise<void>((resolve) => {
     app.listen(port, host, () => {
       console.log(`Server running on http://${host}:${port}`);
-      console.log(`MCP HTTP endpoint: http://${host}:${port}${mcpPath}`);
+      console.log(`MCP HTTP endpoint: http://${host}:${port}${MCP_PATH}`);
       resolve();
     });
   });

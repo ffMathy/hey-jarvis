@@ -6,6 +6,8 @@ export {
 } from './affected-entities.js';
 // Utils exports - Core factories
 export { createAgent } from './agent-factory.js';
+export { confidentChoice, confidentScoreLevel } from './classifier-answers.js';
+export { createClassifier, createLazyClassifier } from './classifier-factory.js';
 // MCP-facing tool exports
 export { createInstructionsWorkflowTool, createSimplifiedWorkflowTool } from './mcp-tool-factory.js';
 // Provider exports

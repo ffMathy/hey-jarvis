@@ -63,8 +63,9 @@ export class TestConversation {
   }
 
   /**
-   * Tells the agent something about the device without starting a turn, as the headset does. An
-   * update with the same `contextId` as an earlier one replaces it.
+   * Tells the agent something without starting a turn, as the phone does when it connects and when
+   * sir opens or closes its camera, and as the headset does when it connects and while sir points
+   * at something. An update with the same `contextId` as an earlier one replaces it.
    */
   async sendContextualUpdate(text: string, contextId?: string): Promise<void> {
     await this.strategy.sendContextualUpdate(text, contextId);

@@ -7,6 +7,7 @@ import { getInternetOfThingsAgent } from './internet-of-things/agent.js';
 import { getReflectionAgent } from './reflection/agent.js';
 import { getShoppingListAgent } from './shopping/agents.js';
 import { getTodoListAgent } from './todo-list/agent.js';
+import { getVisionAgent } from './vision/agents.js';
 import { getVisualizeAgent } from './visualize/agent.js';
 import { getWeatherAgent } from './weather/agent.js';
 import { getWebResearchAgent } from './web-research/agent.js';
@@ -27,6 +28,7 @@ export * from './reflection/index.js';
 export * from './shopping/index.js';
 export * from './synapse/index.js';
 export * from './todo-list/index.js';
+export * from './vision/index.js';
 export * from './visualize/index.js';
 export * from './weather/index.js';
 export * from './web-research/index.js';
@@ -46,5 +48,6 @@ export async function getPublicAgents() {
     getWebResearchAgent(),
     getReflectionAgent(),
     getVisualizeAgent(),
+    getVisionAgent(),
   ]);
 }

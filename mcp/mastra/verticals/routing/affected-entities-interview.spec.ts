@@ -50,13 +50,16 @@ const templateRequestSchema = z.object({ template: z.string() });
 
 const HOME_ASSISTANT_ENV = ['HEY_JARVIS_HOME_ASSISTANT_URL', 'HEY_JARVIS_HOME_ASSISTANT_TOKEN'] as const;
 
+/** Everything else a plan has to write out, left empty: no answers, and nothing about a photo. */
+const NOTHING_ELSE_PLANNED = { answers: [], dismissedPhotoIds: [], photosToAskAbout: [], awaitsPhoto: false };
+
 /** The planner: one task for the Internet of Things agent, answered as a command. */
 function scriptedPlanner() {
   return createScriptedModel(() => ({
     text: JSON.stringify({
       responseStyle: 'command',
       tasks: [{ id: 'lights', agentId: 'internetOfThings', prompt: REQUEST, needs: '' }],
-      answers: [],
+      ...NOTHING_ELSE_PLANNED,
     }),
   }));
 }
@@ -308,6 +311,7 @@ describe('a lamp chosen by answering the question that asked which', () => {
           text: JSON.stringify({
             responseStyle: 'command',
             tasks: [],
+            ...NOTHING_ELSE_PLANNED,
             answers: [{ questionId: waitingQuestionId, answer: CHOICE }],
           }),
         };
@@ -316,7 +320,7 @@ describe('a lamp chosen by answering the question that asked which', () => {
         text: JSON.stringify({
           responseStyle: 'command',
           tasks: [{ id: 'lamp', agentId: 'internetOfThings', prompt: 'Turn on a lamp.', needs: '' }],
-          answers: [],
+          ...NOTHING_ELSE_PLANNED,
         }),
       };
     });

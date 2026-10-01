@@ -180,13 +180,29 @@ export interface JarvisSession {
   setTyping(typing: boolean): void;
   /**
    * Tells the agent something it should know without answering it — what the user is pointing at,
-   * say — as a contextual update. Sent at once while connected. Before that, the latest update for
-   * each `contextId` waits for the summoning under way and goes the moment it connects; whatever is
+   * or that the phone has a camera button — as a contextual update, which takes no turn. Sent at
+   * once while connected. Before that, the latest update for each `contextId`, and every update
+   * without one, waits for the summoning under way and goes the moment it connects; whatever is
    * still waiting when it ends is dropped, and with no summoning under way nothing is kept. The
    * server keeps only the newest update for a context id, so a holder that says the same kind of
    * thing again says it under the same one.
    */
   sendContextualUpdate(text: string, contextId?: string): void;
+  /** Says the user is still there without saying anything (sendUserActivity); ignored unless connected. */
+  sendUserActivity(): void;
+  /**
+   * The ElevenLabs id of the conversation under way (`conv_…`), or `undefined` unless that
+   * summoning is connected. It is the SDK's own `getId()`, read once, when the conversation was
+   * handed over — by then it is final over either transport — and it is for the phone's camera
+   * button, which gives it to the Jarvis server so the server can ask ElevenLabs whether the
+   * conversation is really live before it opens a slot for a photo.
+   *
+   * Ask for it at the moment it is needed rather than keeping it: an ended conversation's id is
+   * never returned, and neither is anything that is not an ElevenLabs conversation id. Over WebRTC
+   * the SDK reads the id out of the LiveKit room's name, and where the name holds none it gives the
+   * name itself, or a `room_<ms>` of its own making — neither of which ElevenLabs would recognise.
+   */
+  liveConversationId(): string | undefined;
   readonly phase: SessionPhase;
   /** What the sphere follows: the greeting envelope while greeting, his live voice after, silence otherwise. */
   readonly voice: JarvisVoice;
@@ -212,6 +228,9 @@ export interface SessionConversation {
   setMicMuted(muted: boolean): void;
   sendUserMessage(text: string): void;
   sendContextualUpdate(text: string, options?: { contextId?: string }): void;
+  sendUserActivity(): void;
+  /** The conversation's ElevenLabs id, as the SDK knows it (see {@link JarvisSession.liveConversationId}). */
+  getId(): string;
   getInputVolume(): number;
   getOutputVolume(): number;
   getOutputByteFrequencyData(): Uint8Array;

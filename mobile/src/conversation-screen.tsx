@@ -16,6 +16,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, ToastAndroid, View } from 'react-native';
 import { roomOfConversation } from './agent-audio-track';
 import { createAssistLaunchClaim } from './assist-link';
+import { CameraButton } from './camera-button';
 import { ConversationFrame, useConversationSheet } from './conversation-sheet';
 import { JarvisHologram } from './jarvis-hologram';
 import { followJarvisVoice, useJarvisVoice } from './jarvis-voice';
@@ -25,10 +26,16 @@ import { useSparkDensity } from './spark-density';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
 import { theme } from './theme';
 import { TypedMessageField } from './typed-message-field';
+import { usePhotoSending } from './use-photo-sending';
 import { WrittenReplyLine } from './written-reply-line';
 
 interface ConversationScreenProps {
   settings: ElevenLabsSettings;
+  /**
+   * Sir's Jarvis server, where a photo is sent, or `undefined` when he has not given this phone one —
+   * in which case there is no camera here at all. See `jarvis-server.ts`.
+   */
+  serverAddress: string | undefined;
   onEditSettings: () => void;
   /**
    * Summoned by the assistant gesture on a phone: drawn in the bottom sheet sample mode uses, over
@@ -79,6 +86,41 @@ function showsTypedField({ canType, gone, textMode }: { canType: boolean; gone: 
 }
 
 /**
+ * Whether the camera is beside him: while there is a conversation to send a photo into, and somewhere
+ * this phone could send it — which takes the Jarvis server's address. Not during the greeting, whose
+ * microphone is still muted, and not while a phone is held in writing, where the keyboard has pushed
+ * the field up to where the button would be.
+ *
+ * **And not while he is busy with something else.** The photo arrives as a turn of sir's, and a turn
+ * in the middle of one replaces it: a request still being worked on is cancelled, and an answer still
+ * being spoken is cut off. Nor while the camera is open or a photo is on its way — one at a time.
+ */
+function showsCameraButton({
+  canSendPhotos,
+  connected,
+  gone,
+  settled,
+  greeting,
+  textMode,
+  thinking,
+  speaking,
+  busy,
+}: {
+  canSendPhotos: boolean;
+  connected: boolean;
+  gone: boolean;
+  settled: boolean;
+  greeting: boolean;
+  textMode: boolean;
+  thinking: boolean;
+  speaking: boolean;
+  busy: boolean;
+}) {
+  const inFront = canSendPhotos && connected && !gone && settled && !greeting && !(ON_A_PHONE && textMode);
+  return inFront && !(thinking || speaking || busy);
+}
+
+/**
  * Whether a summoning is under way — greeting, connecting or talking — and so is shown again rather
  * than replaced when he is summoned once more.
  */
@@ -108,6 +150,14 @@ function isUnderWay(phase: SessionPhase): boolean {
  * The one thing that does put something on the screen is a field to type into, under him, in a
  * browser — see `typed-message-field.tsx`. It is the exception that keeps the rule: there is still
  * nothing to read, only somewhere to write.
+ *
+ * **The other is a camera, beside him, and it is faint.** Showing Jarvis a receipt or a label is
+ * something you decide to do rather than something he can guess, so it needs a door — but only one
+ * you can find, never one you have to read: a small outline at the sphere's lower right, at half
+ * strength, there only while he is connected and listening. It is the only way to show him anything:
+ * he cannot open the camera himself, only suggest the button (`use-photo-sending.ts`). A phone that
+ * has not been told where sir's Jarvis server is has no door at all, since there is nowhere to send
+ * what it would take.
  *
  * **On a phone it is there only when asked for.** It used to sit under him as an empty bar on
  * every summoning — something on the assistant's screen that was not him, for a keyboard nobody
@@ -149,6 +199,7 @@ function isUnderWay(phase: SessionPhase): boolean {
  */
 export function ConversationScreen({
   settings,
+  serverAddress,
   onEditSettings,
   inSheet = false,
   inAssistantWindow = false,
@@ -196,7 +247,8 @@ export function ConversationScreen({
    * interruptions, the listening lattice's score. What this screen hands it is only what is this
    * app's: its name in the history, its own check that a room is a `Room` of the `livekit-client`
    * it bundles (`agent-audio-track.ts`), how it listens to his track (`jarvis-voice.ts`, natively on
-   * Android and through Web Audio in a browser), and its text mode's rule for his written lines.
+   * Android and through Web Audio in a browser), and its text mode's rule for his written lines. The
+   * camera is not among them: it only speaks into the conversation, below.
    */
   const conversation = useJarvisSession({
     settings,
@@ -208,6 +260,13 @@ export function ConversationScreen({
       source === 'session' ? reportSessionFailure(message) : reportProblem(message),
   });
   const { phase, status, writtenReply, setTyping, summon, sendText, hangUp } = conversation;
+
+  /** The faint camera beside him, and the photo it sends into this conversation. See `use-photo-sending.ts`. */
+  const { canSendPhotos, cameraBusy, sendJarvisAPhoto } = usePhotoSending({
+    inAssistantWindow,
+    serverAddress,
+    conversation,
+  });
   const textMode = conversation.typing;
   const liveVoice = useJarvisVoice(conversation.voice);
   const { frameRate, buildMilliseconds, particleShare, provenShare, startingShare } = useSparkDensity();
@@ -570,6 +629,23 @@ export function ConversationScreen({
           autoFocus={ON_A_PHONE}
         />
       ) : null}
+
+      {/* The camera, beside him. See `showsCameraButton`. */}
+      <CameraButton
+        visible={showsCameraButton({
+          canSendPhotos,
+          connected: status === 'connected',
+          gone,
+          settled,
+          greeting: conversation.greeting,
+          textMode,
+          thinking: conversation.thinking,
+          speaking: conversation.mode === 'speaking',
+          busy: cameraBusy,
+        })}
+        hologramSize={hologramSize}
+        onPress={sendJarvisAPhoto}
+      />
 
       {ON_A_PHONE ? null : (
         <Pressable

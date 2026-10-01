@@ -280,9 +280,18 @@ export interface SentContext {
 
 /** A conversation the SDK hands over, recording what the session does with it. */
 export interface FakeConversation extends SessionConversation {
+  /**
+   * What `getId()` answers: `conv_fake1` for the first dial, `conv_fake2` for the second and so on,
+   * so a spec can tell one summoning's conversation from the next. Set it before `connect()` to be
+   * what the session reads, since the session reads it once, when the conversation is handed over.
+   */
+  id: string;
   muting: boolean[];
   sent: string[];
+  /** What the agent was told without a turn being taken. */
   contextualUpdates: SentContext[];
+  /** How many times the user was said to be still there. */
+  userActivity: number;
   endSessions: number;
   inputVolume: number;
   outputVolume: number;
@@ -328,7 +337,10 @@ export interface FakeDial {
   callClientTool(name: string, parameters: unknown): Promise<ClientToolAnswer>;
 }
 
-function createFakeDial(options: SessionOptions): { dial: FakeDial; promise: Promise<SessionConversation> } {
+function createFakeDial(
+  options: SessionOptions,
+  dialNumber: number,
+): { dial: FakeDial; promise: Promise<SessionConversation> } {
   const started = deferred<SessionConversation>();
   let status = 'connecting';
   let slowEnding = false;
@@ -357,8 +369,11 @@ function createFakeDial(options: SessionOptions): { dial: FakeDial; promise: Pro
   };
 
   const conversation: FakeConversation = {
+    id: `conv_fake${dialNumber}`,
     muting: [],
     sent: [],
+    contextualUpdates: [],
+    userActivity: 0,
     endSessions: 0,
     inputVolume: 0.3,
     outputVolume: 0.2,
@@ -381,11 +396,14 @@ function createFakeDial(options: SessionOptions): { dial: FakeDial; promise: Pro
     sendUserMessage: (text) => {
       conversation.sent.push(text);
     },
-    contextualUpdates: [],
     sendContextualUpdate: (text, contextOptions) => {
       const contextId = contextOptions?.contextId;
       conversation.contextualUpdates.push(contextId === undefined ? { text } : { text, contextId });
     },
+    sendUserActivity: () => {
+      conversation.userActivity++;
+    },
+    getId: () => conversation.id,
     getInputVolume: () => conversation.inputVolume,
     getOutputVolume: () => conversation.outputVolume,
     getOutputByteFrequencyData: () => new Uint8Array(1024).fill(40),
@@ -442,7 +460,7 @@ function createFakeDial(options: SessionOptions): { dial: FakeDial; promise: Pro
 export function createFakeSdk() {
   const dials: FakeDial[] = [];
   const startSession: StartSession = (options) => {
-    const { dial, promise } = createFakeDial(options);
+    const { dial, promise } = createFakeDial(options, dials.length + 1);
     dials.push(dial);
     return promise;
   };

@@ -40,6 +40,13 @@ import { type ConversationMessage, SAYING_NOTHING, type WrittenReply } from './w
 const GREETING_CHECK_MS = 50;
 
 /**
+ * What an ElevenLabs conversation id looks like — the pattern the SDK itself looks for in a LiveKit
+ * room's name. Anything else the SDK may call a conversation (the room's name, or its own
+ * `room_<ms>`) is not one, and `liveConversationId` gives no id rather than that.
+ */
+const ELEVENLABS_CONVERSATION_ID = /^conv_[A-Za-z0-9]+$/;
+
+/**
  * How long after a dropped connection the page is swept a second time for the SDK's orphaned
  * `<audio>` elements. LiveKit ends the remote tracks as it tears the room down, which may finish
  * after the SDK has already reported the disconnect.
@@ -109,6 +116,11 @@ interface Attempt<Timer> {
   /** Whether `startSession` has been called and has not yet resolved or rejected. */
   starting: boolean;
   conversation?: SessionConversation;
+  /**
+   * The conversation's id as the SDK gave it when the conversation was adopted, which is after the
+   * SDK has finished connecting and so final (see `JarvisSession.liveConversationId`).
+   */
+  conversationId?: string;
   room?: AgentTrackRoom;
   stopFollowing?: () => void;
   callAudio: CallAudioHolder;
@@ -120,10 +132,17 @@ interface Attempt<Timer> {
   deadline?: Timer;
   greetingCheck?: Timer;
   /**
-   * Contextual updates waiting for the conversation to connect: the latest text for each context
-   * id, in the order each id was last said, starting with the device's own context.
+   * Contextual updates waiting for the conversation to connect, in the order they were said,
+   * starting with the device's own context: the latest for each context id, and every one said
+   * without an id, since the server keeps each of those too.
    */
-  pendingContext: Map<string | undefined, string>;
+  pendingContext: PendingContext[];
+}
+
+/** A contextual update waiting for the conversation to connect, as `sendContextualUpdate` was handed it. */
+interface PendingContext {
+  text: string;
+  contextId?: string;
 }
 
 /**
@@ -530,7 +549,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     }
     answerGreeting(current);
     stopTimers(current);
-    current.pendingContext.clear();
+    current.pendingContext = [];
     current.stopFollowing?.();
     current.stopFollowing = undefined;
     liveVoice = createLiveVoice(sdkReaders);
@@ -595,12 +614,12 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
    */
   const sayPendingContext = (current: Attempt<Timer>) => {
     const conversation = current.conversation;
-    if (!conversation || current.closed || current.status !== 'connected' || current.pendingContext.size === 0) {
+    if (!conversation || current.closed || current.status !== 'connected' || current.pendingContext.length === 0) {
       return;
     }
-    const pending = [...current.pendingContext];
-    current.pendingContext.clear();
-    for (const [contextId, text] of pending) {
+    const pending = current.pendingContext;
+    current.pendingContext = [];
+    for (const { text, contextId } of pending) {
       sayContext(conversation, text, contextId);
     }
   };
@@ -609,6 +628,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
 
   const adopt = (current: Attempt<Timer>, conversation: SessionConversation) => {
     current.conversation = conversation;
+    current.conversationId = conversation.getId();
     current.microphoneMuted = false;
     if (current.callAudio === 'greeting') {
       // The conversation has the call's audio now, and its ending lets go of it.
@@ -1095,7 +1115,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       status: 'disconnected',
       mode: 'listening',
       microphoneMuted: false,
-      pendingContext: new Map(deviceContext ? [[DEVICE_CONTEXT_ID, deviceContext]] : []),
+      pendingContext: deviceContext ? [{ text: deviceContext, contextId: DEVICE_CONTEXT_ID }] : [],
     };
     attempt = current;
     startAfresh(textOnly);
@@ -1161,9 +1181,35 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
         sayContext(current.conversation, update, contextId);
         return;
       }
-      // Moved to the end, so what is said on connecting keeps the order it was last said in.
-      current.pendingContext.delete(contextId);
-      current.pendingContext.set(contextId, update);
+      // An update for an id that is already waiting replaces it, and goes to the end, so what is said
+      // on connecting keeps the order it was last said in. One without an id replaces nothing.
+      current.pendingContext = [
+        ...current.pendingContext.filter((waiting) => contextId === undefined || waiting.contextId !== contextId),
+        contextId === undefined ? { text: update } : { text: update, contextId },
+      ];
+    },
+    sendUserActivity: () => {
+      const current = openAttempt();
+      if (!current?.conversation || current.status !== 'connected') {
+        return;
+      }
+      try {
+        current.conversation.sendUserActivity();
+      } catch {
+        // The session went between the status and this; its ending says so for itself.
+      }
+    },
+    liveConversationId: () => {
+      const current = openAttempt();
+      // Connected, as for a typed line: an attempt still dialling has no conversation to name yet,
+      // and one that has ended, or is ending, is not live — so its id is never given.
+      if (!current?.conversation || current.status !== 'connected') {
+        return undefined;
+      }
+      const { conversationId } = current;
+      return conversationId !== undefined && ELEVENLABS_CONVERSATION_ID.test(conversationId)
+        ? conversationId
+        : undefined;
     },
     setTyping: (next) => {
       typing = next;

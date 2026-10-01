@@ -13,27 +13,29 @@ import '@elevenlabs/react-native';
 import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import type { ElevenLabsSettings } from 'hologram';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { useAnswerTheWatch } from './answer-the-watch';
 import { isAssistLaunch } from './assist-link';
 import { ConversationScreen } from './conversation-screen';
+import { type JarvisServerAddressChange, loadJarvisServerAddress, saveJarvisServerAddress } from './jarvis-server';
 import { firstOnboardingStep } from './onboarding';
 import { OnboardingScreen } from './onboarding-screen';
 import { hasWalkedOnboarding, rememberOnboardingWalked } from './onboarding-storage';
+import { readTryingAgain } from './read-again';
 import { SampleScreen } from './sample-screen';
 import { SettingsScreen } from './settings-screen';
 import { loadElevenLabsSettings, saveElevenLabsSettings } from './settings-storage';
 import { theme } from './theme';
 
 /**
- * How hard to try to read the settings before giving up and asking for them again.
- *
- * Only a read that *failed* is retried — settings that are simply not there are answered the first
- * time. See the effect that uses this.
+ * The Jarvis server's address to use: the one read, or none — an address that still cannot be read
+ * after `readTryingAgain` has tried is no address, so the camera stays off rather than guessing.
  */
-const READ_SETTINGS_ATTEMPTS = 4;
-const READ_SETTINGS_AGAIN_MS = 200;
+async function readJarvisServerAddress(stillWanted: () => boolean): Promise<string | undefined> {
+  const stored = await readTryingAgain(loadJarvisServerAddress, stillWanted);
+  return stored?.kind === 'address' ? stored.address : undefined;
+}
 
 /** Which screen is showing. */
 type Screen = 'loading' | 'sample' | 'onboarding' | 'settings' | 'conversation';
@@ -98,6 +100,14 @@ export interface AppProps {
 export function App({ summoned = false, showing }: AppProps) {
   const [settings, setSettings] = useState<ElevenLabsSettings | undefined>(undefined);
   /**
+   * Where sir's Jarvis server is, if he has told this phone: where the camera button sends a photo.
+   *
+   * Beside the settings rather than in them: it is not ElevenLabs', and the settings are what the
+   * watch is handed (`useAnswerTheWatch` below), which has no camera to use it with. See
+   * `jarvis-server.ts`.
+   */
+  const [serverAddress, setServerAddress] = useState<string | undefined>(undefined);
+  /**
    * Whether the first-run tour is already behind this install.
    *
    * True until told otherwise, so that nothing shows a tour in the frame before the answer
@@ -121,38 +131,32 @@ export function App({ summoned = false, showing }: AppProps) {
 
   /**
    * Reads the settings, and tries again if the *reading* failed rather than the settings being
-   * absent.
-   *
-   * The two are not the same thing and used to be answered the same way. A read that throws in the
-   * assistant's own window — a surface the system has only just created, where a native module can
-   * still be coming up — would land here as "nothing configured", and a summoned Jarvis would open
-   * sample mode with credentials sitting in the keystore the whole time. That is what the blank
-   * sheet was. A handful of attempts a fifth of a second apart costs nothing and covers it; if they
-   * all fail the settings screen opens, which is the right answer for a keystore that genuinely
-   * cannot be read any more.
+   * absent — see `read-again.ts` for the blank sheet that answering both the same way caused. If
+   * every attempt fails the settings screen opens, which is the right answer for a keystore that
+   * genuinely cannot be read any more.
    */
   useEffect(() => {
     let wanted = true;
+    const stillWanted = () => wanted;
     void (async () => {
       // Started here and awaited below: the tour flag is one read that never throws, and making
-      // it wait its turn behind the retries above would hold the whole app on a spinner.
+      // it wait its turn behind the retries would hold the whole app on a spinner. The Jarvis
+      // server's address is read beside the settings, and retried beside them, since the two fail
+      // together; it is read before the conversation opens, so the first one already knows whether
+      // there is a camera to offer.
       const walking = hasWalkedOnboarding();
+      const readingServerAddress = readJarvisServerAddress(stillWanted);
 
-      for (let attempt = 0; attempt < READ_SETTINGS_ATTEMPTS && wanted; attempt++) {
-        const stored = await loadElevenLabsSettings();
-        if (stored.kind === 'settings') {
-          setSettings(stored.settings);
-          break;
-        }
-        if (stored.kind === 'nothing') {
-          break;
-        }
-        await new Promise((wait) => setTimeout(wait, READ_SETTINGS_AGAIN_MS));
+      const stored = await readTryingAgain(loadElevenLabsSettings, stillWanted);
+      if (stored?.kind === 'settings') {
+        setSettings(stored.settings);
       }
 
       const walked = await walking;
+      const storedServerAddress = await readingServerAddress;
       if (wanted) {
         setHasWalkedTour(walked);
+        setServerAddress(storedServerAddress);
         setIsLoaded(true);
       }
     })();
@@ -160,6 +164,35 @@ export function App({ summoned = false, showing }: AppProps) {
       wanted = false;
     };
   }, []);
+
+  /**
+   * Reads the Jarvis server's address again for every summoning after the first.
+   *
+   * **This window may not be where it was changed.** The assistant's window is kept between
+   * summonings, with its own copy of everything read when it was made, and the address is as often
+   * set in the app's own window — the one the launcher opens, where the settings are most often
+   * reached. Read once, an address saved there never reached the window Jarvis is summoned into, and
+   * one cleared there went on being offered from it. A summoning is a new `showing` in the
+   * assistant's window and a new launch URL in the app's own, so either is read as one. The settings
+   * stay as they were read, as they always have: this is about the address, which only the camera
+   * uses.
+   */
+  const seenSummoning = useRef({ showing, launchUrl });
+  useEffect(() => {
+    if (showing === seenSummoning.current.showing && launchUrl === seenSummoning.current.launchUrl) {
+      return;
+    }
+    seenSummoning.current = { showing, launchUrl };
+    let wanted = true;
+    void readJarvisServerAddress(() => wanted).then((storedServerAddress) => {
+      if (wanted) {
+        setServerAddress(storedServerAddress);
+      }
+    });
+    return () => {
+      wanted = false;
+    };
+  }, [showing, launchUrl]);
 
   // Summoned before there is anything to summon: show the hologram rather than a
   // form. Someone who pressed the assistant button asked for Jarvis, and a
@@ -177,6 +210,22 @@ export function App({ summoned = false, showing }: AppProps) {
     setSettings(saved);
     setIsEditingSettings(false);
     void saveElevenLabsSettings(saved);
+  };
+
+  /**
+   * The settings screen saves the Jarvis server's address with the rest, when sir changed it — and
+   * only then, so an address that could not be read is never overwritten by the empty field that
+   * stood in for it. The tour never asks for one.
+   */
+  const saveSettingsScreen = (
+    saved: ElevenLabsSettings,
+    serverAddressChange: JarvisServerAddressChange | undefined,
+  ) => {
+    if (serverAddressChange) {
+      setServerAddress(serverAddressChange.address);
+      void saveJarvisServerAddress(serverAddressChange.address);
+    }
+    save(saved);
   };
 
   /**
@@ -230,7 +279,8 @@ export function App({ summoned = false, showing }: AppProps) {
         {screen === 'settings' ? (
           <SettingsScreen
             settings={settings}
-            onSave={save}
+            serverAddress={serverAddress}
+            onSave={saveSettingsScreen}
             onCancel={settings ? () => setIsEditingSettings(false) : undefined}
             onTrySample={settings ? undefined : () => setIsSampling(true)}
           />
@@ -238,6 +288,7 @@ export function App({ summoned = false, showing }: AppProps) {
         {screen === 'conversation' && settings ? (
           <ConversationScreen
             settings={settings}
+            serverAddress={serverAddress}
             onEditSettings={() => setIsEditingSettings(true)}
             inSheet={conversationInSheet}
             inAssistantWindow={summoned}

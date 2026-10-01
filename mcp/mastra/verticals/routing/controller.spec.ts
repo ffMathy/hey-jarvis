@@ -590,3 +590,32 @@ describe('a poll that names a session no request was started in', () => {
     expect(snapshot.inProgress).toEqual([]);
   });
 });
+
+describe('a request that joined the one still running', () => {
+  it('is finished only once both are', () => {
+    const progress = new RoutingProgress();
+    progress.handle({ type: 'delegation_start', delegationId: 'weather-step', taskId: 'weather', agentId: 'weather' });
+    progress.join('and turn on the lights');
+
+    progress.handle({ type: 'finished' });
+    expect(progress.isFinished()).toBe(false);
+    expect(buildSnapshot(progress).inProgress).toEqual(['weather']);
+
+    progress.handle({ type: 'finished' });
+    expect(progress.isFinished()).toBe(true);
+  });
+
+  it('is what a later request is judged against', () => {
+    const progress = new RoutingProgress();
+    progress.join('and turn on the lights');
+
+    expect(progress.userQuery).toBe('and turn on the lights');
+  });
+
+  it('reports a goodbye or a cancellation as such', () => {
+    const progress = new RoutingProgress();
+    progress.conversationControl = 'cancelled';
+
+    expect(buildSnapshot(progress).conversationControl).toBe('cancelled');
+  });
+});

@@ -759,6 +759,25 @@ export function filterEntities(
   });
 }
 
+const entitySummariesSchema = z.array(
+  z.object({ id: z.string(), name: z.string(), area: z.string().nullable(), state: z.string() }),
+);
+
+/**
+ * Every entity in a domain, or in the house, with only its id, name, area and state.
+ *
+ * Shared by `findEntities` and the home commands carried out without the agent (see
+ * `home-commands.ts`), which put the same list in front of a classifier.
+ */
+export async function listEntities(domain?: string): Promise<EntitySummary[]> {
+  const entityIds = await fetchEntityIds(domain);
+  return await renderInBatches(entityIds, ENTITY_SUMMARY_BATCH_SIZE, async (batch) => {
+    const response = await callHomeAssistantApi('template', 'POST', { template: buildEntitySummaryTemplate(batch) });
+    const parsed: unknown = typeof response === 'string' ? JSON.parse(response) : response;
+    return entitySummariesSchema.parse(Array.isArray(parsed) ? parsed : []);
+  });
+}
+
 // Tool to find entities by domain, area and name, without their attributes
 export const findEntities = createTool({
   id: 'findEntities',
@@ -785,15 +804,7 @@ export const findEntities = createTool({
       .describe('How many entities matched, which is more than were returned if the list was cut short'),
   }),
   execute: async (inputData) => {
-    const entityIds = await fetchEntityIds(inputData.domain ? normalizeDomain(inputData.domain) : undefined);
-    const entities = await renderInBatches(entityIds, ENTITY_SUMMARY_BATCH_SIZE, async (batch) => {
-      const response = await callHomeAssistantApi('template', 'POST', { template: buildEntitySummaryTemplate(batch) });
-      const parsed: unknown = typeof response === 'string' ? JSON.parse(response) : response;
-
-      // The template emits exactly the EntitySummary shape, and the outputSchema validates it.
-      return Array.isArray(parsed) ? (parsed as EntitySummary[]) : [];
-    });
-
+    const entities = await listEntities(inputData.domain ? normalizeDomain(inputData.domain) : undefined);
     const matches = filterEntities(entities, inputData);
     return { entities: matches.slice(0, MAX_ENTITIES_FOUND), totalMatches: matches.length };
   },

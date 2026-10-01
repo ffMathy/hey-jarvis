@@ -6,9 +6,10 @@ export interface ConversationStrategy {
   disconnect(): Promise<void>;
   sendMessage(text: string): Promise<string>;
   /**
-   * Background the agent keeps without it starting a turn — what a device says about itself once
-   * connected, such as the headset saying it lights up what Jarvis works on. An update with the
-   * same `contextId` as an earlier one replaces it, the way the headset's pointing updates do.
+   * Background the agent keeps without it starting a turn — what a device tells it about itself
+   * and about sir, such as the phone saying it has a camera button or that sir has opened the
+   * camera to send a photo, or the headset saying it lights up what Jarvis works on. An update with
+   * the same `contextId` as an earlier one replaces it, the way the headset's pointing updates do.
    */
   sendContextualUpdate(text: string, contextId?: string): Promise<void>;
   getMessages(): ServerMessage[];

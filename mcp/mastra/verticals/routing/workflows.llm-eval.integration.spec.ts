@@ -7,6 +7,9 @@ import { createAgent } from '../../utils/index.js';
 import { isOllamaAvailable } from '../../utils/providers/ollama-provider.js';
 import { getCodingAgent } from '../coding/agent.js';
 import { getReflectionAgent } from '../reflection/agent.js';
+import { getShoppingListAgent } from '../shopping/agents.js';
+import { getVisionAgent } from '../vision/agents.js';
+import type { WaitingPhoto } from '../vision/photos.js';
 import { getVisualizeAgent } from '../visualize/agent.js';
 import { getWebResearchAgent } from '../web-research/agent.js';
 import type { PlannedChain } from './plan.js';
@@ -147,8 +150,17 @@ async function createStandInAgent(id: string, description: string): Promise<Agen
   });
 }
 
-/** Asks the real planner instructions for a plan, with any questions still waiting on the user. */
-async function planWithAnswers(userQuery: string, agents: Agent[], openQuestions: OpenQuestion[] = []) {
+/**
+ * Asks the real planner instructions for a plan, with any questions still waiting on the user, any
+ * photos he sent that nobody has looked at yet, and any the request names that have been looked at.
+ */
+async function planWithAnswers(
+  userQuery: string,
+  agents: Agent[],
+  openQuestions: OpenQuestion[] = [],
+  waitingPhotos: WaitingPhoto[] = [],
+  namedPhotos: WaitingPhoto[] = [],
+) {
   const planner = await createAgent({
     id: 'routing-planner-under-test',
     name: 'RoutingPlannerUnderTest',
@@ -156,7 +168,7 @@ async function planWithAnswers(userQuery: string, agents: Agent[], openQuestions
     memory: undefined,
   });
 
-  const response = await planner.generate(plannerPrompt(userQuery, openQuestions), {
+  const response = await planner.generate(plannerPrompt(userQuery, openQuestions, waitingPhotos, namedPhotos), {
     structuredOutput: { schema: planSchema },
     toolChoice: 'none',
   });
@@ -168,6 +180,9 @@ async function planWithAnswers(userQuery: string, agents: Agent[], openQuestions
   return {
     chains: chainsFromTasks(response.object.tasks, new Set(agents.map((agent) => agent.id))),
     answers: response.object.answers,
+    dismissedPhotoIds: response.object.dismissedPhotoIds,
+    photosToAskAbout: response.object.photosToAskAbout,
+    awaitsPhoto: response.object.awaitsPhoto,
   };
 }
 
@@ -202,6 +217,12 @@ const WAITING_QUESTION: OpenQuestion = {
   toolCallId: 'call-1',
   answerField: 'userAnswer',
 };
+
+/** A photo sir sent four minutes ago that nobody has looked at, as the planner is shown it. */
+const WAITING_PHOTO: WaitingPhoto = { photoId: 'photo3', keptAt: Date.now() - 4 * 60_000 };
+
+/** A photo sir has only just sent, as the planner is shown it when the phone reports it. */
+const JUST_SENT_PHOTO: WaitingPhoto = { photoId: 'photo3', keptAt: Date.now() - 2_000 };
 
 const IOT_DESCRIPTION = `# Purpose
 Control and monitor Internet of Things (IoT) devices. Use this agent to **turn devices on/off**, **adjust settings**, **query device states**, **get user locations via their phones**, and **view historical changes**.
@@ -314,6 +335,56 @@ It must NOT delegate to webResearch: the ideas are about Jarvis's own code, whic
     );
   }, 120000);
 
+  // The voice agent names a photo sir has shown it as "(photo photo3)", and the vision agent's own
+  // description is all that tells the planner where that goes — so these plan against the real
+  // vision and shopping list agents rather than stand-ins.
+  it('sends a question about a photo to the vision agent, with the photo id in its prompt', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    const chains = await plan('What is the total on this receipt? (photo photo3)', [
+      await getVisionAgent(),
+      await getShoppingListAgent(),
+      await createStandInAgent('weather', WEATHER_DESCRIPTION),
+    ]);
+
+    const delegations = chains.flatMap((chain) => chain.delegations);
+    expect(delegations.map((delegation) => delegation.agentId)).toEqual(['vision']);
+    // The vision agent sees its own prompt and not the request, so without the id it would look at
+    // whichever photo came last.
+    expect(delegations[0]?.prompt).toContain('photo3');
+  }, 120000);
+
+  it('reads the receipt in the photo before adding what is on it to the shopping list', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    const userQuery = 'Add what is on this receipt to my shopping list (photo photo3)';
+    const chains = await plan(userQuery, [
+      await getVisionAgent(),
+      await getShoppingListAgent(),
+      await createStandInAgent('weather', WEATHER_DESCRIPTION),
+    ]);
+
+    expect(chains.map((chain) => chain.delegations.map((delegation) => delegation.agentId))).toEqual([
+      ['vision', 'shoppingList'],
+    ]);
+    expect(chains[0]?.delegations[0]?.prompt).toContain('photo3');
+
+    await assertPlanCriteria(
+      chains,
+      userQuery,
+      `The plan should:
+1. Delegate to vision to read the items on the receipt in photo3, with "photo3" in its prompt
+2. Delegate to shoppingList AFTER it, IN THE SAME CHAIN, to add the items vision reads off the receipt
+
+shoppingList in a chain of its own would be wrong: it would run without knowing what is on the receipt, and would have to invent the items.`,
+      0.8,
+    );
+  }, 120000);
+
   it('hands a reply to a waiting question back as its answer, rather than planning it as an errand', async () => {
     if (!ollamaAvailable) {
       return;
@@ -347,6 +418,184 @@ It must NOT delegate to webResearch: the ideas are about Jarvis's own code, whic
     );
 
     expect(answers).toEqual([]);
+    expect(chains.flatMap((chain) => chain.delegations.map((delegation) => delegation.agentId))).toEqual(['weather']);
+  }, 120000);
+
+  // A photo sir sent that nobody has looked at yet is brought up in a later conversation, and his
+  // reply says what to do with it (see `routing/waiting-photos.ts`). The reply names no photo — Jarvis
+  // quotes what he was asked — so the waiting photo listed after it is all that says which one.
+  it('plans a reply about a waiting photo as the vision agent reading it, then the work on what it shows', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    const userQuery = "Answer to 'what would you like done with the photo?': add everything on it to the shopping list";
+    const { chains, answers, dismissedPhotoIds } = await planWithAnswers(
+      userQuery,
+      [await getVisionAgent(), await getShoppingListAgent(), await createStandInAgent('weather', WEATHER_DESCRIPTION)],
+      [],
+      [WAITING_PHOTO],
+    );
+
+    // Never handed back as an answer: nothing is suspended on a photo, so an answer would go nowhere.
+    expect(answers).toEqual([]);
+    expect(dismissedPhotoIds).toEqual([]);
+    expect(chains.map((chain) => chain.delegations.map((delegation) => delegation.agentId))).toEqual([
+      ['vision', 'shoppingList'],
+    ]);
+    expect(chains[0]?.delegations[0]?.prompt).toContain('photo3');
+
+    await assertPlanCriteria(
+      chains,
+      userQuery,
+      `The user is replying about a photo he sent earlier, photo3, which nobody has looked at yet. The plan should:
+1. Delegate to vision to read everything on photo3, with "photo3" in its prompt
+2. Delegate to shoppingList AFTER it, IN THE SAME CHAIN, to add the items vision reads off the photo
+
+shoppingList in a chain of its own would be wrong: it would run without knowing what is on the photo, and would have to invent the items.`,
+      0.8,
+    );
+  }, 120000);
+
+  it('leaves a waiting photo alone when the request is about something else', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    const { chains, answers, dismissedPhotoIds } = await planWithAnswers(
+      'What is the weather in Copenhagen?',
+      [await getVisionAgent(), await getShoppingListAgent(), await createStandInAgent('weather', WEATHER_DESCRIPTION)],
+      [],
+      [WAITING_PHOTO],
+    );
+
+    expect(answers).toEqual([]);
+    expect(dismissedPhotoIds).toEqual([]);
+    expect(chains.flatMap((chain) => chain.delegations.map((delegation) => delegation.agentId))).toEqual(['weather']);
+  }, 120000);
+
+  // "Nothing" is the likeliest reply to being asked about a photo in a conversation about something
+  // else. It is not work and not an answer, and an empty plan without a dismissal is reported to sir
+  // as a request no agent could handle.
+  it('dismisses a waiting photo sir wants nothing done with, and plans nothing for it', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    const { chains, answers, dismissedPhotoIds } = await planWithAnswers(
+      "Answer to 'what would you like done with the photo?': nothing, never mind (photo photo3)",
+      [await getVisionAgent(), await getShoppingListAgent(), await createStandInAgent('weather', WEATHER_DESCRIPTION)],
+      [],
+      [WAITING_PHOTO],
+    );
+
+    expect(dismissedPhotoIds).toEqual(['photo3']);
+    expect(answers).toEqual([]);
+    expect(chains).toEqual([]);
+  }, 120000);
+
+  // The same reply to the question a look at a photo sent with nothing said ends on. That look marked
+  // the photo as looked at, so it is no longer waiting, and it is shown to the planner only because
+  // the request names it — under its own heading.
+  it('dismisses the photo Jarvis has just asked about when sir wants nothing done with it', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    const { chains, answers, dismissedPhotoIds } = await planWithAnswers(
+      "Answer to 'what would you like done with it?': nothing, never mind (photo photo3)",
+      [await getVisionAgent(), await getShoppingListAgent(), await createStandInAgent('weather', WEATHER_DESCRIPTION)],
+      [],
+      [],
+      [JUST_SENT_PHOTO],
+    );
+
+    expect(dismissedPhotoIds).toEqual(['photo3']);
+    expect(answers).toEqual([]);
+    expect(chains).toEqual([]);
+  }, 120000);
+
+  // A photo sent with nothing said: the phone reports it, and the voice agent routes a look at it.
+  // Jarvis says what it shows and then asks what sir would like done with it, which only happens if
+  // the plan names the photo in `photosToAskAbout` (see `buildClosingReport` in `workflows.ts`).
+  it('looks at a photo sent with nothing said, and marks it to ask sir about', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    const userQuery = 'He sent a photo without saying what he wants: look at it and say what it shows (photo photo3)';
+    const { chains, answers, dismissedPhotoIds, photosToAskAbout } = await planWithAnswers(
+      userQuery,
+      [await getVisionAgent(), await getShoppingListAgent(), await createStandInAgent('weather', WEATHER_DESCRIPTION)],
+      [],
+      [JUST_SENT_PHOTO],
+    );
+
+    expect(photosToAskAbout).toEqual(['photo3']);
+    expect(answers).toEqual([]);
+    expect(dismissedPhotoIds).toEqual([]);
+    // Only the look: what to do with it is sir's to say.
+    expect(chains.flatMap((chain) => chain.delegations.map((delegation) => delegation.agentId))).toEqual(['vision']);
+    expect(chains[0]?.delegations[0]?.prompt).toContain('photo3');
+
+    await assertPlanCriteria(
+      chains,
+      userQuery,
+      `The user sent photo3 without saying what he wants done with it. The plan should:
+1. Delegate to vision once, with "photo3" in its prompt, to say what the photo shows and what in it could be acted on (items, amounts, dates or text)
+
+It must NOT delegate to shoppingList or any other agent that acts on the photo: nobody has said what to do with it yet.`,
+      0.8,
+    );
+  }, 120000);
+
+  it('asks nothing about a photo sir said what to do with when he sent it', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    const { photosToAskAbout, awaitsPhoto } = await planWithAnswers(
+      'What is the total on this receipt? (photo photo3)',
+      [await getVisionAgent(), await getShoppingListAgent(), await createStandInAgent('weather', WEATHER_DESCRIPTION)],
+      [],
+      [JUST_SENT_PHOTO],
+    );
+
+    expect(photosToAskAbout).toEqual([]);
+    // It has arrived, so there is nothing to wait for.
+    expect(awaitsPhoto).toBe(false);
+  }, 120000);
+
+  // Sir says what he wants before he sends the photo. The voice agent is told to wait for it, but a
+  // request that slips through has nothing to look at yet, and must not look at an older photo. It
+  // says the photo is on its way instead, so Jarvis tells him to go ahead and waits for it, rather than
+  // reporting that no agent could handle the request and hanging up while he takes the shot.
+  it('plans nothing for a photo he says he is about to send, and says it is on its way', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    const { chains, photosToAskAbout, awaitsPhoto } = await planWithAnswers(
+      "I'll send you a photo of a receipt in a moment",
+      [await getVisionAgent(), await getShoppingListAgent(), await createStandInAgent('weather', WEATHER_DESCRIPTION)],
+    );
+
+    expect(chains).toEqual([]);
+    expect(photosToAskAbout).toEqual([]);
+    expect(awaitsPhoto).toBe(true);
+  }, 120000);
+
+  it('plans the rest of a request that also says a photo is on its way', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    const { chains, awaitsPhoto } = await planWithAnswers(
+      "I'll send you a receipt in a moment. And what is the weather in Aarhus?",
+      [await getVisionAgent(), await getShoppingListAgent(), await createStandInAgent('weather', WEATHER_DESCRIPTION)],
+    );
+
+    expect(awaitsPhoto).toBe(true);
     expect(chains.flatMap((chain) => chain.delegations.map((delegation) => delegation.agentId))).toEqual(['weather']);
   }, 120000);
 });
