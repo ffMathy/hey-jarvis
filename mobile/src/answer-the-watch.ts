@@ -3,7 +3,8 @@ import { useEffect } from 'react';
 import { sendSettingsToTheWatch, whenTheWatchAsksForCredentials } from '../modules/jarvis-watch';
 
 /**
- * Answers the watch when it asks for the ElevenLabs credentials.
+ * Answers the watch when it asks for the ElevenLabs credentials, and the Jarvis server's address with
+ * them when the phone has one (`jarvis-server.ts`).
  *
  * The watch asks on every start it makes with none — see `watch/src/phone-settings.ts` — and only
  * a *running* phone app can answer, because the credentials live behind the keystore in
@@ -22,13 +23,13 @@ import { sendSettingsToTheWatch, whenTheWatchAsksForCredentials } from '../modul
  * Nothing happens while there are no credentials to send, which is a phone part-way through the
  * tour. The watch keeps asking on its own schedule, so there is nothing to retry here.
  */
-export function useAnswerTheWatch(settings: ElevenLabsSettings | undefined): void {
+export function useAnswerTheWatch(settings: ElevenLabsSettings | undefined, serverAddress: string | undefined): void {
   useEffect(() => {
     if (!settings) {
       return;
     }
     return whenTheWatchAsksForCredentials(() => {
-      void sendSettingsToTheWatch(settings);
+      void sendSettingsToTheWatch(settings, serverAddress);
     });
-  }, [settings]);
+  }, [settings, serverAddress]);
 }

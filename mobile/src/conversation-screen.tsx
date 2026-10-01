@@ -256,6 +256,7 @@ export function ConversationScreen({
     findRoom: roomOfConversation,
     followAgentVoice: followJarvisVoice,
     captions: 'while-typing',
+    server: { address: serverAddress, device: 'phone' },
     onProblem: (message: string, source: ProblemSource) =>
       source === 'session' ? reportSessionFailure(message) : reportProblem(message),
   });

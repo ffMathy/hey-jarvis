@@ -14,7 +14,8 @@ export interface PairedWatch {
 interface JarvisWatchNativeModule {
   findWatch(): Promise<PairedWatch>;
   openJarvisOnTheWatch(): Promise<boolean>;
-  sendSettingsToTheWatch(apiKey: string, agentId: string): Promise<boolean>;
+  /** An empty `serverAddress` is none. */
+  sendSettingsToTheWatch(apiKey: string, agentId: string, serverAddress: string): Promise<boolean>;
   addListener(event: 'onWatchAskedForCredentials', listener: () => void): { remove: () => void };
 }
 
@@ -84,12 +85,15 @@ export const JARVIS_ON_THE_WATCH = 'jarvis_on_the_watch';
  * Layer at all — the caller shows that as a line of text, because "your watch is not here right
  * now" is not an error anybody needs a stack trace for.
  */
-export async function sendSettingsToTheWatch(settings: ElevenLabsSettings): Promise<boolean> {
+export async function sendSettingsToTheWatch(
+  settings: ElevenLabsSettings,
+  serverAddress: string | undefined,
+): Promise<boolean> {
   if (!nativeModule) {
     return false;
   }
   try {
-    return await nativeModule.sendSettingsToTheWatch(settings.apiKey, settings.agentId);
+    return await nativeModule.sendSettingsToTheWatch(settings.apiKey, settings.agentId, serverAddress ?? '');
   } catch {
     return false;
   }

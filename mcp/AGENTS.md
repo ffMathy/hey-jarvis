@@ -3049,6 +3049,14 @@ Cloudflare tunnel and its **Cloudflare Access** application: ElevenLabs and the 
 present a service token (`CF-Access-Client-Id` / `CF-Access-Client-Secret`), and a browser signs in
 with an identity policy.
 
+**`/api/live` must bypass Access too.** It is the WebSocket API (`verticals/api/live-socket.ts`) the
+phone, the watch and the headset keep open while a conversation is live, and none of them holds a
+service token. Add it to the same kind of self-hosted application, with a **Bypass** policy, and make
+sure **WebSockets** are on for the zone (Network → WebSockets). Behind the bypass, a socket hears
+nothing until its first frame names a conversation ElevenLabs reports as live on Jarvis's agent —
+the same check, cache and limits as a photo slot — and the server holds at most 32 sockets at once.
+See [The WebSocket API](#the-websocket-api).
+
 **`/api/photos/*` must bypass Access**, as `/artifacts/*` must for the visualize vertical's pages
 (see [Visualize Vertical](#visualize-vertical-shortcuts)). The phone asks for a photo slot there
 (`POST /api/photos/slots`) and sends the photo there (`PUT /api/photos/<token>`), and it cannot
@@ -3062,7 +3070,7 @@ sends a CORS preflight (`OPTIONS`) before each.
 conversation that ElevenLabs, asked with this server's own API key, reports as in progress on
 Jarvis's agent; sending the photo needs the slot's token, 128 random bits handed straight to the
 phone, good for five minutes and one photo, and claimed before a byte of the body is read (see
-[Vision Vertical](#vision-vertical)). Nothing else under `/api` is reachable without Access.
+[Vision Vertical](#vision-vertical)). Nothing else under `/api` is reachable without Access, but `/api/live`.
 
 **Rate-limit the slot endpoint at Cloudflare as well.** The server limits the checks it sends
 ElevenLabs per address (an IPv6 /48), 6 a minute, and 30 for the whole process (see **The
@@ -3100,6 +3108,31 @@ spelling alike.
    Until it has one, the phone offers no camera button.
 5. If a 1Password item was created in the `Jarvis` vault for the earlier build's upload key, delete
    it: nothing reads it any more.
+
+### The WebSocket API
+
+Beside the REST routes, the MCP server serves one WebSocket, on the same port, at **`/api/live`**
+(`verticals/api/live-socket.ts`). REST is for being asked; this is for what the server has to say
+first while a conversation is under way, to whichever devices it is on. Each device that is Jarvis —
+the phone, the watch and the headset — keeps one open for as long as a conversation on it is live,
+through `followConversationOnServer` in `hologram/src/jarvis-server-link.ts`, and only when it knows
+the server's address (the phone's **Jarvis server** setting, handed to the watch with the
+credentials, and read by the headset from the storage it shares with the phone's web build).
+
+| Direction | Frame | Meaning |
+| --- | --- | --- |
+| device → server | `{"type":"hello","conversationId":"conv_…","device":"phone"\|"watch"\|"vr"}` | The first frame, within 10 seconds |
+| server → device | `{"type":"ready"}` | The conversation is live on Jarvis's agent; this socket is now told what concerns it |
+
+A refusal is a close: `4400` a first frame that is not a hello, `4403` a conversation that is not
+live, `4408` no hello in time, `4429` the minute's checks spent or 32 sockets open, `4502` ElevenLabs
+could not confirm it, `4503` no ElevenLabs key or agent on this server — the photo slot's status for
+the same verdict, plus 4000. A device tries again with a growing delay after anything but `4400`,
+`4403` and `4503`. Frames over a kilobyte close their socket (`1009`), and every socket is pinged
+every 30 seconds, which also keeps Cloudflare from closing a quiet one after 100.
+
+`attachLiveSocket` hands back the open sockets by conversation, with `send(conversationId, message)`;
+nothing sends on it yet beyond `ready`.
 
 ## Integration Capabilities
 

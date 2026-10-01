@@ -100,11 +100,11 @@ export interface AppProps {
 export function App({ summoned = false, showing }: AppProps) {
   const [settings, setSettings] = useState<ElevenLabsSettings | undefined>(undefined);
   /**
-   * Where sir's Jarvis server is, if he has told this phone: where the camera button sends a photo.
+   * Where sir's Jarvis server is, if he has told this phone: where the camera button sends a photo,
+   * and where this phone and the watch open their line to the server during a conversation.
    *
-   * Beside the settings rather than in them: it is not ElevenLabs', and the settings are what the
-   * watch is handed (`useAnswerTheWatch` below), which has no camera to use it with. See
-   * `jarvis-server.ts`.
+   * Beside the settings rather than in them: it is not ElevenLabs'. The watch is handed both
+   * (`useAnswerTheWatch` below). See `jarvis-server.ts`.
    */
   const [serverAddress, setServerAddress] = useState<string | undefined>(undefined);
   /**
@@ -121,7 +121,7 @@ export function App({ summoned = false, showing }: AppProps) {
 
   // Hands the credentials to the watch whenever it asks, for as long as this app is open. See
   // `answer-the-watch.ts`; the watch only ever asks when it has none of its own.
-  useAnswerTheWatch(settings);
+  useAnswerTheWatch(settings, serverAddress);
 
   const launchUrl = Linking.useURL();
   // Two ways in, and they are genuinely different: the assistant's own window renders this

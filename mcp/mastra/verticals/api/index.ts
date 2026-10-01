@@ -1,5 +1,12 @@
 // API vertical exports
 
+export {
+  attachLiveSocket,
+  LIVE_SOCKET_CLOSE_CODES,
+  LIVE_SOCKET_PATH,
+  type LiveServerMessage,
+  type LiveSockets,
+} from './live-socket.js';
 export { storageRetentionWorkflow } from './retention-workflow.js';
 export {
   type ApiRouteDependencies,

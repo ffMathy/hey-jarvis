@@ -8,7 +8,7 @@ import type { Painter } from './hologram3d/canvaskit';
 import { createBrowserMicrophoneKeeper } from './page/microphone';
 import { type RoomOutcome, startPage } from './page/page';
 import type { PreparationTask } from './page/preparation';
-import type { KeyValueStorage } from './page/settings';
+import { type KeyValueStorage, loadServerAddress } from './page/settings';
 import { loadVoiceFromWhereHeStands } from './page/voice-setting';
 import { readTestSeams } from './test-seams';
 import type { Diagnostics } from './ui3d/debug-hud';
@@ -295,6 +295,7 @@ async function openConversationRoom(
           voice,
           deviceContext: conversation.HEADSET_DEVICE_CONTEXT,
           giveUpConnectingAfterMs: seams.giveUpConnectingAfterMs,
+          serverAddress: loadServerAddress(browserStorage),
         }),
       stopMicrophone,
       diagnostics: flags.has('debug') ? roomDiagnostics : undefined,

@@ -2,6 +2,7 @@ import {
   type AgentTrackRoom,
   createJarvisSession,
   type ElevenLabsSettings,
+  followConversationOnServer,
   type GreetingPlayer,
   HEADSET_PARTICIPANT_NAME,
   type JarvisSession,
@@ -57,6 +58,12 @@ export interface HeadsetSessionOptions {
    * only ever `Infinity`, from the browser tests' `?deadline=never` (`test-seams.ts`).
    */
   giveUpConnectingAfterMs?: number;
+  /**
+   * The Jarvis server's address, when the phone's web build has kept one on this origin: a line to
+   * the server is kept open for every conversation that connects (`jarvis-server-link.ts` in
+   * `hologram`). Without it, none.
+   */
+  serverAddress?: string;
 }
 
 /** As much of the spatial voice as a conversation reaches for. */
@@ -153,7 +160,17 @@ export function headsetSessionDependencies({
   };
 }
 
-/** Jarvis's conversation on the headset: `hologram`'s session, with the headset's parts. */
-export function createHeadsetSession(options: HeadsetSessionOptions): JarvisSession {
-  return createJarvisSession(headsetSessionDependencies(options));
+/**
+ * Jarvis's conversation on the headset: `hologram`'s session, with the headset's parts, and the line
+ * to the server it keeps while a conversation is live — closed with the session.
+ */
+export function createHeadsetSession({ serverAddress, ...options }: HeadsetSessionOptions): JarvisSession {
+  const session = createJarvisSession(headsetSessionDependencies(options));
+  const stopFollowing = followConversationOnServer(session, { address: serverAddress, device: 'vr' });
+  const dispose = session.dispose;
+  session.dispose = () => {
+    stopFollowing();
+    dispose();
+  };
+  return session;
 }

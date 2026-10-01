@@ -1,7 +1,7 @@
-import { type ElevenLabsSettings, parseElevenLabsSettings } from 'hologram';
+import { type ElevenLabsSettings, parseElevenLabsSettings, parseJarvisServerAddress } from 'hologram';
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { type JarvisServerAddressChange, parseJarvisServerAddress } from './jarvis-server';
+import type { JarvisServerAddressChange } from './jarvis-server';
 import { theme } from './theme';
 
 interface ElevenLabsFieldsProps {
@@ -119,8 +119,9 @@ export function ElevenLabsFields({ settings, server, submitLabel, onSubmit }: El
         <View style={styles.field}>
           <Text style={styles.label}>Jarvis server</Text>
           <Text style={styles.explanation}>
-            Optional: the address of your own Jarvis server, to send him photos from the camera button beside him. Leave
-            it empty and there is no camera.
+            Optional: the address of your own Jarvis server, to send him photos from the camera button beside him, and
+            for this phone, your watch and your headset to stay in touch with it while you talk. Leave it empty and
+            there is no camera.
           </Text>
           <TextInput
             style={styles.input}

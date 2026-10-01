@@ -50,11 +50,13 @@ phone (assist gesture)
             └─ ConversationScreen           src/conversation-screen.tsx
                  ├─ GET /v1/convai/conversation/token   → ElevenLabs, with the API key
                  ├─ WebRTC session                      → the ElevenLabs Jarvis agent
-                 └─ camera button (optional)            → sir's Jarvis server: POST /api/photos/slots,
-                                                          then PUT the photo to the slot
+                 ├─ camera button (optional)            → sir's Jarvis server: POST /api/photos/slots,
+                 │                                        then PUT the photo to the slot
+                 └─ live line (optional)                → sir's Jarvis server: a WebSocket on /api/live
+                                                          while the conversation is live
 ```
 
-The agent on the other end is the same one `elevenlabs/` deploys, with the same prompt and the same `routePromptWorkflow` tools. This app adds a way to reach it, not a second Jarvis. The camera button is the one thing that reaches past ElevenLabs, and only once sir has given the phone his Jarvis server's address: see "Showing him something".
+The agent on the other end is the same one `elevenlabs/` deploys, with the same prompt and the same `routePromptWorkflow` tools. This app adds a way to reach it, not a second Jarvis. The camera button and the live line are the two things that reach past ElevenLabs, and only once sir has given the phone his Jarvis server's address: see "Showing him something", and `jarvis-server-link.ts` in `hologram` for the line. The address is handed to the watch with the credentials, so it opens the same line.
 
 ## File Structure
 
@@ -119,7 +121,7 @@ mobile/
     ├── photo-sending.ts          # one tap, from the camera opening to Jarvis hearing how it went
     ├── photo-messages.ts         # every word the phone puts into the conversation about the camera
     ├── photo-upload.ts           # asking the Jarvis server for a slot, sending the photo to it, reading back its id
-    ├── jarvis-server.ts          # the Jarvis server's address: what it may be, and where it is kept
+    ├── jarvis-server.ts          # where the Jarvis server's address is kept (what it may be is hologram's)
     ├── camera-button.tsx         # the camera beside him
     ├── take-photo.ts             # the phone's own camera app, through modules/jarvis-assistant …
     ├── take-photo.web.ts         # … and a file picker in a browser

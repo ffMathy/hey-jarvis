@@ -2,7 +2,9 @@ import {
   ELEVENLABS_SETTINGS_STORAGE_KEY,
   type ElevenLabsSettings,
   HEADSET_PARTICIPANT_NAME,
+  JARVIS_SERVER_ADDRESS_STORAGE_KEY,
   parseElevenLabsSettings,
+  parseJarvisServerAddress,
   parseStoredElevenLabsSettings,
   requestConversationToken,
   serialiseElevenLabsSettings,
@@ -41,6 +43,19 @@ export function loadSettings(storage: KeyValueStorage): ElevenLabsSettings | und
   try {
     const stored = storage.getItem(ELEVENLABS_SETTINGS_STORAGE_KEY);
     return stored ? parseStoredElevenLabsSettings(stored) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The Jarvis server's address, as the phone's web build keeps it on this same origin, or nothing:
+ * the headset has no field of its own for it. Checked again on the way out, as the phone checks it.
+ */
+export function loadServerAddress(storage: KeyValueStorage): string | undefined {
+  try {
+    const parsed = parseJarvisServerAddress(storage.getItem(JARVIS_SERVER_ADDRESS_STORAGE_KEY) ?? '');
+    return 'address' in parsed ? parsed.address : undefined;
   } catch {
     return undefined;
   }

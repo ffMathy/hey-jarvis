@@ -30,7 +30,8 @@ private const val JARVIS_ON_THE_WATCH = "jarvis_on_the_watch"
  * The two message paths the phone and the watch speak over, and the whole of their protocol.
  *
  * `SETTINGS_PATH` carries the credentials one way, phone to watch, as a JSON object with an
- * `apiKey` and an `agentId` in it. `ASK_PATH` carries nothing at all in the other direction: it is
+ * `apiKey` and an `agentId` in it, and a `serverAddress` when the phone has one — where the watch
+ * opens its line to the Jarvis server during a conversation. `ASK_PATH` carries nothing at all in the other direction: it is
  * the watch saying it has none and would like some.
  *
  * **A message and not a data item, and that is a security decision rather than a convenience
@@ -46,9 +47,17 @@ private const val JARVIS_ON_THE_WATCH = "jarvis_on_the_watch"
 private const val SETTINGS_PATH = "/jarvis/elevenlabs-settings"
 private const val ASK_PATH = "/jarvis/ask-for-credentials"
 
-/** What the watch is sent. Read back by `PhoneSettingsStore` on the other side. */
-private fun settingsMessage(apiKey: String, agentId: String): ByteArray =
-  JSONObject().put("apiKey", apiKey).put("agentId", agentId).toString().toByteArray()
+/**
+ * What the watch is sent. Read back by `PhoneSettingsStore` on the other side. An empty
+ * `serverAddress` is no address, and is left out rather than sent empty.
+ */
+private fun settingsMessage(apiKey: String, agentId: String, serverAddress: String): ByteArray {
+  val message = JSONObject().put("apiKey", apiKey).put("agentId", agentId)
+  if (serverAddress.isNotEmpty()) {
+    message.put("serverAddress", serverAddress)
+  }
+  return message.toString().toByteArray()
+}
 
 /**
  * What the phone can learn about, and do to, the watch beside it.
@@ -76,8 +85,8 @@ class JarvisWatchModule : Module() {
       openJarvisOnTheWatch(context(), promise)
     }
 
-    AsyncFunction("sendSettingsToTheWatch") { apiKey: String, agentId: String, promise: Promise ->
-      sendSettingsToTheWatch(context(), apiKey, agentId, promise)
+    AsyncFunction("sendSettingsToTheWatch") { apiKey: String, agentId: String, serverAddress: String, promise: Promise ->
+      sendSettingsToTheWatch(context(), apiKey, agentId, serverAddress, promise)
     }
 
     Events(WATCH_ASKED)
@@ -125,7 +134,13 @@ class JarvisWatchModule : Module() {
  * accepted by Play Services and then dropped, which would look to the user exactly like a
  * successful handover.
  */
-private fun sendSettingsToTheWatch(context: Context, apiKey: String, agentId: String, promise: Promise) {
+private fun sendSettingsToTheWatch(
+  context: Context,
+  apiKey: String,
+  agentId: String,
+  serverAddress: String,
+  promise: Promise,
+) {
   Wearable.getCapabilityClient(context)
     .getCapability(JARVIS_ON_THE_WATCH, CapabilityClient.FILTER_REACHABLE)
     .addOnSuccessListener { capability ->
@@ -135,7 +150,7 @@ private fun sendSettingsToTheWatch(context: Context, apiKey: String, agentId: St
         return@addOnSuccessListener
       }
       Wearable.getMessageClient(context)
-        .sendMessage(watch.id, SETTINGS_PATH, settingsMessage(apiKey, agentId))
+        .sendMessage(watch.id, SETTINGS_PATH, settingsMessage(apiKey, agentId, serverAddress))
         .addOnSuccessListener { promise.resolve(true) }
         .addOnFailureListener { error ->
           promise.reject("COULD_NOT_SEND", error.message ?: "The watch would not take the credentials.", error)
