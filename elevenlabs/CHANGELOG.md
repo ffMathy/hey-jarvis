@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.5.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.4.2...elevenlabs-v2.5.0) (2026-10-01)
+
+
+### Features
+
+* jarvis hologram app for VR ([#915](https://github.com/ffMathy/hey-jarvis/issues/915)) ([97fdb03](https://github.com/ffMathy/hey-jarvis/commit/97fdb0309c6d47c9f57896a1e4e42c1979e13da8))
+* **mobile:** show Jarvis a photo from the phone's camera button ([#902](https://github.com/ffMathy/hey-jarvis/issues/902)) ([b798fa9](https://github.com/ffMathy/hey-jarvis/commit/b798fa9c556a8891240b8db89bd84ad1c108b153))
+
 ## [2.4.2](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.4.1...elevenlabs-v2.4.2) (2026-09-30)
 
 
