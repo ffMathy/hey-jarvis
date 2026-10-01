@@ -141,6 +141,14 @@ export interface ServerLink {
    * nothing, and the line stays open all the same.
    */
   subscribe(listener: (message: JarvisServerMessage) => void): () => void;
+  /**
+   * Calls `listener` with whether the line is connected — the server has said `ready` on the socket
+   * open now — at once, and again every time that changes, until the function it returns is called.
+   * A browser cannot tell a socket Cloudflare Access turned away from one that never reached the
+   * server, so not connected is all a page learns; it is what tells the headset's page to offer
+   * signing in.
+   */
+  onConnectionChange(listener: (connected: boolean) => void): () => void;
   /** Closes it, and stops trying. */
   close(): void;
 }
@@ -189,7 +197,15 @@ function readServerMessage(data: unknown): JarvisServerMessage | undefined {
 }
 
 /** The line of a device with no server address: it points at nothing, hears nothing and has nothing to close. */
-const NO_LINE: ServerLink = { point: () => undefined, subscribe: () => () => undefined, close: () => undefined };
+const NO_LINE: ServerLink = {
+  point: () => undefined,
+  subscribe: () => () => undefined,
+  onConnectionChange: (listener) => {
+    listener(false);
+    return () => undefined;
+  },
+  close: () => undefined,
+};
 
 /**
  * Opens the device's line to the server, and keeps it open — trying again after a drop, from
@@ -215,6 +231,17 @@ export function connectToServer(
   let failedAttempts = 0;
   let closed = false;
   const listeners = new Set<(message: JarvisServerMessage) => void>();
+  const connectionListeners = new Set<(connected: boolean) => void>();
+  let connected = false;
+  const setConnected = (now: boolean) => {
+    if (now === connected) {
+      return;
+    }
+    connected = now;
+    for (const listener of connectionListeners) {
+      listener(now);
+    }
+  };
 
   const sendPointing = () => {
     if (pointing === undefined || ready === undefined) {
@@ -246,6 +273,7 @@ export function connectToServer(
       if (message.type === 'ready') {
         failedAttempts = 0;
         ready = opened;
+        setConnected(true);
         sendPointing();
       }
       for (const listener of listeners) {
@@ -258,6 +286,7 @@ export function connectToServer(
       }
       socket = undefined;
       ready = undefined;
+      setConnected(false);
       if (!closed && !FINAL_SERVER_SOCKET_CLOSE_CODES.has(event.code)) {
         tryAgainLater();
       }
@@ -286,6 +315,13 @@ export function connectToServer(
         listeners.delete(listener);
       };
     },
+    onConnectionChange: (listener) => {
+      connectionListeners.add(listener);
+      listener(connected);
+      return () => {
+        connectionListeners.delete(listener);
+      };
+    },
     close: () => {
       closed = true;
       cancelRetry?.();
@@ -293,6 +329,7 @@ export function connectToServer(
       const open = socket;
       socket = undefined;
       ready = undefined;
+      setConnected(false);
       try {
         open?.close();
       } catch {

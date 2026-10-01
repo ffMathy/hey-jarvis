@@ -6,6 +6,7 @@ export {
   LIVE_SOCKET_PATH,
   type LiveServerMessage,
   type LiveSockets,
+  registerLiveSignInPage,
 } from './live-socket.js';
 export { storageRetentionWorkflow } from './retention-workflow.js';
 export {

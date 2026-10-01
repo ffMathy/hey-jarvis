@@ -514,6 +514,16 @@ it for as long as the page is open: through the 2D page, every room and every
 conversation, and between them. `createHeadsetSession` is handed it (`server`),
 listens to it for as long as the session lasts, and returns the session with
 the line's `point`.
+- **It carries no token, and signs in with a cookie instead.** A browser cannot
+  set a header on a WebSocket, so the headset cannot send the JWT the phone and
+  the watch send to Cloudflare Zero Trust. It gets through on Access's
+  `CF_Authorization` cookie: the 2D page shows whether the line is connected
+  (`page/server-status.ts`, from the line's `onConnectionChange`), and while it
+  is not, links to the server's sign-in page (`GET /api/live`), which goes
+  through the Access login in a new tab and sets the cookie. The line's own
+  retries connect within half a minute after. The Access application has to
+  hand out that cookie as `SameSite=None` — see "MCP Server Access" in
+  `mcp/AGENTS.md`.
 - **What he is working on comes in on it.** The server broadcasts an
   `affectedEntities` frame to every device that has said hello as soon as a tool
   in a request reports what it touched; `serverMessageHandler` hands those

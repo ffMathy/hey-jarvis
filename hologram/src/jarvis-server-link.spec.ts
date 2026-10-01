@@ -325,7 +325,34 @@ describe('listening to the line', () => {
   });
 });
 
+describe('whether the line is connected', () => {
+  it('says so at once, once the server is ready, again when it drops, and not after it stops listening', () => {
+    const { platform, advance, latest } = fakePlatform();
+    const link = connectToServer({ address: ADDRESS, device: 'vr' }, platform);
+    const told: boolean[] = [];
+    const stop = link.onConnectionChange((connected) => told.push(connected));
+
+    latest().open();
+    latest().receive('{"type":"ready"}');
+    latest().receive('{"type":"ready"}');
+    latest().drop(1006);
+    advance(FIRST_RETRY_MS);
+    latest().open();
+    latest().receive('{"type":"ready"}');
+    stop();
+    link.close();
+
+    expect(told).toEqual([false, true, false, true]);
+  });
+});
+
 describe('a device with no server address', () => {
+  it('is never connected', () => {
+    const told: boolean[] = [];
+    connectToServer({ address: undefined, device: 'vr' }).onConnectionChange((connected) => told.push(connected));
+    expect(told).toEqual([false]);
+  });
+
   it('opens no line, and points at nothing', () => {
     const { platform, sockets } = fakePlatform();
     const link = connectToServer({ address: undefined, device: 'watch' }, platform);

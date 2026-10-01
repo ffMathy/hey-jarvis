@@ -3030,10 +3030,25 @@ with an identity policy.
 apps run; the server checks no credential and sends every live event to any socket that says
 hello. Who may reach it is Cloudflare Zero Trust's to decide, in front of the
 tunnel. The phone and the watch can carry a JWT for that (their **Server token** setting), sent on
-the upgrade request as `Authorization: Bearer <jwt>` and `cf-access-token: <jwt>`; the headset and
-the phone's web build run in a browser, which cannot set a header on a WebSocket, so they reach it
-only if Access lets them through without one (a bypass, or the `CF_Authorization` cookie of a
-browser signed in to Access). **WebSockets** must be on for the zone (Network → WebSockets). The server holds at most 32
+the upgrade request as `Authorization: Bearer <jwt>` and `cf-access-token: <jwt>`. The headset runs
+in a browser, which cannot set a header on a WebSocket, so it gets through on Access's own
+`CF_Authorization` cookie instead:
+
+1. **Sign in once in Quest Browser.** The headset's page links to `GET /api/live` on the server
+   (`registerLiveSignInPage` in `verticals/api/live-socket.ts`) whenever its line is not connected.
+   Opening it goes through the Access login, which sets `CF_Authorization` on the server's
+   hostname, and lands on a page saying the browser is through. The socket uses the same path, so
+   one Access application covers both.
+2. **Let the cookie travel cross-site.** The headset's page is served from GitHub Pages, so its
+   socket to the server is a cross-site request, and a cookie goes with it only when it is
+   `SameSite=None`. In the Access application's **Settings → Cookie settings**, set **SameSite
+   attribute** to **None** (HTTP Only may stay on), and leave **Enable Binding Cookie** off — that
+   cookie is `SameSite=Strict`, and with it on Access would refuse the cross-site socket.
+3. **Keep the session long enough.** The cookie lasts the application's **session duration**; when
+   it runs out, the page offers signing in again.
+
+Quest Browser has to accept a third-party cookie for this, which is not something this repository
+can check; if the line never connects after signing in, that is the first thing to look at. **WebSockets** must be on for the zone (Network → WebSockets). The server holds at most 32
 sockets at once. See [The WebSocket API](#the-websocket-api).
 
 **`/api/photos/*` must bypass Access**, as `/artifacts/*` must for the visualize vertical's pages

@@ -136,7 +136,8 @@ const browserStorage: KeyValueStorage = {
  * a request touched lights up in the room — and tells it what sir points at. With no address kept on
  * this origin by the phone's web build, it is no line at all.
  */
-const serverLink = connectToServer({ address: loadServerAddress(browserStorage), device: 'vr' });
+const serverAddress = loadServerAddress(browserStorage);
+const serverLink = connectToServer({ address: serverAddress, device: 'vr' });
 
 /**
  * His voice from where he stands, made once for the page: it can take the greeting's element into
@@ -320,6 +321,7 @@ async function openConversationRoom(
 
 startPage(document, {
   storage: browserStorage,
+  server: { address: serverAddress, line: serverLink },
   // Handed on as the plain global and only ever called as a plain function, which is how the
   // browser's fetch expects to be called.
   fetch,

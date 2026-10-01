@@ -1,8 +1,9 @@
-import type { ElevenLabsSettings } from 'hologram';
+import type { ElevenLabsSettings, ServerLink } from 'hologram';
 import type { JarvisDebugState } from '../debug-hook';
 import type { MicrophoneGate } from './microphone';
 import { type PreparationTask, runPreparation } from './preparation';
 import { canOpenWithoutAgent, microphoneHelp, type PageFacts, primaryButton } from './prerequisites';
+import { showServerStatus } from './server-status';
 import { checkSettings, type KeyValueStorage, loadSettings, saveSettings } from './settings';
 import { loadVoiceFromWhereHeStands, saveVoiceFromWhereHeStands } from './voice-setting';
 
@@ -43,6 +44,11 @@ export interface PageDependencies {
    * anything: the click's activation expires.
    */
   enterRoom(mode: RoomMode, settings: ElevenLabsSettings | undefined, onInside: () => void): Promise<RoomOutcome>;
+  /**
+   * The page's line to sir's Jarvis server and its address, for the page to say whether it is
+   * connected and offer signing in to it when it is not (`server-status.ts`).
+   */
+  server: { address: string | undefined; line: Pick<ServerLink, 'onConnectionChange'> };
   debug: JarvisDebugState;
 }
 
@@ -74,6 +80,17 @@ export function startPage(document: Document, dependencies: PageDependencies): v
   const settingsSaved = required(document, '#settings-saved', HTMLElement);
   const saveButton = required(document, '#save-settings', HTMLButtonElement);
   const spatialVoice = required(document, '#spatial-voice', HTMLInputElement);
+
+  showServerStatus(
+    {
+      section: required(document, '#server', HTMLElement),
+      status: required(document, '#server-status', HTMLElement),
+      signIn: required(document, '#server-sign-in', HTMLElement),
+      signInLink: required(document, '#server-sign-in-link', HTMLAnchorElement),
+    },
+    dependencies.server.address,
+    dependencies.server.line,
+  );
 
   const stored = loadSettings(storage);
   const facts: PageFacts = {
