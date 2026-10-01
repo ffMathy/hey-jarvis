@@ -56,14 +56,30 @@ export interface ServerSocket {
 
 /** What a line needs from outside itself, so a spec can hand it a fake socket and a clock. */
 export interface ServerLinkPlatform {
-  openSocket(url: string): ServerSocket;
+  /** Opens a socket to `url`, with `headers` on its upgrade request where the platform can send them. */
+  openSocket(url: string, headers: Readonly<Record<string, string>>): ServerSocket;
   /** Calls `callback` once `milliseconds` have passed, unless the function it returns is called first. */
   after(milliseconds: number, callback: () => void): () => void;
 }
 
-/** The global `WebSocket`, as a {@link ServerSocket}: its handlers are called with no more than a line reads. */
-function openWebSocket(url: string): ServerSocket {
-  const webSocket = new WebSocket(url);
+/**
+ * React Native's `WebSocket`, which takes the upgrade request's headers as a third argument. A
+ * browser's has no such argument and ignores it: a page cannot set a header on a WebSocket at all.
+ * The global is assignable to this as it is, since a constructor that takes fewer arguments may
+ * stand in for one that is handed more.
+ */
+interface WebSocketWithHeaders {
+  new (url: string, protocols: undefined, options: { headers: Readonly<Record<string, string>> }): WebSocket;
+}
+
+/**
+ * The global `WebSocket`, as a {@link ServerSocket}: its handlers are called with no more than a line
+ * reads, and `headers` go on the upgrade request on a phone and a watch (React Native) and are
+ * dropped by a browser.
+ */
+function openWebSocket(url: string, headers: Readonly<Record<string, string>>): ServerSocket {
+  const HeaderedWebSocket: WebSocketWithHeaders = WebSocket;
+  const webSocket = new HeaderedWebSocket(url, undefined, { headers });
   const socket: ServerSocket = {
     onopen: null,
     onmessage: null,
@@ -89,6 +105,24 @@ export interface ServerLinkOptions {
   /** The server's origin, as `parseJarvisServerAddress` gives it, or `undefined` for none: then there is never a line. */
   address: string | undefined;
   device: JarvisDevice;
+  /**
+   * The JWT the Cloudflare Zero Trust application in front of the server accepts, as
+   * `parseJarvisServerToken` gives it, or `undefined` for a server with nothing in front of it. See
+   * {@link serverAuthorizationHeaders} for how it is sent.
+   */
+  token?: string;
+}
+
+/**
+ * The headers a token travels in on the socket's upgrade request: `Authorization: Bearer`, and
+ * `cf-access-token`, the header Cloudflare Access reads an Access JWT from. Both, so the token gets
+ * through whichever way the application in front of the server is set to read it.
+ *
+ * Only a phone and a watch can send them: a browser cannot set a header on a WebSocket, so the
+ * headset's page and the phone's web build connect without them.
+ */
+export function serverAuthorizationHeaders(token: string | undefined): Readonly<Record<string, string>> {
+  return token === undefined ? {} : { Authorization: `Bearer ${token}`, 'cf-access-token': token };
 }
 
 /** A line that is open, or trying to be. */
@@ -170,6 +204,7 @@ export function connectToServer(
     return NO_LINE;
   }
   const url = serverSocketUrl(options.address);
+  const headers = serverAuthorizationHeaders(options.token);
   const hello = JSON.stringify({ type: 'hello', device: options.device });
   let socket: ServerSocket | undefined;
   /** The socket the server has said `ready` on, while it is still the one open. */
@@ -196,7 +231,7 @@ export function connectToServer(
     cancelRetry = undefined;
     let opened: ServerSocket;
     try {
-      opened = platform.openSocket(url);
+      opened = platform.openSocket(url, headers);
     } catch {
       tryAgainLater();
       return;

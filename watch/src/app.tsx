@@ -11,7 +11,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useJarvisServer } from 'hologram/react/lifecycle';
 import { useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { readPhoneServerAddress } from '../modules/jarvis-phone';
+import { readPhoneServerAddress, readPhoneServerToken } from '../modules/jarvis-phone';
 import { ConversationScreen } from './conversation-screen';
 import { usePhoneHandover } from './phone-settings';
 import { WaitingForThePhone } from './waiting-for-the-phone';
@@ -39,7 +39,8 @@ export function App() {
   // The phone hands the server's address over with the credentials, so it is read again whenever
   // they arrive. The line stays open for as long as the app runs, between conversations too.
   const serverAddress = useMemo(() => (settings ? readPhoneServerAddress() : undefined), [settings]);
-  useJarvisServer(serverAddress, 'watch');
+  const serverToken = useMemo(() => (settings ? readPhoneServerToken() : undefined), [settings]);
+  useJarvisServer(serverAddress, serverToken, 'watch');
 
   return (
     <>

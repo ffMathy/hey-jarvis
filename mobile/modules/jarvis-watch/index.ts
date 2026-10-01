@@ -14,8 +14,8 @@ export interface PairedWatch {
 interface JarvisWatchNativeModule {
   findWatch(): Promise<PairedWatch>;
   openJarvisOnTheWatch(): Promise<boolean>;
-  /** An empty `serverAddress` is none. */
-  sendSettingsToTheWatch(apiKey: string, agentId: string, serverAddress: string): Promise<boolean>;
+  /** An empty `serverAddress` or `serverToken` is none. */
+  sendSettingsToTheWatch(apiKey: string, agentId: string, serverAddress: string, serverToken: string): Promise<boolean>;
   addListener(event: 'onWatchAskedForCredentials', listener: () => void): { remove: () => void };
 }
 
@@ -88,12 +88,18 @@ export const JARVIS_ON_THE_WATCH = 'jarvis_on_the_watch';
 export async function sendSettingsToTheWatch(
   settings: ElevenLabsSettings,
   serverAddress: string | undefined,
+  serverToken: string | undefined,
 ): Promise<boolean> {
   if (!nativeModule) {
     return false;
   }
   try {
-    return await nativeModule.sendSettingsToTheWatch(settings.apiKey, settings.agentId, serverAddress ?? '');
+    return await nativeModule.sendSettingsToTheWatch(
+      settings.apiKey,
+      settings.agentId,
+      serverAddress ?? '',
+      serverToken ?? '',
+    );
   } catch {
     return false;
   }

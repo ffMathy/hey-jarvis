@@ -1,6 +1,6 @@
 import { requireOptionalNativeModule } from 'expo';
 import type { ElevenLabsSettings } from 'hologram';
-import { parseElevenLabsSettings, parseJarvisServerAddress } from 'hologram';
+import { parseElevenLabsSettings, parseJarvisServerAddress, parseJarvisServerToken } from 'hologram';
 
 /** What the native side stores, which is the JSON the phone sent with nothing added. */
 interface StoredSettings {
@@ -8,6 +8,8 @@ interface StoredSettings {
   agentId: string;
   /** Only when the phone had one. */
   serverAddress?: string;
+  /** Only when the phone had one. */
+  serverToken?: string;
 }
 
 interface JarvisPhoneNativeModule {
@@ -50,6 +52,16 @@ export function readPhoneSettings(): ElevenLabsSettings | undefined {
 export function readPhoneServerAddress(): string | undefined {
   const parsed = parseJarvisServerAddress(readStoredSettings()?.serverAddress ?? '');
   return 'address' in parsed ? parsed.address : undefined;
+}
+
+/**
+ * The token for the server the phone handed over beside its address, if it had one: the JWT the
+ * Cloudflare Zero Trust application in front of the server accepts. Checked by the rules the phone
+ * checked it with.
+ */
+export function readPhoneServerToken(): string | undefined {
+  const parsed = parseJarvisServerToken(readStoredSettings()?.serverToken ?? '');
+  return 'token' in parsed ? parsed.token : undefined;
 }
 
 /** What the native side has stored, or `null` for nothing at all. */

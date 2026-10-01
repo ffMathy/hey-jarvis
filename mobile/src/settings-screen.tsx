@@ -1,15 +1,17 @@
 import type { ElevenLabsSettings } from 'hologram';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { ElevenLabsFields } from './elevenlabs-fields';
-import type { JarvisServerAddressChange } from './jarvis-server';
+import type { JarvisServerChange } from './jarvis-server';
 import { theme } from './theme';
 
 interface SettingsScreenProps {
   settings: ElevenLabsSettings | undefined;
   /** The Jarvis server's address as it was read, if one was. See `jarvis-server.ts`. */
   serverAddress: string | undefined;
+  /** The token for the server as it was read, if one was. See `jarvis-server.ts`. */
+  serverToken: string | undefined;
   /** Called once everything on the screen parses — with the server address's change, if sir made one. */
-  onSave: (settings: ElevenLabsSettings, serverAddressChange: JarvisServerAddressChange | undefined) => void;
+  onSave: (settings: ElevenLabsSettings, serverChange: JarvisServerChange | undefined) => void;
   onCancel: (() => void) | undefined;
   /** Opens sample mode. Only offered before the app is set up, when there is nothing else to look at. */
   onTrySample: (() => void) | undefined;
@@ -38,7 +40,14 @@ interface SettingsScreenProps {
  * credentials have gone but whose tour has been walked, which is why it keeps its own way into
  * sample mode.
  */
-export function SettingsScreen({ settings, serverAddress, onSave, onCancel, onTrySample }: SettingsScreenProps) {
+export function SettingsScreen({
+  settings,
+  serverAddress,
+  serverToken,
+  onSave,
+  onCancel,
+  onTrySample,
+}: SettingsScreenProps) {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>ElevenLabs</Text>
@@ -49,7 +58,7 @@ export function SettingsScreen({ settings, serverAddress, onSave, onCancel, onTr
 
       <ElevenLabsFields
         settings={settings}
-        server={{ storedAddress: serverAddress }}
+        server={{ storedAddress: serverAddress, storedToken: serverToken }}
         submitLabel="Save"
         onSubmit={onSave}
       />

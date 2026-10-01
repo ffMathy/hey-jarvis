@@ -1,7 +1,7 @@
 /**
  * The Jarvis server's address, as sir types it on the phone: where a device reaches the server's
  * own APIs — the photo routes over REST, and the WebSocket API every device that is Jarvis keeps
- * open during a conversation (`jarvis-server-link.ts`).
+ * open for as long as its app runs (`jarvis-server-link.ts`).
  *
  * Here rather than in the phone app because three apps read it: the phone types and keeps it, hands
  * it to the watch with the ElevenLabs settings, and the headset's page reads it from the
@@ -12,8 +12,9 @@
  * half-used. `https`, because the app allows no cleartext traffic on a phone — and so `http` only
  * for this very computer, where a browser build is tried against a server running beside it.
  *
- * **No secret.** The server needs no key from a device: what it opens to one is gated on a
- * conversation ElevenLabs confirms is live on Jarvis's agent, so this is an address and nothing else.
+ * **Not a secret.** The address is an address and nothing else. What may reach the server is for
+ * the Cloudflare Zero Trust application in front of it to decide, and the token that application
+ * accepts is kept apart (see {@link JARVIS_SERVER_TOKEN_STORAGE_KEY}).
  */
 
 /** Where the address is kept, in whatever key-value store the device has. */
@@ -99,4 +100,38 @@ export function parseJarvisServerAddress(typed: string): { address: string | und
     };
   }
   return { address: `${scheme}://${host}${port === undefined ? '' : `:${port}`}` };
+}
+
+/**
+ * Where the token for the server is kept, beside its address: a JWT that the Cloudflare Zero Trust
+ * application in front of the server accepts, sent with every connection to it (see
+ * `jarvis-server-link.ts`). Unlike the address it is a credential, so it is kept as the ElevenLabs
+ * key is — the keystore on a phone — and never shown once saved.
+ */
+export const JARVIS_SERVER_TOKEN_STORAGE_KEY = 'jarvis.server-token';
+
+/** What a JWT looks like: three base64url parts, separated by dots. */
+const JWT = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+
+/**
+ * Turns what was typed into the token to send, or explains why it cannot be one.
+ *
+ * Nothing typed is a valid answer: a server with nothing in front of it needs no token. A `Bearer `
+ * pasted in front of it is forgiven, as is the whitespace a paste picks up; anything that is not a
+ * JWT is refused here rather than at Cloudflare, which would only answer with a closed socket.
+ */
+export function parseJarvisServerToken(typed: string): { token: string | undefined } | { problem: string } {
+  const token = typed.trim().replace(/^bearer\s+/i, '');
+  if (!token) {
+    return { token: undefined };
+  }
+  if (/\s/.test(token)) {
+    return { problem: 'The server token has a space in it. Paste just the token.' };
+  }
+  if (!JWT.test(token)) {
+    return {
+      problem: 'The server token should be a JWT: three parts separated by dots, like eyJhbGci….eyJzdWIi….sig.',
+    };
+  }
+  return { token };
 }

@@ -3029,7 +3029,11 @@ with an identity policy.
 (`verticals/api/live-socket.ts`) the phone, the watch and the headset keep open for as long as their
 apps run; the server checks no credential and sends every live event to any socket that says
 hello. Who may reach it is Cloudflare Zero Trust's to decide, in front of the
-tunnel. **WebSockets** must be on for the zone (Network → WebSockets). The server holds at most 32
+tunnel. The phone and the watch can carry a JWT for that (their **Server token** setting), sent on
+the upgrade request as `Authorization: Bearer <jwt>` and `cf-access-token: <jwt>`; the headset and
+the phone's web build run in a browser, which cannot set a header on a WebSocket, so they reach it
+only if Access lets them through without one (a bypass, or the `CF_Authorization` cookie of a
+browser signed in to Access). **WebSockets** must be on for the zone (Network → WebSockets). The server holds at most 32
 sockets at once. See [The WebSocket API](#the-websocket-api).
 
 **`/api/photos/*` must bypass Access**, as `/artifacts/*` must for the visualize vertical's pages

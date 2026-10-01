@@ -549,15 +549,16 @@ Nothing in the tour is shown to a **summoned** app. Somebody who has just made t
 
 ## Configuration
 
-The app ships with no credential. It talks to ElevenLabs directly, and both ElevenLabs settings are typed into the tour's credentials step on first run — or into the settings screen afterwards — and kept in the Android keystore, or on web in `localStorage`. The Jarvis server's address is optional, asked for on the settings screen only, and kept the same way:
+The app ships with no credential. It talks to ElevenLabs directly, and both ElevenLabs settings are typed into the tour's credentials step on first run — or into the settings screen afterwards — and kept in the Android keystore, or on web in `localStorage`. The Jarvis server's address and its token are optional, asked for on the settings screen only, and kept the same way:
 
 | Setting | What it is |
 | --- | --- |
 | API key | An ElevenLabs API key, sent as `xi-api-key` to ElevenLabs and nowhere else |
 | Agent ID | The Jarvis agent — the value of `HEY_JARVIS_ELEVENLABS_AGENT_ID` |
-| Jarvis server | Optional, and no secret. The public `https` address of sir's own Jarvis server — the MCP server's tunnel hostname — as an origin, with no path. The phone sends it the current conversation's id, to open a slot, and photos, and nothing else. Empty hides the camera button |
+| Jarvis server | Optional, and no secret. The public `https` address of sir's own Jarvis server — the MCP server's tunnel hostname — as an origin, with no path. The phone sends it the current conversation's id, to open a slot, and photos, and holds its WebSocket line open (`/api/live`). Empty hides the camera button and opens no line |
+| Server token | Optional, and a credential. The JWT the Cloudflare Zero Trust application in front of the server accepts (`parseJarvisServerToken` in `hologram`: three base64url parts; a pasted `Bearer ` is dropped). Sent on the line's upgrade request as `Authorization: Bearer <jwt>` and as `cf-access-token: <jwt>`, the header Access reads an Access JWT from. Only on a device: a browser cannot set a header on a WebSocket, so the web build connects without it |
 
-The two ElevenLabs values are also what the **watch** needs, and it is given them from here rather than asked for them: see [Handing the credentials to the watch](#handing-the-credentials-to-the-watch). `conversation-token.ts` and `elevenlabs-settings.ts` live in `hologram/` for the same reason — both devices use them, so neither owns them. The Jarvis server's address is not one of them: it is kept apart from `ElevenLabsSettings` (`jarvis-server.ts`, under its own storage key) and is never sent to the watch, which has no camera to use it with.
+The two ElevenLabs values are also what the **watch** needs, and it is given them from here rather than asked for them: see [Handing the credentials to the watch](#handing-the-credentials-to-the-watch). `conversation-token.ts` and `elevenlabs-settings.ts` live in `hologram/` for the same reason — both devices use them, so neither owns them. The Jarvis server's address and token are kept apart from `ElevenLabsSettings` (`jarvis-server.ts`, each under its own storage key), and handed to the watch beside them, so it holds the same line.
 
 For each conversation the app asks `GET https://api.elevenlabs.io/v1/convai/conversation/token` for a WebRTC token for that agent, and the session runs on the token; the key itself is used for nothing else.
 

@@ -32,6 +32,8 @@ interface WatchCardProps {
    * ask for one; the watch is sent it the next time it asks (`answer-the-watch.ts`).
    */
   serverAddress?: string;
+  /** The token for the server, handed over beside its address. */
+  serverToken?: string;
 }
 
 /** Nothing found, and what is shown until the first answer comes back. */
@@ -92,7 +94,7 @@ function usePairedWatch(): PairedWatch {
  * watch is side-loaded with `adb` — see `watch/AGENTS.md` — and the button says so rather than
  * sending the user to a page that will tell them the item was not found.
  */
-export function WatchCard({ settings, serverAddress }: WatchCardProps) {
+export function WatchCard({ settings, serverAddress, serverToken }: WatchCardProps) {
   const watch = usePairedWatch();
 
   // The Data Layer is Android's, and a browser has no watch beside it.
@@ -103,7 +105,7 @@ export function WatchCard({ settings, serverAddress }: WatchCardProps) {
   const name = watch.name ?? 'your watch';
 
   return watch.hasJarvis ? (
-    <HandingOverTheKey name={name} settings={settings} serverAddress={serverAddress} />
+    <HandingOverTheKey name={name} settings={settings} serverAddress={serverAddress} serverToken={serverToken} />
   ) : (
     <PuttingHimOnTheWatch name={name} />
   );
@@ -120,10 +122,12 @@ function HandingOverTheKey({
   name,
   settings,
   serverAddress,
+  serverToken,
 }: {
   name: string;
   settings: ElevenLabsSettings | undefined;
   serverAddress: string | undefined;
+  serverToken: string | undefined;
 }) {
   const [handover, setHandover] = useState<'ready' | 'sending' | 'sent'>('ready');
   const [problem, setProblem] = useState<string | undefined>(undefined);
@@ -134,7 +138,7 @@ function HandingOverTheKey({
     }
     setHandover('sending');
     setProblem(undefined);
-    void sendSettingsToTheWatch(settings, serverAddress).then((sent) => {
+    void sendSettingsToTheWatch(settings, serverAddress, serverToken).then((sent) => {
       setHandover(sent ? 'sent' : 'ready');
       if (!sent) {
         setProblem(
@@ -142,7 +146,7 @@ function HandingOverTheKey({
         );
       }
     });
-  }, [settings, serverAddress]);
+  }, [settings, serverAddress, serverToken]);
 
   return (
     <View style={styles.card} testID="watch-card">

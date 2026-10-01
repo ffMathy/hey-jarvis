@@ -20,7 +20,10 @@ class FakeSocket implements ServerSocket {
   readonly sent: string[] = [];
   closedByDevice = false;
 
-  constructor(readonly url: string) {}
+  constructor(
+    readonly url: string,
+    readonly headers: Readonly<Record<string, string>>,
+  ) {}
 
   send(data: string) {
     this.sent.push(data);
@@ -53,8 +56,8 @@ function fakePlatform() {
   const waiting: { at: number; callback: () => void; cancelled: boolean }[] = [];
   let now = 0;
   const platform: ServerLinkPlatform = {
-    openSocket: (url) => {
-      const socket = new FakeSocket(url);
+    openSocket: (url, headers) => {
+      const socket = new FakeSocket(url, headers);
       sockets.push(socket);
       return socket;
     },
@@ -280,6 +283,26 @@ describe('telling the server what sir points at', () => {
     latest().receive('{"type":"ready"}');
 
     expect(pointingSent(latest())).toEqual([]);
+  });
+});
+
+describe('the token for the server', () => {
+  const TOKEN = 'eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJqYXJ2aXMifQ.c2lnbmF0dXJl';
+
+  it('goes on every upgrade request as a bearer token and as Cloudflare Access’s own header', () => {
+    const { platform, advance, latest } = fakePlatform();
+    connectToServer({ address: ADDRESS, device: 'phone', token: TOKEN }, platform);
+    expect(latest().headers).toEqual({ Authorization: `Bearer ${TOKEN}`, 'cf-access-token': TOKEN });
+
+    latest().drop(1006);
+    advance(FIRST_RETRY_MS);
+    expect(latest().headers).toEqual({ Authorization: `Bearer ${TOKEN}`, 'cf-access-token': TOKEN });
+  });
+
+  it('adds no header for a server with nothing in front of it', () => {
+    const { platform, latest } = fakePlatform();
+    connectToServer({ address: ADDRESS, device: 'phone' }, platform);
+    expect(latest().headers).toEqual({});
   });
 });
 

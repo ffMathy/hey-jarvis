@@ -1,7 +1,12 @@
-import { type ElevenLabsSettings, parseElevenLabsSettings, parseJarvisServerAddress } from 'hologram';
+import {
+  type ElevenLabsSettings,
+  parseElevenLabsSettings,
+  parseJarvisServerAddress,
+  parseJarvisServerToken,
+} from 'hologram';
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import type { JarvisServerAddressChange } from './jarvis-server';
+import type { JarvisServerChange } from './jarvis-server';
 import { theme } from './theme';
 
 interface ElevenLabsFieldsProps {
@@ -13,7 +18,7 @@ interface ElevenLabsFieldsProps {
    * because photos are something to add once Jarvis works, not something to learn about before he
    * does.
    */
-  server?: { storedAddress: string | undefined };
+  server?: { storedAddress: string | undefined; storedToken: string | undefined };
   /** What the button says. "Save" on the settings screen; "Continue" on the tour. */
   submitLabel: string;
   /**
@@ -21,7 +26,7 @@ interface ElevenLabsFieldsProps {
    * the change. Nothing is reported upwards until everything on the form parses, so a form with one
    * bad field saves none of them.
    */
-  onSubmit: (settings: ElevenLabsSettings, serverAddressChange: JarvisServerAddressChange | undefined) => void;
+  onSubmit: (settings: ElevenLabsSettings, serverChange: JarvisServerChange | undefined) => void;
 }
 
 /**
@@ -42,8 +47,10 @@ export function ElevenLabsFields({ settings, server, submitLabel, onSubmit }: El
   const [apiKey, setApiKey] = useState(settings?.apiKey ?? '');
   const [agentId, setAgentId] = useState(settings?.agentId ?? '');
   const [serverAddress, setServerAddress] = useState(server?.storedAddress ?? '');
-  /** The address the field started from, which is what a save is measured against. See `submit`. */
+  const [serverToken, setServerToken] = useState(server?.storedToken ?? '');
+  /** What the fields started from, which is what a save is measured against. See `submit`. */
   const [startingServerAddress] = useState(server?.storedAddress);
+  const [startingServerToken] = useState(server?.storedToken);
   const [problem, setProblem] = useState<string | undefined>(undefined);
 
   const submit = () => {
@@ -61,14 +68,22 @@ export function ElevenLabsFields({ settings, server, submitLabel, onSubmit }: El
       return;
     }
 
-    // And reported only if it differs from what the field started from. An address that could not
-    // be read starts the field empty, so saving the field as it stood would erase an address that had
-    // only failed to load, when sir came here to change the agent ID.
-    const serverAddressChange =
-      server && serverResult.address !== startingServerAddress ? { address: serverResult.address } : undefined;
+    const tokenResult = server ? parseJarvisServerToken(serverToken) : { token: undefined };
+    if ('problem' in tokenResult) {
+      setProblem(tokenResult.problem);
+      return;
+    }
+
+    // And reported only if either differs from what its field started from. An address that could
+    // not be read starts the field empty, so saving the field as it stood would erase an address that
+    // had only failed to load, when sir came here to change the agent ID.
+    const serverChange =
+      server && (serverResult.address !== startingServerAddress || tokenResult.token !== startingServerToken)
+        ? { address: serverResult.address, token: tokenResult.token }
+        : undefined;
 
     setProblem(undefined);
-    onSubmit(result.settings, serverAddressChange);
+    onSubmit(result.settings, serverChange);
   };
 
   return (
@@ -135,6 +150,31 @@ export function ElevenLabsFields({ settings, server, submitLabel, onSubmit }: El
             importantForAutofill="no"
             placeholder="https://jarvis.example.com"
             testID="jarvis-server"
+            placeholderTextColor={theme.colors.mutedText}
+          />
+        </View>
+      ) : null}
+
+      {server ? (
+        <View style={styles.field}>
+          <Text style={styles.label}>Server token</Text>
+          <Text style={styles.explanation}>
+            Optional: the JWT that Cloudflare Zero Trust in front of your Jarvis server accepts. This phone and your
+            watch send it as a bearer token when they connect. A browser cannot send it, so the web build and the
+            headset connect without it.
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={serverToken}
+            onChangeText={setServerToken}
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry
+            // A credential, kept out of password managers like the API key.
+            autoComplete="off"
+            importantForAutofill="no"
+            placeholder="eyJhbGci…"
+            testID="jarvis-server-token"
             placeholderTextColor={theme.colors.mutedText}
           />
         </View>

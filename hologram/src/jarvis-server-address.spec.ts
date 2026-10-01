@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { parseJarvisServerAddress } from './jarvis-server-address';
+import { parseJarvisServerAddress, parseJarvisServerToken } from './jarvis-server-address';
 
 const ADDRESS = 'https://jarvis.example.com';
 
@@ -85,5 +85,24 @@ describe('reading the address sir typed', () => {
         problem: "The Jarvis server's address should look like https://jarvis.example.com.",
       });
     }
+  });
+});
+
+describe('reading the server token sir pasted', () => {
+  const TOKEN = 'eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJqYXJ2aXMifQ.c2lnbmF0dXJl';
+
+  it('takes a JWT as it is, forgiving the whitespace and a Bearer in front of it', () => {
+    expect(parseJarvisServerToken(TOKEN)).toEqual({ token: TOKEN });
+    expect(parseJarvisServerToken(`  Bearer ${TOKEN}\n`)).toEqual({ token: TOKEN });
+  });
+
+  it('takes nothing typed as no token', () => {
+    expect(parseJarvisServerToken('   ')).toEqual({ token: undefined });
+  });
+
+  it('refuses anything that is not a JWT, before Cloudflare does', () => {
+    expect(parseJarvisServerToken('not a token')).toHaveProperty('problem');
+    expect(parseJarvisServerToken('only.two')).toHaveProperty('problem');
+    expect(parseJarvisServerToken(`${TOKEN}=`)).toHaveProperty('problem');
   });
 });

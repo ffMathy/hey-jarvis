@@ -19,7 +19,13 @@ import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { useAnswerTheWatch } from './answer-the-watch';
 import { isAssistLaunch } from './assist-link';
 import { ConversationScreen } from './conversation-screen';
-import { type JarvisServerAddressChange, loadJarvisServerAddress, saveJarvisServerAddress } from './jarvis-server';
+import {
+  type JarvisServerChange,
+  loadJarvisServerAddress,
+  loadJarvisServerToken,
+  saveJarvisServerAddress,
+  saveJarvisServerToken,
+} from './jarvis-server';
 import { firstOnboardingStep } from './onboarding';
 import { OnboardingScreen } from './onboarding-screen';
 import { hasWalkedOnboarding, rememberOnboardingWalked } from './onboarding-storage';
@@ -36,6 +42,12 @@ import { theme } from './theme';
 async function readJarvisServerAddress(stillWanted: () => boolean): Promise<string | undefined> {
   const stored = await readTryingAgain(loadJarvisServerAddress, stillWanted);
   return stored?.kind === 'address' ? stored.address : undefined;
+}
+
+/** The token for the server to use, read as the address is: one that still cannot be read is none. */
+async function readJarvisServerToken(stillWanted: () => boolean): Promise<string | undefined> {
+  const stored = await readTryingAgain(loadJarvisServerToken, stillWanted);
+  return stored?.kind === 'token' ? stored.token : undefined;
 }
 
 /** Which screen is showing. */
@@ -109,6 +121,11 @@ export function App({ summoned = false, showing }: AppProps) {
    */
   const [serverAddress, setServerAddress] = useState<string | undefined>(undefined);
   /**
+   * The JWT the Cloudflare Zero Trust application in front of the server accepts, if sir has given
+   * one: sent with this phone's and the watch's line to the server. See `jarvis-server.ts`.
+   */
+  const [serverToken, setServerToken] = useState<string | undefined>(undefined);
+  /**
    * Whether the first-run tour is already behind this install.
    *
    * True until told otherwise, so that nothing shows a tour in the frame before the answer
@@ -122,10 +139,10 @@ export function App({ summoned = false, showing }: AppProps) {
 
   // Hands the credentials to the watch whenever it asks, for as long as this app is open. See
   // `answer-the-watch.ts`; the watch only ever asks when it has none of its own.
-  useAnswerTheWatch(settings, serverAddress);
+  useAnswerTheWatch(settings, serverAddress, serverToken);
   // The line to sir's Jarvis server, open for as long as the app runs and has an address, whatever
   // screen is showing and whether or not he is talking to Jarvis (`jarvis-server-link.ts` in hologram).
-  useJarvisServer(serverAddress, 'phone');
+  useJarvisServer(serverAddress, serverToken, 'phone');
 
   const launchUrl = Linking.useURL();
   // Two ways in, and they are genuinely different: the assistant's own window renders this
@@ -150,6 +167,7 @@ export function App({ summoned = false, showing }: AppProps) {
       // there is a camera to offer.
       const walking = hasWalkedOnboarding();
       const readingServerAddress = readJarvisServerAddress(stillWanted);
+      const readingServerToken = readJarvisServerToken(stillWanted);
 
       const stored = await readTryingAgain(loadElevenLabsSettings, stillWanted);
       if (stored?.kind === 'settings') {
@@ -158,9 +176,11 @@ export function App({ summoned = false, showing }: AppProps) {
 
       const walked = await walking;
       const storedServerAddress = await readingServerAddress;
+      const storedServerToken = await readingServerToken;
       if (wanted) {
         setHasWalkedTour(walked);
         setServerAddress(storedServerAddress);
+        setServerToken(storedServerToken);
         setIsLoaded(true);
       }
     })();
@@ -188,11 +208,14 @@ export function App({ summoned = false, showing }: AppProps) {
     }
     seenSummoning.current = { showing, launchUrl };
     let wanted = true;
-    void readJarvisServerAddress(() => wanted).then((storedServerAddress) => {
-      if (wanted) {
-        setServerAddress(storedServerAddress);
-      }
-    });
+    void Promise.all([readJarvisServerAddress(() => wanted), readJarvisServerToken(() => wanted)]).then(
+      ([storedServerAddress, storedServerToken]) => {
+        if (wanted) {
+          setServerAddress(storedServerAddress);
+          setServerToken(storedServerToken);
+        }
+      },
+    );
     return () => {
       wanted = false;
     };
@@ -221,13 +244,12 @@ export function App({ summoned = false, showing }: AppProps) {
    * only then, so an address that could not be read is never overwritten by the empty field that
    * stood in for it. The tour never asks for one.
    */
-  const saveSettingsScreen = (
-    saved: ElevenLabsSettings,
-    serverAddressChange: JarvisServerAddressChange | undefined,
-  ) => {
-    if (serverAddressChange) {
-      setServerAddress(serverAddressChange.address);
-      void saveJarvisServerAddress(serverAddressChange.address);
+  const saveSettingsScreen = (saved: ElevenLabsSettings, serverChange: JarvisServerChange | undefined) => {
+    if (serverChange) {
+      setServerAddress(serverChange.address);
+      setServerToken(serverChange.token);
+      void saveJarvisServerAddress(serverChange.address);
+      void saveJarvisServerToken(serverChange.token);
     }
     save(saved);
   };
@@ -284,6 +306,7 @@ export function App({ summoned = false, showing }: AppProps) {
           <SettingsScreen
             settings={settings}
             serverAddress={serverAddress}
+            serverToken={serverToken}
             onSave={saveSettingsScreen}
             onCancel={settings ? () => setIsEditingSettings(false) : undefined}
             onTrySample={settings ? undefined : () => setIsSampling(true)}

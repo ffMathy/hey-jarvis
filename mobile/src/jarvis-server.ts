@@ -1,4 +1,9 @@
-import { JARVIS_SERVER_ADDRESS_STORAGE_KEY, parseJarvisServerAddress } from 'hologram';
+import {
+  JARVIS_SERVER_ADDRESS_STORAGE_KEY,
+  JARVIS_SERVER_TOKEN_STORAGE_KEY,
+  parseJarvisServerAddress,
+  parseJarvisServerToken,
+} from 'hologram';
 import { readStoredValue, writeStoredValue } from './key-value-store';
 
 /**
@@ -54,13 +59,16 @@ export async function loadJarvisServerAddress(): Promise<StoredJarvisServerAddre
 }
 
 /**
- * The settings screen changing the address: the one to keep instead, `undefined` for none.
+ * The settings screen changing the server's address or its token: the ones to keep instead,
+ * `undefined` for none.
  *
- * A save that leaves the field as it was is no change at all, and is reported as none rather than as
- * the field's value — see `elevenlabs-fields.tsx` for the address that would otherwise be erased.
+ * A save that leaves both fields as they were is no change at all, and is reported as none rather
+ * than as the fields' values — see `elevenlabs-fields.tsx` for the address that would otherwise be
+ * erased.
  */
-export interface JarvisServerAddressChange {
+export interface JarvisServerChange {
   address: string | undefined;
+  token: string | undefined;
 }
 
 /**
@@ -69,4 +77,32 @@ export interface JarvisServerAddressChange {
  */
 export async function saveJarvisServerAddress(address: string | undefined): Promise<void> {
   await writeStoredValue(JARVIS_SERVER_ADDRESS_STORAGE_KEY, address ?? '');
+}
+
+/**
+ * What came back for the token: the same three answers as for the address, read the same way and
+ * retried with it.
+ */
+export type StoredJarvisServerToken = { kind: 'token'; token: string } | { kind: 'nothing' } | { kind: 'unreadable' };
+
+/**
+ * Reads the stored token for the server: the JWT the Cloudflare Zero Trust application in front of
+ * it accepts (`parseJarvisServerToken` in `hologram`). Kept in the keystore like the ElevenLabs key,
+ * since it is a credential too, and parsed again on the way out.
+ */
+export async function loadJarvisServerToken(): Promise<StoredJarvisServerToken> {
+  let stored: string | undefined;
+  try {
+    stored = await readStoredValue(JARVIS_SERVER_TOKEN_STORAGE_KEY);
+  } catch {
+    return { kind: 'unreadable' };
+  }
+
+  const parsed = parseJarvisServerToken(stored ?? '');
+  return 'token' in parsed && parsed.token !== undefined ? { kind: 'token', token: parsed.token } : { kind: 'nothing' };
+}
+
+/** Keeps the token, or forgets it, as the address is kept. */
+export async function saveJarvisServerToken(token: string | undefined): Promise<void> {
+  await writeStoredValue(JARVIS_SERVER_TOKEN_STORAGE_KEY, token ?? '');
 }
