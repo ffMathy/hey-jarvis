@@ -12,8 +12,8 @@ import { isRouteToolName, readRoutingLoop } from './routing-loop';
  *
  * The sentences below are the headset's, copied because this package imports nothing of the
  * devices': the device context is the one the headset session passes as `deviceContext`
- * (`horizon/src/conversation/`), the pointing ones come from its pointing policy
- * (`horizon/src/entities/`). If the two drift apart, the prompt's gate stops matching what the
+ * (`vr/src/conversation/`), the pointing ones come from its pointing policy
+ * (`vr/src/entities/`). If the two drift apart, the prompt's gate stops matching what the
  * headset says, and the specs here go on testing a sentence the headset no longer sends.
  */
 

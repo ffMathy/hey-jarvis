@@ -137,7 +137,7 @@ mobile/
     └── speech-floor.web.ts           # … and, now both measure an RMS, the same in a browser
 ```
 
-Most of what this screen runs is not in this tree, because the watch and the headset (`horizon/`)
+Most of what this screen runs is not in this tree, because the watch and the headset (`vr/`)
 run it too: **the conversation itself** is `hologram`'s session (`jarvis-session.ts`), which this
 screen holds with `useJarvisSession` from `hologram/conversation` — the greeting, the token, the
 twenty-second deadline, the failures in words, the tool calls, the listening lattice's score, the

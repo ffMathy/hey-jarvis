@@ -2,7 +2,7 @@
 
 Jarvis himself: the sphere, the voice tracking that drives it, and the
 conversation with the agent doing the talking. Shared by every app that *is*
-him — `mobile/` and `watch/`, and `horizon/`, the Quest headset app that stands
+him — `mobile/` and `watch/`, and `vr/`, the Quest headset app that stands
 him in your room, which uses only the main entry and the assets.
 
 > **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (Turborepo commands, commit standards, 1Password, etc.)
@@ -162,7 +162,7 @@ left out, and no device sets it. Only the headset's browser tests pass it,
 `Infinity` from `?deadline=never`, because they keep him greeting on a token that
 never comes while an emulator draws a frame a second or slower, and the shared
 twenty seconds raced them on a slow machine (see "The browser tests" in
-`horizon/AGENTS.md`). An infinite wait arms no timer at all: a browser runs a
+`vr/AGENTS.md`). An infinite wait arms no timer at all: a browser runs a
 timer of `Infinity` at once, and the specs' fake clock does the same, so a session
 that handed it over would fail in their hands as it would on a page.
 
@@ -227,7 +227,7 @@ name reported through `onError` and answered as an error.
 
 **The participant name is a required argument, not a default.** Each device
 names itself in the ElevenLabs conversation history — `jarvis-android`,
-`jarvis-wear` and `jarvis-horizon` — and the point of the names is to be told
+`jarvis-wear` and `jarvis-vr` — and the point of the names is to be told
 apart, so a conversation held on the wrist is distinguishable from one held in
 a pocket or in a headset. All three constants are in `conversation-token.ts`
 and none is the default, because a default is how the watch ends up filed under
@@ -407,7 +407,7 @@ under `MINIMUM_FRAME_SECONDS` (`frameStepSeconds`), the step itself
 (`advanceFrameClock`), the arrival's restart (`restartArrival`) and the frame
 the drawing is handed (`hologramFrameOf`), with the numbers it runs by in
 `frame-timing.ts`. The view calls them inside its frame callback's
-`frame.modify`; the headset's `horizon/src/hologram3d/frame-clock.ts` wraps
+`frame.modify`; the headset's `vr/src/hologram3d/frame-clock.ts` wraps
 them and keeps only what it does differently, which is when rather than
 what — it reads the voice on the clock's own time instead of on a JS-thread
 timer, and restarts the arrival on every summon instead of on coming back to
@@ -423,7 +423,7 @@ Its conversation is the same session the phone and the watch hold theirs in
 directly: the headset hands it its browser parts — his track analysed on the
 app's `AudioContext`, the greeting's `<audio>` element, the orphaned audio a
 dropped call leaves on a page that lives for hours — through
-`createHeadsetSession` in `horizon/src/conversation/`. A renderer drawing over CanvasKit — the headset's flat layer, and the phone's own web build —
+`createHeadsetSession` in `vr/src/conversation/`. A renderer drawing over CanvasKit — the headset's flat layer, and the phone's own web build —
 takes its resources from `createReleasableHologramResources` and calls `release()` once each
 frame has been flushed or recorded: CanvasKit's objects live in the WebAssembly heap, which nothing
 garbage-collects, and the drawing makes a few dozen paths a frame. On a device the JSI objects free

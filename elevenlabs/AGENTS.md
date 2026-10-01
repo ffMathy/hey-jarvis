@@ -410,7 +410,7 @@ Each rule lives in exactly one place:
   what the model sees, so only the current target is ever in front of it. The agent puts that
   entity's name and id into the `routePromptWorkflow` query — `Is that on? (pointing at "Kitchen
   ceiling light", id light.kitchen_ceiling)`, the form the MCP `userQuery` description and planner
-  expect — and Mastra carries the id on to the agent that acts. `horizon`'s
+  expect — and Mastra carries the id on to the agent that acts. `vr`'s
   `agent-contract.spec.ts` reads this prompt, `tests/utils/headset.ts` and the MCP routing files as
   text, and fails if the headset's sentences or that form drift apart.
 

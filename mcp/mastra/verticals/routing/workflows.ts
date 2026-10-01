@@ -36,7 +36,7 @@ import type { OpenQuestion } from './questions.js';
  * The client tool the voice agent lights things up with on sir's headset.
  *
  * It is not one of the routing tools: it lives on the ElevenLabs agent, and the headset answers it
- * (see `hologram/` and `horizon/`), so the voice model keeps its two routing tools and only reaches
+ * (see `hologram/` and `vr/`), so the voice model keeps its two routing tools and only reaches
  * for this one when a response here says to. The name has to match in all of those places -- here,
  * the agent's configuration and prompt, and every client that registers it.
  */

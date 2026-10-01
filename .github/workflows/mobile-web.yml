@@ -6,7 +6,8 @@ name: Mobile Web
 # browser, or stood in a room with on a headset, without installing anything:
 #
 #   /hey-jarvis/           the phone app's web build (mobile/)
-#   /hey-jarvis/horizon/   the Meta Quest app that puts him in your room (horizon/)
+#   /hey-jarvis/vr/        the Meta Quest app that puts him in your room (vr/)
+#   /hey-jarvis/horizon/   a redirect to vr/, where that app was published before it was renamed
 #
 # What is at the root is the real phone app: the same conversation screen, the
 # same hologram, drawn by CanvasKit instead of native Skia. Taking over the assist
@@ -86,10 +87,10 @@ jobs:
 
       # First, so a headset app that does not build fails the run before the phone
       # app's slower export. `turbo build` also runs its initialize (the wasm into
-      # public/vendor/), lint and typecheck, and writes it to dist/horizon. Its
+      # public/vendor/), lint and typecheck, and writes it to dist/vr. Its
       # asset URLs are relative, so it needs no base path of its own.
       - name: Build the headset app
-        run: bunx turbo build --filter=horizon
+        run: bunx turbo build --filter=vr
 
       - name: Configure Pages
         id: pages
@@ -105,12 +106,15 @@ jobs:
         working-directory: mobile
 
       # One folder for the one site: the phone app at its root, the headset app in
-      # horizon/. Nothing in the phone's export is called horizon, so they never clash.
+      # vr/. Nothing in the phone's export is called vr, so they never clash. The
+      # headset app used to be published at horizon/, and a headset keeps that address
+      # bookmarked, so horizon/ stays as a page that sends it on to vr/.
       - name: Assemble the site
         run: |
-          mkdir -p _site
+          mkdir -p _site _site/horizon
           cp -r mobile/dist/. _site/
-          cp -r dist/horizon _site/horizon
+          cp -r dist/vr _site/vr
+          printf '%s\n' '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=../vr/"><link rel="canonical" href="../vr/"><a href="../vr/">Jarvis has moved to /vr/</a>' > _site/horizon/index.html
 
       - name: Upload the site
         uses: actions/upload-pages-artifact@v5.0.0

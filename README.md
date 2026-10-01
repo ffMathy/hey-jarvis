@@ -36,7 +36,7 @@ The devices are real frames rather than drawings: Google's own Pixel 10 Pro devi
 
 ## Jarvis in your room
 
-On a Meta Quest he stands in the room with you. Say "Hey Jarvis" and he appears where there is space for him — worked out from the headset's own scan of the room — greets you, speaks from where he stands, and holds the same conversation as the phone. This is the [`horizon`](./horizon) app in Meta's headset emulator and one of its scanned rooms (the grey is the scan, standing in for passthrough): waiting for the wake word, arriving, then a walk up to him and once round him while he listens, thinks and speaks.
+On a Meta Quest he stands in the room with you. Say "Hey Jarvis" and he appears where there is space for him — worked out from the headset's own scan of the room — greets you, speaks from where he stands, and holds the same conversation as the phone. This is the [`vr`](./vr) app in Meta's headset emulator and one of its scanned rooms (the grey is the scan, standing in for passthrough): waiting for the wake word, arriving, then a walk up to him and once round him while he listens, thinks and speaks.
 
 <p align="center">
   <picture>
@@ -45,10 +45,10 @@ On a Meta Quest he stands in the room with you. Say "Hey Jarvis" and he appears 
   </picture>
 </p>
 
-The clip above is silent — a README can show an animated image but no video. **The full video, with his voice coming from where he stands, is [docs/jarvis-in-a-room.webm](./docs/jarvis-in-a-room.webm)**: download it and play it with headphones. It is rendered frame by frame from the real app with [`horizon/.scripts/render-demo.ts`](./horizon/.scripts/render-demo.ts):
+The clip above is silent — a README can show an animated image but no video. **The full video, with his voice coming from where he stands, is [docs/jarvis-in-a-room.webm](./docs/jarvis-in-a-room.webm)**: download it and play it with headphones. It is rendered frame by frame from the real app with [`vr/.scripts/render-demo.ts`](./vr/.scripts/render-demo.ts):
 
 ```bash
-bun horizon/.scripts/render-demo.ts --out docs/jarvis-in-a-room.webm --readme
+bun vr/.scripts/render-demo.ts --out docs/jarvis-in-a-room.webm --readme
 ```
 
 ## Architecture
@@ -67,7 +67,7 @@ ESP32 Voice Hardware  ←→  Home Assistant  ←→  MCP Server (Mastra AI)  �
 | [**mobile**](./mobile) | Expo app that registers as the phone's default assistant, so the power button summons Jarvis |
 | [**watch**](./watch) | The same thing on a Wear OS watch |
 | [**hologram**](./hologram) | The sphere itself, and the voice tracking behind it — platform-free, and bundled by every app |
-| [**horizon**](./horizon) | Jarvis in your room: a WebXR page for Meta Quest — say "Hey Jarvis" and he appears where there is space, in passthrough, and holds the conversation — [open it on the headset](https://ffmathy.github.io/hey-jarvis/horizon/) |
+| [**vr**](./vr) | Jarvis in your room: a WebXR page for Meta Quest — say "Hey Jarvis" and he appears where there is space, in passthrough, and holds the conversation — [open it on the headset](https://ffmathy.github.io/hey-jarvis/vr/) |
 
 Getting the app onto a phone and a paired watch goes through Google Play — published only when a release is cut from `main`, to the closed test: [**docs/play-store.md**](./docs/play-store.md) covers the upload key, the publisher account and the secrets each needs. The signing and the workflow are in place; what is not is an open Play developer account, which is where that document starts.
 

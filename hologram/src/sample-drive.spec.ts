@@ -25,7 +25,7 @@ function manualClock(start = 5000) {
 // The two places sample mode's voices were built before they were shared, copied as the reference
 // the shared code is held to: `useSimulatedVoice` and `useSimulatedUser` in `react/use-simulated-voice.ts`,
 // with `Date.now` and the hook's refs made arguments, and `driveFor` in the headset's
-// `horizon/src/app/sample-driver.ts`.
+// `vr/src/app/sample-driver.ts`.
 
 function referenceHookVoice(mood: SimulatedMood | undefined, now: () => number, spectrum: Uint8Array): JarvisVoice {
   if (!mood) {
