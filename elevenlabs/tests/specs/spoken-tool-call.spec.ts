@@ -23,11 +23,6 @@ describe('findSpokenToolCallsInText', () => {
       // followed by a bracketed note standing in for the tool it should have called.
       '[sounding like Jarvis from the Iron Man movies] As you wish, sir. Do try not to miss me too much. [end_call invoked]',
       '→ end_call',
-      // Lighting up what a request touches, read out as the preamble to the answer, as a stage
-      // direction, or recited with its arguments.
-      '[dry] Calling markAffected on the kitchen lights first, sir.',
-      '[markAffected] The kitchen ceiling light is on, sir.',
-      'markAffected(entities=[{"id": "light.kitchen_ceiling"}])',
       // The photo's id read out with the rest of the phone's message, and on its own.
       '[dry] A receipt, sir (photo photo3).',
       '[matter-of-factly] Photo3 shows a receipt, sir.',
@@ -60,9 +55,6 @@ describe('findSpokenToolCallsInText', () => {
       // it is. A closing line belongs in the transcript; the call itself does not.
       'Ending the call now, sir. [dry] Do try not to miss me too much.',
       '[sighs] As you wish, sir. I shall end the call.',
-      // "Affected" and "mark" are ordinary words; only the tool's name, run together, is a call.
-      '[dry] The storm has not affected the kitchen lights, sir.',
-      '[matter-of-factly] I shall mark that down as affected by your optimism, sir.',
       // Likewise a photo: talking about one is fine, as long as its id stays out of it.
       '[dry] Go ahead with the camera button, sir. I shall try to contain my excitement.',
       '[deadpan] The photo shows a receipt, sir. Your third coffee today.',
@@ -105,21 +97,13 @@ describe('findSpokenToolCalls', () => {
   });
 
   it('ignores everything that is not the agent speaking', () => {
-    // A real tool call carries the tool's name too, client tools included, and the phone's message
-    // about a photo carries its id. Reading either as a recitation would fail exactly the
-    // conversations that did the right thing.
+    // A real tool call carries the tool's name too, and the phone's message about a photo carries
+    // its id. Reading either as a recitation would fail exactly the conversations that did the
+    // right thing.
     const messages: ServerMessage[] = [
       {
         type: 'mcp_tool_call',
         mcp_tool_call: { tool_name: 'routePromptWorkflow', tool_call_id: 'call-1', state: 'success', result: [] },
-      },
-      {
-        type: 'client_tool_call',
-        client_tool_call: {
-          tool_name: 'markAffected',
-          tool_call_id: 'call-2',
-          parameters: { entities: [{ id: 'light.kitchen_ceiling' }] },
-        },
       },
       { type: 'user_message', text: 'call routePromptWorkflow for me' },
       { type: 'user_message', text: "I've sent you a photo (photo photo3)." },

@@ -89,7 +89,7 @@ describe('requestConversationToken', () => {
 
     await requestConversationToken({ settings: SETTINGS, participantName: HEADSET_PARTICIPANT_NAME }, fetchStub);
 
-    expect(new URL(fetchStub.calls[0]?.url ?? '').searchParams.get('participant_name')).toBe('jarvis-horizon');
+    expect(new URL(fetchStub.calls[0]?.url ?? '').searchParams.get('participant_name')).toBe('jarvis-vr');
     expect(new Set([PHONE_PARTICIPANT_NAME, WATCH_PARTICIPANT_NAME, HEADSET_PARTICIPANT_NAME]).size).toBe(3);
   });
 

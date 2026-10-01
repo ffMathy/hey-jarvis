@@ -28,8 +28,8 @@ export interface ConversationToken {
  */
 export const PHONE_PARTICIPANT_NAME = 'jarvis-android';
 export const WATCH_PARTICIPANT_NAME = 'jarvis-wear';
-/** The Quest headset's, where he stands in the room with you (`horizon/`). */
-export const HEADSET_PARTICIPANT_NAME = 'jarvis-horizon';
+/** The Quest headset's, where he stands in the room with you (`vr/`). */
+export const HEADSET_PARTICIPANT_NAME = 'jarvis-vr';
 
 /** Everything one conversation needs before it can be asked for: whose agent, and who is asking. */
 export interface ConversationRequest {

@@ -14,4 +14,5 @@
  */
 
 export { useIsForeground } from './is-foreground';
+export { useJarvisServer } from './jarvis-server';
 export { LEAVING_SECONDS } from './leaving';

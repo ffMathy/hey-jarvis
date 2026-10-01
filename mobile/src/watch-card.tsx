@@ -27,6 +27,13 @@ interface WatchCardProps {
    * there without offering a handover, which is the truth.
    */
   settings: ElevenLabsSettings | undefined;
+  /**
+   * The Jarvis server's address, handed over with the credentials. Absent on the tour, which does not
+   * ask for one; the watch is sent it the next time it asks (`answer-the-watch.ts`).
+   */
+  serverAddress?: string;
+  /** The token for the server, handed over beside its address. */
+  serverToken?: string;
 }
 
 /** Nothing found, and what is shown until the first answer comes back. */
@@ -87,7 +94,7 @@ function usePairedWatch(): PairedWatch {
  * watch is side-loaded with `adb` — see `watch/AGENTS.md` — and the button says so rather than
  * sending the user to a page that will tell them the item was not found.
  */
-export function WatchCard({ settings }: WatchCardProps) {
+export function WatchCard({ settings, serverAddress, serverToken }: WatchCardProps) {
   const watch = usePairedWatch();
 
   // The Data Layer is Android's, and a browser has no watch beside it.
@@ -97,7 +104,11 @@ export function WatchCard({ settings }: WatchCardProps) {
 
   const name = watch.name ?? 'your watch';
 
-  return watch.hasJarvis ? <HandingOverTheKey name={name} settings={settings} /> : <PuttingHimOnTheWatch name={name} />;
+  return watch.hasJarvis ? (
+    <HandingOverTheKey name={name} settings={settings} serverAddress={serverAddress} serverToken={serverToken} />
+  ) : (
+    <PuttingHimOnTheWatch name={name} />
+  );
 }
 
 /**
@@ -107,7 +118,17 @@ export function WatchCard({ settings }: WatchCardProps) {
  * side — the watch stores it and says nothing back — so without a word here there is no way to
  * tell a successful send from a button that did nothing.
  */
-function HandingOverTheKey({ name, settings }: { name: string; settings: ElevenLabsSettings | undefined }) {
+function HandingOverTheKey({
+  name,
+  settings,
+  serverAddress,
+  serverToken,
+}: {
+  name: string;
+  settings: ElevenLabsSettings | undefined;
+  serverAddress: string | undefined;
+  serverToken: string | undefined;
+}) {
   const [handover, setHandover] = useState<'ready' | 'sending' | 'sent'>('ready');
   const [problem, setProblem] = useState<string | undefined>(undefined);
 
@@ -117,7 +138,7 @@ function HandingOverTheKey({ name, settings }: { name: string; settings: ElevenL
     }
     setHandover('sending');
     setProblem(undefined);
-    void sendSettingsToTheWatch(settings).then((sent) => {
+    void sendSettingsToTheWatch(settings, serverAddress, serverToken).then((sent) => {
       setHandover(sent ? 'sent' : 'ready');
       if (!sent) {
         setProblem(
@@ -125,7 +146,7 @@ function HandingOverTheKey({ name, settings }: { name: string; settings: ElevenL
         );
       }
     });
-  }, [settings]);
+  }, [settings, serverAddress, serverToken]);
 
   return (
     <View style={styles.card} testID="watch-card">

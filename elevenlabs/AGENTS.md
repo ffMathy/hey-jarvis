@@ -119,8 +119,6 @@ The agent prompt in `src/assets/agent-prompt.md` defines:
   line open
 - **When sir is silent**: see **Hanging up when he goes quiet** below
 - **Photos sir sends from his phone**: see **Showing Jarvis something** below
-- **On the headset**: `markAffected` lights up what a request touches, and "that" is what
-  sir points at — see **Lighting up what Jarvis works on** below
 
 Keep it short. The prompt is carried on every turn, so anything the agent does
 not need in order to decide its *next* utterance does not belong in it — that is
@@ -333,16 +331,15 @@ answers, in whichever conversation that is, the way it brings up earlier work st
 (`mcp/AGENTS.md`, "Vision" and "Routing"). None of this is in the prompt: it arrives in
 `instructions`, beside the rest of routing's run-time mechanics, when it applies.
 
-**The camera adds no client tool.** The agent's only one is `markAffected` (**Lighting up what
-Jarvis works on** below), which the shared session answers on every app. `clientEvents` keeps
+**The agent has no client tools, and asks ElevenLabs to send none.** `clientEvents` keeps
 `mcp_tool_call` for the apps' thinking phase (`hologram/src/tool-activity.ts`), and because the
 integration specs read tool calls off the socket, `applyTestAgentOverrides` adds it to the test agent
 should the config ever drop it. The Voice speaker logs only an MCP result's tool name and state, since
 a result can hold an email summary.
 
 **What checks it.** `tests/specs/agent-config.spec.ts`, on every push: every client event is one
-ElevenLabs sends, `mcp_tool_call` is among them, and the agent declares no client tool but
-`markAffected`, which every app answers; and the waiting-for-a-photo exception is in the prompt's **When Sir Is Silent**
+ElevenLabs sends, `mcp_tool_call` is among them, and the agent declares no client tool and asks for
+no `client_tool_call`, since no device answers one; and the waiting-for-a-photo exception is in the prompt's **When Sir Is Silent**
 and in the `skip_turn` and `end_call` descriptions, in the same phrases, whose two copies each must
 match — with the prompt sending sir to his phone, and not waiting, where there is no camera button, and
 ending the wait on a camera closed without a photo. `tests/specs/camera.integration.spec.ts` holds five
@@ -365,64 +362,22 @@ release workflow, and only when a releasable commit type (`feat`, `fix`, `perf`,
 cuts a release. Until then the phone's camera button sends photos to an agent whose prompt has never
 heard of them.
 
-## Lighting up what Jarvis works on
+## The headset
 
-On sir's headset, whatever a request reads or changes lights up where he placed it in the room,
-and "that" means whatever he is pointing at. The agent's half of it is one client tool and two
-prompt entries.
+The agent knows nothing about sir's headset, and the headset tells it nothing about itself: no device
+context, no pointing updates, no client tool. Both of the headset's extras travel between the MCP
+server and the devices over its `/api/live` WebSocket instead (see `mcp/AGENTS.md`):
 
-**`markAffected`** is a client tool in `src/assets/agent-config.json` that takes
-`{ entities: [{ id, name? }] }`. The id is opaque: it is whatever the agent that touched the thing
-reported — a Home Assistant light, an email inbox, a calendar — and nothing here or on the headset
-parses it. The name is only a label. Each setting is there for a reason, and
-`tests/specs/agent-config.spec.ts` pins all of them:
+- **What a request reads or changes** is pushed by the server straight to the devices, as a list of
+  `{ id, name? }` entities, and the headset lights it up where sir placed it in the room. The routing
+  loop's reports carry nothing about it, and the voice agent never sees it.
+- **What sir is pointing at** goes from the headset to the server, which adds
+  `(pointing at "<name>", id <id>)` to the request it routes. "Is that on?" reaches the planner
+  already naming the entity, so the prompt has no rule about what "that" means.
 
-- `expectsResponse: false`, because the Voice speaker and a telephone call never answer a client
-  tool, and a tool the agent waited on would stall it there for its whole timeout, mid-request.
-- `executionMode: immediate`, because the glow belongs to the work in progress. `post_tool_speech`
-  would wait for Jarvis to stop talking, which is usually the answer.
-- `preToolSpeech: off`, so there is no "marking the lights, sir".
-- `toolErrorHandlingMode: hide`, because a device without the tool answers with an error, and the
-  prompt's rule to repeat a failed call would otherwise loop on it.
-- `client_tool_call` is in `clientEvents`. An event missing from that list is not sent, whatever
-  the documentation implies: `agent_tool_request` and `mcp_tool_call` both stayed silent until they
-  were listed.
-
-Registering a client tool and sending a contextual update are not overrides, so neither needs the
-allow-list above. But a client tool the agent does not declare is never offered to the model,
-whatever a device registers.
-
-Each rule lives in exactly one place:
-
-- **When** to call it belongs to the routing loop. A poll whose `affectedEntities` carries anything
-  new says so in its `instructions` (`mcp/mastra/verticals/routing/workflows.ts`), and the prompt
-  says nothing about timing.
-- **Whether** this device can show it belongs to the prompt's `markAffected` entry. It is gated on
-  the exact sentence the headset sends under the context id `device` when it connects: "This
-  conversation is on sir's headset, which lights up what you are working on and tells you what he
-  is pointing at." Anywhere else the agent skips that step and follows the rest of the
-  instructions. `tests/utils/headset.ts` holds a copy of the sentence, and `headset.spec.ts` fails
-  if the prompt stops quoting it word for word.
-- **What** to pass belongs to the tool's parameter descriptions: the entities exactly as relayed.
-- **What "that" is** belongs to the pointing bullet in step 2 of the prompt. The headset sends
-  `Sir is pointing at "<name>" (<id>).` under the context id `pointing`, and clears it with
-  "Sir is not pointing at anything." under the same id. ElevenLabs drops a superseded update from
-  what the model sees, so only the current target is ever in front of it. The agent puts that
-  entity's name and id into the `routePromptWorkflow` query — `Is that on? (pointing at "Kitchen
-  ceiling light", id light.kitchen_ceiling)`, the form the MCP `userQuery` description and planner
-  expect — and Mastra carries the id on to the agent that acts. `horizon`'s
-  `agent-contract.spec.ts` reads this prompt, `tests/utils/headset.ts` and the MCP routing files as
-  text, and fails if the headset's sentences or that form drift apart.
-
-The test agent keeps its client tools (`toTestAgentTools` in `src/main.ts`) and always emits
-`client_tool_call` and `mcp_tool_call` (`toTestAgentClientEvents`). The loop names `markAffected`,
-and an agent without it would be tested against an instruction it cannot follow.
-`tests/specs/headset.integration.spec.ts` holds the live evals, which only ever run by hand. Their
-requests are read-only, because the environment runs against the real house.
-
-Like the camera's rules above, this reaches the live agent only when a release deploys it. Until
-then the headset registers a tool the agent never calls, which is harmless, and its device context
-is background the agent has no rule for.
+The agent once took part in both, through a client tool it called with the entities and through
+contextual updates naming what sir pointed at. Both are gone, and `tests/specs/agent-config.spec.ts`
+fails if a client tool, or `client_tool_call` in `clientEvents`, comes back.
 
 ## Contributing
 - **Update agent-prompt.md** for behavior changes

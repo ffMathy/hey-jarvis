@@ -4,7 +4,7 @@
  *
  * There is one of it, and every device that draws him steps it. The phone's and the watch's view
  * (`react/hologram-view.tsx`) calls it from a Reanimated frame callback on the UI thread, and the
- * headset (`horizon/src/hologram3d/frame-clock.ts`) from its XR frame loop, so a frame on the
+ * headset (`vr/src/hologram3d/frame-clock.ts`) from its XR frame loop, so a frame on the
  * headset is the frame the phone would draw at the same moment rather than a copy that can drift.
  * What the devices do differently is *when* they call these functions, never what the functions
  * do: the phone reads the voice on the JS thread every READ_INTERVAL_MS and restarts the arrival

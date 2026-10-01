@@ -7,7 +7,7 @@ import { join } from 'node:path';
  * all when the root manifest names a workspace whose `package.json` is not there ("Workspace not
  * found"). The Dockerfile therefore copies every workspace's manifest before installing, and that
  * list is written out by hand — so it drifts whenever a workspace is added. It has twice: `mobile`,
- * `watch` and `hologram`, then `horizon`, and each time the image stopped building while Turbo went
+ * `watch` and `hologram`, then `vr`, and each time the image stopped building while Turbo went
  * on replaying `mcp#build` from its cache. This holds the list to the root manifest instead.
  */
 

@@ -17,10 +17,6 @@ export const SPOKEN_TOOL_CALL_PATTERNS: { pattern: RegExp; description: string }
   // tag as far as the voice is concerned, so the user hears nothing and stays on a
   // line that was never closed.
   { pattern: /end_call/i, description: 'the end_call tool name' },
-  // Lighting up what a request touches is the one call the instructions ask for *before* anything
-  // else, so it is the one most likely to be read out as the preamble to an answer. Written as one
-  // word it is nothing Jarvis would say; "affected" on its own is ordinary English.
-  { pattern: /markAffected/i, description: 'the markAffected tool name' },
   // A photo sir sends is named by its id — "(photo photo3)" in the phone's message, and in every
   // request routed about it — so the id is as close to hand as a tool's name, and as much a part
   // of the machinery. Written as one word, it is nothing he would say.

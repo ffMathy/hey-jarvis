@@ -12,8 +12,9 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { onLiveEvent } from '../../utils/live-events.js';
+import { forgetPointing, reportPointing } from '../../utils/pointing.js';
 import {
-  AFFECTED_ENTITIES_GRACE_MS,
   buildSnapshot,
   DEFAULT_ROUTING_SESSION_ID,
   RoutingProgress,
@@ -28,9 +29,6 @@ import {
   FINISHED_REQUEST_INSTRUCTIONS,
   getNextInstructionsWorkflow,
   inputSchema,
-  instructionsOutputSchema,
-  MARK_AFFECTED_INSTRUCTIONS,
-  MARK_AFFECTED_TOOL,
   resetPollDeadlineForTest,
   routePromptWorkflow,
   setPollDeadlineForTest,
@@ -85,14 +83,18 @@ function delegate(sessionId: string, agentId: string, text: string): void {
   finishDelegation(sessionId, startDelegation(sessionId, agentId), { text });
 }
 
+/** Every request the fake runtime was started with, as routing handed it over. */
+const startedQueries: string[] = [];
+
 const fakeRuntime: RoutingRuntime = {
-  async start(sessionId) {
+  async start(sessionId, userQuery) {
+    startedQueries.push(userQuery);
     // A fresh buffer, the way the real runtime starts one: a superseded run keeps folding
     // into the buffer it was handed, so a new request must not be handed the same object.
     progressBySessionId.set(sessionId, new RoutingProgress());
   },
-  async poll(sessionId, options) {
-    return buildSnapshot(progressFor(sessionId), options);
+  async poll(sessionId) {
+    return buildSnapshot(progressFor(sessionId));
   },
   async waitForChange(_sessionId, deadlineMs) {
     // Nothing in these tests settles on its own — the spec arranges state up front — so a
@@ -783,259 +785,64 @@ describe('a request that has started something slow', () => {
 });
 
 /**
- * What a request has touched, which the voice agent passes to `markAffected` so sir's headset lights
- * it up while the work is still going on.
+ * What a request has touched, which the server pushes straight to sir's devices over the WebSocket
+ * API, and which the voice agent never hears about.
  */
 describe('a request whose tools touch things', () => {
   const SOFA_LAMP = { id: 'light.sofa_lamp', name: 'Sofa lamp' };
-  const PORCH = { id: 'light.porch', name: 'Porch' };
 
-  /**
-   * Has the polls wait on the request itself, as the real runtime's do, with a deadline long enough
-   * that only what the request does ends one: the default fake only ever runs out its deadline.
-   */
-  function waitOnTheRequest(deadlineMs = 5_000): void {
+  it('pushes what it touches to the devices, and leaves every poll response as it would be without it', async () => {
+    const pushed: unknown[] = [];
+    const stop = onLiveEvent((event) => pushed.push(event));
+    try {
+      await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the sofa lamp', async: false });
+      const delegationId = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings');
+      touchThings(DEFAULT_ROUTING_SESSION_ID, delegationId, SOFA_LAMP);
+      finishDelegation(DEFAULT_ROUTING_SESSION_ID, delegationId, { text: 'The sofa lamp is on.' });
+      endPlanRun(progressFor(DEFAULT_ROUTING_SESSION_ID));
+
+      const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+      expect(pushed).toEqual([{ type: 'affectedEntities', entities: [SOFA_LAMP] }]);
+      expect(Object.keys(closing)).not.toContain('affectedEntities');
+      expect(closing.instructions).not.toContain('markAffected');
+      expect(closing.instructions).toContain('All tasks have completed');
+    } finally {
+      stop();
+    }
+  });
+
+  it('never ends a poll by itself', async () => {
     setRoutingRuntime({
       ...fakeRuntime,
       async waitForChange(sessionId, remainingMs) {
         await Promise.race([progressFor(sessionId).wait(), new Promise((resolve) => setTimeout(resolve, remainingMs))]);
       },
     });
-    setPollDeadlineForTest(deadlineMs);
-  }
+    setPollDeadlineForTest(300);
+    await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the sofa lamp', async: false });
+    const delegationId = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings');
 
-  /** Polls once, and says how long the poll took to answer. */
-  async function timedPoll(input: { notifyWhenDone?: boolean } = {}) {
     const startedAt = Date.now();
-    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, input));
-    return { outcome, elapsedMs: Date.now() - startedAt };
-  }
-
-  it('ends a waiting poll with the first things touched once the grace window has passed', async () => {
-    waitOnTheRequest();
-    await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the sofa lamp', async: false });
-    const delegationId = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings');
-
-    const polled = timedPoll();
+    const polled = runWorkflow(getNextInstructionsWorkflow, {});
     setTimeout(() => touchThings(DEFAULT_ROUTING_SESSION_ID, delegationId, SOFA_LAMP), 20);
-    const { outcome, elapsedMs } = await polled;
+    const outcome = resultOf(await polled);
 
-    expect(outcome.affectedEntities).toEqual([SOFA_LAMP]);
-    expect(outcome.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
-    expect(outcome.instructions).toContain('call getNextInstructionsWorkflow again at once');
-    expect(outcome.instructions).toContain('say nothing to the user');
-    expect(outcome.taskIdsInProgress).toEqual(['internetOfThings']);
-    expect(outcome.completedTaskResults).toBeUndefined();
-    expect(outcome.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
-    // Held for the window, so the glow is late by that much and no more -- never by the deadline.
-    expect(elapsedMs).toBeGreaterThanOrEqual(AFFECTED_ENTITIES_GRACE_MS);
-    expect(elapsedMs).toBeLessThan(AFFECTED_ENTITIES_GRACE_MS + 1_000);
-  });
-
-  it('sends a result landing inside the window in the same response, sparing a step', async () => {
-    waitOnTheRequest();
-    await runWorkflow(routePromptWorkflow, { userQuery: 'sofa lamp on, and the weather', async: false });
-    const lamp = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings');
-    startDelegation(DEFAULT_ROUTING_SESSION_ID, 'weather');
-
-    const polled = timedPoll();
-    touchThings(DEFAULT_ROUTING_SESSION_ID, lamp, SOFA_LAMP);
-    setTimeout(() => finishDelegation(DEFAULT_ROUTING_SESSION_ID, lamp, { text: 'The sofa lamp is on.' }), 100);
-    const { outcome, elapsedMs } = await polled;
-
-    expect(outcome.affectedEntities).toEqual([SOFA_LAMP]);
-    expect(outcome.completedTaskResults).toEqual([{ id: 'internetOfThings', result: 'The sofa lamp is on.' }]);
-    expect(outcome.instructions).toContain('More results have arrived');
-    expect(elapsedMs).toBeLessThan(AFFECTED_ENTITIES_GRACE_MS);
-  });
-
-  it('sends the closing report landing inside the window in the same response', async () => {
-    waitOnTheRequest();
-    await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the sofa lamp', async: false });
-    const lamp = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings');
-
-    const polled = timedPoll();
-    touchThings(DEFAULT_ROUTING_SESSION_ID, lamp, SOFA_LAMP);
-    setTimeout(() => {
-      finishDelegation(DEFAULT_ROUTING_SESSION_ID, lamp, { text: 'The sofa lamp is on.' });
-      endPlanRun(progressFor(DEFAULT_ROUTING_SESSION_ID));
-    }, 100);
-    const { outcome } = await polled;
-
-    expect(outcome.affectedEntities).toEqual([SOFA_LAMP]);
-    expect(outcome.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
-    expect(outcome.instructions).toContain('All tasks have completed');
-  });
-
-  it('never ends a poll for things touched after the first batch; they ride on the next report', async () => {
-    waitOnTheRequest();
-    await runWorkflow(routePromptWorkflow, { userQuery: 'the sofa lamp, then the porch', async: false });
-    const lamps = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings');
-    touchThings(DEFAULT_ROUTING_SESSION_ID, lamps, SOFA_LAMP);
-    expect((await timedPoll()).outcome.affectedEntities).toEqual([SOFA_LAMP]);
-
-    const polled = timedPoll();
-    touchThings(DEFAULT_ROUTING_SESSION_ID, lamps, PORCH);
-    setTimeout(() => finishDelegation(DEFAULT_ROUTING_SESSION_ID, lamps, { text: 'Both are on.' }), 800);
-    const { outcome, elapsedMs } = await polled;
-
-    // Woken by the result, well after the window: the porch did not end the poll by itself.
-    expect(elapsedMs).toBeGreaterThanOrEqual(700);
-    expect(outcome.affectedEntities).toEqual([PORCH]);
-    expect(outcome.completedTaskResults).toEqual([{ id: 'internetOfThings', result: 'Both are on.' }]);
-    expect(outcome.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
-  });
-
-  it('carries later things on the response a poll gives when it runs out its deadline', async () => {
-    waitOnTheRequest(AFFECTED_ENTITIES_GRACE_MS + 400);
-    await runWorkflow(routePromptWorkflow, { userQuery: 'the sofa lamp, then the porch', async: false });
-    const lamps = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings');
-    touchThings(DEFAULT_ROUTING_SESSION_ID, lamps, SOFA_LAMP);
-    await timedPoll();
-
-    touchThings(DEFAULT_ROUTING_SESSION_ID, lamps, PORCH);
-    const { outcome, elapsedMs } = await timedPoll();
-
-    expect(elapsedMs).toBeGreaterThanOrEqual(AFFECTED_ENTITIES_GRACE_MS + 350);
-    expect(outcome.affectedEntities).toEqual([PORCH]);
-    expect(outcome.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
-    expect(outcome.instructions).toContain('call getNextInstructionsWorkflow again at once');
-    expect(outcome.completedTaskResults).toBeUndefined();
-  });
-
-  it('puts marking them before the results that landed with them', async () => {
-    await runWorkflow(routePromptWorkflow, { userQuery: 'sofa lamp on, and the weather', async: false });
-    touchThings(DEFAULT_ROUTING_SESSION_ID, startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings'), SOFA_LAMP);
-    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
-
-    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
-
-    expect(outcome.affectedEntities).toEqual([SOFA_LAMP]);
-    expect(outcome.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
-    expect(outcome.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
-    expect(outcome.instructions).toContain('More results have arrived');
-  });
-
-  it('puts marking them before the offer to notify him about slow work', async () => {
-    await runWorkflow(routePromptWorkflow, { userQuery: 'review the repository', async: false });
-    const delegationId = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'coding');
-    touchThings(DEFAULT_ROUTING_SESSION_ID, delegationId, { id: 'ffmathy/hey-jarvis', name: 'hey-jarvis' });
-    startSlowWork(DEFAULT_ROUTING_SESSION_ID, delegationId);
-
-    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
-
-    expect(outcome.affectedEntities).toEqual([{ id: 'ffmathy/hey-jarvis', name: 'hey-jarvis' }]);
-    expect(outcome.slowTaskIds).toEqual(['coding']);
-    expect(outcome.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
-    expect(outcome.instructions).toContain('offer to notify him when it is done');
-  });
-
-  it('reports each thing once', async () => {
-    await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the sofa lamp', async: false });
-    const delegationId = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings');
-    touchThings(DEFAULT_ROUTING_SESSION_ID, delegationId, SOFA_LAMP);
-    await runWorkflow(getNextInstructionsWorkflow, {});
-
-    touchThings(DEFAULT_ROUTING_SESSION_ID, delegationId, SOFA_LAMP);
-    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
-
-    expect(outcome.affectedEntities).toBeUndefined();
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(250);
     expect(outcome.instructions).toContain('Still processing');
   });
 
-  it('closes a request with whatever it touched that has not been reported yet', async () => {
-    await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the sofa lamp and the porch', async: false });
-    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
-    const delegationId = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings');
-    touchThings(DEFAULT_ROUTING_SESSION_ID, delegationId, SOFA_LAMP);
-    await runWorkflow(getNextInstructionsWorkflow, {});
+  it('routes what sir points at by its id, written in by the server rather than the voice agent', async () => {
+    const headset = {};
+    reportPointing(headset, { id: 'light.kitchen_ceiling', name: 'Kitchen ceiling' });
+    try {
+      await runWorkflow(routePromptWorkflow, { userQuery: 'Turn that on', async: false });
+    } finally {
+      forgetPointing(headset);
+    }
 
-    // A command can finish in the time it takes to poll, and the headset keeps a record of what was
-    // touched as well as lighting it up -- so the closing report carries what is left.
-    touchThings(DEFAULT_ROUTING_SESSION_ID, delegationId, SOFA_LAMP, PORCH);
-    finishDelegation(DEFAULT_ROUTING_SESSION_ID, delegationId, { text: 'Both are on.' });
-    endPlanRun(progress);
-
-    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
-
-    expect(closing.affectedEntities).toEqual([PORCH]);
-    expect(closing.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
-    expect(closing.instructions).toContain('All tasks have completed');
-    expect(closing.instructions).toContain(FINISHED_REQUEST_INSTRUCTIONS);
-  });
-
-  it('still reports what a request touched before it failed', async () => {
-    await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the sofa lamp', async: false });
-    touchThings(DEFAULT_ROUTING_SESSION_ID, startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings'), SOFA_LAMP);
-    progressFor(DEFAULT_ROUTING_SESSION_ID).fail('the house did not answer');
-
-    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
-
-    expect(closing.affectedEntities).toEqual([SOFA_LAMP]);
-    expect(closing.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
-    expect(closing.instructions).toContain('could not be completed');
-  });
-
-  it('still reports what a request touched before he stopped it, beside saying it was stopped', async () => {
-    await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the sofa lamp', async: false });
-    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
-    touchThings(DEFAULT_ROUTING_SESSION_ID, startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings'), SOFA_LAMP);
-    progress.conversationControl = 'cancelled';
-    endPlanRun(progress);
-
-    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
-
-    expect(closing.affectedEntities).toEqual([SOFA_LAMP]);
-    expect(closing.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
-    expect(closing.instructions).toContain('it has been stopped');
-    expect(closing.completedTaskResults).toBeUndefined();
-  });
-
-  it('carries them on the reply to his accepting the offer, the last response he will hear about it', async () => {
-    await runWorkflow(routePromptWorkflow, { userQuery: 'review the repository', async: false });
-    const delegationId = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'coding');
-    startSlowWork(DEFAULT_ROUTING_SESSION_ID, delegationId);
-    await runWorkflow(getNextInstructionsWorkflow, {});
-    touchThings(DEFAULT_ROUTING_SESSION_ID, delegationId, { id: 'ffmathy/hey-jarvis' });
-
-    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, { notifyWhenDone: true }));
-
-    expect(outcome.affectedEntities).toEqual([{ id: 'ffmathy/hey-jarvis' }]);
-    expect(outcome.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
-    expect(outcome.instructions).toContain('will be notified when this request is done');
-  });
-
-  it('names the client tool exactly, and asks for it silently, as given and never retried', () => {
-    expect(MARK_AFFECTED_TOOL).toBe('markAffected');
-    expect(MARK_AFFECTED_INSTRUCTIONS).toContain(`call ${MARK_AFFECTED_TOOL} with exactly those entities`);
-    expect(MARK_AFFECTED_INSTRUCTIONS).toContain('every id and name as given');
-    expect(MARK_AFFECTED_INSTRUCTIONS).toContain('never announce or mention it');
-    expect(MARK_AFFECTED_INSTRUCTIONS).toContain('never call it again if it fails');
-  });
-
-  it('keeps only the list itself out of what he hears, since the things are often the answer', async () => {
-    // "Which lights are on in the kitchen?" is answered by naming the very lights the lookup touched.
-    await runWorkflow(routePromptWorkflow, { userQuery: 'which kitchen lights are on?', async: false });
-    const delegationId = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings');
-    touchThings(DEFAULT_ROUTING_SESSION_ID, delegationId, SOFA_LAMP, PORCH);
-    finishDelegation(DEFAULT_ROUTING_SESSION_ID, delegationId, { text: 'The sofa lamp and the porch light are on.' });
-    endPlanRun(progressFor(DEFAULT_ROUTING_SESSION_ID));
-
-    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
-
-    expect(closing.instructions).toContain('never read out the affectedEntities list or an id from it');
-    expect(closing.instructions).toContain('still names things as it always would');
-    expect(closing.instructions).not.toContain('never read an entity aloud');
-    expect(closing.instructions).toContain('All tasks have completed');
-  });
-
-  it('publishes the field, and tells the voice agent to route what sir points at by its id', () => {
-    expect(
-      instructionsOutputSchema.shape.affectedEntities.parse([{ id: 'light.sofa_lamp', name: 'Sofa lamp' }]),
-    ).toEqual([{ id: 'light.sofa_lamp', name: 'Sofa lamp' }]);
-    expect(inputSchema.shape.userQuery.description).toContain(
-      'Turn that on (pointing at "Kitchen ceiling", id light.kitchen_ceiling)',
-    );
+    expect(startedQueries).toContain('Turn that on (pointing at "Kitchen ceiling", id light.kitchen_ceiling)');
+    expect(inputSchema.shape.userQuery.description).not.toContain('pointing');
   });
 });
 

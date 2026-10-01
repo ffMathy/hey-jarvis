@@ -50,11 +50,13 @@ phone (assist gesture)
             └─ ConversationScreen           src/conversation-screen.tsx
                  ├─ GET /v1/convai/conversation/token   → ElevenLabs, with the API key
                  ├─ WebRTC session                      → the ElevenLabs Jarvis agent
-                 └─ camera button (optional)            → sir's Jarvis server: POST /api/photos/slots,
-                                                          then PUT the photo to the slot
+                 ├─ camera button (optional)            → sir's Jarvis server: POST /api/photos/slots,
+                 │                                        then PUT the photo to the slot
+                 └─ live line (optional)                → sir's Jarvis server: a WebSocket on /api/live,
+                                                          open for as long as the app runs
 ```
 
-The agent on the other end is the same one `elevenlabs/` deploys, with the same prompt and the same `routePromptWorkflow` tools. This app adds a way to reach it, not a second Jarvis. The camera button is the one thing that reaches past ElevenLabs, and only once sir has given the phone his Jarvis server's address: see "Showing him something".
+The agent on the other end is the same one `elevenlabs/` deploys, with the same prompt and the same `routePromptWorkflow` tools. This app adds a way to reach it, not a second Jarvis. The camera button and the live line are the two things that reach past ElevenLabs, and only once sir has given the phone his Jarvis server's address: see "Showing him something", and `jarvis-server-link.ts` in `hologram` for the line. The line is opened by `app.tsx` (`useJarvisServer`) as soon as there is an address, and stays open across conversations and between them. The address is handed to the watch with the credentials, so it opens the same line.
 
 ## File Structure
 
@@ -119,7 +121,7 @@ mobile/
     ├── photo-sending.ts          # one tap, from the camera opening to Jarvis hearing how it went
     ├── photo-messages.ts         # every word the phone puts into the conversation about the camera
     ├── photo-upload.ts           # asking the Jarvis server for a slot, sending the photo to it, reading back its id
-    ├── jarvis-server.ts          # the Jarvis server's address: what it may be, and where it is kept
+    ├── jarvis-server.ts          # where the Jarvis server's address is kept (what it may be is hologram's)
     ├── camera-button.tsx         # the camera beside him
     ├── take-photo.ts             # the phone's own camera app, through modules/jarvis-assistant …
     ├── take-photo.web.ts         # … and a file picker in a browser
@@ -137,7 +139,7 @@ mobile/
     └── speech-floor.web.ts           # … and, now both measure an RMS, the same in a browser
 ```
 
-Most of what this screen runs is not in this tree, because the watch and the headset (`horizon/`)
+Most of what this screen runs is not in this tree, because the watch and the headset (`vr/`)
 run it too: **the conversation itself** is `hologram`'s session (`jarvis-session.ts`), which this
 screen holds with `useJarvisSession` from `hologram/conversation` — the greeting, the token, the
 twenty-second deadline, the failures in words, the tool calls, the listening lattice's score, the
@@ -412,8 +414,9 @@ Six decisions carry it, and each has a reason:
 `liveConversationId()`, `sendContextualUpdate` for notes that take no turn, `sendText` for what takes
 one, and `sendUserActivity`. `sendText` and `sendUserActivity` are ignored unless the conversation is
 connected, and a note said before then waits until it connects (the button is only there once it
-has). The session dials with no tools of the phone's own: the one client tool it answers,
-`markAffected`, is the session's on every device (see `hologram/AGENTS.md`).
+has). The session dials with no client tools at all. The live line to the server also carries the
+`affectedEntities` frames the server broadcasts, which the phone simply ignores (see
+`hologram/AGENTS.md`).
 
 **The button.** A small outline of a camera at the sphere's lower right, half strength, drawn from
 views (no icon library, and no Skia before CanvasKit has loaded in a browser). It is there only while
@@ -546,15 +549,16 @@ Nothing in the tour is shown to a **summoned** app. Somebody who has just made t
 
 ## Configuration
 
-The app ships with no credential. It talks to ElevenLabs directly, and both ElevenLabs settings are typed into the tour's credentials step on first run — or into the settings screen afterwards — and kept in the Android keystore, or on web in `localStorage`. The Jarvis server's address is optional, asked for on the settings screen only, and kept the same way:
+The app ships with no credential. It talks to ElevenLabs directly, and both ElevenLabs settings are typed into the tour's credentials step on first run — or into the settings screen afterwards — and kept in the Android keystore, or on web in `localStorage`. The Jarvis server's address and its token are optional, asked for on the settings screen only, and kept the same way:
 
 | Setting | What it is |
 | --- | --- |
 | API key | An ElevenLabs API key, sent as `xi-api-key` to ElevenLabs and nowhere else |
 | Agent ID | The Jarvis agent — the value of `HEY_JARVIS_ELEVENLABS_AGENT_ID` |
-| Jarvis server | Optional, and no secret. The public `https` address of sir's own Jarvis server — the MCP server's tunnel hostname — as an origin, with no path. The phone sends it the current conversation's id, to open a slot, and photos, and nothing else. Empty hides the camera button |
+| Jarvis server | Optional, and no secret. The public `https` address of sir's own Jarvis server — the MCP server's tunnel hostname — as an origin, with no path. The phone sends it the current conversation's id, to open a slot, and photos, and holds its WebSocket line open (`/api/live`). Empty hides the camera button and opens no line |
+| Server token | Optional, and a credential. The JWT the Cloudflare Zero Trust application in front of the server accepts (`parseJarvisServerToken` in `hologram`: three base64url parts; a pasted `Bearer ` is dropped). Sent on the line's upgrade request as `Authorization: Bearer <jwt>` and as `cf-access-token: <jwt>`, the header Access reads an Access JWT from. Only on a device: a browser cannot set a header on a WebSocket, so the web build connects without it |
 
-The two ElevenLabs values are also what the **watch** needs, and it is given them from here rather than asked for them: see [Handing the credentials to the watch](#handing-the-credentials-to-the-watch). `conversation-token.ts` and `elevenlabs-settings.ts` live in `hologram/` for the same reason — both devices use them, so neither owns them. The Jarvis server's address is not one of them: it is kept apart from `ElevenLabsSettings` (`jarvis-server.ts`, under its own storage key) and is never sent to the watch, which has no camera to use it with.
+The two ElevenLabs values are also what the **watch** needs, and it is given them from here rather than asked for them: see [Handing the credentials to the watch](#handing-the-credentials-to-the-watch). `conversation-token.ts` and `elevenlabs-settings.ts` live in `hologram/` for the same reason — both devices use them, so neither owns them. The Jarvis server's address and token are kept apart from `ElevenLabsSettings` (`jarvis-server.ts`, each under its own storage key), and handed to the watch beside them, so it holds the same line.
 
 For each conversation the app asks `GET https://api.elevenlabs.io/v1/convai/conversation/token` for a WebRTC token for that agent, and the session runs on the token; the key itself is used for nothing else.
 

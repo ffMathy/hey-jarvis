@@ -2,7 +2,7 @@
 
 Jarvis himself: the sphere, the voice tracking that drives it, and the
 conversation with the agent doing the talking. Shared by every app that *is*
-him — `mobile/` and `watch/`, and `horizon/`, the Quest headset app that stands
+him — `mobile/` and `watch/`, and `vr/`, the Quest headset app that stands
 him in your room, which uses only the main entry and the assets.
 
 > **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (Turborepo commands, commit standards, 1Password, etc.)
@@ -36,7 +36,7 @@ that rule.
 
 | Entry | Imports | What it holds |
 | --- | --- | --- |
-| `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the frame clock every device steps him on (`frame-clock.ts`) and the numbers it runs by (`frame-timing.ts`), the voice tracker, the simulated voices, sample mode's moods, the voices each mood hands the sphere (`sample-drive.ts`) and its readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the conversation itself: the session every device holds it in (`jarvis-session.ts`, its shapes in `session-contract.ts`), what its failures say (`failure-text.ts`), which of his lines it writes down (`written-caption.ts`), the headset's half-duplex fallback (`half-duplex.ts`), what the agent says a request affects (`affected-entities.ts`: the `markAffected` tool's name, its limits and its parser), and the pieces it is built from — whether a conversation is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) |
+| `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the frame clock every device steps him on (`frame-clock.ts`) and the numbers it runs by (`frame-timing.ts`), the voice tracker, the simulated voices, sample mode's moods, the voices each mood hands the sphere (`sample-drive.ts`) and its readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the conversation itself: the session every device holds it in (`jarvis-session.ts`, its shapes in `session-contract.ts`), what its failures say (`failure-text.ts`), which of his lines it writes down (`written-caption.ts`), the headset's half-duplex fallback (`half-duplex.ts`), what a request touches and what sir points at (`affected-entities.ts`: an entity's shape, its limits and its parser), the line every device keeps to the Jarvis server during a conversation (`jarvis-server-link.ts`), and the pieces it is built from — whether a conversation is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) |
 | `hologram/react` | React, Reanimated, Skia | the Skia canvas and the frame callback that steps the frame clock |
 | `hologram/react/sample` | React, Reanimated — not Skia | sample mode's clock-made voice, mood toast and frame-rate readout, shared by the phone's sample screen and the watch's waiting screen |
 | `hologram/conversation` | React, `@elevenlabs/client`, `@livekit/react-native`'s audio session, hologram's own native greeting player (`expo-audio` in a browser) — not Skia | `useJarvisSession`, which hands the main entry's session the SDK, the greeting's player and the call's audio, and holds its snapshot for a screen |
@@ -162,7 +162,7 @@ left out, and no device sets it. Only the headset's browser tests pass it,
 `Infinity` from `?deadline=never`, because they keep him greeting on a token that
 never comes while an emulator draws a frame a second or slower, and the shared
 twenty seconds raced them on a slow machine (see "The browser tests" in
-`horizon/AGENTS.md`). An infinite wait arms no timer at all: a browser runs a
+`vr/AGENTS.md`). An infinite wait arms no timer at all: a browser runs a
 timer of `Infinity` at once, and the specs' fake clock does the same, so a session
 that handed it over would fail in their hands as it would on a page.
 
@@ -171,63 +171,65 @@ Its specs are the headset's (`jarvis-session.spec.ts`,
 the phone's and the watch's (`jarvis-session-devices.spec.ts`), all driven by the
 fakes in `jarvis-session.fakes.ts`, which fire callbacks in the SDK's own order.
 
-## What he is working on, and what the room tells him
+## What he is working on, and what sir points at: the line to the server
 
-**`markAffected` is answered on every device, by the session.** When a routed
-request starts, the agent that took it reports the entities it touches, the
-routing agent relays them in its `instructions`, and the voice agent calls its
-`markAffected` client tool with them. `createJarvisSession` registers the tool
-in both of its option branches (`clientTools`), so the phone, the watch and a
-browser holding the conversation in writing answer it without being changed. A
-device that left it out would send the agent an error (`is_error`), which the
-model reacts to aloud, and `onUnhandledClientToolCall` is no way out: the SDK
-then sends no result at all. The tool is bound to the summoning that dialled it,
-like every callback, and never throws into the SDK — a throw from the holder is
-noted in the diagnostics, and the call is still answered.
+**Neither goes through the voice agent.** The session dials with no client
+tools at all, on any device. Both travel over the WebSocket each device keeps
+open to sir's Jarvis server for as long as its app runs, across conversations
+and between them (`jarvis-server-link.ts`; the server's end is
+`mcp/mastra/verticals/api/live-socket.ts`). The line knows nothing of
+conversations: `connectToServer` opens it — with the JWT for the Cloudflare
+Zero Trust application in front of the server on the upgrade request, as
+`Authorization: Bearer` and `cf-access-token`, when the device has one
+(`serverAuthorizationHeaders`; React Native's `WebSocket` takes headers, a
+browser's cannot, so the headset and the phone's web build connect without
+them) — says `hello` with the device, and
+tries again after a drop until it is closed. The phone and the watch hold it
+from their app component (`useJarvisServer`, in `hologram/react/lifecycle`), and
+the headset's page opens it once as it loads and hands it to each session. A
+device with no server address has no line, and loses nothing but these two.
 
-An entity is `{ id, name? }` (`affected-entities.ts`). The id is **opaque** — a
-Home Assistant light, an email inbox, a calendar, whatever an agent reports —
-and is compared, never parsed; the name is for display only. Both are model
-output by the time they arrive, so `affectedEntitiesOf` reads the shape
-leniently (bare ids, `entityId` for `id`, the array written out as JSON, a lone
-entity) and the values strictly: trimmed, non-empty, an id of at most 200
-characters and a name of at most 120, no more than 50 per call, each id once,
-and anything else left out. A call with something usable in it goes to the
-optional `events.onAffected(entities)` — the headset's, which lights them up
-where they stand — and answers `Marked.`; one with nothing usable answers so
-and tells nobody. The phone and the watch pass no `onAffected`, so nothing on
-their screens moves.
+**What a request touches comes from the server.** As soon as a tool in a request
+reports what it read or changed, the server broadcasts
+`{"type":"affectedEntities","entities":[{"id":…,"name":…}]}` to every socket that
+has said hello, and `readServerMessage` hands it to every listener the line has
+(`ServerLink.subscribe`) as a `JarvisServerMessage`. The phone and the watch
+listen to nothing, and the headset's session listens for as long as it lasts,
+recording the entities and lighting them up where they stand. An entity is `{ id, name? }` (`affected-entities.ts`). The id is
+**opaque** — a Home Assistant light, an email inbox, a calendar, whatever an
+agent reports — and is compared, never parsed; the name is for display only. The
+frame comes over the network from outside the device, so `affectedEntitiesOf`
+reads it strictly: the declared shape only, each value trimmed and non-empty, an
+id of at most 200 characters and a name of at most 120, no more than 50 per
+message, each id once, and anything else left out. A frame that names nothing
+usable is dropped.
+
+**What sir points at goes to the server.** `ServerLink.point(entity)` sends `{"type":"pointing","entity":{…}}`, or `"entity":null` for
+nothing, held to the same limits (`affectedEntityOf`). Only the latest is kept:
+it is sent once the server has said `ready`, at once if it already has, again
+after every reconnect's `ready` (the server keeps the latest per socket, and a
+new socket starts with none). The server writes it into every request it
+routes, as `(pointing at "<name>", id <id>)`. Only the headset points at
+anything.
 
 **`sendContextualUpdate(text, contextId?)` tells the agent something without
-asking it anything** — on the headset, what sir is pointing at; on the phone,
-what its camera button is doing (see "What the phone's camera button needs of
-it"). It is sent while connected (not only live: a browser's conversation is up
-behind the greeting), in a `try`, since a socket that is going throws. Before
-that, the latest update for each context id, and every update said without one,
-waits for the summoning under way and goes the moment it connects, before the
-phase moves to `live`, so anything the holder says on `live` lands after it;
-whatever is waiting when the summoning ends is dropped, and with no summoning
-under way nothing is kept. The server keeps only the newest update for a context
-id, which is what the ids are for, and every update without one, which is why
-none of those replaces another while it waits. The optional `deviceContext`
-dependency is said first, under `DEVICE_CONTEXT_ID`, in every conversation that
-connects; only the headset passes one, and the agent's prompt waits for it
-before calling `markAffected`. It is not exposed through `useJarvisSession`: the
-phone and the watch say nothing about themselves on connecting, and the phone's
-camera button says it is there itself, through `sendContextualUpdate`, which
-`useJarvisSession` does expose.
-
-`jarvis-session.fakes.ts` answers a client tool call the way
-`BaseConversation.handleClientToolCall` in `@elevenlabs/client` 1.24.0 does
-(`callClientTool`): the `hasOwn` lookup, the handler awaited, nothing returned
-becoming "Client tool execution successful.", and a throw or an unregistered
-name reported through `onError` and answered as an error.
+asking it anything** — on the phone, what its camera button is doing (see "What
+the phone's camera button needs of it"). It is sent while connected (not only
+live: a browser's conversation is up behind the greeting), in a `try`, since a
+socket that is going throws. Before that, the latest update for each context id,
+and every update said without one, waits for the summoning under way and goes
+the moment it connects, before the phase moves to `live`, so anything the holder
+says on `live` lands after it; whatever is waiting when the summoning ends is
+dropped, and with no summoning under way nothing is kept. The server keeps only
+the newest update for a context id, which is what the ids are for, and every
+update without one, which is why none of those replaces another while it waits.
+No device says anything about itself on connecting.
 
 ## Two things about the ElevenLabs half worth knowing before changing it
 
 **The participant name is a required argument, not a default.** Each device
 names itself in the ElevenLabs conversation history — `jarvis-android`,
-`jarvis-wear` and `jarvis-horizon` — and the point of the names is to be told
+`jarvis-wear` and `jarvis-vr` — and the point of the names is to be told
 apart, so a conversation held on the wrist is distinguishable from one held in
 a pocket or in a headset. All three constants are in `conversation-token.ts`
 and none is the default, because a default is how the watch ends up filed under
@@ -334,17 +336,16 @@ the SDK's input level. Both read zero while the session is not connected or its 
 
 The apps do not decide this. A finished request that is followed by quiet is ended by the agent
 itself — its `turnTimeout` of 3 s and its `end_call` tool — so no device registers a client tool
-for it, and each sees it as the agent hanging up. (The one client tool there is, `markAffected`, is
-the session's; see "What he is working on, and what the room tells him".)
+for it, and each sees it as the agent hanging up. No device registers a client tool of any kind (see
+"What he is working on, and what sir points at").
 
 ## What the phone's camera button needs of it
 
 Only the phone can show Jarvis something: its camera button takes a photo and sends it to sir's own
 Jarvis server, and everything about that — the button, the upload, the notes and messages the agent
 is sent — is the phone's ("Showing him something" in `mobile/AGENTS.md`). The agent has no client
-tool for it, so no device answers one (the one client tool there is, `markAffected`, is the
-session's, and has nothing to do with the camera), and the watch and the headset hold nothing for
-the camera at all. What the session gives the phone is general, and three things:
+tool for it, so no device answers one (no device registers any client tool), and the watch and the
+headset hold nothing for the camera at all. What the session gives the phone is general, and three things:
 
 - **The live conversation's id** (`liveConversationId()`, on `JarvisConversation` too). The server
   opens an upload slot only for a conversation ElevenLabs says is in progress on Jarvis's agent, so
@@ -358,8 +359,8 @@ the camera at all. What the session gives the phone is general, and three things
   read at the tap, and nothing on a screen is drawn from it.
 - **`sendContextualUpdate`**, a note the agent reads without a turn being taken: that this device
   has a camera button, that sir has opened the camera, or that he closed it without a photo. The
-  headset tells the agent what sir points at with the same method ("What he is working on, and what
-  the room tells him"); the phone's notes carry no context id.
+  phone's notes carry no context id. (What sir points at on the headset goes to the server, not the
+  agent: "What he is working on, and what sir points at".)
 - **`sendUserActivity`**, which says sir is still there while he frames a shot. It holds nothing
   open: a quiet call is still the agent's to end (see above), and ElevenLabs does not document user
   activity as holding off either its turn timeout or its silence timeout. What keeps the agent from
@@ -407,7 +408,7 @@ under `MINIMUM_FRAME_SECONDS` (`frameStepSeconds`), the step itself
 (`advanceFrameClock`), the arrival's restart (`restartArrival`) and the frame
 the drawing is handed (`hologramFrameOf`), with the numbers it runs by in
 `frame-timing.ts`. The view calls them inside its frame callback's
-`frame.modify`; the headset's `horizon/src/hologram3d/frame-clock.ts` wraps
+`frame.modify`; the headset's `vr/src/hologram3d/frame-clock.ts` wraps
 them and keeps only what it does differently, which is when rather than
 what — it reads the voice on the clock's own time instead of on a JS-thread
 timer, and restarts the arrival on every summon instead of on coming back to
@@ -423,7 +424,7 @@ Its conversation is the same session the phone and the watch hold theirs in
 directly: the headset hands it its browser parts — his track analysed on the
 app's `AudioContext`, the greeting's `<audio>` element, the orphaned audio a
 dropped call leaves on a page that lives for hours — through
-`createHeadsetSession` in `horizon/src/conversation/`. A renderer drawing over CanvasKit — the headset's flat layer, and the phone's own web build —
+`createHeadsetSession` in `vr/src/conversation/`. A renderer drawing over CanvasKit — the headset's flat layer, and the phone's own web build —
 takes its resources from `createReleasableHologramResources` and calls `release()` once each
 frame has been flushed or recorded: CanvasKit's objects live in the WebAssembly heap, which nothing
 garbage-collects, and the drawing makes a few dozen paths a frame. On a device the JSI objects free

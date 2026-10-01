@@ -1,4 +1,3 @@
-import { affectedEntitiesOf, MARK_AFFECTED_TOOL, MARKED_RESULT, NOTHING_MARKED_RESULT } from './affected-entities';
 import { type AgentTrackRoom, agentAudioTracks } from './agent-audio-track';
 import { GIVE_UP_CONNECTING_AFTER_MS, isLive } from './conversation-life';
 import { requestConversationToken, requestSignedConversationUrl } from './conversation-token';
@@ -12,7 +11,6 @@ import type {
   JarvisSessionDependencies,
   ProblemSource,
   SessionCallbacks,
-  SessionClientTools,
   SessionConversation,
   SessionDiagnostics,
   SessionEnding,
@@ -54,13 +52,6 @@ const ELEVENLABS_CONVERSATION_ID = /^conv_[A-Za-z0-9]+$/;
 const ORPHAN_SWEEP_AGAIN_MS = 2_000;
 
 const SILENT_SPECTRUM = new Uint8Array(0);
-
-/**
- * The context id the device's own context is said under (`deviceContext`). The server keeps only
- * the newest update for an id, so a holder that has something new to say about the device says it
- * under this one, and the agent is not left with both.
- */
-export const DEVICE_CONTEXT_ID = 'device';
 
 /** Nothing to listen to: what the sphere follows between conversations and while one is dialled. */
 const SILENT_VOICE: JarvisVoice = {
@@ -183,7 +174,6 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
   const findRoom = dependencies.findRoom ?? (() => undefined);
   const followVoice = dependencies.followAgentVoice;
   const removeOrphanedAudio = dependencies.removeOrphanedAudio;
-  const deviceContext = dependencies.deviceContext?.trim();
 
   let phase: SessionPhase = 'idle';
   let attempt: Attempt<Timer> | undefined;
@@ -333,27 +323,6 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
         handler(...parameters);
       } catch (error) {
         noteError(error);
-      }
-    };
-
-  /**
-   * Binds a client tool to the attempt that dialled it, as {@link bound} binds a callback, and keeps
-   * it answering. A tool that throws is sent back to the agent as a failure, which the model may
-   * apologise for aloud or call again, so a throw is noted for the diagnostics instead and the call
-   * is answered with the SDK's default. So is a call from a summoning that is over: its conversation
-   * is being ended, and nothing it asks for is shown.
-   */
-  const boundTool =
-    (owner: Attempt<Timer>, tool: (parameters: unknown) => string) =>
-    (parameters: unknown): string | undefined => {
-      if (!isCurrent(owner)) {
-        return undefined;
-      }
-      try {
-        return tool(parameters);
-      } catch (error) {
-        noteError(error);
-        return undefined;
       }
     };
 
@@ -733,24 +702,6 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     sweepOrphanedAudio();
   };
 
-  /**
-   * The agent says what the request under way affects (see `affected-entities.ts`). Answered on
-   * every device, so that none of them sends back an error the model would react to; only a holder
-   * that shows them is told.
-   */
-  const markAffected = (parameters: unknown): string => {
-    const entities = affectedEntitiesOf(parameters);
-    if (entities.length === 0) {
-      return NOTHING_MARKED_RESULT;
-    }
-    events.onAffected?.(entities);
-    return MARKED_RESULT;
-  };
-
-  const clientTools = (current: Attempt<Timer>): SessionClientTools => ({
-    [MARK_AFFECTED_TOOL]: boundTool(current, markAffected),
-  });
-
   const callbacks = (current: Attempt<Timer>): SessionCallbacks => ({
     onConversationCreated: bound(current, (conversation: SessionConversation) => adopt(current, conversation)),
     onStatusChange: bound(current, ({ status }: { status: string }) => statusChanged(current, status)),
@@ -773,7 +724,6 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
         connectionType: 'websocket',
         textOnly: true,
         ...delay,
-        clientTools: clientTools(current),
         ...callbacks(current),
       };
     }
@@ -782,7 +732,6 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       connectionType: 'webrtc',
       ...delay,
       ...(current.greeted ? { overrides: WITHOUT_FIRST_MESSAGE } : {}),
-      clientTools: clientTools(current),
       ...callbacks(current),
     };
   };
@@ -1115,7 +1064,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       status: 'disconnected',
       mode: 'listening',
       microphoneMuted: false,
-      pendingContext: deviceContext ? [{ text: deviceContext, contextId: DEVICE_CONTEXT_ID }] : [],
+      pendingContext: [],
     };
     attempt = current;
     startAfresh(textOnly);

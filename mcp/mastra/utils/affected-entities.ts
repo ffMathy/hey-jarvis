@@ -3,11 +3,12 @@
  *
  * On the headset, sir places things from his home in the room around him -- a light, his inbox,
  * the family calendar -- and the next time Jarvis works on one of them, it glows. For that the
- * voice agent has to be told, while a request is still running, what the request is touching,
- * and the only place that knows is the tool an agent calls. So the knowledge is declared on the
- * tool, the way slowness is (see `slow-tasks.ts`): a tool that touches things is marked with a
- * reader that picks them out of its arguments and its result, and routing reads every tool result
- * a delegation streams through the marks (see `verticals/routing/controller.ts`). Every agent
+ * headset has to be told, while a request is still running, what the request is touching, and the
+ * only place that knows is the tool an agent calls. So the knowledge is declared on the tool, the
+ * way slowness is (see `slow-tasks.ts`): a tool that touches things is marked with a reader that
+ * picks them out of its arguments and its result, and routing reads every tool result a delegation
+ * streams through the marks and pushes what they name to sir's devices (see
+ * `verticals/routing/controller.ts` and `live-events.ts`). Every agent
  * reports what it touches that way, with no step of its own and no import from routing.
  *
  * An entity is an opaque `id` and an optional display `name`. The id is whatever the owning tools

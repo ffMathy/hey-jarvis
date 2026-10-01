@@ -4,7 +4,7 @@
  *
  * One implementation for all three devices. The phone and the watch reach it through
  * `useSimulatedVoice` and `useSimulatedUser` (`react/use-simulated-voice.ts`), which hold on to
- * what it hands back until the mood changes; the headset's `horizon/src/app/sample-driver.ts` calls
+ * what it hands back until the mood changes; the headset's `vr/src/app/sample-driver.ts` calls
  * {@link createSampleDrive} whenever its mood changes. So the room walks the same moods looking the
  * same as the phone does. The shapes themselves are in `simulated-voice.ts`.
  *

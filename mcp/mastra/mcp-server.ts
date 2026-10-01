@@ -8,7 +8,9 @@ import { createInstructionsWorkflowTool, createSimplifiedWorkflowTool } from './
 import { MCP_PATH, readsItsOwnBody } from './verticals/api/routes.js';
 import { getMissingClaudeCodeHostVariables, isClaudeCodeHostConfigured } from './verticals/coding/index.js';
 import {
+  attachLiveSocket,
   getPublicAgents,
+  LIVE_SOCKET_PATH,
   registerApiRoutes,
   registerArtifactRoutes,
   registerShoppingTriggers,
@@ -157,13 +159,17 @@ export async function startMcpServer() {
   // builds the same instance, and two monitors would file every change twice.
   await startHomeAssistantEventMonitor(mastra);
 
-  // Start the Express server
+  // Start the Express server, and the WebSocket API on the same port: the phone, the watch and the
+  // headset each keep a socket open on it for as long as a conversation lasts (see
+  // `verticals/api/live-socket.ts`)
   return new Promise<void>((resolve) => {
-    app.listen(port, host, () => {
+    const server = app.listen(port, host, () => {
       console.log(`Server running on http://${host}:${port}`);
       console.log(`MCP HTTP endpoint: http://${host}:${port}${MCP_PATH}`);
+      console.log(`WebSocket API available: ws://${host}:${port}${LIVE_SOCKET_PATH}`);
       resolve();
     });
+    attachLiveSocket(server);
   });
 }
 

@@ -1144,8 +1144,8 @@ over the REST API, not through the voice model.
    dropped.
 6. A delegation that stops to ask the user something is reported in that closing report as a
    question, in `questionsForUser` — see **Questions for the user** below.
-7. What a delegation's tools read or change is reported in `affectedEntities`, the request's first
-   things shortly after a tool answers and later ones with the next report — see
+7. What a delegation's tools read or change is pushed straight to sir's devices over the WebSocket
+   API, the moment a tool answers, and never appears in a poll response — see
    [What a request touches](#affected-entities) below.
 
 **How long the answer is:** the planner labels every request with a `responseStyle`, by where its
@@ -1299,9 +1299,9 @@ agent lists issues in a second and starts an implementation that takes ten minut
 <a id="affected-entities"></a>
 **What a request touches (affected entities):**
 On sir's headset he places things from his home in the room — a light, his inbox, the family
-calendar — and the next time Jarvis works on one of them, it glows. For that the voice agent has to
-be told, while the request is still running, what it is touching, and the only place that knows is
-the tool an agent calls. So a tool that touches something is marked with `markAsAffectingEntities`
+calendar — and the next time Jarvis works on one of them, it glows. For that the headset has to be
+told, while the request is still running, what it is touching, and the only place that knows is the
+tool an agent calls. So a tool that touches something is marked with `markAsAffectingEntities`
 (`mastra/utils/affected-entities.ts`) and a reader that picks the things out of its arguments and
 result, parsed with zod. A shortcut onto a marked tool inherits its reader, and a workflow an agent
 calls as a tool is looked up through its `workflow-` prefix, exactly as for slow tasks.
@@ -1330,44 +1330,19 @@ but the glow waits on it. The calendar list keeps Google's retries, because it i
    `answerDirectly` hands back what it touched beside its facts (`DirectAnswerOutcome`), and
    `runDirectOrPlan` reports that as the same event, just before the result. One that declines or
    fails reports nothing of what it tried: the agent it falls back to reports what it touches itself.
-2. Each thing is reported once per request, at most `MOST_AFFECTED_ENTITIES_PER_REQUEST` (20) of
-   them, and nothing is recorded once the user has asked to be notified. Only the request's
-   **first** batch may end a parked poll by itself, and only once `AFFECTED_ENTITIES_GRACE_MS`
-   (450 ms) has passed — see the rule below.
-3. The poll returns them in `affectedEntities`, and the instructions open with
-   `MARK_AFFECTED_INSTRUCTIONS`: call the `markAffected` client tool with exactly those entities,
-   silently, before anything else, and never retry it. Silent covers the call and the list, not the
-   things: "which kitchen lights are on?" is answered by naming the lights the lookup touched, so
-   only the `affectedEntities` list and its ids are kept out of what he hears, and the clause says
-   the rest of the report names things as it always would. When that is all the response has, it then
-   says to poll again at once and say nothing. Results, the slow-work offer, the closing report, the
-   reply to `notifyWhenDone` and the response a poll gives when it runs out its deadline all carry
-   whatever has not been reported yet, the instruction first.
+2. Each thing is pushed once per request — again only when a later tool names one that was pushed
+   without a name — and at most `MOST_AFFECTED_ENTITIES_PER_REQUEST` (20) of them
+   (`handleDelegationAffectedEntities` in `routing/controller.ts`).
+3. It is published on `utils/live-events.ts` as `{ type: "affectedEntities", entities }` the moment
+   it is read, and the WebSocket API (`verticals/api/live-socket.ts`) sends that to every device
+   holding a socket open — see [The WebSocket API](#the-websocket-api). Nothing about it reaches the
+   voice agent: no poll response carries it, and no poll is woken or held for it.
 
-**When things touched may end a poll.** A response with nothing but entities costs the voice model
-a whole step — call `markAffected`, poll again — and routing is never told which device a
-conversation is on, so it costs that step on phones, watches and speakers that light nothing up,
-too. So it is rationed (`RoutingProgress.affectedEntitiesMayEndAPoll` and `buildSnapshot` in
-`routing/controller.ts`):
-- The request's **first** batch may end a parked poll by itself, but only after
-  `AFFECTED_ENTITIES_GRACE_MS` (450 ms). A result, the slow-work offer or the closing report landing
-  inside that window goes out in the same response, with the entities in it. That is the usual shape
-  of a command — a tool answers, then the agent does — so a quick command costs no extra step at all.
-- Once any entities have been handed over, **later ones never end a poll by themselves**. A snapshot
-  with nothing else to say leaves them waiting, and they ride on the next response: results, the
-  slow-work offer, the closing report, the reply to `notifyWhenDone`, or the one a poll gives at its
-  deadline (`answeringAnyway`), which the voice model had to take a step for regardless.
-
-The cost that remains, deliberately: at most one extra voice-model step per request, when nothing
-lands within the window — on every device, since routing cannot tell them apart; the first glow on
-the headset up to 450 ms later than it could be; and a later thing's glow waiting for the next
-response, up to the poll deadline. `affected-entities-interview.spec.ts` pins both ends: a quick
-command answers in one response carrying all it touched, and a held one gets exactly one
-entities-only response.
-
-`MARK_AFFECTED_TOOL` (`'markAffected'`) has to match the ElevenLabs agent's configuration and prompt
-and every client that registers the tool; whether a conversation is on a device that lights things
-up is for the agent prompt to say.
+A device subscribes by holding a socket, and acts on the events it cares about: the headset records
+what it is sent and lights the ones he has placed, and the phone and the watch ignore it. The sockets
+know nothing of conversations, so every socket is sent every event; for one household that is what
+is wanted. `affected-entities-interview.spec.ts` pins the join against a real
+plan run: what the lookup read is pushed while the service call is still held, before any answer.
 
 What is marked, and what is deliberately not:
 
@@ -1400,10 +1375,12 @@ ever glow. It also answers a question, to pin the resumed-agent path.
 
 <a id="pointing"></a>
 **What sir points at:**
-On the headset, a context update names the thing sir is pointing at, and "turn that on" means it.
-The `userQuery` description asks the voice agent to add its name and id —
-`Turn that on (pointing at "Kitchen ceiling", id light.kitchen_ceiling)` — because nothing but that
-string reaches the agents. The planner copies an id in the request verbatim into the prompt of the
+On the headset, "turn that on" means the thing sir is pointing at. The headset says what that is over
+the WebSocket API — `{"type":"pointing","entity":{"id":…,"name":…}}`, or `"entity": null` — whenever it
+changes, and the server keeps the newest report of any socket until that socket says otherwise or
+closes (`utils/pointing.ts`). The moment a request is routed, `withPointing` writes it after the
+request — `Turn that on (pointing at "Kitchen ceiling", id light.kitchen_ceiling)` — because nothing
+but that string reaches the agents. The voice agent hears none of this. The planner copies an id in the request verbatim into the prompt of the
 agent that owns the thing, and every agent is told in the shared guidelines to act on an id it is
 given without looking it up. A request the routing classifier settles on its own never reaches the
 planner, and needs it not to: its one agent is handed the user's words as they are, id included. A
@@ -1467,9 +1444,8 @@ That is a hard constraint, not an accident of the current design: the model on t
 chosen for speed, and every extra tool is surface it has to reason about on a latency budget
 that has no room for it.
 
-`markAffected` does not change that. It is a client tool on the ElevenLabs agent, answered by
-sir's devices rather than by this server, which he asked for by name, and the voice model only
-reaches for it when a response here tells it to (see [What a request touches](#affected-entities)).
+What a request touches does not change that either: it goes to sir's devices over the WebSocket API
+and never through the voice model (see [What a request touches](#affected-entities)).
 
 It is also why a question's answer comes back through `routePromptWorkflow` rather than a tool
 of its own (see **Questions for the user** above): the planner already reads every request, so it
@@ -3049,6 +3025,31 @@ Cloudflare tunnel and its **Cloudflare Access** application: ElevenLabs and the 
 present a service token (`CF-Access-Client-Id` / `CF-Access-Client-Secret`), and a browser signs in
 with an identity policy.
 
+**`/api/live` is unauthenticated on the server.** It is the WebSocket API
+(`verticals/api/live-socket.ts`) the phone, the watch and the headset keep open for as long as their
+apps run; the server checks no credential and sends every live event to any socket that says
+hello. Who may reach it is Cloudflare Zero Trust's to decide, in front of the
+tunnel. The phone and the watch can carry a JWT for that (their **Server token** setting), sent on
+the upgrade request as `Authorization: Bearer <jwt>` and `cf-access-token: <jwt>`. The headset runs
+in a browser, which cannot set a header on a WebSocket, so it gets through on Access's own
+`CF_Authorization` cookie instead:
+
+1. **Sign in once in Quest Browser.** The headset's page links to `/api/live` on the server
+   whenever its line is not connected. Access shows its own login there and sets `CF_Authorization`
+   on the server's hostname for the application that covers the socket's path; the server has no
+   page at that path, so the tab is done with once the login is.
+2. **Let the cookie travel cross-site.** The headset's page is served from GitHub Pages, so its
+   socket to the server is a cross-site request, and a cookie goes with it only when it is
+   `SameSite=None`. In the Access application's **Settings → Cookie settings**, set **SameSite
+   attribute** to **None** (HTTP Only may stay on), and leave **Enable Binding Cookie** off — that
+   cookie is `SameSite=Strict`, and with it on Access would refuse the cross-site socket.
+3. **Keep the session long enough.** The cookie lasts the application's **session duration**; when
+   it runs out, the page offers signing in again.
+
+Quest Browser has to accept a third-party cookie for this, which is not something this repository
+can check; if the line never connects after signing in, that is the first thing to look at. **WebSockets** must be on for the zone (Network → WebSockets). The server holds at most 32
+sockets at once. See [The WebSocket API](#the-websocket-api).
+
 **`/api/photos/*` must bypass Access**, as `/artifacts/*` must for the visualize vertical's pages
 (see [Visualize Vertical](#visualize-vertical-shortcuts)). The phone asks for a photo slot there
 (`POST /api/photos/slots`) and sends the photo there (`PUT /api/photos/<token>`), and it cannot
@@ -3062,7 +3063,7 @@ sends a CORS preflight (`OPTIONS`) before each.
 conversation that ElevenLabs, asked with this server's own API key, reports as in progress on
 Jarvis's agent; sending the photo needs the slot's token, 128 random bits handed straight to the
 phone, good for five minutes and one photo, and claimed before a byte of the body is read (see
-[Vision Vertical](#vision-vertical)). Nothing else under `/api` is reachable without Access.
+[Vision Vertical](#vision-vertical)). Nothing else under `/api` is reachable without Access, but `/api/live`.
 
 **Rate-limit the slot endpoint at Cloudflare as well.** The server limits the checks it sends
 ElevenLabs per address (an IPv6 /48), 6 a minute, and 30 for the whole process (see **The
@@ -3100,6 +3101,33 @@ spelling alike.
    Until it has one, the phone offers no camera button.
 5. If a 1Password item was created in the `Jarvis` vault for the earlier build's upload key, delete
    it: nothing reads it any more.
+
+### The WebSocket API
+
+Beside the REST routes, the MCP server serves one WebSocket, on the same port, at **`/api/live`**
+(`verticals/api/live-socket.ts`). REST is for being asked; this is for what the server has to say
+first, and what a device keeps it told of. Each device that is Jarvis — the phone, the watch and the
+headset — keeps one open for as long as its app runs, across conversations and between them, through
+`connectToServer` in `hologram/src/jarvis-server-link.ts`, and only when it knows the server's
+address (the phone's **Jarvis server** setting, handed to the watch with the
+credentials, and read by the headset from the storage it shares with the phone's web build).
+
+| Direction | Frame | Meaning |
+| --- | --- | --- |
+| device → server | `{"type":"hello","device":"phone"\|"watch"\|"vr"}` | The first frame, within 10 seconds |
+| server → device | `{"type":"ready"}` | This socket is now sent every live event |
+| server → device | `{"type":"affectedEntities","entities":[{"id":"…","name":"…"}]}` | A request's tool just read or changed these |
+| device → server | `{"type":"pointing","entity":{"id":"…","name":"…"}}` or `"entity":null` | What sir points at now, or nothing |
+
+**No authentication**: the hello names the device, for the log, and is not a credential. A refusal is
+a close: `4400` a first frame that is not a hello, `4408` no hello in time; an upgrade past 32
+open sockets is answered `503`. A device tries again with a growing delay after anything but `4400`. Frames over a kilobyte close their socket (`1009`), and every socket is pinged
+every 30 seconds, which also keeps Cloudflare from closing a quiet one after 100.
+
+After `ready`, a socket is sent every event published on `utils/live-events.ts` — today `{"type":"affectedEntities","entities":[{"id":"…","name":"…"}]}`, see
+[What a request touches](#affected-entities). A device acts on the events it cares about and ignores
+the rest. What a socket says sir points at is kept until it says otherwise or closes, and written into
+the next request routed — see [What sir points at](#pointing).
 
 ## Integration Capabilities
 

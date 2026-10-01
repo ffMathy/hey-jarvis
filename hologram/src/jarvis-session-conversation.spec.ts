@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { MARK_AFFECTED_TOOL, MARKED_RESULT, NOTHING_MARKED_RESULT } from './affected-entities';
 import { INTERRUPTED_TOO_SOON_MS } from './half-duplex';
-import { DEVICE_CONTEXT_ID } from './jarvis-session';
-import { CLIENT_TOOL_DEFAULT_RESULT, createHarness, settle } from './jarvis-session.fakes';
-import type { SessionDiagnostics } from './session-contract';
+import { createHarness, settle } from './jarvis-session.fakes';
 import { KEEP_THINKING_AFTER_LAST_ANSWER_MS } from './tool-activity';
 
 /**
@@ -514,101 +511,20 @@ describe('knowing when he has gone quiet', () => {
   });
 });
 
-describe('what he is working on, as the agent marks it', () => {
-  it('answers markAffected, and tells the holder which entities the request affects', async () => {
-    const harness = createHarness();
-    await harness.goLive();
-
-    const answer = await harness.sdk.latest.callClientTool(MARK_AFFECTED_TOOL, {
-      entities: [{ id: 'light.kitchen_ceiling', name: 'Kitchen ceiling' }, { id: 'inbox:work' }],
-    });
-
-    expect(answer).toEqual({ result: MARKED_RESULT, isError: false });
-    expect(harness.events.affected).toEqual([
-      [{ id: 'light.kitchen_ceiling', name: 'Kitchen ceiling' }, { id: 'inbox:work' }],
-    ]);
-    expect(harness.events.diagnostics.at(-1)?.lastError).toBeUndefined();
-  });
-
-  it('tells the holder every time the agent marks something, since each is the request moving on', async () => {
-    const harness = createHarness();
-    await harness.goLive();
-    const dial = harness.sdk.latest;
-
-    await dial.callClientTool(MARK_AFFECTED_TOOL, { entities: [{ id: 'calendar/primary', name: 'Calendar' }] });
-    await dial.callClientTool(MARK_AFFECTED_TOOL, { entities: [{ id: 'calendar/primary' }, { id: 'inbox:work' }] });
-
-    expect(harness.events.log.filter((line) => line.startsWith('affected:'))).toEqual([
-      'affected:calendar/primary',
-      'affected:calendar/primary,inbox:work',
-    ]);
-  });
-
-  it('tells the holder nothing of a call with nothing usable in it, and answers it without an error', async () => {
-    const harness = createHarness();
-    await harness.goLive();
-    const dial = harness.sdk.latest;
-
-    const answers = [
-      await dial.callClientTool(MARK_AFFECTED_TOOL, { entities: [{ id: '   ' }, 42, { name: 'No id' }] }),
-      await dial.callClientTool(MARK_AFFECTED_TOOL, {}),
-      await dial.callClientTool(MARK_AFFECTED_TOOL, 'not even an object'),
-    ];
-
-    expect(answers).toEqual(Array(3).fill({ result: NOTHING_MARKED_RESULT, isError: false }));
-    expect(harness.events.affected).toEqual([]);
-    expect(harness.session.phase).toBe('live');
-    expect(harness.events.diagnostics.at(-1)?.lastError).toBeUndefined();
-  });
-
-  it('still answers without an error when the holder throws, and notes it for the diagnostics', async () => {
-    const diagnostics: SessionDiagnostics[] = [];
-    const harness = createHarness({
-      events: {
-        onDiagnostics: (reported) => diagnostics.push(reported),
-        onAffected: () => {
-          throw new Error('The registry could not be written.');
-        },
-      },
-    });
-    await harness.goLive();
-
-    const answer = await harness.sdk.latest.callClientTool(MARK_AFFECTED_TOOL, { entities: [{ id: 'light.hall' }] });
-
-    expect(answer).toEqual({ result: CLIENT_TOOL_DEFAULT_RESULT, isError: false });
-    expect(diagnostics.at(-1)?.lastError).toBe('The registry could not be written.');
-    expect(harness.session.phase).toBe('live');
-  });
-
-  it('tells the holder nothing from a summoning that is over', async () => {
-    const harness = createHarness();
-    await harness.goLive();
-    const over = harness.sdk.latest;
-
-    harness.session.hangUp();
-    const answer = await over.callClientTool(MARK_AFFECTED_TOOL, { entities: [{ id: 'light.hall' }] });
-
-    expect(answer.isError).toBe(false);
-    expect(harness.events.affected).toEqual([]);
-  });
-});
-
 describe('telling him what he should know', () => {
-  const POINTING_AT_THE_HALL = 'Sir is pointing at "Hall" (light.hall).';
-  const POINTING_AT_THE_PORCH = 'Sir is pointing at "Porch" (light.porch).';
-  const POINTING_AT_NOTHING = 'Sir is not pointing at anything.';
-  const ON_THE_HEADSET = 'This conversation is on sir’s headset.';
+  const CAMERA_OPEN = 'The camera is open.';
+  const CAMERA_CLOSED = 'The camera is closed.';
 
   it('sends a contextual update into the connected conversation at once', async () => {
     const harness = createHarness();
     await harness.goLive();
 
-    harness.session.sendContextualUpdate(POINTING_AT_THE_HALL, 'pointing');
+    harness.session.sendContextualUpdate(CAMERA_OPEN, 'camera');
     harness.session.sendContextualUpdate('  It has started raining.  ');
-    harness.session.sendContextualUpdate('   ', 'pointing');
+    harness.session.sendContextualUpdate('   ', 'camera');
 
     expect(harness.sdk.latest.conversation.contextualUpdates).toEqual([
-      { text: POINTING_AT_THE_HALL, contextId: 'pointing' },
+      { text: CAMERA_OPEN, contextId: 'camera' },
       { text: 'It has started raining.' },
     ]);
   });
@@ -620,9 +536,9 @@ describe('telling him what he should know', () => {
     tokens.grant();
     await settle();
 
-    session.sendContextualUpdate(POINTING_AT_THE_HALL, 'pointing');
+    session.sendContextualUpdate(CAMERA_OPEN, 'camera');
     session.sendContextualUpdate('It has started raining.', 'weather');
-    session.sendContextualUpdate(POINTING_AT_THE_PORCH, 'pointing');
+    session.sendContextualUpdate(CAMERA_CLOSED, 'camera');
     await clock.advance(greeting.durationMilliseconds + 100);
     const { conversation } = sdk.latest;
     expect(conversation.contextualUpdates).toEqual([]);
@@ -631,7 +547,7 @@ describe('telling him what he should know', () => {
 
     expect(conversation.contextualUpdates).toEqual([
       { text: 'It has started raining.', contextId: 'weather' },
-      { text: POINTING_AT_THE_PORCH, contextId: 'pointing' },
+      { text: CAMERA_CLOSED, contextId: 'camera' },
     ]);
   });
 
@@ -643,7 +559,7 @@ describe('telling him what he should know', () => {
     await settle();
 
     session.sendContextualUpdate('This device has a camera button.');
-    session.sendContextualUpdate(POINTING_AT_THE_HALL, 'pointing');
+    session.sendContextualUpdate(CAMERA_OPEN, 'camera');
     session.sendContextualUpdate('Sir has opened the camera.');
     session.sendUserActivity();
     await clock.advance(greeting.durationMilliseconds + 100);
@@ -653,7 +569,7 @@ describe('telling him what he should know', () => {
 
     expect(conversation.contextualUpdates).toEqual([
       { text: 'This device has a camera button.' },
-      { text: POINTING_AT_THE_HALL, contextId: 'pointing' },
+      { text: CAMERA_OPEN, contextId: 'camera' },
       { text: 'Sir has opened the camera.' },
     ]);
     // Word that he is still there is about the moment it is said, so it is never kept for later.
@@ -665,7 +581,7 @@ describe('telling him what he should know', () => {
       events: {
         onPhase: (phase) => {
           if (phase === 'live') {
-            harness.session.sendContextualUpdate(POINTING_AT_NOTHING, 'pointing');
+            harness.session.sendContextualUpdate(CAMERA_CLOSED, 'camera');
           }
         },
       },
@@ -674,53 +590,28 @@ describe('telling him what he should know', () => {
     harness.greeting.allow();
     harness.tokens.grant();
     await settle();
-    harness.session.sendContextualUpdate(POINTING_AT_THE_HALL, 'pointing');
+    harness.session.sendContextualUpdate(CAMERA_OPEN, 'camera');
     await harness.clock.advance(harness.greeting.durationMilliseconds + 100);
 
     await harness.sdk.latest.connect();
 
     // The server keeps the newest update for an id, so the order is what leaves him with the truth.
     expect(harness.sdk.latest.conversation.contextualUpdates).toEqual([
-      { text: POINTING_AT_THE_HALL, contextId: 'pointing' },
-      { text: POINTING_AT_NOTHING, contextId: 'pointing' },
-    ]);
-  });
-
-  it('says the device’s own context first, in every conversation it connects', async () => {
-    const harness = createHarness({ deviceContext: ON_THE_HEADSET });
-    harness.session.summon();
-    harness.greeting.allow();
-    harness.tokens.grant();
-    await settle();
-    harness.session.sendContextualUpdate(POINTING_AT_THE_HALL, 'pointing');
-    await harness.clock.advance(harness.greeting.durationMilliseconds + 100);
-    await harness.sdk.latest.connect();
-    expect(harness.sdk.latest.conversation.contextualUpdates).toEqual([
-      { text: ON_THE_HEADSET, contextId: DEVICE_CONTEXT_ID },
-      { text: POINTING_AT_THE_HALL, contextId: 'pointing' },
-    ]);
-
-    harness.sdk.latest.agentHangsUp();
-    await harness.goLive();
-
-    expect(harness.sdk.dials).toHaveLength(2);
-    expect(harness.sdk.latest.conversation.contextualUpdates).toEqual([
-      { text: ON_THE_HEADSET, contextId: DEVICE_CONTEXT_ID },
+      { text: CAMERA_OPEN, contextId: 'camera' },
+      { text: CAMERA_CLOSED, contextId: 'camera' },
     ]);
   });
 
   it('keeps nothing said with no summoning under way, or still waiting when one ends', async () => {
-    const harness = createHarness({ deviceContext: ON_THE_HEADSET });
-    harness.session.sendContextualUpdate(POINTING_AT_THE_HALL, 'pointing');
+    const harness = createHarness();
+    harness.session.sendContextualUpdate(CAMERA_OPEN, 'camera');
 
     harness.session.summon();
-    harness.session.sendContextualUpdate(POINTING_AT_THE_PORCH, 'pointing');
+    harness.session.sendContextualUpdate(CAMERA_CLOSED, 'camera');
     harness.session.hangUp();
     await harness.goLive();
 
-    expect(harness.sdk.latest.conversation.contextualUpdates).toEqual([
-      { text: ON_THE_HEADSET, contextId: DEVICE_CONTEXT_ID },
-    ]);
+    expect(harness.sdk.latest.conversation.contextualUpdates).toEqual([]);
   });
 
   it('sends nothing into a conversation that is over', async () => {
@@ -730,7 +621,7 @@ describe('telling him what he should know', () => {
     conversation.holdEnding();
 
     harness.session.hangUp();
-    harness.session.sendContextualUpdate(POINTING_AT_THE_HALL, 'pointing');
+    harness.session.sendContextualUpdate(CAMERA_OPEN, 'camera');
 
     expect(conversation.contextualUpdates).toEqual([]);
   });
@@ -739,18 +630,18 @@ describe('telling him what he should know', () => {
     const refusing = () => {
       throw new Error('WebSocket is already in CLOSING or CLOSED state.');
     };
-    const harness = createHarness({ deviceContext: ON_THE_HEADSET });
+    const harness = createHarness();
     harness.session.summon();
     harness.greeting.allow();
     harness.tokens.grant();
     await settle();
     await harness.clock.advance(harness.greeting.durationMilliseconds + 100);
     harness.sdk.latest.conversation.sendContextualUpdate = refusing;
-    harness.session.sendContextualUpdate(POINTING_AT_THE_HALL, 'pointing');
+    harness.session.sendContextualUpdate(CAMERA_OPEN, 'camera');
 
     await harness.sdk.latest.connect();
     expect(harness.session.phase).toBe('live');
-    expect(() => harness.session.sendContextualUpdate(POINTING_AT_NOTHING, 'pointing')).not.toThrow();
+    expect(() => harness.session.sendContextualUpdate(CAMERA_CLOSED, 'camera')).not.toThrow();
     expect(harness.session.phase).toBe('live');
     expect(harness.events.problems).toEqual([]);
   });

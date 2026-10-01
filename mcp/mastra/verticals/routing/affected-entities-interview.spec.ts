@@ -5,8 +5,8 @@
  * `routePromptWorkflow` with what sir said, then `getNextInstructionsWorkflow` until a response
  * closes the request. In between, the planner hands the request to the Internet of Things agent,
  * which looks the lights up and then switches them off -- and the headset is to light up each thing
- * while that is happening, which means the poll has to hear about it from the tool results the
- * agent streams, long before the agent answers.
+ * while that is happening, which means routing has to push it to the devices (`utils/live-events.ts`)
+ * from the tool results the agent streams, long before the agent answers.
  *
  * That join is Mastra's undocumented chunk shape -- an agent step forwarding its agent's
  * `tool-result` chunks into the plan run as `workflow-step-output` -- and the controller spec only
@@ -24,8 +24,9 @@ import { Classifier } from '@mastra/core/classifier';
 import { InMemoryStore } from '@mastra/core/storage';
 import { z } from 'zod';
 import { createScriptedModel } from '../../../tests/utils/scripted-model.js';
-import { markAsAffectingEntities } from '../../utils/affected-entities.js';
+import { type AffectedEntity, markAsAffectingEntities } from '../../utils/affected-entities.js';
 import { createAgent } from '../../utils/agent-factory.js';
+import { onLiveEvent } from '../../utils/live-events.js';
 import { createInstructionsWorkflowTool, createSimplifiedWorkflowTool } from '../../utils/mcp-tool-factory.js';
 import { createTool, executeTool } from '../../utils/tool-factory.js';
 import { resetHomeDomainsForTest, resetHomeServicesForTest } from '../internet-of-things/home-commands.js';
@@ -38,7 +39,6 @@ import { PLANNER_AGENT_ID } from './planner.js';
 import {
   getNextInstructionsWorkflow,
   instructionsOutputSchema,
-  MARK_AFFECTED_INSTRUCTIONS,
   resetPollDeadlineForTest,
   routePromptWorkflow,
   setPollDeadlineForTest,
@@ -173,6 +173,28 @@ async function pollUntilClosed() {
 const saved = new Map<string, string | undefined>();
 let restoreFetch: (() => void) | undefined;
 
+/** Every thing routing pushed to the devices during the test, in order. */
+let pushed: AffectedEntity[] = [];
+let stopListening: (() => void) | undefined;
+
+beforeEach(() => {
+  pushed = [];
+  stopListening = onLiveEvent((event) => pushed.push(...event.entities));
+});
+
+afterEach(() => {
+  stopListening?.();
+  stopListening = undefined;
+});
+
+/** Resolves once `count` things have been pushed, or fails after a few seconds. */
+async function untilPushed(count: number): Promise<void> {
+  for (let attempt = 0; attempt < 200 && pushed.length < count; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  expect(pushed.length).toBeGreaterThanOrEqual(count);
+}
+
 beforeEach(async () => {
   for (const name of HOME_ASSISTANT_ENV) {
     saved.set(name, process.env[name]);
@@ -216,63 +238,40 @@ afterEach(() => {
 });
 
 describe('a light switched by voice, with the headset watching', () => {
-  it('hands the first poll what the agent has looked up, while it is still working', async () => {
+  it('pushes what the agent has looked up while it is still working, then what it switched', async () => {
     const house = fakeHomeAssistant();
     restoreFetch = () => house.fetchSpy.mockRestore();
 
     await executeTool(routeTool, { userQuery: REQUEST, async: false });
 
-    // The first response that says anything at all. A poll that runs out its deadline while the
-    // planner is still at work says only that, and is not the one this is about.
-    let first = await poll();
-    for (let attempt = 0; attempt < 10 && first.instructions.startsWith('Still processing'); attempt += 1) {
-      first = await poll();
-    }
-
-    expect(first.affectedEntities).toEqual([
+    // Pushed from the lookup's result, with the service call still held: long before any answer.
+    await untilPushed(2);
+    expect(pushed).toEqual([
       { id: 'light.kitchen_ceiling', name: 'Kitchen ceiling' },
       { id: 'light.kitchen_spots', name: 'Kitchen spots' },
     ]);
-    expect(first.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
-    expect(first.instructions).toContain('call getNextInstructionsWorkflow again at once');
-    expect(first.completedTaskResults).toBeUndefined();
-    expect(first.taskIdsInProgress).toEqual(['lights']);
 
     house.letServiceCallThrough();
-
-    // Whether the service call's targets come in a response of their own or with the closing one
-    // depends on how soon the agent answers after the call, so every response is read until the
-    // request closes.
-    const laterResponses = [await poll()];
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      const latest = laterResponses[laterResponses.length - 1];
-      if (CLOSING_OPENINGS.some((opening) => latest.instructions.includes(opening))) {
-        break;
-      }
-      laterResponses.push(await poll());
-    }
-    const closing = laterResponses[laterResponses.length - 1];
-    const reportedLater = laterResponses.filter((response) => response.affectedEntities);
+    const responses = await pollUntilClosed();
+    const closing = responses[responses.length - 1];
 
     expect(closing.instructions).toContain('All tasks have completed');
     expect(closing.completedTaskResults).toEqual([{ id: 'lights', result: ANSWER }]);
     // The service call reached one light the lookup had not, and only that one is new.
-    expect(reportedLater.flatMap((response) => response.affectedEntities ?? [])).toEqual([
+    expect(pushed).toEqual([
+      { id: 'light.kitchen_ceiling', name: 'Kitchen ceiling' },
+      { id: 'light.kitchen_spots', name: 'Kitchen spots' },
       { id: 'light.pantry', name: 'Pantry' },
     ]);
-    // The first things touched had a response of their own; the pantry never does, and rides on the
-    // agent's answer instead -- a response with nothing else would cost the voice model a step.
-    for (const response of reportedLater) {
-      expect(response.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
-      expect(response.completedTaskResults).toEqual([{ id: 'lights', result: ANSWER }]);
+    // None of it reaches the voice agent.
+    for (const response of responses) {
+      expect(Object.keys(response)).not.toContain('affectedEntities');
     }
   }, 60_000);
 
-  it('answers a quick command in one response, with everything it touched', async () => {
+  it('answers a quick command in one response, having pushed everything it touched', async () => {
     const house = fakeHomeAssistant();
     restoreFetch = () => house.fetchSpy.mockRestore();
-    // The house answers at once, so the agent's answer lands inside the window the first things
-    // touched are held for -- the usual shape of a command on a phone, which lights nothing up.
     house.letServiceCallThrough();
 
     await executeTool(routeTool, { userQuery: REQUEST, async: false });
@@ -282,21 +281,19 @@ describe('a light switched by voice, with the headset watching', () => {
       first = await poll();
     }
 
-    expect(first.affectedEntities).toEqual([
+    expect(first.completedTaskResults).toEqual([{ id: 'lights', result: ANSWER }]);
+    expect(pushed).toEqual([
       { id: 'light.kitchen_ceiling', name: 'Kitchen ceiling' },
       { id: 'light.kitchen_spots', name: 'Kitchen spots' },
       { id: 'light.pantry', name: 'Pantry' },
     ]);
-    expect(first.completedTaskResults).toEqual([{ id: 'lights', result: ANSWER }]);
-    expect(first.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
-    expect(first.instructions).not.toContain('Nothing has finished yet');
   }, 60_000);
 });
 
 /**
  * An answer to a question is not part of any plan run: it resumes the agent that asked, and routing
  * reads that agent's own stream instead (see `resumeWithAnswer`). What the resumed tool touches has
- * to reach the poll from there too.
+ * to be pushed from there too.
  */
 describe('a lamp chosen by answering the question that asked which', () => {
   const QUESTION = 'Which lamp should I turn on?';
@@ -347,7 +344,7 @@ describe('a lamp chosen by answering the question that asked which', () => {
     });
   }
 
-  it('reaches the poll from the resumed agent’s own stream', async () => {
+  it('is pushed from the resumed agent’s own stream', async () => {
     resetRoutingRuntime();
     new Mastra({
       storage: new InMemoryStore(),
@@ -374,9 +371,7 @@ describe('a lamp chosen by answering the question that asked which', () => {
     await executeTool(routeTool, { userQuery: CHOICE, async: false });
     const answered = await pollUntilClosed();
 
-    expect(answered.flatMap((response) => response.affectedEntities ?? [])).toEqual([
-      { id: 'light.sofa_lamp', name: 'Sofa lamp' },
-    ]);
+    expect(pushed).toEqual([{ id: 'light.sofa_lamp', name: 'Sofa lamp' }]);
     expect(answered[answered.length - 1].completedTaskResults).toEqual([
       { id: 'lamp', result: 'Turned on the sofa lamp.' },
     ]);
@@ -507,7 +502,7 @@ describe('a request answered without its agent, with the headset watching', () =
     resetHomeDomainsForTest();
   });
 
-  it('lights up what a lookup read, before its answer and in the response that carries it', async () => {
+  it('pushes what a lookup read, before its answer', async () => {
     setRoutingClassifierForTest(
       routingClassifierSureOf({ route: 'todoList', responseStyle: 'lookup', directLookup: 'todoList.open' }),
     );
@@ -517,9 +512,8 @@ describe('a request answered without its agent, with the headset watching', () =
     const [first] = await pollUntilClosed();
 
     // The list itself, by its real id -- exactly what the agent's `getAllTasks` call reports.
-    expect(first?.affectedEntities).toEqual([DEFAULT_TASK_LIST]);
+    expect(pushed).toEqual([DEFAULT_TASK_LIST]);
     expect(first?.completedTaskResults).toEqual([{ id: 'todoList', result: '{"tasks":[{"title":"Buy milk"}]}' }]);
-    expect(first?.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
     expect(directAnswerEvents().map((event) => event.type)).toEqual([
       'delegation_start',
       'delegation_affected_entities',
@@ -537,7 +531,7 @@ describe('a request answered without its agent, with the headset watching', () =
     const responses = await pollUntilClosed();
 
     expect(responses[responses.length - 1]?.completedTaskResults).toEqual([{ id: 'todoList', result: TO_DO_ANSWER }]);
-    expect(responses.flatMap((response) => response.affectedEntities ?? [])).toEqual([]);
+    expect(pushed).toEqual([]);
     expect(directAnswerEvents()).toEqual([]);
     expect(eventsHandled().filter((event) => event.type === 'delegation_affected_entities')).toEqual([]);
   }, 60_000);
@@ -553,7 +547,7 @@ describe('a request answered without its agent, with the headset watching', () =
     expect(responses[responses.length - 1]?.completedTaskResults).toEqual([
       { id: 'internetOfThings', result: LIGHTS_ANSWER },
     ]);
-    expect(responses.flatMap((response) => response.affectedEntities ?? [])).toEqual([]);
+    expect(pushed).toEqual([]);
     expect(directAnswerEvents()).toEqual([]);
     expect(eventsHandled().filter((event) => event.type === 'delegation_affected_entities')).toEqual([]);
   }, 60_000);

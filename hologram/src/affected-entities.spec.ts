@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'bun:test';
 import {
-  AFFECTED_ENTITIES_PER_CALL,
+  AFFECTED_ENTITIES_PER_MESSAGE,
   AFFECTED_ENTITY_ID_MAX_LENGTH,
   AFFECTED_ENTITY_NAME_MAX_LENGTH,
   affectedEntitiesOf,
 } from './affected-entities';
 
 /**
- * What a `markAffected` call is taken to name. The parameters are the voice model's copy of a
- * routing response, so the shape is read leniently and the values strictly — see
+ * What an `affectedEntities` message from the Jarvis server is taken to name. It comes over the
+ * network from outside the device, so both its shape and its values are read strictly — see
  * `affected-entities.ts` for why.
  */
-describe('reading the entities a markAffected call names', () => {
+describe('reading the entities an affectedEntities message names', () => {
   it('takes each entity as declared, with its name when it has one', () => {
     expect(
       affectedEntitiesOf({
@@ -81,27 +81,23 @@ describe('reading the entities a markAffected call names', () => {
     ]);
   });
 
-  it(`marks no more than ${AFFECTED_ENTITIES_PER_CALL} at once`, () => {
-    const many = Array.from({ length: AFFECTED_ENTITIES_PER_CALL + 10 }, (_, index) => ({ id: `light.${index}` }));
+  it(`marks no more than ${AFFECTED_ENTITIES_PER_MESSAGE} at once`, () => {
+    const many = Array.from({ length: AFFECTED_ENTITIES_PER_MESSAGE + 10 }, (_, index) => ({ id: `light.${index}` }));
 
     const marked = affectedEntitiesOf({ entities: many });
 
-    expect(marked).toHaveLength(AFFECTED_ENTITIES_PER_CALL);
-    expect(marked.at(-1)?.id).toBe(`light.${AFFECTED_ENTITIES_PER_CALL - 1}`);
+    expect(marked).toHaveLength(AFFECTED_ENTITIES_PER_MESSAGE);
+    expect(marked.at(-1)?.id).toBe(`light.${AFFECTED_ENTITIES_PER_MESSAGE - 1}`);
   });
 
-  it('takes the near misses a model makes of the shape', () => {
-    // Bare ids in the list, and `entityId` for `id`.
-    expect(affectedEntitiesOf({ entities: ['light.hall', { entityId: 'light.porch', name: 'Porch' }] })).toEqual([
-      { id: 'light.hall' },
-      { id: 'light.porch', name: 'Porch' },
-    ]);
-    // The array written out as JSON.
-    expect(affectedEntitiesOf({ entities: JSON.stringify([{ id: 'inbox:work', name: 'Work inbox' }]) })).toEqual([
-      { id: 'inbox:work', name: 'Work inbox' },
-    ]);
-    // A lone entity where a list of one was asked for.
-    expect(affectedEntitiesOf({ entities: { id: 'calendar/primary' } })).toEqual([{ id: 'calendar/primary' }]);
+  it('takes only the declared shape, and guesses at nothing else', () => {
+    expect(
+      affectedEntitiesOf({
+        entities: ['light.hall', { entityId: 'light.porch', name: 'Porch' }, { id: 'light.attic' }],
+      }),
+    ).toEqual([{ id: 'light.attic' }]);
+    expect(affectedEntitiesOf({ entities: JSON.stringify([{ id: 'inbox:work' }]) })).toEqual([]);
+    expect(affectedEntitiesOf({ entities: { id: 'calendar/primary' } })).toEqual([]);
   });
 
   it('ignores junk, and never throws over it', () => {
@@ -120,8 +116,8 @@ describe('reading the entities a markAffected call names', () => {
       { entities: [null, 42, true, [], ['light.hall'], { id: 42 }, { id: { nested: 'light.hall' } }] },
     ];
 
-    for (const parameters of junk) {
-      expect(affectedEntitiesOf(parameters)).toEqual([]);
+    for (const message of junk) {
+      expect(affectedEntitiesOf(message)).toEqual([]);
     }
   });
 });

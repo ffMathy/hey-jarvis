@@ -30,12 +30,12 @@
       "dependsOn": ["^transit", "lint"],
       "outputs": ["../coverage/**"]
     },
-    // horizon's agent-contract.spec.ts reads the ElevenLabs prompt, the evals' copy of the
+    // vr's agent-contract.spec.ts reads the ElevenLabs prompt, the evals' copy of the
     // headset's sentences and the MCP routing workflow and planner as text, to catch them
     // drifting apart while every package's own tests still pass. They are other packages'
-    // files, so they are named here: otherwise a change to them alone would replay horizon's
+    // files, so they are named here: otherwise a change to them alone would replay vr's
     // cached pass instead of running the one check written for exactly that change.
-    "horizon#test": {
+    "vr#test": {
       "dependsOn": ["^transit", "lint"],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -125,10 +125,10 @@
       "outputs": [],
       "dependsOn": ["//#install-skia"]
     },
-    // Copies the WebAssembly into horizon/public/vendor/, which is gitignored. A cache hit
+    // Copies the WebAssembly into vr/public/vendor/, which is gitignored. A cache hit
     // would replay the log and restore no files, and the build after it would publish a site
     // with no CanvasKit — so, like the phone's and the watch's, it always runs.
-    "horizon#initialize": {
+    "vr#initialize": {
       "cache": false,
       "outputs": []
     }

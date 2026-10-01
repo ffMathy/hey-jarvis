@@ -1,11 +1,15 @@
 import { requireOptionalNativeModule } from 'expo';
 import type { ElevenLabsSettings } from 'hologram';
-import { parseElevenLabsSettings } from 'hologram';
+import { parseElevenLabsSettings, parseJarvisServerAddress, parseJarvisServerToken } from 'hologram';
 
 /** What the native side stores, which is the JSON the phone sent with nothing added. */
 interface StoredSettings {
   apiKey: string;
   agentId: string;
+  /** Only when the phone had one. */
+  serverAddress?: string;
+  /** Only when the phone had one. */
+  serverToken?: string;
 }
 
 interface JarvisPhoneNativeModule {
@@ -32,20 +36,44 @@ const nativeModule = requireOptionalNativeModule<JarvisPhoneNativeModule>('Jarvi
  * should fail here, where the screen can say so, rather than at ElevenLabs.
  */
 export function readPhoneSettings(): ElevenLabsSettings | undefined {
-  // The native side already answers a keystore it cannot open with null rather than a throw — see
-  // `PhoneSettingsStore.kt` — but this is the call the first screen makes, and a screen that
-  // cannot be drawn is a watch app that will not start. Two guards for one failure is cheap.
-  let stored: StoredSettings | null;
-  try {
-    stored = nativeModule?.readSettings() ?? null;
-  } catch {
-    return undefined;
-  }
+  const stored = readStoredSettings();
   if (!stored) {
     return undefined;
   }
   const parsed = parseElevenLabsSettings(stored.apiKey, stored.agentId);
   return 'problem' in parsed ? undefined : parsed.settings;
+}
+
+/**
+ * The Jarvis server's address the phone handed over with the credentials, if it had one: where the
+ * watch opens its line to the server during a conversation. Checked by the rules the phone checked
+ * it with, for the same reason the credentials are.
+ */
+export function readPhoneServerAddress(): string | undefined {
+  const parsed = parseJarvisServerAddress(readStoredSettings()?.serverAddress ?? '');
+  return 'address' in parsed ? parsed.address : undefined;
+}
+
+/**
+ * The token for the server the phone handed over beside its address, if it had one: the JWT the
+ * Cloudflare Zero Trust application in front of the server accepts. Checked by the rules the phone
+ * checked it with.
+ */
+export function readPhoneServerToken(): string | undefined {
+  const parsed = parseJarvisServerToken(readStoredSettings()?.serverToken ?? '');
+  return 'token' in parsed ? parsed.token : undefined;
+}
+
+/** What the native side has stored, or `null` for nothing at all. */
+function readStoredSettings(): StoredSettings | null {
+  // The native side already answers a keystore it cannot open with null rather than a throw — see
+  // `PhoneSettingsStore.kt` — but this is the call the first screen makes, and a screen that
+  // cannot be drawn is a watch app that will not start. Two guards for one failure is cheap.
+  try {
+    return nativeModule?.readSettings() ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**

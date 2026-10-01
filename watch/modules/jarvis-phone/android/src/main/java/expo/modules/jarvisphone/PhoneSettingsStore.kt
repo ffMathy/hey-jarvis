@@ -28,6 +28,19 @@ internal object PhoneSettingsStore {
   private const val AGENT_ID = "agentId"
 
   /**
+   * Where the Jarvis server is, when the phone has one: optional, and not a secret. Its shape is
+   * checked in JavaScript (`readPhoneServerAddress`), by the same rules the phone checked it with.
+   */
+  private const val SERVER_ADDRESS = "serverAddress"
+
+  /**
+   * The JWT the Cloudflare Zero Trust application in front of the server accepts, when the phone has
+   * one: a credential, kept encrypted beside the ElevenLabs key. Checked in JavaScript
+   * (`readPhoneServerToken`).
+   */
+  private const val SERVER_TOKEN = "serverToken"
+
+  /**
    * The store, or null when it cannot be opened at all.
    *
    * It genuinely can fail, and not only in theory: `EncryptedSharedPreferences.create` reads the
@@ -76,8 +89,14 @@ internal object PhoneSettingsStore {
       return false
     }
 
+    val serverAddress = settings.optString(SERVER_ADDRESS).trim()
+    val serverToken = settings.optString(SERVER_TOKEN).trim()
     val preferences = preferences(context) ?: return false
-    preferences.edit().putString(API_KEY, apiKey).putString(AGENT_ID, agentId).commit()
+    val editor = preferences.edit().putString(API_KEY, apiKey).putString(AGENT_ID, agentId)
+    // A phone that has forgotten its address or token hands over none, and the watch forgets it too.
+    if (serverAddress.isEmpty()) editor.remove(SERVER_ADDRESS) else editor.putString(SERVER_ADDRESS, serverAddress)
+    if (serverToken.isEmpty()) editor.remove(SERVER_TOKEN) else editor.putString(SERVER_TOKEN, serverToken)
+    editor.commit()
     return true
   }
 
@@ -86,7 +105,13 @@ internal object PhoneSettingsStore {
     val preferences = preferences(context) ?: return null
     val apiKey = preferences.getString(API_KEY, null) ?: return null
     val agentId = preferences.getString(AGENT_ID, null) ?: return null
-    return if (apiKey.isEmpty() || agentId.isEmpty()) null else mapOf(API_KEY to apiKey, AGENT_ID to agentId)
+    if (apiKey.isEmpty() || agentId.isEmpty()) {
+      return null
+    }
+    val stored = mutableMapOf(API_KEY to apiKey, AGENT_ID to agentId)
+    preferences.getString(SERVER_ADDRESS, null)?.takeIf { it.isNotEmpty() }?.let { stored[SERVER_ADDRESS] = it }
+    preferences.getString(SERVER_TOKEN, null)?.takeIf { it.isNotEmpty() }?.let { stored[SERVER_TOKEN] = it }
+    return stored
   }
 
   /** Forgets them, for a watch being handed on or a key being rotated. */
