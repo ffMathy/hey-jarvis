@@ -29,6 +29,11 @@ every result anyway, so the server only has to hand back facts.
 - Make a lookup per fixed variant ("today", "tomorrow", "this week") rather than a lookup with a
   free-text input. Anything that needs a search word, a place or a name stays with the agent.
 - Answer with compact facts (`asFacts`): only the fields a spoken answer needs.
+- **Call tools through the `callTool` the lookup's `answer` is handed, never `executeTool`.** It reads
+  each result with that tool's own affected-entities reader, so a direct answer reports what it
+  touched exactly as the agent's tool call would have, and sir's headset still lights it up. A new
+  answer that bypasses the agent without that (as `runHomeCommand` and `answerHomeQuestion` show)
+  must return its entities itself. See "What a request touches" in `mcp/AGENTS.md`.
 - When the options come from live data rather than a fixed list (Home Assistant's devices), ask Jev
   about each option instead, as `internet-of-things/home-commands.ts` does.
 
