@@ -1325,9 +1325,11 @@ but the glow waits on it. The calendar list keeps Google's retries, because it i
    agent's own stream. Whatever the readers name becomes a `delegation_affected_entities` event.
    A call that never ran touched nothing, whatever its reader would say: Mastra streams input that
    failed validation (`{ error: true, … }`) and a failed workflow tool (`{ error, runId }`) as
-   ordinary results, and `readAffectedEntities` skips both before a reader sees them. A smart home
-   command carried out without the agent streams no tool result at all, so `runHomeCommandOrPlan`
-   reports the entities `runHomeCommand` called the service on as the same event, beside its result.
+   ordinary results, and `readAffectedEntities` skips both before a reader sees them. A request
+   answered without its agent (see **Direct answers** below) streams no tool result at all, so
+   `answerDirectly` hands back what it touched beside its facts (`DirectAnswerOutcome`), and
+   `runDirectOrPlan` reports that as the same event, just before the result. One that declines or
+   fails reports nothing of what it tried: the agent it falls back to reports what it touches itself.
 2. Each thing is reported once per request, at most `MOST_AFFECTED_ENTITIES_PER_REQUEST` (20) of
    them, and nothing is recorded once the user has asked to be notified. Only the request's
    **first** batch may end a parked poll by itself, and only once `AFFECTED_ENTITIES_GRACE_MS`
@@ -1371,7 +1373,7 @@ What is marked, and what is deliberately not:
 
 | Vertical | Reports | Left unmarked, and why |
 | --- | --- | --- |
-| Internet of things | `callIoTService`: the entities it reached — the ids named, and the service domain's entities in the areas and devices named (every domain for `homeassistant`), resolved alongside the call, given up on after 1.5 s and never failing it. `findEntities`: what it found, when that is at most `MOST_ENTITIES_A_LOOKUP_AFFECTS` (10). `getEntityLogbook`: the entity. A home command carried out without the agent (`home-commands.ts`): the entities Jev chose and the service was called on | `getAllDevices`, `getChangedDevicesSince` and `inferUserLocation` are surveys; `getAllServices` names no entity; `setUserPhoneAlarm` has only a notify service, not an entity id; `entity_id: "all"` is every light in the house |
+| Internet of things | `callIoTService`: the entities it reached — the ids named, and the service domain's entities in the areas and devices named (every domain for `homeassistant`), resolved alongside the call, given up on after 1.5 s and never failing it. `findEntities`: what it found, when that is at most `MOST_ENTITIES_A_LOOKUP_AFFECTS` (10). `getEntityLogbook`: the entity. A home command carried out without the agent (`home-commands.ts`): the entities Jev chose and the service was called on. A question about the house answered without the agent: the entities it was about, under the same limit as `findEntities` (`entitiesALookupAffects`), so "what lights are on in the kitchen" lights them and "are any lights on" lights nothing | `getAllDevices`, `getChangedDevicesSince` and `inferUserLocation` are surveys; `getAllServices` names no entity; `setUserPhoneAlarm` has only a notify service, not an entity id; `entity_id: "all"` is every light in the house |
 | Calendar | the calendar an event was created, changed or deleted in; the calendar a lookup read, or with `allCalendars` only those its events came from | `getAllCalendars` is a survey |
 | Email | the folder `findEmails` read, `inbox` by default; Drafts for a draft or a reply; Sent Items for a sent message | `deleteEmail`: its folder is not known without a lookup |
 | To-do list | the task list a task was read, added, changed or deleted in | `getAllTaskLists` is a survey |
@@ -1381,6 +1383,16 @@ What is marked, and what is deliberately not:
 
 Events, messages and tasks are not reported themselves, only what holds them: the headset places
 lasting things, and an event placed in the room would never glow again.
+
+A lookup answered without its agent (`routing/direct-lookups.ts`) reports exactly what the agent's
+call of the same tool would have, because it makes that call: its `answer` is handed a `callTool`,
+and `answerLookup` (`utils/direct-lookup-factory.ts`) reads every call made through it with the tool's
+own reader. So the rules stay on the tools, and no lookup has a list of its own: the calendar lookups
+report the calendars their events came from, unread email the inbox, the to-do list the default list
+by its real id, the shopping list the basket, open issues Jarvis's repository, and the weather nothing.
+A lookup that calls a tool with `executeTool` instead lights nothing up, so every call goes through
+`callTool`. `direct-lookups.spec.ts` lists what each lookup reports, and fails for one that is not
+listed.
 
 `affected-entities-interview.spec.ts` runs a light switch through both MCP tools on a real plan run,
 because a mismatch in the chunk shape would be silent: the request would answer, and nothing would
@@ -2114,6 +2126,28 @@ unsure answer, each decision is made exactly as it was before there was a classi
 | `emailReplyClassifier` | `human-in-the-loop/classifier.ts` | The yes/no fields of an emailed answer |
 | `codingSessionQuestionClassifier` | `coding/classifier.ts` | Whether a Claude session ended on a question in prose |
 | `notificationUrgencyClassifier` | `notification/classifier.ts` | Whether a message the agent sends is urgent |
+
+**Direct answers.** When routing's Jev call is sure which agent a request is for, it can often tell what the
+request is, too, and then code answers it with no agent at all, handing back plain facts for the voice model
+to phrase (`routing/direct-answers.ts`). Three kinds:
+
+- **Smart home commands** (`internet-of-things/home-commands.ts`): the Home Assistant service, then a yes/no
+  per entity it can act on, then the service call.
+- **Questions about the house** ("is the front door locked?"): the kind of device (Home Assistant's domains,
+  fetched live), then a yes/no per entity of that kind, then their current states, units included. History,
+  locations and anything unsure stay with the agent, which has the logbook and location tools.
+- **Lookups** (`routing/direct-lookups.ts`): fixed, read-only questions a vertical declares in its
+  `lookups.ts`. Weather now and forecast (at the user's location, else Aarhus), calendar today, tomorrow and
+  this week (in the household's time zone, `utils/household.ts`), the open to-do list, the shopping basket,
+  unread email, and open issues. A lookup is offered only for a request routed to its own agent, phrased as a
+  question rather than a command, and with nothing more specific in it than the lookup covers.
+
+Any direct answer that declines or fails runs the same one-agent chain the request would have run anyway.
+
+Every direct answer also says what it read or changed (`DirectAnswerOutcome`, `{ text, entities }`), the same
+things the agent's tool calls would have reported, and routing reports them just before the answer (see
+[What a request touches](#affected-entities)): a command the entities it was carried out on, a question about
+the house the entities it was about, and a lookup whatever the tools it called through `callTool` report.
 
 **Synapse state change gate.** Before a state change is filed for the State Change Reactor,
 `synapse/state-change-classifier.ts` asks Jev in one call how much attention the change deserves

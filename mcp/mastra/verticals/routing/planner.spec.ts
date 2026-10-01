@@ -546,9 +546,21 @@ describe('a photo, with the routing classifier sure of a fast route', () => {
    * A classifier sure of the one route it was told to be sure of, and how often it was asked. Its
    * route is the only answer it gives, so it is sure of nothing else a request could settle on.
    */
+  /** A sure "none" for a choice question, and a sure no for a yes/no one. */
+  function wayOutOf(question: { type: string; criteria?: unknown }) {
+    if (question.type !== 'choice' || typeof question.criteria !== 'object' || question.criteria === null) {
+      return { type: 'boolean' as const, probability: 0 };
+    }
+    const options = Object.keys(question.criteria);
+    const choice = options.includes('none') ? 'none' : (options[0] ?? 'none');
+    return { type: 'choice' as const, choice, probabilities: sureDistribution(choice, options) };
+  }
+
   async function classifierSureOf(route: string) {
     const agents = [...(await getRoutableAgentIds())].map((id) => ({ id, description: '' }));
-    const routes = Object.keys(routingQuestions({ agents, openQuestions: [], services: [] }).route.criteria);
+    const routes = Object.keys(
+      routingQuestions({ agents, openQuestions: [], services: [], domains: [], lookups: [] }).route.criteria,
+    );
     let evaluations = 0;
     const classifier = new Classifier({
       id: 'routingClassifier',
@@ -557,10 +569,13 @@ describe('a photo, with the routing classifier sure of a fast route', () => {
         provider: 'fake',
         modelId: 'jev-fake',
         supportedQuestionTypes: ['choice', 'boolean'],
-        doEvaluate: async () => {
+        doEvaluate: async ({ questions }) => {
           evaluations += 1;
           return {
             answers: {
+              // Every other question the call asks -- which lookup, say -- is answered with its way out,
+              // so only the route and the style decide anything here.
+              ...Object.fromEntries(Object.entries(questions).map(([key, question]) => [key, wayOutOf(question)])),
               route: { type: 'choice', choice: route, probabilities: sureDistribution(route, routes) },
               responseStyle: {
                 type: 'choice',

@@ -13,10 +13,14 @@
  * feeds it chunks built by hand. A mismatch would be silent: the request would run and answer, and
  * nothing would ever glow. So it is pinned here against a real plan run, with scripted models and
  * Home Assistant faked at `fetch`.
+ *
+ * Last, a request the routing classifier answers without any agent (`direct-answers.ts`), which
+ * streams no tool result at all, so routing has to be told what it touched some other way.
  */
 
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { Mastra } from '@mastra/core';
+import { Classifier } from '@mastra/core/classifier';
 import { InMemoryStore } from '@mastra/core/storage';
 import { z } from 'zod';
 import { createScriptedModel } from '../../../tests/utils/scripted-model.js';
@@ -24,8 +28,12 @@ import { markAsAffectingEntities } from '../../utils/affected-entities.js';
 import { createAgent } from '../../utils/agent-factory.js';
 import { createInstructionsWorkflowTool, createSimplifiedWorkflowTool } from '../../utils/mcp-tool-factory.js';
 import { createTool, executeTool } from '../../utils/tool-factory.js';
-import { callIoTService, findEntities } from '../internet-of-things/tools.js';
-import { resetRoutingRuntime } from './controller.js';
+import { resetHomeDomainsForTest, resetHomeServicesForTest } from '../internet-of-things/home-commands.js';
+import { callIoTService, findEntities, resetHomeAssistantCachesForTest } from '../internet-of-things/tools.js';
+import { getAllTasks } from '../todo-list/tools.js';
+import { forgetPhotos } from '../vision/photos.js';
+import { setRoutingClassifierForTest } from './classifier.js';
+import { type RoutingEvent, RoutingProgress, resetRoutingRuntime } from './controller.js';
 import { PLANNER_AGENT_ID } from './planner.js';
 import {
   getNextInstructionsWorkflow,
@@ -148,6 +156,19 @@ async function poll() {
 
 /** The openings a response has when it closes a request, wherever in it they come. */
 const CLOSING_OPENINGS = ['All tasks have completed', 'The request could not be completed'];
+
+/** Polls until a response closes the request, the way the voice agent does. */
+async function pollUntilClosed() {
+  const responses = [await poll()];
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const latest = responses[responses.length - 1];
+    if ([...CLOSING_OPENINGS, 'Part of this request'].some((opening) => latest.instructions.includes(opening))) {
+      break;
+    }
+    responses.push(await poll());
+  }
+  return responses;
+}
 
 const saved = new Map<string, string | undefined>();
 let restoreFetch: (() => void) | undefined;
@@ -326,19 +347,6 @@ describe('a lamp chosen by answering the question that asked which', () => {
     });
   }
 
-  /** Polls until a response closes the request, the way the voice agent does. */
-  async function pollUntilClosed() {
-    const responses = [await poll()];
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      const latest = responses[responses.length - 1];
-      if ([...CLOSING_OPENINGS, 'Part of this request'].some((opening) => latest.instructions.includes(opening))) {
-        break;
-      }
-      responses.push(await poll());
-    }
-    return responses;
-  }
-
   it('reaches the poll from the resumed agent’s own stream', async () => {
     resetRoutingRuntime();
     new Mastra({
@@ -372,5 +380,181 @@ describe('a lamp chosen by answering the question that asked which', () => {
     expect(answered[answered.length - 1].completedTaskResults).toEqual([
       { id: 'lamp', result: 'Turned on the sofa lamp.' },
     ]);
+  }, 60_000);
+});
+
+/**
+ * A request the routing classifier answers without its agent: no agent runs, so no tool result is
+ * streamed for routing to read what was touched off, and the direct answer has to say so itself --
+ * before its answer, as a tool's result comes before the agent's answer. One that fails or declines
+ * goes to the agent instead, and says nothing of what it tried.
+ */
+describe('a request answered without its agent, with the headset watching', () => {
+  const TO_DO_QUESTION = 'What is on my to-do list?';
+  const LIGHTS_COMMAND = 'Turn off the lights.';
+  const DEFAULT_TASK_LIST = { id: 'MTIzNDU2Nzg5', name: 'My Tasks' };
+  const MILK = { id: 'task-1', title: 'Buy milk', status: 'needsAction', selfLink: 'https://tasks.test/task-1' };
+  const TO_DO_ANSWER = 'There is one thing on your to-do list: buy milk.';
+  const LIGHTS_ANSWER = 'Turned off the lights.';
+
+  /** Home Assistant's one service, which a command can be carried out with directly. */
+  const HOME_SERVICES = [
+    {
+      domain: 'light',
+      services: {
+        turn_off: { name: 'Turn off', description: 'Turns off lights.', target: { entity: [{ domain: ['light'] }] } },
+      },
+    },
+  ];
+
+  const spies: { mockRestore: () => void }[] = [];
+  let handleSpy: ReturnType<typeof spyOn<RoutingProgress, 'handle'>> | undefined;
+
+  /** Every event routing folded into the request, in order. */
+  function eventsHandled(): RoutingEvent[] {
+    return (handleSpy?.mock.calls ?? []).map(([event]) => event);
+  }
+
+  /** The events of the delegation a direct answer is reported as. */
+  function directAnswerEvents(): RoutingEvent[] {
+    return eventsHandled().filter((event) => 'delegationId' in event && event.delegationId.startsWith('direct-'));
+  }
+
+  /**
+   * A routing classifier all but certain of each choice in `sureOf`, of none for any other choice,
+   * and of no to every yes/no -- so it routes the request whole, as `sureOf` says, on its own.
+   */
+  function routingClassifierSureOf(sureOf: Record<string, string>): Classifier {
+    return new Classifier({
+      id: 'routingClassifier',
+      model: {
+        specificationVersion: 'v4',
+        provider: 'fake',
+        modelId: 'jev-fake',
+        supportedQuestionTypes: ['choice', 'boolean'],
+        doEvaluate: async ({ questions }) => ({
+          answers: Object.fromEntries(
+            Object.entries(questions).map(([questionId, question]) => {
+              if (question.type !== 'choice') {
+                return [questionId, { type: 'boolean' as const, probability: 0 }];
+              }
+              const choices = Object.keys(question.criteria);
+              const wanted = sureOf[questionId] ?? 'none';
+              const choice = choices.includes(wanted) ? wanted : (choices[0] ?? '');
+              const others = choices.length - 1;
+              const probabilities = Object.fromEntries(
+                choices.map((option) => [option, option === choice ? 0.97 : 0.03 / Math.max(others, 1)]),
+              );
+              return [questionId, { type: 'choice' as const, choice, probabilities }];
+            }),
+          ),
+          warnings: [],
+        }),
+      },
+    });
+  }
+
+  beforeEach(async () => {
+    resetRoutingRuntime();
+    forgetPhotos();
+    resetHomeAssistantCachesForTest();
+    resetHomeServicesForTest();
+    resetHomeDomainsForTest();
+
+    // A house with one service to offer and no entities: a command can be routed to the direct
+    // path, and the direct path then finds nothing to carry it out on.
+    spies.push(
+      spyOn(globalThis, 'fetch').mockImplementation(
+        Object.assign(
+          async (input: Parameters<typeof fetch>[0]) =>
+            new Response(JSON.stringify(String(input).endsWith('/api/services') ? HOME_SERVICES : [])),
+          { preconnect: globalThis.fetch.preconnect },
+        ),
+      ),
+    );
+    handleSpy = spyOn(RoutingProgress.prototype, 'handle');
+    spies.push(handleSpy);
+
+    new Mastra({
+      storage: new InMemoryStore(),
+      logger: false,
+      workflows: { routePromptWorkflow, getNextInstructionsWorkflow },
+      agents: {
+        // The classifier settles every request here, so a planner that fails makes sure it does.
+        [PLANNER_AGENT_ID]: await scriptedAgent(
+          PLANNER_AGENT_ID,
+          createScriptedModel(() => {
+            throw new Error('The routing classifier settles these requests on its own.');
+          }).model,
+        ),
+        todoList: await scriptedAgent('todoList', createScriptedModel(() => ({ text: TO_DO_ANSWER })).model),
+        internetOfThings: await scriptedAgent(
+          'internetOfThings',
+          createScriptedModel(() => ({ text: LIGHTS_ANSWER })).model,
+        ),
+      },
+    });
+  });
+
+  afterEach(() => {
+    for (const spy of spies.splice(0)) {
+      spy.mockRestore();
+    }
+    handleSpy = undefined;
+    setRoutingClassifierForTest(undefined);
+    resetHomeAssistantCachesForTest();
+    resetHomeServicesForTest();
+    resetHomeDomainsForTest();
+  });
+
+  it('lights up what a lookup read, before its answer and in the response that carries it', async () => {
+    setRoutingClassifierForTest(
+      routingClassifierSureOf({ route: 'todoList', responseStyle: 'lookup', directLookup: 'todoList.open' }),
+    );
+    spies.push(spyOn(getAllTasks, 'execute').mockResolvedValue({ tasks: [MILK], taskList: DEFAULT_TASK_LIST }));
+
+    await executeTool(routeTool, { userQuery: TO_DO_QUESTION, async: false });
+    const [first] = await pollUntilClosed();
+
+    // The list itself, by its real id -- exactly what the agent's `getAllTasks` call reports.
+    expect(first?.affectedEntities).toEqual([DEFAULT_TASK_LIST]);
+    expect(first?.completedTaskResults).toEqual([{ id: 'todoList', result: '{"tasks":[{"title":"Buy milk"}]}' }]);
+    expect(first?.instructions).toStartWith(MARK_AFFECTED_INSTRUCTIONS);
+    expect(directAnswerEvents().map((event) => event.type)).toEqual([
+      'delegation_start',
+      'delegation_affected_entities',
+      'delegation_end',
+    ]);
+  }, 60_000);
+
+  it('hands a lookup that fails to the agent, and reports nothing of what it tried', async () => {
+    setRoutingClassifierForTest(
+      routingClassifierSureOf({ route: 'todoList', responseStyle: 'lookup', directLookup: 'todoList.open' }),
+    );
+    spies.push(spyOn(getAllTasks, 'execute').mockRejectedValue(new Error('Google Tasks is down')));
+
+    await executeTool(routeTool, { userQuery: TO_DO_QUESTION, async: false });
+    const responses = await pollUntilClosed();
+
+    expect(responses[responses.length - 1]?.completedTaskResults).toEqual([{ id: 'todoList', result: TO_DO_ANSWER }]);
+    expect(responses.flatMap((response) => response.affectedEntities ?? [])).toEqual([]);
+    expect(directAnswerEvents()).toEqual([]);
+    expect(eventsHandled().filter((event) => event.type === 'delegation_affected_entities')).toEqual([]);
+  }, 60_000);
+
+  it('hands a command the direct path declines to the agent, and reports nothing of what it tried', async () => {
+    setRoutingClassifierForTest(
+      routingClassifierSureOf({ route: 'internetOfThings', responseStyle: 'command', homeService: 'light.turn_off' }),
+    );
+
+    await executeTool(routeTool, { userQuery: LIGHTS_COMMAND, async: false });
+    const responses = await pollUntilClosed();
+
+    expect(responses[responses.length - 1]?.completedTaskResults).toEqual([
+      { id: 'internetOfThings', result: LIGHTS_ANSWER },
+    ]);
+    expect(responses.flatMap((response) => response.affectedEntities ?? [])).toEqual([]);
+    expect(directAnswerEvents()).toEqual([]);
+    expect(eventsHandled().filter((event) => event.type === 'delegation_affected_entities')).toEqual([]);
   }, 60_000);
 });

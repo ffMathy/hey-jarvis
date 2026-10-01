@@ -1,9 +1,16 @@
 import { z } from 'zod';
-import { type AffectedEntity, cleanAffectedEntities } from '../../utils/affected-entities.js';
+import { cleanAffectedEntities } from '../../utils/affected-entities.js';
+import type { DirectAnswerOutcome } from '../../utils/direct-lookup-factory.js';
 import { createLazyClassifier } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
 import { createTtlCache } from '../../utils/ttl-cache.js';
-import { callHomeAssistantApi, type EntitySummary, listEntities } from './tools.js';
+import {
+  callHomeAssistantApi,
+  type EntitySummary,
+  entitiesALookupAffects,
+  listDomains,
+  listEntities,
+} from './tools.js';
 
 /**
  * Smart home commands carried out without the Internet of Things agent.
@@ -222,19 +229,25 @@ function entityQuestionKey(index: number): string {
   return `entity${index}`;
 }
 
-/** One yes/no per entity: does the command act on it? */
-export function entityQuestions(command: string, service: HomeService, entities: EntitySummary[]) {
+/**
+ * One yes/no per entity, each asked as `lead` followed by the entity -- "Should it act on", "Is it
+ * about" -- with its name, area and current state.
+ */
+export function entityQuestions(lead: string, entities: EntitySummary[]) {
   return Object.fromEntries(
     entities.map((entity, index) => [
       entityQuestionKey(index),
       {
         type: 'boolean' as const,
-        instructions:
-          `The command "${command}" is carried out by ${service.description}. Should it act on ` +
-          `${entity.name} (${entity.id}), in ${entity.area ?? 'no area'}, which is currently ${entity.state}?`,
+        instructions: `${lead} ${entity.name} (${entity.id}), in ${entity.area ?? 'no area'}, which is currently ${describeState(entity)}?`,
       },
     ]),
   );
+}
+
+/** An entity's state as it would be said: "21.5 °C", "on". */
+function describeState(entity: EntitySummary): string {
+  return entity.unit ? `${entity.state} ${entity.unit}` : entity.state;
 }
 
 /**
@@ -265,7 +278,10 @@ export function entitiesFrom(
   return chosen.length > 0 ? chosen : undefined;
 }
 
-/** The classifier that chooses a command's entities, or nothing when there is no key. */
+/**
+ * The classifier that chooses which entities a command acts on or a question asks about, or nothing
+ * when there is no key.
+ */
 export const getHomeCommandClassifier = createLazyClassifier('homeCommandClassifier');
 
 /** Everything one of the service's domains holds, or `undefined` when it is too many to ask about. */
@@ -274,23 +290,14 @@ async function candidateEntities(service: HomeService): Promise<EntitySummary[] 
   return entities.length > 0 && entities.length <= MAX_ENTITIES_ASKED ? entities : undefined;
 }
 
-/** What came of a command carried out without the agent. */
-export interface HomeCommandOutcome {
-  /** What happened, in words the voice model can relay. */
-  text: string;
-  /**
-   * The entities the service was called on, each with its name, for sir's headset to light up.
-   *
-   * Reported here because no agent ran: `callIoTService` reports the same thing when the agent makes
-   * the call (see `utils/affected-entities.ts`), and a command taking this path must light up just
-   * as one taking that path would.
-   */
-  entities: AffectedEntity[];
-}
-
 /**
  * Carries a command out, and says what came of it in words the voice model can relay, and which
  * entities it acted on.
+ *
+ * The entities are the ones the service was called on, each with its name, for sir's headset to
+ * light up. Reported here because no agent ran: `callIoTService` reports the same thing when the
+ * agent makes the call (see `utils/affected-entities.ts`), and a command taking this path must
+ * light up just as one taking that path would.
  *
  * Resolves to `undefined` when it declines -- no classifier, too many or no entities, or Jev not
  * sure which -- so the caller hands the request to the agent. Home Assistant answers a service call
@@ -304,7 +311,7 @@ export async function runHomeCommand(
   service: HomeService,
   minimumConfidence: number,
   classifier = getHomeCommandClassifier(),
-): Promise<HomeCommandOutcome | undefined> {
+): Promise<DirectAnswerOutcome | undefined> {
   if (!classifier) {
     return undefined;
   }
@@ -317,7 +324,10 @@ export async function runHomeCommand(
 
   const { answers } = await classifier.evaluate({
     state: command,
-    questions: entityQuestions(command, service, entities),
+    questions: entityQuestions(
+      `The command "${command}" is carried out by ${service.description}. Should it act on`,
+      entities,
+    ),
     // A failed call hands the request to the agent, so retrying would only delay that.
     maxRetries: 0,
   });
@@ -348,4 +358,181 @@ export async function runHomeCommand(
         : `Called ${service.description} on ${names}, and nothing changed state: they may already have been that way.`,
     entities: cleanAffectedEntities(chosen.map(({ id, name }) => ({ id, name }))),
   };
+}
+
+/*
+ * Questions about the house, answered the same way.
+ *
+ * "Is the front door locked?" needs no language model either. Which entities it is about is the
+ * same per-entity yes/no a command asks, and their states are read straight from Home Assistant.
+ * The answer is handed back as plain facts -- "Front door lock (Hallway): locked" -- and the voice
+ * model, which phrases every result anyway, says it. Only questions about how things are right now
+ * qualify: history, locations and anything Jev is unsure of are left to the agent, which has the
+ * logbook and the location tools.
+ */
+
+/** The choice for a question about no single kind of device, or not about the house at all. */
+const OTHER_DOMAIN = 'other';
+
+/**
+ * What the common domains hold, in words, so a question can be matched to one. A domain not listed
+ * is offered under its own name, which is usually plain enough ("vacuum", "camera").
+ */
+const DOMAIN_DESCRIPTIONS: Record<string, string> = {
+  light: 'Lights',
+  switch: 'Switches and smart plugs',
+  lock: 'Door locks',
+  cover: 'Blinds, curtains, shutters and garage doors',
+  climate: 'Thermostats, heating and air conditioning',
+  fan: 'Fans',
+  media_player: 'Speakers, TVs and what is playing on them',
+  sensor: 'Measurements: temperature, humidity, power, energy, battery levels and the like',
+  binary_sensor: 'Things that are on or off: doors and windows open or closed, motion, leaks, smoke',
+  person: 'Whether each person in the household is home',
+  alarm_control_panel: 'The alarm system',
+  vacuum: 'Robot vacuums',
+  weather: 'The weather station',
+};
+
+/** Domains whose entities cannot be asked about one by one, or are not about the house. */
+const EXCLUDED_QUESTION_DOMAINS = new Set([
+  'automation',
+  'script',
+  'scene',
+  'zone',
+  'update',
+  'button',
+  'input_button',
+  'event',
+  'conversation',
+  'tts',
+  'stt',
+  'sun',
+]);
+
+const domainCache = createTtlCache<string[]>({ ttlMs: SERVICE_CACHE_TTL_MS, maxEntries: 1 });
+
+/** Forgets the cached domains, for tests. */
+export function resetHomeDomainsForTest(): void {
+  domainCache.clear();
+}
+
+/**
+ * The domains a question can be about, or an empty list when they cannot be had quickly.
+ *
+ * Never rejects, for the same reason as {@link getHomeServices}.
+ */
+export async function getHomeDomains(): Promise<string[]> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<string[]>((resolve) => {
+    timer = setTimeout(() => resolve([]), SERVICE_LOOKUP_TIMEOUT_MS);
+  });
+
+  const loaded = domainCache
+    .get('domains', async () => (await listDomains()).filter((domain) => !EXCLUDED_QUESTION_DOMAINS.has(domain)))
+    .catch((error: unknown) => {
+      logger.warn('Could not list the Home Assistant domains', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    });
+
+  try {
+    return await Promise.race([loaded, timedOut]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** The questions that choose which kind of device a question is about, for routing's classifier. */
+export function homeQuestionQuestions(domains: string[]) {
+  const domainCriteria: Record<string, string> = {
+    ...Object.fromEntries(domains.map((domain) => [domain, DOMAIN_DESCRIPTIONS[domain] ?? domain])),
+    [OTHER_DOMAIN]: 'More than one of these, none of them, or not a question about the house',
+  };
+
+  return {
+    homeQuestionDomain: {
+      type: 'choice' as const,
+      instructions: 'If this is a question about the house, which kind of device is it about?',
+      criteria: domainCriteria,
+    },
+    homeQuestionIsAboutNow: {
+      type: 'boolean' as const,
+      instructions:
+        'Does the question only ask how things are right now -- not what happened earlier, when something last ' +
+        'changed, where someone or something is, or what to do about it?',
+    },
+  };
+}
+
+/**
+ * Reads the classifier's answers into the domain a question is about, or nothing when the agent
+ * should answer it. Pure, so it can be tested without a model or a house.
+ */
+export function homeQuestionDomainFrom(
+  answers: { homeQuestionDomain: ChoiceAnswer; homeQuestionIsAboutNow: { probability: number } },
+  domains: string[],
+  minimumConfidence: number,
+): string | undefined {
+  const { homeQuestionDomain, homeQuestionIsAboutNow } = answers;
+  if ((homeQuestionDomain.probabilities?.[homeQuestionDomain.choice] ?? 0) < minimumConfidence) {
+    return undefined;
+  }
+  if (homeQuestionIsAboutNow.probability < minimumConfidence) {
+    return undefined;
+  }
+  return domains.includes(homeQuestionDomain.choice) ? homeQuestionDomain.choice : undefined;
+}
+
+/** The facts a question is answered with, one entity per line, for the voice model to phrase. */
+export function describeEntities(entities: EntitySummary[]): string {
+  return entities
+    .map((entity) => `${entity.name}${entity.area ? ` (${entity.area})` : ''}: ${describeState(entity)}`)
+    .join('\n');
+}
+
+/**
+ * Answers a question about the house from Home Assistant's own states, without the agent, and says
+ * which entities it read.
+ *
+ * Those are the entities the question is about, reported as the agent's `findEntities` would have
+ * reported what it found -- none at all for a question about more than a handful, which is a survey
+ * (see {@link entitiesALookupAffects}). "What lights are on in the kitchen" lights the kitchen
+ * lights up on sir's headset; "are any lights on" lights up nothing.
+ *
+ * Resolves to `undefined` when it declines -- no classifier, too many or no entities, or Jev not
+ * sure which the question is about -- so the caller hands the request to the agent.
+ *
+ * @throws When listing the entities fails, so the caller can hand it on too
+ */
+export async function answerHomeQuestion(
+  question: string,
+  domain: string,
+  minimumConfidence: number,
+  classifier = getHomeCommandClassifier(),
+): Promise<DirectAnswerOutcome | undefined> {
+  if (!classifier) {
+    return undefined;
+  }
+
+  const entities = await listEntities(domain);
+  if (entities.length === 0 || entities.length > MAX_ENTITIES_ASKED) {
+    logger.info('Home question left to the agent: too many or no entities to ask about', { domain });
+    return undefined;
+  }
+
+  const { answers } = await classifier.evaluate({
+    state: question,
+    questions: entityQuestions(`The question "${question}" is about the house. Is it about`, entities),
+    maxRetries: 0,
+  });
+  const chosen = entitiesFrom(answers, entities, minimumConfidence);
+  if (!chosen) {
+    logger.info('Home question left to the agent: unsure which entities', { domain });
+    return undefined;
+  }
+
+  logger.info('Answered a home question without the agent', { domain, entityIds: chosen.map((entity) => entity.id) });
+  return { text: describeEntities(chosen), entities: cleanAffectedEntities(entitiesALookupAffects(chosen)) };
 }

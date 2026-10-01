@@ -10,15 +10,19 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { Classifier } from '@mastra/core/classifier';
 import {
+  answerHomeQuestion,
+  describeEntities,
   entitiesFrom,
   entityQuestions,
   type HomeService,
+  homeQuestionDomainFrom,
+  homeQuestionQuestions,
   homeServiceFrom,
   homeServiceQuestions,
   homeServicesFrom,
   runHomeCommand,
 } from './home-commands.js';
-import { resetHomeAssistantCachesForTest } from './tools.js';
+import { type EntitySummary, MOST_ENTITIES_A_LOOKUP_AFFECTS, resetHomeAssistantCachesForTest } from './tools.js';
 
 const SURE = 0.85;
 
@@ -154,7 +158,7 @@ describe('entitiesFrom', () => {
 
 describe('entityQuestions', () => {
   it('asks about each entity by name, area and state', () => {
-    const questions = entityQuestions('turn off the kitchen lights', lightTurnOff, ENTITIES);
+    const questions = entityQuestions('Should it act on', ENTITIES);
 
     expect(Object.keys(questions)).toEqual(['entity0', 'entity1']);
     expect(questions.entity0?.instructions).toContain(
@@ -163,11 +167,51 @@ describe('entityQuestions', () => {
   });
 });
 
+describe('homeQuestionQuestions', () => {
+  it('offers each domain in words where it can, with a way out', () => {
+    const { homeQuestionDomain } = homeQuestionQuestions(['lock', 'camera']);
+
+    expect(homeQuestionDomain.criteria).toEqual({ lock: 'Door locks', camera: 'camera', other: expect.any(String) });
+  });
+});
+
+describe('homeQuestionDomainFrom', () => {
+  function answers(choice: string, confidence: number, aboutNow = 0.97) {
+    return {
+      homeQuestionDomain: { choice, probabilities: { [choice]: confidence } },
+      homeQuestionIsAboutNow: { probability: aboutNow },
+    };
+  }
+
+  it('takes a domain it is sure of, for a question about now', () => {
+    expect(homeQuestionDomainFrom(answers('lock', 0.95), ['lock'], SURE)).toBe('lock');
+  });
+
+  it('leaves history, unsure answers and unknown domains to the agent', () => {
+    expect(homeQuestionDomainFrom(answers('lock', 0.95, 0.3), ['lock'], SURE)).toBeUndefined();
+    expect(homeQuestionDomainFrom(answers('lock', 0.6), ['lock'], SURE)).toBeUndefined();
+    expect(homeQuestionDomainFrom(answers('garage', 0.99), ['lock'], SURE)).toBeUndefined();
+  });
+});
+
+describe('describeEntities', () => {
+  it('lists each entity with its area, state and unit, for the voice model to phrase', () => {
+    expect(
+      describeEntities([
+        { id: 'sensor.living_temp', name: 'Living room temperature', area: 'Living Room', state: '21.5', unit: '°C' },
+        { id: 'lock.front', name: 'Front door', area: null, state: 'locked' },
+      ]),
+    ).toBe('Living room temperature (Living Room): 21.5 °C\nFront door: locked');
+  });
+});
+
 describe('runHomeCommand', () => {
   const HOME_ASSISTANT_ENV = ['HEY_JARVIS_HOME_ASSISTANT_URL', 'HEY_JARVIS_HOME_ASSISTANT_TOKEN'] as const;
   const saved = new Map<string, string | undefined>();
   const serviceCalls: { url: string; body: unknown }[] = [];
   let serviceResponse: () => Response;
+  /** The entities the house lists, which is {@link ENTITIES} unless a test furnishes it otherwise. */
+  let houseEntities: EntitySummary[] = ENTITIES;
   let fetchSpy: ReturnType<typeof spyOn<typeof globalThis, 'fetch'>> | undefined;
 
   /** Home Assistant, answering the entity listing and recording every service call. */
@@ -179,6 +223,7 @@ describe('runHomeCommand', () => {
     process.env.HEY_JARVIS_HOME_ASSISTANT_TOKEN = 'test-token';
     resetHomeAssistantCachesForTest();
     serviceCalls.length = 0;
+    houseEntities = ENTITIES;
 
     fetchSpy = spyOn(globalThis, 'fetch').mockImplementation(
       Object.assign(
@@ -188,7 +233,9 @@ describe('runHomeCommand', () => {
           if (url.endsWith('/api/template')) {
             const template = JSON.stringify(body);
             return new Response(
-              JSON.stringify(template.includes('map(attribute') ? ENTITIES.map((entity) => entity.id) : ENTITIES),
+              JSON.stringify(
+                template.includes('map(attribute') ? houseEntities.map((entity) => entity.id) : houseEntities,
+              ),
             );
           }
           serviceCalls.push({ url, body });
@@ -287,6 +334,56 @@ describe('runHomeCommand', () => {
       await runHomeCommand('turn off some lights', lightTurnOff, SURE, classifierAnswering([0.97, 0.5])),
     ).toBeUndefined();
     expect(serviceCalls).toEqual([]);
+  });
+
+  it('answers a question from the states of the entities Jev chose, calling no service', async () => {
+    const outcome = await answerHomeQuestion(
+      'is the kitchen light on',
+      'light',
+      SURE,
+      classifierAnswering([0.97, 0.02]),
+    );
+
+    expect(outcome?.text).toBe('Kitchen ceiling (Kitchen): on');
+    expect(serviceCalls).toEqual([]);
+  });
+
+  // No agent runs, so no `findEntities` result reports what the question was about: this does
+  // instead, or "what lights are on in the kitchen" answered this way would light nothing up.
+  it('reports the entities a question was about, by id and name, for the headset to light up', async () => {
+    const outcome = await answerHomeQuestion(
+      'what lights are on in the kitchen',
+      'light',
+      SURE,
+      classifierAnswering([0.97, 0.02]),
+    );
+
+    expect(outcome?.entities).toEqual([{ id: 'light.kitchen', name: 'Kitchen ceiling' }]);
+  });
+
+  it(`reports nothing for a question about more than ${MOST_ENTITIES_A_LOOKUP_AFFECTS} entities, as findEntities would not`, async () => {
+    houseEntities = Array.from({ length: MOST_ENTITIES_A_LOOKUP_AFFECTS + 1 }, (_, index) => ({
+      id: `light.number_${index}`,
+      name: `Light ${index}`,
+      area: 'Hall',
+      state: 'on',
+    }));
+
+    const outcome = await answerHomeQuestion(
+      'are any lights on',
+      'light',
+      SURE,
+      classifierAnswering(houseEntities.map(() => 0.97)),
+    );
+
+    // Still answered, every light in it -- only the glow is left out, since lighting up the whole
+    // house tells sir nothing.
+    expect(outcome?.text.split('\n')).toHaveLength(MOST_ENTITIES_A_LOOKUP_AFFECTS + 1);
+    expect(outcome?.entities).toEqual([]);
+  });
+
+  it('leaves a question to the agent when Jev is unsure which entity it is about', async () => {
+    expect(await answerHomeQuestion('is a light on', 'light', SURE, classifierAnswering([0.6, 0.02]))).toBeUndefined();
   });
 
   it('declines when there is no classifier', async () => {

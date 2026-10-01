@@ -693,6 +693,8 @@ export interface EntitySummary {
   name: string;
   area: string | null;
   state: string;
+  /** What the state is measured in, for a sensor: "°C", "%", "kWh". */
+  unit?: string | null;
 }
 
 /**
@@ -712,6 +714,20 @@ const ENTITY_SUMMARY_BATCH_SIZE = 250;
 export const MOST_ENTITIES_A_LOOKUP_AFFECTS = 10;
 
 /**
+ * What a look at the house's entities touched: the ones it found, unless it matched more than
+ * {@link MOST_ENTITIES_A_LOOKUP_AFFECTS}, which makes it a survey that touched nothing.
+ *
+ * Shared by `findEntities` and a question about the house answered without the agent (see
+ * `home-commands.ts`), so the same question lights up the same things whichever way it is answered.
+ */
+export function entitiesALookupAffects(
+  found: { id: string; name: string }[],
+  totalMatches = found.length,
+): AffectedEntity[] {
+  return totalMatches > MOST_ENTITIES_A_LOOKUP_AFFECTS ? [] : found.map(({ id, name }) => ({ id, name }));
+}
+
+/**
  * The most entities `findEntities` hands back.
  *
  * Every entity listed is input the agent's next step has to read, and that is the step the
@@ -725,7 +741,7 @@ function buildEntitySummaryTemplate(entityIds: string[]): string {
 {%- for e in ${JSON.stringify(entityIds)} -%}
   {%- set st = states[e] -%}
   {%- if st -%}
-    {%- set ns.items = ns.items + [{"id":e,"name":st.name|string,"area":area_name(e),"state":st.state|string}] -%}
+    {%- set ns.items = ns.items + [{"id":e,"name":st.name|string,"area":area_name(e),"state":st.state|string,"unit":st.attributes.get('unit_of_measurement')}] -%}
   {%- endif -%}
 {%- endfor -%}
 {{ ns.items | to_json }}
@@ -760,7 +776,14 @@ export function filterEntities(
 }
 
 const entitySummariesSchema = z.array(
-  z.object({ id: z.string(), name: z.string(), area: z.string().nullable(), state: z.string() }),
+  z.object({
+    id: z.string(),
+    name: z.string(),
+    area: z.string().nullable(),
+    state: z.string(),
+    // Only ever descriptive, so a unit in a shape this does not expect is read as none.
+    unit: z.string().nullish().catch(undefined),
+  }),
 );
 
 /**
@@ -817,7 +840,7 @@ const foundEntitiesSchema = z.object({
 
 markAsAffectingEntities(findEntities, (_toolArguments, toolResult) => {
   const { entities, totalMatches } = foundEntitiesSchema.parse(toolResult);
-  return totalMatches > MOST_ENTITIES_A_LOOKUP_AFFECTS ? [] : entities.map(({ id, name }) => ({ id, name }));
+  return entitiesALookupAffects(entities, totalMatches);
 });
 
 const homeAreasSchema = z.array(z.object({ id: z.string(), name: z.string() }));
@@ -1291,6 +1314,11 @@ export function batchEntityIdsForHistory(entityIds: string[], maxLength = MAX_HI
  *
  * @param domain - Already passed through {@link normalizeDomain}, since it is written into the template
  */
+/** Every domain the house has an entity in: "light", "lock", "sensor", ... */
+export async function listDomains(): Promise<string[]> {
+  return await renderStringList("{{ states | map(attribute='domain') | unique | list | to_json }}");
+}
+
 async function fetchEntityIds(domain?: string): Promise<string[]> {
   const source = domain ? `states.${domain}` : 'states';
   return await renderStringList(`{{ ${source}|map(attribute='entity_id')|list|to_json }}`);
