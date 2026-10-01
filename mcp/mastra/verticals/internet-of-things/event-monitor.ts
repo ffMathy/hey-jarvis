@@ -34,6 +34,7 @@ import {
   planEventReports,
   planStateReports,
 } from './change-reports.js';
+import { startHomeStateCache } from './home-state-cache.js';
 import { getHomeAssistantConfig } from './tools.js';
 
 /**
@@ -63,6 +64,9 @@ import { getHomeAssistantConfig } from './tools.js';
  * On every connect, and every reconnect after a drop, the current states are fetched and
  * compared against the last ones seen, so what changed while the process was down or the
  * socket was dropped is still reported -- the job `runOnStartup` did for the poll.
+ *
+ * The same connection also keeps the copy of the house the IoT lookups answer from (see
+ * `home-state-cache.ts`), so a question about the house is answered without a request.
  */
 
 /** How often the bulker is checked for buckets whose window has elapsed. */
@@ -210,6 +214,7 @@ export async function startHomeAssistantEventMonitor(
   };
 
   let connection: Connection | undefined;
+  let stopStateCache: (() => void) | undefined;
   let registry: HomeRegistry = { entities: new Map(), devices: new Map() };
   let registryStale = true;
   let flushing: Promise<void> | undefined;
@@ -420,6 +425,7 @@ export async function startHomeAssistantEventMonitor(
       return;
     }
     connection = opened;
+    stopStateCache = startHomeStateCache(connection);
 
     connection.addEventListener('ready', () => {
       logger.info('Reconnected to Home Assistant');
@@ -442,6 +448,7 @@ export async function startHomeAssistantEventMonitor(
     async stop() {
       stopped = true;
       clearInterval(timer);
+      stopStateCache?.();
       connection?.close();
       await flushing;
       await flush(true);

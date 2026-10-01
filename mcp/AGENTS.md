@@ -3118,9 +3118,9 @@ spelling alike.
   request can be read back as a breakdown
 - **Reports the entities it touches**, for sir's headset to light up (see
   [What a request touches](#affected-entities)). `callIoTService` resolves the entities a call
-  reaches alongside the call itself, with one template render (`resolveServiceTargets`): the ids it
-  names, and the service domain's entities in the areas and devices it names. The render is given up
-  on after 1.5 seconds and can never fail the call, and its result is also returned to the agent as
+  reaches alongside the call itself (`resolveServiceTargets`), from the cached copy of the house or
+  else with one template render: the ids it names, and the service domain's entities in the areas
+  and devices it names. The lookup is given up on after 1.5 seconds and can never fail the call, and its result is also returned to the agent as
   `targets`. `findEntities` reports a handful of matches and `getEntityLogbook` the entity it read.
   A command carried out without the agent (`runHomeCommand` in `home-commands.ts`) reports the
   entities it called the service on. Given an entity id — the thing sir is pointing at — the agent
@@ -3152,6 +3152,16 @@ process that also owns the schedules, so Studio never files a change twice.
   one window is still reported.
 - **Catch-up.** On every connect and reconnect it compares `get_states` against the last states it
   saw (persisted in `iot_device_states`) and reports what changed while it was away.
+- **A copy of the house for the lookups** (`home-state-cache.ts`). The same connection keeps every
+  state current through `subscribe_entities`, plus the entity, device and area registries, which are
+  fetched again on their `*_registry_updated` events and on every reconnect. `findEntities`,
+  `getAllDevices`, `getChangedDevicesSince`, `inferUserLocation`, the areas in the agent's
+  instructions, the targets `callIoTService` resolves and the home commands and questions answered
+  without the agent all read it, with no request to Home Assistant. Its readers return exactly
+  what the templates they replace render. The copy is only used while it is complete and the socket
+  is up. Before the first states arrive, from a drop until the states after the reconnect, and in
+  every process without the monitor (Studio, the tests), the lookups render templates over REST
+  as before.
 
 ### Model Context Protocol (MCP)
 - Server-client communication for tool sharing
