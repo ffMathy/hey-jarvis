@@ -7,6 +7,7 @@ export {
   LOOKUP_PROMISE_PATTERNS,
   stripAudioTags,
 } from './acknowledgement-timing';
+export { mcpToolNamesIn, transcriptOf } from './conversation-strategy';
 export {
   type ElevenLabsConversationOptions,
   ElevenLabsConversationStrategy,
@@ -46,7 +47,9 @@ export {
   TestConversation,
 } from './test-conversation';
 export {
+  MAX_CONVERSATION_RETRIES,
   startTestEnvironment,
   stopTestEnvironment,
   TEST_ENVIRONMENT_SETUP_TIMEOUT_MS,
+  withConversationRetry,
 } from './test-environment';

@@ -49,6 +49,10 @@ export interface JarvisConversation extends SessionSnapshot {
   endQuietly(): void;
   sendText(text: string): void;
   setTyping(typing: boolean): void;
+  sendContextualUpdate(text: string): void;
+  sendUserActivity(): void;
+  /** The live conversation's ElevenLabs id, read when it is needed: see `JarvisSession.liveConversationId`. */
+  liveConversationId(): string | undefined;
 }
 
 /** `Conversation.startSession`, called as a plain function, which is all the SDK asks of it. */
@@ -147,6 +151,9 @@ export function useJarvisSession(options: JarvisSessionOptions): JarvisConversat
       endQuietly: session.endQuietly,
       sendText: session.sendText,
       setTyping: session.setTyping,
+      sendContextualUpdate: session.sendContextualUpdate,
+      sendUserActivity: session.sendUserActivity,
+      liveConversationId: session.liveConversationId,
     }),
     [session],
   );

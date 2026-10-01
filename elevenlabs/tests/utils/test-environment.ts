@@ -59,6 +59,37 @@ export async function ensureTestEnvironment(): Promise<void> {
   await startTestEnvironment();
 }
 
+/** How many fresh conversations {@link withConversationRetry} holds before it gives up. */
+export const MAX_CONVERSATION_RETRIES = 3;
+
+/**
+ * LLM-based conversation tests are inherently non-deterministic. Retries the whole conversation
+ * flow — a new connection each time, against an environment brought back first if it has gone —
+ * to account for variance in both the agent's responses and the evaluator's scoring. Whatever the
+ * last attempt threw is what the test fails with.
+ */
+export async function withConversationRetry<Conversation extends { disconnect(): Promise<void> }>(
+  createConversation: () => Conversation,
+  testBody: (conversation: Conversation) => Promise<void>,
+): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= MAX_CONVERSATION_RETRIES; attempt++) {
+    await ensureTestEnvironment();
+    const conversation = createConversation();
+    try {
+      await testBody(conversation);
+      return;
+    } catch (error) {
+      lastError = error;
+      const summary = error instanceof Error ? error.message.split('\n')[0] : String(error);
+      console.warn(`⚠️ Attempt ${attempt}/${MAX_CONVERSATION_RETRIES} failed: ${summary}`);
+    } finally {
+      await conversation.disconnect();
+    }
+  }
+  throw lastError;
+}
+
 export async function stopTestEnvironment(): Promise<void> {
   await stopMcpServer();
   stopTunnel();

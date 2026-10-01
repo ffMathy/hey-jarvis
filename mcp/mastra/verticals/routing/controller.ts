@@ -1,8 +1,10 @@
 import type { Mastra } from '@mastra/core';
 import type { Agent } from '@mastra/core/agent';
+import { uniq, uniqBy } from 'lodash-es';
 import { logger } from '../../utils/logger.js';
 import { isSlowTask } from '../../utils/slow-tasks.js';
 import { type HomeService, runHomeCommand } from '../internet-of-things/home-commands.js';
+import { dismissPhoto, findPhoto, photosWaiting, unmarkPhotoLookedAt } from '../vision/photos.js';
 import { FAST_PATH_CONFIDENCE, getRoutingClassifier } from './classifier.js';
 import { sendCompletionNotice } from './completion-notice.js';
 import { buildRoutingPlan, type PlannedChain, type RoutingPlan } from './plan.js';
@@ -30,6 +32,7 @@ import {
   takeOpenQuestion,
   takeQuestionsToBringUp,
 } from './questions.js';
+import { forgetWaitingPhotoReminders, type PhotoToBringUp, takePhotosToBringUp } from './waiting-photos.js';
 
 /**
  * The routing runtime: plan a request, register the plan as a workflow, run it, report it.
@@ -123,6 +126,36 @@ export class RoutingProgress {
    * he moved on from -- and not answered by it. See `takeQuestionsToBringUp`.
    */
   earlierQuestions: OpenQuestion[] = [];
+  /**
+   * Photos he sent that nobody has looked at yet, which the closing report brings up beside the
+   * earlier questions: what Jarvis asks about each, by photo id. See `waiting-photos.ts`.
+   */
+  waitingPhotos: PhotoToBringUp[] = [];
+  /**
+   * Photos this request showed Jarvis without saying what to do with them, by id: once he has said
+   * what each shows, the closing report has him ask sir what he would like done with it. See
+   * `photosToAskAbout` in `planner.ts`.
+   *
+   * Only those the request's own look got as far as reading, and only once its work is done (see
+   * `carryOut`): a photo whose reading failed has shown him nothing to tell sir about, and stays
+   * waiting instead, to be brought up like any other.
+   */
+  photosToAskAbout: string[] = [];
+  /**
+   * Whether the request said a photo is on its way that has not arrived (`awaitsPhoto` in
+   * `planner.ts`). The closing report then has Jarvis tell sir to go ahead and wait for it, rather
+   * than hang up while he takes it.
+   *
+   * Not for as long as the report lasts, though: a request that joined this one can be the photo
+   * itself, arriving before the rest of the work is done — and the report that says what it shows
+   * must not also say it has yet to come, and send sir back to the camera. See `followThePhotoWait`.
+   */
+  awaitsPhoto = false;
+  /**
+   * When the request last said a photo is on its way, so that a photo kept since can be told apart
+   * from one that was already waiting when he said it.
+   */
+  awaitsPhotoSince: number | undefined;
   /** Tasks that started something slow, which the caller has not been told about yet. */
   unannouncedSlowTaskIds: string[] = [];
   /** Every task that started something slow, so each is announced once. */
@@ -405,6 +438,12 @@ export interface RoutingSnapshot {
   questions: OpenQuestion[];
   /** Questions work started earlier is waiting on, to bring up once the request is done. */
   earlierQuestions: OpenQuestion[];
+  /** Photos nobody has looked at yet, to ask him about once the request is done. */
+  waitingPhotos: PhotoToBringUp[];
+  /** Photos this request showed Jarvis with nothing said, to ask what he would like done with. */
+  photosToAskAbout: string[];
+  /** Whether the request said a photo is on its way that has not come yet, which Jarvis is to wait for. */
+  awaitsPhoto: boolean;
   /** Tasks that have started something slow since the last poll. */
   newlySlow: string[];
   /** How the planner said the request should be answered. */
@@ -433,6 +472,12 @@ export function buildSnapshot(progress: RoutingProgress): RoutingSnapshot {
     finished: progress.isFinished(),
     questions: progress.questions,
     earlierQuestions: progress.earlierQuestions,
+    waitingPhotos: progress.waitingPhotos,
+    photosToAskAbout: progress.photosToAskAbout,
+    // Asked again here, and not only as requests are carried out: the photo can arrive before the
+    // phone's message about it is routed, and a report built in between would still send him back to
+    // the camera for it.
+    awaitsPhoto: progress.awaitsPhoto && !photoKeptSince(progress.awaitsPhotoSince),
     newlySlow,
     responseStyle: progress.responseStyle,
     ...(progress.conversationControl && { conversationControl: progress.conversationControl }),
@@ -969,18 +1014,49 @@ function takeAnsweredQuestions(answers: PlannedAnswer[]): { question: OpenQuesti
 }
 
 /**
- * Hands the request's closing report the questions earlier work is still waiting on.
+ * Whether nobody will ever read a request's report: a newer request has taken its session's place,
+ * and sir is not to be notified of it instead.
+ */
+function isSuperseded(sessionId: string, progress: RoutingProgress): boolean {
+  return progressBySessionId.get(sessionId) !== progress && !progress.notifyWhenDone;
+}
+
+/**
+ * Hands the request's closing report the questions earlier work is still waiting on, and the
+ * photos he sent that nobody has looked at yet.
  *
- * Only for a request whose report will be heard: a superseded one is never read, and one the user
- * is notified about sends its own questions and no others. Taking them marks them as brought up,
- * so doing it for a report nobody hears would silence the reminder for nothing.
+ * Only for a request whose report will be heard: a superseded one is never read, one the user is
+ * notified about sends its own questions and no others, and one that was cancelled — or was only a
+ * goodbye — is answered with that and nothing else (see `buildClosingReport` in `workflows.ts`).
+ * Taking them marks them as brought up, so doing it for a report nobody hears would silence the
+ * reminder for nothing.
+ *
+ * Taken once the request's own work is done, so a photo this request looked at is no longer
+ * waiting by then, and is not brought up in the reply that answers what it showed — where a photo
+ * sent with nothing said is asked about instead as this request's own (`photosToAskAbout`).
+ *
+ * Added to rather than replaced. A request that joined a running one shares its report, and each
+ * brings things up as its own work ends: the first takes what is due and marks it brought up, so the
+ * second finds nothing due, and replacing would have dropped the reminder from the one report that is
+ * read. What an earlier call took is kept only while it still stands — a question still open, a photo
+ * still waiting — since the other request may have answered it or looked at it since.
  */
 function bringUpEarlierQuestions(sessionId: string, progress: RoutingProgress): void {
-  if (progressBySessionId.get(sessionId) !== progress || progress.notifyWhenDone) {
+  if (progressBySessionId.get(sessionId) !== progress || progress.notifyWhenDone || progress.conversationControl) {
     return;
   }
 
-  progress.earlierQuestions = takeQuestionsToBringUp(new Set(progress.questions.map((question) => question.id)));
+  const ownQuestionIds = new Set(progress.questions.map((question) => question.id));
+  const openQuestionIds = new Set(listOpenQuestions().map((question) => question.id));
+  progress.earlierQuestions = uniqBy(
+    [...progress.earlierQuestions, ...takeQuestionsToBringUp(ownQuestionIds)],
+    'id',
+  ).filter((question) => openQuestionIds.has(question.id) && !ownQuestionIds.has(question.id));
+
+  const waitingPhotoIds = new Set(photosWaiting().map((photo) => photo.photoId));
+  progress.waitingPhotos = uniqBy([...progress.waitingPhotos, ...takePhotosToBringUp()], 'id').filter((photo) =>
+    waitingPhotoIds.has(photo.id),
+  );
 }
 
 /**
@@ -994,7 +1070,14 @@ async function runRequest(
   userQuery: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const decision = await planDelegations(await resolvePlannerAgent(mastra), userQuery, listOpenQuestions());
+  // Every waiting photo, however recent: the grace before one is brought up only keeps Jarvis from
+  // asking about a photo just sent, and the request that says what it is for is that very reply.
+  const decision = await planDelegations(
+    await resolvePlannerAgent(mastra),
+    userQuery,
+    listOpenQuestions(),
+    photosWaiting(),
+  );
   await carryOut(mastra, sessionId, progress, userQuery, decision, signal);
 }
 
@@ -1022,6 +1105,7 @@ async function runJoinedRequest(
     await resolvePlannerAgent(mastra),
     userQuery,
     listOpenQuestions(),
+    photosWaiting(),
     running.userQuery,
   );
   logger.info('Routing request arrived while another was running', {
@@ -1030,18 +1114,17 @@ async function runJoinedRequest(
   });
 
   if (decision.relationToRunningRequest === 'adds' && !decision.endsCall) {
-    // An errand no agent can take adds nothing, and failing the shared report over it would cost
-    // the running request its answer.
-    if (decision.chains.length > 0 || decision.answers.length > 0) {
-      await carryOut(mastra, sessionId, running, userQuery, decision, runningAbort.signal);
-    } else {
-      running.handle({ type: 'finished' });
-    }
+    await addToRunningRequest(mastra, sessionId, running, userQuery, decision, runningAbort.signal);
     return running;
   }
 
   runningAbort.abort();
   if (decision.relationToRunningRequest === 'cancels') {
+    // How the request relates to the running one is the classifier's to say, but what it says about a
+    // photo is the planner's: the classifier is never shown one, so "never mind that photo, I was only
+    // testing" can read to it as stopping the running request — which it then does. He still said he
+    // wants nothing done with the photo, and left waiting it would be brought up again.
+    dismissPhotos(decision.dismissedPhotoIds);
     running.conversationControl = 'cancelled';
     running.handle({ type: 'finished' });
     return running;
@@ -1056,6 +1139,80 @@ async function runJoinedRequest(
   const { progress, abort } = beginRequest(sessionId, userQuery);
   await carryOut(mastra, sessionId, progress, userQuery, decision, abort.signal);
   return progress;
+}
+
+/**
+ * Adds a joined request's work to the running request it joined, whose report both are heard in (see
+ * `runJoinedRequest`).
+ *
+ * An errand no agent can take adds nothing, and failing the shared report over it would cost the
+ * running request its answer. Nor does a request that only waves a photo away, or only says one is on
+ * its way, go through `carryOut`, though each is carried out: that would give the shared report the
+ * request's style — a `command` — and have the running request's answer squeezed into "Done, sir."
+ */
+async function addToRunningRequest(
+  mastra: Mastra,
+  sessionId: string,
+  running: RoutingProgress,
+  userQuery: string,
+  decision: RoutingDecision,
+  signal: AbortSignal,
+): Promise<void> {
+  if (decision.chains.length > 0 || decision.answers.length > 0) {
+    await carryOut(mastra, sessionId, running, userQuery, decision, signal);
+    return;
+  }
+
+  // Not for a running request superseded while this one was planned, which `carryOut` would not act
+  // on either: nobody reads its report now.
+  if (!signal.aborted) {
+    followThePhotoWait(running, decision);
+    dismissPhotos(decision.dismissedPhotoIds);
+    // What the report brings up is settled again as this request's work ends, as `carryOut` settles it
+    // for one with work to run. The running request may have finished first, and taken a reminder about
+    // the very photo this one has just waved away.
+    bringUpEarlierQuestions(sessionId, running);
+  }
+  running.handle({ type: 'finished' });
+}
+
+/** Stops the photos a request dismissed from waiting (see `dismissedPhotoIds` in `planner.ts`). */
+function dismissPhotos(photoIds: readonly string[] = []): void {
+  for (const photoId of photoIds) {
+    dismissPhoto(photoId);
+  }
+}
+
+/**
+ * Whether a photo has been kept since `since` that nobody has looked at yet.
+ *
+ * Any photo, not only one the request named: the phone does not say which announcement a photo
+ * answers, and he has only the one camera button. One that was already waiting when he said another
+ * was on its way is kept before `since`, and does not end the wait.
+ */
+function photoKeptSince(since: number | undefined): boolean {
+  return since !== undefined && photosWaiting().some((photo) => photo.keptAt >= since);
+}
+
+/**
+ * Starts waiting for a photo a request says is on its way, or stops once one has come.
+ *
+ * A report requests share (see `join`) lasts until all of them are done, and the photo he announced
+ * can be one of them: "I'll send you a receipt, and what is the weather?", then the photo, looked at
+ * beside the weather still running. Its look is planned before it runs, so at that point the photo is
+ * still waiting, and was kept since he said it was coming: the wait is over, and the closing report
+ * ends on what the photo shows rather than on sending him back to the camera for it.
+ *
+ * Settled before the request's own dismissals are carried out, which stop a photo waiting: the photo
+ * he waves away can be the one he said was coming, and it has come all the same.
+ */
+function followThePhotoWait(progress: RoutingProgress, decision: RoutingDecision): void {
+  if (decision.awaitsPhoto === true) {
+    progress.awaitsPhoto = true;
+    progress.awaitsPhotoSince = Date.now();
+  } else if (photoKeptSince(progress.awaitsPhotoSince)) {
+    progress.awaitsPhoto = false;
+  }
 }
 
 /** Runs a request's new work: straight through Home Assistant when it can be, as a plan otherwise. */
@@ -1074,6 +1231,69 @@ function runChains(
 }
 
 /**
+ * Closes a request that planned no work and answered no question.
+ *
+ * "Nothing, never mind" about a photo is a reply that has been dealt with, not a request no agent
+ * could handle: the plan did what was asked of it, which was nothing. So is "I'll send you a receipt":
+ * there is nothing to do until the photo comes, and the closing report says to wait for it.
+ */
+function finishWithNothingToRun(sessionId: string, progress: RoutingProgress, dealtWith: boolean): void {
+  bringUpEarlierQuestions(sessionId, progress);
+  if (dealtWith) {
+    progress.handle({ type: 'finished' });
+    return;
+  }
+  progress.fail('none of the specialized agents can handle this request');
+}
+
+/**
+ * Keeps a request's questions for the next request to answer -- unless it was superseded, in which
+ * case its closing report will never be read and sir will never hear what it asked. A request he is
+ * to be notified about is never superseded: he hears its questions in the notification.
+ */
+function keepQuestionsForTheNextRequest(sessionId: string, progress: RoutingProgress): void {
+  if (!isSuperseded(sessionId, progress)) {
+    rememberOpenQuestions(progress.questions);
+  } else if (progress.questions.length > 0) {
+    logger.warn('Dropping questions from a superseded routing request', {
+      sessionId,
+      questionIds: progress.questions.map((question) => question.id),
+    });
+  }
+}
+
+/**
+ * Keeps the photos a request sent with nothing said, for its closing report to ask about, once its
+ * work is done.
+ *
+ * Only those its look got as far as reading -- which is also what keeps a photo from being asked
+ * about twice, here and as a waiting photo: one that was read is no longer waiting, and one that was
+ * not is left to be brought up that way. Added to rather than replaced, since a request that adds to
+ * a running one shares its report, and both may have sent one.
+ *
+ * A superseded request is never heard, so a photo it read was neither described to sir nor asked
+ * about -- and, counted as looked at, would never be brought up either. Its look is taken back
+ * (`unmarkPhotoLookedAt`), and the photo waits to be brought up like any other.
+ */
+function keepPhotosToAskAbout(sessionId: string, progress: RoutingProgress, photoIds: readonly string[]): void {
+  const read = photoIds.filter((photoId) => findPhoto(photoId)?.lookedAt !== undefined);
+  if (!isSuperseded(sessionId, progress)) {
+    progress.photosToAskAbout = uniq([...progress.photosToAskAbout, ...read]);
+    return;
+  }
+
+  if (read.length > 0) {
+    logger.info('Putting back photos a superseded routing request read, since sir never heard what they show', {
+      sessionId,
+      photoIds: read,
+    });
+  }
+  for (const photoId of read) {
+    unmarkPhotoLookedAt(photoId);
+  }
+}
+
+/**
  * Does everything a decided request asks: the new work in a plan run, and each answer it gives to
  * an open question carried back to the agent that asked.
  */
@@ -1085,7 +1305,7 @@ async function carryOut(
   decision: RoutingDecision,
   signal: AbortSignal,
 ): Promise<void> {
-  const { answers, responseStyle, homeService } = decision;
+  const { answers, responseStyle, homeService, dismissedPhotoIds = [], photosToAskAbout = [] } = decision;
   // A request that only stops the running one runs nothing, whatever the planner made of it.
   const chains = decision.relationToRunningRequest === 'cancels' ? [] : decision.chains;
   progress.responseStyle = responseStyle;
@@ -1093,12 +1313,16 @@ async function carryOut(
     sessionId,
     chains: chains.length,
     answers: answers.length,
+    dismissedPhotos: dismissedPhotoIds.length,
+    photosToAskAbout: photosToAskAbout.length,
+    ...(decision.awaitsPhoto && { awaitsPhoto: true }),
     ...(homeService && { homeService: homeService.id }),
     elapsedMs: progress.elapsedMs(),
   });
 
   // Superseded while it was being planned: nothing will read this request, so it must not
-  // start work -- and above all must not take the questions its answers are for.
+  // start work -- and above all must not take the questions its answers are for, or dismiss the
+  // photos it names.
   if (signal.aborted) {
     return;
   }
@@ -1111,10 +1335,13 @@ async function carryOut(
   }
 
   const answered = takeAnsweredQuestions(answers);
+  followThePhotoWait(progress, decision);
+  // Before the reminders are taken, so a photo he has just waved away is not asked about in the
+  // very reply to his waving it away.
+  dismissPhotos(dismissedPhotoIds);
 
   if (chains.length === 0 && answered.length === 0) {
-    bringUpEarlierQuestions(sessionId, progress);
-    progress.fail('none of the specialized agents can handle this request');
+    finishWithNothingToRun(sessionId, progress, dismissedPhotoIds.length > 0 || decision.awaitsPhoto === true);
     return;
   }
 
@@ -1140,17 +1367,8 @@ async function carryOut(
     ...(chains.length > 0 ? [runChains(mastra, sessionId, progress, userQuery, chains, homeService, signal)] : []),
   ]);
 
-  // Kept for the next request to answer -- unless this one was superseded, in which case its
-  // closing report will never be read and sir will never hear what it asked. A request he is to
-  // be notified about is never superseded: he hears its questions in the notification.
-  if (progressBySessionId.get(sessionId) === progress || progress.notifyWhenDone) {
-    rememberOpenQuestions(progress.questions);
-  } else if (progress.questions.length > 0) {
-    logger.warn('Dropping questions from a superseded routing request', {
-      sessionId,
-      questionIds: progress.questions.map((question) => question.id),
-    });
-  }
+  keepPhotosToAskAbout(sessionId, progress, photosToAskAbout);
+  keepQuestionsForTheNextRequest(sessionId, progress);
   bringUpEarlierQuestions(sessionId, progress);
 
   const failure = outcomes.find((outcome) => outcome.status === 'rejected');
@@ -1282,6 +1500,7 @@ export function resetRoutingRuntime(): void {
   progressBySessionId.clear();
   abortBySessionId.clear();
   forgetOpenQuestions();
+  forgetWaitingPhotoReminders();
   latestStartedSessionId = undefined;
   registry = undefined;
 }

@@ -38,6 +38,16 @@
     "deploy:test": {
       "cache": false
     },
+    // Never cached: the phone's contract specs read other packages' source as text — the Jarvis
+    // server's photo routes and routing planner (`photo-upload.contract.spec.ts`,
+    // `photo-messages.contract.spec.ts`), the agent's prompt, and the watch's half of the link
+    // (`watch-link.contract.spec.ts`) — none of which is a dependency of `mobile`, so none of it is in
+    // this task's hash, and a cache hit would replay a pass that the change it missed has broken.
+    "mobile#test": {
+      "dependsOn": ["lint"],
+      "cache": false,
+      "outputs": []
+    },
     "elevenlabs#test": {
       "dependsOn": ["lint", "mcp#test"],
       "cache": false,
@@ -77,8 +87,13 @@
       "dependsOn": ["^transit", "lint", "typecheck", "initialize"],
       "outputs": ["playwright-report/**", "test-results/**", "dist/**"]
     },
+    // Never cached: every package's `initialize` installs something outside the repository
+    // (ESPHome through pip, Playwright's browsers, the mastra CLI), so a cache hit replays the
+    // log, installs nothing, and whatever needed it finds it missing — which is how the firmware
+    // build failed with "ESPHome is not installed" right under a replayed pip install.
     "initialize": {
-      "cache": true
+      "cache": false,
+      "outputs": []
     },
     "//#install-skia": {
       "cache": false,

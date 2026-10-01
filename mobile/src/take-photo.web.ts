@@ -1,0 +1,89 @@
+import { PHOTO_LONG_EDGE, PHOTO_QUALITY } from './photo-upload';
+import type { CameraAnswer, TakePhoto } from './platform-contracts';
+
+/** No file picked: sir backed out of the picker. */
+const CLOSED: CameraAnswer = { closed: true };
+
+/** A file picked that could not be drawn and encoded as a photo. */
+const NOT_READABLE: CameraAnswer = { notReadable: true };
+
+/**
+ * How long the picker may stay open before it is taken as closed. Kept in step with
+ * `GIVE_UP_AFTER_MS` in `JarvisPhotoActivity.kt`, the phone's camera app's bound, for the same
+ * reasons: it is well inside the five minutes the slot opened at the tap lives, and a picker open
+ * longer than this is a phone put down or a desktop's chooser left behind another window rather
+ * than a shot being framed. While it is open the camera button stays busy and keeps telling the
+ * agent sir is active, and the agent is told to wait rather than hang up.
+ */
+export const PICKER_GIVE_UP_AFTER_MS = 110_000;
+
+/**
+ * Takes a photo in a browser: the file picker, which a phone's browser opens on its camera
+ * (`capture`) and a desktop's opens on its files — a receipt already on disk is as good to show him.
+ *
+ * **The picker is opened before anything is awaited**, because that is the only moment a browser
+ * lets it open at all. It answers `change` with a file or `cancel` without one, and is gone either
+ * way. What was picked is drawn onto a canvas no longer than {@link PHOTO_LONG_EDGE} and sent as a
+ * JPEG, like the phone's photos — a browser applies the photo's EXIF orientation as it decodes, so
+ * it arrives upright here without being asked.
+ *
+ * **A file that will not draw is not a picker closed.** `accept="image/*"` lets through images the
+ * browser cannot decode — an iPhone's HEIC, on most desktops — and sir, who picked one, is told it
+ * could not be read rather than left waiting on a photo Jarvis thinks he never sent.
+ *
+ * **Nor is it waited on for ever.** A browser answers neither `change` nor `cancel` while its picker
+ * stays open, and cannot be made to close it, so once {@link PICKER_GIVE_UP_AFTER_MS} has passed the
+ * picker is taken as closed, taken off the page, and no longer listened to: a file picked after that
+ * is not sent.
+ */
+export const takePhoto: TakePhoto = () =>
+  new Promise((resolve) => {
+    const picker = document.createElement('input');
+    picker.type = 'file';
+    picker.accept = 'image/*';
+    picker.setAttribute('capture', 'environment');
+    picker.style.display = 'none';
+
+    const listening = new AbortController();
+    const givingUp = setTimeout(() => finish(CLOSED), PICKER_GIVE_UP_AFTER_MS);
+    const finish = (answer: CameraAnswer | Promise<CameraAnswer>) => {
+      clearTimeout(givingUp);
+      listening.abort();
+      picker.remove();
+      resolve(answer);
+    };
+    picker.addEventListener(
+      'change',
+      () => {
+        const picked = picker.files?.[0];
+        finish(picked ? readyToSend(picked) : CLOSED);
+      },
+      { once: true, signal: listening.signal },
+    );
+    picker.addEventListener('cancel', () => finish(CLOSED), { once: true, signal: listening.signal });
+
+    document.body.append(picker);
+    picker.click();
+  });
+
+/** The picked file, drawn no larger than it is sent and encoded as a JPEG — or, if it will not draw, not readable. */
+async function readyToSend(picked: File): Promise<CameraAnswer> {
+  try {
+    const image = await createImageBitmap(picked);
+    const scale = Math.min(1, PHOTO_LONG_EDGE / Math.max(image.width, image.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    const drawing = canvas.getContext('2d');
+    if (!drawing) {
+      return NOT_READABLE;
+    }
+    drawing.drawImage(image, 0, 0, canvas.width, canvas.height);
+    image.close();
+
+    const jpeg = await new Promise<Blob | null>((encoded) => canvas.toBlob(encoded, 'image/jpeg', PHOTO_QUALITY));
+    return jpeg ? { photo: jpeg } : NOT_READABLE;
+  } catch {
+    return NOT_READABLE;
+  }
+}

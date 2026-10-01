@@ -1108,6 +1108,20 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
     return;
   }
   
+  // MCP tool calls are sent to every client, because the agent's client events include them
+  // for the apps, which show Jarvis thinking while one runs. The speaker has no use for
+  // them, and their results carry whatever the tools returned -- email summaries, calendar
+  // entries -- so they are handled before json_str below and logged by tool name and state
+  // only, never in full, which the unknown-type fallback would otherwise do at WARN.
+  if (strcmp(type, "mcp_tool_call") == 0) {
+    JsonObject mcp_tool_call = root["mcp_tool_call"];
+    const char* tool_name = mcp_tool_call ? mcp_tool_call["tool_name"].as<const char*>() : nullptr;
+    const char* state = mcp_tool_call ? mcp_tool_call["state"].as<const char*>() : nullptr;
+    ESP_LOGD(TAG, "PARSE_JSON_BUF: Ignoring mcp_tool_call (%s, %s)", tool_name ? tool_name : "NULL",
+             state ? state : "NULL");
+    return;
+  }
+
   std::string json_str = JsonDeserializer::to_string(root);
   if (strcmp(type, "mcp_connection_status") == 0) {
     ESP_LOGD(TAG, "PARSE_JSON_BUF: Processing MCP connection status: '%s'", json_str.c_str());

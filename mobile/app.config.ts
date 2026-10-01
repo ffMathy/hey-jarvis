@@ -175,9 +175,15 @@ const config: ExpoConfig = {
       'android.permission.BLUETOOTH_CONNECT',
     ],
     // `@livekit/react-native` declares CAMERA in its own manifest because the
-    // same module also does video calls. Jarvis never opens a camera, and a
-    // permission nobody uses is a permission nobody can audit, so it is merged
-    // straight back out again.
+    // same module also does video calls. Jarvis never opens a camera himself,
+    // and a permission nobody uses is a permission nobody can audit, so it is
+    // merged straight back out again.
+    //
+    // **Showing him a photo depends on it staying out.** The phone's own camera
+    // app takes the photo (`JarvisPhotoActivity`), and `ACTION_IMAGE_CAPTURE`
+    // needs no permission from an app that does not declare CAMERA — but throws
+    // for one that declares it without holding it, which the assistant's window
+    // could never ask for. `take-photo.contract.spec.ts` keeps it blocked.
     blockedPermissions: ['android.permission.CAMERA'],
   },
   plugins: [

@@ -55,6 +55,14 @@ export class TestConversation {
   }
 
   /**
+   * Tells the agent something without starting a turn, as the phone does when it connects and when
+   * sir opens or closes its camera.
+   */
+  async sendContextualUpdate(text: string): Promise<void> {
+    await this.strategy.sendContextualUpdate(text);
+  }
+
+  /**
    * Get all raw messages received
    */
   getMessages(): ServerMessage[] {
@@ -168,8 +176,7 @@ export class TestConversation {
     const google = createGoogleGenerativeAI({ apiKey: this.googleApiKey });
 
     // Use Vercel AI SDK's built-in retry mechanism
-    // biome-ignore lint/suspicious/noExplicitAny: Vercel AI SDK generateObject requires `any` for dynamic schema
-    const result = await generateObject<any>({
+    const result = await generateObject({
       model: google('gemini-flash-latest'),
       temperature: 0,
       schema,
@@ -211,7 +218,7 @@ Respond with:
 - "reasoning" (string): Clear explanation for your evaluation with specific examples from the transcript`,
     });
 
-    return result.object as EvaluationResult;
+    return result.object;
   }
 
   /**

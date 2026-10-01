@@ -38,6 +38,13 @@ import { type ConversationMessage, SAYING_NOTHING, type WrittenReply } from './w
 const GREETING_CHECK_MS = 50;
 
 /**
+ * What an ElevenLabs conversation id looks like — the pattern the SDK itself looks for in a LiveKit
+ * room's name. Anything else the SDK may call a conversation (the room's name, or its own
+ * `room_<ms>`) is not one, and `liveConversationId` gives no id rather than that.
+ */
+const ELEVENLABS_CONVERSATION_ID = /^conv_[A-Za-z0-9]+$/;
+
+/**
  * How long after a dropped connection the page is swept a second time for the SDK's orphaned
  * `<audio>` elements. LiveKit ends the remote tracks as it tears the room down, which may finish
  * after the SDK has already reported the disconnect.
@@ -100,6 +107,11 @@ interface Attempt<Timer> {
   /** Whether `startSession` has been called and has not yet resolved or rejected. */
   starting: boolean;
   conversation?: SessionConversation;
+  /**
+   * The conversation's id as the SDK gave it when the conversation was adopted, which is after the
+   * SDK has finished connecting and so final (see `JarvisSession.liveConversationId`).
+   */
+  conversationId?: string;
   room?: AgentTrackRoom;
   stopFollowing?: () => void;
   callAudio: CallAudioHolder;
@@ -540,6 +552,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
 
   const adopt = (current: Attempt<Timer>, conversation: SessionConversation) => {
     current.conversation = conversation;
+    current.conversationId = conversation.getId();
     current.microphoneMuted = false;
     if (current.callAudio === 'greeting') {
       // The conversation has the call's audio now, and its ending lets go of it.
@@ -1050,6 +1063,40 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       } catch {
         // The session went between the status and this; its ending says so for itself.
       }
+    },
+    sendContextualUpdate: (text) => {
+      const current = openAttempt();
+      if (!current?.conversation || current.status !== 'connected') {
+        return;
+      }
+      try {
+        current.conversation.sendContextualUpdate(text);
+      } catch {
+        // The session went between the status and this; its ending says so for itself.
+      }
+    },
+    sendUserActivity: () => {
+      const current = openAttempt();
+      if (!current?.conversation || current.status !== 'connected') {
+        return;
+      }
+      try {
+        current.conversation.sendUserActivity();
+      } catch {
+        // As above.
+      }
+    },
+    liveConversationId: () => {
+      const current = openAttempt();
+      // Connected, as for a typed line: an attempt still dialling has no conversation to name yet,
+      // and one that has ended, or is ending, is not live — so its id is never given.
+      if (!current?.conversation || current.status !== 'connected') {
+        return undefined;
+      }
+      const { conversationId } = current;
+      return conversationId !== undefined && ELEVENLABS_CONVERSATION_ID.test(conversationId)
+        ? conversationId
+        : undefined;
     },
     setTyping: (next) => {
       typing = next;

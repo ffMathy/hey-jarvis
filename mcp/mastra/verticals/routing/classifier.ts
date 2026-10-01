@@ -236,12 +236,30 @@ export function readClassification(
   return { ...classification, fastRoute: { agentId: route, responseStyle, ...(homeService && { homeService }) } };
 }
 
+const buildRoutingClassifier = createLazyClassifier(ROUTING_CLASSIFIER_ID);
+
+/** A classifier standing in for Jev, in tests. */
+let substituteClassifier: Classifier | undefined;
+
 /**
  * The classifier routing runs on, or nothing when there is no key to run it with.
  *
  * One instance for the process, so the one registered on Mastra is the one requests use.
  */
-export const getRoutingClassifier = createLazyClassifier(ROUTING_CLASSIFIER_ID);
+export function getRoutingClassifier(): Classifier | undefined {
+  return substituteClassifier ?? buildRoutingClassifier();
+}
+
+/**
+ * Substitutes the routing classifier, or with `undefined` restores the real one. Used by tests.
+ *
+ * A request that arrives while another is running is only joined to it when there is a classifier to
+ * say how the two relate (see `runJoinedRequest` in `controller.ts`), and the tests run without a key,
+ * so without this nothing could drive that path end to end.
+ */
+export function setRoutingClassifierForTest(classifier: Classifier | undefined): void {
+  substituteClassifier = classifier;
+}
 
 /** Asks the classifier everything routing can use about one request. */
 export async function classifyRequest(

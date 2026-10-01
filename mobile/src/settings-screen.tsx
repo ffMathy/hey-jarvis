@@ -1,29 +1,44 @@
 import type { ElevenLabsSettings } from 'hologram';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { ElevenLabsFields } from './elevenlabs-fields';
+import type { JarvisServerAddressChange } from './jarvis-server';
 import { theme } from './theme';
 
 interface SettingsScreenProps {
   settings: ElevenLabsSettings | undefined;
-  onSave: (settings: ElevenLabsSettings) => void;
+  /** The Jarvis server's address as it was read, if one was. See `jarvis-server.ts`. */
+  serverAddress: string | undefined;
+  /** Called once everything on the screen parses — with the server address's change, if sir made one. */
+  onSave: (settings: ElevenLabsSettings, serverAddressChange: JarvisServerAddressChange | undefined) => void;
   onCancel: (() => void) | undefined;
   /** Opens sample mode. Only offered before the app is set up, when there is nothing else to look at. */
   onTrySample: (() => void) | undefined;
 }
 
 /**
- * Where the phone is told which Jarvis it talks to.
+ * Where the phone is told which Jarvis it talks to — and, if it is to send him photos, where his
+ * Jarvis server is.
  *
- * Both values are typed in rather than compiled in. Shipping the API key inside
+ * Every value is typed in rather than compiled in. Shipping the API key inside
  * the app would put a live credential in every copy of the bundle.
+ *
+ * **The Jarvis server is asked for here and not on the tour.** It is optional — without it Jarvis
+ * works as he always did, with no camera — and it is a server of sir's own, which somebody meeting
+ * Jarvis for the first time does not have yet. Somebody who does comes back here for it.
+ *
+ * **A changed address reaches the next conversation.** Holding the conversation screen to come here
+ * ends the conversation on it, since the session lasts only as long as its screen
+ * (`useJarvisSession` in `hologram`), and the screen this returns to opens a new one — told of a
+ * camera button, or not, to match the address as it is then.
  *
  * **This is no longer the first thing a new install sees** — `onboarding-screen.tsx` is, and it
  * explains what an ElevenLabs agent is before asking for one. What is left here is the screen you
- * come back to: the same two fields with no tour around them, reached by holding the conversation
- * screen. It is also still where an install lands whose credentials have gone but whose tour has
- * been walked, which is why it keeps its own way into sample mode.
+ * come back to: the same two fields with no tour around them, and the Jarvis server's beside them,
+ * reached by holding the conversation screen. It is also still where an install lands whose
+ * credentials have gone but whose tour has been walked, which is why it keeps its own way into
+ * sample mode.
  */
-export function SettingsScreen({ settings, onSave, onCancel, onTrySample }: SettingsScreenProps) {
+export function SettingsScreen({ settings, serverAddress, onSave, onCancel, onTrySample }: SettingsScreenProps) {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>ElevenLabs</Text>
@@ -32,7 +47,12 @@ export function SettingsScreen({ settings, onSave, onCancel, onTrySample }: Sett
         that a lost phone means revoking one key.
       </Text>
 
-      <ElevenLabsFields settings={settings} submitLabel="Save" onSubmit={onSave} />
+      <ElevenLabsFields
+        settings={settings}
+        server={{ storedAddress: serverAddress }}
+        submitLabel="Save"
+        onSubmit={onSave}
+      />
 
       {onCancel ? (
         <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={onCancel}>

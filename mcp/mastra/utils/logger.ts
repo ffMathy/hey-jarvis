@@ -1,12 +1,29 @@
+import type { LoggerTransport } from '@mastra/core/logger';
 import { PinoLogger } from '@mastra/loggers';
 import { rememberDiagnostic } from './diagnostics.js';
 
 /**
  * How deep {@link unwrapErrors} walks a log object before it stops rewriting and hands the
- * value to Pino as-is. Deep enough for an error nested in a `details` bag or a two-link
- * `cause` chain, shallow enough that a large payload is not needlessly re-created.
+ * value to Pino as-is — any but an error, which is named instead. Deep enough for an error
+ * nested in a `details` bag or a two-link `cause` chain, shallow enough that a large payload
+ * is not needlessly re-created.
  */
 const MAX_DEPTH = 4;
+
+/**
+ * What an error's `requestBodyValues` is printed as: everything the failed call sent a model.
+ *
+ * The AI SDK's `APICallError` — what a model call that failed throws, and what a `RetryError` keeps
+ * one of for every attempt, in `errors` and again as `lastError` — carries the whole request body
+ * there, enumerably. Mastra logs that error when a model call fails ("Upstream LLM API error", "Error
+ * in agent stream"), so describing it field by field would print every agent's full prompt, emails
+ * and calendar entries included, and a photo the photo reader was shown as Gemini's
+ * `inlineData.data`: hundreds of kilobytes of base64, once per attempt, into a log the add-on keeps
+ * on disk, where the privacy policy promises a photo never goes. What is left says which call failed
+ * and why — the URL, the status, and what the provider answered, which for Gemini names the failure
+ * rather than repeating the request.
+ */
+export const REQUEST_BODY_LEFT_OUT = '[request body left out]';
 
 /**
  * Whether a value is a bare object literal — something safe to rebuild key by key.
@@ -26,12 +43,20 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 /**
  * Turns an Error into the plain object Pino needs in order to print anything about it.
+ *
+ * Past {@link MAX_DEPTH} it is named and nothing more. Handed to Pino as it is, an error would print
+ * every enumerable field it has — a request body included, see {@link REQUEST_BODY_LEFT_OUT} — and
+ * neither its message nor its stack.
  */
 function describeError(error: Error, depth: number): Record<string, unknown> {
   const described: Record<string, unknown> = {
     name: error.name,
     message: error.message,
   };
+
+  if (depth > MAX_DEPTH) {
+    return described;
+  }
 
   if (error.stack) {
     described.stack = error.stack;
@@ -43,7 +68,7 @@ function describeError(error: Error, depth: number): Record<string, unknown> {
     if (key === 'cause') {
       continue;
     }
-    described[key] = unwrapErrors(value, depth + 1);
+    described[key] = key === 'requestBodyValues' ? REQUEST_BODY_LEFT_OUT : unwrapErrors(value, depth + 1);
   }
 
   if (error.cause !== undefined) {
@@ -67,12 +92,12 @@ function describeError(error: Error, depth: number): Record<string, unknown> {
  * {@link createLogger}.
  */
 export function unwrapErrors(value: unknown, depth = 0): unknown {
-  if (depth > MAX_DEPTH) {
-    return value;
-  }
-
   if (value instanceof Error) {
     return describeError(value, depth);
+  }
+
+  if (depth > MAX_DEPTH) {
+    return value;
   }
 
   if (Array.isArray(value)) {
@@ -157,12 +182,20 @@ function recordDiagnostics(logger: PinoLogger, bindings?: Record<string, unknown
   return logger;
 }
 
-export function createLogger(name: string): PinoLogger {
+/**
+ * A logger that prints the errors it is given, keeps the warnings and errors for reading back, and
+ * never prints what a failed model call sent.
+ *
+ * `transports` are where it writes besides the console, as `PinoLogger` takes them; its spec hands
+ * it one, to read what is actually written rather than what was meant to be.
+ */
+export function createLogger(name: string, transports: Record<string, LoggerTransport> = {}): PinoLogger {
   return recordDiagnostics(
     printTrackedExceptions(
       new PinoLogger({
         name,
         level: 'info',
+        transports,
         formatters: {
           log: (object: Record<string, unknown>) => unwrapErrors(object) as Record<string, unknown>,
         },

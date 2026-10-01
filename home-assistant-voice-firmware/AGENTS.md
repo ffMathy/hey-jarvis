@@ -42,6 +42,15 @@ restarts and the LEDs go idle:
 The announcement window is timed on the device because ElevenLabs'
 `silence_end_call_timeout` is not an overridable setting.
 
+## MCP Tool Calls
+
+The speaker shares its agent with the apps, and the agent's client events include
+`mcp_tool_call` for them — the phone, the watch and the headset show Jarvis thinking
+while one runs — so the speaker is sent every MCP tool call too. It has no use for
+them, and it logs each at DEBUG by tool name and state only, never in full: a result
+can carry an email summary or a calendar entry, and the unknown-type fallback would
+have logged all of it at WARN.
+
 ## Wake Word Configuration
 
 ### Supported Wake Words

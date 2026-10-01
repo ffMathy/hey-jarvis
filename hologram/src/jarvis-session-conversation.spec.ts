@@ -6,7 +6,9 @@ import { KEEP_THINKING_AFTER_LAST_ANSWER_MS } from './tool-activity';
 /**
  * What an open conversation hands the hologram and the room: his voice and yours, whether he is
  * thinking, his line in writing while you type, and the microphone rules that hold it all together
- * — the greeting, the keyboard and the half-duplex fallback.
+ * — the greeting, the keyboard and the half-duplex fallback. And what the phone's camera button
+ * asks of it: notes the agent reads without a turn being taken, word that sir is still there, and
+ * the live conversation's id.
  */
 
 /** Readers for his track that say a fixed level, as `createPlayedVoiceReaders` would. */
@@ -292,6 +294,103 @@ describe('what the holder is told of the conversation, for a device watching for
     options.onMessage({ role: 'user', message: 'Too late.' });
 
     expect(told).toEqual([]);
+  });
+});
+
+describe('what the phone’s camera button needs of the conversation', () => {
+  it('tells the agent things and says the user is still there only while connected', async () => {
+    const harness = createHarness();
+    harness.session.sendContextualUpdate('Too early.');
+    harness.session.sendUserActivity();
+    await harness.goLive();
+    const { conversation } = harness.sdk.latest;
+
+    harness.session.sendContextualUpdate('This device has a camera button.');
+    harness.session.sendUserActivity();
+    harness.sdk.latest.agentHangsUp();
+    harness.session.sendContextualUpdate('Too late.');
+    harness.session.sendUserActivity();
+
+    expect(conversation.contextualUpdates).toEqual(['This device has a camera button.']);
+    expect(conversation.userActivity).toBe(1);
+  });
+
+  it('names the conversation under way only while it is connected', async () => {
+    const { session, greeting, tokens, clock, sdk } = createHarness();
+    expect(session.liveConversationId()).toBeUndefined();
+
+    session.summon();
+    greeting.allow();
+    tokens.grant();
+    await settle();
+    await clock.advance(greeting.durationMilliseconds + 100);
+    // Dialled, and not yet connected: there is no conversation to name.
+    expect(sdk.dials).toHaveLength(1);
+    expect(session.liveConversationId()).toBeUndefined();
+
+    await sdk.latest.connect();
+    expect(session.liveConversationId()).toBe('conv_fake1');
+
+    sdk.latest.agentHangsUp();
+    expect(session.liveConversationId()).toBeUndefined();
+  });
+
+  it('stops naming a conversation the moment it is hung up on, while it is still ending', async () => {
+    const harness = createHarness();
+    await harness.goLive();
+    harness.sdk.latest.conversation.holdEnding();
+
+    harness.session.hangUp();
+
+    expect(harness.session.liveConversationId()).toBeUndefined();
+  });
+
+  it('names the next summoning’s conversation, never the one before it', async () => {
+    const harness = createHarness();
+    await harness.goLive();
+    expect(harness.session.liveConversationId()).toBe('conv_fake1');
+    harness.session.hangUp();
+
+    harness.session.summon();
+    // Greeting, with nothing dialled yet: the last summoning's conversation is not this one's.
+    expect(harness.session.liveConversationId()).toBeUndefined();
+    harness.greeting.allow();
+    harness.tokens.grant();
+    await settle();
+    await harness.clock.advance(harness.greeting.durationMilliseconds + 100);
+    await harness.sdk.latest.connect();
+
+    expect(harness.sdk.latest.conversation.id).toBe('conv_fake2');
+    expect(harness.session.liveConversationId()).toBe('conv_fake2');
+  });
+
+  it('names a conversation held in writing as well as a spoken one', async () => {
+    const { session, tokens, sdk } = createHarness();
+
+    session.summon({ textOnly: true });
+    tokens.sign();
+    await settle();
+    await sdk.latest.connect();
+
+    expect(sdk.latest.written).toBeDefined();
+    expect(session.liveConversationId()).toBe('conv_fake1');
+  });
+
+  it('gives no id where the SDK has none from ElevenLabs, only a room’s name or one of its own', async () => {
+    for (const notAConversationId of ['room_1727700000000', 'jarvis-room']) {
+      const { session, greeting, tokens, clock, sdk } = createHarness();
+      session.summon();
+      greeting.allow();
+      tokens.grant();
+      await settle();
+      await clock.advance(greeting.durationMilliseconds + 100);
+      sdk.latest.conversation.id = notAConversationId;
+
+      await sdk.latest.connect();
+
+      expect(session.phase).toBe('live');
+      expect(session.liveConversationId()).toBeUndefined();
+    }
   });
 });
 

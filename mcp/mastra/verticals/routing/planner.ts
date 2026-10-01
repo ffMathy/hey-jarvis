@@ -4,6 +4,7 @@ import { createAgent, getModel } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
 import { getPublicAgents } from '..';
 import { getHomeServices, type HomeService } from '../internet-of-things/home-commands.js';
+import { findPhoto, howLongAgo, type WaitingPhoto } from '../vision/photos.js';
 import {
   classifyRequest,
   type FastRoute,
@@ -67,6 +68,25 @@ export { PLANNER_AGENT_ID, RESPONSE_STYLES, type ResponseStyle };
  * the user by Jarvis, so the reply arrives as an ordinary request -- "push, please" -- and the
  * planner, which reads every request anyway and is shown the questions still open, is the one
  * place that can tell an answer from a new errand without Jarvis having to label it.
+ *
+ * `dismissedPhotoIds` is the one reply about a photo that is not work: "nothing, never mind" — about
+ * a waiting photo, or about the one Jarvis has just described to him and asked about. Without it such
+ * a reply planned no task and no answer, and the empty plan was reported to sir as a request no agent
+ * could handle. Required and empty-when-absent, like `answers`.
+ *
+ * `photosToAskAbout` is a photo sir sent with nothing said. The vision agent looks at it like any
+ * other, and then Jarvis has to do what every other finished request forbids him — ask sir something
+ * — so the plan says which photos he is to ask about, and the closing report turns each into a
+ * question of this request's own (see `buildClosingReport` in `workflows.ts`). Required and
+ * empty-when-absent, like the others.
+ *
+ * `awaitsPhoto` is a photo he says is on its way — "I'll send you a receipt" — with nothing to look at
+ * yet. The voice agent is told to route nothing until it arrives, but a request that slipped through
+ * planned nothing for it, and the empty plan was reported to sir as a request no agent could handle,
+ * closing on the hang-up just as he went quiet to take the shot. Set, the request finishes as done,
+ * and its closing report has Jarvis tell him to go ahead and then wait for the photo (see
+ * `buildClosingReport` in `workflows.ts`). Required, like the rest, since a flag the model may leave
+ * out is one it will.
  */
 const planSchema = z.object({
   responseStyle: z
@@ -100,6 +120,17 @@ const planSchema = z.object({
       }),
     )
     .describe('Answers this request gives to the questions listed as waiting, if any; empty otherwise'),
+  dismissedPhotoIds: z
+    .array(z.string())
+    .describe(
+      'The ids of listed photos the user wants nothing done with — a waiting one, or one the request names that he was just asked about — if any; empty otherwise',
+    ),
+  photosToAskAbout: z
+    .array(z.string())
+    .describe('The ids of photos this request shows Jarvis without saying what to do with them; empty otherwise'),
+  awaitsPhoto: z
+    .boolean()
+    .describe('True only when the request says he is about to send or show a photo that has not arrived yet'),
 });
 
 export { planSchema };
@@ -168,11 +199,22 @@ Sometimes work started earlier — an agent on an earlier request, or a coding s
 - A request can answer a question and ask for something else at the same time; plan the something else as usual
 - If the request answers none of them, or none are listed, leave \`answers\` empty. Never answer a question on the user's behalf, and never treat a new request as an answer just because a question is waiting
 
+# Photos
+The user can send Jarvis a photo with the camera button on his phone. Photos he has sent that nobody has looked at yet are listed after the request, each by its id and how long ago he sent it — including one he has only just sent. A photo the request names by its tag that has been looked at or dismissed already is listed too, under a heading of its own: most often it is the one Jarvis has just described to him and asked about. Jarvis may have asked him what he would like done with one, so the request can be his reply ("Answer to 'what would you like done with the photo?': add everything on it to the shopping list").
+
+- If the request says what to do with one of them, or asks about a photo he sent, plan it as ordinary tasks: the \`vision\` agent looks at the photo, and its prompt names the photo the way a request does — "(photo photo3)" — beside what to find out from it. Any task that acts on what the photo shows needs that task. Leave \`photosToAskAbout\` empty: he has said what he wants
+- If the request is a photo he sent without saying what he wants — "He sent a photo without saying what he wants: look at it and say what it shows (photo photo3)" — plan one \`vision\` task that looks at it and says what it shows and what could be done with it: the items and amounts on it, dates, names, numbers or any text worth acting on. Put its id in \`photosToAskAbout\`, and Jarvis will ask him what he would like done with it once he has said what it shows. Plan nothing else for it: what to do with it is his to say
+- A photo he says he is about to send — "I'll send you a receipt" — has not arrived: plan nothing for it, since there is nothing to look at yet, and nothing for what he wants done with it, which comes back with the photo once it arrives. Set \`awaitsPhoto\`, and Jarvis tells him to go ahead with the camera button and waits for it. Plan anything else the request asks for as usual. Leave \`awaitsPhoto\` false otherwise, and always for a photo that has already arrived
+- "The photo", "the picture" or "it" means the one listed when there is one, and the one sent last when there are several
+- A photo is never a waiting question: never put one in \`answers\`, even when the request replies to being asked about it
+- If he wants nothing done with one — "nothing", "never mind", "I was only testing" — put its id in \`dismissedPhotoIds\` and write no task for it: it stops waiting, and he is not asked about it again. That includes his reply about the photo the request names when he was just asked what to do with it — "Answer to 'what would you like done with it?': nothing (photo photo3)" — under whichever heading it is listed. Only for a photo he said so about; otherwise leave \`dismissedPhotoIds\` empty
+- A request about something else leaves them alone: write no task for a photo the request does not mention
+
 # How the answer should sound
 Set \`responseStyle\` to how Jarvis should answer once the plan has run. Ask where the value of the request lands:
 ${responseStyleList()}
 
-When a request mixes kinds, pick the one that needs the most words — a command and a lookup together is a \`lookup\`; anything with a briefing in it is a \`briefing\`. An answer to a waiting question takes the style of the work it resumes. With no tasks at all, use \`conversation\`.
+When a request mixes kinds, pick the one that needs the most words — a command and a lookup together is a \`lookup\`; anything with a briefing in it is a \`briefing\`. An answer to a waiting question takes the style of the work it resumes. A request that only dismisses photos is a \`command\`, and so is one that only says a photo is on its way; a photo he sent without saying what he wants is a \`lookup\`. With no tasks at all otherwise, use \`conversation\`.
 
 # Critical rules
 - If no agent can handle part of the request, leave it out rather than misassigning it
@@ -188,7 +230,7 @@ ${agentCatalogue(agents)}`;
  * The agents the planner is allowed to name, remembered from the catalogue it was built with.
  *
  * Held rather than re-derived because `getPublicAgents()` constructs a fresh agent per call
- * -- ten of them, each with its own tools and memory -- and a routing request would otherwise
+ * -- one per public agent, each with its own tools and memory -- and a routing request would otherwise
  * pay for that twice: once to build the planner and once to check what it wrote. The routing
  * classifier is shown the same catalogue, so it cannot pick an agent the planner could not.
  */
@@ -226,8 +268,8 @@ export async function getRoutingPlannerAgent(): Promise<Agent> {
     model: getModel(PLANNER_MODEL),
     // Planning one request has nothing to recall from the last one, and memory here would
     // buy an embedding round trip on the one path that cannot afford any. The questions still
-    // waiting on the user are the one thing it does need from earlier requests, and those are
-    // handed to it in the prompt (see `plannerPrompt`).
+    // waiting on the user, and the photos nobody has looked at, are the one thing it does need
+    // from earlier requests, and those are handed to it in the prompt (see `plannerPrompt`).
     memory: undefined,
   });
 }
@@ -239,21 +281,82 @@ export interface PlannedAnswer {
 }
 
 /**
- * What the planner is given: the request, and the questions still waiting on the user.
+ * What the planner is given: the request, the questions still waiting on the user, the photos he has
+ * sent that nobody has looked at yet, and any other photo the request names.
  *
  * With nothing waiting it is the request alone, exactly as it always was, so the common case is
  * planned from the same input as before questions existed.
+ *
+ * Photos are listed with their age, oldest first, so "the photo" can be read as the one sent last,
+ * and each by the id a vision task has to be handed (see `routing/waiting-photos.ts`). A photo the
+ * request names that is no longer waiting is listed apart (see `photosTheRequestNames`), so that
+ * nothing about one Jarvis has already looked at reads as though nobody had.
  */
-export function plannerPrompt(userQuery: string, openQuestions: OpenQuestion[]): string {
-  if (openQuestions.length === 0) {
+export function plannerPrompt(
+  userQuery: string,
+  openQuestions: OpenQuestion[],
+  waitingPhotos: readonly WaitingPhoto[] = [],
+  namedPhotos: readonly WaitingPhoto[] = [],
+  now = Date.now(),
+): string {
+  if (openQuestions.length === 0 && waitingPhotos.length === 0 && namedPhotos.length === 0) {
     return userQuery;
   }
 
-  const waiting = openQuestions
-    .map((question) => `- id "${question.id}", asked by ${question.agentId}: ${question.question}`)
-    .join('\n');
+  const sections = [`The request:\n${userQuery}`];
+  if (openQuestions.length > 0) {
+    const waiting = openQuestions
+      .map((question) => `- id "${question.id}", asked by ${question.agentId}: ${question.question}`)
+      .join('\n');
+    sections.push(`Questions waiting for the user's answer:\n${waiting}`);
+  }
+  if (waitingPhotos.length > 0) {
+    sections.push(`Photos the user has sent that nobody has looked at yet:\n${photoList(waitingPhotos, now)}`);
+  }
+  if (namedPhotos.length > 0) {
+    sections.push(
+      `Photos the request names, which have been looked at or dismissed already:\n${photoList(namedPhotos, now)}`,
+    );
+  }
 
-  return `The request:\n${userQuery}\n\nQuestions waiting for the user's answer:\n${waiting}`;
+  return sections.join('\n\n');
+}
+
+/** Photos as the planner is shown them: by id, and how long ago each was sent. */
+function photoList(photos: readonly WaitingPhoto[], now: number): string {
+  return photos.map((photo) => `- ${photo.photoId}, sent ${howLongAgo(now - photo.keptAt)}`).join('\n');
+}
+
+/** The tag a request names a photo with, such as "(photo photo3)" (see `vision/agents.ts`). */
+const NAMES_A_PHOTO = /\(photo \w+\)/i;
+
+/** The same tag, every time a request carries it, with the id it names. */
+const PHOTO_TAG = /\(photo (\w+)\)/gi;
+
+/**
+ * The photos a request names by their tag that are still kept but no longer waiting, oldest first:
+ * looked at — most often by the very look Jarvis has just described to sir and asked him about — or
+ * dismissed.
+ *
+ * Such a photo is not among the waiting ones, yet the request is about it. "Answer to 'what would you
+ * like done with it?': nothing (photo photo3)" is the reply to the question a look at photo3 ended
+ * on, and with photo3 no longer waiting the planner was shown nothing to dismiss — so the reply that
+ * asked for nothing was reported to sir as a request no agent could handle.
+ *
+ * Only a photo the tag names by its id. An id with no letter or digit in it is no id to the store,
+ * which would stand the latest photo in for it (see `findPhoto`), and a photo the request does not
+ * name is not one it can be about.
+ */
+function photosTheRequestNames(userQuery: string, waitingPhotos: readonly WaitingPhoto[]): WaitingPhoto[] {
+  const waitingIds = new Set(waitingPhotos.map((photo) => photo.photoId));
+  const named = new Map<string, WaitingPhoto>();
+  for (const [, taggedId] of userQuery.matchAll(PHOTO_TAG)) {
+    const photo = /[a-z0-9]/i.test(taggedId) ? findPhoto(taggedId) : undefined;
+    if (photo && !waitingIds.has(photo.photoId)) {
+      named.set(photo.photoId, { photoId: photo.photoId, keptAt: photo.keptAt });
+    }
+  }
+  return [...named.values()].sort((earlier, later) => earlier.keptAt - later.keptAt);
 }
 
 /** What routing does with a request: the chains it runs as, and any answers the request gave. */
@@ -273,16 +376,46 @@ export interface RoutingDecision {
    * Left out, the new request supersedes the running one, as every request did before.
    */
   relationToRunningRequest?: RelationToRunningRequest;
+  /**
+   * Photos sir said he wants nothing done with: waiting ones, or ones the request names (see
+   * `photosTheRequestNames`). Only the planner decides these.
+   */
+  dismissedPhotoIds?: string[];
+  /**
+   * Photos sir sent without saying what he wants, which Jarvis is to ask him about once the vision
+   * agent has said what they show. Only the planner decides these.
+   */
+  photosToAskAbout?: string[];
+  /**
+   * The request says a photo is on its way that has not arrived, so Jarvis is to tell sir to go ahead
+   * with the camera and wait for it, rather than hang up. Only the planner decides this.
+   */
+  awaitsPhoto?: boolean;
 }
 
-/** Asks the planner for a plan. */
+/**
+ * Asks the planner for a plan: the chains it runs as, any answers the request gave, any photos it
+ * said sir wants nothing done with, any it said he sent without saying what for, and whether it says
+ * a photo is on its way.
+ *
+ * A waiting photo is shown to the planner but never answered: sir's reply about one is a request
+ * of its own, planned as work on the photo, so an answer naming a photo's id is dropped below with
+ * any other id that names no open question. Only a reply that he wants nothing done with it is not
+ * work, and that comes back as a dismissal instead — for a waiting photo, or for one the request
+ * names that has been looked at already, which is how he answers the question such a look ends on. A
+ * photo sent with nothing said is work — the vision agent looks at it — and comes back in
+ * `photosToAskAbout` too, so that Jarvis asks what he would like done with it once he has said what
+ * it shows.
+ */
 async function planWithPlanner(
   planner: Agent,
   userQuery: string,
   openQuestions: OpenQuestion[],
+  waitingPhotos: readonly WaitingPhoto[],
+  namedPhotos: readonly WaitingPhoto[],
   abortSignal: AbortSignal,
 ): Promise<RoutingDecision> {
-  const response = await planner.generate(plannerPrompt(userQuery, openQuestions), {
+  const response = await planner.generate(plannerPrompt(userQuery, openQuestions, waitingPhotos, namedPhotos), {
     structuredOutput: { schema: planSchema },
     toolChoice: 'none',
     abortSignal,
@@ -298,9 +431,23 @@ async function planWithPlanner(
   const openIds = new Set(openQuestions.map((question) => question.id));
   const answers = plan.answers.filter((answer) => openIds.has(answer.questionId) && answer.answer.trim().length > 0);
 
+  // Only photos it was shown, for the same reason: a made-up id would dismiss nothing, and would
+  // still let an otherwise empty plan pass for one that did something.
+  const shownIds = new Set([...waitingPhotos, ...namedPhotos].map((photo) => photo.photoId));
+  const dismissedPhotoIds = [...new Set(plan.dismissedPhotoIds)].filter((photoId) => shownIds.has(photoId));
+  // Likewise, and never one he has just waved away: a photo he wants nothing done with is not one to
+  // ask him about. Only a waiting one, too: a photo looked at already has been described to him.
+  const waitingIds = new Set(waitingPhotos.map((photo) => photo.photoId));
+  const photosToAskAbout = [...new Set(plan.photosToAskAbout)].filter(
+    (photoId) => waitingIds.has(photoId) && !dismissedPhotoIds.includes(photoId),
+  );
+
   return {
     chains: chainsFromTasks(plan.tasks, await getRoutableAgentIds()),
     answers,
+    dismissedPhotoIds,
+    photosToAskAbout,
+    ...(plan.awaitsPhoto && { awaitsPhoto: true }),
     responseStyle: plan.responseStyle,
   };
 }
@@ -370,23 +517,41 @@ export async function decisionFromClassification(
  * With a request still running, how the new one relates to it is wanted even when the planner
  * answers first, so the classifier is then waited for -- it is the faster of the two, so that
  * seldom costs anything.
+ *
+ * **Photos are the planner's alone.** The classifier is never shown them, so while one is waiting,
+ * or when the request names one, a fast route would hand an agent sir's words with no photo to go
+ * with them, and an answer to a waiting question could be the reply that says what a photo is for.
+ * Then only a goodbye is the classifier's to settle: it runs nothing, and a waiting photo stays
+ * waiting for the next conversation.
+ *
+ * A photo the request names that is no longer waiting is looked up here, before either starts, so the
+ * planner is shown it too (see `photosTheRequestNames`).
  */
 export async function planDelegations(
   planner: Agent,
   userQuery: string,
   openQuestions: OpenQuestion[] = [],
+  waitingPhotos: readonly WaitingPhoto[] = [],
   runningRequest: string | undefined = undefined,
   classifier = getRoutingClassifier(),
 ): Promise<RoutingDecision> {
   const abortPlanner = new AbortController();
+  const namedPhotos = photosTheRequestNames(userQuery, waitingPhotos);
   if (!classifier) {
-    return planWithPlanner(planner, userQuery, openQuestions, abortPlanner.signal);
+    return planWithPlanner(planner, userQuery, openQuestions, waitingPhotos, namedPhotos, abortPlanner.signal);
   }
+  // A photo he says is on its way — "I'll send you a receipt, add it to the list" — does not count:
+  // it names no photo, and usually none is waiting, so the classifier may route the rest of such a
+  // request on its own. That is left as it is on purpose. The voice agent is told to route nothing
+  // until the photo arrives (`elevenlabs/src/assets/agent-prompt.md`), so such a request reaches here
+  // only when it slipped through, and what the planner makes of one it is left (`awaitsPhoto`) is the
+  // backstop, not the path.
+  const photosInPlay = waitingPhotos.length > 0 || NAMES_A_PHOTO.test(userQuery);
 
   // Before either starts, so nothing is awaited between starting the planner and handling it.
   // Services are cached, and an empty list when Home Assistant is slow, so this never waits long.
   const [agents, services] = await Promise.all([getRoutableAgents(), getHomeServices()]);
-  const planned = planWithPlanner(planner, userQuery, openQuestions, abortPlanner.signal);
+  const planned = planWithPlanner(planner, userQuery, openQuestions, waitingPhotos, namedPhotos, abortPlanner.signal);
   const abortClassifier = new AbortController();
   const classified = classifyRequest(
     classifier,
@@ -404,7 +569,9 @@ export async function planDelegations(
     const decision = await preferFastPlan(
       planned,
       classified.then((classification) =>
-        classification ? decisionFromClassification(classification, userQuery) : undefined,
+        classification && (!photosInPlay || classification.endsCall)
+          ? decisionFromClassification(classification, userQuery)
+          : undefined,
       ),
     );
     if (runningRequest === undefined || decision.relationToRunningRequest) {

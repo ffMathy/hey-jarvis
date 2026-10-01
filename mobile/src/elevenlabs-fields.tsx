@@ -1,29 +1,49 @@
 import { type ElevenLabsSettings, parseElevenLabsSettings } from 'hologram';
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { type JarvisServerAddressChange, parseJarvisServerAddress } from './jarvis-server';
 import { theme } from './theme';
 
 interface ElevenLabsFieldsProps {
   /** What to start with, when there is already something stored. */
   settings: ElevenLabsSettings | undefined;
+  /**
+   * Whether to ask for the Jarvis server's address as well, and the one read if one was — which is
+   * not always the one stored, since a read can fail. The settings screen asks; the tour does not,
+   * because photos are something to add once Jarvis works, not something to learn about before he
+   * does.
+   */
+  server?: { storedAddress: string | undefined };
   /** What the button says. "Save" on the settings screen; "Continue" on the tour. */
   submitLabel: string;
-  /** Called with values that parsed. Nothing is reported upwards until they do. */
-  onSubmit: (settings: ElevenLabsSettings) => void;
+  /**
+   * Called with values that parsed — and, where the Jarvis server is asked for and sir changed it,
+   * the change. Nothing is reported upwards until everything on the form parses, so a form with one
+   * bad field saves none of them.
+   */
+  onSubmit: (settings: ElevenLabsSettings, serverAddressChange: JarvisServerAddressChange | undefined) => void;
 }
 
 /**
- * The two values, the note about where they are kept, and the button that accepts them.
+ * The two values, the note about where they are kept, and the button that accepts them — and, on
+ * the settings screen, the Jarvis server's address beside them.
  *
  * Extracted because there are now two screens that ask for them — the settings screen and the
  * credentials step of the first-run tour — and two copies of a field that must not autofill, must
  * not autocorrect and must be validated the same way is two copies of four decisions that are easy
  * to get subtly different. The test IDs live here too, so the end-to-end suite sees one form
  * whichever screen is showing it.
+ *
+ * **The Jarvis server is here rather than on a form of its own** so that one button saves the
+ * screen and one line says what is wrong with it. It is sir's own server rather than ElevenLabs',
+ * it is no secret, and it goes nowhere near the watch: see `jarvis-server.ts`.
  */
-export function ElevenLabsFields({ settings, submitLabel, onSubmit }: ElevenLabsFieldsProps) {
+export function ElevenLabsFields({ settings, server, submitLabel, onSubmit }: ElevenLabsFieldsProps) {
   const [apiKey, setApiKey] = useState(settings?.apiKey ?? '');
   const [agentId, setAgentId] = useState(settings?.agentId ?? '');
+  const [serverAddress, setServerAddress] = useState(server?.storedAddress ?? '');
+  /** The address the field started from, which is what a save is measured against. See `submit`. */
+  const [startingServerAddress] = useState(server?.storedAddress);
   const [problem, setProblem] = useState<string | undefined>(undefined);
 
   const submit = () => {
@@ -34,8 +54,21 @@ export function ElevenLabsFields({ settings, submitLabel, onSubmit }: ElevenLabs
       return;
     }
 
+    // Read only where it was asked for, so the tour can never overwrite an address it did not show.
+    const serverResult = server ? parseJarvisServerAddress(serverAddress) : { address: undefined };
+    if ('problem' in serverResult) {
+      setProblem(serverResult.problem);
+      return;
+    }
+
+    // And reported only if it differs from what the field started from. An address that could not
+    // be read starts the field empty, so saving the field as it stood would erase an address that had
+    // only failed to load, when sir came here to change the agent ID.
+    const serverAddressChange =
+      server && serverResult.address !== startingServerAddress ? { address: serverResult.address } : undefined;
+
     setProblem(undefined);
-    onSubmit(result.settings);
+    onSubmit(result.settings, serverAddressChange);
   };
 
   return (
@@ -81,6 +114,30 @@ export function ElevenLabsFields({ settings, submitLabel, onSubmit }: ElevenLabs
           placeholderTextColor={theme.colors.mutedText}
         />
       </View>
+
+      {server ? (
+        <View style={styles.field}>
+          <Text style={styles.label}>Jarvis server</Text>
+          <Text style={styles.explanation}>
+            Optional: the address of your own Jarvis server, to send him photos from the camera button beside him. Leave
+            it empty and there is no camera.
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={serverAddress}
+            onChangeText={setServerAddress}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            // Not a secret, but not a login either: autofill would offer it as the key's username.
+            autoComplete="off"
+            importantForAutofill="no"
+            placeholder="https://jarvis.example.com"
+            testID="jarvis-server"
+            placeholderTextColor={theme.colors.mutedText}
+          />
+        </View>
+      ) : null}
 
       {problem ? (
         <Text style={styles.problem} testID="settings-problem">

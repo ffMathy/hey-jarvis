@@ -8,8 +8,12 @@ This directory contains all test files for the ElevenLabs integration project.
 tests/
 ├── specs/          # Test specification files
 │   ├── agent-prompt.integration.spec.ts          # live — needs credentials + tunnel
+│   ├── camera.integration.spec.ts                # live — needs credentials + tunnel
 │   ├── routing-orchestration.integration.spec.ts # live — needs credentials + tunnel
 │   ├── acknowledgement-timing.spec.ts            # offline
+│   ├── agent-config.spec.ts                      # offline
+│   ├── conversation-config-body.spec.ts          # offline
+│   ├── procedure-version-refs.spec.ts            # offline
 │   ├── routing-loop.spec.ts                      # offline
 │   ├── spoken-tool-call.spec.ts                  # offline
 │   └── retry-with-backoff.spec.ts                # offline
@@ -36,8 +40,10 @@ The MCP server lifecycle (`mcp-server-manager.ts`) and the retry helper
 
 Test utility functions are located in `tests/utils/`:
 - `test-conversation.ts` - Conversation testing framework
-- `conversation-strategy.ts` - Base conversation strategy interface
-- `elevenlabs-conversation-strategy.ts` - ElevenLabs WebSocket strategy
+- `conversation-strategy.ts` - Base conversation strategy interface, the message log's
+  types, and the transcript the evaluator reads
+- `elevenlabs-conversation-strategy.ts` - ElevenLabs WebSocket strategy. Besides messages, it
+  can send a contextual update, background that starts no turn, as the phone does
 - `gemini-mastra-conversation-strategy.ts` - Gemini/Mastra evaluation strategy
 - `mcp-connection.ts` - Whether the agent actually reached its MCP server, so an
   eval never scores a conversation that had no tools to call
@@ -47,8 +53,10 @@ Test utility functions are located in `tests/utils/`:
   reports contradict
 - `spoken-tool-call.ts` - Detects an agent reciting a tool call instead of making one
 - `test-environment.ts` - Brings the MCP server and tunnel up and down around a
-  spec file. Both halves live here because both spec files share the same ports,
-  so the teardown of one has to finish before the setup of the next begins
+  spec file. Both halves live here because every live spec file (agent-prompt,
+  camera, routing-orchestration) shares the same ports, so the teardown of one has
+  to finish before the setup of the next begins. Also
+  `withConversationRetry`, which holds a fresh conversation for each attempt
 - `acknowledgement-timing.ts` - Whether the user heard anything before the results,
   and whether he was told twice that he is being attended to
 - `tunnel-manager.ts` - Cloudflare tunnel management
@@ -107,10 +115,49 @@ Tests start the MCP server and Cloudflare tunnel, and only then deploy the test
 agent. ElevenLabs reads the agent's MCP tool list when the agent is updated, so
 deploying before the tunnel is up leaves the agent with no tools to call.
 
-`spoken-tool-call.spec.ts`, `acknowledgement-timing.spec.ts`, `routing-loop.spec.ts`
-and `retry-with-backoff.spec.ts` need none of this — they are pure logic and run
-offline, so they still give useful signal when the credentials or the tunnel are
-unavailable.
+`spoken-tool-call.spec.ts`, `acknowledgement-timing.spec.ts`, `routing-loop.spec.ts`,
+`retry-with-backoff.spec.ts`, `procedure-version-refs.spec.ts`,
+`conversation-config-body.spec.ts` and `agent-config.spec.ts` need none of this — they
+are pure logic and run offline, so they still give useful signal when the credentials or
+the tunnel are unavailable.
+
+`agent-config.spec.ts` guards the committed config rather than a detector. The deploy
+runs only after a merge to `main`, and the apps' own specs are cached by turbo until their
+package changes, so a change to `agent-config.json` alone is never run past them. The spec
+holds it to what the devices assume: every client event is one ElevenLabs sends,
+`mcp_tool_call` — which the apps' thinking phase follows — is among them, and the agent
+declares no client tool, since no device answers one. It also holds the one exception to
+hanging up after a finished request — a photo sir said he would send, or has opened the camera
+for, on a device that has said it has a camera button, until the photo, a message that it did not
+arrive, a note that he closed the camera without one, or his word that it is not coming settles
+it — to being stated in the same phrases wherever that rule is: in the prompt's **When Sir Is
+Silent**, and in both copies of the `skip_turn` and `end_call` descriptions, which must match each
+other. Routing's copy is held to the same phrases by `workflows.spec.ts` in `mcp/`. And it holds
+the prompt to sending sir to his phone, without waiting, where there is no camera button, and to
+ending the wait on a camera closed without a photo.
+
+## The camera eval
+
+`camera.integration.spec.ts` stands in for the phone, sending the contextual updates and the message
+the phone sends, word for word. Sir sends a photo with the phone's camera button, never through the
+agent, so what is tested is what Jarvis routes around the phone's "I've sent you a photo (photo
+photo1)." in both orders sir can go about it. Told first — "I'll send you a receipt. What's the
+total?" — the agent must route nothing until the photo's message is in, then route the question
+naming "(photo photo1)". Sent first, with nothing said, the message alone must be routed at once by
+that name. A camera opened straight after a finished request must be waited on: the request is
+answered in full, the camera's note follows at once, and several three-second turn timeouts later
+the agent must have answered them with `skip_turn` and never called `end_call`, and must still route
+the photo when its message comes. The same request with no camera opened after it is the control:
+it must be hung up on within ten seconds. Without it, a harness whose text-only conversation is
+never asked to speak again would pass the camera case whether or not the exception exists. And
+where no device has said it has a camera button, as on the watch, the Voice speaker or a phone call,
+the announcement must not be routed at all, and the silence after sir is sent to his phone must be
+hung up on.
+
+What was routed, and when, is asserted off the socket, along with the photo's id never being said
+aloud; the evaluator judges what Jarvis said — sending sir to the camera button, or to his phone, and
+never speaking as though he could see a photo he cannot. No photo is really uploaded, so the routed
+look finds none and the answer is never a real total, and the criteria allow for that.
 
 ## The orchestration eval
 
