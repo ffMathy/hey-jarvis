@@ -10,10 +10,10 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { markAsAffectingEntities } from '../../utils/affected-entities.js';
+import { type AffectedEntity, markAsAffectingEntities } from '../../utils/affected-entities.js';
+import { onLiveEvent } from '../../utils/live-events.js';
 import { markAsSlow } from '../../utils/slow-tasks.js';
 import {
-  AFFECTED_ENTITIES_GRACE_MS,
   asRoutingEvents,
   buildSnapshot,
   getRoutingRuntime,
@@ -344,131 +344,66 @@ describe('a delegation whose tool touched things', () => {
     expect(asRoutingEvents(toolResultOutput('somebody-else', 'switchTheSpecLamps', SWITCHED), PLAN)).toEqual([]);
   });
 
-  it('reports each thing once per request, filling in a name a later tool gave it', () => {
+  it('pushes each thing to the devices once per request, again only to name one a later tool named', () => {
     const progress = startedPlan();
-    touch(progress, LOCATION_STEP, { id: 'light.sofa_lamp' }, { id: 'light.porch', name: 'Porch' });
-    touch(progress, WEATHER_STEP, { id: 'light.sofa_lamp', name: 'Sofa lamp' }, { id: 'light.porch' });
+    const pushed = pushedWhile(() => {
+      touch(progress, LOCATION_STEP, { id: 'light.sofa_lamp' }, { id: 'light.porch', name: 'Porch' });
+      touch(progress, WEATHER_STEP, { id: 'light.sofa_lamp', name: 'Sofa lamp' }, { id: 'light.porch' });
+      touch(progress, CALENDAR_STEP, { id: 'light.porch', name: 'Porch' }, { id: 'light.sofa_lamp', name: 'Sofa' });
+    });
 
-    expect(buildSnapshot(progress, { answeringAnyway: true }).newlyAffected).toEqual([
-      { id: 'light.sofa_lamp', name: 'Sofa lamp' },
-      { id: 'light.porch', name: 'Porch' },
+    expect(pushed).toEqual([
+      [{ id: 'light.sofa_lamp' }, { id: 'light.porch', name: 'Porch' }],
+      [{ id: 'light.sofa_lamp', name: 'Sofa lamp' }],
     ]);
-
-    // Handed over by that snapshot, and not reported again when a later tool touches it too.
-    touch(progress, CALENDAR_STEP, { id: 'light.porch', name: 'Porch' });
-    expect(buildSnapshot(progress, { answeringAnyway: true }).newlyAffected).toEqual([]);
   });
 
-  it(`reports no more than ${MOST_AFFECTED_ENTITIES_PER_REQUEST} things for one request`, () => {
+  it(`pushes no more than ${MOST_AFFECTED_ENTITIES_PER_REQUEST} things for one request`, () => {
     const progress = startedPlan();
     const lights = Array.from({ length: 30 }, (_, index) => ({ id: `light.number_${index}` }));
-    touch(progress, LOCATION_STEP, ...lights.slice(0, 15));
-    touch(progress, LOCATION_STEP, ...lights.slice(15));
+    const pushed = pushedWhile(() => {
+      touch(progress, LOCATION_STEP, ...lights.slice(0, 15));
+      touch(progress, LOCATION_STEP, ...lights.slice(15));
+    });
 
-    expect(buildSnapshot(progress, { answeringAnyway: true }).newlyAffected).toEqual(
-      lights.slice(0, MOST_AFFECTED_ENTITIES_PER_REQUEST),
-    );
+    expect(pushed.flat()).toEqual(lights.slice(0, MOST_AFFECTED_ENTITIES_PER_REQUEST));
   });
 
-  it('is not recorded once the user has asked to be notified, since no poll is left to carry it', () => {
+  it('pushes them even once the user has asked to be notified, since no poll carries them any more', () => {
     const progress = startedPlan();
     progress.notifyWhenDone = true;
-    touch(progress, LOCATION_STEP, { id: 'light.sofa_lamp' });
+    const pushed = pushedWhile(() => touch(progress, LOCATION_STEP, { id: 'light.sofa_lamp' }));
 
-    expect(buildSnapshot(progress, { answeringAnyway: true }).newlyAffected).toEqual([]);
+    expect(pushed).toEqual([[{ id: 'light.sofa_lamp' }]]);
   });
-});
 
-/**
- * When what a request touched may end a poll by itself.
- *
- * A response that carries nothing else costs the voice model a whole step on every device, the ones
- * that light nothing up included -- so only the request's first things touched may end a poll alone,
- * and only once `AFFECTED_ENTITIES_GRACE_MS` has given a result the chance to go out with them.
- */
-describe('things touched, and a poll parked on the request', () => {
-  function touch(progress: RoutingProgress, delegationId: string, ...entities: { id: string; name?: string }[]) {
-    progress.handle({ type: 'delegation_affected_entities', delegationId, entities });
-  }
-
-  /** Parks a poll on the request, and says whether it has been woken. */
-  function park(progress: RoutingProgress) {
+  it('pushes them the moment they are reported, and never wakes a poll for them', async () => {
+    const progress = startedPlan();
     const parked = { woken: false };
     void progress.wait().then(() => {
       parked.woken = true;
     });
-    return parked;
-  }
 
-  function sleep(milliseconds: number) {
-    return new Promise((resolve) => setTimeout(resolve, milliseconds));
-  }
+    const pushed = pushedWhile(() => touch(progress, LOCATION_STEP, { id: 'light.sofa_lamp' }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
-  it('wakes it for the first things touched once the grace window has passed, not before', async () => {
-    const progress = startedPlan();
-    const parked = park(progress);
-
-    touch(progress, LOCATION_STEP, { id: 'light.sofa_lamp' });
-    await sleep(AFFECTED_ENTITIES_GRACE_MS / 2);
+    expect(pushed).toEqual([[{ id: 'light.sofa_lamp' }]]);
     expect(parked.woken).toBe(false);
-    // Nor may a poll arriving meanwhile take them alone.
-    expect(buildSnapshot(progress).newlyAffected).toEqual([]);
-
-    await sleep(AFFECTED_ENTITIES_GRACE_MS / 2 + 100);
-    expect(parked.woken).toBe(true);
-    expect(buildSnapshot(progress).newlyAffected).toEqual([{ id: 'light.sofa_lamp' }]);
-  });
-
-  it('wakes it at once for a result landing inside the window, which carries the things with it', async () => {
-    const progress = startedPlan();
-    const parked = park(progress);
-
-    touch(progress, LOCATION_STEP, { id: 'light.sofa_lamp' });
-    progress.handle({ type: 'delegation_end', delegationId: LOCATION_STEP, result: { text: 'On.' }, isError: false });
-    await Promise.resolve();
-
-    expect(parked.woken).toBe(true);
-    const snapshot = buildSnapshot(progress);
-    expect(snapshot.landed.map((outcome) => outcome.taskId)).toEqual(['location']);
-    expect(snapshot.newlyAffected).toEqual([{ id: 'light.sofa_lamp' }]);
-  });
-
-  it('never wakes it for things touched after the first ones were handed over', async () => {
-    const progress = startedPlan();
-    touch(progress, LOCATION_STEP, { id: 'light.sofa_lamp' });
-    await sleep(AFFECTED_ENTITIES_GRACE_MS + 50);
-    expect(buildSnapshot(progress).newlyAffected).toEqual([{ id: 'light.sofa_lamp' }]);
-
-    const parked = park(progress);
-    touch(progress, WEATHER_STEP, { id: 'light.porch', name: 'Porch' });
-    await sleep(AFFECTED_ENTITIES_GRACE_MS + 50);
-
-    expect(parked.woken).toBe(false);
-    expect(buildSnapshot(progress).newlyAffected).toEqual([]);
-  });
-
-  it('carries later things on the next report, or on a poll that answers anyway', () => {
-    const progress = startedPlan();
-    touch(progress, LOCATION_STEP, { id: 'light.sofa_lamp' });
-    buildSnapshot(progress, { answeringAnyway: true });
-
-    touch(progress, LOCATION_STEP, { id: 'light.porch' });
-    progress.handle({ type: 'delegation_end', delegationId: LOCATION_STEP, result: { text: 'On.' }, isError: false });
-    expect(buildSnapshot(progress).newlyAffected).toEqual([{ id: 'light.porch' }]);
-
-    touch(progress, WEATHER_STEP, { id: 'light.garden' });
-    expect(buildSnapshot(progress).newlyAffected).toEqual([]);
-    expect(buildSnapshot(progress, { answeringAnyway: true }).newlyAffected).toEqual([{ id: 'light.garden' }]);
-  });
-
-  it('carries whatever is left on the closing report', () => {
-    const progress = startedPlan();
-    touch(progress, LOCATION_STEP, { id: 'light.sofa_lamp' });
-    progress.handle({ type: 'finished' });
-
-    expect(buildSnapshot(progress).newlyAffected).toEqual([{ id: 'light.sofa_lamp' }]);
+    expect(buildSnapshot(progress).landed).toEqual([]);
   });
 });
+
+/** The entities every `affectedEntities` event published while `act` ran carried, one list per event. */
+function pushedWhile(act: () => void): AffectedEntity[][] {
+  const pushed: AffectedEntity[][] = [];
+  const stop = onLiveEvent((event) => pushed.push(event.entities));
+  try {
+    act();
+  } finally {
+    stop();
+  }
+  return pushed;
+}
 
 describe('a plan run, folded', () => {
   it('names every delegation as outstanding before a single step has run', () => {

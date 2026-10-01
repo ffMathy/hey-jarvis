@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import WebSocket from 'ws';
+import { publishLiveEvent } from '../../utils/live-events.js';
 import {
   attachLiveSocket,
   LIVE_SOCKET_CLOSE_CODES,
@@ -72,21 +73,57 @@ function hello(conversationId = CONVERSATION_ID): string {
 }
 
 describe('the live socket', () => {
-  it('says ready to any hello, asking nobody, and is sent what concerns that conversation', async () => {
+  it('says ready to any hello, asking nobody, and then sends it every live event', async () => {
     const { url } = await serve();
     const socket = await connect(url());
 
     const ready = nextEvent(socket);
     socket.send(hello());
     expect(await ready).toEqual({ message: { type: 'ready' } });
+    expect(live?.listening).toBe(1);
 
     const sent = nextEvent(socket);
-    expect(live?.send(CONVERSATION_ID, { type: 'ready' })).toBe(1);
-    expect(await sent).toEqual({ message: { type: 'ready' } });
-    expect(live?.send('conv_someoneelse0000', { type: 'ready' })).toBe(0);
+    publishLiveEvent({
+      type: 'affectedEntities',
+      entities: [{ id: 'light.kitchen_ceiling', name: 'Kitchen ceiling' }],
+    });
+    expect(await sent).toEqual({
+      message: { type: 'affectedEntities', entities: [{ id: 'light.kitchen_ceiling', name: 'Kitchen ceiling' }] },
+    });
   });
 
-  it('stops sending to a socket once it has closed', async () => {
+  it('sends every socket that has said hello the same event, whatever conversation it named', async () => {
+    const { url } = await serve();
+    const sockets = await Promise.all([connect(url()), connect(url())]);
+    await Promise.all(
+      sockets.map((socket, index) => {
+        const ready = nextEvent(socket);
+        socket.send(hello(`conv_00000000000${index}`));
+        return ready;
+      }),
+    );
+
+    const received = sockets.map((socket) => nextEvent(socket));
+    publishLiveEvent({ type: 'affectedEntities', entities: [{ id: 'calendar.family' }] });
+    for (const event of await Promise.all(received)) {
+      expect(event).toEqual({ message: { type: 'affectedEntities', entities: [{ id: 'calendar.family' }] } });
+    }
+  });
+
+  it('sends nothing to a socket that has not said hello yet', async () => {
+    const { url } = await serve();
+    const socket = await connect(url());
+    const frames: unknown[] = [];
+    socket.on('message', (data) => frames.push(JSON.parse(data.toString())));
+
+    publishLiveEvent({ type: 'affectedEntities', entities: [{ id: 'light.hall' }] });
+    const ready = nextEvent(socket);
+    socket.send(hello());
+    await ready;
+    expect(frames).toEqual([{ type: 'ready' }]);
+  });
+
+  it('stops sending to a socket once it has closed, and stops listening for events once closed itself', async () => {
     const { url } = await serve();
     const socket = await connect(url());
     const ready = nextEvent(socket);
@@ -100,7 +137,8 @@ describe('the live socket', () => {
     for (let attempt = 0; attempt < 50 && live?.size; attempt++) {
       await Bun.sleep(5);
     }
-    expect(live?.send(CONVERSATION_ID, { type: 'ready' })).toBe(0);
+    expect(live?.listening).toBe(0);
+    publishLiveEvent({ type: 'affectedEntities', entities: [{ id: 'light.hall' }] });
   });
 
   it('closes a socket whose first frame is not a hello naming a conversation', async () => {

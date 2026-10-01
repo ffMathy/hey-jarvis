@@ -4,6 +4,7 @@ import { uniq, uniqBy } from 'lodash-es';
 import { z } from 'zod';
 import { type AffectedEntity, readAffectedEntities } from '../../utils/affected-entities.js';
 import type { DirectAnswerOutcome } from '../../utils/direct-lookup-factory.js';
+import { publishLiveEvent } from '../../utils/live-events.js';
 import { logger } from '../../utils/logger.js';
 import { isSlowTask } from '../../utils/slow-tasks.js';
 import { dismissPhoto, findPhoto, photosWaiting, unmarkPhotoLookedAt } from '../vision/photos.js';
@@ -87,40 +88,11 @@ export type RoutingEvent =
 /**
  * The most things one request reports as touched.
  *
- * Each is copied by the voice model into a `markAffected` call, token by token, on the path to
- * sir's answer, and a request that switched off a whole floor has already said all it needs to by
- * the twentieth light. The rest are dropped rather than queued: a glow that arrives after the
- * answer lights up nothing.
+ * Each is pushed to every device holding a socket open (`utils/live-events.ts`), and a request that
+ * switched off a whole floor has already said all it needs to by the twentieth light. The rest are
+ * dropped.
  */
 export const MOST_AFFECTED_ENTITIES_PER_REQUEST = 20;
-
-/**
- * How long a request's first things touched wait for company before a parked poll returns with them
- * alone.
- *
- * A response that carries nothing but entities costs the voice model a whole step -- call
- * `markAffected`, then poll again -- and costs it on every device, because routing is never told
- * whether the conversation is on the headset or on a phone, a watch or a speaker that lights nothing
- * up. The usual shape of a command is a tool answering and the agent's own answer a moment later, so
- * holding the first batch this long lets that answer, or the closing report, go out in the same
- * response, and the extra step never happens.
- *
- * The price is the glow: when nothing else arrives in time, the headset lights the first thing this
- * much later than it could have. Under half a second is well inside how long the work itself takes,
- * and it buys back a step of the voice model that costs a second or more. Longer would spare the
- * step for slower agents too, but leave the glow visibly late; shorter would spare it less often.
- */
-export const AFFECTED_ENTITIES_GRACE_MS = 450;
-
-/** How much of what is waiting a poll takes. */
-export interface PollOptions {
-  /**
-   * Whether the poll is going to answer with whatever it finds -- it has run out its deadline, or it
-   * is the reply to sir accepting the offer to be notified -- so things touched that could not end a
-   * poll by themselves ride on that answer rather than waiting for a later one.
-   */
-  answeringAnyway?: boolean;
-}
 
 /** One delegation that has finished, as the poll loop reports it. */
 export interface DelegationOutcome {
@@ -204,36 +176,11 @@ export class RoutingProgress {
   /** Every task that started something slow, so each is announced once. */
   private readonly slowTaskIds = new Set<string>();
   /**
-   * Things the request's tools have read or changed, which the caller has not been told about yet.
-   *
-   * What they are for -- a glow on sir's headset around the thing being worked on -- is only worth
-   * anything while the work is still going on, so the request's first ones may end a poll by
-   * themselves (see {@link affectedEntitiesMayEndAPoll}). Every later one rides on the next report.
+   * Each thing this request has reported as touched, and whether it was reported with a name, so that
+   * none is reported twice -- unless a later tool names one an earlier tool only gave the id of -- and
+   * the total stays within {@link MOST_AFFECTED_ENTITIES_PER_REQUEST}.
    */
-  unannouncedAffectedEntities: AffectedEntity[] = [];
-  /**
-   * Each thing this request has reported as touched, so that none is reported twice and the total
-   * stays within {@link MOST_AFFECTED_ENTITIES_PER_REQUEST}.
-   */
-  private readonly affectedEntityIds = new Set<string>();
-  /**
-   * Whether any of the things this request touched have been handed to the caller.
-   *
-   * From then on a thing touched never ends a poll by itself. Each such response costs the voice
-   * model a step on every device, the ones that light nothing up included, and the first glow is the
-   * one that tells sir what Jarvis is working on; later things go out with the next report instead.
-   */
-  private affectedEntitiesHandedOver = false;
-  /** Runs out {@link AFFECTED_ENTITIES_GRACE_MS} after the request's first things touched arrive. */
-  private firstAffectedEntitiesGrace?: ReturnType<typeof setTimeout>;
-  /**
-   * Whether the first things touched have waited out {@link AFFECTED_ENTITIES_GRACE_MS}.
-   *
-   * A flag the timer sets, rather than a comparison of clocks, because a timer can fire a moment
-   * before the millisecond clock agrees it is due -- and a poll woken to find the window not quite
-   * over would park again with nothing left to wake it before its deadline.
-   */
-  private firstAffectedEntitiesGraceOver = false;
+  private readonly affectedEntityNamed = new Map<string, boolean>();
   /**
    * Whether the user asked to be notified when this request is done.
    *
@@ -288,47 +235,12 @@ export class RoutingProgress {
 
   /** Resolves when there is something new to say, or the request has ended. */
   wait(): Promise<void> {
-    if (
-      this.pending.length > 0 ||
-      this.unannouncedSlowTaskIds.length > 0 ||
-      this.affectedEntitiesMayEndAPoll() ||
-      this.error ||
-      this.isFinished()
-    ) {
+    if (this.pending.length > 0 || this.unannouncedSlowTaskIds.length > 0 || this.error || this.isFinished()) {
       return Promise.resolve();
     }
     return new Promise<void>((resolve) => {
       this.waiters.push(resolve);
     });
-  }
-
-  /**
-   * Whether the things touched that are waiting are enough, on their own, for a poll to return with.
-   *
-   * Only the request's first ones are, and only once they have waited out
-   * {@link AFFECTED_ENTITIES_GRACE_MS}, so that the answer which usually follows close behind them
-   * goes out in the same response. Anything else a poll reports carries them regardless.
-   */
-  affectedEntitiesMayEndAPoll(): boolean {
-    return (
-      this.firstAffectedEntitiesGraceOver &&
-      !this.affectedEntitiesHandedOver &&
-      this.unannouncedAffectedEntities.length > 0
-    );
-  }
-
-  /**
-   * Hands the things touched that are waiting to the caller, and marks the request as having told
-   * it some, after which nothing touched ends a poll by itself.
-   */
-  takeUnannouncedAffectedEntities(): AffectedEntity[] {
-    const taken = this.unannouncedAffectedEntities;
-    this.unannouncedAffectedEntities = [];
-    if (taken.length > 0) {
-      this.affectedEntitiesHandedOver = true;
-      clearTimeout(this.firstAffectedEntitiesGrace);
-    }
-    return taken;
   }
 
   /**
@@ -468,41 +380,31 @@ export class RoutingProgress {
   }
 
   /**
-   * Records what a delegation's tool touched, each thing once.
-   *
-   * The request's first things touched wake a parked poll once {@link AFFECTED_ENTITIES_GRACE_MS} has
-   * passed, unless something else has carried them out by then; nothing touched later wakes one at
-   * all (see {@link affectedEntitiesMayEndAPoll}).
-   *
-   * Nothing is recorded once the user has asked to be notified: the conversation has moved on, and
-   * no poll is left to carry it to his headset.
+   * Tells sir's devices what a delegation's tool touched, the moment it is reported: each thing once,
+   * and again only when a later tool names one that was reported without a name -- the name is the
+   * only label the headset has for it.
    */
   private handleDelegationAffectedEntities(
     event: Extract<RoutingEvent, { type: 'delegation_affected_entities' }>,
   ): void {
-    if (this.notifyWhenDone) {
-      return;
-    }
-
     const fresh: AffectedEntity[] = [];
     for (const entity of event.entities) {
-      if (this.affectedEntityIds.has(entity.id)) {
-        // A later tool can name a thing an earlier one only gave the id of, and a name not yet
-        // handed over is still worth having -- it is the only label the headset has for it.
-        const waiting = this.unannouncedAffectedEntities.find((unannounced) => unannounced.id === entity.id);
-        if (waiting && !waiting.name && entity.name) {
-          waiting.name = entity.name;
+      const named = this.affectedEntityNamed.get(entity.id);
+      if (named !== undefined) {
+        if (!named && entity.name) {
+          this.affectedEntityNamed.set(entity.id, true);
+          fresh.push(entity);
         }
         continue;
       }
-      if (this.affectedEntityIds.size >= MOST_AFFECTED_ENTITIES_PER_REQUEST) {
+      if (this.affectedEntityNamed.size >= MOST_AFFECTED_ENTITIES_PER_REQUEST) {
         logger.info('Dropping things a request touched past the most it reports', {
           delegationId: event.delegationId,
           most: MOST_AFFECTED_ENTITIES_PER_REQUEST,
         });
         break;
       }
-      this.affectedEntityIds.add(entity.id);
+      this.affectedEntityNamed.set(entity.id, entity.name !== undefined);
       fresh.push(entity);
     }
 
@@ -515,14 +417,7 @@ export class RoutingProgress {
       entityIds: fresh.map((entity) => entity.id),
       elapsedMs: this.elapsedMs(),
     });
-    this.unannouncedAffectedEntities.push(...fresh);
-
-    if (!this.affectedEntitiesHandedOver && this.firstAffectedEntitiesGrace === undefined) {
-      this.firstAffectedEntitiesGrace = setTimeout(() => {
-        this.firstAffectedEntitiesGraceOver = true;
-        this.wake();
-      }, AFFECTED_ENTITIES_GRACE_MS);
-    }
+    publishLiveEvent({ type: 'affectedEntities', entities: fresh });
   }
 
   /** How long ago the request was started. */
@@ -616,8 +511,6 @@ export interface RoutingSnapshot {
   awaitsPhoto: boolean;
   /** Tasks that have started something slow since the last poll. */
   newlySlow: string[];
-  /** Things the request has read or changed that this poll hands over -- see {@link buildSnapshot}. */
-  newlyAffected: AffectedEntity[];
   /** How the planner said the request should be answered. */
   responseStyle: ResponseStyle;
   /** Set when the request was a goodbye, or only stopped the one before it. */
@@ -630,25 +523,13 @@ export interface RoutingSnapshot {
  *
  * Taking a snapshot hands its `landed` outcomes over, so one must not be taken and
  * discarded -- those results would never be reported again.
- *
- * Things touched are handed over with anything else the snapshot reports, on a poll that answers
- * anyway, and on their own only when {@link RoutingProgress.affectedEntitiesMayEndAPoll} says so.
- * Otherwise they stay waiting for whichever report comes next, which is what keeps a thing touched
- * from ending a poll that would cost the voice model a step for nothing but a glow.
  */
-export function buildSnapshot(progress: RoutingProgress, options: PollOptions = {}): RoutingSnapshot {
+export function buildSnapshot(progress: RoutingProgress): RoutingSnapshot {
   const landed = progress.pending;
   progress.pending = [];
   const newlySlow = progress.unannouncedSlowTaskIds;
   progress.unannouncedSlowTaskIds = [];
   const finished = progress.isFinished();
-  const handsOverAffectedEntities =
-    options.answeringAnyway === true ||
-    finished ||
-    landed.length > 0 ||
-    newlySlow.length > 0 ||
-    progress.affectedEntitiesMayEndAPoll();
-  const newlyAffected = handsOverAffectedEntities ? progress.takeUnannouncedAffectedEntities() : [];
 
   return {
     landed,
@@ -664,7 +545,6 @@ export function buildSnapshot(progress: RoutingProgress, options: PollOptions = 
     // the camera for it.
     awaitsPhoto: progress.awaitsPhoto && !photoKeptSince(progress.awaitsPhotoSince),
     newlySlow,
-    newlyAffected,
     responseStyle: progress.responseStyle,
     ...(progress.conversationControl && { conversationControl: progress.conversationControl }),
     error: progress.error,
@@ -683,7 +563,7 @@ export interface RoutingRuntime {
   /** Starts a request, replacing anything the session was already doing. */
   start(sessionId: string, userQuery: string): Promise<void>;
   /** What the caller has not been told yet, and what is still outstanding. See {@link buildSnapshot}. */
-  poll(sessionId: string, options?: PollOptions): Promise<RoutingSnapshot>;
+  poll(sessionId: string): Promise<RoutingSnapshot>;
   /** Resolves when the request next changes, or after `deadlineMs`. */
   waitForChange(sessionId: string, deadlineMs: number): Promise<void>;
   /**
@@ -1698,8 +1578,8 @@ const planRuntime: RoutingRuntime = {
     return true;
   },
 
-  async poll(sessionId, options) {
-    return buildSnapshot(progressFor(resolvePolledSessionId(sessionId)), options);
+  async poll(sessionId) {
+    return buildSnapshot(progressFor(resolvePolledSessionId(sessionId)));
   },
 
   async waitForChange(sessionId, deadlineMs) {

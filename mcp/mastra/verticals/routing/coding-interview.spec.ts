@@ -131,9 +131,7 @@ interface PollResponse {
 /**
  * The openings a response has when it closes a request, and only then.
  *
- * Searched for rather than expected at the start: a response that also carries what the request
- * touched opens with the markAffected instruction instead (see `MARK_AFFECTED_INSTRUCTIONS`), and the
- * coding agent's implementation workflow reports the repository it works on.
+ * Searched for rather than expected at the start, since another instruction may come first.
  */
 const CLOSING_OPENINGS = ['All tasks have completed', 'The request could not be completed', 'Part of this request'];
 

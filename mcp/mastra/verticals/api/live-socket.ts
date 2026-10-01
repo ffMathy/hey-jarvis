@@ -2,6 +2,7 @@ import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { type RawData, type WebSocket, WebSocketServer } from 'ws';
 import { z } from 'zod';
+import { type LiveEvent, onLiveEvent } from '../../utils/live-events.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -16,18 +17,20 @@ import { logger } from '../../utils/logger.js';
  * **Public and unauthenticated.** The server checks nothing: whoever opens a socket and says hello
  * is told what concerns the conversation it names. Who may reach {@link LIVE_SOCKET_PATH} at all is
  * left to Cloudflare Zero Trust in front of the tunnel (see "MCP Server Access" in `mcp/AGENTS.md`).
- * The hello is not a credential, only an address: it says which conversation a socket is for, so
- * the server knows where to send what it has to say.
+ * The hello is not a credential: it says which conversation and device a socket is for, for the log.
  *
  * **The protocol**, one JSON object per text frame:
  *
  * | Direction | Message | Meaning |
  * | --- | --- | --- |
  * | device → server | `{ type: "hello", conversationId, device }` | The first frame, within {@link HELLO_TIMEOUT_MS} |
- * | server → device | `{ type: "ready" }` | This socket will now be told what concerns that conversation |
+ * | server → device | `{ type: "ready" }` | This socket will now be sent every live event |
+ * | server → device | `{ type: "affectedEntities", entities: [{ id, name? }] }` | A request's tool just read or changed these |
  *
- * Everything else a device sends after `ready` is ignored, so a device built for a later version of
- * this protocol can still be talked to. A refusal is a close, with one of {@link LIVE_SOCKET_CLOSE_CODES}.
+ * Every event published on `utils/live-events.ts` goes to every socket that has said hello: a
+ * device subscribes by holding a socket open, and acts on the events it cares about. Everything else
+ * a device sends after its hello is ignored, so a device built for a later version of this protocol
+ * can still be talked to. A refusal is a close, with one of {@link LIVE_SOCKET_CLOSE_CODES}.
  *
  * **Bounded for the Pi.** At most {@link MAX_LIVE_SOCKETS} at once, of which a socket still to say
  * hello is one; a frame over {@link MAX_FRAME_BYTES} closes its socket; and every socket is pinged
@@ -74,13 +77,13 @@ const helloSchema = z.object({
   device: z.enum(LIVE_SOCKET_DEVICES).optional(),
 });
 
-/** What the server sends a device. */
-export type LiveServerMessage = { type: 'ready' };
+/** What the server sends a device: `ready` once it has said hello, then every live event. */
+export type LiveServerMessage = { type: 'ready' } | LiveEvent;
 
-/** The open sockets, by the conversation each said hello for. */
+/** The open sockets. */
 export interface LiveSockets {
-  /** Sends `message` to every socket in `conversationId`, and says to how many. */
-  send(conversationId: string, message: LiveServerMessage): number;
+  /** How many have said hello, and are sent every live event. */
+  readonly listening: number;
   /** How many sockets are open, those still to say hello included. */
   readonly size: number;
   /** Closes every socket and stops listening for new ones. */
@@ -129,23 +132,16 @@ function readHello(data: RawData, isBinary: boolean): z.infer<typeof helloSchema
 }
 
 /**
- * Serves {@link LIVE_SOCKET_PATH} on `server`, and hands back the sockets it opens.
+ * Serves {@link LIVE_SOCKET_PATH} on `server`, sends every live event to every socket that has said
+ * hello, and hands back the sockets it opens.
  *
  * Any other upgrade is refused: nothing else on this server speaks WebSocket.
  */
 export function attachLiveSocket(server: Server, options: LiveSocketOptions = {}): LiveSockets {
   const helloTimeoutMs = options.helloTimeoutMs ?? HELLO_TIMEOUT_MS;
   const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES });
-  const byConversation = new Map<string, Set<WebSocket>>();
+  const listening = new Set<WebSocket>();
   const answeredLastPing = new WeakMap<WebSocket, boolean>();
-
-  const forget = (conversationId: string, socket: WebSocket) => {
-    const conversation = byConversation.get(conversationId);
-    conversation?.delete(socket);
-    if (conversation?.size === 0) {
-      byConversation.delete(conversationId);
-    }
-  };
 
   const welcome = (socket: WebSocket) => {
     let saidHello = false;
@@ -171,10 +167,8 @@ export function attachLiveSocket(server: Server, options: LiveSocketOptions = {}
         return;
       }
 
-      const conversation = byConversation.get(hello.conversationId) ?? new Set<WebSocket>();
-      conversation.add(socket);
-      byConversation.set(hello.conversationId, conversation);
-      socket.once('close', () => forget(hello.conversationId, socket));
+      listening.add(socket);
+      socket.once('close', () => listening.delete(socket));
       logger.info('[Live] Socket ready', { device: hello.device, open: sockets.clients.size });
       socket.send(JSON.stringify({ type: 'ready' } satisfies LiveServerMessage));
     });
@@ -211,23 +205,25 @@ export function attachLiveSocket(server: Server, options: LiveSocketOptions = {}
   }, HEARTBEAT_MS);
   heartbeat.unref();
 
-  return {
-    send: (conversationId, message) => {
-      const conversation = byConversation.get(conversationId);
-      if (!conversation) {
-        return 0;
-      }
-      const frame = JSON.stringify(message);
-      for (const socket of conversation) {
+  const stopListening = onLiveEvent((event) => {
+    const frame = JSON.stringify(event satisfies LiveServerMessage);
+    for (const socket of listening) {
+      if (socket.readyState === socket.OPEN) {
         socket.send(frame);
       }
-      return conversation.size;
+    }
+  });
+
+  return {
+    get listening() {
+      return listening.size;
     },
     get size() {
       return sockets.clients.size;
     },
     close: async () => {
       clearInterval(heartbeat);
+      stopListening();
       server.off('upgrade', onUpgrade);
       for (const socket of sockets.clients) {
         socket.terminate();
