@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.15.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.15.0...mcp-v2.15.1) (2026-10-01)
+
+
+### Performance Improvements
+
+* **mcp:** answer lookups directly with jev, without the agent ([#928](https://github.com/ffMathy/hey-jarvis/issues/928)) ([eee5b62](https://github.com/ffMathy/hey-jarvis/commit/eee5b62018b2ea212869d90bab5aa3db5e341962))
+
 ## [2.15.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.14.0...mcp-v2.15.0) (2026-10-01)
 
 

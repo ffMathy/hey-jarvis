@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.17.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.17.0...root-v4.17.1) (2026-10-01)
+
+
+### Performance Improvements
+
+* **mcp:** answer lookups directly with jev, without the agent ([#928](https://github.com/ffMathy/hey-jarvis/issues/928)) ([eee5b62](https://github.com/ffMathy/hey-jarvis/commit/eee5b62018b2ea212869d90bab5aa3db5e341962))
+
 ## [4.17.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.16.1...root-v4.17.0) (2026-10-01)
 
 
