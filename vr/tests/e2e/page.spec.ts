@@ -146,13 +146,13 @@ test('without CanvasKit the page says it could not get ready, and a room he cann
 
   const primary = page.locator('#primary');
   await expect(primary).toHaveText('Try getting ready again', { timeout: 60000 });
-  await expect(page.getByRole('status')).toContainText('Jarvis could not get ready: his drawing did not load.');
+  await expect(page.locator('#status')).toContainText('Jarvis could not get ready: his drawing did not load.');
 
   // Sample mode needs no models, so it can be tried, and fails the moment he would be drawn.
   const sample = page.getByRole('button', { name: 'Try him in your room' });
   await sample.click();
   await expect.poll(() => page.evaluate(() => window.__jarvis?.phase), { timeout: 60000 }).toBe('failed');
-  await expect(page.getByRole('status')).toContainText('Jarvis could not join you');
+  await expect(page.locator('#status')).toContainText('Jarvis could not join you');
   // Back on the page, able to try again, with no session left open on an empty room.
   await expect(sample).toBeEnabled();
   await expect.poll(() => page.evaluate(() => window.__xrHarness?.device.activeSession !== undefined)).toBe(false);
