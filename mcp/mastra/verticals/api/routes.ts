@@ -297,17 +297,8 @@ function networkOf(address: string): string {
  * `trust proxy` set.
  */
 function whoIsAsking(request: Request): string {
-  return sourceOf(request.get('CF-Connecting-IP'), request.ip);
-}
-
-/**
- * Who is asking, from the `CF-Connecting-IP` header and the socket's own address — see
- * {@link whoIsAsking} for why in that order. For a request Express has not wrapped, such as the
- * upgrade a WebSocket opens with (`live-socket.ts`).
- */
-export function sourceOf(connectingIpHeader: string | undefined, socketAddress: string | undefined): string {
-  const connectingAddress = connectingIpHeader?.trim();
-  const address = connectingAddress && isIP(connectingAddress) ? connectingAddress : socketAddress;
+  const connectingAddress = request.get('CF-Connecting-IP')?.trim();
+  const address = connectingAddress && isIP(connectingAddress) ? connectingAddress : request.ip;
   return networkOf(address ?? 'an unknown address');
 }
 

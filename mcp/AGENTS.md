@@ -3049,13 +3049,12 @@ Cloudflare tunnel and its **Cloudflare Access** application: ElevenLabs and the 
 present a service token (`CF-Access-Client-Id` / `CF-Access-Client-Secret`), and a browser signs in
 with an identity policy.
 
-**`/api/live` must bypass Access too.** It is the WebSocket API (`verticals/api/live-socket.ts`) the
-phone, the watch and the headset keep open while a conversation is live, and none of them holds a
-service token. Add it to the same kind of self-hosted application, with a **Bypass** policy, and make
-sure **WebSockets** are on for the zone (Network → WebSockets). Behind the bypass, a socket hears
-nothing until its first frame names a conversation ElevenLabs reports as live on Jarvis's agent —
-the same check, cache and limits as a photo slot — and the server holds at most 32 sockets at once.
-See [The WebSocket API](#the-websocket-api).
+**`/api/live` is unauthenticated on the server.** It is the WebSocket API
+(`verticals/api/live-socket.ts`) the phone, the watch and the headset keep open while a conversation
+is live; the server checks no credential and tells any socket that says hello what concerns the
+conversation it names. Who may reach it is Cloudflare Zero Trust's to decide, in front of the
+tunnel. **WebSockets** must be on for the zone (Network → WebSockets). The server holds at most 32
+sockets at once. See [The WebSocket API](#the-websocket-api).
 
 **`/api/photos/*` must bypass Access**, as `/artifacts/*` must for the visualize vertical's pages
 (see [Visualize Vertical](#visualize-vertical-shortcuts)). The phone asks for a photo slot there
@@ -3122,13 +3121,11 @@ credentials, and read by the headset from the storage it shares with the phone's
 | Direction | Frame | Meaning |
 | --- | --- | --- |
 | device → server | `{"type":"hello","conversationId":"conv_…","device":"phone"\|"watch"\|"vr"}` | The first frame, within 10 seconds |
-| server → device | `{"type":"ready"}` | The conversation is live on Jarvis's agent; this socket is now told what concerns it |
+| server → device | `{"type":"ready"}` | This socket is now told what concerns that conversation |
 
-A refusal is a close: `4400` a first frame that is not a hello, `4403` a conversation that is not
-live, `4408` no hello in time, `4429` the minute's checks spent or 32 sockets open, `4502` ElevenLabs
-could not confirm it, `4503` no ElevenLabs key or agent on this server — the photo slot's status for
-the same verdict, plus 4000. A device tries again with a growing delay after anything but `4400`,
-`4403` and `4503`. Frames over a kilobyte close their socket (`1009`), and every socket is pinged
+**No authentication**: the hello is an address, not a credential. A refusal is a close: `4400` a
+first frame that is not a hello naming a conversation, `4408` no hello in time; an upgrade past 32
+open sockets is answered `503`. A device tries again with a growing delay after anything but `4400`. Frames over a kilobyte close their socket (`1009`), and every socket is pinged
 every 30 seconds, which also keeps Cloudflare from closing a quiet one after 100.
 
 `attachLiveSocket` hands back the open sockets by conversation, with `send(conversationId, message)`;

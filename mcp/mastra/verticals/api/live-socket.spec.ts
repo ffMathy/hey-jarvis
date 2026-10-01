@@ -2,23 +2,16 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import WebSocket from 'ws';
-import type { ConversationVerdict } from '../vision/index.js';
 import {
   attachLiveSocket,
   LIVE_SOCKET_CLOSE_CODES,
   LIVE_SOCKET_PATH,
-  type LiveSocketDependencies,
+  type LiveSocketOptions,
   type LiveSockets,
   MAX_LIVE_SOCKETS,
 } from './live-socket.js';
 
 const CONVERSATION_ID = 'conv_0123456789abcdef';
-
-/** Who the check was asked about, and for whom. */
-interface CheckCall {
-  conversationId: string;
-  source: string;
-}
 
 let server: Server | undefined;
 let live: LiveSockets | undefined;
@@ -39,27 +32,17 @@ function isAddressInfo(address: string | AddressInfo | null): address is Address
   return typeof address === 'object' && address !== null;
 }
 
-/** A real HTTP server with the live socket on it, answering every check with `verdict`. */
-async function serve(
-  verdict: ConversationVerdict = 'live',
-  dependencies: LiveSocketDependencies = {},
-): Promise<{ url: (path?: string) => string; calls: CheckCall[] }> {
-  const calls: CheckCall[] = [];
+/** A real HTTP server with the live socket on it. */
+async function serve(options: LiveSocketOptions = {}): Promise<{ url: (path?: string) => string }> {
   server = createServer((_request, response) => response.end());
-  live = attachLiveSocket(server, {
-    isLiveJarvisConversation: async (conversationId, source) => {
-      calls.push({ conversationId, source });
-      return verdict;
-    },
-    ...dependencies,
-  });
+  live = attachLiveSocket(server, options);
   await new Promise<void>((resolve) => server?.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   if (!isAddressInfo(address)) {
     throw new Error('The server is not listening on a port');
   }
   const { port } = address;
-  return { url: (path = LIVE_SOCKET_PATH) => `ws://127.0.0.1:${port}${path}`, calls };
+  return { url: (path = LIVE_SOCKET_PATH) => `ws://127.0.0.1:${port}${path}` };
 }
 
 /**
@@ -89,14 +72,13 @@ function hello(conversationId = CONVERSATION_ID): string {
 }
 
 describe('the live socket', () => {
-  it('says ready once the conversation it names is live, and is sent what concerns that conversation', async () => {
-    const { url, calls } = await serve('live');
+  it('says ready to any hello, asking nobody, and is sent what concerns that conversation', async () => {
+    const { url } = await serve();
     const socket = await connect(url());
 
     const ready = nextEvent(socket);
     socket.send(hello());
     expect(await ready).toEqual({ message: { type: 'ready' } });
-    expect(calls).toEqual([{ conversationId: CONVERSATION_ID, source: '127.0.0.1' }]);
 
     const sent = nextEvent(socket);
     expect(live?.send(CONVERSATION_ID, { type: 'ready' })).toBe(1);
@@ -105,7 +87,7 @@ describe('the live socket', () => {
   });
 
   it('stops sending to a socket once it has closed', async () => {
-    const { url } = await serve('live');
+    const { url } = await serve();
     const socket = await connect(url());
     const ready = nextEvent(socket);
     socket.send(hello());
@@ -121,68 +103,45 @@ describe('the live socket', () => {
     expect(live?.send(CONVERSATION_ID, { type: 'ready' })).toBe(0);
   });
 
-  it('counts the asker by CF-Connecting-IP, as the photo slots do', async () => {
-    const { url, calls } = await serve('live');
-    const socket = await connect(url(), { 'CF-Connecting-IP': '203.0.113.7' });
-    const ready = nextEvent(socket);
-    socket.send(hello());
-    await ready;
-    expect(calls[0]?.source).toBe('203.0.113.7');
-  });
-
-  const refusals: [Exclude<ConversationVerdict, 'live'>, number][] = [
-    ['not-live', LIVE_SOCKET_CLOSE_CODES.notLive],
-    ['malformed', LIVE_SOCKET_CLOSE_CODES.badHello],
-    ['too-many-checks', LIVE_SOCKET_CLOSE_CODES.tooMany],
-    ['unverifiable', LIVE_SOCKET_CLOSE_CODES.unverifiable],
-    ['switched-off', LIVE_SOCKET_CLOSE_CODES.switchedOff],
-  ];
-  for (const [verdict, code] of refusals) {
-    it(`closes with ${code} when the check says ${verdict}, and is never sent anything`, async () => {
-      const { url } = await serve(verdict);
-      const socket = await connect(url());
-      const event = nextEvent(socket);
-      socket.send(hello());
-      expect(await event).toEqual({ closed: code });
-      expect(live?.send(CONVERSATION_ID, { type: 'ready' })).toBe(0);
-    });
-  }
-
-  it('closes a socket whose first frame is not a hello, without asking ElevenLabs', async () => {
-    const { url, calls } = await serve('live');
-    for (const frame of ['not json', '{"type":"ready"}', '{"type":"hello"}', '{"type":"hello","conversationId":7}']) {
+  it('closes a socket whose first frame is not a hello naming a conversation', async () => {
+    const { url } = await serve();
+    for (const frame of [
+      'not json',
+      '{"type":"ready"}',
+      '{"type":"hello"}',
+      '{"type":"hello","conversationId":7}',
+      '{"type":"hello","conversationId":"  "}',
+    ]) {
       const socket = await connect(url());
       const event = nextEvent(socket);
       socket.send(frame);
       expect(await event).toEqual({ closed: LIVE_SOCKET_CLOSE_CODES.badHello });
     }
-    expect(calls).toEqual([]);
   });
 
   it('closes a socket that says nothing in time', async () => {
-    const { url } = await serve('live', { helloTimeoutMs: 20 });
+    const { url } = await serve({ helloTimeoutMs: 20 });
     const socket = await connect(url());
     expect(await nextEvent(socket)).toEqual({ closed: LIVE_SOCKET_CLOSE_CODES.helloTimeout });
   });
 
   it('closes a socket that sends more than a hello could be', async () => {
-    const { url, calls } = await serve('live');
+    const { url } = await serve();
     const socket = await connect(url());
     const event = nextEvent(socket);
     socket.send(JSON.stringify({ type: 'hello', conversationId: CONVERSATION_ID, padding: 'x'.repeat(2048) }));
     expect(await event).toEqual({ closed: 1009 });
-    expect(calls).toEqual([]);
   });
 
   it('serves its path in any case, as Express routes it, and nothing else', async () => {
-    const { url } = await serve('live');
+    const { url } = await serve();
     await connect(url(LIVE_SOCKET_PATH.toUpperCase()));
     await connect(url(`${LIVE_SOCKET_PATH}?v=1`));
     await expect(connect(url('/api/elsewhere'))).rejects.toThrow();
   });
 
   it(`refuses a socket past ${MAX_LIVE_SOCKETS} at once`, async () => {
-    const { url } = await serve('live');
+    const { url } = await serve();
     await Promise.all(Array.from({ length: MAX_LIVE_SOCKETS }, () => connect(url())));
     await expect(connect(url())).rejects.toThrow();
     expect(live?.size).toBe(MAX_LIVE_SOCKETS);

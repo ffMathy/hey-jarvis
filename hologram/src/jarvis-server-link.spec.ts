@@ -142,22 +142,20 @@ describe('a line to the server', () => {
     expect(sockets).toHaveLength(9);
   });
 
-  for (const code of [4400, 4403, 4503]) {
-    it(`never tries the same conversation again after the server closes it with ${code}`, () => {
-      const { platform, sockets, advance, latest } = fakePlatform();
-      openServerLink({ address: ADDRESS, conversationId: CONVERSATION_ID, device: 'watch' }, platform);
-      latest().drop(code);
-      advance(LONGEST_RETRY_MS * 10);
-      expect(sockets).toHaveLength(1);
-    });
-  }
+  it('never tries the same conversation again after the server could not read its hello', () => {
+    const { platform, sockets, advance, latest } = fakePlatform();
+    openServerLink({ address: ADDRESS, conversationId: CONVERSATION_ID, device: 'watch' }, platform);
+    latest().drop(4400);
+    advance(LONGEST_RETRY_MS * 10);
+    expect(sockets).toHaveLength(1);
+  });
 
-  it('tries again when ElevenLabs could not be asked, or the server was full', () => {
+  it('tries again after the server gave up waiting for a hello, or went away', () => {
     const { platform, sockets, advance, latest } = fakePlatform();
     openServerLink({ address: ADDRESS, conversationId: CONVERSATION_ID, device: 'phone' }, platform);
-    latest().drop(4502);
+    latest().drop(4408);
     advance(FIRST_RETRY_MS);
-    latest().drop(4429);
+    latest().drop(1001);
     advance(FIRST_RETRY_MS * 2);
     expect(sockets).toHaveLength(3);
   });

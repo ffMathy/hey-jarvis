@@ -7,10 +7,9 @@ import type { JarvisSession } from './session-contract';
  *
  * **Beside the conversation, not part of it.** The conversation itself runs between the device and
  * ElevenLabs, as it always has. The server's end is `verticals/api/live-socket.ts` in `mcp`, which
- * says what the socket is for and how it is kept from strangers: a socket says `hello` with the
- * ElevenLabs id of the conversation it is in, and hears nothing until ElevenLabs confirms that
- * conversation is live on Jarvis's agent. So a line is only ever opened for a connected
- * conversation ({@link JarvisSession.liveConversationId}), and closed when it ends.
+ * says what the socket is for: a socket says `hello` with the ElevenLabs id of the conversation it
+ * is in, and is then told what concerns that conversation. So a line is only ever opened for a
+ * connected conversation ({@link JarvisSession.liveConversationId}), and closed when it ends.
  *
  * **Optional, like the server address it needs.** A device with no address talks to Jarvis exactly
  * as before, and a line that cannot be opened costs the conversation nothing: it is tried again, a
@@ -27,12 +26,11 @@ export const JARVIS_SERVER_SOCKET_PATH = '/api/live';
 export type JarvisDevice = 'phone' | 'watch' | 'vr';
 
 /**
- * The close codes after which the same conversation is never tried again, since the server would
- * only answer the same: a hello it could not read, a conversation that is not live on Jarvis's
- * agent, and a server with no way to check. Every other close — a dropped connection, ElevenLabs not
- * answering the server, too many sockets — is tried again.
+ * The close codes after which the same conversation is never tried again: a hello the server could
+ * not read, which it would only refuse again. Every other close — a dropped connection, a server
+ * restarting — is tried again.
  */
-export const FINAL_SERVER_SOCKET_CLOSE_CODES: ReadonlySet<number> = new Set([4400, 4403, 4503]);
+export const FINAL_SERVER_SOCKET_CLOSE_CODES: ReadonlySet<number> = new Set([4400]);
 
 /** How long the first retry waits; each one after waits twice as long as the last. */
 export const FIRST_RETRY_MS = 1_000;

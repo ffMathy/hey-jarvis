@@ -3,8 +3,6 @@ import type { Duplex } from 'node:stream';
 import { type RawData, type WebSocket, WebSocketServer } from 'ws';
 import { z } from 'zod';
 import { logger } from '../../utils/logger.js';
-import { type ConversationVerdict, checkLiveConversation, type LiveConversationCheck } from '../vision/index.js';
-import { sourceOf } from './routes.js';
 
 /**
  * The WebSocket API: a line from this server to each device sir is talking to Jarvis on — the phone,
@@ -15,21 +13,18 @@ import { sourceOf } from './routes.js';
  * conversation is under way, which a device cannot know to ask for. The conversation itself still
  * runs between the device and ElevenLabs; this socket carries only what the server adds to it.
  *
- * **Public, like the photo routes, and for the same reason.** The phone, the watch and the headset
- * hold no Cloudflare Access service token, so {@link LIVE_SOCKET_PATH} has to be let through Access
- * (see "MCP Server Access" in `mcp/AGENTS.md`), and anyone on the internet can open a socket on it.
- * What keeps a stranger from hearing anything is the first message: a socket says `hello` with the
- * id of the ElevenLabs conversation it is in, and is told nothing until ElevenLabs confirms that
- * conversation is live on Jarvis's agent — the very check a photo slot is opened behind
- * (`vision/live-conversation.ts`), with its cache and both of its rate limits. A socket that says
- * nothing in time, says something else, or names a conversation that is not live is closed.
+ * **Public and unauthenticated.** The server checks nothing: whoever opens a socket and says hello
+ * is told what concerns the conversation it names. Who may reach {@link LIVE_SOCKET_PATH} at all is
+ * left to Cloudflare Zero Trust in front of the tunnel (see "MCP Server Access" in `mcp/AGENTS.md`).
+ * The hello is not a credential, only an address: it says which conversation a socket is for, so
+ * the server knows where to send what it has to say.
  *
  * **The protocol**, one JSON object per text frame:
  *
  * | Direction | Message | Meaning |
  * | --- | --- | --- |
  * | device → server | `{ type: "hello", conversationId, device }` | The first frame, within {@link HELLO_TIMEOUT_MS} |
- * | server → device | `{ type: "ready" }` | The conversation is live, and this socket will be told what concerns it |
+ * | server → device | `{ type: "ready" }` | This socket will now be told what concerns that conversation |
  *
  * Everything else a device sends after `ready` is ignored, so a device built for a later version of
  * this protocol can still be talked to. A refusal is a close, with one of {@link LIVE_SOCKET_CLOSE_CODES}.
@@ -56,47 +51,31 @@ export const MAX_LIVE_SOCKETS = 32;
 export const MAX_FRAME_BYTES = 1024;
 
 /**
- * Why a socket was closed, in the range RFC 6455 leaves to applications. Each is the photo slot's
- * HTTP status for the same verdict plus 4000, so the two APIs refuse alike.
+ * Why a socket was closed, in the range RFC 6455 leaves to applications: an HTTP status plus 4000.
  *
- * A device tries again after `unverifiable`, `too-many` and an ordinary drop, and never after the
- * others for the same conversation: no second attempt would be answered differently.
+ * A device tries again after anything but `badHello`, which a second attempt would only repeat.
  */
 export const LIVE_SOCKET_CLOSE_CODES = {
-  /** The first frame was not a hello, or named no well-formed conversation id. */
+  /** The first frame was not a hello naming a conversation. */
   badHello: 4400,
-  /** The conversation is not live on Jarvis's agent. */
-  notLive: 4403,
   /** No hello arrived within {@link HELLO_TIMEOUT_MS}. */
   helloTimeout: 4408,
-  /** The minute's checks are spent, or {@link MAX_LIVE_SOCKETS} are open. */
-  tooMany: 4429,
-  /** ElevenLabs could not confirm the conversation just now. */
-  unverifiable: 4502,
-  /** This server has no ElevenLabs key or agent to check with. */
-  switchedOff: 4503,
 } as const;
+
+/** The longest conversation id taken: ElevenLabs' are well under it. */
+const MAX_CONVERSATION_ID_LENGTH = 128;
 
 /** The devices that open a socket, for the log. */
 export const LIVE_SOCKET_DEVICES = ['phone', 'watch', 'vr'] as const;
 
 const helloSchema = z.object({
   type: z.literal('hello'),
-  conversationId: z.string(),
+  conversationId: z.string().trim().min(1).max(MAX_CONVERSATION_ID_LENGTH),
   device: z.enum(LIVE_SOCKET_DEVICES).optional(),
 });
 
 /** What the server sends a device. */
 export type LiveServerMessage = { type: 'ready' };
-
-/** How each verdict other than `live` closes a socket. */
-const CLOSE_FOR_VERDICT: Record<Exclude<ConversationVerdict, 'live'>, number> = {
-  malformed: LIVE_SOCKET_CLOSE_CODES.badHello,
-  'not-live': LIVE_SOCKET_CLOSE_CODES.notLive,
-  'too-many-checks': LIVE_SOCKET_CLOSE_CODES.tooMany,
-  unverifiable: LIVE_SOCKET_CLOSE_CODES.unverifiable,
-  'switched-off': LIVE_SOCKET_CLOSE_CODES.switchedOff,
-};
 
 /** The open sockets, by the conversation each said hello for. */
 export interface LiveSockets {
@@ -108,9 +87,8 @@ export interface LiveSockets {
   close(): Promise<void>;
 }
 
-/** What the socket needs from outside itself, so a spec can stand in for ElevenLabs. */
-export interface LiveSocketDependencies {
-  isLiveJarvisConversation?: LiveConversationCheck;
+/** What a spec may change. */
+export interface LiveSocketOptions {
   /** {@link HELLO_TIMEOUT_MS} unless a spec would rather not wait it out. */
   helloTimeoutMs?: number;
 }
@@ -155,9 +133,8 @@ function readHello(data: RawData, isBinary: boolean): z.infer<typeof helloSchema
  *
  * Any other upgrade is refused: nothing else on this server speaks WebSocket.
  */
-export function attachLiveSocket(server: Server, dependencies: LiveSocketDependencies = {}): LiveSockets {
-  const isLiveJarvisConversation = dependencies.isLiveJarvisConversation ?? checkLiveConversation;
-  const helloTimeoutMs = dependencies.helloTimeoutMs ?? HELLO_TIMEOUT_MS;
+export function attachLiveSocket(server: Server, options: LiveSocketOptions = {}): LiveSockets {
+  const helloTimeoutMs = options.helloTimeoutMs ?? HELLO_TIMEOUT_MS;
   const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES });
   const byConversation = new Map<string, Set<WebSocket>>();
   const answeredLastPing = new WeakMap<WebSocket, boolean>();
@@ -170,7 +147,7 @@ export function attachLiveSocket(server: Server, dependencies: LiveSocketDepende
     }
   };
 
-  const welcome = (socket: WebSocket, source: string) => {
+  const welcome = (socket: WebSocket) => {
     let saidHello = false;
     const helloTimer = setTimeout(() => socket.close(LIVE_SOCKET_CLOSE_CODES.helloTimeout), helloTimeoutMs);
     socket.once('close', () => clearTimeout(helloTimer));
@@ -194,29 +171,12 @@ export function attachLiveSocket(server: Server, dependencies: LiveSocketDepende
         return;
       }
 
-      void (async () => {
-        let verdict: ConversationVerdict;
-        try {
-          verdict = await isLiveJarvisConversation(hello.conversationId, source);
-        } catch {
-          verdict = 'unverifiable';
-        }
-        if (socket.readyState !== socket.OPEN) {
-          return;
-        }
-        if (verdict !== 'live') {
-          logger.info('[Live] Socket refused', { verdict, device: hello.device });
-          socket.close(CLOSE_FOR_VERDICT[verdict]);
-          return;
-        }
-
-        const conversation = byConversation.get(hello.conversationId) ?? new Set<WebSocket>();
-        conversation.add(socket);
-        byConversation.set(hello.conversationId, conversation);
-        socket.once('close', () => forget(hello.conversationId, socket));
-        logger.info('[Live] Socket ready', { device: hello.device, open: sockets.clients.size });
-        socket.send(JSON.stringify({ type: 'ready' } satisfies LiveServerMessage));
-      })();
+      const conversation = byConversation.get(hello.conversationId) ?? new Set<WebSocket>();
+      conversation.add(socket);
+      byConversation.set(hello.conversationId, conversation);
+      socket.once('close', () => forget(hello.conversationId, socket));
+      logger.info('[Live] Socket ready', { device: hello.device, open: sockets.clients.size });
+      socket.send(JSON.stringify({ type: 'ready' } satisfies LiveServerMessage));
     });
   };
 
@@ -229,18 +189,12 @@ export function attachLiveSocket(server: Server, dependencies: LiveSocketDepende
       refuseUpgrade(socket, 503, 'Service Unavailable');
       return;
     }
-
-    const connectingIp = request.headers['cf-connecting-ip'];
-    const source = sourceOf(
-      Array.isArray(connectingIp) ? connectingIp[0] : connectingIp,
-      request.socket.remoteAddress ?? undefined,
-    );
     sockets.handleUpgrade(request, socket, head, (webSocket) => {
       answeredLastPing.set(webSocket, true);
       webSocket.on('pong', () => answeredLastPing.set(webSocket, true));
       // A socket that errors is closed by `ws` itself; listening keeps the error from being thrown.
       webSocket.on('error', () => undefined);
-      welcome(webSocket, source);
+      welcome(webSocket);
     });
   };
   server.on('upgrade', onUpgrade);
