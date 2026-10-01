@@ -13,6 +13,7 @@ import '@elevenlabs/react-native';
 import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import type { ElevenLabsSettings } from 'hologram';
+import { useJarvisServer } from 'hologram/react/lifecycle';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { useAnswerTheWatch } from './answer-the-watch';
@@ -122,6 +123,9 @@ export function App({ summoned = false, showing }: AppProps) {
   // Hands the credentials to the watch whenever it asks, for as long as this app is open. See
   // `answer-the-watch.ts`; the watch only ever asks when it has none of its own.
   useAnswerTheWatch(settings, serverAddress);
+  // The line to sir's Jarvis server, open for as long as the app runs and has an address, whatever
+  // screen is showing and whether or not he is talking to Jarvis (`jarvis-server-link.ts` in hologram).
+  useJarvisServer(serverAddress, 'phone');
 
   const launchUrl = Linking.useURL();
   // Two ways in, and they are genuinely different: the assistant's own window renders this

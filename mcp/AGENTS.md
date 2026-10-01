@@ -1339,9 +1339,9 @@ but the glow waits on it. The calendar list keeps Google's retries, because it i
    voice agent: no poll response carries it, and no poll is woken or held for it.
 
 A device subscribes by holding a socket, and acts on the events it cares about: the headset records
-what it is sent and lights the ones he has placed, and the phone and the watch ignore it. Routing is
-told nothing about which conversation it serves, so every socket is sent every event; for one
-household that is what is wanted. `affected-entities-interview.spec.ts` pins the join against a real
+what it is sent and lights the ones he has placed, and the phone and the watch ignore it. The sockets
+know nothing of conversations, so every socket is sent every event; for one household that is what
+is wanted. `affected-entities-interview.spec.ts` pins the join against a real
 plan run: what the lookup read is pushed while the service call is still held, before any answer.
 
 What is marked, and what is deliberately not:
@@ -3026,9 +3026,9 @@ present a service token (`CF-Access-Client-Id` / `CF-Access-Client-Secret`), and
 with an identity policy.
 
 **`/api/live` is unauthenticated on the server.** It is the WebSocket API
-(`verticals/api/live-socket.ts`) the phone, the watch and the headset keep open while a conversation
-is live; the server checks no credential and tells any socket that says hello what concerns the
-conversation it names. Who may reach it is Cloudflare Zero Trust's to decide, in front of the
+(`verticals/api/live-socket.ts`) the phone, the watch and the headset keep open for as long as their
+apps run; the server checks no credential and sends every live event to any socket that says
+hello. Who may reach it is Cloudflare Zero Trust's to decide, in front of the
 tunnel. **WebSockets** must be on for the zone (Network → WebSockets). The server holds at most 32
 sockets at once. See [The WebSocket API](#the-websocket-api).
 
@@ -3088,26 +3088,25 @@ spelling alike.
 
 Beside the REST routes, the MCP server serves one WebSocket, on the same port, at **`/api/live`**
 (`verticals/api/live-socket.ts`). REST is for being asked; this is for what the server has to say
-first while a conversation is under way, to whichever devices it is on. Each device that is Jarvis —
-the phone, the watch and the headset — keeps one open for as long as a conversation on it is live,
-through `followConversationOnServer` in `hologram/src/jarvis-server-link.ts`, and only when it knows
-the server's address (the phone's **Jarvis server** setting, handed to the watch with the
+first, and what a device keeps it told of. Each device that is Jarvis — the phone, the watch and the
+headset — keeps one open for as long as its app runs, across conversations and between them, through
+`connectToServer` in `hologram/src/jarvis-server-link.ts`, and only when it knows the server's
+address (the phone's **Jarvis server** setting, handed to the watch with the
 credentials, and read by the headset from the storage it shares with the phone's web build).
 
 | Direction | Frame | Meaning |
 | --- | --- | --- |
-| device → server | `{"type":"hello","conversationId":"conv_…","device":"phone"\|"watch"\|"vr"}` | The first frame, within 10 seconds |
+| device → server | `{"type":"hello","device":"phone"\|"watch"\|"vr"}` | The first frame, within 10 seconds |
 | server → device | `{"type":"ready"}` | This socket is now sent every live event |
 | server → device | `{"type":"affectedEntities","entities":[{"id":"…","name":"…"}]}` | A request's tool just read or changed these |
 | device → server | `{"type":"pointing","entity":{"id":"…","name":"…"}}` or `"entity":null` | What sir points at now, or nothing |
 
-**No authentication**: the hello is an address, not a credential. A refusal is a close: `4400` a
-first frame that is not a hello naming a conversation, `4408` no hello in time; an upgrade past 32
+**No authentication**: the hello names the device, for the log, and is not a credential. A refusal is
+a close: `4400` a first frame that is not a hello, `4408` no hello in time; an upgrade past 32
 open sockets is answered `503`. A device tries again with a growing delay after anything but `4400`. Frames over a kilobyte close their socket (`1009`), and every socket is pinged
 every 30 seconds, which also keeps Cloudflare from closing a quiet one after 100.
 
-After `ready`, a socket is sent every event published on `utils/live-events.ts`, whatever conversation
-its hello named — today `{"type":"affectedEntities","entities":[{"id":"…","name":"…"}]}`, see
+After `ready`, a socket is sent every event published on `utils/live-events.ts` — today `{"type":"affectedEntities","entities":[{"id":"…","name":"…"}]}`, see
 [What a request touches](#affected-entities). A device acts on the events it cares about and ignores
 the rest. What a socket says sir points at is kept until it says otherwise or closes, and written into
 the next request routed — see [What sir points at](#pointing).

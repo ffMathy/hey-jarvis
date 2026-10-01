@@ -13,8 +13,6 @@ import {
   MAX_LIVE_SOCKETS,
 } from './live-socket.js';
 
-const CONVERSATION_ID = 'conv_0123456789abcdef';
-
 let server: Server | undefined;
 let live: LiveSockets | undefined;
 const opened: WebSocket[] = [];
@@ -78,8 +76,8 @@ function nextEvent(socket: WebSocket): Promise<{ message: unknown } | { closed: 
   });
 }
 
-function hello(conversationId = CONVERSATION_ID): string {
-  return JSON.stringify({ type: 'hello', conversationId, device: 'phone' });
+function hello(device = 'phone'): string {
+  return JSON.stringify({ type: 'hello', device });
 }
 
 describe('the live socket', () => {
@@ -102,13 +100,13 @@ describe('the live socket', () => {
     });
   });
 
-  it('sends every socket that has said hello the same event, whatever conversation it named', async () => {
+  it('sends every socket that has said hello the same event', async () => {
     const { url } = await serve();
     const sockets = await Promise.all([connect(url()), connect(url())]);
     await Promise.all(
       sockets.map((socket, index) => {
         const ready = nextEvent(socket);
-        socket.send(hello(`conv_00000000000${index}`));
+        socket.send(hello(index === 0 ? 'phone' : 'vr'));
         return ready;
       }),
     );
@@ -172,14 +170,14 @@ describe('the live socket', () => {
     expect(currentPointing()).toBeUndefined();
   });
 
-  it('closes a socket whose first frame is not a hello naming a conversation', async () => {
+  it('closes a socket whose first frame is not a hello', async () => {
     const { url } = await serve();
     for (const frame of [
       'not json',
       '{"type":"ready"}',
       '{"type":"hello"}',
-      '{"type":"hello","conversationId":7}',
-      '{"type":"hello","conversationId":"  "}',
+      '{"type":"hello","device":"toaster"}',
+      '["hello"]',
     ]) {
       const socket = await connect(url());
       const event = nextEvent(socket);
@@ -198,7 +196,7 @@ describe('the live socket', () => {
     const { url } = await serve();
     const socket = await connect(url());
     const event = nextEvent(socket);
-    socket.send(JSON.stringify({ type: 'hello', conversationId: CONVERSATION_ID, padding: 'x'.repeat(2048) }));
+    socket.send(JSON.stringify({ type: 'hello', device: 'phone', padding: 'x'.repeat(2048) }));
     expect(await event).toEqual({ closed: 1009 });
   });
 

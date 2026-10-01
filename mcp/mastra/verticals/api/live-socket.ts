@@ -7,24 +7,25 @@ import { logger } from '../../utils/logger.js';
 import { forgetPointing, reportPointing } from '../../utils/pointing.js';
 
 /**
- * The WebSocket API: a line from this server to each device sir is talking to Jarvis on — the phone,
- * the watch and the headset — for as long as the conversation lasts.
+ * The WebSocket API: a line from this server to each device that is Jarvis — the phone, the watch
+ * and the headset — held open for as long as the device's app is running, whether or not a
+ * conversation is under way.
  *
  * **Beside the REST API, not instead of it.** The REST routes (`routes.ts`) are asked: a device or
- * Home Assistant calls, and gets one answer. This is for what the server has to say first, while a
- * conversation is under way, which a device cannot know to ask for. The conversation itself still
- * runs between the device and ElevenLabs; this socket carries only what the server adds to it.
+ * Home Assistant calls, and gets one answer. This is for what the server has to say first, which a
+ * device cannot know to ask for, and for what a device keeps the server told of. The conversation
+ * itself runs between the device and ElevenLabs; this socket knows nothing of it.
  *
  * **Public and unauthenticated.** The server checks nothing: whoever opens a socket and says hello
- * is told what concerns the conversation it names. Who may reach {@link LIVE_SOCKET_PATH} at all is
- * left to Cloudflare Zero Trust in front of the tunnel (see "MCP Server Access" in `mcp/AGENTS.md`).
- * The hello is not a credential: it says which conversation and device a socket is for, for the log.
+ * is sent every live event. Who may reach {@link LIVE_SOCKET_PATH} at all is left to Cloudflare Zero
+ * Trust in front of the tunnel (see "MCP Server Access" in `mcp/AGENTS.md`). The hello is not a
+ * credential: it says which device a socket is, for the log.
  *
  * **The protocol**, one JSON object per text frame:
  *
  * | Direction | Message | Meaning |
  * | --- | --- | --- |
- * | device → server | `{ type: "hello", conversationId, device }` | The first frame, within {@link HELLO_TIMEOUT_MS} |
+ * | device → server | `{ type: "hello", device }` | The first frame, within {@link HELLO_TIMEOUT_MS} |
  * | server → device | `{ type: "ready" }` | This socket will now be sent every live event |
  * | server → device | `{ type: "affectedEntities", entities: [{ id, name? }] }` | A request's tool just read or changed these |
  * | device → server | `{ type: "pointing", entity: { id, name? } \| null }` | What sir is pointing at now, or nothing |
@@ -62,22 +63,18 @@ export const MAX_FRAME_BYTES = 1024;
  * A device tries again after anything but `badHello`, which a second attempt would only repeat.
  */
 export const LIVE_SOCKET_CLOSE_CODES = {
-  /** The first frame was not a hello naming a conversation. */
+  /** The first frame was not a hello. */
   badHello: 4400,
   /** No hello arrived within {@link HELLO_TIMEOUT_MS}. */
   helloTimeout: 4408,
 } as const;
-
-/** The longest conversation id taken: ElevenLabs' are well under it. */
-const MAX_CONVERSATION_ID_LENGTH = 128;
 
 /** The devices that open a socket, for the log. */
 export const LIVE_SOCKET_DEVICES = ['phone', 'watch', 'vr'] as const;
 
 const helloSchema = z.object({
   type: z.literal('hello'),
-  conversationId: z.string().trim().min(1).max(MAX_CONVERSATION_ID_LENGTH),
-  device: z.enum(LIVE_SOCKET_DEVICES).optional(),
+  device: z.enum(LIVE_SOCKET_DEVICES),
 });
 
 const pointingSchema = z.object({

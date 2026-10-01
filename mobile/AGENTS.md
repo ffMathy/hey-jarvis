@@ -52,11 +52,11 @@ phone (assist gesture)
                  ├─ WebRTC session                      → the ElevenLabs Jarvis agent
                  ├─ camera button (optional)            → sir's Jarvis server: POST /api/photos/slots,
                  │                                        then PUT the photo to the slot
-                 └─ live line (optional)                → sir's Jarvis server: a WebSocket on /api/live
-                                                          while the conversation is live
+                 └─ live line (optional)                → sir's Jarvis server: a WebSocket on /api/live,
+                                                          open for as long as the app runs
 ```
 
-The agent on the other end is the same one `elevenlabs/` deploys, with the same prompt and the same `routePromptWorkflow` tools. This app adds a way to reach it, not a second Jarvis. The camera button and the live line are the two things that reach past ElevenLabs, and only once sir has given the phone his Jarvis server's address: see "Showing him something", and `jarvis-server-link.ts` in `hologram` for the line. The address is handed to the watch with the credentials, so it opens the same line.
+The agent on the other end is the same one `elevenlabs/` deploys, with the same prompt and the same `routePromptWorkflow` tools. This app adds a way to reach it, not a second Jarvis. The camera button and the live line are the two things that reach past ElevenLabs, and only once sir has given the phone his Jarvis server's address: see "Showing him something", and `jarvis-server-link.ts` in `hologram` for the line. The line is opened by `app.tsx` (`useJarvisServer`) as soon as there is an address, and stays open across conversations and between them. The address is handed to the watch with the credentials, so it opens the same line.
 
 ## File Structure
 

@@ -508,9 +508,12 @@ element (`greeting-player.ts`) and the orphaned-audio sweep
 (`orphaned-audio.ts`). It tells the agent nothing about the headset.
 
 **The line to the Jarvis server is where the room meets the server.**
-`createHeadsetSession` keeps `hologram`'s line open while a conversation is live
-(`followConversationOnServer`, when the phone's web build has kept a server
-address on this origin), and returns the session with a `point` of its own.
+`main.ts` opens `hologram`'s line once, as the page loads (`connectToServer`,
+when the phone's web build has kept a server address on this origin), and holds
+it for as long as the page is open: through the 2D page, every room and every
+conversation, and between them. `createHeadsetSession` is handed it (`server`),
+listens to it for as long as the session lasts, and returns the session with
+the line's `point`.
 - **What he is working on comes in on it.** The server broadcasts an
   `affectedEntities` frame to every device that has said hello as soon as a tool
   in a request reports what it touched; `serverMessageHandler` hands those
@@ -749,7 +752,7 @@ before switching and a drop 0.2 s outside 1.5 times the cone; one beyond a contr
 passed over. It is ringed in the accent with its name over it. The Jarvis server is told the entity
 (`ConversationPort.point`, a `pointing` frame on `hologram`'s line) while the call is live — held for
 15 s when it is not yet, since people point and then say "Hey Jarvis", and cleared (`point(undefined)`)
-12 s after the pointing stops. The line remembers the last one across conversations, so the room
+12 s after the pointing stops. The line outlives every conversation and remembers the last one, so the room
 does too (`stepPointingUpdate`): the same target is never sent twice in a row, and one a new
 conversation would inherit after it has gone stale is cleared the moment that conversation is live.
 The agent hears none of it: the server writes `(pointing at "<name>", id <id>)` into each request it

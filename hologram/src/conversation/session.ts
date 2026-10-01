@@ -4,7 +4,6 @@ import { Platform } from 'react-native';
 import type { AgentTrackRoom } from '../agent-audio-track';
 import type { ElevenLabsSettings } from '../elevenlabs-settings';
 import { DEADLINE_PROBLEM } from '../failure-text';
-import { followConversationOnServer, type JarvisDevice } from '../jarvis-server-link';
 import { createJarvisSession } from '../jarvis-session';
 import type {
   CaptionRule,
@@ -39,11 +38,6 @@ export interface JarvisSessionOptions {
   untilOnline?: () => Promise<void>;
   /** Lets go of that network once the summoning is over. */
   leaveNetwork?: () => void;
-  /**
-   * The Jarvis server's address, if the device has one, and which device this is: a line to the
-   * server is kept open for every conversation that connects (see `jarvis-server-link.ts`).
-   */
-  server: { address: string | undefined; device: JarvisDevice };
 }
 
 /** Everything a screen draws from its conversation, and everything it can do to it. */
@@ -148,13 +142,6 @@ export function useJarvisSession(options: JarvisSessionOptions): JarvisConversat
     });
   });
   useEffect(() => () => session.endQuietly(), [session]);
-
-  const { address, device } = options.server;
-  useEffect(() => {
-    // The phone and the watch point at nothing, and show nothing of what a request touches.
-    const following = followConversationOnServer(session, { address, device });
-    return following.stop;
-  }, [session, address, device]);
 
   const snapshot = useSyncExternalStore(session.subscribe, () => session.snapshot);
   const actions = useMemo(

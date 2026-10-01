@@ -1,4 +1,4 @@
-import type { ElevenLabsSettings } from 'hologram';
+import { connectToServer, type ElevenLabsSettings } from 'hologram';
 import type { RoomOptions } from './app/room-runtime';
 import { createGreetingPlayer } from './conversation/greeting-player';
 import { greetingRecordingUrl } from './conversation/greeting-recording';
@@ -128,6 +128,15 @@ const browserStorage: KeyValueStorage = {
   getItem: (key) => window.localStorage.getItem(key),
   setItem: (key, value) => window.localStorage.setItem(key, value),
 };
+
+/**
+ * The page's line to sir's Jarvis server, opened as the page loads and held for as long as it is
+ * open: through the 2D page, every room and every conversation in it, and between them
+ * (`connectToServer` in `hologram`). Each conversation's session listens to it while it lasts — what
+ * a request touched lights up in the room — and tells it what sir points at. With no address kept on
+ * this origin by the phone's web build, it is no line at all.
+ */
+const serverLink = connectToServer({ address: loadServerAddress(browserStorage), device: 'vr' });
 
 /**
  * His voice from where he stands, made once for the page: it can take the greeting's element into
@@ -294,7 +303,7 @@ async function openConversationRoom(
           events,
           voice,
           giveUpConnectingAfterMs: seams.giveUpConnectingAfterMs,
-          serverAddress: loadServerAddress(browserStorage),
+          server: serverLink,
           onAffected: (entities) => events.onAffected?.(entities),
         }),
       stopMicrophone,

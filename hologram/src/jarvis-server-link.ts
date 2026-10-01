@@ -1,20 +1,19 @@
 import { type AffectedEntity, affectedEntitiesOf, affectedEntityOf } from './affected-entities';
-import type { JarvisSession } from './session-contract';
 
 /**
  * A device's line to the Jarvis server: a WebSocket each device that is Jarvis — the phone, the
- * watch and the headset — keeps open for as long as a conversation on it is live, so the server can
- * tell it things about that conversation as they happen.
+ * watch and the headset — keeps open for as long as its app is running, so the server can tell it
+ * things as they happen and it can keep the server told of what sir points at.
  *
- * **Beside the conversation, not part of it.** The conversation itself runs between the device and
- * ElevenLabs, as it always has. The server's end is `verticals/api/live-socket.ts` in `mcp`, which
- * says what the socket is for: a socket says `hello` with the ElevenLabs id of the conversation it
- * is in, and is then told what concerns that conversation. So a line is only ever opened for a
- * connected conversation ({@link JarvisSession.liveConversationId}), and closed when it ends.
+ * **Apart from the conversation.** The conversation runs between the device and ElevenLabs, as it
+ * always has, and the line knows nothing of it: it is opened when the app has a server address,
+ * stays open across conversations and between them, and is closed only when the app lets it go. The
+ * server's end is `verticals/api/live-socket.ts` in `mcp`: a socket says `hello` with which device
+ * it is, and is then sent every live event.
  *
  * **Optional, like the server address it needs.** A device with no address talks to Jarvis exactly
- * as before, and a line that cannot be opened costs the conversation nothing: it is tried again, a
- * little later each time, until the server answers or refuses for good.
+ * as before, and a line that cannot be opened costs it nothing: it is tried again, a little later
+ * each time, until the server answers or refuses for good.
  *
  * Nothing here reaches for a platform but the global `WebSocket`, which a browser, React Native and
  * Bun all have, and that is handed in where a spec wants a fake one.
@@ -27,9 +26,9 @@ export const JARVIS_SERVER_SOCKET_PATH = '/api/live';
 export type JarvisDevice = 'phone' | 'watch' | 'vr';
 
 /**
- * The close codes after which the same conversation is never tried again: a hello the server could
- * not read, which it would only refuse again. Every other close — a dropped connection, a server
- * restarting — is tried again.
+ * The close codes after which the line is never tried again: a hello the server could not read,
+ * which it would only refuse again. Every other close — a dropped connection, a server restarting —
+ * is tried again.
  */
 export const FINAL_SERVER_SOCKET_CLOSE_CODES: ReadonlySet<number> = new Set([4400]);
 
@@ -41,8 +40,7 @@ export const LONGEST_RETRY_MS = 30_000;
 
 /**
  * What the server sends a device: `ready` once it has read the hello, and `affectedEntities`
- * whenever a tool in a request reports what it touched — sent to every device that has said hello,
- * whichever conversation the request came from. A device that shows nothing of it (the phone, the
+ * whenever a tool in a request reports what it touched — sent to every device that has said hello. A device that shows nothing of it (the phone, the
  * watch) simply ignores it; the headset lights the entities up where they stand.
  */
 export type JarvisServerMessage = { type: 'ready' } | { type: 'affectedEntities'; entities: readonly AffectedEntity[] };
@@ -88,13 +86,9 @@ const DEFAULT_PLATFORM: ServerLinkPlatform = {
 };
 
 export interface ServerLinkOptions {
-  /** The server's origin, as `parseJarvisServerAddress` gives it. */
-  address: string;
-  /** The ElevenLabs id of the live conversation the line is for. */
-  conversationId: string;
+  /** The server's origin, as `parseJarvisServerAddress` gives it, or `undefined` for none: then there is never a line. */
+  address: string | undefined;
   device: JarvisDevice;
-  /** Every message the server sends, once it is known to be one. */
-  onMessage?(message: JarvisServerMessage): void;
 }
 
 /** A line that is open, or trying to be. */
@@ -107,6 +101,12 @@ export interface ServerLink {
    * `affected-entities.ts`, and one without a usable id is sent as nothing.
    */
   point(entity: AffectedEntity | undefined): void;
+  /**
+   * Calls `listener` with every message the server sends from now on, once it is known to be one,
+   * until the function it returns is called. A device that cares about none of them subscribes to
+   * nothing, and the line stays open all the same.
+   */
+  subscribe(listener: (message: JarvisServerMessage) => void): () => void;
   /** Closes it, and stops trying. */
   close(): void;
 }
@@ -154,17 +154,23 @@ function readServerMessage(data: unknown): JarvisServerMessage | undefined {
   return undefined;
 }
 
+/** The line of a device with no server address: it points at nothing, hears nothing and has nothing to close. */
+const NO_LINE: ServerLink = { point: () => undefined, subscribe: () => () => undefined, close: () => undefined };
+
 /**
- * Opens a line for one conversation, and keeps it open — trying again after a drop, from
- * {@link FIRST_RETRY_MS} up to {@link LONGEST_RETRY_MS} — until it is closed or the server refuses
- * the conversation for good ({@link FINAL_SERVER_SOCKET_CLOSE_CODES}).
+ * Opens the device's line to the server, and keeps it open — trying again after a drop, from
+ * {@link FIRST_RETRY_MS} up to {@link LONGEST_RETRY_MS} — until it is closed or the server refuses it
+ * for good ({@link FINAL_SERVER_SOCKET_CLOSE_CODES}). With no address, there is no line.
  */
-export function openServerLink(
+export function connectToServer(
   options: ServerLinkOptions,
   platform: ServerLinkPlatform = DEFAULT_PLATFORM,
 ): ServerLink {
+  if (options.address === undefined) {
+    return NO_LINE;
+  }
   const url = serverSocketUrl(options.address);
-  const hello = JSON.stringify({ type: 'hello', conversationId: options.conversationId, device: options.device });
+  const hello = JSON.stringify({ type: 'hello', device: options.device });
   let socket: ServerSocket | undefined;
   /** The socket the server has said `ready` on, while it is still the one open. */
   let ready: ServerSocket | undefined;
@@ -173,6 +179,7 @@ export function openServerLink(
   let cancelRetry: (() => void) | undefined;
   let failedAttempts = 0;
   let closed = false;
+  const listeners = new Set<(message: JarvisServerMessage) => void>();
 
   const sendPointing = () => {
     if (pointing === undefined || ready === undefined) {
@@ -206,7 +213,9 @@ export function openServerLink(
         ready = opened;
         sendPointing();
       }
-      options.onMessage?.(message);
+      for (const listener of listeners) {
+        listener(message);
+      }
     };
     opened.onclose = (event) => {
       if (socket !== opened) {
@@ -236,6 +245,12 @@ export function openServerLink(
       pointing = pointingFrame(entity);
       sendPointing();
     },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
     close: () => {
       closed = true;
       cancelRetry?.();
@@ -248,78 +263,6 @@ export function openServerLink(
       } catch {
         // A socket that cannot be closed is one that is already going.
       }
-    },
-  };
-}
-
-/** What a device hands {@link followConversationOnServer}: where the server is, and who it is. */
-export interface FollowOptions {
-  /** The server's origin, or `undefined` for a device that has none: then there is never a line. */
-  address: string | undefined;
-  device: JarvisDevice;
-  onMessage?(message: JarvisServerMessage): void;
-}
-
-/** A device following its conversations on the server. */
-export interface ServerFollowing {
-  /**
-   * What sir is pointing at, for whichever line is open (see {@link ServerLink.point}). The latest
-   * is remembered across lines, so a line opened for the next conversation is told it too.
-   */
-  point(entity: AffectedEntity | undefined): void;
-  /** Stops following, and closes any line still open. */
-  stop(): void;
-}
-
-/**
- * Keeps a line open to the server for whichever conversation `session` has live, and none while it
- * has none: opened when a conversation connects, closed when it ends, and a new one for the next.
- */
-export function followConversationOnServer(
-  session: Pick<JarvisSession, 'liveConversationId' | 'subscribe'>,
-  options: FollowOptions,
-  platform: ServerLinkPlatform = DEFAULT_PLATFORM,
-): ServerFollowing {
-  const { address } = options;
-  if (address === undefined) {
-    return { point: () => undefined, stop: () => undefined };
-  }
-
-  /** What sir was last said to point at, once anything has been: `entity` may be `undefined`. */
-  let pointed: { entity: AffectedEntity | undefined } | undefined;
-  let following: { conversationId: string; link: ServerLink } | undefined;
-  const follow = () => {
-    const conversationId = session.liveConversationId();
-    if (conversationId === following?.conversationId) {
-      return;
-    }
-    following?.link.close();
-    following =
-      conversationId === undefined
-        ? undefined
-        : {
-            conversationId,
-            link: openServerLink(
-              { address, conversationId, device: options.device, onMessage: options.onMessage },
-              platform,
-            ),
-          };
-    if (following !== undefined && pointed !== undefined) {
-      following.link.point(pointed.entity);
-    }
-  };
-
-  const unsubscribe = session.subscribe(follow);
-  follow();
-  return {
-    point: (entity) => {
-      pointed = { entity };
-      following?.link.point(entity);
-    },
-    stop: () => {
-      unsubscribe();
-      following?.link.close();
-      following = undefined;
     },
   };
 }

@@ -175,21 +175,22 @@ fakes in `jarvis-session.fakes.ts`, which fire callbacks in the SDK's own order.
 
 **Neither goes through the voice agent.** The session dials with no client
 tools at all, on any device. Both travel over the WebSocket each device keeps
-open to sir's Jarvis server while a conversation is live
-(`jarvis-server-link.ts`; the server's end is
-`mcp/mastra/verticals/api/live-socket.ts`): `followConversationOnServer`
-opens a line when a conversation connects (its `liveConversationId`), closes it
-when it ends, says `hello` with the conversation's id and the device, and tries
-again after a drop. A device with no server address has no line, and loses
-nothing but these two.
+open to sir's Jarvis server for as long as its app runs, across conversations
+and between them (`jarvis-server-link.ts`; the server's end is
+`mcp/mastra/verticals/api/live-socket.ts`). The line knows nothing of
+conversations: `connectToServer` opens it, says `hello` with the device, and
+tries again after a drop until it is closed. The phone and the watch hold it
+from their app component (`useJarvisServer`, in `hologram/react/lifecycle`), and
+the headset's page opens it once as it loads and hands it to each session. A
+device with no server address has no line, and loses nothing but these two.
 
 **What a request touches comes from the server.** As soon as a tool in a request
 reports what it read or changed, the server broadcasts
 `{"type":"affectedEntities","entities":[{"id":…,"name":…}]}` to every socket that
-has said hello, and `readServerMessage` hands it to the line's `onMessage` as a
-`JarvisServerMessage`. The phone and the watch ignore it — they pass no
-`onMessage` — and the headset records the entities and lights them up where they
-stand. An entity is `{ id, name? }` (`affected-entities.ts`). The id is
+has said hello, and `readServerMessage` hands it to every listener the line has
+(`ServerLink.subscribe`) as a `JarvisServerMessage`. The phone and the watch
+listen to nothing, and the headset's session listens for as long as it lasts,
+recording the entities and lighting them up where they stand. An entity is `{ id, name? }` (`affected-entities.ts`). The id is
 **opaque** — a Home Assistant light, an email inbox, a calendar, whatever an
 agent reports — and is compared, never parsed; the name is for display only. The
 frame comes over the network from outside the device, so `affectedEntitiesOf`
@@ -198,15 +199,13 @@ id of at most 200 characters and a name of at most 120, no more than 50 per
 message, each id once, and anything else left out. A frame that names nothing
 usable is dropped.
 
-**What sir points at goes to the server.** `ServerLink.point(entity)` — and
-`ServerFollowing.point`, which `followConversationOnServer` returns beside
-`stop` — sends `{"type":"pointing","entity":{…}}`, or `"entity":null` for
+**What sir points at goes to the server.** `ServerLink.point(entity)` sends `{"type":"pointing","entity":{…}}`, or `"entity":null` for
 nothing, held to the same limits (`affectedEntityOf`). Only the latest is kept:
 it is sent once the server has said `ready`, at once if it already has, again
 after every reconnect's `ready` (the server keeps the latest per socket, and a
-new socket starts with none), and on the next conversation's line too. The
-server writes it into every request it routes, as `(pointing at "<name>", id
-<id>)`. Only the headset points at anything; `useJarvisSession` never calls it.
+new socket starts with none). The server writes it into every request it
+routes, as `(pointing at "<name>", id <id>)`. Only the headset points at
+anything.
 
 **`sendContextualUpdate(text, contextId?)` tells the agent something without
 asking it anything** — on the phone, what its camera button is doing (see "What

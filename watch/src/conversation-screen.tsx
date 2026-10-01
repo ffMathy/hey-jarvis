@@ -5,7 +5,7 @@ import { useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { type FastNetwork, holdFastNetwork, releaseFastNetwork } from '../modules/jarvis-network';
-import { askThePhoneToAnswer, readPhoneServerAddress } from '../modules/jarvis-phone';
+import { askThePhoneToAnswer } from '../modules/jarvis-phone';
 import { capCallVolume } from '../modules/jarvis-volume';
 import { requestMicrophoneAccess } from './microphone-permission';
 import { useWatchDensity } from './watch-density';
@@ -92,8 +92,6 @@ const NO_ANSWER_PROBLEM = 'Jarvis did not answer. ElevenLabs may be unreachable.
  */
 export function ConversationScreen({ settings }: ConversationScreenProps) {
   const isForeground = useIsForeground();
-  // Read once: the phone hands it over with the credentials, which are read once too.
-  const [serverAddress] = useState(readPhoneServerAddress);
   const [problem, setProblem] = useState<string | undefined>(undefined);
   /** Whether the phone took this summoning, in its earbuds, so the watch holds no conversation. */
   const [onThePhone, setOnThePhone] = useState(false);
@@ -104,7 +102,6 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
   const conversation = useJarvisSession({
     settings,
     participantName: WATCH_PARTICIPANT_NAME,
-    server: { address: serverAddress, device: 'watch' },
     // Every problem is the line over him: there is no toast on a watch, and no window to outlive.
     onProblem: (message: string) => setProblem(message),
     // Off the phone's Bluetooth proxy before anything goes out, token request included: WebRTC's

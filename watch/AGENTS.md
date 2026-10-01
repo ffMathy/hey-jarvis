@@ -77,7 +77,7 @@ Two message paths, and that is the whole of it:
 
 The third path isn't part of the handover. It's how a summoning moves to the phone's earbuds: see [The conversation](#the-conversation).
 
-`serverAddress` is there only when the phone has a **Jarvis server** address: the watch keeps it beside the credentials and opens the same line to the server the phone does while a conversation is live (`jarvis-server-link.ts` in `hologram`). A watch that already has credentials does not ask again, so an address set on the phone afterwards reaches it with the watch card's button.
+`serverAddress` is there only when the phone has a **Jarvis server** address: the watch keeps it beside the credentials and opens the same line to the server the phone does, from `app.tsx` (`useJarvisServer`), for as long as the app runs — between conversations too (`jarvis-server-link.ts` in `hologram`). A watch that already has credentials does not ask again, so an address set on the phone afterwards reaches it with the watch card's button.
 
 The watch asks on every start it makes with no credentials, and again every few seconds while it is waiting. The phone answers two ways: automatically whenever it hears the request and has credentials (`mobile/src/answer-the-watch.ts`), and on demand from the button on the watch card in its own settings.
 

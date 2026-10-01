@@ -3,7 +3,6 @@ import {
   type AgentTrackRoom,
   createJarvisSession,
   type ElevenLabsSettings,
-  followConversationOnServer,
   type GreetingPlayer,
   HEADSET_PARTICIPANT_NAME,
   type JarvisServerMessage,
@@ -11,7 +10,7 @@ import {
   type JarvisSessionDependencies,
   type JarvisSessionEvents,
   type JarvisVoiceReaders,
-  type ServerFollowing,
+  type ServerLink,
   type StartSession,
 } from 'hologram';
 import { findAgentRoom, followAgentVoice, type ListeningAudioContext, watchAgentRoom } from './agent-room';
@@ -48,21 +47,21 @@ export interface HeadsetSessionOptions {
    */
   giveUpConnectingAfterMs?: number;
   /**
-   * The Jarvis server's address, when the phone's web build has kept one on this origin: a line to
-   * the server is kept open for every conversation that connects (`jarvis-server-link.ts` in
-   * `hologram`). Without it, none.
+   * The page's line to the Jarvis server (`connectToServer` in `hologram`), opened once when the page
+   * loads and held for as long as it is open, across conversations and rooms. The session listens to
+   * it while it lasts, and tells it what sir points at.
    */
-  serverAddress?: string;
+  server: ServerLink;
   /**
    * The entities a request touched, every time the server says so over that line (its
    * `affectedEntities` message, validated and never empty): the room records them and lights them
-   * up where they stand. Without a server address it is never called.
+   * up where they stand. With no server address the page's line is none, and it is never called.
    */
   onAffected?(entities: readonly AffectedEntity[]): void;
 }
 
 /** What {@link headsetSessionDependencies} makes the session from: everything but the server's line. */
-export type HeadsetSessionDependencyOptions = Omit<HeadsetSessionOptions, 'serverAddress' | 'onAffected'>;
+export type HeadsetSessionDependencyOptions = Omit<HeadsetSessionOptions, 'server' | 'onAffected'>;
 
 /** As much of the spatial voice as a conversation reaches for. */
 export type HeadsetVoice = Pick<
@@ -171,26 +170,22 @@ export function serverMessageHandler(
 }
 
 /** The headset's conversation: the session, and a way to tell the server what sir points at. */
-export type HeadsetSession = JarvisSession & Pick<ServerFollowing, 'point'>;
+export type HeadsetSession = JarvisSession & Pick<ServerLink, 'point'>;
 
 /**
- * Jarvis's conversation on the headset: `hologram`'s session, with the headset's parts, and the line
- * to the server it keeps while a conversation is live — closed with the session. That line is where
- * the room hears what he is working on (`onAffected`), and where it says what sir points at
- * (`point`), which the server writes into the requests it routes.
+ * Jarvis's conversation on the headset: `hologram`'s session, with the headset's parts, listening to
+ * the page's line to the server for as long as it lasts. That line is where the room hears what he
+ * is working on (`onAffected`), and where it says what sir points at (`point`), which the server
+ * writes into the requests it routes. The line itself is the page's, and outlives the session.
  */
-export function createHeadsetSession({ serverAddress, onAffected, ...options }: HeadsetSessionOptions): HeadsetSession {
+export function createHeadsetSession({ server, onAffected, ...options }: HeadsetSessionOptions): HeadsetSession {
   const session = createJarvisSession(headsetSessionDependencies(options));
-  const following = followConversationOnServer(session, {
-    address: serverAddress,
-    device: 'vr',
-    onMessage: serverMessageHandler(onAffected),
-  });
+  const stopListening = server.subscribe(serverMessageHandler(onAffected));
   const dispose = session.dispose;
   return Object.assign(session, {
-    point: following.point,
+    point: server.point,
     dispose: () => {
-      following.stop();
+      stopListening();
       dispose();
     },
   });
