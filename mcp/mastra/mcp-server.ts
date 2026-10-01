@@ -13,7 +13,6 @@ import {
   LIVE_SOCKET_PATH,
   registerApiRoutes,
   registerArtifactRoutes,
-  registerLiveSignInPage,
   registerShoppingTriggers,
   startHomeAssistantEventMonitor,
   whyPhotoSlotsAreOff,
@@ -87,10 +86,6 @@ export async function startMcpServer() {
 
   // The pages the visualize vertical builds, hosted for a day under the tunnel's public hostname
   const artifactRoutePath = registerArtifactRoutes(apiRouter);
-
-  // The page a browser opens to sign in to the server through Cloudflare Access, which the headset
-  // needs: it cannot send a token on its socket, so it rides on Access's cookie instead
-  const liveSignInPath = registerLiveSignInPage(apiRouter);
   app.use(apiRouter);
 
   // MCP endpoint - handles both GET (for initial connection) and POST (for messages)
@@ -134,7 +129,6 @@ export async function startMcpServer() {
     console.log(`API endpoint available: ${method} http://${host}:${port}${path}`);
   }
   console.log(`Hosted pages available: GET http://${host}:${port}${artifactRoutePath}`);
-  console.log(`Sign-in page available: GET http://${host}:${port}${liveSignInPath}`);
 
   // Register email triggers for shopping notifications
   registerShoppingTriggers();

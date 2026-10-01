@@ -3034,11 +3034,10 @@ the upgrade request as `Authorization: Bearer <jwt>` and `cf-access-token: <jwt>
 in a browser, which cannot set a header on a WebSocket, so it gets through on Access's own
 `CF_Authorization` cookie instead:
 
-1. **Sign in once in Quest Browser.** The headset's page links to `GET /api/live` on the server
-   (`registerLiveSignInPage` in `verticals/api/live-socket.ts`) whenever its line is not connected.
-   Opening it goes through the Access login, which sets `CF_Authorization` on the server's
-   hostname, and lands on a page saying the browser is through. The socket uses the same path, so
-   one Access application covers both.
+1. **Sign in once in Quest Browser.** The headset's page links to `/api/live` on the server
+   whenever its line is not connected. Access shows its own login there and sets `CF_Authorization`
+   on the server's hostname for the application that covers the socket's path; the server has no
+   page at that path, so the tab is done with once the login is.
 2. **Let the cookie travel cross-site.** The headset's page is served from GitHub Pages, so its
    socket to the server is a cross-site request, and a cookie goes with it only when it is
    `SameSite=None`. In the Access application's **Settings → Cookie settings**, set **SameSite

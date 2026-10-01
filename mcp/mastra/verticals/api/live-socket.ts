@@ -1,6 +1,5 @@
 import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
-import type { Request, Response, Router } from 'express';
 import { type RawData, type WebSocket, WebSocketServer } from 'ws';
 import { z } from 'zod';
 import { type LiveEvent, onLiveEvent } from '../../utils/live-events.js';
@@ -250,62 +249,4 @@ export function attachLiveSocket(server: Server, options: LiveSocketOptions = {}
       sockets.close();
     },
   };
-}
-
-/**
- * What a browser is shown at {@link LIVE_SOCKET_PATH} when it asks for the page rather than a
- * socket: that it has got through to the server.
- *
- * **This is how the headset signs in.** A browser cannot set a header on a WebSocket, so the headset
- * cannot send a token the way the phone and the watch do; it reaches the server through Cloudflare
- * Access with Access's own `CF_Authorization` cookie instead. Opening this page in Quest Browser
- * sends it through the Access login, which sets the cookie on the server's hostname, and lands it
- * here — on the very path the socket uses, so the one Access application covers both. The cookie
- * then goes with the headset's socket, as long as the application's cookie is `SameSite=None` (see
- * "MCP Server Access" in `mcp/AGENTS.md`). The headset's page links here whenever its line is not
- * connected.
- *
- * Plain, and cached nowhere: it says nothing a stranger could use, and holds no script.
- */
-const SIGNED_IN_PAGE = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex">
-<title>Jarvis server</title>
-<style>
-  :root { color-scheme: dark; }
-  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #050b14; color: #e2f3ff;
-    font: 18px/1.5 system-ui, sans-serif; text-align: center; padding: 16px; box-sizing: border-box; }
-  h1 { font-size: 24px; color: #38bdf8; margin: 0 0 8px; }
-</style>
-</head>
-<body>
-<main>
-<h1>You are through to your Jarvis server</h1>
-<p>This browser can now reach Jarvis's server. Close this tab and go back to Jarvis.</p>
-</main>
-</body>
-</html>
-`;
-
-/** Answers a browser that opened {@link LIVE_SOCKET_PATH} as a page. */
-function showSignedInPage(_request: Request, response: Response): void {
-  response
-    .set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex' })
-    .type('html')
-    .send(SIGNED_IN_PAGE);
-}
-
-/**
- * Registers the page a browser signs in to the server through: `GET` {@link LIVE_SOCKET_PATH}. A
- * WebSocket upgrade never reaches it, since the upgrade is answered by {@link attachLiveSocket}
- * before Express routes anything.
- *
- * @returns The registered path, for logging
- */
-export function registerLiveSignInPage(router: Router): string {
-  router.get(LIVE_SOCKET_PATH, showSignedInPage);
-  return LIVE_SOCKET_PATH;
 }

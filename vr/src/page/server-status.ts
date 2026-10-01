@@ -7,13 +7,14 @@ import { JARVIS_SERVER_SOCKET_PATH, type ServerLink } from 'hologram';
  * headset cannot send the token the phone and the watch send. When Cloudflare Zero Trust is in front
  * of the server, the headset gets through on Access's own `CF_Authorization` cookie instead, which
  * Quest Browser holds once it has been through Access's login at the server's hostname. The link
- * opens the server's sign-in page (`GET /api/live`, `verticals/api/live-socket.ts` in `mcp`) in a
- * new tab, which goes through that login and says when it is done; the line's own retries then
+ * opens the socket's own path (`/api/live`) in a new tab: Access shows its login there, sets the
+ * cookie for the application that covers the socket, and sends the tab back to the path, where the
+ * server has no page to show — the tab is done with once the login is. The line's own retries then
  * connect within its longest wait. A browser cannot tell a socket Access turned away from one that
  * never reached the server, so the link is offered whenever the line is not connected.
  */
 
-/** The page that sends a browser through the server's Access login: the socket's own path, over https. */
+/** Where a browser goes through the server's Access login: the socket's own path, so the same application covers both. */
 export function serverSignInUrl(address: string): string {
   return `${address}${JARVIS_SERVER_SOCKET_PATH}`;
 }

@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import express from 'express';
 import WebSocket from 'ws';
 import { publishLiveEvent } from '../../utils/live-events.js';
 import { currentPointing, resetPointingForTest } from '../../utils/pointing.js';
@@ -12,7 +11,6 @@ import {
   type LiveSocketOptions,
   type LiveSockets,
   MAX_LIVE_SOCKETS,
-  registerLiveSignInPage,
 } from './live-socket.js';
 
 let server: Server | undefined;
@@ -81,28 +79,6 @@ function nextEvent(socket: WebSocket): Promise<{ message: unknown } | { closed: 
 function hello(device = 'phone'): string {
   return JSON.stringify({ type: 'hello', device });
 }
-
-describe('the sign-in page', () => {
-  it('answers a browser that opens the socket’s path as a page, and caches nothing', async () => {
-    const app = express();
-    const router = express.Router();
-    registerLiveSignInPage(router);
-    app.use(router);
-    server = app.listen(0, '127.0.0.1');
-    await new Promise<void>((resolve) => server?.once('listening', () => resolve()));
-    const address = server.address();
-    if (!isAddressInfo(address)) {
-      throw new Error('The server is not listening on a port');
-    }
-
-    const response = await fetch(`http://127.0.0.1:${address.port}${LIVE_SOCKET_PATH}`);
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get('content-type')).toContain('text/html');
-    expect(response.headers.get('cache-control')).toBe('no-store');
-    expect(await response.text()).toContain('You are through to your Jarvis server');
-  });
-});
 
 describe('the live socket', () => {
   it('says ready to any hello, asking nobody, and then sends it every live event', async () => {
