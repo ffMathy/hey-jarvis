@@ -296,8 +296,8 @@ function serveFakeHomeAssistant(states: Record<string, CompressedState>) {
 }
 
 /** Waits for `condition` to hold, since the cache fills from messages that arrive in their own time. */
-async function eventually(condition: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 500 && !condition(); attempt++) {
+async function eventually(condition: () => boolean, timeoutMs = 5_000): Promise<void> {
+  for (let attempt = 0; attempt < timeoutMs / 10 && !condition(); attempt++) {
     await Bun.sleep(10);
   }
   expect(condition()).toBe(true);
@@ -338,4 +338,30 @@ describe('the cache', () => {
 
     expect(getHomeSnapshot()).toBeUndefined();
   });
+
+  it('fetches everything again on its resync, mending a change it never heard of', async () => {
+    const states = { 'light.porch': { s: 'on', a: { friendly_name: 'Porch' }, lc: 1_790_000_000 } };
+    const homeAssistant = serveFakeHomeAssistant(states);
+    const connection = await createConnection({ auth: createLongLivedTokenAuth(homeAssistant.url, 'token') });
+    const stop = startHomeStateCache(connection, { resyncEveryMs: 50 });
+
+    try {
+      await eventually(() => getHomeSnapshot() !== undefined);
+
+      // Home Assistant's state moves on without a delta reaching the cache.
+      states['light.porch'].s = 'off';
+
+      // The old copy keeps answering while the subscription is reopened...
+      await eventually(() => homeAssistant.requested.filter((type) => type === 'config/area_registry/list').length > 1);
+      expect(getHomeSnapshot()?.states['light.porch']?.state).toBe('on');
+
+      // ...until Home Assistant has sent every state afresh.
+      await eventually(() => getHomeSnapshot()?.states['light.porch']?.state === 'off', 10_000);
+      expect(homeAssistant.requested.filter((type) => type === 'subscribe_entities')).toHaveLength(2);
+    } finally {
+      stop();
+      connection.close();
+      homeAssistant.stop();
+    }
+  }, 15_000);
 });
