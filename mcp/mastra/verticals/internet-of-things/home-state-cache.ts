@@ -27,6 +27,9 @@ import type {
  * arrive, and from a dropped connection until the states after the reconnect, {@link getHomeSnapshot}
  * returns `undefined`, and the lookups fall back to asking Home Assistant over REST, as they did
  * before. That is also what every process without the event monitor -- Studio, the tests -- does.
+ *
+ * Because the states are only patched by deltas, the whole copy is also fetched again every hour,
+ * so a change that was missed or misapplied cannot outlive the next resync.
  */
 
 /** Registry events after which the copy of that registry is fetched again. */
@@ -40,6 +43,20 @@ const REGISTRY_RETRY_AFTER_MS = 60_000;
  * entities -- so the refetch waits this long for the burst to end.
  */
 const REGISTRY_REFRESH_DEBOUNCE_MS = 1_000;
+
+/**
+ * How often the whole copy is fetched again. The states are only ever patched by deltas, so one
+ * missed or misapplied change would otherwise stay wrong until the socket happens to drop.
+ */
+const RESYNC_EVERY_MS = 60 * 60 * 1_000;
+
+/**
+ * How long the client library keeps the `subscribe_entities` subscription open after its last
+ * subscriber leaves (`UNSUB_GRACE_PERIOD` in its `collection.js`, not exported). Subscribing again
+ * sooner reuses the open subscription and its patched states, so a resync waits it out -- with a
+ * second to spare -- to make Home Assistant send every state afresh.
+ */
+const ENTITY_SUBSCRIPTION_TEARDOWN_MS = 5_000 + 1_000;
 
 /** What the entity registry says about one entity. Entities without an entry are not in it. */
 export interface CachedEntityEntry {
@@ -129,13 +146,20 @@ export function setHomeSnapshotForTest(snapshot: HomeSnapshot | undefined): void
 /**
  * Starts keeping a copy of the house over `connection`, and serves it from {@link getHomeSnapshot}.
  *
- * Returns at once; the copy fills in the background. Returns the function that stops it.
+ * Returns at once; the copy fills in the background. Every `resyncEveryMs` (an hour) the states and
+ * registries are fetched again in full, and the old copy answers until the new one has arrived.
+ * Returns the function that stops it.
  */
-export function startHomeStateCache(connection: Connection): () => void {
+export function startHomeStateCache(
+  connection: Connection,
+  { resyncEveryMs = RESYNC_EVERY_MS }: { resyncEveryMs?: number } = {},
+): () => void {
   let states: HassEntities | undefined;
   let registries: Registries | undefined;
   let refreshing: Promise<void> | undefined;
   let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+  let resyncTimer: ReturnType<typeof setTimeout> | undefined;
+  let unsubscribeStates: (() => void) | undefined;
   let stopped = false;
 
   const refreshRegistries = (): void => {
@@ -170,9 +194,37 @@ export function startHomeStateCache(connection: Connection): () => void {
     refreshTimer = setTimeout(refreshRegistries, delayMs);
   };
 
-  const unsubscribeStates = subscribeEntities(connection, (current) => {
-    states = current;
-  });
+  const subscribeStates = (): void => {
+    unsubscribeStates = subscribeEntities(connection, (current) => {
+      states = current;
+    });
+  };
+
+  const scheduleResync = (): void => {
+    resyncTimer = setTimeout(resync, resyncEveryMs);
+  };
+
+  // `states` is left as it is while the subscription is closed, so the copy keeps answering until
+  // the fresh one replaces it.
+  const resync = (): void => {
+    if (stopped) {
+      return;
+    }
+    logger.info('Fetching the whole Home Assistant state again');
+    refreshRegistries();
+    unsubscribeStates?.();
+    unsubscribeStates = undefined;
+    resyncTimer = setTimeout(() => {
+      if (stopped) {
+        return;
+      }
+      subscribeStates();
+      scheduleResync();
+    }, ENTITY_SUBSCRIPTION_TEARDOWN_MS);
+  };
+
+  subscribeStates();
+  scheduleResync();
 
   const registrySubscriptions = REGISTRY_EVENT_TYPES.map((eventType) =>
     connection.subscribeEvents(() => scheduleRefresh(REGISTRY_REFRESH_DEBOUNCE_MS), eventType),
@@ -198,7 +250,8 @@ export function startHomeStateCache(connection: Connection): () => void {
   return () => {
     stopped = true;
     clearTimeout(refreshTimer);
-    unsubscribeStates();
+    clearTimeout(resyncTimer);
+    unsubscribeStates?.();
     connection.removeEventListener('disconnected', onDisconnected);
     connection.removeEventListener('ready', onReady);
     for (const subscription of registrySubscriptions) {

@@ -3182,7 +3182,10 @@ process that also owns the schedules, so Studio never files a change twice.
   saw (persisted in `iot_device_states`) and reports what changed while it was away.
 - **A copy of the house for the lookups** (`home-state-cache.ts`). The same connection keeps every
   state current through `subscribe_entities`, plus the entity, device and area registries, which are
-  fetched again on their `*_registry_updated` events and on every reconnect. `findEntities`,
+  fetched again on their `*_registry_updated` events and on every reconnect. Since the states are
+  only patched by deltas, the whole copy is also fetched again every hour: the registries are
+  refetched and `subscribe_entities` is reopened (after the client library's 5-second grace period,
+  so Home Assistant sends every state afresh), with the old copy answering meanwhile. `findEntities`,
   `getAllDevices`, `getChangedDevicesSince`, `inferUserLocation`, the areas in the agent's
   instructions, the targets `callIoTService` resolves and the home commands and questions answered
   without the agent all read it, with no request to Home Assistant. Its readers return exactly
