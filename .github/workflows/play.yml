@@ -260,6 +260,32 @@ jobs:
           track: ${{ inputs.track || 'internal' }}
           status: ${{ inputs.status || 'completed' }}
 
+      # **Play's API has bad seconds, so the phone gets one more go too.** Release 4.19.0 lost its
+      # phone to the very first call of the upload:
+      #
+      #   Creating a new Edit for this release
+      #   ##[error]The service is currently unavailable.
+      #
+      # A 503 a quarter of a second in, before a single byte was uploaded — while the watch, a
+      # tenth of a second later, published without trouble. An edit that never committed spends
+      # nothing, so the same bundle goes up again unchanged; and if a refusal is real rather than a
+      # blip, the second attempt is refused the same way and the report below still fails the job.
+      - name: Let Play recover before trying the phone again
+        if: steps.publish-phone.outcome == 'failure'
+        run: sleep 30
+
+      - name: Publish the phone to Play, second attempt
+        id: publish-phone-retry
+        if: steps.publish-phone.outcome == 'failure'
+        continue-on-error: true
+        uses: r0adkll/upload-google-play@v1.1.3
+        with:
+          serviceAccountJson: play-publisher.json
+          packageName: com.ffmathy.heyjarvis
+          releaseFiles: dist/mobile-aab/jarvis.aab
+          track: ${{ inputs.track || 'internal' }}
+          status: ${{ inputs.status || 'completed' }}
+
       # And the watch to the Wear OS track of the same name.
       #
       # `wear:internal` is not a guess, and it is not what Google documents. The tracks page says a
@@ -306,7 +332,9 @@ jobs:
       # diagnosis — a second attempt against a commit that did land fails with "Version code has
       # already been used" instead.)
       #
-      # Only the watch, because only the watch goes second. If the order is ever swapped, this moves.
+      # The phone's own second attempt above is for a different failure — Play being briefly down —
+      # and it waits less, because it is not waiting for a commit to settle. If the order is ever
+      # swapped, this longer wait moves to whichever goes second.
       - name: Let Play settle before trying the watch again
         if: steps.publish-watch.outcome == 'failure'
         run: sleep 60
@@ -336,9 +364,14 @@ jobs:
         run: |
           phone='${{ steps.publish-phone.outcome }}'
           watch='${{ steps.publish-watch.outcome }}'
+          phoneRetry='${{ steps.publish-phone-retry.outcome }}'
           retry='${{ steps.publish-watch-retry.outcome }}'
 
           # `skipped` when the first attempt worked and there was nothing to retry.
+          if [ "$phoneRetry" = 'success' ]; then
+            echo "The phone failed its first attempt and published on the second."
+            phone='success'
+          fi
           if [ "$retry" = 'success' ]; then
             echo "The watch failed its first attempt and published on the second."
             watch='success'
