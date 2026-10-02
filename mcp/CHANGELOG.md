@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.18.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.17.0...mcp-v2.18.0) (2026-10-02)
+
+
+### Features
+
+* **mcp:** resync the home state cache every hour ([#936](https://github.com/ffMathy/hey-jarvis/issues/936)) ([e2ead82](https://github.com/ffMathy/hey-jarvis/commit/e2ead82a05d7a8b751b99db1149f7de9a02a0ed4))
+
 ## [2.17.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.16.1...mcp-v2.17.0) (2026-10-01)
 
 
