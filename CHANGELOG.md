@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.19.0...root-v4.20.0) (2026-10-02)
+
+
+### Features
+
+* **mcp:** resync the home state cache every hour ([#936](https://github.com/ffMathy/hey-jarvis/issues/936)) ([e2ead82](https://github.com/ffMathy/hey-jarvis/commit/e2ead82a05d7a8b751b99db1149f7de9a02a0ed4))
+
 ## [4.19.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.18.1...root-v4.19.0) (2026-10-01)
 
 
