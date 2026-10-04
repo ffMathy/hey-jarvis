@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.18.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.18.0...mcp-v2.18.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* **mcp:** stop reading jarvis's own request emails as replies ([#938](https://github.com/ffMathy/hey-jarvis/issues/938)) ([f4b9911](https://github.com/ffMathy/hey-jarvis/commit/f4b9911b0308c680dc9f3a1ad28d8859d87ce5bb))
+
 ## [2.18.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.17.0...mcp-v2.18.0) (2026-10-02)
 
 

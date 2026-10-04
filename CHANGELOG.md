@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.20.0...root-v4.20.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* **mcp:** stop reading jarvis's own request emails as replies ([#938](https://github.com/ffMathy/hey-jarvis/issues/938)) ([f4b9911](https://github.com/ffMathy/hey-jarvis/commit/f4b9911b0308c680dc9f3a1ad28d8859d87ce5bb))
+
 ## [4.20.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.19.0...root-v4.20.0) (2026-10-02)
 
 
