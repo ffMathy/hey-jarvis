@@ -1957,6 +1957,10 @@ Demonstrates email-based workflow suspension and resumption with a 3-step approv
 - Subject: `Form Request [RUN-{runId}/REQ-{requestId}]: {question}`
 - Body: Question + instructions + the request reference (`{runId}/{requestId}`)
 - Resume trigger: A reply whose subject still carries both ids
+- Header: every email `sendEmail` sends carries `X-Hey-Jarvis-Sent`. Jarvis and the household
+  share one mailbox, so the request itself lands in the inbox the replies are read from, with
+  the same subject token and the asked address as its sender; the header is the only thing that
+  says it is not an answer, and the reply detector skips mail carrying it
 
 **Workflow Steps:**
 1. **Initialize**: Pass the recipient, project name and budget through
