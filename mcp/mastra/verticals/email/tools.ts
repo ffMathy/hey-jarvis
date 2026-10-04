@@ -30,6 +30,8 @@ interface GraphEmailMessage {
   hasAttachments: boolean;
   isRead: boolean;
   isDraft: boolean;
+  /** Only present when asked for with `$select`. */
+  internetMessageHeaders?: Array<{ name: string; value: string }>;
 }
 
 interface GraphEmailListResponse {
@@ -481,6 +483,25 @@ export const deleteEmail = createTool({
   },
 });
 
+/**
+ * The header every email Jarvis sends carries, so it can recognise its own mail when it lands
+ * back in the inbox.
+ *
+ * Jarvis and the household share one mailbox, so a question emailed to the household arrives
+ * in the very inbox the reply detector reads -- with the request token in its subject and the
+ * expected sender in its From. Nothing else told it apart from an answer: the weekly meal plan
+ * once read its own request email as a reply asking for changes, and sent a second plan an
+ * hour later. A mail client replying never copies a custom `X-` header, so the header marks
+ * only what Jarvis itself sent.
+ */
+export const SENT_BY_JARVIS_HEADER = 'X-Hey-Jarvis-Sent';
+
+/** Whether a message carries {@link SENT_BY_JARVIS_HEADER}. Header names are case-insensitive. */
+export function isSentByJarvis(headers: ReadonlyArray<{ name: string }> = []): boolean {
+  const expectedName = SENT_BY_JARVIS_HEADER.toLowerCase();
+  return headers.some((header) => header.name.toLowerCase() === expectedName);
+}
+
 // Tool to send an email directly
 export const sendEmail = createTool({
   id: 'sendEmail',
@@ -510,6 +531,7 @@ export const sendEmail = createTool({
         contentType: 'HTML',
         content: bodyContent,
       },
+      internetMessageHeaders: [{ name: SENT_BY_JARVIS_HEADER, value: 'true' }],
       toRecipients: toRecipients.map((email: string) => ({
         emailAddress: {
           address: email,
@@ -570,6 +592,8 @@ export interface EmailMessage {
   isRead: boolean;
   hasAttachments: boolean;
   isDraft: boolean;
+  /** Whether Jarvis sent this email itself; see {@link SENT_BY_JARVIS_HEADER}. */
+  sentByJarvis: boolean;
 }
 
 export interface FindNewEmailsResult {
@@ -599,7 +623,8 @@ export async function findNewEmailsSinceLastCheck(
     getEmailStateStorage().then((emailStateStorage) => emailStateStorage.getLastSeenEmail(storageKey)),
   ]);
 
-  const selectedFields = [...LISTED_EMAIL_FIELDS, 'body'].join(',');
+  // The headers are what tell Jarvis's own mail apart from a reply; Graph only returns them when selected.
+  const selectedFields = [...LISTED_EMAIL_FIELDS, 'body', 'internetMessageHeaders'].join(',');
   const baseUrl = `${GRAPH_API_BASE}/me/mailFolders/${mailboxFolder}/messages?$top=${limit}&$select=${selectedFields}&$orderby=receivedDateTime desc`;
 
   // If we have a last seen timestamp, filter for emails received after that time
@@ -643,6 +668,7 @@ export async function findNewEmailsSinceLastCheck(
     isRead: email.isRead,
     hasAttachments: email.hasAttachments,
     isDraft: email.isDraft,
+    sentByJarvis: isSentByJarvis(email.internetMessageHeaders),
   }));
 
   return {

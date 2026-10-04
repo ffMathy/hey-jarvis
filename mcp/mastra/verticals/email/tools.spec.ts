@@ -14,12 +14,27 @@ import {
   draftEmail,
   draftReply,
   findEmails,
+  isSentByJarvis,
+  SENT_BY_JARVIS_HEADER,
   sendEmail,
   updateDraft,
 } from './tools.js';
 
 const INBOX = { id: 'inbox', name: 'Inbox' };
 const DRAFTS = { id: 'drafts', name: 'Drafts' };
+
+describe('isSentByJarvis', () => {
+  it('recognises the header Jarvis puts on what it sends, whatever case Graph returns it in', () => {
+    expect(isSentByJarvis([{ name: SENT_BY_JARVIS_HEADER }])).toBe(true);
+    expect(isSentByJarvis([{ name: 'Received' }, { name: SENT_BY_JARVIS_HEADER.toLowerCase() }])).toBe(true);
+  });
+
+  it('is false for mail without it, including mail whose headers did not come back', () => {
+    expect(isSentByJarvis([{ name: 'In-Reply-To' }, { name: 'X-Mailer' }])).toBe(false);
+    expect(isSentByJarvis([])).toBe(false);
+    expect(isSentByJarvis(undefined)).toBe(false);
+  });
+});
 
 describe('describeMailFolder', () => {
   it('names a well-known folder, in the case Graph reads it in', () => {

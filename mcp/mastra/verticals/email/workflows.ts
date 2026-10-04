@@ -60,6 +60,7 @@ const emailObjectSchema = z.object({
   isRead: z.boolean(),
   hasAttachments: z.boolean(),
   isDraft: z.boolean(),
+  sentByJarvis: z.boolean(),
 });
 
 /**
@@ -609,6 +610,18 @@ async function applyFormReply(
 }
 
 /**
+ * The request an inbound email answers, or undefined when it answers none.
+ *
+ * The request email Jarvis sent is not an answer, even though it carries the same subject
+ * token and -- because Jarvis and the household share one mailbox -- comes from the very
+ * address the request went to. Read as a reply, the weekly meal plan's own email asked for
+ * changes ("Byt ret X ud med noget med kylling") and a second plan went out.
+ */
+function readFormReply(email: z.infer<typeof emailObjectSchema>) {
+  return email.sentByJarvis ? undefined : parseFormRequestSubject(email.subject);
+}
+
+/**
  * Process form replies and resume the runs waiting for them.
  *
  * A reply carries, in its subject, the id of the suspended run and the id of the request
@@ -652,7 +665,7 @@ const processFormReplies = createStep({
       try {
         emailsProcessed++;
 
-        const formRequest = parseFormRequestSubject(email.subject);
+        const formRequest = readFormReply(email);
         if (!formRequest) continue;
 
         formRepliesFound++;
@@ -862,9 +875,7 @@ const formatFormRepliesOutput = createStep({
   execute: async (params) => {
     const emails = params.state.newEmails ?? [];
 
-    const formRepliesCount = emails.filter(
-      (email: z.infer<typeof emailObjectSchema>) => parseFormRequestSubject(email.subject) !== undefined,
-    ).length;
+    const formRepliesCount = emails.filter((email) => readFormReply(email) !== undefined).length;
 
     const outcome = params.state.formReplyOutcome ?? { workflowsResumed: 0, repliesRejected: 0, errors: [] };
 

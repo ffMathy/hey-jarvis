@@ -249,11 +249,13 @@ function inboundReply({
   from,
   content = '',
   preview = '',
+  sentByJarvis = false,
 }: {
   subject: string;
   from: string;
   content?: string;
   preview?: string;
+  sentByJarvis?: boolean;
 }) {
   nextEmailId += 1;
   return {
@@ -266,6 +268,7 @@ function inboundReply({
     isRead: false,
     hasAttachments: false,
     isDraft: false,
+    sentByJarvis,
   };
 }
 
@@ -393,6 +396,32 @@ describe('processFormReplies', () => {
       senderEmail: 'boss@example.com',
       response: { approved: true, comments: 'go ahead' },
     });
+  });
+
+  it('ignores the request email itself when it lands back in the shared inbox', async () => {
+    // Jarvis and the household share one mailbox, so the request arrives in the inbox the
+    // replies are read from: same subject token, and from the very address it was sent to.
+    const run = await startPendingApproval('boss@example.com');
+    stagedAnswer = { approved: false, comments: 'swap the fish' };
+
+    const summary = await processReplies([
+      inboundReply({
+        subject: sentEmails[0].subject,
+        from: 'boss@example.com',
+        content: sentEmails[0].bodyContent,
+        sentByJarvis: true,
+      }),
+    ]);
+
+    expect(summary).toEqual({
+      emailsProcessed: 1,
+      formRepliesFound: 0,
+      workflowsResumed: 0,
+      repliesRejected: 0,
+      errors: [],
+    });
+    expect(parsedReplyBodies).toEqual([]);
+    expect((await mastra.getWorkflow('awaitApprovalWorkflow').getWorkflowRunById(run.runId))?.status).toBe('suspended');
   });
 
   it('falls back to the preview when the body did not come back', async () => {
