@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { WINDOW_PUT_AWAY } from '../modules/jarvis-assistant';
 import { ASSISTANT_SURFACE, SHOWING_PROP } from './assistant-window';
 
 /**
@@ -25,8 +24,7 @@ function readSource(relativePath: string): string {
 const SESSION =
   'modules/jarvis-assistant/android/src/main/java/expo/modules/jarvisassistant/JarvisVoiceInteractionSession.kt';
 
-const MODULE =
-  'modules/jarvis-assistant/android/src/main/java/expo/modules/jarvisassistant/JarvisAssistantModule.kt';
+const MODULE = 'modules/jarvis-assistant/android/src/main/java/expo/modules/jarvisassistant/JarvisAssistantModule.kt';
 
 /** A string constant as the session — or another Kotlin file — declares it. */
 function readKotlinConstant(name: string, file = SESSION): string {
@@ -67,6 +65,12 @@ describe('the assistant window handover between Kotlin and TypeScript', () => {
   // Drift here fails quietly as well, and audibly: the window is put away — the screen timing out
   // over the lock screen does it — and he goes on listening and answering with nothing on screen.
   it('tells the app its window was put away under the event the app listens for', () => {
-    expect(readKotlinConstant('WINDOW_PUT_AWAY', MODULE)).toBe(WINDOW_PUT_AWAY);
+    // Read rather than imported: the module's `index.ts` imports `expo`, which bun cannot load.
+    const javascript = /export const WINDOW_PUT_AWAY = '([^']+)'/.exec(
+      readSource('modules/jarvis-assistant/index.ts'),
+    )?.[1];
+
+    expect(javascript, 'index.ts should declare WINDOW_PUT_AWAY').toBeDefined();
+    expect(readKotlinConstant('WINDOW_PUT_AWAY', MODULE)).toBe(javascript ?? '');
   });
 });
