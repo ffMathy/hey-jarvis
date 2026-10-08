@@ -6,6 +6,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.service.voice.VoiceInteractionService
 import android.util.Log
@@ -21,6 +23,13 @@ private const val DEFAULT_APPS_SETTINGS = "default-apps"
 private const val ALL_SETTINGS = "settings"
 
 private const val TAG = "JarvisAssistant"
+
+/**
+ * The event telling JavaScript the assistant's window was put away, so the conversation in it hangs
+ * up. Spelled the same as `WINDOW_PUT_AWAY` in `mobile/modules/jarvis-assistant/index.ts`, which
+ * `assistant-window.contract.spec.ts` holds it to.
+ */
+private const val WINDOW_PUT_AWAY = "onAssistantWindowPutAway"
 
 /**
  * The JavaScript side of becoming the phone's assistant.
@@ -72,6 +81,21 @@ class JarvisAssistantModule : Module() {
     AsyncFunction("returnFromTheCamera") { showWindowAgain: Boolean ->
       JarvisVoiceInteractionSession.returnFromTheCamera(showWindowAgain)
     }.runOnQueue(Queues.MAIN)
+
+    Events(WINDOW_PUT_AWAY)
+
+    // Main thread, because the session reads it there: `onHide` runs on the main looper.
+    OnStartObserving {
+      Handler(Looper.getMainLooper()).post {
+        JarvisVoiceInteractionSession.whenPutAway = { sendEvent(WINDOW_PUT_AWAY) }
+      }
+    }
+
+    OnStopObserving {
+      Handler(Looper.getMainLooper()).post {
+        JarvisVoiceInteractionSession.whenPutAway = null
+      }
+    }
   }
 
   private fun context(): Context = appContext.reactContext ?: throw Exceptions.ReactContextLost()

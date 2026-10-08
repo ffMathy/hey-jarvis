@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { WINDOW_PUT_AWAY } from '../modules/jarvis-assistant';
 import { ASSISTANT_SURFACE, SHOWING_PROP } from './assistant-window';
 
 /**
@@ -24,12 +25,15 @@ function readSource(relativePath: string): string {
 const SESSION =
   'modules/jarvis-assistant/android/src/main/java/expo/modules/jarvisassistant/JarvisVoiceInteractionSession.kt';
 
-/** A string constant as the session declares it. */
-function readKotlinConstant(name: string): string {
-  const source = readSource(SESSION);
+const MODULE =
+  'modules/jarvis-assistant/android/src/main/java/expo/modules/jarvisassistant/JarvisAssistantModule.kt';
+
+/** A string constant as the session — or another Kotlin file — declares it. */
+function readKotlinConstant(name: string, file = SESSION): string {
+  const source = readSource(file);
   const match = new RegExp(`${name}\\s*=\\s*"([^"]+)"`).exec(source);
 
-  expect(match, `JarvisVoiceInteractionSession.kt should declare ${name}`).not.toBeNull();
+  expect(match, `${file} should declare ${name}`).not.toBeNull();
   return match?.[1] ?? '';
 }
 
@@ -58,5 +62,11 @@ describe('the assistant window handover between Kotlin and TypeScript', () => {
 
     const entry = readSource('index.ts');
     expect(entry).toMatch(/showing:\s*props\[SHOWING_PROP\]/);
+  });
+
+  // Drift here fails quietly as well, and audibly: the window is put away — the screen timing out
+  // over the lock screen does it — and he goes on listening and answering with nothing on screen.
+  it('tells the app its window was put away under the event the app listens for', () => {
+    expect(readKotlinConstant('WINDOW_PUT_AWAY', MODULE)).toBe(WINDOW_PUT_AWAY);
   });
 });

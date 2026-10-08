@@ -254,6 +254,17 @@ up. The assistant's window is kept between summonings rather than rebuilt, so a 
 has gone is announced by the session itself: every showing sets the surface's `showing` root prop
 (`SHOWING_PROP`) to a new number, which brings the sheet back and opens a new conversation.
 
+**The window going away hangs up too, whoever put it away.** The system hides it on its own: the
+screen timing out over the lock screen does it, because `VoiceInteractionSession.onLockscreenShown`
+is `hide()` by default. Holding the power button works with the phone locked and the screen off, so a
+summoning from a pocket sat there talking, the screen slept, and the window went. The conversation did
+not. Sir unlocked to Jarvis listening and answering, with no sheet and nothing to hang up with. Now
+every hide except the camera's sends `onAssistantWindowPutAway` (`WINDOW_PUT_AWAY`, pinned by
+`assistant-window.contract.spec.ts`), and the window's tree answers it with `hangUp`. React Native is
+paused two seconds later instead of at once. A paused instance stops its timers, and the hang-up
+should not depend on one of them never firing. The activity's tree does not listen, for the reason
+below.
+
 **There are two apps on one JavaScript runtime, and a signal has to reach the right one.** The
 assistant's window is a second React Native surface; the app's own activity is often still alive
 from an earlier launch, behind whatever the user is doing, rendering its own tree. Anything that
