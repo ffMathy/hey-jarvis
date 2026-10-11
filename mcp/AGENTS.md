@@ -394,6 +394,13 @@ hostname, give `/artifacts/*` a *Bypass* policy, or the phone gets Access's logi
 cannot reach Jarvis's own data, so a page about the calendar, the house or the shopping list needs
 that agent to fetch it first and the planner to pass it along — the agent's description says so.
 
+**Weekly digest:** `weeklyNewsDigestWorkflow` (`web-research/workflows.ts`), scheduled for Monday
+at 7:00, has the web research agent research the past week's news while `getDailyDevTopPosts`
+(`web-research/tools.ts`) fetches daily.dev's most upvoted posts of the week, then hands both to
+`generateUserInterface` in one brief, which builds the page and pushes it to the phone. daily.dev is
+read through its GraphQL endpoint's `mostUpvotedFeed`, which needs no token; its documented public
+API needs a Plus subscription. Like every page, the digest's link lives for 24 hours.
+
 **Also reached from web research:** `visualizeResearch` (`web-research/shortcuts.ts`) is a shortcut
 onto `generateUserInterface`, so "look into X and show me a chart" is one delegation to `webResearch`
 — it researches, then hands its findings to the builder itself, rather than the planner chaining a
@@ -1565,6 +1572,7 @@ ceiling for a slow SD card, not something to lean on.
 - `EVERY_3_HOURS`: `0 */3 * * *`
 - `DAILY_AT_MIDNIGHT`: `0 0 * * *`
 - `WEEKLY_SUNDAY_8AM`: `0 8 * * 0`
+- `WEEKLY_MONDAY_7AM`: `0 7 * * 1`
 
 Mastra validates the expression when the row is created, so a new cadence can be added verbatim
 in standard 5-field form; croner nicknames (`@hourly`, `@daily`) work too.
@@ -1596,6 +1604,11 @@ in standard 5-field form; croner nicknames (`@hourly`, `@daily`) work too.
 6. **Storage Retention** - Runs nightly at midnight
    - Workflow: `storageRetentionWorkflow`
    - Purpose: Trims token usage rows past their retention window
+
+7. **Weekly News Digest** - Runs every Monday at 7:00 AM
+   - Workflow: `weeklyNewsDigestWorkflow`
+   - Purpose: Summarizes the past week's news and daily.dev's most upvoted posts on one visualized
+     page, and pushes its link to the phone (see [Web Research](#visualize-vertical-shortcuts))
 
 **Monitoring Scheduled Workflows:**
 
