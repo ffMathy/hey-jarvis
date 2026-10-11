@@ -9,6 +9,14 @@
  */
 
 /**
+ * How long the view takes to count appearance from 0 to 1: the vortex bringing him out of the core.
+ *
+ * Here rather than beside the drawing so the session can read it without reaching Skia: the
+ * greeting waits for the vortex to finish before it plays (`jarvis-session.ts`).
+ */
+export const MATERIALISE_SECONDS = 0.7;
+
+/**
  * How long Jarvis takes to go.
  *
  * Shorter than he takes to arrive: leaving should not be a ceremony. Whoever sets a hologram's

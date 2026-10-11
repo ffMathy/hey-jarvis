@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { GIVE_UP_CONNECTING_AFTER_MS } from './conversation-life';
 import { HEADSET_PARTICIPANT_NAME } from './conversation-token';
 import { DEADLINE_PROBLEM, DROPPED_PROBLEM, MICROPHONE_PROBLEM, UNREACHABLE_PROBLEM } from './failure-text';
+import { MATERIALISE_SECONDS } from './frame-timing';
 import { GREETING_GRACE_SECONDS, WITHOUT_FIRST_MESSAGE } from './greeting-handover';
 import { createHarness, HEADSET_OFFLINE_PROBLEM, settle } from './jarvis-session.fakes';
 
@@ -163,6 +164,42 @@ describe('summoning Jarvis', () => {
 
     session.voice.getVolume();
     expect(session.phase).toBe('connecting');
+  });
+
+  it('greets only once he has finished arriving, while the token is asked for at once', async () => {
+    const { session, tokens, greeting, clock } = createHarness({ greetAfterArrivalMs: undefined });
+
+    session.summon();
+    expect(tokens.requests).toHaveLength(1);
+    expect(greeting.plays).toBe(0);
+
+    await clock.advance(MATERIALISE_SECONDS * 1000 - 1);
+    expect(greeting.plays).toBe(0);
+
+    await clock.advance(1);
+    expect(greeting.plays).toBe(1);
+  });
+
+  it('counts a slow route towards the arrival rather than waiting it out again', async () => {
+    const { session, greeting, clock } = createHarness({ greetAfterArrivalMs: undefined }, { waitsForRoute: true });
+
+    session.summon();
+    await clock.advance(MATERIALISE_SECONDS * 1000 + 300);
+    expect(greeting.plays).toBe(0);
+
+    greeting.routeReady();
+    await settle();
+    expect(greeting.plays).toBe(1);
+  });
+
+  it('never greets when hung up on before he has finished arriving', async () => {
+    const { session, greeting, clock } = createHarness({ greetAfterArrivalMs: undefined });
+
+    session.summon();
+    session.hangUp();
+    await clock.advance(MATERIALISE_SECONDS * 1000);
+
+    expect(greeting.plays).toBe(0);
   });
 });
 

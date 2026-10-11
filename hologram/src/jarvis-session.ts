@@ -4,6 +4,7 @@ import { requestConversationToken, requestSignedConversationUrl } from './conver
 import { DEADLINE_PROBLEM, describeDisconnect, describeStartFailure, describeTokenFailure } from './failure-text';
 import { isGreetingOver, WITHOUT_FIRST_MESSAGE } from './greeting-handover';
 import { createGreetingReaders } from './greeting-voice';
+import { MATERIALISE_SECONDS } from './frame-timing';
 import { createHalfDuplexDetector } from './half-duplex';
 import { presenceFromMicrophoneLevel } from './microphone-presence';
 import { flushQueuedAudio } from './queued-audio';
@@ -105,6 +106,8 @@ interface Attempt<Timer> {
   greeting: GreetingState;
   /** Whether the recording actually played, which is what switches the agent's first message off. */
   greeted: boolean;
+  /** When he was summoned, on `now()`'s clock: when his arrival vortex started. */
+  summonedAt: number;
   /** When the recording was asked for, on `now()`'s clock. */
   askedAt: number;
   /** Told once the greeting has started or will not, and then forgotten. */
@@ -133,6 +136,8 @@ interface Attempt<Timer> {
   microphoneMuted: boolean;
   deadline?: Timer;
   greetingCheck?: Timer;
+  /** Holds the recording back until he has finished arriving: see `playOnceArrived`. */
+  arrivalWait?: Timer;
   /**
    * What sir said while it connected (see `HeldVoice`): not kept, being kept, or handed over.
    */
@@ -189,6 +194,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
   const offlineProblem = dependencies.offlineProblem;
   const deadlineProblem = dependencies.deadlineProblem ?? (() => DEADLINE_PROBLEM);
   const giveUpConnectingAfterMs = dependencies.giveUpConnectingAfterMs ?? GIVE_UP_CONNECTING_AFTER_MS;
+  const greetAfterArrivalMs = dependencies.greetAfterArrivalMs ?? MATERIALISE_SECONDS * 1000;
   const findRoom = dependencies.findRoom ?? (() => undefined);
   const followVoice = dependencies.followAgentVoice;
   const removeOrphanedAudio = dependencies.removeOrphanedAudio;
@@ -530,6 +536,10 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     if (current.greetingCheck !== undefined) {
       cancel(current.greetingCheck);
       current.greetingCheck = undefined;
+    }
+    if (current.arrivalWait !== undefined) {
+      cancel(current.arrivalWait);
+      current.arrivalWait = undefined;
     }
     if (current.heldVoiceRelease !== undefined) {
       cancel(current.heldVoiceRelease);
@@ -1079,6 +1089,31 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
   };
 
   /**
+   * Plays the recording once he has fully arrived: not before `greetAfterArrivalMs` have passed
+   * since he was summoned, so "Hello sir" is heard when the vortex has finished bringing him out of
+   * the core rather than while it is still spinning. Whatever was waited on before this — the
+   * call's audio, a headset's route — counts towards it. The clock that gives up on the greeting
+   * starts again once it is asked for: the wait was not him being late.
+   */
+  const playOnceArrived = (current: Attempt<Timer>) => {
+    const play = () => {
+      current.askedAt = now();
+      playGreeting(current);
+    };
+    const remainingMs = greetAfterArrivalMs - (now() - current.summonedAt);
+    if (remainingMs <= 0) {
+      play();
+      return;
+    }
+    current.arrivalWait = schedule(() => {
+      current.arrivalWait = undefined;
+      if (isCurrent(current) && current.greeting === 'asking') {
+        play();
+      }
+    }, remainingMs);
+  };
+
+  /**
    * Asks for the recording. A player with a route to wait for (`untilAudible`) is waited for
    * first, and the clock that gives up on the greeting starts again once it answers: the wait was
    * not him being late.
@@ -1089,7 +1124,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     scheduleGreetingCheck(current);
     changed();
     if (!greeting.untilAudible) {
-      playGreeting(current);
+      playOnceArrived(current);
       return;
     }
     let audible: Promise<void>;
@@ -1104,8 +1139,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
         if (!isCurrent(current) || current.greeting !== 'asking') {
           return;
         }
-        current.askedAt = now();
-        playGreeting(current);
+        playOnceArrived(current);
       });
   };
 
@@ -1163,6 +1197,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       textOnly,
       greeting: textOnly ? 'over' : 'asking',
       greeted: false,
+      summonedAt: now(),
       askedAt: now(),
       onGreetingAnswered: options.onGreetingAnswered,
       reaching: false,
