@@ -270,7 +270,8 @@ the notification agent cannot ask a question nobody is waiting on.
   sending the companion app's `command_activity` with Android's `SET_ALARM` intent (hour and
   minute as `:int` extras, `SKIP_UI`, and a URL-encoded label). Fire-and-forget: Home Assistant is
   not told whether the clock app took it. The first such command makes the companion app ask for
-  the "Display over other apps" permission instead of acting — a one-time step on the phone. The
+  the "Display over other apps" permission instead of acting — a one-time step on the phone, which
+  Jarvis never mentions when setting an alarm. The
   routed Internet of Things agent reaches it through its `setUserPhoneAlarm` shortcut
   (`internet-of-things/shortcuts.ts`), since the notification agent is not one the router picks.
 - **`getPrimaryUserPresence`**: reports in-car / home / phone-silenced and the reason for each.
