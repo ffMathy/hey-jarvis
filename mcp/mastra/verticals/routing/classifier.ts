@@ -8,6 +8,7 @@ import {
   homeServiceFrom,
   homeServiceQuestions,
 } from '../internet-of-things/home-commands.js';
+import { phoneAlarmQuestions } from '../internet-of-things/phone-alarm.js';
 import type { DirectAnswer } from './direct-answers.js';
 import type { OpenQuestion } from './questions.js';
 import { RESPONSE_STYLE_DESCRIPTIONS, type ResponseStyle } from './response-styles.js';
@@ -138,6 +139,7 @@ export function routingQuestions({
         'kinds, pick the one that needs the most words.',
       criteria: RESPONSE_STYLE_DESCRIPTIONS,
     },
+    ...(homeAgentIsRoutable && phoneAlarmQuestions()),
     ...(services.length > 0 && homeAgentIsRoutable && homeServiceQuestions(services)),
     ...(domains.length > 0 && homeAgentIsRoutable && homeQuestionQuestions(domains)),
     ...(lookups.length > 0 && lookupQuestions(lookups)),
@@ -177,7 +179,7 @@ export interface FastRoute {
   responseStyle: ResponseStyle;
   /**
    * Set when the request can be answered without the agent: a smart home command Jev is sure of the
-   * service for, or a question about the house it is sure of the kind of device for (see
+   * service for, an alarm on the phone, or a question about the house it is sure of the kind of device for (see
    * `direct-answers.ts`).
    */
   direct?: DirectAnswer;
@@ -296,8 +298,9 @@ function lookupDirectAnswerFrom(
 }
 
 /**
- * A request for the smart home agent that can be answered without it: a command whose service Jev
- * is sure of, or a question about how things are now whose kind of device it is sure of.
+ * A request for the smart home agent that can be answered without it: an alarm on the phone, a
+ * command whose service Jev is sure of, or a question about how things are now whose kind of device
+ * it is sure of.
  */
 function homeDirectAnswerFrom(
   answers: RoutingAnswers,
@@ -306,6 +309,9 @@ function homeDirectAnswerFrom(
   domains: string[],
 ): DirectAnswer | undefined {
   if (responseStyle === 'command') {
+    if ((answers.setsPhoneAlarm?.probability ?? 0) >= FAST_PATH_CONFIDENCE) {
+      return { kind: 'phoneAlarm' };
+    }
     const { homeService, homeCommandGivesSetting } = answers;
     const service =
       homeService &&

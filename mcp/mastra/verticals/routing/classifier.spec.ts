@@ -193,6 +193,25 @@ describe('readClassification', () => {
     });
   });
 
+  it('sets an alarm on the phone without the agent when it is sure the request is only that', () => {
+    const sureAlarm = readClassification(
+      answers('internetOfThings', { setsPhoneAlarm: { type: 'boolean', probability: 0.96 } }),
+      NOTHING_ELSE,
+    );
+    const unsureAlarm = readClassification(
+      answers('internetOfThings', { setsPhoneAlarm: { type: 'boolean', probability: 0.6 } }),
+      NOTHING_ELSE,
+    );
+    const alarmQuestion = readClassification(
+      answers('internetOfThings', { setsPhoneAlarm: { type: 'boolean', probability: 0.96 } }, 'lookup'),
+      NOTHING_ELSE,
+    );
+
+    expect(sureAlarm.fastRoute?.direct).toEqual({ kind: 'phoneAlarm' });
+    expect(unsureAlarm.fastRoute).not.toHaveProperty('direct');
+    expect(alarmQuestion.fastRoute).not.toHaveProperty('direct');
+  });
+
   it('answers a question about how the house is now from the kind of device it is about', () => {
     const classification = readClassification(
       answers(
@@ -319,6 +338,8 @@ describe('classifyRequest', () => {
     const classification = await classifyRequest(classifier, 'Turn off the living room lights', NOTHING_ELSE);
 
     expect(classification.fastRoute).toEqual({ agentId: 'internetOfThings', responseStyle: 'command' });
-    expect(evaluated).toEqual([{ state: 'Turn off the living room lights', questionIds: ['route', 'responseStyle'] }]);
+    expect(evaluated).toEqual([
+      { state: 'Turn off the living room lights', questionIds: ['route', 'responseStyle', 'setsPhoneAlarm'] },
+    ]);
   });
 });

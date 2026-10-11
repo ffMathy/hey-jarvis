@@ -2096,7 +2096,7 @@ unsure answer, each decision is made exactly as it was before there was a classi
 | Classifier | Where | Decides |
 | --- | --- | --- |
 | `routingClassifier` | `routing/classifier.ts` | Single-agent fast path, answers to waiting questions, goodbyes, replace/cancel/add, Home Assistant service |
-| `homeCommandClassifier` | `internet-of-things/home-commands.ts` | Which entities a smart home command acts on |
+| `homeCommandClassifier` | `internet-of-things/home-commands.ts`, `internet-of-things/phone-alarm.ts` | Which entities a smart home command acts on, and when a phone alarm rings |
 | `changeRelevanceClassifier` | `internet-of-things/change-relevance.ts` | What kind of Home Assistant change a report is |
 | `stateChangeClassifier` | `synapse/state-change-classifier.ts` | How much attention a state change needs, and which subscriptions it fires |
 | `weatherNotabilityClassifier` | `weather/classifier.ts` | Whether an hourly weather update is worth filing |
@@ -2109,10 +2109,14 @@ unsure answer, each decision is made exactly as it was before there was a classi
 
 **Direct answers.** When routing's Jev call is sure which agent a request is for, it can often tell what the
 request is, too, and then code answers it with no agent at all, handing back plain facts for the voice model
-to phrase (`routing/direct-answers.ts`). Three kinds:
+to phrase (`routing/direct-answers.ts`). Four kinds:
 
 - **Smart home commands** (`internet-of-things/home-commands.ts`): the Home Assistant service, then a yes/no
   per entity it can act on, then the service call.
+- **Phone alarms** (`internet-of-things/phone-alarm.ts`): routing's call asks whether the request only sets
+  one alarm; once it is sure, a second short call picks the hour (of 24) and minute (of 60), then
+  `setPhoneAlarm` is called. A morning-or-evening hour ("set an alarm for 7"), a time from now ("in 20
+  minutes") or a named alarm stays with the agent.
 - **Questions about the house** ("is the front door locked?"): the kind of device (Home Assistant's domains,
   fetched live), then a yes/no per entity of that kind, then their current states, units included. History,
   locations and anything unsure stay with the agent, which has the logbook and location tools.
