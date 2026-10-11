@@ -129,6 +129,47 @@ function isUnderWay(phase: SessionPhase): boolean {
 }
 
 /**
+ * And once he has gone, the drawing stops.
+ *
+ * Across the whole screen `leaving` is a fade, not an unmount — see the prop — so the screen has
+ * to keep him for exactly {@link LEAVING_SECONDS} and then let go. Letting go is the point: a frame
+ * loop drawing a sphere that has faded to nothing is a phone kept awake for no one.
+ *
+ * In the sheet he does not fade. The sheet starts down the moment the conversation ends
+ * (`leavingTheSheet`), with him on it, and he is gone once it says it is off the screen. See
+ * `ConversationFrame`.
+ */
+function useLeaving(ended: boolean, inSheet: boolean) {
+  const [gone, setGone] = useState(false);
+  const [leavingTheSheet, setLeavingTheSheet] = useState(false);
+  useEffect(() => {
+    if (!ended) {
+      // Which today only ever means "not yet", since nothing retries — but a conversation that
+      // became open again would have to bring him back with it rather than leave the screen dark.
+      setGone(false);
+      return;
+    }
+    if (inSheet) {
+      setLeavingTheSheet(true);
+      return;
+    }
+    const fading = setTimeout(() => setGone(true), LEAVING_SECONDS * 1000);
+    return () => clearTimeout(fading);
+  }, [ended, inSheet]);
+
+  const goNow = useCallback(() => setGone(true), []);
+  const leave = useCallback(() => setLeavingTheSheet(true), []);
+  /** Brings him back, and the sheet up with him, for a new summoning. */
+  const comeBack = useCallback(() => {
+    setGone(false);
+    setLeavingTheSheet(false);
+  }, []);
+  // Across the whole screen he fades out; in the sheet he rides it down instead.
+  const fading = ended && !inSheet;
+  return { gone, fading, leavingTheSheet, goNow, leave, comeBack };
+}
+
+/**
  * The screen Jarvis answers from: him, and nothing else.
  *
  * **There is no button and no text on it.** There used to be a title, a status line, a Talk button
@@ -473,36 +514,7 @@ export function ConversationScreen({
   }, [status]);
   const ended = life.ended;
 
-  /**
-   * And once he has gone, the drawing stops.
-   *
-   * Across the whole screen `leaving` is a fade, not an unmount — see the prop — so the screen has
-   * to keep him for exactly {@link LEAVING_SECONDS} and then let go. Letting go is the point: a frame
-   * loop drawing a sphere that has faded to nothing is a phone kept awake for no one.
-   *
-   * In the sheet he does not fade. The sheet starts down the moment the conversation ends
-   * (`leavingTheSheet`), with him on it, and he is gone once it says it is off the screen. See
-   * `ConversationFrame`.
-   */
-  const [gone, setGone] = useState(false);
-  const [leavingTheSheet, setLeavingTheSheet] = useState(false);
-  useEffect(() => {
-    if (!ended) {
-      // Which today only ever means "not yet", since nothing retries — but a conversation that
-      // became open again would have to bring him back with it rather than leave the screen dark.
-      setGone(false);
-      return;
-    }
-    if (inSheet) {
-      setLeavingTheSheet(true);
-      return;
-    }
-    const fading = setTimeout(() => setGone(true), LEAVING_SECONDS * 1000);
-    return () => clearTimeout(fading);
-  }, [ended, inSheet]);
-
-  const goNow = useCallback(() => setGone(true), []);
-  const leave = useCallback(() => setLeavingTheSheet(true), []);
+  const { gone, fading, leavingTheSheet, goNow, leave, comeBack } = useLeaving(ended, inSheet);
   const sheet = useConversationSheet({
     inSheet,
     inAssistantWindow,
@@ -535,10 +547,9 @@ export function ConversationScreen({
       return;
     }
     setLife(NOT_YET_OPEN);
-    setGone(false);
-    setLeavingTheSheet(false);
+    comeBack();
     void start();
-  }, [start, phase, status]);
+  }, [start, phase, status, comeBack]);
 
   // Summoned by the plain assist intent, into the app's own activity: each summoning is a new URL,
   // claimed so it is acted on once. Never in the assistant's window, whose tree hears the activity's
@@ -587,8 +598,7 @@ export function ConversationScreen({
               user={conversation.user}
               quietestSpeech={QUIETEST_SPEECH_HERE}
               thinking={conversation.thinking}
-              // Across the whole screen he fades out; in the sheet he rides it down instead.
-              leaving={ended && !inSheet}
+              leaving={fading}
               frameRate={frameRate}
               buildMilliseconds={buildMilliseconds}
               particleShare={particleShare}
