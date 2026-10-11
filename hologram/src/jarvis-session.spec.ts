@@ -125,6 +125,53 @@ describe('summoning Jarvis', () => {
     expect(events.phases).toEqual(['greeting', 'live']);
   });
 
+  it('dials behind his arrival too, asking the agent not to greet before the recording has played', async () => {
+    const { session, tokens, greeting, sdk, clock } = createHarness({
+      waitsForGreetingBeforeDialling: false,
+      greetAfterArrivalMs: undefined,
+    });
+
+    session.summon();
+    tokens.grant();
+    await settle();
+    expect(greeting.plays).toBe(0);
+    expect(sdk.dials).toHaveLength(1);
+    expect(sdk.latest.spoken?.overrides).toEqual(WITHOUT_FIRST_MESSAGE);
+
+    const conversation = sdk.latest.conversation;
+    await sdk.latest.connect();
+    expect(conversation.muting).toEqual([true]);
+    expect(session.phase).toBe('greeting');
+
+    await clock.advance(MATERIALISE_SECONDS * 1000);
+    expect(greeting.plays).toBe(1);
+    greeting.allow();
+    await clock.advance(greeting.durationMilliseconds);
+    expect(conversation.muting).toEqual([true, false]);
+    expect(session.phase).toBe('live');
+  });
+
+  it('opens the microphone of a conversation dialled during his arrival when the recording is refused', async () => {
+    const { session, tokens, greeting, sdk, clock } = createHarness({
+      waitsForGreetingBeforeDialling: false,
+      greetAfterArrivalMs: undefined,
+    });
+
+    session.summon();
+    tokens.grant();
+    await settle();
+    const conversation = sdk.latest.conversation;
+    await sdk.latest.connect();
+
+    await clock.advance(MATERIALISE_SECONDS * 1000);
+    greeting.refuse();
+    await settle();
+
+    expect(sdk.dials).toHaveLength(1);
+    expect(conversation.muting).toEqual([true, false]);
+    expect(session.phase).toBe('live');
+  });
+
   it('lets the agent greet for himself when the browser refuses the recording', async () => {
     const { session, tokens, greeting, sdk } = createHarness();
 

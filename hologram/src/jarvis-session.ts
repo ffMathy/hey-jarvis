@@ -104,7 +104,11 @@ interface Attempt<Timer> {
   /** Held in writing on both sides: see `SummonOptions.textOnly`. */
   textOnly: boolean;
   greeting: GreetingState;
-  /** Whether the recording actually played, which is what switches the agent's first message off. */
+  /**
+   * Whether the recording actually played, which is what switches the agent's first message off —
+   * or, on a device that dials behind the greeting, will play once he has arrived: such a device
+   * dials during the arrival rather than after it (see `playOnceArrived`).
+   */
   greeted: boolean;
   /** When he was summoned, on `now()`'s clock: when his arrival vortex started. */
   summonedAt: number;
@@ -898,7 +902,9 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     if (!isCurrent(current) || current.dialled || current.credential === undefined) {
       return;
     }
-    if (current.greeting === 'preparing' || current.greeting === 'asking') {
+    // Asking and already counted as greeted is a device that dials behind the greeting, dialling
+    // while he arrives: see `playOnceArrived`.
+    if (current.greeting === 'preparing' || (current.greeting === 'asking' && !current.greeted)) {
       return;
     }
     if (current.greeting === 'playing' && waitsForGreetingBeforeDialling) {
@@ -1098,6 +1104,12 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
    * Only the sound waits. The token is already on its way (asked for at the summoning), and a
    * device that brings up a network first (`untilOnline`) starts doing so now rather than once
    * the recording plays, so the arrival costs the connection nothing it did not cost before.
+   *
+   * A device that dials behind the greeting (`waitsForGreetingBeforeDialling: false`) dials now
+   * too, rather than once the player has answered, counting him as greeted already: the agent is
+   * asked not to greet and the microphone stays muted until the recording is over. Should the
+   * browser then refuse the recording, the agent stays quiet until sir speaks — the price of
+   * connecting while he arrives instead of after.
    */
   const playOnceArrived = (current: Attempt<Timer>) => {
     const play = () => {
@@ -1110,6 +1122,10 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       return;
     }
     startReaching(current);
+    if (!waitsForGreetingBeforeDialling) {
+      current.greeted = true;
+      dialWhenReady(current);
+    }
     current.arrivalWait = schedule(() => {
       current.arrivalWait = undefined;
       if (isCurrent(current) && current.greeting === 'asking') {
