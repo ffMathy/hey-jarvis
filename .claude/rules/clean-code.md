@@ -65,6 +65,18 @@ Add features ONLY when there is a concrete use case right now, multiple call sit
 
 **Red flags** that signal a YAGNI violation: "we might need this in the future", "what if someone wants to…", "just in case we need to…", "it's more flexible if we…".
 
+### Remove options every caller sets the same way
+
+**ALWAYS remove an option, parameter or dependency once every real caller passes it the same value**, and hardcode that behaviour. That includes an option your own change has just made uniform: when you flip the last caller, delete the option in the same change. A default kept only so tests can choose the other branch is dead configuration. Rewrite those tests against the one behaviour that ships.
+
+```typescript
+// ❌ BAD - every caller passes false; true survives only in tests
+createJarvisSession({ ...deps, waitsForGreetingBeforeDialling: false });
+
+// ✅ GOOD - the session always dials behind the greeting; there is nothing to choose
+createJarvisSession(deps);
+```
+
 ## DRY (Don't Repeat Yourself)
 
 Extract duplication when you see:
