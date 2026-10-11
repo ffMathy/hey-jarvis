@@ -1,5 +1,18 @@
 # Changelog
 
+## [4.22.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.21.0...root-v4.22.0) (2026-10-11)
+
+
+### Features
+
+* **hologram:** halve the arrival vortex to 0.7 s ([#948](https://github.com/ffMathy/hey-jarvis/issues/948)) ([4edbbc3](https://github.com/ffMathy/hey-jarvis/commit/4edbbc336a8e8a6d543a3289a11d43e3be801753))
+
+
+### Bug Fixes
+
+* **mcp:** stop jarvis confirming a finished command twice ([#950](https://github.com/ffMathy/hey-jarvis/issues/950)) ([44fd69e](https://github.com/ffMathy/hey-jarvis/commit/44fd69ec7aaa2c2f147f43f0883cd19df4c24d4d))
+* **mcp:** stop mentioning the overlay permission when setting an alarm ([#947](https://github.com/ffMathy/hey-jarvis/issues/947)) ([6fcf34f](https://github.com/ffMathy/hey-jarvis/commit/6fcf34f5ca968824178a79241370301102427e98))
+
 ## [4.21.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.20.2...root-v4.21.0) (2026-10-11)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.18.4](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.18.3...mcp-v2.18.4) (2026-10-11)
+
+
+### Bug Fixes
+
+* **mcp:** stop jarvis confirming a finished command twice ([#950](https://github.com/ffMathy/hey-jarvis/issues/950)) ([44fd69e](https://github.com/ffMathy/hey-jarvis/commit/44fd69ec7aaa2c2f147f43f0883cd19df4c24d4d))
+* **mcp:** stop mentioning the overlay permission when setting an alarm ([#947](https://github.com/ffMathy/hey-jarvis/issues/947)) ([6fcf34f](https://github.com/ffMathy/hey-jarvis/commit/6fcf34f5ca968824178a79241370301102427e98))
+
 ## [2.18.3](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.18.2...mcp-v2.18.3) (2026-10-11)
 
 
