@@ -5,6 +5,7 @@ import { withPointing } from '../../utils/pointing.js';
 import {
   DEFAULT_ROUTING_SESSION_ID,
   getRoutingRuntime,
+  type RoutingRuntime,
   type RoutingSnapshot,
   rememberMastraRegistry,
 } from './controller.js';
@@ -822,6 +823,60 @@ export const routePromptWorkflow = createWorkflow({
   .then(routePromptStep)
   .commit();
 
+/**
+ * Waits for something worth reporting, up to the poll's deadline: the closing report, a progress
+ * report, or word that the request is still running.
+ */
+async function waitForReport(
+  runtime: RoutingRuntime,
+  sessionId: string,
+  deadlineAt: number,
+): Promise<z.infer<typeof instructionsOutputSchema>> {
+  // Results held back while the request settles (see FINISH_GRACE_MS). A snapshot marks
+  // whatever it reports as handed over, so these are carried into every later pass until a
+  // report goes out with them, or the closing report recaps them along with everything else.
+  let held: RoutingSnapshot['landed'] = [];
+  let settleBy: number | undefined;
+
+  // Each pass reads the delegations afresh. A snapshot marks whatever it reports as
+  // handed over, so taking one and discarding it would lose those results -- every path
+  // out of this loop returns the snapshot it just took, or holds its results for the next.
+  while (true) {
+    const pastDeadline = Date.now() >= deadlineAt;
+    const polled = await runtime.poll(sessionId);
+
+    // A finished request reports everything, including what earlier polls already
+    // relayed, so a dropped response cannot lose a result for good.
+    if (polled.finished) {
+      return buildClosingReport(polled);
+    }
+
+    const snapshot = { ...polled, landed: [...held, ...polled.landed] };
+    if (!pastDeadline && isSettling(snapshot)) {
+      settleBy ??= Date.now() + FINISH_GRACE_MS;
+      if (Date.now() < settleBy) {
+        held = snapshot.landed;
+        await runtime.waitForChange(sessionId, Math.min(settleBy, deadlineAt) - Date.now());
+        continue;
+      }
+    }
+
+    const report = buildProgressReport(snapshot);
+    if (report) {
+      return report;
+    }
+
+    if (pastDeadline) {
+      return {
+        instructions: INSTRUCTIONS.stillProcessing,
+        taskIdsInProgress: snapshot.inProgress,
+      };
+    }
+
+    await runtime.waitForChange(sessionId, deadlineAt - Date.now());
+  }
+}
+
 const getNextInstructionsStep = createStep({
   id: 'get-next-instructions',
   description: 'Return whatever the routing plan has produced since the last call',
@@ -851,49 +906,7 @@ const getNextInstructionsStep = createStep({
       return buildClosingReport(snapshot);
     }
 
-    // Results held back while the request settles (see FINISH_GRACE_MS). A snapshot marks
-    // whatever it reports as handed over, so these are carried into every later pass until a
-    // report goes out with them, or the closing report recaps them along with everything else.
-    let held: RoutingSnapshot['landed'] = [];
-    let settleBy: number | undefined;
-
-    // Each pass reads the delegations afresh. A snapshot marks whatever it reports as
-    // handed over, so taking one and discarding it would lose those results -- every path
-    // out of this loop returns the snapshot it just took, or holds its results for the next.
-    while (true) {
-      const pastDeadline = Date.now() >= deadlineAt;
-      const polled = await runtime.poll(sessionId);
-
-      // A finished request reports everything, including what earlier polls already
-      // relayed, so a dropped response cannot lose a result for good.
-      if (polled.finished) {
-        return buildClosingReport(polled);
-      }
-
-      const snapshot = { ...polled, landed: [...held, ...polled.landed] };
-      if (!pastDeadline && isSettling(snapshot)) {
-        settleBy ??= Date.now() + FINISH_GRACE_MS;
-        if (Date.now() < settleBy) {
-          held = snapshot.landed;
-          await runtime.waitForChange(sessionId, Math.min(settleBy, deadlineAt) - Date.now());
-          continue;
-        }
-      }
-
-      const report = buildProgressReport(snapshot);
-      if (report) {
-        return report;
-      }
-
-      if (pastDeadline) {
-        return {
-          instructions: INSTRUCTIONS.stillProcessing,
-          taskIdsInProgress: snapshot.inProgress,
-        };
-      }
-
-      await runtime.waitForChange(sessionId, deadlineAt - Date.now());
-    }
+    return waitForReport(runtime, sessionId, deadlineAt);
   },
 });
 
