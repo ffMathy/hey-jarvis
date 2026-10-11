@@ -26,6 +26,7 @@ import type { OpenQuestion } from './questions.js';
 import type { PhotoToBringUp } from './waiting-photos.js';
 import {
   askWhatToDoWithPhoto,
+  COMMAND_DONE_INSTRUCTIONS,
   FINISHED_REQUEST_INSTRUCTIONS,
   getNextInstructionsWorkflow,
   inputSchema,
@@ -870,18 +871,26 @@ const WAITING_FOR_A_PHOTO =
  * under a question he was about to answer.
  */
 describe('how a request is answered, and when the call may end', () => {
-  it('confirms a command in a few words, and hands over to the hang-up', async () => {
-    await runWorkflow(routePromptWorkflow, { userQuery: 'turn off the living room lights', async: false });
+  it('confirms a command in a few words, and hangs up straight after', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'set an alarm for 7', async: false });
     const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
     progress.responseStyle = 'command';
-    delegate(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings', 'Turned off 3 lights in the living room.');
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'notification', 'Sent the phone a command to set an alarm for 07:00.');
     endPlanRun(progress);
 
     const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
     expect(closing.instructions).toContain('"Done, sir." is enough');
     expect(closing.instructions).not.toContain('in detail');
-    expect(closing.instructions).toContain(FINISHED_REQUEST_INSTRUCTIONS);
+    // Not the hang-up on the next silence, which an alarm once never reached: the call ends at once.
+    expect(closing.instructions).toContain(COMMAND_DONE_INSTRUCTIONS);
+    expect(closing.instructions).toContain('without waiting for him to speak');
+    expect(closing.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
+  });
+
+  it('still holds the line after a command while a photo is on its way', () => {
+    expect(COMMAND_DONE_INSTRUCTIONS).toContain(`Unless ${WAITING_FOR_A_PHOTO}`);
+    expect(COMMAND_DONE_INSTRUCTIONS).toContain('call skip_turn instead');
   });
 
   it('gives a briefing its detail, and still hands over to the hang-up once it is done', async () => {

@@ -15,13 +15,13 @@ interface ConversationSheetOptions {
    * Only that one may retract the window: see `leaveTheSheet`.
    */
   inAssistantWindow: boolean;
-  /** Whether Jarvis has finished leaving, which is when the window — and the sheet — go too. */
+  /** Whether the sheet has carried him off the bottom of the screen, which is when the window goes too. */
   gone: boolean;
-  /** Whether a conversation was ever open on this screen; one that was not has nothing to end. */
-  opened: boolean;
   /** Ends the conversation, the way the agent hanging up would. */
   endConversation: () => void;
-  /** Sends him straight to `gone`, for a conversation that never opened and so cannot end. */
+  /** Starts the sheet down, with him on it, without waiting for the session to report its end. */
+  leave: () => void;
+  /** Marks him as gone, once the sheet is off the bottom of the screen. */
   goNow: () => void;
 }
 
@@ -41,8 +41,8 @@ interface ConversationSheetOptions {
  *   a `SurfaceView` that no parent can clip, so its size is what holds it inside the sheet.
  * - **Nothing is drawn until the sheet has stopped moving** (`settled`), because a `SurfaceView`
  *   does not move with the view tree.
- * - **Tapping beside it, or back, hangs up.** He then leaves the way he does when the agent hangs
- *   up, and the sheet follows him down.
+ * - **Tapping beside it, or back, hangs up.** The sheet then goes the way it does when the agent
+ *   hangs up: straight down, with him on it.
  *
  * What brings it back up for the next summoning is not here: the screen answers a summoning
  * however it arrives, and the sheet simply follows `gone` going false. See `summonAgain` there.
@@ -51,8 +51,8 @@ export function useConversationSheet({
   inSheet,
   inAssistantWindow,
   gone,
-  opened,
   endConversation,
+  leave,
   goNow,
 }: ConversationSheetOptions) {
   const wholeScreenSize = useWholeScreenHologramSize();
@@ -61,9 +61,9 @@ export function useConversationSheet({
   const canvas = inSheet ? SAMPLE_CANVAS : WHOLE_SCREEN_CANVAS;
   const [settled, setSettled] = useState(!inSheet);
 
-  // Leaving is when the sheet starts to move, so that is when nothing may be drawn any more. The
-  // sheet says so again once it has come back up and stopped, because `gone` going false is what
-  // moves it.
+  // He rides the sheet down rather than vanishing before it moves, so the canvas is let go only once
+  // the sheet is off the bottom of the screen. The sheet says it has settled again once it has come
+  // back up and stopped, because a new summoning is what moves it.
   useEffect(() => {
     if (gone && inSheet) {
       setSettled(false);
@@ -86,19 +86,23 @@ export function useConversationSheet({
    * filled the screen, which he no longer does anywhere there is a window to retract.
    */
   const leaveTheSheet = useCallback(() => {
+    goNow();
     if (inAssistantWindow) {
       dismissAssistantWindow();
     } else {
       BackHandler.exitApp();
     }
-  }, [inAssistantWindow]);
+  }, [inAssistantWindow, goNow]);
 
+  /**
+   * Tapping beside him or pressing back: the sheet goes at once, whether or not a conversation ever
+   * opened. Waiting for the session to report its end first was a beat of nothing between the tap
+   * and anything moving.
+   */
   const hangUp = useCallback(() => {
     endConversation();
-    if (!opened) {
-      goNow();
-    }
-  }, [endConversation, goNow, opened]);
+    leave();
+  }, [endConversation, leave]);
 
   // Android only, and only in the sheet: across the whole screen the system's own answer to back
   // is the one it has always had.
@@ -121,17 +125,21 @@ export function useConversationSheet({
 /**
  * The conversation as it is framed: in the sheet when summoned, and as it is otherwise.
  *
- * He fades first and the sheet follows him down once he has: `gone` is set `LEAVING_SECONDS` after
- * the conversation ends, which is exactly the order sample mode leaves in.
+ * **The sheet goes the moment the conversation does, with him still on it.** He used to fade first
+ * and the sheet followed once he had: `LEAVING_SECONDS` of him shrinking, then an empty sheet
+ * sliding away, which is most of a second of a finished assistant still on the screen. The user
+ * asked for the sheet simply to go, so in the sheet he does not fade at all. It slides off the
+ * bottom with him drawn on it, as sample mode's always has.
  */
 export function ConversationFrame({
   inSheet,
-  gone,
+  leaving,
   sheet,
   children,
 }: {
   inSheet: boolean;
-  gone: boolean;
+  /** Whether the sheet is on its way down: from the moment the conversation ends, or is hung up. */
+  leaving: boolean;
   sheet: Pick<ReturnType<typeof useConversationSheet>, 'onSettled' | 'leaveTheSheet' | 'hangUp'>;
   children: ReactNode;
 }) {
@@ -139,7 +147,7 @@ export function ConversationFrame({
     return children;
   }
   return (
-    <SampleSheet leaving={gone} onSettled={sheet.onSettled} onGone={sheet.leaveTheSheet} onTapBeside={sheet.hangUp}>
+    <SampleSheet leaving={leaving} onSettled={sheet.onSettled} onGone={sheet.leaveTheSheet} onTapBeside={sheet.hangUp}>
       {children}
     </SampleSheet>
   );

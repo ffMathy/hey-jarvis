@@ -476,11 +476,16 @@ export function ConversationScreen({
   /**
    * And once he has gone, the drawing stops.
    *
-   * `leaving` is a fade, not an unmount — see the prop — so the screen has to keep him for exactly
-   * {@link LEAVING_SECONDS} and then let go. Letting go is the point: a frame loop drawing a sphere
-   * that has faded to nothing is a phone kept awake for no one.
+   * Across the whole screen `leaving` is a fade, not an unmount — see the prop — so the screen has
+   * to keep him for exactly {@link LEAVING_SECONDS} and then let go. Letting go is the point: a frame
+   * loop drawing a sphere that has faded to nothing is a phone kept awake for no one.
+   *
+   * In the sheet he does not fade. The sheet starts down the moment the conversation ends
+   * (`leavingTheSheet`), with him on it, and he is gone once it says it is off the screen. See
+   * `ConversationFrame`.
    */
   const [gone, setGone] = useState(false);
+  const [leavingTheSheet, setLeavingTheSheet] = useState(false);
   useEffect(() => {
     if (!ended) {
       // Which today only ever means "not yet", since nothing retries — but a conversation that
@@ -488,16 +493,21 @@ export function ConversationScreen({
       setGone(false);
       return;
     }
+    if (inSheet) {
+      setLeavingTheSheet(true);
+      return;
+    }
     const fading = setTimeout(() => setGone(true), LEAVING_SECONDS * 1000);
     return () => clearTimeout(fading);
-  }, [ended]);
+  }, [ended, inSheet]);
 
   const goNow = useCallback(() => setGone(true), []);
+  const leave = useCallback(() => setLeavingTheSheet(true), []);
   const sheet = useConversationSheet({
     inSheet,
     inAssistantWindow,
     gone,
-    opened: life.open,
+    leave,
     // Hangs up when the user asks: tapping beside the sheet or pressing back. Dismissed
     // mid-greeting, he stops talking rather than finishing the sentence to nobody. The quiet after
     // a finished request is not the screen's to judge — the agent ends that call itself, with its
@@ -526,6 +536,7 @@ export function ConversationScreen({
     }
     setLife(NOT_YET_OPEN);
     setGone(false);
+    setLeavingTheSheet(false);
     void start();
   }, [start, phase, status]);
 
@@ -576,7 +587,8 @@ export function ConversationScreen({
               user={conversation.user}
               quietestSpeech={QUIETEST_SPEECH_HERE}
               thinking={conversation.thinking}
-              leaving={ended}
+              // Across the whole screen he fades out; in the sheet he rides it down instead.
+              leaving={ended && !inSheet}
               frameRate={frameRate}
               buildMilliseconds={buildMilliseconds}
               particleShare={particleShare}
@@ -661,7 +673,7 @@ export function ConversationScreen({
   );
 
   return (
-    <ConversationFrame inSheet={inSheet} gone={gone} sheet={sheet}>
+    <ConversationFrame inSheet={inSheet} leaving={leavingTheSheet} sheet={sheet}>
       {screen}
     </ConversationFrame>
   );
