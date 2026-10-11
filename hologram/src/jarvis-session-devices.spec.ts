@@ -33,7 +33,6 @@ function onAPhone(overrides: Partial<JarvisSessionDependencies<number>> = {}, { 
       callAudio: callAudio.callAudio,
       heldVoice: heldVoice.heldVoice,
       removeOrphanedAudio: undefined,
-      waitsForGreetingBeforeDialling: false,
       ...overrides,
     },
     { waitsForRoute: true },
@@ -51,7 +50,6 @@ function inABrowser(overrides: Partial<JarvisSessionDependencies<number>> = {}) 
     halfDuplex: false,
     offlineProblem: undefined,
     captions: 'while-typing',
-    waitsForGreetingBeforeDialling: false,
     removeOrphanedAudio: undefined,
     ...overrides,
   });

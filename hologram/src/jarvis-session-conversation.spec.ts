@@ -88,7 +88,7 @@ describe('the user’s voice, for the listening lattice', () => {
   });
 
   it('is deaf while he greets, even with the session already open behind him', async () => {
-    const { session, tokens, greeting, sdk } = createHarness({ waitsForGreetingBeforeDialling: false });
+    const { session, tokens, greeting, sdk } = createHarness();
 
     session.summon();
     greeting.allow();
@@ -417,7 +417,7 @@ describe('writing to him', () => {
   });
 
   it('keeps the microphone muted for the greeting when the keyboard goes before he has finished', async () => {
-    const { session, tokens, greeting, sdk } = createHarness({ waitsForGreetingBeforeDialling: false });
+    const { session, tokens, greeting, sdk } = createHarness();
 
     session.summon();
     greeting.allow();

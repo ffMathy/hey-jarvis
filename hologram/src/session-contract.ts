@@ -352,11 +352,6 @@ export interface JarvisSessionDependencies<Timer> {
    * a screen that compares that with `Date.now()` hands over `Date.now`.
    */
   now?: () => number;
-  /**
-   * Default true: dial only once the greeting is over. Every device passes false and dials behind
-   * him, muted until he has finished.
-   */
-  waitsForGreetingBeforeDialling?: boolean;
   /** What the SDK waits before dialling; its own default when left out. See {@link ConnectionDelay}. */
   connectionDelay?: ConnectionDelay;
   /** Whether the half-duplex fallback may take the microphone while he speaks (see `half-duplex.ts`). */

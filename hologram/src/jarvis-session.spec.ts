@@ -55,18 +55,16 @@ describe('summoning Jarvis', () => {
     expect(tokens.requests).toHaveLength(2);
   });
 
-  it('dials only once the greeting is over, told not to greet a second time', async () => {
+  it('dials over WebRTC with the token, told not to greet a second time', async () => {
     const { session, tokens, greeting, sdk, clock, events } = createHarness();
 
     session.summon();
     greeting.allow();
-    tokens.grant();
     await settle();
-    expect(sdk.dials).toHaveLength(0);
-    expect(session.phase).toBe('greeting');
-
     await clock.advance(greeting.durationMilliseconds + 100);
     expect(session.phase).toBe('connecting');
+    tokens.grant();
+    await settle();
     expect(sdk.dials).toHaveLength(1);
     const { spoken } = sdk.latest;
     expect(spoken?.conversationToken).toBe('a-webrtc-token');
@@ -96,8 +94,8 @@ describe('summoning Jarvis', () => {
     expect(sdk.dials).toHaveLength(1);
   });
 
-  it('can dial behind the greeting instead, muting the session until he has finished', async () => {
-    const { session, tokens, greeting, sdk, clock, events } = createHarness({ waitsForGreetingBeforeDialling: false });
+  it('dials behind the greeting, muting the session until he has finished', async () => {
+    const { session, tokens, greeting, sdk, clock, events } = createHarness();
 
     session.summon();
     greeting.allow();
@@ -127,7 +125,6 @@ describe('summoning Jarvis', () => {
 
   it('dials behind his arrival too, asking the agent not to greet before the recording has played', async () => {
     const { session, tokens, greeting, sdk, clock } = createHarness({
-      waitsForGreetingBeforeDialling: false,
       greetAfterArrivalMs: undefined,
     });
 
@@ -153,7 +150,6 @@ describe('summoning Jarvis', () => {
 
   it('opens the microphone of a conversation dialled during his arrival when the recording is refused', async () => {
     const { session, tokens, greeting, sdk, clock } = createHarness({
-      waitsForGreetingBeforeDialling: false,
       greetAfterArrivalMs: undefined,
     });
 

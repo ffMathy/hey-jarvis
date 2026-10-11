@@ -178,10 +178,9 @@ interface PendingContext {
  * away mid-sentence over a non-fatal server message while his voice played on.
  *
  * On summon, the greeting starts and the token is requested at the same moment, so the handshake
- * overlaps him speaking. With `waitsForGreetingBeforeDialling: false`, which every device now runs
- * with, the session is dialled behind the greeting — during his arrival, even — and muted from
- * `onConversationCreated` until he has finished, so the agent never hears him as the user. Left
- * true, it is dialled only once he has finished. What once clipped him when dialled behind on a
+ * overlaps him speaking. The session is dialled behind the greeting — during his arrival, even —
+ * and muted from `onConversationCreated` until he has finished, so the agent never hears him as
+ * the user. What once clipped him when dialled behind on a
  * phone was the switch into call mode a second into the recording; on a device with call audio
  * that switch is made before he speaks (`callAudio`) and the greeting is played inside it, so the
  * conversation's start changes nothing he is heard through. A device that has to find a network
@@ -193,7 +192,6 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
   const now = dependencies.now ?? (() => performance.now());
   const schedule = dependencies.setTimeout;
   const cancel = dependencies.clearTimeout;
-  const waitsForGreetingBeforeDialling = dependencies.waitsForGreetingBeforeDialling ?? true;
   const halfDuplexAllowed = dependencies.halfDuplex ?? false;
   const halfDuplexMayJudge = dependencies.halfDuplexMayJudge ?? (() => true);
   const offlineProblem = dependencies.offlineProblem;
@@ -903,12 +901,8 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     if (!isCurrent(current) || current.dialled || current.credential === undefined) {
       return;
     }
-    // Asking and already counted as greeted is a device that dials behind the greeting, dialling
-    // while he arrives: see `playOnceArrived`.
+    // Asking and already counted as greeted is dialling while he arrives: see `playOnceArrived`.
     if (current.greeting === 'preparing' || (current.greeting === 'asking' && !current.greeted)) {
-      return;
-    }
-    if (current.greeting === 'playing' && waitsForGreetingBeforeDialling) {
       return;
     }
     dial(current, current.credential);
@@ -1107,8 +1101,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
    * device that brings up a network first (`untilOnline`) starts doing so now rather than once
    * the recording plays, so the arrival costs the connection nothing it did not cost before.
    *
-   * A device that dials behind the greeting (`waitsForGreetingBeforeDialling: false`) dials now
-   * too, rather than once the player has answered, counting him as greeted already: the agent is
+   * The session dials now too, rather than once the player has answered, counting him as greeted already: the agent is
    * asked not to greet and the microphone stays muted until the recording is over. Should the
    * browser then refuse the recording, the agent stays quiet until sir speaks — the price of
    * connecting while he arrives instead of after.
@@ -1124,10 +1117,8 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       return;
     }
     startReaching(current);
-    if (!waitsForGreetingBeforeDialling) {
-      current.greeted = true;
-      dialWhenReady(current);
-    }
+    current.greeted = true;
+    dialWhenReady(current);
     current.arrivalWait = schedule(() => {
       current.arrivalWait = undefined;
       if (isCurrent(current) && current.greeting === 'asking') {

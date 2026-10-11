@@ -145,9 +145,6 @@ export function headsetSessionDependencies({
     events: eventsFor(options.events, voice),
     participantName: HEADSET_PARTICIPANT_NAME,
     connectionDelay: NO_CONNECTION_DELAY,
-    // Connected while he greets, muted until he has finished: the headset's microphone is already
-    // open for the wake word with the same processing, so nothing switches mid-greeting.
-    waitsForGreetingBeforeDialling: false,
     halfDuplex: true,
     ...(voice === undefined ? {} : { halfDuplexMayJudge: () => voice.halfDuplexMayJudge() }),
     offlineProblem: HEADSET_OFFLINE_PROBLEM,

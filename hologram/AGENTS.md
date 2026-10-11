@@ -131,8 +131,7 @@ rules live:
   `GIVE_UP_CONNECTING_AFTER_MS` is ended the moment its start resolves; on the
   phone it used to connect under a line saying it had not.
 - **The greeting and the token start together** and the session is dialled
-  behind him, muted until he has finished (`waitsForGreetingBeforeDialling:
-  false`, which every device passes).
+  behind him on every device, muted until he has finished.
 
 Everything that differs by device is handed in, and the main entry stays free of
 platforms: the participant name, the timers, how his track is listened to
@@ -319,7 +318,7 @@ easy to break:
   message. A browser plays the recording with expo-audio (`greeting-player.web.ts`).
 - **And the session connects while he speaks, on every device.** The token is fetched beside him
   and the session is dialled the moment it arrives — during his arrival, before the recording has
-  even started (`waitsForGreetingBeforeDialling: false`, everywhere) — muted until he has finished,
+  even started — muted until he has finished,
   and not at all if he was hung up on. It used to be held back until he had finished on a phone,
   because dialling behind him clipped him there; what clipped him was LiveKit switching into call
   mode a second into the recording, and that switch is now made before he speaks (above), so the

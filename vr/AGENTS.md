@@ -573,8 +573,7 @@ imported with `?url`.
   asked. What clipped the phone's recording was Android switching into call mode
   mid-greeting, and the headset's microphone is already open for the wake word
   with the processing the call asks for, so nothing switches here.
-  `waitsForGreetingBeforeDialling: false` dials while he is still arriving, and
-  mutes from `onConversationCreated` until he has finished, so the agent never
+  The session dials while he is still arriving, and mutes from `onConversationCreated` until he has finished, so the agent never
   hears the greeting.
 - **A recording refused after dialling.** Dialled during the arrival, the agent
   was already told not to greet, so it stays quiet until sir speaks.
