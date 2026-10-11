@@ -7,8 +7,8 @@ import { createGreetingReaders } from './greeting-voice';
 import { createHalfDuplexDetector } from './half-duplex';
 import { flushQueuedAudio } from './queued-audio';
 import type {
-  JarvisSession,
   HeldVoice,
+  JarvisSession,
   JarvisSessionDependencies,
   ProblemSource,
   SessionCallbacks,
