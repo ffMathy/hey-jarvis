@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ClientEvent } from '@elevenlabs/elevenlabs-js/api';
-import agentConfig from '../../src/assets/agent-config.json';
+import { readAgentConfig, writeAgentConfig } from '../../src/agent-assets';
 import { toTestAgentClientEvents } from '../../src/main';
+
+const agentConfig = await readAgentConfig();
 
 /**
  * What the devices assume of the committed agent config, checked on every push.
@@ -15,8 +18,8 @@ import { toTestAgentClientEvents } from '../../src/main';
  * between the two.
  */
 describe('the committed agent config', () => {
-  const tools = agentConfig.conversationConfig.agent.prompt.tools;
-  const clientEvents = agentConfig.conversationConfig.conversation.clientEvents;
+  const tools = agentConfig.conversationConfig?.agent?.prompt?.tools ?? [];
+  const clientEvents = agentConfig.conversationConfig?.conversation?.clientEvents ?? [];
 
   it('asks only for client events ElevenLabs can send', () => {
     const knownEvents: readonly string[] = Object.values(ClientEvent);
@@ -42,6 +45,36 @@ describe('the committed agent config', () => {
 
     expect(clientTools).toEqual([]);
     expect(clientEvents).not.toContain(ClientEvent.ClientToolCall);
+  });
+});
+
+/**
+ * The config is committed split up — a file per tool, its description in Markdown — and `fetch`
+ * writes it the same way. Splitting what was read has to give back exactly the files it came from,
+ * or the next `refresh` would rewrite a config nobody changed.
+ */
+describe('the committed tool files', () => {
+  it('split and join back into the config they came from', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'agent-assets-'));
+    try {
+      await writeAgentConfig(agentConfig, directory);
+
+      expect(await readAgentConfig(directory)).toEqual(agentConfig);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('commit each system tool once, though the config lists it twice', () => {
+    const committed = JSON.parse(
+      readFileSync(join(import.meta.dir, '..', '..', 'src', 'assets', 'agent-config.json'), 'utf8'),
+    );
+    const { tools, builtInTools } = committed.conversationConfig.agent.prompt;
+
+    expect(tools).toContain('skip_turn');
+    expect(tools).toContain('end_call');
+    expect(builtInTools.skipTurn).toBe('skip_turn');
+    expect(builtInTools.endCall).toBe('end_call');
   });
 });
 
@@ -90,7 +123,8 @@ describe('the test agent overrides', () => {
  */
 describe('the silence after a finished request, while a photo is on its way', () => {
   const prompt = readFileSync(join(import.meta.dir, '..', '..', 'src', 'assets', 'agent-prompt.md'), 'utf8');
-  const agentPrompt = agentConfig.conversationConfig.agent.prompt;
+  const agentPrompt = agentConfig.conversationConfig?.agent?.prompt;
+  const builtInTools = agentPrompt?.builtInTools;
 
   /**
    * What each statement of the exception says, whichever words surround it. The descriptions set the
@@ -105,7 +139,8 @@ describe('the silence after a finished request, while a photo is on its way', ()
 
   /** The config's copy of a system tool's description in its `tools` list, beside `builtInTools`. */
   function listedDescription(toolName: string): string | undefined {
-    return agentPrompt.tools.find((tool) => tool.name === toolName)?.description;
+    const tool = agentPrompt?.tools?.find((listed) => 'name' in listed && listed.name === toolName);
+    return tool && 'description' in tool ? tool.description : undefined;
   }
 
   /** The text from `start` up to the next `end` after it, or nothing when `start` is not there at all. */
@@ -127,14 +162,15 @@ describe('the silence after a finished request, while a photo is on its way', ()
 
   it('gives each system tool one description, in both of the places the config lists it', () => {
     // The test agent is deployed with an empty `tools`, so it reads its system tools from
-    // `builtInTools`; the agent sir talks to is sent both. A change made to one copy alone
-    // is tested in one form and shipped in another.
-    expect(listedDescription('skip_turn')).toBe(agentPrompt.builtInTools.skipTurn.description);
-    expect(listedDescription('end_call')).toBe(agentPrompt.builtInTools.endCall.description);
+    // `builtInTools`; the agent sir talks to is sent both. Both are now read from the one file
+    // in `assets/tools/`, and this holds them to it: a change made to one copy alone would be
+    // tested in one form and shipped in another.
+    expect(listedDescription('skip_turn')).toBe(builtInTools?.skipTurn?.description);
+    expect(listedDescription('end_call')).toBe(builtInTools?.endCall?.description);
   });
 
   it('has skip_turn wait on a photo, even straight after a finished request', () => {
-    const description = agentPrompt.builtInTools.skipTurn.description;
+    const description = builtInTools?.skipTurn?.description ?? '';
 
     expectTheException(sectionOf(description, 'Call it when:', '\n\n'));
     expect(sectionOf(description, 'Do not call it when a request of his has just finished', '.')).toContain(
@@ -144,7 +180,7 @@ describe('the silence after a finished request, while a photo is on its way', ()
 
   it("has end_call's silence after a finished request wait on a photo instead", () => {
     const silence = sectionOf(
-      agentPrompt.builtInTools.endCall.description,
+      builtInTools?.endCall?.description ?? '',
       '## 3) Silence after a finished request',
       '\n---',
     );

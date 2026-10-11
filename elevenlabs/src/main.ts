@@ -12,7 +12,14 @@ import * as serialization from '@elevenlabs/elevenlabs-js/serialization';
 import { Command } from 'commander';
 import { access, mkdir, readFile, writeFile } from 'fs/promises';
 import * as path from 'path';
-import { cwd } from 'process';
+import {
+  ASSETS_PATH,
+  CONFIG_FILE,
+  PROMPT_FILE,
+  readAgentConfig,
+  TOOLS_DIRECTORY,
+  writeAgentConfig,
+} from './agent-assets';
 
 /**
  * The MCP server integration the test agent talks to — the tunnel to a locally
@@ -95,10 +102,6 @@ class ElevenLabsAgentManager {
     this.client = new ElevenLabsClient({ apiKey });
   }
 
-  private getAssetsPath(): string {
-    return path.join(cwd(), 'elevenlabs', 'src', 'assets');
-  }
-
   private filterSensitiveData(
     config: GetAgentResponseModel,
   ): Omit<GetAgentResponseModel, 'phoneNumbers' | 'accessInfo' | 'agentId'> {
@@ -144,20 +147,13 @@ class ElevenLabsAgentManager {
   }
 
   private async saveConfig(config: GetAgentResponseModel): Promise<void> {
-    const assetsPath = this.getAssetsPath();
-    const configPath = path.join(assetsPath, 'agent-config.json');
-    const filteredConfig = this.filterSensitiveData(config);
-
-    // Ensure the assets directory exists
-    await mkdir(assetsPath, { recursive: true });
-
-    await writeFile(configPath, JSON.stringify(filteredConfig, null, 2), 'utf-8');
-    console.log(`✅ Configuration saved to ${configPath} (sensitive data filtered)`);
+    await mkdir(ASSETS_PATH, { recursive: true });
+    await writeAgentConfig(this.filterSensitiveData(config));
+    console.log(`✅ Configuration saved to ${ASSETS_PATH}, one file per tool (sensitive data filtered)`);
   }
 
   private async loadConfig(): Promise<Partial<GetAgentResponseModel>> {
-    const assetsPath = this.getAssetsPath();
-    const configPath = path.join(assetsPath, 'agent-config.json');
+    const configPath = path.join(ASSETS_PATH, CONFIG_FILE);
 
     try {
       await access(configPath);
@@ -165,15 +161,13 @@ class ElevenLabsAgentManager {
       throw new Error(`Configuration file not found: ${configPath}`);
     }
 
-    const fileContent = await readFile(configPath, 'utf-8');
-    const config = JSON.parse(fileContent);
-    console.log(`📂 Configuration loaded from ${configPath}`);
+    const config = await readAgentConfig();
+    console.log(`📂 Configuration loaded from ${configPath}, with its tools from ${TOOLS_DIRECTORY}/`);
     return config;
   }
 
   private async loadPrompt(): Promise<string> {
-    const assetsPath = this.getAssetsPath();
-    const promptPath = path.join(assetsPath, 'agent-prompt.md');
+    const promptPath = path.join(ASSETS_PATH, PROMPT_FILE);
 
     try {
       await access(promptPath);
@@ -187,11 +181,9 @@ class ElevenLabsAgentManager {
   }
 
   private async savePrompt(prompt: string): Promise<void> {
-    const assetsPath = this.getAssetsPath();
-    const promptPath = path.join(assetsPath, 'agent-prompt.md');
+    const promptPath = path.join(ASSETS_PATH, PROMPT_FILE);
 
-    // Ensure the assets directory exists
-    await mkdir(assetsPath, { recursive: true });
+    await mkdir(ASSETS_PATH, { recursive: true });
 
     await writeFile(promptPath, prompt, 'utf-8');
     console.log(`✅ Prompt saved to ${promptPath}`);

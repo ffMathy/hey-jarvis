@@ -1,0 +1,30 @@
+{
+  "type": "system",
+  "name": "transfer_to_agent",
+  "description": "",
+  "responseTimeoutSecs": 20,
+  "disableInterruptions": false,
+  "interruptionMode": "allow",
+  "forcePreToolSpeech": false,
+  "preToolSpeech": "auto",
+  "assignments": [],
+  "toolCallSoundBehavior": "auto",
+  "toolErrorHandlingMode": "auto",
+  "params": {
+    "systemToolType": "transfer_to_agent",
+    "transfers": [
+      {
+        "agentId": "z4g4WNWujnQwKSvCgJjx",
+        "condition": "The user wants to speak to \"himself\", \"myself\" or the \"Mathias agent\".",
+        "delayMs": 0,
+        "transferMessage": "You have now been transferred.",
+        "enableTransferredAgentFirstMessage": true,
+        "isWorkflowNodeTransfer": false,
+        "transfer_op": {
+          "type": "replace"
+        },
+        "preserveClientTtsOverrides": false
+      }
+    ]
+  }
+}
