@@ -17,6 +17,7 @@ import type {
 import type { UserVoice } from '../voice-contract';
 import { startCallAudio, stopCallAudio } from './call-audio';
 import { useGreetingPlayer } from './greeting-player';
+import { heldVoice } from './held-voice';
 
 /** What a screen tells the session it holds: who is asking, and how this device differs. */
 export interface JarvisSessionOptions {
@@ -133,6 +134,8 @@ export function useJarvisSession(options: JarvisSessionOptions): JarvisConversat
       now: () => Date.now(),
       waitsForGreetingBeforeDialling: onADevice,
       ...(onADevice ? { callAudio: { start: startCallAudio, stop: stopCallAudio } } : {}),
+      // Only a device has a gap to hold: a browser dials behind the greeting.
+      ...(onADevice && heldVoice ? { heldVoice } : {}),
       ...(findRoom ? { findRoom } : {}),
       ...(followAgentVoice ? { followAgentVoice } : {}),
       ...(captions ? { captions } : {}),

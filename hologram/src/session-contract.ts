@@ -105,6 +105,30 @@ export interface CallAudio {
 }
 
 /**
+ * What sir says between the greeting ending and the conversation listening, kept and handed to the
+ * conversation once it is, so nothing he says while Jarvis connects is lost (see
+ * `hologram/src/conversation/held-voice.ts`). A phone and a watch have one; a browser and the
+ * headset dial behind the greeting, so there is no such gap to hold.
+ */
+export interface HeldVoice {
+  /** Starts keeping what the microphone hears. Called once the greeting is over and nothing is listening yet. */
+  hold(): void;
+  /**
+   * Hands what was kept to the conversation, ahead of everything the microphone hears from now on,
+   * which waits its turn behind it. Called once the agent is listening.
+   */
+  release(): void;
+  /** Forgets whatever was kept and has not been handed over yet, and stops keeping any more. */
+  drop(): void;
+  /**
+   * How loud the microphone is now, 0–1 of full scale (the RMS of its last 40 ms), while it is being
+   * kept and not yet handed over; 0 otherwise. What the listening lattice follows until the agent
+   * sends its first `vad_score`.
+   */
+  level(): number;
+}
+
+/**
  * Which of his lines are written down, in a voice conversation. A text-only one writes every line
  * down whatever this says.
  *
@@ -361,6 +385,14 @@ export interface JarvisSessionDependencies<Timer> {
    * otherwise once the conversation has finished ending.
    */
   callAudio?: CallAudio;
+  /**
+   * Keeps what is said while the conversation is still connecting, on a device that dials only once
+   * the greeting is over (see {@link HeldVoice}). Held from the greeting's end, released once the
+   * agent is listening — its first `vad_score`, or `RELEASE_HELD_VOICE_AFTER_MS` after connecting
+   * if none has come — and dropped on every ending. Until it is released, the listening lattice
+   * follows its level, since no score has said anything yet.
+   */
+  heldVoice?: HeldVoice;
   /**
    * Resolves once the device is on a network a conversation can be held over. Asked once the
    * greeting has started or will not, and only then are the token requested and the deadline

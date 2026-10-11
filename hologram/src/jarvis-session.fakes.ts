@@ -4,6 +4,7 @@ import { createJarvisSession } from './jarvis-session';
 import type {
   CallAudio,
   GreetingPlayer,
+  HeldVoice,
   JarvisSessionDependencies,
   ProblemSource,
   SessionConversation,
@@ -266,6 +267,26 @@ export function createFakeCallAudio({ startsAtOnce = true }: { startsAtOnce?: bo
         throw new Error('Call audio has not been asked for.');
       }
       started.resolve();
+    },
+  };
+}
+
+/** What a phone and a watch keep while he connects, recording what the session asks of it. */
+export function createFakeHeldVoice() {
+  const log: Array<'hold' | 'release' | 'drop'> = [];
+  const microphone = { level: 0 };
+  const heldVoice: HeldVoice = {
+    hold: () => log.push('hold'),
+    release: () => log.push('release'),
+    drop: () => log.push('drop'),
+    level: () => microphone.level,
+  };
+  return {
+    heldVoice,
+    log,
+    /** What the kept microphone hears, 0–1 of full scale. */
+    hears(level: number) {
+      microphone.level = level;
     },
   };
 }

@@ -5,8 +5,10 @@ import { DEADLINE_PROBLEM, describeDisconnect, describeStartFailure, describeTok
 import { isGreetingOver, WITHOUT_FIRST_MESSAGE } from './greeting-handover';
 import { createGreetingReaders } from './greeting-voice';
 import { createHalfDuplexDetector } from './half-duplex';
+import { presenceFromMicrophoneLevel } from './microphone-presence';
 import { flushQueuedAudio } from './queued-audio';
 import type {
+  HeldVoice,
   JarvisSession,
   JarvisSessionDependencies,
   ProblemSource,
@@ -50,6 +52,15 @@ const ELEVENLABS_CONVERSATION_ID = /^conv_[A-Za-z0-9]+$/;
  * after the SDK has already reported the disconnect.
  */
 const ORPHAN_SWEEP_AGAIN_MS = 2_000;
+
+/**
+ * How long after connecting what was said while he connected is handed over anyway, if the agent
+ * has not yet sent a `vad_score` to show it is listening. Connected means the room is up and the
+ * conversation asked for, not that anything is hearing the microphone yet: audio handed over before
+ * the agent listens is lost a second time, so the first score is what releases it, and this only
+ * keeps an agent that never scores from holding it for ever.
+ */
+export const RELEASE_HELD_VOICE_AFTER_MS = 1_500;
 
 const SILENT_SPECTRUM = new Uint8Array(0);
 
@@ -123,6 +134,12 @@ interface Attempt<Timer> {
   deadline?: Timer;
   greetingCheck?: Timer;
   /**
+   * What sir said while it connected (see `HeldVoice`): not kept, being kept, or handed over.
+   */
+  heldVoice: 'none' | 'holding' | 'released';
+  /** Hands it over if the agent has not shown it is listening by then: see `RELEASE_HELD_VOICE_AFTER_MS`. */
+  heldVoiceRelease?: Timer;
+  /**
    * Contextual updates waiting for the conversation to connect, in the order they were said,
    * starting with the device's own context: the latest for each context id, and every one said
    * without an id, since the server keeps each of those too.
@@ -161,7 +178,8 @@ interface PendingContext {
  * network first asks for it once he has started (`untilOnline`).
  */
 export function createJarvisSession<Timer>(dependencies: JarvisSessionDependencies<Timer>): JarvisSession {
-  const { participantName, startSession, greeting, events, callAudio, untilOnline, leaveNetwork } = dependencies;
+  const { participantName, startSession, greeting, events, callAudio, heldVoice, untilOnline, leaveNetwork } =
+    dependencies;
   const now = dependencies.now ?? (() => performance.now());
   const schedule = dependencies.setTimeout;
   const cancel = dependencies.clearTimeout;
@@ -435,9 +453,36 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     return current?.status === 'connected' && !current.microphoneMuted ? current.conversation : undefined;
   };
 
+  /**
+   * The kept microphone's level, while what is said is being kept for an agent not yet listening —
+   * before it, no `vad_score` has said anything, so the lattice follows the microphone itself. Not
+   * while the microphone is held (the keyboard is up) or he is speaking, as for a score.
+   */
+  const heldLevel = () => {
+    const current = openAttempt();
+    if (!heldVoice || current?.heldVoice !== 'holding' || microphoneHeld(current) || current.mode === 'speaking') {
+      return undefined;
+    }
+    try {
+      return heldVoice.level();
+    } catch {
+      return 0;
+    }
+  };
+
   const user: UserVoice = {
-    getPresence: () => (hearingUser() ? vadScore.latest() : 0),
+    getPresence: () => {
+      const level = heldLevel();
+      if (level !== undefined) {
+        return presenceFromMicrophoneLevel(level);
+      }
+      return hearingUser() ? vadScore.latest() : 0;
+    },
     getVolume: () => {
+      const level = heldLevel();
+      if (level !== undefined) {
+        return level;
+      }
       try {
         return hearingUser()?.getInputVolume() ?? 0;
       } catch {
@@ -486,6 +531,58 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       cancel(current.greetingCheck);
       current.greetingCheck = undefined;
     }
+    if (current.heldVoiceRelease !== undefined) {
+      cancel(current.heldVoiceRelease);
+      current.heldVoiceRelease = undefined;
+    }
+  };
+
+  // ── What is said while he connects ─────────────────────────────────────────────────────────────
+
+  /** Calls into the device's `HeldVoice`, which nothing in the conversation depends on. */
+  const onHeldVoice = (step: (held: HeldVoice) => void) => {
+    if (!heldVoice) {
+      return;
+    }
+    try {
+      step(heldVoice);
+    } catch (error) {
+      noteError(error);
+    }
+  };
+
+  /**
+   * Starts keeping what the microphone hears, once the greeting is over and before anything is
+   * listening — on a device that dials only after him, that gap is the whole connection.
+   */
+  const holdVoice = (current: Attempt<Timer>) => {
+    if (!heldVoice || current.textOnly || current.heldVoice !== 'none' || current.status === 'connected') {
+      return;
+    }
+    current.heldVoice = 'holding';
+    onHeldVoice((held) => held.hold());
+  };
+
+  /** Hands what was kept to the conversation, once: the agent is listening, or has had long enough. */
+  const releaseVoice = (current: Attempt<Timer>) => {
+    if (current.heldVoice !== 'holding' || !isCurrent(current) || current.status !== 'connected') {
+      return;
+    }
+    current.heldVoice = 'released';
+    if (current.heldVoiceRelease !== undefined) {
+      cancel(current.heldVoiceRelease);
+      current.heldVoiceRelease = undefined;
+    }
+    onHeldVoice((held) => held.release());
+  };
+
+  /** Forgets whatever was kept and not yet handed over: the summoning is over. */
+  const dropVoice = (current: Attempt<Timer>) => {
+    if (current.heldVoice === 'none') {
+      return;
+    }
+    current.heldVoice = 'none';
+    onHeldVoice((held) => held.drop());
   };
 
   /** Tells whoever asked that the greeting has started or will not — once. */
@@ -518,6 +615,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     }
     answerGreeting(current);
     stopTimers(current);
+    dropVoice(current);
     current.pendingContext = [];
     current.stopFollowing?.();
     current.stopFollowing = undefined;
@@ -628,6 +726,12 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       // Before the phase moves on, so that anything the holder says the moment he is live comes
       // after what was waiting, and is what the agent is left with.
       sayPendingContext(current);
+      if (current.heldVoice === 'holding' && current.heldVoiceRelease === undefined) {
+        current.heldVoiceRelease = schedule(() => {
+          current.heldVoiceRelease = undefined;
+          releaseVoice(current);
+        }, RELEASE_HELD_VOICE_AFTER_MS);
+      }
       if (current.greeting === 'over') {
         setPhase('live');
       }
@@ -706,7 +810,11 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     onConversationCreated: bound(current, (conversation: SessionConversation) => adopt(current, conversation)),
     onStatusChange: bound(current, ({ status }: { status: string }) => statusChanged(current, status)),
     onModeChange: bound(current, ({ mode }: { mode: string }) => modeChanged(current, mode)),
-    onVadScore: bound(current, ({ vadScore: score }: { vadScore: number }) => vadScore.heard(score)),
+    onVadScore: bound(current, ({ vadScore: score }: { vadScore: number }) => {
+      vadScore.heard(score);
+      // A score means the agent is hearing the microphone, so what was kept will be heard too.
+      releaseVoice(current);
+    }),
     onAgentToolRequest: bound(current, toolActivity.toolHandlers.onAgentToolRequest),
     onAgentToolResponse: bound(current, toolActivity.toolHandlers.onAgentToolResponse),
     onMCPToolCall: bound(current, toolActivity.toolHandlers.onMCPToolCall),
@@ -885,6 +993,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     }
     setPhase(current.status === 'connected' ? 'live' : 'connecting');
     changed();
+    holdVoice(current);
     startReaching(current);
     dialWhenReady(current);
   }
@@ -1064,6 +1173,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       status: 'disconnected',
       mode: 'listening',
       microphoneMuted: false,
+      heldVoice: 'none',
       pendingContext: [],
     };
     attempt = current;

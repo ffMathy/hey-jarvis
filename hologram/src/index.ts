@@ -34,6 +34,7 @@ export * from './hologram-drawing';
 export * from './jarvis-server-address';
 export * from './jarvis-server-link';
 export * from './jarvis-session';
+export * from './microphone-presence';
 export * from './played-voice';
 export * from './queued-audio';
 export * from './sample-drive';
