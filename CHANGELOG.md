@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.22.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.22.0...root-v4.22.1) (2026-10-11)
+
+
+### Code Refactoring
+
+* **elevenlabs:** split agent config tools into one file each ([#951](https://github.com/ffMathy/hey-jarvis/issues/951)) ([bf3ff3d](https://github.com/ffMathy/hey-jarvis/commit/bf3ff3d2fe20046d43b27176783155aaadcd1563))
+
 ## [4.22.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.21.0...root-v4.22.0) (2026-10-11)
 
 
