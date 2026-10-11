@@ -1,5 +1,18 @@
 # Changelog
 
+## [4.21.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.20.2...root-v4.21.0) (2026-10-11)
+
+
+### Features
+
+* **hologram:** keep what is said while jarvis connects ([#946](https://github.com/ffMathy/hey-jarvis/issues/946)) ([f051678](https://github.com/ffMathy/hey-jarvis/commit/f0516784909d3c33531190a0bf15531ac5bb8951))
+
+
+### Performance Improvements
+
+* **hologram:** show the listening lattice sooner when someone speaks ([#943](https://github.com/ffMathy/hey-jarvis/issues/943)) ([efd6f59](https://github.com/ffMathy/hey-jarvis/commit/efd6f596302f907a17df2d6002d4fa85d1b45114))
+* **mcp:** set phone alarms with jev, without the agent ([#945](https://github.com/ffMathy/hey-jarvis/issues/945)) ([b96abeb](https://github.com/ffMathy/hey-jarvis/commit/b96abeb5ada481bc92d4488eb3236ffe3546eed2))
+
 ## [4.20.2](https://github.com/ffMathy/hey-jarvis/compare/root-v4.20.1...root-v4.20.2) (2026-10-11)
 
 
