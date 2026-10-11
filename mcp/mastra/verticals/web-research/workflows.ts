@@ -94,6 +94,12 @@ const fetchDailyDevTopPosts = createStep({
     await executeTool(getDailyDevTopPosts, { days: DIGEST_DAYS, limit: DAILY_DEV_POST_COUNT }, { mastra }),
 });
 
+const weeklyDigestOutputSchema = z.object({
+  artifactUrl: z.string().optional().describe('Where the digest page is hosted'),
+  sentToPhone: z.boolean(),
+  message: z.string(),
+});
+
 const visualizeWeeklyDigest = createStep({
   id: 'visualize-weekly-digest',
   description: 'Builds the digest page and pushes its link to the phone',
@@ -101,7 +107,7 @@ const visualizeWeeklyDigest = createStep({
     'research-weekly-news': researchWeeklyNews.outputSchema,
     'fetch-daily-dev-top-posts': fetchDailyDevTopPosts.outputSchema,
   }),
-  outputSchema: generateUserInterface.outputSchema,
+  outputSchema: weeklyDigestOutputSchema,
   execute: async ({ inputData, mastra }) => {
     const { week, news } = inputData['research-weekly-news'];
     const { posts } = inputData['fetch-daily-dev-top-posts'];
@@ -115,7 +121,7 @@ const visualizeWeeklyDigest = createStep({
       throw new Error(`The weekly digest could not be built: ${result.message}`);
     }
 
-    return result;
+    return { artifactUrl: result.artifactUrl, sentToPhone: result.sentToPhone, message: result.message };
   },
 });
 
@@ -129,7 +135,7 @@ const visualizeWeeklyDigest = createStep({
 export const weeklyNewsDigestWorkflow = createWorkflow({
   id: 'weeklyNewsDigestWorkflow',
   inputSchema: z.object({}),
-  outputSchema: generateUserInterface.outputSchema,
+  outputSchema: weeklyDigestOutputSchema,
 })
   .parallel([researchWeeklyNews, fetchDailyDevTopPosts])
   .then(visualizeWeeklyDigest)
