@@ -274,12 +274,21 @@ export function createFakeCallAudio({ startsAtOnce = true }: { startsAtOnce?: bo
 /** What a phone and a watch keep while he connects, recording what the session asks of it. */
 export function createFakeHeldVoice() {
   const log: Array<'hold' | 'release' | 'drop'> = [];
+  const microphone = { level: 0 };
   const heldVoice: HeldVoice = {
     hold: () => log.push('hold'),
     release: () => log.push('release'),
     drop: () => log.push('drop'),
+    level: () => microphone.level,
   };
-  return { heldVoice, log };
+  return {
+    heldVoice,
+    log,
+    /** What the kept microphone hears, 0–1 of full scale. */
+    hears(level: number) {
+      microphone.level = level;
+    },
+  };
 }
 
 /** One contextual update the session sent, as `sendContextualUpdate` was handed it. */

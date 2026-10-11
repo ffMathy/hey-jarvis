@@ -334,6 +334,58 @@ describe('what is said while he connects, on a phone and a watch', () => {
     expect(phone.heldVoice.log).toEqual(['hold', 'release', 'drop']);
   });
 
+  it('lets the lattice follow the kept microphone until the agent sends a score', async () => {
+    const phone = onAPhone();
+    await greetOn(phone);
+    phone.heldVoice.hears(0.5);
+    // He is still greeting: nothing is kept, and nobody is heard over him.
+    expect(phone.session.user.getPresence()).toBe(0);
+    expect(phone.session.user.getVolume()).toBe(0);
+
+    await phone.clock.advance(phone.greeting.durationMilliseconds + 100);
+    expect(phone.session.user.getPresence()).toBe(1);
+    expect(phone.session.user.getVolume()).toBe(0.5);
+
+    phone.heldVoice.hears(0.001);
+    expect(phone.session.user.getPresence()).toBe(0);
+    expect(phone.session.user.getVolume()).toBe(0.001);
+
+    phone.tokens.grant();
+    await settle();
+    await phone.sdk.latest.connect();
+    // Connected, and still no score: the microphone is all there is to go on.
+    phone.heldVoice.hears(0.2);
+    expect(phone.session.user.getPresence()).toBe(1);
+
+    phone.sdk.latest.conversation.inputVolume = 0.04;
+    phone.sdk.latest.spoken?.onVadScore({ vadScore: 0.6 });
+    expect(phone.session.user.getPresence()).toBe(0.6);
+    expect(phone.session.user.getVolume()).toBe(0.04);
+  });
+
+  it('hears nobody through the kept microphone while the keyboard is up', async () => {
+    const phone = onAPhone();
+    await greetedAndDialling(phone);
+    phone.heldVoice.hears(0.5);
+
+    phone.session.setTyping(true);
+    expect(phone.session.user.getPresence()).toBe(0);
+    expect(phone.session.user.getVolume()).toBe(0);
+
+    phone.session.setTyping(false);
+    expect(phone.session.user.getPresence()).toBe(1);
+  });
+
+  it('hears nobody once the summoning has ended', async () => {
+    const phone = onAPhone();
+    await greetedAndDialling(phone);
+    phone.heldVoice.hears(0.5);
+
+    phone.session.hangUp();
+    expect(phone.session.user.getPresence()).toBe(0);
+    expect(phone.session.user.getVolume()).toBe(0);
+  });
+
   it('keeps each summoning’s on its own', async () => {
     const phone = onAPhone();
     await goLiveOn(phone);

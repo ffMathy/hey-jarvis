@@ -120,6 +120,12 @@ export interface HeldVoice {
   release(): void;
   /** Forgets whatever was kept and has not been handed over yet, and stops keeping any more. */
   drop(): void;
+  /**
+   * How loud the microphone is now, 0–1 of full scale (the RMS of its last 40 ms), while it is being
+   * kept and not yet handed over; 0 otherwise. What the listening lattice follows until the agent
+   * sends its first `vad_score`.
+   */
+  level(): number;
 }
 
 /**
@@ -383,7 +389,8 @@ export interface JarvisSessionDependencies<Timer> {
    * Keeps what is said while the conversation is still connecting, on a device that dials only once
    * the greeting is over (see {@link HeldVoice}). Held from the greeting's end, released once the
    * agent is listening — its first `vad_score`, or `RELEASE_HELD_VOICE_AFTER_MS` after connecting
-   * if none has come — and dropped on every ending.
+   * if none has come — and dropped on every ending. Until it is released, the listening lattice
+   * follows its level, since no score has said anything yet.
    */
   heldVoice?: HeldVoice;
   /**

@@ -173,6 +173,11 @@ class JarvisGreetingModule : Module() {
       heldVoice.drop()
     }
 
+    /** How loud the kept microphone is now, 0–1, for the listening lattice until the agent scores it. */
+    Function("heldVoiceLevel") {
+      heldVoice.level()
+    }
+
     Function("pause") {
       synchronized(lock) {
         player?.takeIf { it.isPlaying }?.pause()

@@ -23,6 +23,12 @@ private const val HOLD_SAMPLE_RATE = 48000
 private const val HOLD_CHUNK_SAMPLES = HOLD_SAMPLE_RATE / 100
 
 /**
+ * How many of the last 10 ms chunks `level` is measured over: 40 ms, what the hologram reads a
+ * voice every, and what LiveKit's own volume processor measures the live microphone over.
+ */
+private const val LEVEL_CHUNKS = 4
+
+/**
  * The most that is kept. Longer than the twenty seconds a summoning waits for its conversation
  * (`GIVE_UP_CONNECTING_AFTER_MS`), so it is never what cuts sir off; it only bounds the memory.
  */
@@ -104,6 +110,11 @@ class HeldVoice : AudioProcessorInterface {
   /** How much of the current pause has been sent, in samples at `queueRate`. */
   private var pauseSent = 0
 
+  /** The squares and sample counts of the last `LEVEL_CHUNKS` chunks the microphone gave, for `level`. */
+  private val recentSquares = DoubleArray(LEVEL_CHUNKS)
+  private val recentSamples = IntArray(LEVEL_CHUNKS)
+  private var recentIndex = 0
+
   private var recorder: AudioRecord? = null
 
   /**
@@ -138,6 +149,28 @@ class HeldVoice : AudioProcessorInterface {
     }
   }
 
+  /**
+   * How loud the microphone is, 0–1 of full scale: the RMS of its last 40 ms, while it is being kept
+   * and the agent is not yet listening — the recorder here, then WebRTC's live frames as they queue.
+   * 0 otherwise, since once the agent listens its own `vad_score` says who is speaking.
+   */
+  fun level(): Float {
+    synchronized(lock) {
+      if (!active || released) {
+        return 0f
+      }
+      val samples = recentSamples.sum()
+      return if (samples > 0) (sqrt(recentSquares.sum() / samples) / 32768.0).toFloat() else 0f
+    }
+  }
+
+  /** Under `lock`. Notes one chunk's loudness for `level`. */
+  private fun noteLevel(sumOfSquares: Double, samples: Int) {
+    recentSquares[recentIndex] = sumOfSquares
+    recentSamples[recentIndex] = samples
+    recentIndex = (recentIndex + 1) % LEVEL_CHUNKS
+  }
+
   /** The summoning is over: forget everything, and let the microphone go. */
   fun drop() {
     synchronized(lock) {
@@ -155,6 +188,9 @@ class HeldVoice : AudioProcessorInterface {
     queueRate = 0
     pauseSent = 0
     recorder = null
+    recentSquares.fill(0.0)
+    recentSamples.fill(0)
+    recentIndex = 0
   }
 
   private fun startRecording() {
@@ -225,6 +261,11 @@ class HeldVoice : AudioProcessorInterface {
     }
     System.arraycopy(chunk, 0, kept, keptCount, count)
     keptCount += count
+    var sumOfSquares = 0.0
+    for (index in 0 until count) {
+      sumOfSquares += chunk[index].toDouble() * chunk[index]
+    }
+    noteLevel(sumOfSquares, count)
   }
 
   override fun isEnabled() = true
@@ -257,9 +298,13 @@ class HeldVoice : AudioProcessorInterface {
       }
       queue.pushFrom(frame, samples)
       if (!released) {
+        var sumOfSquares = 0.0
         for (index in 0 until samples) {
+          val sample = frame.get(index)
+          sumOfSquares += sample * sample
           frame.put(index, 0f)
         }
+        noteLevel(sumOfSquares, samples)
         return
       }
       catchUp(samples)

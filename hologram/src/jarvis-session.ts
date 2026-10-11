@@ -5,6 +5,7 @@ import { DEADLINE_PROBLEM, describeDisconnect, describeStartFailure, describeTok
 import { isGreetingOver, WITHOUT_FIRST_MESSAGE } from './greeting-handover';
 import { createGreetingReaders } from './greeting-voice';
 import { createHalfDuplexDetector } from './half-duplex';
+import { presenceFromMicrophoneLevel } from './microphone-presence';
 import { flushQueuedAudio } from './queued-audio';
 import type {
   HeldVoice,
@@ -452,9 +453,36 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     return current?.status === 'connected' && !current.microphoneMuted ? current.conversation : undefined;
   };
 
+  /**
+   * The kept microphone's level, while what is said is being kept for an agent not yet listening —
+   * before it, no `vad_score` has said anything, so the lattice follows the microphone itself. Not
+   * while the microphone is held (the keyboard is up) or he is speaking, as for a score.
+   */
+  const heldLevel = () => {
+    const current = openAttempt();
+    if (!heldVoice || current?.heldVoice !== 'holding' || microphoneHeld(current) || current.mode === 'speaking') {
+      return undefined;
+    }
+    try {
+      return heldVoice.level();
+    } catch {
+      return 0;
+    }
+  };
+
   const user: UserVoice = {
-    getPresence: () => (hearingUser() ? vadScore.latest() : 0),
+    getPresence: () => {
+      const level = heldLevel();
+      if (level !== undefined) {
+        return presenceFromMicrophoneLevel(level);
+      }
+      return hearingUser() ? vadScore.latest() : 0;
+    },
     getVolume: () => {
+      const level = heldLevel();
+      if (level !== undefined) {
+        return level;
+      }
       try {
         return hearingUser()?.getInputVolume() ?? 0;
       } catch {

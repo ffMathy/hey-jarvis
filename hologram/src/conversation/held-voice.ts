@@ -6,6 +6,7 @@ interface HeldVoiceModule {
   holdVoice(): void;
   releaseVoice(): void;
   dropVoice(): void;
+  heldVoiceLevel(): number;
 }
 
 /** Absent in a build without the native side, where what is said while he connects is lost, as it always was. */
@@ -30,4 +31,5 @@ export const heldVoice: HeldVoice | undefined = heldVoiceModule && {
   hold: () => heldVoiceModule.holdVoice(),
   release: () => heldVoiceModule.releaseVoice(),
   drop: () => heldVoiceModule.dropVoice(),
+  level: () => heldVoiceModule.heldVoiceLevel(),
 };

@@ -327,10 +327,12 @@ easy to break:
   greeting is dropped and the agent keeps its own first message, so he is never left not greeting
   at all.
 
-The session's `user` is the `UserVoice` for the listening lattice: presence is only ever the latest
+The session's `user` is the `UserVoice` for the listening lattice. Presence is the latest
 `vad_score` (`vad-score.ts`), ignored while he speaks or greets — the firmware's
 `speaker_is_active_` rule, since his voice through the speaker scores as the user's — and volume is
 the SDK's input level. Both read zero while the session is not connected or its microphone is muted.
+The one exception is on a phone and a watch before the agent's first score: the lattice follows the
+kept microphone instead (see "What is said while he connects is kept, not lost").
 
 ## What is said while he connects is kept, not lost
 
@@ -356,6 +358,12 @@ headset dial behind the greeting and have no such gap):
   queue; while behind, any pause past 200 ms is skipped; once the queue is empty the live microphone
   goes straight through. Past twenty seconds behind, what is queued is dropped instead.
 - **Dropped on every ending** (`drop`), including one that never connected.
+- **The lattice follows it until the agent scores.** No `vad_score` arrives before the agent hears
+  the track, so until the first one the session's `user` reads the kept microphone instead:
+  `level()`, the RMS of its last 40 ms, as the volume, and `presenceFromMicrophoneLevel`
+  (`microphone-presence.ts`) as the presence — a loudness gate in the score's own units, nothing
+  at -45 dBFS and sure at -30, so it crosses `HEARING_THRESHOLD` near -41. Not while the keyboard
+  is up or he is speaking, as for a score. From the first score on, it is the score again.
 
 The rules — when to hold, release and drop — are the session's, pinned in
 `jarvis-session-devices.spec.ts`. The audio itself is the native module's, and no test here runs
