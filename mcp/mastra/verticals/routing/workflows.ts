@@ -280,6 +280,26 @@ export const FINISHED_REQUEST_INSTRUCTIONS =
   'tells him when it is done says so in its result. ';
 
 /**
+ * What ends a finished command, in place of {@link FINISHED_REQUEST_INSTRUCTIONS}: the confirmation,
+ * and then the hang-up at once.
+ *
+ * A command's value is in the house or on the phone, and the confirmation is all sir is waiting to
+ * hear, so the call is over the moment Jarvis has said it is done. It used to end like every other
+ * request, on the turn timeout asking him to speak again into the silence, and that is a hang-up
+ * that depends on the agent being asked again and choosing `end_call` when it is. Asked to set an
+ * alarm, he confirmed it and then simply stayed on the line. A command has nothing to wait for, so
+ * this does not wait.
+ *
+ * The confirmation is the closing line, so there is no goodbye after it. A photo he is busy taking
+ * still holds the line, for the same reason it holds every other finished request's.
+ */
+export const COMMAND_DONE_INSTRUCTIONS =
+  'The command is done and he wants nothing more from this call: right after your confirmation, call ' +
+  'end_call, without a goodbye and without waiting for him to speak. Your confirmation is the last thing he ' +
+  `hears. Unless ${WAITING_FOR_A_PHOTO}: then stop after the confirmation and wait, and if you are asked to ` +
+  'speak again, call skip_turn instead. ';
+
+/**
  * What ends a request that said a photo is on its way (`awaitsPhoto` in `planner.ts`), in place of
  * {@link FINISHED_REQUEST_INSTRUCTIONS}.
  *
@@ -343,6 +363,9 @@ const ANYTHING_FURTHER =
   'routing the second one now is a round trip he should never have had to wait through. ';
 
 function allTasksCompletedInstructions(style: ResponseStyle): string {
+  if (style === 'command') {
+    return `All tasks have completed. ${recapInstructions(style)}${COMMAND_DONE_INSTRUCTIONS}`;
+  }
   return (
     `All tasks have completed. ${recapInstructions(style)}` +
     FINISHED_REQUEST_INSTRUCTIONS +

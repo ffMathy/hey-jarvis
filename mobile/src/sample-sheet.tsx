@@ -121,7 +121,7 @@ export function SampleSheet({
   onTapBeside,
   children,
 }: {
-  /** Set when Jarvis has started to go: the sheet follows him down once he has faded. */
+  /** Set when Jarvis is to go: the sheet slides off the bottom of the screen, with him on it. */
   leaving: boolean;
   /** Called once the sheet has finished arriving, which is when it is safe to draw into it. */
   onSettled: () => void;
