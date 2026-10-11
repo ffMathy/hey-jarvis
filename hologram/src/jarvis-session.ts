@@ -2,9 +2,9 @@ import { type AgentTrackRoom, agentAudioTracks } from './agent-audio-track';
 import { GIVE_UP_CONNECTING_AFTER_MS, isLive } from './conversation-life';
 import { requestConversationToken, requestSignedConversationUrl } from './conversation-token';
 import { DEADLINE_PROBLEM, describeDisconnect, describeStartFailure, describeTokenFailure } from './failure-text';
+import { MATERIALISE_SECONDS } from './frame-timing';
 import { isGreetingOver, WITHOUT_FIRST_MESSAGE } from './greeting-handover';
 import { createGreetingReaders } from './greeting-voice';
-import { MATERIALISE_SECONDS } from './frame-timing';
 import { createHalfDuplexDetector } from './half-duplex';
 import { presenceFromMicrophoneLevel } from './microphone-presence';
 import { flushQueuedAudio } from './queued-audio';
@@ -1094,6 +1094,10 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
    * the core rather than while it is still spinning. Whatever was waited on before this — the
    * call's audio, a headset's route — counts towards it. The clock that gives up on the greeting
    * starts again once it is asked for: the wait was not him being late.
+   *
+   * Only the sound waits. The token is already on its way (asked for at the summoning), and a
+   * device that brings up a network first (`untilOnline`) starts doing so now rather than once
+   * the recording plays, so the arrival costs the connection nothing it did not cost before.
    */
   const playOnceArrived = (current: Attempt<Timer>) => {
     const play = () => {
@@ -1105,6 +1109,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       play();
       return;
     }
+    startReaching(current);
     current.arrivalWait = schedule(() => {
       current.arrivalWait = undefined;
       if (isCurrent(current) && current.greeting === 'asking') {
