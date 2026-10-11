@@ -307,7 +307,7 @@ type SkiaApiType = HologramSkia;
 // HologramFrameState gives; exporting one changes nothing about how it is captured in a worklet.
 
 /** How long the view takes to count appearance from 0 to 1: the vortex bringing him out of the core. */
-export const MATERIALISE_SECONDS = 1.4;
+export const MATERIALISE_SECONDS = 0.7;
 
 /**
  * Sphere radius as a fraction of the square, at rest.

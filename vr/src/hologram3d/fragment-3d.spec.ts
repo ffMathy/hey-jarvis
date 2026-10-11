@@ -12,6 +12,7 @@ import {
   LATTICE_STROKE_SHRINK,
   latticeFragment,
   latticeTarget,
+  MATERIALISE_SECONDS,
   placeFragment,
   readFragment,
   readShellFragment,
@@ -36,7 +37,7 @@ const scene = createHologramScene(SCENE_SEED);
 /** The moments the drawing is checked at: every phase the body does something different in. */
 const MOMENTS: Record<string, Partial<HologramFrame>> = {
   idle: { time: 10 },
-  arriving: { time: 0.5, appearance: 0.5 / 1.4 },
+  arriving: { time: 0.5, appearance: 0.5 / MATERIALISE_SECONDS },
   speaking: { time: 23.7, level: 0.7, agitation: 0.85, burstAge: 0.05, burstStrength: 0.8, burstCount: 7 },
   thinking: { time: 41.2, thinking: 1 },
   listening: { time: 12.3, hearing: 1, hearingLevel: 0.6 },
@@ -208,7 +209,7 @@ describe('a fragment in three dimensions, seen from the front', () => {
   });
 
   it('brings the fragments out of the core in depth as well as across while he arrives', () => {
-    const early = stateAt({ time: 0.3, appearance: 0.3 / 1.4 });
+    const early = stateAt({ time: 0.3, appearance: 0.3 / MATERIALISE_SECONDS });
     const settled = stateAt({ time: 0.3 });
     let nearer = 0;
     let compared = 0;

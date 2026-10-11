@@ -21,7 +21,7 @@ export interface PhaseDrive {
 
 /**
  * How long he is left to settle before a phase that does not begin with an arrival: the vortex
- * (1.4 s) and a little of him idling, so what is seen is the phase and not the end of the arrival.
+ * (`MATERIALISE_SECONDS`, 0.7 s) and a little of him idling, so what is seen is the phase and not the end of the arrival.
  */
 export const SETTLE_SECONDS = 2;
 
