@@ -321,6 +321,35 @@ describe('getNextInstructionsWorkflow', () => {
     expect(closing.taskIdsInProgress).toEqual([]);
   });
 
+  it('leaves the last result to the closing report when the request finishes just after it', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'turn off the lights', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    progress.responseStyle = 'command';
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings', 'Lights off.');
+
+    // The answer lands before the plan run ends, as it does in a real run. Reported at once, it
+    // went out as a progress report and then again in the closing report: "Done, sir." twice.
+    const polling = runWorkflow(getNextInstructionsWorkflow, {});
+    setTimeout(() => endPlanRun(progress), 10);
+    const outcome = resultOf(await polling);
+
+    expect(outcome.instructions).toContain('All tasks have completed');
+    expect(outcome.instructions).toContain(COMMAND_DONE_INSTRUCTIONS);
+    expect(outcome.completedTaskResults).toEqual([{ id: 'internetOfThings', result: 'Lights off.' }]);
+  });
+
+  it('still relays a result whose request is slow to finish, rather than sitting on it', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
+
+    const first = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+    const second = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    // Held for the request to finish, then handed over once the wait runs out -- and only once.
+    expect(first.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
+    expect(second.completedTaskResults).toBeUndefined();
+  });
+
   it('reports a request that failed outright rather than going quiet', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
     progressFor(DEFAULT_ROUTING_SESSION_ID).fail('the plan could not be registered');
@@ -886,6 +915,13 @@ describe('how a request is answered, and when the call may end', () => {
     expect(closing.instructions).toContain(COMMAND_DONE_INSTRUCTIONS);
     expect(closing.instructions).toContain('without waiting for him to speak');
     expect(closing.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
+  });
+
+  it('confirms a command once, even when a part of it was confirmed as it landed', () => {
+    // The closing report recaps every result, ones already confirmed included, and its own
+    // "confirm, then hang up" used to win over the recap's "say nothing again".
+    expect(COMMAND_DONE_INSTRUCTIONS).toContain('Confirm it only if you have not already done so');
+    expect(COMMAND_DONE_INSTRUCTIONS).toContain('say nothing at all');
   });
 
   it('still holds the line after a command while a photo is on its way', () => {

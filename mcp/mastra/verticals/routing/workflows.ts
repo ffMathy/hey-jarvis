@@ -5,6 +5,7 @@ import { withPointing } from '../../utils/pointing.js';
 import {
   DEFAULT_ROUTING_SESSION_ID,
   getRoutingRuntime,
+  type RoutingRuntime,
   type RoutingSnapshot,
   rememberMastraRegistry,
 } from './controller.js';
@@ -292,12 +293,18 @@ export const FINISHED_REQUEST_INSTRUCTIONS =
  *
  * The confirmation is the closing line, so there is no goodbye after it. A photo he is busy taking
  * still holds the line, for the same reason it holds every other finished request's.
+ *
+ * It asks for the confirmation only if none was given yet. The closing report recaps every result,
+ * including ones a progress report already relayed and Jarvis already confirmed, and an instruction
+ * to confirm and then hang up was followed over the recap's general "say nothing again": "Done, sir."
+ * twice. A multi-part command still confirms its parts as they land, and then ends without a word.
  */
 export const COMMAND_DONE_INSTRUCTIONS =
-  'The command is done and he wants nothing more from this call: right after your confirmation, call ' +
-  'end_call, without a goodbye and without waiting for him to speak. Your confirmation is the last thing he ' +
-  `hears. Unless ${WAITING_FOR_A_PHOTO}: then stop after the confirmation and wait, and if you are asked to ` +
-  'speak again, call skip_turn instead. ';
+  'The command is done and he wants nothing more from this call. Confirm it only if you have not already ' +
+  'done so during this request: a confirmation you already gave is not given twice, so if every part of it ' +
+  'has been confirmed, say nothing at all. Then call end_call, without a goodbye and without waiting for him ' +
+  `to speak. Your one confirmation is the last thing he hears. Unless ${WAITING_FOR_A_PHOTO}: then stop after ` +
+  'the confirmation and wait, and if you are asked to speak again, call skip_turn instead. ';
 
 /**
  * What ends a request that said a photo is on its way (`awaitsPhoto` in `planner.ts`), in place of
@@ -591,6 +598,30 @@ export function resetPollDeadlineForTest(): void {
 }
 
 /**
+ * How long a poll holds the last result back for the request to finish.
+ *
+ * A delegation's answer and the end of the plan run are two events, and the answer comes first:
+ * it wakes the parked poll, which used to find the request not yet finished and hand the result
+ * over as a progress report — "Done, sir." — and the next poll then found it finished and handed
+ * the same result over again in the closing report, whose command instructions end on a
+ * confirmation. So sir heard it twice, on whichever requests lost that race.
+ *
+ * When nothing is outstanding any more, the request is not waiting on work but on its own wrap-up,
+ * so the poll waits that out and lets the closing report carry the result alone. It waits only
+ * briefly: a request another errand joined (see `join` in `controller.ts`) has nothing outstanding
+ * between the two runs either, and the first run's results should not wait for the second's.
+ */
+const FINISH_GRACE_MS = 1_500;
+
+/**
+ * Whether a poll is looking at a request that has finished its work but not yet said so: results
+ * to report, nothing outstanding, and no slow-work offer to make, which goes out at once.
+ */
+function isSettling(snapshot: RoutingSnapshot): boolean {
+  return snapshot.landed.length > 0 && snapshot.inProgress.length === 0 && snapshot.newlySlow.length === 0;
+}
+
+/**
  * What the closing report says about questions earlier work is waiting on, and photos nobody has
  * looked at, when the request failed.
  *
@@ -792,6 +823,60 @@ export const routePromptWorkflow = createWorkflow({
   .then(routePromptStep)
   .commit();
 
+/**
+ * Waits for something worth reporting, up to the poll's deadline: the closing report, a progress
+ * report, or word that the request is still running.
+ */
+async function waitForReport(
+  runtime: RoutingRuntime,
+  sessionId: string,
+  deadlineAt: number,
+): Promise<z.infer<typeof instructionsOutputSchema>> {
+  // Results held back while the request settles (see FINISH_GRACE_MS). A snapshot marks
+  // whatever it reports as handed over, so these are carried into every later pass until a
+  // report goes out with them, or the closing report recaps them along with everything else.
+  let held: RoutingSnapshot['landed'] = [];
+  let settleBy: number | undefined;
+
+  // Each pass reads the delegations afresh. A snapshot marks whatever it reports as
+  // handed over, so taking one and discarding it would lose those results -- every path
+  // out of this loop returns the snapshot it just took, or holds its results for the next.
+  while (true) {
+    const pastDeadline = Date.now() >= deadlineAt;
+    const polled = await runtime.poll(sessionId);
+
+    // A finished request reports everything, including what earlier polls already
+    // relayed, so a dropped response cannot lose a result for good.
+    if (polled.finished) {
+      return buildClosingReport(polled);
+    }
+
+    const snapshot = { ...polled, landed: [...held, ...polled.landed] };
+    if (!pastDeadline && isSettling(snapshot)) {
+      settleBy ??= Date.now() + FINISH_GRACE_MS;
+      if (Date.now() < settleBy) {
+        held = snapshot.landed;
+        await runtime.waitForChange(sessionId, Math.min(settleBy, deadlineAt) - Date.now());
+        continue;
+      }
+    }
+
+    const report = buildProgressReport(snapshot);
+    if (report) {
+      return report;
+    }
+
+    if (pastDeadline) {
+      return {
+        instructions: INSTRUCTIONS.stillProcessing,
+        taskIdsInProgress: snapshot.inProgress,
+      };
+    }
+
+    await runtime.waitForChange(sessionId, deadlineAt - Date.now());
+  }
+}
+
 const getNextInstructionsStep = createStep({
   id: 'get-next-instructions',
   description: 'Return whatever the routing plan has produced since the last call',
@@ -821,33 +906,7 @@ const getNextInstructionsStep = createStep({
       return buildClosingReport(snapshot);
     }
 
-    // Each pass reads the delegations afresh. A snapshot marks whatever it reports as
-    // handed over, so taking one and discarding it would lose those results -- every path
-    // out of this loop returns the snapshot it just took.
-    while (true) {
-      const pastDeadline = Date.now() >= deadlineAt;
-      const snapshot = await runtime.poll(sessionId);
-
-      // A finished request reports everything, including what earlier polls already
-      // relayed, so a dropped response cannot lose a result for good.
-      if (snapshot.finished) {
-        return buildClosingReport(snapshot);
-      }
-
-      const report = buildProgressReport(snapshot);
-      if (report) {
-        return report;
-      }
-
-      if (pastDeadline) {
-        return {
-          instructions: INSTRUCTIONS.stillProcessing,
-          taskIdsInProgress: snapshot.inProgress,
-        };
-      }
-
-      await runtime.waitForChange(sessionId, deadlineAt - Date.now());
-    }
+    return waitForReport(runtime, sessionId, deadlineAt);
   },
 });
 
