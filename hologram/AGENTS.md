@@ -332,6 +332,36 @@ The session's `user` is the `UserVoice` for the listening lattice: presence is o
 `speaker_is_active_` rule, since his voice through the speaker scores as the user's — and volume is
 the SDK's input level. Both read zero while the session is not connected or its microphone is muted.
 
+## What is said while he connects is kept, not lost
+
+On a phone and a watch the session is dialled only once the greeting is over, so between his last
+word and the agent hearing anything there is a token, a room and a handshake — a second or more in
+which whatever sir started saying used to go nowhere. So the session holds it (`heldVoice`, which
+`useJarvisSession` fills from `conversation/held-voice.ts` on a device only — a browser and the
+headset dial behind the greeting and have no such gap):
+
+- **Held from the greeting's end** (`hold`), refused greeting included, by `HeldVoice.kt` in this
+  package's native module: an `AudioRecord` of its own, `VOICE_RECOGNITION` rather than the call's
+  `VOICE_COMMUNICATION`, which in call mode arrives near -54 dBFS and relies on WebRTC's gain control
+  — which what is held never passes through.
+- **Played through the conversation's own microphone track**, as LiveKit's capture post-processor.
+  On a device the SDK has only WebRTC, and it drops any `user_audio_chunk` handed to it over a room,
+  so the track is the only way in. The moment WebRTC opens its microphone the recorder stops, what
+  it kept is resampled to WebRTC's rate and queued, and every live frame queues behind it; silence
+  is sent meanwhile.
+- **Released at the agent's first `vad_score`** (`release`), the sign that it is hearing the track,
+  or `RELEASE_HELD_VOICE_AFTER_MS` after connecting if none comes: connected only means the room is
+  up, and audio sent before the agent listens is lost a second time.
+- **Then sent in order, late, and caught up in the pauses**: each frame sends the front of the
+  queue; while behind, any pause past 200 ms is skipped; once the queue is empty the live microphone
+  goes straight through. Past twenty seconds behind, what is queued is dropped instead.
+- **Dropped on every ending** (`drop`), including one that never connected.
+
+The rules — when to hold, release and drop — are the session's, pinned in
+`jarvis-session-devices.spec.ts`. The audio itself is the native module's, and no test here runs
+it: judge it on a device, by saying something straight after the greeting and checking logcat's
+`JarvisHeldVoice` lines (`handing over … ms`, then `caught up`).
+
 ## Hanging up after a finished request
 
 The apps do not decide this. A finished request that is followed by quiet is ended by the agent

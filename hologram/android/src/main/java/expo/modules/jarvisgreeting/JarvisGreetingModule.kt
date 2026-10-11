@@ -32,9 +32,12 @@ import java.util.concurrent.TimeUnit
  * `USAGE_VOICE_COMMUNICATION`, `CONTENT_TYPE_SPEECH` — which puts it on the stream, the route and
  * the volume that Jarvis's voice uses a moment later when the conversation takes over.
  *
- * A plain `MediaPlayer`, because a 27 KB recording played once per summoning needs nothing more, and
- * it keeps this module free of dependencies. It asks for no audio focus: the call's audio session,
- * started before this plays, already holds it.
+ * A plain `MediaPlayer`, because a 27 KB recording played once per summoning needs nothing more. It
+ * asks for no audio focus: the call's audio session, started before this plays, already holds it.
+ *
+ * It also keeps what sir says after the greeting while the conversation is still connecting, and
+ * plays it into the conversation once the agent is listening — see `HeldVoice`, which is the one
+ * thing here that depends on LiveKit.
  */
 /**
  * How long past the headset's call audio reporting itself connected before the greeting starts.
@@ -65,6 +68,9 @@ class JarvisGreetingModule : Module() {
    * a time in the order they were asked for. See `enterCallMode`.
    */
   private val modeSwitcher = Executors.newSingleThreadExecutor()
+
+  /** What sir says while the conversation connects, kept for it. */
+  private val heldVoice = HeldVoice()
 
   /** The mode `enterCallMode` switched from, to go back to; null when it has not. Only touched on `modeSwitcher`. */
   private var modeBeforeCall: Int? = null
@@ -150,6 +156,23 @@ class JarvisGreetingModule : Module() {
       }
     }
 
+    /**
+     * Starts keeping what the microphone hears while the conversation connects. See `HeldVoice`.
+     */
+    Function("holdVoice") {
+      heldVoice.hold(context)
+    }
+
+    /** The agent is listening: plays what was kept into the conversation's microphone track. */
+    Function("releaseVoice") {
+      heldVoice.release()
+    }
+
+    /** The summoning is over: forgets what was kept, and lets the microphone go. */
+    Function("dropVoice") {
+      heldVoice.drop()
+    }
+
     Function("pause") {
       synchronized(lock) {
         player?.takeIf { it.isPlaying }?.pause()
@@ -172,6 +195,7 @@ class JarvisGreetingModule : Module() {
     }
 
     OnDestroy {
+      heldVoice.drop()
       modeSwitcher.shutdown()
       synchronized(lock) {
         player?.release()

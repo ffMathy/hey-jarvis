@@ -16,3 +16,9 @@ android {
     abortOnError false
   }
 }
+
+dependencies {
+  // LiveKit's hold on WebRTC's audio processing, which `HeldVoice` plays what was said while
+  // connecting through. Both apps that link this module depend on @livekit/react-native.
+  implementation project(':livekit_react-native')
+}

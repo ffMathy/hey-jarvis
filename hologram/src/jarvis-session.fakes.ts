@@ -4,6 +4,7 @@ import { createJarvisSession } from './jarvis-session';
 import type {
   CallAudio,
   GreetingPlayer,
+  HeldVoice,
   JarvisSessionDependencies,
   ProblemSource,
   SessionConversation,
@@ -268,6 +269,17 @@ export function createFakeCallAudio({ startsAtOnce = true }: { startsAtOnce?: bo
       started.resolve();
     },
   };
+}
+
+/** What a phone and a watch keep while he connects, recording what the session asks of it. */
+export function createFakeHeldVoice() {
+  const log: Array<'hold' | 'release' | 'drop'> = [];
+  const heldVoice: HeldVoice = {
+    hold: () => log.push('hold'),
+    release: () => log.push('release'),
+    drop: () => log.push('drop'),
+  };
+  return { heldVoice, log };
 }
 
 /** One contextual update the session sent, as `sendContextualUpdate` was handed it. */

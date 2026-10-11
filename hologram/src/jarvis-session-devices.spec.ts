@@ -2,7 +2,8 @@ import { describe, expect, it } from 'bun:test';
 import { GIVE_UP_CONNECTING_AFTER_MS } from './conversation-life';
 import { PHONE_PARTICIPANT_NAME, WATCH_PARTICIPANT_NAME } from './conversation-token';
 import { DEADLINE_PROBLEM, DROPPED_PROBLEM, OFFLINE_PROBLEM } from './failure-text';
-import { createFakeCallAudio, createHarness, settle } from './jarvis-session.fakes';
+import { RELEASE_HELD_VOICE_AFTER_MS } from './jarvis-session';
+import { createFakeCallAudio, createFakeHeldVoice, createHarness, settle } from './jarvis-session.fakes';
 import type { JarvisSessionDependencies } from './session-contract';
 
 /**
@@ -14,9 +15,13 @@ import type { JarvisSessionDependencies } from './session-contract';
  * three things the SDK's React provider used to get wrong on them.
  */
 
-/** A phone or a watch: call audio, and a greeting that waits for a headset's call link. */
+/**
+ * A phone or a watch: call audio, a greeting that waits for a headset's call link, and what is said
+ * while he connects kept for the conversation.
+ */
 function onAPhone(overrides: Partial<JarvisSessionDependencies<number>> = {}, { startsAtOnce = true } = {}) {
   const callAudio = createFakeCallAudio({ startsAtOnce });
+  const heldVoice = createFakeHeldVoice();
   const harness = createHarness(
     {
       participantName: PHONE_PARTICIPANT_NAME,
@@ -25,12 +30,13 @@ function onAPhone(overrides: Partial<JarvisSessionDependencies<number>> = {}, { 
       offlineProblem: undefined,
       captions: 'while-typing',
       callAudio: callAudio.callAudio,
+      heldVoice: heldVoice.heldVoice,
       removeOrphanedAudio: undefined,
       ...overrides,
     },
     { waitsForRoute: true },
   );
-  return Object.assign(harness, { callAudio });
+  return Object.assign(harness, { callAudio, heldVoice });
 }
 
 type Phone = ReturnType<typeof onAPhone>;
@@ -234,6 +240,109 @@ describe('greeting inside the call’s audio, on a phone and a watch', () => {
     await refused.sdk.latest.reject(new Error('could not establish signal connection'));
     expect(refused.callAudio.log).toEqual(['start', 'stop']);
     expect(refused.events.problems).toEqual([]);
+  });
+});
+
+describe('what is said while he connects, on a phone and a watch', () => {
+  /** Greeted, and the recording over: the conversation is dialled, and not yet connected. */
+  async function greetedAndDialling(phone: Phone) {
+    await greetOn(phone);
+    phone.tokens.grant();
+    await settle();
+    await phone.clock.advance(phone.greeting.durationMilliseconds + 100);
+  }
+
+  it('keeps nothing while he greets, and starts keeping the moment he has finished', async () => {
+    const phone = onAPhone();
+
+    await greetOn(phone);
+    expect(phone.heldVoice.log).toEqual([]);
+
+    await phone.clock.advance(phone.greeting.durationMilliseconds + 100);
+    expect(phone.session.phase).toBe('connecting');
+    expect(phone.heldVoice.log).toEqual(['hold']);
+  });
+
+  it('keeps it from a refused greeting’s end too, since the agent is no nearer listening', async () => {
+    const phone = onAPhone();
+
+    phone.session.summon();
+    await settle();
+    phone.greeting.routeReady();
+    await settle();
+    phone.greeting.refuse();
+    await settle();
+
+    expect(phone.heldVoice.log).toEqual(['hold']);
+  });
+
+  it('hands it over at the agent’s first vad_score, not merely on connecting', async () => {
+    const phone = onAPhone();
+    await greetedAndDialling(phone);
+
+    await phone.sdk.latest.connect();
+    expect(phone.session.phase).toBe('live');
+    expect(phone.heldVoice.log).toEqual(['hold']);
+
+    phone.sdk.latest.spoken?.onVadScore({ vadScore: 0.02 });
+    expect(phone.heldVoice.log).toEqual(['hold', 'release']);
+
+    phone.sdk.latest.spoken?.onVadScore({ vadScore: 0.9 });
+    await phone.clock.advance(RELEASE_HELD_VOICE_AFTER_MS);
+    expect(phone.heldVoice.log).toEqual(['hold', 'release']);
+  });
+
+  it('hands it over anyway when the agent sends no score soon after connecting', async () => {
+    const phone = onAPhone();
+    await greetedAndDialling(phone);
+    await phone.sdk.latest.connect();
+
+    await phone.clock.advance(RELEASE_HELD_VOICE_AFTER_MS - 1);
+    expect(phone.heldVoice.log).toEqual(['hold']);
+    await phone.clock.advance(1);
+    expect(phone.heldVoice.log).toEqual(['hold', 'release']);
+  });
+
+  it('forgets it when the summoning ends before the agent listens, and hands nothing over late', async () => {
+    const phone = onAPhone();
+    await greetedAndDialling(phone);
+
+    phone.session.hangUp();
+    expect(phone.heldVoice.log).toEqual(['hold', 'drop']);
+
+    await phone.sdk.latest.connect();
+    await phone.clock.advance(RELEASE_HELD_VOICE_AFTER_MS);
+    expect(phone.heldVoice.log).toEqual(['hold', 'drop']);
+  });
+
+  it('forgets it when the deadline gives up on the conversation', async () => {
+    const phone = onAPhone();
+    await greetedAndDialling(phone);
+
+    await phone.clock.advance(GIVE_UP_CONNECTING_AFTER_MS);
+    expect(phone.session.phase).toBe('failed');
+    expect(phone.heldVoice.log).toEqual(['hold', 'drop']);
+  });
+
+  it('stops whatever is still being handed over once the conversation ends', async () => {
+    const phone = onAPhone();
+    await goLiveOn(phone);
+    phone.sdk.latest.spoken?.onVadScore({ vadScore: 0.4 });
+
+    phone.sdk.latest.agentHangsUp();
+    await settle();
+    expect(phone.heldVoice.log).toEqual(['hold', 'release', 'drop']);
+  });
+
+  it('keeps each summoning’s on its own', async () => {
+    const phone = onAPhone();
+    await goLiveOn(phone);
+    phone.session.hangUp();
+    await settle();
+
+    await goLiveOn(phone);
+    phone.sdk.latest.spoken?.onVadScore({ vadScore: 0.1 });
+    expect(phone.heldVoice.log).toEqual(['hold', 'drop', 'hold', 'release']);
   });
 });
 
