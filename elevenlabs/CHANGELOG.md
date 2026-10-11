@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.3](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.7.2...elevenlabs-v2.7.3) (2026-10-11)
+
+
+### Code Refactoring
+
+* **elevenlabs:** split agent config tools into one file each ([#951](https://github.com/ffMathy/hey-jarvis/issues/951)) ([bf3ff3d](https://github.com/ffMathy/hey-jarvis/commit/bf3ff3d2fe20046d43b27176783155aaadcd1563))
+
 ## [2.7.2](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.7.1...elevenlabs-v2.7.2) (2026-10-11)
 
 
