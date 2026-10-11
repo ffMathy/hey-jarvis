@@ -139,9 +139,9 @@ jobs:
     needs:
       - release
     permissions:
-      contents: read
-      pages: write
-      id-token: write
+      # Pages serves the `gh-pages` branch, so publishing is a push to it.
+      contents: write
+      pages: read
     uses: ./.github/workflows/mobile-web.yml
     with:
       ref: ${{ needs.release.outputs.sha }}

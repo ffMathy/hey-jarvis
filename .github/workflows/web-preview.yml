@@ -1,0 +1,107 @@
+# This workflow is managed by gh actions-lock.
+
+name: Web Preview
+
+# Every pull request gets its own copy of Jarvis's web builds on GitHub Pages, so a
+# change can be tried in a browser or on a headset before it is merged:
+#
+#   /hey-jarvis/pr/<n>/          the phone app's web build
+#   /hey-jarvis/pr/<n>/vr/       the Meta Quest app
+#
+# Each push rebuilds it, a comment on the pull request links to it, and closing or
+# merging the pull request takes it down again. The released site at the root is
+# untouched by any of this — see `mobile-web.yml`.
+#
+# A preview is served from the same origin as the release, so it shares the
+# release's `localStorage`: Jarvis set up once in the browser is set up in every
+# preview too.
+#
+# Pull requests from forks get no preview: their token cannot push, and a preview
+# would put code nobody with access has looked at on the project's own origin.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [ main ]
+
+# Least privilege by default: every job below opts into exactly what it needs.
+permissions: {}
+
+# A newer push makes the build in flight for the same pull request worthless, and
+# closing it makes any build worthless, so either cancels what is still running.
+concurrency:
+  group: web-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    if: ${{ github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository }}
+    permissions:
+      contents: write
+      pages: read
+    uses: ./.github/workflows/mobile-web.yml
+    with:
+      subpath: pr/${{ github.event.pull_request.number }}
+
+  comment:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      # One comment per pull request, edited on every push, rather than one per push.
+      - name: Link the preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          URL: ${{ needs.publish.outputs.url }}
+        run: |
+          gh pr comment "$PR" --edit-last --create-if-none --body "$(cat <<EOF
+          ### Web preview
+
+          Built from $SHA.
+
+          - **Phone app:** $URL
+          - **Headset app:** ${URL}vr/ (open it in Quest Browser)
+          - **Hologram phases, no headset needed:** ${URL}vr/preview.html
+
+          It is rebuilt on every push and taken down when this pull request is closed.
+          EOF
+          )"
+
+  remove:
+    if: ${{ github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # Reading the publish script, and pushing the branch without the preview.
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.1.0
+        with:
+          # The pull request's last commit: a closed pull request has no merge
+          # commit left to check out.
+          ref: ${{ github.event.pull_request.head.sha }}
+          sparse-checkout: .scripts
+          persist-credentials: false
+
+      - name: Take the preview down
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: .scripts/publish-pages.sh "pr/$PR"
+
+      # A pull request that never got a preview has no comment to edit, which is fine.
+      - name: Say so on the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr comment "$PR" --edit-last --body "### Web preview
+
+          Taken down now that this pull request is closed." || true

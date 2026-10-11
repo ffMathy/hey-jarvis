@@ -966,7 +966,8 @@ the models first.
   site cannot publish — it needs the user-site repository, a custom domain or
   another host.
 - **The wake-word models are CC BY-NC-SA 4.0** (above).
-- **Pages shows the last release**, not the latest push (see "Publishing" below).
+- **Pages shows the last release** at the root, not the latest push; each pull
+  request has its own preview under `pr/<n>/` (see "Publishing" below).
 - **No service worker.** The wasm in `vendor/` and the models are not
   content-hashed, so a cache-first worker would serve an old `canvaskit.wasm` to a
   newer CanvasKit loader after a dependency update, and a network-first one would
@@ -1047,9 +1048,10 @@ the models first.
 ## Opening it on a Quest
 
 - **Published:** see "Using it on a Quest" above.
-- **From a branch:** start the **Mobile Web** workflow by hand from the Actions tab
-  on that branch (see below); its build is then at the same URL once the run
-  finishes, until the next release or manual run replaces it.
+- **From a pull request:** open
+  `https://ffmathy.github.io/hey-jarvis/pr/<n>/vr/` — the **Web Preview**
+  workflow publishes every push to a pull request there, and comments the link
+  on the pull request (see below).
 - **From a dev server:** WebXR needs HTTPS or `localhost`. With the headset on
   USB, `adb reverse tcp:5173 tcp:5173` makes the dev server `localhost` on the
   headset, then open `http://localhost:5173/`.
@@ -1194,13 +1196,24 @@ app at the root, `dist/vr` in `vr/` — and publishes it. Vite's
 `base: './'` makes every asset URL relative, so the same build works at any
 sub-path and needs no base-path variable.
 
-**It publishes for releases only.** `release.yml` calls the workflow with the tagged
-commit once Release Please has cut a release; pushes and pull requests publish
-nothing. It can be started by hand on any branch, which is how a branch's build
-gets onto a headset before it is merged. Pages keeps one live site and the last run
-wins, and a manual run from a branch cut before this package existed publishes the
-phone app alone, taking `/hey-jarvis/vr/` off the site until the next run from
-a branch that has it.
+**The root is the release; each pull request has a folder of its own.**
+`release.yml` calls the workflow with the tagged commit once Release Please has
+cut a release, and it publishes to `/hey-jarvis/` and `/hey-jarvis/vr/`.
+`web-preview.yml` calls it for every push to a pull request from a branch of
+this repository, with `subpath: pr/<n>`, so that pull request's build is at
+`/hey-jarvis/pr/<n>/vr/` — the same build at a different sub-path, which the
+relative `base` makes possible — and comments the link on the pull request.
+Closing the pull request removes the folder. Fork pull requests get no preview.
+
+Pages serves the `gh-pages` branch, not an uploaded artifact: an artifact is the
+whole site, so each preview would have replaced the release and every other
+preview. `.scripts/publish-pages.sh` rewrites only its own part of the branch —
+the root around `pr/`, or one `pr/<n>/` — keeps the branch at a single commit so
+the wasm and models in every preview do not pile up in its history, and retries
+when another run pushed first. A preview shares the release's origin and so its
+`localStorage`: the ElevenLabs settings saved in one are there in all of them.
+A manual run of **Mobile Web** republishes the root from whichever branch it is
+started on.
 
 ## CI
 
