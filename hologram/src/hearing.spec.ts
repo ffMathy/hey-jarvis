@@ -8,6 +8,19 @@ describe('hearing someone', () => {
     expect(hearingFromPresence(0.9)).toBe(1);
   });
 
+  it('shows as soon as the score clears the threshold, not after it has climbed most of the way', () => {
+    expect(hearingFromPresence(HEARING_THRESHOLD + 0.03)).toBeGreaterThan(0.3);
+    expect(hearingFromPresence(0.4)).toBe(1);
+  });
+
+  it('is most of the way up within a tenth of a second of someone speaking', () => {
+    let up = 0;
+    for (let frame = 0; frame < 6; frame++) {
+      up = easeHearing(up, 1, 1 / 60);
+    }
+    expect(up).toBeGreaterThan(0.8);
+  });
+
   it('reads a quiet microphone as more than nothing, and never past 1', () => {
     expect(hearingLevelFromVolume(0.05)).toBeGreaterThan(0.25);
     expect(hearingLevelFromVolume(4)).toBe(1);
