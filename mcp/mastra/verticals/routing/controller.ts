@@ -3,6 +3,7 @@ import type { Agent } from '@mastra/core/agent';
 import { uniq, uniqBy } from 'lodash-es';
 import { z } from 'zod';
 import { type AffectedEntity, readAffectedEntities } from '../../utils/affected-entities.js';
+import type { DirectAnswer } from '../../utils/direct-answer-source.js';
 import type { DirectAnswerOutcome } from '../../utils/direct-lookup-factory.js';
 import { publishLiveEvent } from '../../utils/live-events.js';
 import { logger } from '../../utils/logger.js';
@@ -10,7 +11,6 @@ import { isSlowTask } from '../../utils/slow-tasks.js';
 import { dismissPhoto, findPhoto, photosWaiting, unmarkPhotoLookedAt } from '../vision/photos.js';
 import { getRoutingClassifier } from './classifier.js';
 import { sendCompletionNotice } from './completion-notice.js';
-import { answerDirectly, type DirectAnswer, describeDirectAnswer } from './direct-answers.js';
 import { buildRoutingPlan, type PlannedChain, type RoutingPlan } from './plan.js';
 import { sweepOldRoutingPlans } from './plan-retention.js';
 import {
@@ -1029,11 +1029,11 @@ async function runDirectOrPlan(
 
   let outcome: DirectAnswerOutcome | undefined;
   try {
-    outcome = await answerDirectly(direct, userQuery);
+    outcome = await direct.answer(userQuery);
   } catch (error) {
     logger.warn('Direct answer failed; handing the request to the agent', {
       sessionId,
-      direct: describeDirectAnswer(direct),
+      direct: direct.description,
       error,
     });
   }
@@ -1439,7 +1439,7 @@ async function carryOut(
     dismissedPhotos: dismissedPhotoIds.length,
     photosToAskAbout: photosToAskAbout.length,
     ...(decision.awaitsPhoto && { awaitsPhoto: true }),
-    ...(direct && { direct: describeDirectAnswer(direct) }),
+    ...(direct && { direct: direct.description }),
     elapsedMs: progress.elapsedMs(),
   });
 

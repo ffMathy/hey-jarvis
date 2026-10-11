@@ -1,19 +1,20 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
-import type { AffectedEntity } from '../../utils/affected-entities.js';
-import { answerLookup } from '../../utils/direct-lookup-factory.js';
-import { getPublicAgents } from '..';
-import { getCalendarEvents } from '../calendar/tools.js';
-import { listRepositoryIssues } from '../coding/tools.js';
-import { findEmails } from '../email/tools.js';
-import { BILKA_BASKET, getCurrentCartContents } from '../shopping/tools.js';
-import { getAllTasks } from '../todo-list/tools.js';
-import { getUserCurrentLocation } from '../weather/shortcuts.js';
-import { getCurrentWeatherByCity, getForecastByCity } from '../weather/tools.js';
-import { DIRECT_LOOKUPS, findDirectLookup } from './direct-lookups.js';
+import type { AffectedEntity } from '../utils/affected-entities.js';
+import { answerLookup } from '../utils/direct-lookup-factory.js';
+import { getCalendarEvents } from './calendar/tools.js';
+import { listRepositoryIssues } from './coding/tools.js';
+import { findEmails } from './email/tools.js';
+import { getDirectAnswerCatalog, getPublicAgents } from './index.js';
+import { BILKA_BASKET, getCurrentCartContents } from './shopping/tools.js';
+import { getAllTasks } from './todo-list/tools.js';
+import { getUserCurrentLocation } from './weather/shortcuts.js';
+import { getCurrentWeatherByCity, getForecastByCity } from './weather/tools.js';
 
-describe('DIRECT_LOOKUPS', () => {
-  it('names every lookup once', () => {
-    const ids = DIRECT_LOOKUPS.map((lookup) => lookup.id);
+const { lookups, commands, sources } = getDirectAnswerCatalog();
+
+describe('getDirectAnswerCatalog', () => {
+  it('names every lookup, command and source once', () => {
+    const ids = [...lookups, ...commands, ...sources].map((declared) => declared.id);
 
     expect(new Set(ids).size).toBe(ids.length);
   });
@@ -21,16 +22,20 @@ describe('DIRECT_LOOKUPS', () => {
   it('only answers for agents routing can send a request to', async () => {
     const routable = new Set((await getPublicAgents()).map((agent) => agent.id));
 
-    for (const lookup of DIRECT_LOOKUPS) {
-      expect(routable.has(lookup.agentId)).toBe(true);
+    for (const declared of [...lookups, ...commands, ...sources]) {
+      expect(routable.has(declared.agentId)).toBe(true);
     }
   });
-
-  it('finds a lookup by its id', () => {
-    expect(findDirectLookup('calendar.today')?.agentId).toBe('calendar');
-    expect(findDirectLookup('calendar.yesterday')).toBeUndefined();
-  });
 });
+
+/** A lookup by its id, so a case below names one that does not exist loudly. */
+function findLookup(id: string) {
+  const lookup = lookups.find((candidate) => candidate.id === id);
+  if (!lookup) {
+    throw new Error(`There is no lookup "${id}"`);
+  }
+  return lookup;
+}
 
 /**
  * What each lookup reports as touched, which is what the agent's call of the same tool would have
@@ -123,15 +128,11 @@ describe('what a lookup reports as touched', () => {
   };
 
   function answer(id: string) {
-    const lookup = findDirectLookup(id);
-    if (!lookup) {
-      throw new Error(`There is no lookup "${id}"`);
-    }
-    return answerLookup(lookup);
+    return answerLookup(findLookup(id));
   }
 
   it('says what every lookup reports', () => {
-    expect(Object.keys(CASES).sort()).toEqual(DIRECT_LOOKUPS.map((lookup) => lookup.id).sort());
+    expect(Object.keys(CASES).sort()).toEqual(lookups.map((lookup) => lookup.id).sort());
   });
 
   for (const [id, { toolsAnswer, touched }] of Object.entries(CASES)) {

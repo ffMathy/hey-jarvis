@@ -79,6 +79,27 @@ export * from './shopping';
 2. Don't share tools across verticals
 3. If a tool is genuinely shared, create a `shared/` vertical
 
+### Encapsulation between verticals
+
+**CRITICAL: A vertical never knows another vertical's internals.** Routing in particular decides *which* agent and *how* to answer, but never *what* a vertical can do. Each vertical owns its capabilities and declares them through a generic contract (`createDirectLookup`, `createDirectCommand`); routing only consumes the contract. This keeps each vertical's responsibility in one place, so adding or changing a capability never touches routing.
+
+❌ **BAD — routing special-cases a capability of another vertical:**
+
+```typescript
+// routing/classifier.ts
+import { phoneAlarmQuestions } from '../internet-of-things/phone-alarm.js';
+if (answers.setsPhoneAlarm.probability >= FAST_PATH_CONFIDENCE) return { kind: 'phoneAlarm' };
+```
+
+✅ **GOOD — the vertical declares it, routing offers whatever is declared:**
+
+```typescript
+// internet-of-things/commands.ts
+export const internetOfThingsCommands = [
+  createDirectCommand({ id: 'internetOfThings.phoneAlarm', agentId: 'internetOfThings', description, answer }),
+];
+```
+
 ## Type Safety
 
 **CRITICAL: Never use type casts (`as`) to fix Mastra type errors** — especially after version bumps. A cast hides a real incompatibility and breaks silently at runtime.

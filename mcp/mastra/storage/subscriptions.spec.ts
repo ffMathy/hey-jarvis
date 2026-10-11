@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
@@ -20,6 +20,16 @@ async function embeddingsFor(
     givenCondition: givenCondition ? await embedText(givenCondition) : null,
   };
 }
+
+/** How long loading the embedding table may take on a runner busy with every other suite. */
+const EMBEDDER_LOAD_TIMEOUT_MS = 30_000;
+
+// The first embedding loads the static table, which takes ~130ms alone but has taken over 5s on a
+// busy runner. Charged to the first test, that timed it out mid-write, and its row then leaked into
+// the next test's listing, so it is loaded once here instead.
+beforeAll(async () => {
+  await embedText('warm up');
+}, EMBEDDER_LOAD_TIMEOUT_MS);
 
 beforeEach(async () => {
   await storage.clear();
