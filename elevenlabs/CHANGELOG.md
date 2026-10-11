@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.2](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.7.1...elevenlabs-v2.7.2) (2026-10-11)
+
+
+### Bug Fixes
+
+* **mcp:** stop jarvis confirming a finished command twice ([#950](https://github.com/ffMathy/hey-jarvis/issues/950)) ([44fd69e](https://github.com/ffMathy/hey-jarvis/commit/44fd69ec7aaa2c2f147f43f0883cd19df4c24d4d))
+
 ## [2.7.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.7.0...elevenlabs-v2.7.1) (2026-10-11)
 
 
