@@ -58,14 +58,20 @@ daily.dev's ${posts.length} most upvoted posts this week:
 ${postLines.join('\n') || 'daily.dev returned no posts this week — say so in that section.'}`;
 }
 
+const weeklyNewsSchema = z.object({
+  week: z.string(),
+  news: z.string(),
+});
+
+const dailyDevTopPostsSchema = z.object({
+  posts: z.array(dailyDevPostSchema),
+});
+
 const researchWeeklyNews = createStep({
   id: 'research-weekly-news',
   description: "Researches the past week's most important news",
   inputSchema: z.object({}),
-  outputSchema: z.object({
-    week: z.string(),
-    news: z.string(),
-  }),
+  outputSchema: weeklyNewsSchema,
   execute: async () => {
     const week = describeDigestWeek(new Date());
     const agent = await getWebResearchAgent();
@@ -87,9 +93,7 @@ const fetchDailyDevTopPosts = createStep({
   id: 'fetch-daily-dev-top-posts',
   description: "Fetches the past week's most upvoted posts on daily.dev",
   inputSchema: z.object({}),
-  outputSchema: z.object({
-    posts: z.array(dailyDevPostSchema),
-  }),
+  outputSchema: dailyDevTopPostsSchema,
   execute: async ({ mastra }) =>
     await executeTool(getDailyDevTopPosts, { days: DIGEST_DAYS, limit: DAILY_DEV_POST_COUNT }, { mastra }),
 });
@@ -104,8 +108,8 @@ const visualizeWeeklyDigest = createStep({
   id: 'visualize-weekly-digest',
   description: 'Builds the digest page and pushes its link to the phone',
   inputSchema: z.object({
-    'research-weekly-news': researchWeeklyNews.outputSchema,
-    'fetch-daily-dev-top-posts': fetchDailyDevTopPosts.outputSchema,
+    'research-weekly-news': weeklyNewsSchema,
+    'fetch-daily-dev-top-posts': dailyDevTopPostsSchema,
   }),
   outputSchema: weeklyDigestOutputSchema,
   execute: async ({ inputData, mastra }) => {
