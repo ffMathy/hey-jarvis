@@ -25,13 +25,14 @@ describe('toConversationConfigBody', () => {
 
   it('should serialize the committed agent config with its TTS model intact', () => {
     const { conversationConfig } = agentConfig;
-    if (!conversationConfig) {
-      throw new Error('The committed agent config has no conversationConfig');
+    const modelId = conversationConfig?.tts?.modelId;
+    if (!conversationConfig || !modelId) {
+      throw new Error('The committed agent config names no TTS model');
     }
     const body = toConversationConfigBody(conversationConfig) as {
       tts: { model_id: string };
     };
 
-    expect(body.tts.model_id).toBe(conversationConfig.tts?.modelId);
+    expect(body.tts.model_id).toBe(modelId);
   });
 });
