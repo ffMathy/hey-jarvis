@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.18.3](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.18.2...mcp-v2.18.3) (2026-10-11)
+
+
+### Performance Improvements
+
+* **mcp:** set phone alarms with jev, without the agent ([#945](https://github.com/ffMathy/hey-jarvis/issues/945)) ([b96abeb](https://github.com/ffMathy/hey-jarvis/commit/b96abeb5ada481bc92d4488eb3236ffe3546eed2))
+
 ## [2.18.2](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.18.1...mcp-v2.18.2) (2026-10-11)
 
 
