@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 import type { ConversationalConfig } from '@elevenlabs/elevenlabs-js/api';
-import agentConfig from '../../src/assets/agent-config.json';
+import { readAgentConfig } from '../../src/agent-assets';
 import { toConversationConfigBody } from '../../src/main.js';
+
+const agentConfig = await readAgentConfig();
 
 describe('toConversationConfigBody', () => {
   it('should send the TTS model even when the SDK does not know it yet', () => {
@@ -22,10 +24,15 @@ describe('toConversationConfigBody', () => {
   });
 
   it('should serialize the committed agent config with its TTS model intact', () => {
-    const body = toConversationConfigBody(agentConfig.conversationConfig as ConversationalConfig) as {
+    const { conversationConfig } = agentConfig;
+    const modelId = conversationConfig?.tts?.modelId;
+    if (!conversationConfig || !modelId) {
+      throw new Error('The committed agent config names no TTS model');
+    }
+    const body = toConversationConfigBody(conversationConfig) as {
       tts: { model_id: string };
     };
 
-    expect(body.tts.model_id).toBe(agentConfig.conversationConfig.tts.modelId);
+    expect(body.tts.model_id).toBe(modelId);
   });
 });

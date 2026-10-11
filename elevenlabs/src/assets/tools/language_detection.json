@@ -1,0 +1,17 @@
+{
+  "type": "system",
+  "name": "language_detection",
+  "description": "",
+  "responseTimeoutSecs": 20,
+  "disableInterruptions": false,
+  "interruptionMode": "allow",
+  "forcePreToolSpeech": false,
+  "preToolSpeech": "auto",
+  "assignments": [],
+  "toolCallSoundBehavior": "auto",
+  "toolErrorHandlingMode": "auto",
+  "params": {
+    "systemToolType": "language_detection",
+    "onlyAtConversationStart": false
+  }
+}

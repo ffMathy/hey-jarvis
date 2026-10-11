@@ -16,9 +16,13 @@ TypeScript-based integration connecting ElevenLabs voice AI agents with the Hey 
 elevenlabs/
 ├── src/
 │   ├── main.ts                      # Main entry point for CLI operations
+│   ├── agent-assets.ts              # Splits the config into the files below, and joins it back
 │   └── assets/
-│       ├── agent-config.json        # ElevenLabs agent configuration
-│       └── agent-prompt.md          # Agent personality and behavior prompt
+│       ├── agent-config.json        # ElevenLabs agent configuration, naming its tools
+│       ├── agent-prompt.md          # Agent personality and behavior prompt
+│       └── tools/
+│           ├── <name>.json          # One tool's settings
+│           └── <name>.md            # That tool's description
 ├── tests/
 │   ├── specs/                       # Agent behavior specification tests
 │   ├── utils/                       # Conversation framework, tunnel, MCP helpers
@@ -310,8 +314,8 @@ phone's own conversation, and with `agentConcurrencyLimit: 1` a line held open f
 that conversation from starting.
 
 The exception is written into every place that states the rule it breaks, in the same words: the
-prompt's **When Sir Is Silent**, both copies of the `skip_turn` and `end_call` descriptions in
-`agent-config.json` (under `builtInTools`, which the test agent keeps, and under `tools`), and
+prompt's **When Sir Is Silent**, the `skip_turn` and `end_call` descriptions in
+`src/assets/tools/` (listed under both `builtInTools`, which the test agent keeps, and `tools`), and
 routing's `FINISHED_REQUEST_INSTRUCTIONS` and `WAIT_FOR_THE_PHOTO`, which share one condition,
 `WAITING_FOR_A_PHOTO`. It was once in the prompt alone, where the three that said to hang up outweighed
 it: routing's above all, since it arrives last and the prompt says to follow it literally. An

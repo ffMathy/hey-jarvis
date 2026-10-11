@@ -13,12 +13,14 @@ bunx turbo test --filter=elevenlabs          # Run tests (auto-deploys test agen
 
 ## How It Works
 
-The agent configuration is split into two files:
+The agent configuration is split into several files, so each change shows up as a readable diff:
 
 | File | Content |
 |------|---------|
 | `src/assets/agent-prompt.md` | Jarvis personality — witty, condescending butler from Iron Man |
-| `src/assets/agent-config.json` | ElevenLabs technical config (voice, model, conversation settings) |
+| `src/assets/agent-config.json` | ElevenLabs technical config (voice, model, conversation settings), naming its tools |
+| `src/assets/tools/<name>.json` | One tool's settings, listed by name in `tools` and `builtInTools` |
+| `src/assets/tools/<name>.md` | That tool's description, when it has one |
 
 On **deploy**, the CLI combines these files, injects agent/voice IDs from environment variables, and updates the agent via the ElevenLabs API.
 
