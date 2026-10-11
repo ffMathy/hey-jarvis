@@ -130,9 +130,8 @@ rules live:
 - **The deadline ends what it gives up on.** A conversation that connects after
   `GIVE_UP_CONNECTING_AFTER_MS` is ended the moment its start resolves; on the
   phone it used to connect under a line saying it had not.
-- **The greeting and the token start together** and the session is dialled once
-  he has finished (`waitsForGreetingBeforeDialling`, false in a browser, which
-  dials behind him muted until he has).
+- **The greeting and the token start together** and the session is dialled
+  behind him on every device, muted until he has finished.
 
 Everything that differs by device is handed in, and the main entry stays free of
 platforms: the participant name, the timers, how his track is listened to
@@ -317,9 +316,15 @@ easy to break:
   apps' autolinking finds, since both depend on `hologram`. In a build without it,
   `greeting-player.ts` reports the recording as unplayable, and the agent keeps its own first
   message. A browser plays the recording with expo-audio (`greeting-player.web.ts`).
-- **And the session still starts after him, on a device.** The token is fetched beside him, but
-  the session is dialled only once the recording is over (`waitsForGreetingBeforeDialling`, which
-  `useJarvisSession` sets on a device and not in a browser), and not at all if he was hung up on.
+- **And the session connects while he speaks, on every device.** The token is fetched beside him
+  and the session is dialled the moment it arrives — during his arrival, before the recording has
+  even started — muted until he has finished,
+  and not at all if he was hung up on. It used to be held back until he had finished on a phone,
+  because dialling behind him clipped him there; what clipped him was LiveKit switching into call
+  mode a second into the recording, and that switch is now made before he speaks (above), so the
+  conversation's start changes nothing he is heard through. Not yet heard on a device: a greeting
+  that turns thin or clipped as the conversation connects means something else switches as
+  WebRTC opens its microphone, and the fix is to switch that first too, not to dial later.
 - **In a browser, only while the microphone is held.** A tab nobody has clicked since it loaded
   refuses to play a sound unless the page is using the microphone, so the phone app's web build
   holds the stream it asked permission with until the session says the greeting has started or
@@ -336,11 +341,11 @@ kept microphone instead (see "What is said while he connects is kept, not lost")
 
 ## What is said while he connects is kept, not lost
 
-On a phone and a watch the session is dialled only once the greeting is over, so between his last
-word and the agent hearing anything there is a token, a room and a handshake — a second or more in
-which whatever sir started saying used to go nowhere. So the session holds it (`heldVoice`, which
-`useJarvisSession` fills from `conversation/held-voice.ts` on a device only — a browser and the
-headset dial behind the greeting and have no such gap):
+The session is dialled behind the greeting, but a token, a room and a handshake can still take
+longer than he speaks, and whatever sir started saying between his last word and the agent hearing
+anything used to go nowhere. So on a phone and a watch the session holds it (`heldVoice`, which
+`useJarvisSession` fills from `conversation/held-voice.ts` on a device only), whenever the
+conversation is not yet connected once he has finished:
 
 - **Held from the greeting's end** (`hold`), refused greeting included, by `HeldVoice.kt` in this
   package's native module: an `AudioRecord` of its own, `VOICE_RECOGNITION` rather than the call's

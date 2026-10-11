@@ -106,7 +106,7 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
     onProblem: (message: string) => setProblem(message),
     // Off the phone's Bluetooth proxy before anything goes out, token request included: WebRTC's
     // audio does not get through it, which is why the watch used to connect and then say nothing.
-    // Asked once he has started greeting, so the network comes up while he speaks. See
+    // Asked once his greeting is ready to play, so the network comes up while he arrives. See
     // `modules/jarvis-network`.
     untilOnline: async () => {
       network.current = await holdFastNetwork(WAIT_FOR_FAST_NETWORK_MS);

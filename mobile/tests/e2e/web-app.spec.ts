@@ -74,6 +74,18 @@ async function answerTokenRequest(route: Route, status: number, body: unknown): 
   });
 }
 
+/**
+ * Leaves the room's connection open and unanswered, so the conversation is still being dialled for
+ * as long as a test looks.
+ *
+ * The session dials the moment the token is in, while he is still arriving, and the recording waits
+ * for the arrival. A room closed at once, as `blockExternalRequests` closes it, fails the summoning
+ * before he has arrived, and a failed summoning does not greet.
+ */
+async function keepDialling(page: Page): Promise<void> {
+  await page.routeWebSocket(/^wss?:\/\/(?!localhost[:/]|127\.0\.0\.1[:/])/, () => undefined);
+}
+
 /** Whether a header is one a browser adds on its own, rather than one the app chose to send. */
 function isBrowserHeader(name: string): boolean {
   return (
@@ -393,13 +405,15 @@ test('greets you from the recording while the conversation is still being dialle
     tokenRequests++;
     await answerTokenRequest(route, 200, { token: 'a-webrtc-token', conversation_id: 'conv_1' });
   });
+  await keepDialling(page);
 
   await page.goto('/');
   await configureElevenLabs(page);
 
   // "Hello sir, how can I help?" — the firmware's recording, bundled into the export and played
-  // once, beside the token request rather than after the session. That the session is then asked
-  // for no first message of its own travels over LiveKit's data channel, which this suite closes;
+  // once he has arrived, while the session is dialled behind it rather than after it. That the
+  // session is then asked for no first message of its own travels over LiveKit's data channel,
+  // which this suite never answers;
   // `greeting-handover.spec.ts` in `hologram` pins the override itself.
   await expect.poll(() => page.evaluate(() => window.soundsPlayed)).toHaveLength(1);
   const [greeting] = (await page.evaluate(() => window.soundsPlayed)) ?? [];
@@ -417,6 +431,7 @@ test('greets from the recording in a browser nobody has touched since it loaded'
     await answerTokenRequest(route, 200, { token: 'a-webrtc-token', conversation_id: 'conv_1' });
   };
   await page.route(CONVERSATION_TOKEN_URL, answer);
+  await keepDialling(page);
 
   await page.goto('/');
   await configureElevenLabs(page);
@@ -437,6 +452,7 @@ test('greets from the recording in a browser nobody has touched since it loaded'
   await countMicrophones(untouched);
   await listenForSounds(untouched);
   await untouched.route(CONVERSATION_TOKEN_URL, answer);
+  await keepDialling(untouched);
   await untouched.goto('/');
   await expect.poll(() => tokenRequests).toBe(2);
 

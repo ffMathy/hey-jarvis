@@ -132,9 +132,9 @@ export function useJarvisSession(options: JarvisSessionOptions): JarvisConversat
       clearTimeout: (timer: ReturnType<typeof setTimeout>) => clearTimeout(timer),
       // A wall clock, because the screen compares the written reply's `readingUntil` with one.
       now: () => Date.now(),
-      waitsForGreetingBeforeDialling: onADevice,
       ...(onADevice ? { callAudio: { start: startCallAudio, stop: stopCallAudio } } : {}),
-      // Only a device has a gap to hold: a browser dials behind the greeting.
+      // Only a device can hold what is said before the conversation listens, should it still be
+      // connecting when he has finished.
       ...(onADevice && heldVoice ? { heldVoice } : {}),
       ...(findRoom ? { findRoom } : {}),
       ...(followAgentVoice ? { followAgentVoice } : {}),

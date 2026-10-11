@@ -7,9 +7,15 @@ import {
   hologramFrameOf,
   restartArrival,
 } from './frame-clock';
-import { LEAVING_SECONDS, MINIMUM_FRAME_SECONDS, READ_INTERVAL_MS, THOUGHT_FADE_SECONDS } from './frame-timing';
+import {
+  LEAVING_SECONDS,
+  MATERIALISE_SECONDS,
+  MINIMUM_FRAME_SECONDS,
+  READ_INTERVAL_MS,
+  THOUGHT_FADE_SECONDS,
+} from './frame-timing';
 import { easeHearing, easeHearingLevel, hearingFromPresence, hearingLevelFromVolume } from './hearing';
-import { type HologramFrame, MATERIALISE_SECONDS } from './hologram-drawing';
+import type { HologramFrame } from './hologram-drawing';
 import { createSimulatedSpectrum, fillSimulatedSpectrum, type SimulatedMood, simulatedUserAt } from './simulated-voice';
 import { simulatedVolume } from './voice-analysis';
 import {

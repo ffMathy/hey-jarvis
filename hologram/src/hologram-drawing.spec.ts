@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
 import { JsiSkApi } from '@shopify/react-native-skia/lib/module/skia/web';
 import { LoadSkiaWeb } from '@shopify/react-native-skia/lib/module/web/LoadSkiaWeb';
+import { MATERIALISE_SECONDS } from './frame-timing';
 import {
   BODY_TURN_SECONDS,
   bodyTurnRadians,
@@ -10,7 +11,6 @@ import {
   densityKey,
   drawHologram,
   type HologramFrame,
-  MATERIALISE_SECONDS,
   PARTICLE_COUNT,
   ROLL_DEGREES_PER_SECOND,
   SHELL_DEGREES_PER_SECOND,

@@ -23,9 +23,9 @@
  * hands a worklet the object the UI runtime owns, and a write to any other copy of it is dropped in
  * silence in a development build.
  */
-import { LEAVING_SECONDS, MINIMUM_FRAME_SECONDS, THOUGHT_FADE_SECONDS } from './frame-timing';
+import { LEAVING_SECONDS, MATERIALISE_SECONDS, MINIMUM_FRAME_SECONDS, THOUGHT_FADE_SECONDS } from './frame-timing';
 import { easeHearing, easeHearingLevel } from './hearing';
-import { type HologramFrame, MATERIALISE_SECONDS } from './hologram-drawing';
+import type { HologramFrame } from './hologram-drawing';
 import {
   advanceVoiceActivity,
   createVoiceActivityState,

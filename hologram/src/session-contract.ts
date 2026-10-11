@@ -107,8 +107,9 @@ export interface CallAudio {
 /**
  * What sir says between the greeting ending and the conversation listening, kept and handed to the
  * conversation once it is, so nothing he says while Jarvis connects is lost (see
- * `hologram/src/conversation/held-voice.ts`). A phone and a watch have one; a browser and the
- * headset dial behind the greeting, so there is no such gap to hold.
+ * `hologram/src/conversation/held-voice.ts`). A phone and a watch have one. Every device dials
+ * behind the greeting, so the gap is there only when connecting takes longer than he speaks; a
+ * browser and the headset simply lose what is said in it.
  */
 export interface HeldVoice {
   /** Starts keeping what the microphone hears. Called once the greeting is over and nothing is listening yet. */
@@ -351,8 +352,6 @@ export interface JarvisSessionDependencies<Timer> {
    * a screen that compares that with `Date.now()` hands over `Date.now`.
    */
   now?: () => number;
-  /** Default true: dial only once the greeting is over. */
-  waitsForGreetingBeforeDialling?: boolean;
   /** What the SDK waits before dialling; its own default when left out. See {@link ConnectionDelay}. */
   connectionDelay?: ConnectionDelay;
   /** Whether the half-duplex fallback may take the microphone while he speaks (see `half-duplex.ts`). */
@@ -380,14 +379,21 @@ export interface JarvisSessionDependencies<Timer> {
    */
   giveUpConnectingAfterMs?: number;
   /**
+   * How long after a summoning the greeting may start playing, in milliseconds:
+   * `MATERIALISE_SECONDS` when left out, so "Hello sir" is heard once the arrival vortex has
+   * finished bringing him out of the core, not while it is still spinning. Time spent switching
+   * into call audio or waiting for a headset's route counts towards it.
+   */
+  greetAfterArrivalMs?: number;
+  /**
    * The audio the call runs in, on a device that has to switch into it before the greeting (see
    * {@link CallAudio}). Let go once nothing uses it: at once when no conversation was dialled, and
    * otherwise once the conversation has finished ending.
    */
   callAudio?: CallAudio;
   /**
-   * Keeps what is said while the conversation is still connecting, on a device that dials only once
-   * the greeting is over (see {@link HeldVoice}). Held from the greeting's end, released once the
+   * Keeps what is said while the conversation is still connecting once the greeting is over (see
+   * {@link HeldVoice}). Held from the greeting's end, released once the
    * agent is listening — its first `vad_score`, or `RELEASE_HELD_VOICE_AFTER_MS` after connecting
    * if none has come — and dropped on every ending. Until it is released, the listening lattice
    * follows its level, since no score has said anything yet.

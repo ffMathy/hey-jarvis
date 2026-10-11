@@ -16,9 +16,9 @@ const heldVoiceModule = requireOptionalNativeModule<HeldVoiceModule>('JarvisGree
  * What sir says while a phone or a watch connects, kept natively and played into the conversation's
  * own microphone track once the agent is listening — see `HeldVoice.kt`.
  *
- * A device dials only once the greeting is over (`waitsForGreetingBeforeDialling`), so between his
- * last word and the agent hearing anything there is a token, a room and a handshake — a second or
- * more in which whatever sir started saying used to go nowhere. The microphone is kept from the
+ * A device dials behind the greeting, but a token, a room and a handshake can still take longer than
+ * he speaks, and whatever sir started saying between his last word and the agent hearing anything
+ * used to go nowhere. The microphone is kept from the
  * greeting's end, and once the agent listens what was kept goes first and the live microphone queues
  * behind it, so the agent hears everything, in order, and simply a little late; the lateness is
  * then worked off in sir's pauses.

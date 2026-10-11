@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { GIVE_UP_CONNECTING_AFTER_MS } from './conversation-life';
 import { HEADSET_PARTICIPANT_NAME } from './conversation-token';
 import { DEADLINE_PROBLEM, DROPPED_PROBLEM, MICROPHONE_PROBLEM, UNREACHABLE_PROBLEM } from './failure-text';
+import { MATERIALISE_SECONDS } from './frame-timing';
 import { GREETING_GRACE_SECONDS, WITHOUT_FIRST_MESSAGE } from './greeting-handover';
 import { createHarness, HEADSET_OFFLINE_PROBLEM, settle } from './jarvis-session.fakes';
 
@@ -54,18 +55,16 @@ describe('summoning Jarvis', () => {
     expect(tokens.requests).toHaveLength(2);
   });
 
-  it('dials only once the greeting is over, told not to greet a second time', async () => {
+  it('dials over WebRTC with the token, told not to greet a second time', async () => {
     const { session, tokens, greeting, sdk, clock, events } = createHarness();
 
     session.summon();
     greeting.allow();
-    tokens.grant();
     await settle();
-    expect(sdk.dials).toHaveLength(0);
-    expect(session.phase).toBe('greeting');
-
     await clock.advance(greeting.durationMilliseconds + 100);
     expect(session.phase).toBe('connecting');
+    tokens.grant();
+    await settle();
     expect(sdk.dials).toHaveLength(1);
     const { spoken } = sdk.latest;
     expect(spoken?.conversationToken).toBe('a-webrtc-token');
@@ -95,8 +94,8 @@ describe('summoning Jarvis', () => {
     expect(sdk.dials).toHaveLength(1);
   });
 
-  it('can dial behind the greeting instead, muting the session until he has finished', async () => {
-    const { session, tokens, greeting, sdk, clock, events } = createHarness({ waitsForGreetingBeforeDialling: false });
+  it('dials behind the greeting, muting the session until he has finished', async () => {
+    const { session, tokens, greeting, sdk, clock, events } = createHarness();
 
     session.summon();
     greeting.allow();
@@ -122,6 +121,51 @@ describe('summoning Jarvis', () => {
     expect(conversation.muting).toEqual([true, false]);
     expect(session.phase).toBe('live');
     expect(events.phases).toEqual(['greeting', 'live']);
+  });
+
+  it('dials behind his arrival too, asking the agent not to greet before the recording has played', async () => {
+    const { session, tokens, greeting, sdk, clock } = createHarness({
+      greetAfterArrivalMs: undefined,
+    });
+
+    session.summon();
+    tokens.grant();
+    await settle();
+    expect(greeting.plays).toBe(0);
+    expect(sdk.dials).toHaveLength(1);
+    expect(sdk.latest.spoken?.overrides).toEqual(WITHOUT_FIRST_MESSAGE);
+
+    const conversation = sdk.latest.conversation;
+    await sdk.latest.connect();
+    expect(conversation.muting).toEqual([true]);
+    expect(session.phase).toBe('greeting');
+
+    await clock.advance(MATERIALISE_SECONDS * 1000);
+    expect(greeting.plays).toBe(1);
+    greeting.allow();
+    await clock.advance(greeting.durationMilliseconds);
+    expect(conversation.muting).toEqual([true, false]);
+    expect(session.phase).toBe('live');
+  });
+
+  it('opens the microphone of a conversation dialled during his arrival when the recording is refused', async () => {
+    const { session, tokens, greeting, sdk, clock } = createHarness({
+      greetAfterArrivalMs: undefined,
+    });
+
+    session.summon();
+    tokens.grant();
+    await settle();
+    const conversation = sdk.latest.conversation;
+    await sdk.latest.connect();
+
+    await clock.advance(MATERIALISE_SECONDS * 1000);
+    greeting.refuse();
+    await settle();
+
+    expect(sdk.dials).toHaveLength(1);
+    expect(conversation.muting).toEqual([true, false]);
+    expect(session.phase).toBe('live');
   });
 
   it('lets the agent greet for himself when the browser refuses the recording', async () => {
@@ -163,6 +207,42 @@ describe('summoning Jarvis', () => {
 
     session.voice.getVolume();
     expect(session.phase).toBe('connecting');
+  });
+
+  it('greets only once he has finished arriving, while the token is asked for at once', async () => {
+    const { session, tokens, greeting, clock } = createHarness({ greetAfterArrivalMs: undefined });
+
+    session.summon();
+    expect(tokens.requests).toHaveLength(1);
+    expect(greeting.plays).toBe(0);
+
+    await clock.advance(MATERIALISE_SECONDS * 1000 - 1);
+    expect(greeting.plays).toBe(0);
+
+    await clock.advance(1);
+    expect(greeting.plays).toBe(1);
+  });
+
+  it('counts a slow route towards the arrival rather than waiting it out again', async () => {
+    const { session, greeting, clock } = createHarness({ greetAfterArrivalMs: undefined }, { waitsForRoute: true });
+
+    session.summon();
+    await clock.advance(MATERIALISE_SECONDS * 1000 + 300);
+    expect(greeting.plays).toBe(0);
+
+    greeting.routeReady();
+    await settle();
+    expect(greeting.plays).toBe(1);
+  });
+
+  it('never greets when hung up on before he has finished arriving', async () => {
+    const { session, greeting, clock } = createHarness({ greetAfterArrivalMs: undefined });
+
+    session.summon();
+    session.hangUp();
+    await clock.advance(MATERIALISE_SECONDS * 1000);
+
+    expect(greeting.plays).toBe(0);
   });
 });
 
