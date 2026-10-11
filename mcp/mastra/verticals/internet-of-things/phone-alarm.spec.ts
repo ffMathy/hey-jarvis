@@ -70,6 +70,28 @@ describe('alarmTimeFrom', () => {
 });
 
 describe('setPhoneAlarmDirectly', () => {
+  /**
+   * Spreads what a choice's probabilities leave over the options they leave out, since a real
+   * evaluation model returns the whole distribution and the classifier refuses anything less.
+   */
+  function withCompleteDistributions(answers: PhoneAlarmTimeAnswers): PhoneAlarmTimeAnswers {
+    const questions = phoneAlarmTimeQuestions();
+    function complete(answer: PhoneAlarmTimeAnswers['alarmHour'], options: string[]) {
+      const given = answer.probabilities ?? {};
+      const missing = options.filter((option) => !(option in given));
+      const left = 1 - Object.values(given).reduce((sum, probability) => sum + probability, 0);
+      return {
+        ...answer,
+        probabilities: { ...given, ...Object.fromEntries(missing.map((option) => [option, left / missing.length])) },
+      };
+    }
+    return {
+      ...answers,
+      alarmHour: complete(answers.alarmHour, Object.keys(questions.alarmHour.criteria)),
+      alarmMinute: complete(answers.alarmMinute, Object.keys(questions.alarmMinute.criteria)),
+    };
+  }
+
   function classifierAnswering(answers: PhoneAlarmTimeAnswers) {
     return new Classifier({
       id: 'homeCommandClassifier',
@@ -78,7 +100,7 @@ describe('setPhoneAlarmDirectly', () => {
         provider: 'fake',
         modelId: 'jev-fake',
         supportedQuestionTypes: ['choice', 'boolean'],
-        doEvaluate: async () => ({ answers, warnings: [] }),
+        doEvaluate: async () => ({ answers: withCompleteDistributions(answers), warnings: [] }),
       },
     });
   }

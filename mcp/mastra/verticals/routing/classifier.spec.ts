@@ -328,6 +328,7 @@ describe('classifyRequest', () => {
                 choice: 'command',
                 probabilities: { command: 0.9, lookup: 0.05, briefing: 0.03, conversation: 0.02 },
               },
+              setsPhoneAlarm: { type: 'boolean', probability: 0.01 },
             },
             warnings: [],
           };
