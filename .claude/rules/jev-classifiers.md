@@ -24,8 +24,12 @@ language model at all: **Jev picks, code fetches, the voice model phrases.** The
 every result anyway, so the server only has to hand back facts.
 
 - Give the vertical a `lookups.ts` of `createDirectLookup({ id: '<agentId>.<what>', agentId, description, answer })`
-  entries, and add them to `DIRECT_LOOKUPS` in `verticals/routing/direct-lookups.ts`. Routing's
-  classifier offers them on the call it already makes, so a lookup costs no extra round trip.
+  entries, export them from the vertical's `index.ts`, and add them to `getDirectAnswerCatalog()` in
+  `verticals/index.ts`. Routing's classifier offers them on the call it already makes, so a lookup
+  costs no extra round trip. Never register them inside routing itself.
+- A request that changes something with fixed-choice inputs is a **command**: `createDirectCommand`
+  in the vertical's `commands.ts`, gathered the same way. Further Jev questions it needs (a time, a
+  level) are asked inside the command, not by routing.
 - Make a lookup per fixed variant ("today", "tomorrow", "this week") rather than a lookup with a
   free-text input. Anything that needs a search word, a place or a name stays with the agent.
 - Answer with compact facts (`asFacts`): only the fields a spoken answer needs.
@@ -34,8 +38,9 @@ every result anyway, so the server only has to hand back facts.
   touched exactly as the agent's tool call would have, and sir's headset still lights it up. A new
   answer that bypasses the agent without that (as `runHomeCommand` and `answerHomeQuestion` show)
   must return its entities itself. See "What a request touches" in `mcp/AGENTS.md`.
-- When the options come from live data rather than a fixed list (Home Assistant's devices), ask Jev
-  about each option instead, as `internet-of-things/home-commands.ts` does.
+- When the options come from live data rather than a fixed list (Home Assistant's devices), declare a
+  `createDirectAnswerSource` that builds its questions per request and reads the answers itself, as
+  `internet-of-things/direct-answers.ts` does.
 
 **ALWAYS consider a lookup when adding a read-only tool to an agent.**
 

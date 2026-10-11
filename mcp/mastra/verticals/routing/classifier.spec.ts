@@ -8,7 +8,8 @@
 
 import { describe, expect, it } from 'bun:test';
 import { Classifier } from '@mastra/core/classifier';
-import type { HomeService } from '../internet-of-things/home-commands.js';
+import type { ClassifierAnswerSet } from '../../utils/classifier-answers.js';
+import type { DirectAnswer, PreparedDirectAnswers } from '../../utils/direct-answer-source.js';
 import {
   classifyRequest,
   FAST_PATH_CONFIDENCE,
@@ -17,6 +18,7 @@ import {
   type RoutingContext,
   readClassification,
   routingQuestions,
+  sourceQuestions,
 } from './classifier.js';
 import type { OpenQuestion } from './questions.js';
 import { RESPONSE_STYLES, type ResponseStyle } from './response-styles.js';
@@ -34,22 +36,12 @@ const WAITING_QUESTION: OpenQuestion = {
   deliverAnswer: async () => 'Done',
 };
 
-const LIGHT_TURN_OFF: HomeService = {
-  id: 'light.turn_off',
-  domain: 'light',
-  service: 'turn_off',
-  description: 'Turn off lights',
-  requiredFields: [],
-  entityDomains: ['light'],
-};
-
 const NOTHING_ELSE: RoutingContext = {
   agents: AGENTS,
   openQuestions: [],
-  services: [],
-  domains: [],
   lookups: [],
   commands: [],
+  sources: [],
 };
 
 /** A distribution with the given confidence on `choice`, which is all the policy reads. */
@@ -57,7 +49,11 @@ function sure(choice: string, confidence = 0.97) {
   return { type: 'choice' as const, choice, probabilities: { [choice]: confidence } };
 }
 
-function answers(route: string, overrides: Partial<RoutingAnswers> = {}, style: ResponseStyle = 'command') {
+function answers(
+  route: string,
+  overrides: Partial<RoutingAnswers> & ClassifierAnswerSet = {},
+  style: ResponseStyle = 'command',
+) {
   return { route: sure(route), responseStyle: { type: 'choice' as const, choice: style }, ...overrides };
 }
 
@@ -72,31 +68,18 @@ describe('routingQuestions', () => {
     expect(Object.keys(routingQuestions(NOTHING_ELSE).responseStyle.criteria)).toEqual([...RESPONSE_STYLES]);
   });
 
-  it('asks about waiting questions, the running request and services only when there are some', () => {
+  it('asks about waiting questions and the running request only when there are some', () => {
     const plain = routingQuestions(NOTHING_ELSE);
     expect(plain).not.toHaveProperty('answeredQuestion');
     expect(plain).not.toHaveProperty('relationToRunningRequest');
-    expect(plain).not.toHaveProperty('homeService');
-    expect(plain).not.toHaveProperty('homeQuestionDomain');
 
     const full = routingQuestions({
-      agents: AGENTS,
+      ...NOTHING_ELSE,
       openQuestions: [WAITING_QUESTION],
-      services: [LIGHT_TURN_OFF],
-      domains: [],
-      lookups: [],
-      commands: [],
       runningRequest: 'what is the weather',
     });
     expect(full.answeredQuestion?.criteria).toEqual({ q1: 'Email, or a push notification?', none: expect.any(String) });
     expect(full.relationToRunningRequest?.instructions).toContain('what is the weather');
-    expect(full.homeService?.criteria).toHaveProperty(['light.turn_off'], 'Turn off lights');
-  });
-
-  it('does not offer services when there is no smart home agent to fall back to', () => {
-    expect(routingQuestions({ ...NOTHING_ELSE, agents: [AGENTS[1]], services: [LIGHT_TURN_OFF] })).not.toHaveProperty(
-      'homeService',
-    );
   });
 });
 
@@ -185,58 +168,6 @@ describe('readClassification', () => {
     ).not.toHaveProperty('relationToRunningRequest');
   });
 
-  it('picks the Home Assistant service for a smart home command it is sure of', () => {
-    const classification = readClassification(
-      answers('internetOfThings', {
-        homeService: sure('light.turn_off'),
-        homeCommandGivesSetting: { type: 'boolean', probability: 0.02 },
-      }),
-      { ...NOTHING_ELSE, services: [LIGHT_TURN_OFF] },
-    );
-
-    expect(classification.fastRoute).toEqual({
-      agentId: 'internetOfThings',
-      responseStyle: 'command',
-      direct: { kind: 'homeCommand', service: LIGHT_TURN_OFF },
-    });
-  });
-
-  it('answers a question about how the house is now from the kind of device it is about', () => {
-    const classification = readClassification(
-      answers(
-        'internetOfThings',
-        { homeQuestionDomain: sure('lock'), homeQuestionIsAboutNow: { type: 'boolean', probability: 0.97 } },
-        'lookup',
-      ),
-      { ...NOTHING_ELSE, domains: ['lock', 'light'] },
-    );
-
-    expect(classification.fastRoute?.direct).toEqual({ kind: 'homeQuestion', domain: 'lock' });
-  });
-
-  it('leaves a question about history, or an unsure kind of device, to the agent', () => {
-    const context = { ...NOTHING_ELSE, domains: ['lock'] };
-    const aboutHistory = readClassification(
-      answers(
-        'internetOfThings',
-        { homeQuestionDomain: sure('lock'), homeQuestionIsAboutNow: { type: 'boolean', probability: 0.2 } },
-        'lookup',
-      ),
-      context,
-    );
-    const unsure = readClassification(
-      answers(
-        'internetOfThings',
-        { homeQuestionDomain: sure('lock', 0.6), homeQuestionIsAboutNow: { type: 'boolean', probability: 0.97 } },
-        'lookup',
-      ),
-      context,
-    );
-
-    expect(aboutHistory.fastRoute).not.toHaveProperty('direct');
-    expect(unsure.fastRoute).not.toHaveProperty('direct');
-  });
-
   describe('lookups', () => {
     const weatherNow = {
       id: 'weather.now',
@@ -246,13 +177,17 @@ describe('readClassification', () => {
     };
     const withLookups = { ...NOTHING_ELSE, lookups: [weatherNow] };
 
-    it("answers a question one of the agent's own lookups covers", () => {
+    it("answers a question one of the agent's own lookups covers", async () => {
       const classification = readClassification(
         answers('weather', { directLookup: sure('weather.now') }, 'lookup'),
         withLookups,
       );
 
-      expect(classification.fastRoute?.direct).toEqual({ kind: 'lookup', lookupId: 'weather.now' });
+      expect(classification.fastRoute?.direct?.description).toBe('lookup weather.now');
+      expect(await classification.fastRoute?.direct?.answer('what is the weather')).toEqual({
+        text: 'sunny',
+        entities: [],
+      });
     });
 
     it("never answers with another agent's lookup, an unsure one, or for a command", () => {
@@ -288,13 +223,14 @@ describe('readClassification', () => {
     };
     const withCommands = { ...NOTHING_ELSE, commands: [fakeCommand] };
 
-    it("carries out a command the agent's own vertical declares", () => {
+    it("carries out a command the agent's own vertical declares", async () => {
       const classification = readClassification(
         answers('weather', { directCommand: sure('weather.fakeCommand') }),
         withCommands,
       );
 
-      expect(classification.fastRoute?.direct).toEqual({ kind: 'command', commandId: 'weather.fakeCommand' });
+      expect(classification.fastRoute?.direct?.description).toBe('command weather.fakeCommand');
+      expect(await classification.fastRoute?.direct?.answer('do it')).toEqual({ text: 'done', entities: [] });
     });
 
     it("never carries out another agent's command, an unsure one, or one for a question", () => {
@@ -324,17 +260,53 @@ describe('readClassification', () => {
     });
   });
 
-  it('never picks a service for anything that is not a command', () => {
-    const classification = readClassification(
-      answers(
-        'internetOfThings',
-        { homeService: sure('light.turn_off'), homeCommandGivesSetting: { type: 'boolean', probability: 0.02 } },
-        'lookup',
-      ),
-      { ...NOTHING_ELSE, services: [LIGHT_TURN_OFF] },
-    );
+  describe('sources', () => {
+    /** A vertical's own question, which routing knows nothing about but asks and hands back. */
+    const SURE_IT_CAN: DirectAnswer = { description: 'fake answer', answer: async () => undefined };
+    const asked: { answers: ClassifierAnswerSet; requestKind: string }[] = [];
+    const fakeSource: PreparedDirectAnswers = {
+      questions: { fakeCanAnswer: { type: 'boolean', instructions: 'Can the fake answer this?' } },
+      choose: (sourceAnswers, { requestKind, minimumConfidence }) => {
+        asked.push({ answers: sourceAnswers, requestKind });
+        const canAnswer = sourceAnswers.fakeCanAnswer;
+        return canAnswer?.type === 'boolean' && canAnswer.probability >= minimumConfidence ? SURE_IT_CAN : undefined;
+      },
+    };
+    const withSource = { ...NOTHING_ELSE, sources: [{ agentId: 'weather', prepared: fakeSource }] };
 
-    expect(classification.fastRoute).toEqual({ agentId: 'internetOfThings', responseStyle: 'lookup' });
+    it('asks a source its own questions only while its agent is routable', () => {
+      expect(sourceQuestions(withSource)).toEqual(fakeSource.questions);
+      expect(sourceQuestions({ ...withSource, agents: [AGENTS[0]] })).toEqual({});
+    });
+
+    it("hands a request routed to the source's agent back to the source, with how sure to be", () => {
+      asked.length = 0;
+      const classification = readClassification(
+        answers('weather', { fakeCanAnswer: { type: 'boolean', probability: 0.97 } }, 'lookup'),
+        withSource,
+      );
+
+      expect(classification.fastRoute?.direct).toBe(SURE_IT_CAN);
+      expect(asked).toEqual([
+        { answers: expect.objectContaining({ fakeCanAnswer: expect.anything() }), requestKind: 'question' },
+      ]);
+    });
+
+    it('never asks a source about a request for another agent, or about a conversation', () => {
+      asked.length = 0;
+      const otherAgent = readClassification(
+        answers('internetOfThings', { fakeCanAnswer: { type: 'boolean', probability: 0.97 } }),
+        withSource,
+      );
+      const conversation = readClassification(
+        answers('weather', { fakeCanAnswer: { type: 'boolean', probability: 0.97 } }, 'conversation'),
+        withSource,
+      );
+
+      expect(otherAgent.fastRoute).not.toHaveProperty('direct');
+      expect(conversation.fastRoute).not.toHaveProperty('direct');
+      expect(asked).toEqual([]);
+    });
   });
 });
 

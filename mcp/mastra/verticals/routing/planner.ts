@@ -1,20 +1,19 @@
 import type { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
+import type { DirectAnswer, DirectAnswerSource } from '../../utils/direct-answer-source.js';
 import { createAgent, getModel } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
-import { getPublicAgents } from '..';
-import { getHomeDomains, getHomeServices } from '../internet-of-things/home-commands.js';
+import { getDirectAnswerCatalog, getPublicAgents } from '..';
 import { findPhoto, howLongAgo, type WaitingPhoto } from '../vision/photos.js';
 import {
   classifyRequest,
   type FastRoute,
   getRoutingClassifier,
+  type PreparedSource,
   type RelationToRunningRequest,
   type RequestClassification,
   type RoutableAgentSummary,
 } from './classifier.js';
-import type { DirectAnswer } from './direct-answers.js';
-import { DIRECT_COMMANDS, DIRECT_LOOKUPS } from './direct-lookups.js';
 import type { PlannedChain } from './plan.js';
 import type { OpenQuestion } from './questions.js';
 import { RESPONSE_STYLE_DESCRIPTIONS, RESPONSE_STYLES, type ResponseStyle } from './response-styles.js';
@@ -552,14 +551,15 @@ export async function planDelegations(
   const photosInPlay = waitingPhotos.length > 0 || NAMES_A_PHOTO.test(userQuery);
 
   // Before either starts, so nothing is awaited between starting the planner and handling it.
-  // Services and domains are cached, and empty when Home Assistant is slow, so this never waits long.
-  const [agents, services, domains] = await Promise.all([getRoutableAgents(), getHomeServices(), getHomeDomains()]);
+  // The verticals' own questions come from caches that never wait long, so neither does this.
+  const { lookups, commands, sources: declaredSources } = getDirectAnswerCatalog();
+  const [agents, sources] = await Promise.all([getRoutableAgents(), prepareSources(declaredSources)]);
   const planned = planWithPlanner(planner, userQuery, openQuestions, waitingPhotos, namedPhotos, abortPlanner.signal);
   const abortClassifier = new AbortController();
   const classified = classifyRequest(
     classifier,
     userQuery,
-    { agents, openQuestions, services, domains, lookups: DIRECT_LOOKUPS, commands: DIRECT_COMMANDS, runningRequest },
+    { agents, openQuestions, lookups, commands, sources, runningRequest },
     abortClassifier.signal,
   ).catch((error: unknown) => {
     if (!abortClassifier.signal.aborted) {
@@ -588,6 +588,25 @@ export async function planDelegations(
     abortPlanner.abort();
     abortClassifier.abort();
   }
+}
+
+/**
+ * Every vertical's own questions for the next request. A source that fails is left out, so the
+ * request goes to its agent as it would have without it.
+ */
+async function prepareSources(sources: readonly DirectAnswerSource[]): Promise<PreparedSource[]> {
+  const prepared = await Promise.all(
+    sources.map(async (source) => {
+      try {
+        const questions = await source.prepare();
+        return questions && { agentId: source.agentId, prepared: questions };
+      } catch (error) {
+        logger.warn('Direct answer source failed to prepare; leaving it out', { source: source.id, error });
+        return undefined;
+      }
+    }),
+  );
+  return prepared.filter((source) => source !== undefined);
 }
 
 /**

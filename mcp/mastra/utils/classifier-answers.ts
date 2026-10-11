@@ -1,4 +1,4 @@
-import type { ChoiceAnswer, ScoreAnswer } from '@mastra/core/classifier';
+import type { BooleanAnswer, ChoiceAnswer, ScoreAnswer } from '@mastra/core/classifier';
 
 /**
  * Reading a classifier's answers as things it is sure of, or as nothing.
@@ -31,4 +31,22 @@ export function confidentScoreLevel<LEVEL>(
   confidence: number,
 ): LEVEL | undefined {
   return levels.find((_level, index) => (answer.probabilities?.[String(index)] ?? 0) >= confidence);
+}
+
+/** Any one answer, before it is known which kind of question it answers. */
+export type AnyClassifierAnswer = ChoiceAnswer | ScoreAnswer | BooleanAnswer;
+
+/** Answers keyed by question, as a reader that did not write the questions sees them. */
+export type ClassifierAnswerSet = Readonly<Record<string, AnyClassifierAnswer | undefined>>;
+
+/** The answer to a choice question, or `undefined` when the question was not asked as one. */
+export function choiceAnswerIn(answers: ClassifierAnswerSet, questionId: string): ChoiceAnswer | undefined {
+  const answer = answers[questionId];
+  return answer?.type === 'choice' ? answer : undefined;
+}
+
+/** The answer to a yes/no question, or `undefined` when the question was not asked as one. */
+export function booleanAnswerIn(answers: ClassifierAnswerSet, questionId: string): BooleanAnswer | undefined {
+  const answer = answers[questionId];
+  return answer?.type === 'boolean' ? answer : undefined;
 }

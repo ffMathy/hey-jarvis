@@ -1082,7 +1082,9 @@ the planner and the classifier describe the four styles identically.
 **Smart home commands skip the agent too.** Home Assistant's own services, every one that
 targets entities with its name and description, fetched live and cached for ten minutes, ride
 along on the same Jev call: which service carries the request out, and whether the request gives a
-setting (a brightness, temperature, colour). When the request is routed to `internetOfThings` as a
+setting (a brightness, temperature, colour). These are the vertical's own questions, declared as a
+direct answer source (`internet-of-things/direct-answers.ts`); routing asks them without knowing what
+they are about. When the request is routed to `internetOfThings` as a
 `command`, the service is sure, needs no required field and no setting was given, every entity
 that service can act on is fetched live and put to Jev as one yes/no each, with its name, area and
 state (`internet-of-things/home-commands.ts`). If every entity is settled one way or the other and
@@ -1359,14 +1361,14 @@ What is marked, and what is deliberately not:
 Events, messages and tasks are not reported themselves, only what holds them: the headset places
 lasting things, and an event placed in the room would never glow again.
 
-A lookup answered without its agent (`routing/direct-lookups.ts`) reports exactly what the agent's
+A lookup answered without its agent (`utils/direct-lookup-factory.ts`) reports exactly what the agent's
 call of the same tool would have, because it makes that call: its `answer` is handed a `callTool`,
 and `answerLookup` (`utils/direct-lookup-factory.ts`) reads every call made through it with the tool's
 own reader. So the rules stay on the tools, and no lookup has a list of its own: the calendar lookups
 report the calendars their events came from, unread email the inbox, the to-do list the default list
 by its real id, the shopping list the basket, open issues Jarvis's repository, and the weather nothing.
 A lookup that calls a tool with `executeTool` instead lights nothing up, so every call goes through
-`callTool`. `direct-lookups.spec.ts` lists what each lookup reports, and fails for one that is not
+`callTool`. `verticals/direct-answers.spec.ts` lists what each lookup reports, and fails for one that is not
 listed.
 
 `affected-entities-interview.spec.ts` runs a light switch through both MCP tools on a real plan run,
@@ -2095,7 +2097,7 @@ unsure answer, each decision is made exactly as it was before there was a classi
 
 | Classifier | Where | Decides |
 | --- | --- | --- |
-| `routingClassifier` | `routing/classifier.ts` | Single-agent fast path, answers to waiting questions, goodbyes, replace/cancel/add, Home Assistant service |
+| `routingClassifier` | `routing/classifier.ts` | Single-agent fast path, answers to waiting questions, goodbyes, replace/cancel/add, which direct answer (with each source's own questions) |
 | `homeCommandClassifier` | `internet-of-things/home-commands.ts`, `internet-of-things/phone-alarm.ts` | Which entities a smart home command acts on, and when a phone alarm rings |
 | `changeRelevanceClassifier` | `internet-of-things/change-relevance.ts` | What kind of Home Assistant change a report is |
 | `stateChangeClassifier` | `synapse/state-change-classifier.ts` | How much attention a state change needs, and which subscriptions it fires |
@@ -2109,25 +2111,26 @@ unsure answer, each decision is made exactly as it was before there was a classi
 
 **Direct answers.** When routing's Jev call is sure which agent a request is for, it can often tell what the
 request is, too, and then code answers it with no agent at all, handing back plain facts for the voice model
-to phrase (`routing/direct-answers.ts`). Four kinds:
+to phrase. Routing knows none of them: every vertical declares its own, and `getDirectAnswerCatalog()` in
+`verticals/index.ts` gathers them for routing to offer (the contract is `utils/direct-answer-source.ts`).
+Three kinds:
 
-- **Smart home commands** (`internet-of-things/home-commands.ts`): the Home Assistant service, then a yes/no
-  per entity it can act on, then the service call.
-- **Commands** (`routing/direct-lookups.ts`): requests that change something, which a vertical declares
-  in its `commands.ts` with `createDirectCommand`. Routing only offers each by its description, on the call
-  it already makes, and only carries one out for a request routed to its own agent and phrased as a
-  command; everything else about it stays inside the vertical. Today: the phone alarm
-  (`internet-of-things/phone-alarm.ts`), where a second short Jev call picks the hour (of 24) and minute
-  (of 60) before `setPhoneAlarm` is called. A morning-or-evening hour ("set an alarm for 7"), a time from
-  now ("in 20 minutes") or a named alarm stays with the agent.
-- **Questions about the house** ("is the front door locked?"): the kind of device (Home Assistant's domains,
-  fetched live), then a yes/no per entity of that kind, then their current states, units included. History,
-  locations and anything unsure stay with the agent, which has the logbook and location tools.
-- **Lookups** (`routing/direct-lookups.ts`): fixed, read-only questions a vertical declares in its
-  `lookups.ts`. Weather now and forecast (at the user's location, else Aarhus), calendar today, tomorrow and
-  this week (in the household's time zone, `utils/household.ts`), the open to-do list, the shopping basket,
-  unread email, and open issues. A lookup is offered only for a request routed to its own agent, phrased as a
-  question rather than a command, and with nothing more specific in it than the lookup covers.
+- **Lookups**: fixed, read-only questions a vertical declares in its `lookups.ts` with `createDirectLookup`.
+  Weather now and forecast (at the user's location, else Aarhus), calendar today, tomorrow and this week (in
+  the household's time zone, `utils/household.ts`), the open to-do list, the shopping basket, unread email,
+  and open issues. A lookup is offered only for a request routed to its own agent, phrased as a question
+  rather than a command, and with nothing more specific in it than the lookup covers.
+- **Commands**: requests that change something, which a vertical declares in its `commands.ts` with
+  `createDirectCommand`. Offered by description the same way, only for a request routed to its own agent and
+  phrased as a command. Today: the phone alarm (`internet-of-things/phone-alarm.ts`), where a second short
+  Jev call picks the hour (of 24) and minute (of 60) before `setPhoneAlarm` is called. A morning-or-evening
+  hour ("set an alarm for 7"), a time from now ("in 20 minutes") or a named alarm stays with the agent.
+- **Sources** (`createDirectAnswerSource`): a vertical whose options come from live data brings its own
+  questions, built per request and asked on routing's call, and reads routing's answers to them itself. The
+  only one is `internet-of-things/direct-answers.ts`: smart home commands (the Home Assistant service, then a
+  yes/no per entity it can act on, then the service call) and questions about how the house is now (the
+  kind of device, then a yes/no per entity of that kind, then their current states). History, locations,
+  settings and anything unsure stay with the agent.
 
 Any direct answer that declines or fails runs the same one-agent chain the request would have run anyway.
 
