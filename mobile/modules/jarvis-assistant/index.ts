@@ -18,7 +18,15 @@ interface JarvisAssistantNativeModule {
   /** A photo's `file://` URI, {@link NOT_READABLE}, or `null` for no photo. */
   takePhoto(inAssistantWindow: boolean): Promise<string | null>;
   returnFromTheCamera(showWindowAgain: boolean): Promise<boolean>;
+  addListener(event: typeof WINDOW_PUT_AWAY, listener: () => void): { remove: () => void };
 }
+
+/**
+ * The event the native side sends when the assistant's window is put away. Spelled the same as
+ * `WINDOW_PUT_AWAY` in `JarvisAssistantModule.kt`, which `assistant-window.contract.spec.ts` holds it
+ * to.
+ */
+export const WINDOW_PUT_AWAY = 'onAssistantWindowPutAway';
 
 /**
  * Optional rather than required, so the app still boots where the native module
@@ -133,4 +141,20 @@ export async function takePhotoWithTheCameraApp({
  */
 export function returnFromTheCamera({ showWindowAgain }: { showWindowAgain: boolean }): void {
   void nativeModule?.returnFromTheCamera(showWindowAgain);
+}
+
+/**
+ * Calls back whenever the assistant's window is put away — by sir, by the app, or by the system on
+ * its own — other than to make way for the camera, until the return value is called.
+ *
+ * The system's own is the one that matters. The screen timing out over the lock screen hides the
+ * window, and a conversation drawn in it went on listening and answering with nothing on screen to
+ * hang up with. Only the tree drawn in the window should listen: the event is the process's, and
+ * the app's own activity would hear it too.
+ *
+ * A no-op where the module is absent, which is web and every test.
+ */
+export function whenTheAssistantWindowIsPutAway(listener: () => void): () => void {
+  const subscription = nativeModule?.addListener(WINDOW_PUT_AWAY, listener);
+  return () => subscription?.remove();
 }

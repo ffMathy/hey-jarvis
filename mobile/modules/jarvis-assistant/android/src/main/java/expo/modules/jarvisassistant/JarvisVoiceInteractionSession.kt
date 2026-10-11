@@ -48,6 +48,11 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
   /** Set only if this session was what resumed React Native, so only it un-resumes it. */
   private var resumedHost: ReactHost? = null
 
+  private val handler = Handler(Looper.getMainLooper())
+
+  /** Lets React Native rest once the window has been put away. See {@link onHide}. */
+  private val letReactNativeRest = Runnable { pauseReactNative() }
+
   /** How many times this window has been shown. See {@link announceShowing}. */
   private var showings = 0
 
@@ -111,6 +116,7 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
 
     current = WeakReference(this)
     keptRunning = null
+    handler.removeCallbacks(letReactNativeRest)
     nextShowing?.invoke()
     nextShowing = null
 
@@ -141,6 +147,14 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
    * which is enough to stop the drawing, because the hologram watches `AppState` and stops its
    * clock when nothing is in front. Tearing down happens in {@link onDestroy}, where the system
    * has actually finished with the session.
+   *
+   * **Put away by anything but the camera, the conversation goes with it.** The system hides the
+   * window on its own as well — the screen timing out over the lock screen is the common one, since
+   * the default `onLockscreenShown` is `hide()` — and a conversation that carried on from there was
+   * Jarvis listening and answering out of a phone with nothing on it to hang up with: summoned by
+   * accident from a pocket, sir unlocked to a voice and no sheet. So the app is told
+   * (`whenPutAway`) and hangs up, and React Native is only paused once it has had a moment to:
+   * paused, its timers stop, and the hang-up should not depend on one of them never firing.
    */
   override fun onHide() {
     // Put away for the camera, React Native keeps running: the conversation has to go on being kept
@@ -149,7 +163,8 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
       awayForTheCamera = false
       keptRunning = WeakReference(this)
     } else {
-      pauseReactNative()
+      whenPutAway?.invoke()
+      handler.postDelayed(letReactNativeRest, HANG_UP_GRACE_MS)
     }
     if (current?.get() === this) {
       current = null
@@ -158,6 +173,7 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
   }
 
   override fun onDestroy() {
+    handler.removeCallbacks(letReactNativeRest)
     release()
     super.onDestroy()
   }
@@ -326,6 +342,16 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
      * system quietly declines must leave the watch to talk for itself. Main thread only.
      */
     internal var nextShowing: (() -> Unit)? = null
+
+    /**
+     * Told every time the window is put away other than for the camera, for the app to hang up:
+     * there is nothing left on screen to hang up with. `JarvisAssistantModule` sets it while
+     * JavaScript listens. Main thread only.
+     */
+    internal var whenPutAway: (() -> Unit)? = null
+
+    /** How long React Native is left running after the window is put away, for the hang-up to finish. */
+    private const val HANG_UP_GRACE_MS = 2_000L
 
     /** Whether the assistant window is on screen now. */
     internal fun isShowing(): Boolean = current?.get() != null

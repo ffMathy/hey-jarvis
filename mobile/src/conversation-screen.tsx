@@ -14,6 +14,7 @@ import { LEAVING_SECONDS } from 'hologram/react/lifecycle';
 import { useSimulatedVoice } from 'hologram/react/sample';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, ToastAndroid, View } from 'react-native';
+import { whenTheAssistantWindowIsPutAway } from '../modules/jarvis-assistant';
 import { roomOfConversation } from './agent-audio-track';
 import { createAssistLaunchClaim } from './assist-link';
 import { CameraButton } from './camera-button';
@@ -539,6 +540,17 @@ export function ConversationScreen({
     }
     summonAgain();
   }, [inAssistantWindow, launchUrl, summonAgain]);
+
+  // Put away while he is still talking — the screen timing out over the lock screen does it, after
+  // a summoning from a pocket — he hangs up, because nothing is left on screen to hang up with.
+  // Only from the window's own tree: the activity's would hear the event as well. See
+  // `whenTheAssistantWindowIsPutAway`.
+  useEffect(() => {
+    if (!inAssistantWindow) {
+      return;
+    }
+    return whenTheAssistantWindowIsPutAway(hangUp);
+  }, [inAssistantWindow, hangUp]);
 
   // Summoned into the assistant's own window, which is kept between summonings: every showing after
   // the one this screen opened on is a summoning of its own. See `SHOWING_PROP`.
