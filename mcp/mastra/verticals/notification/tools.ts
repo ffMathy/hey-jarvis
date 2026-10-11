@@ -138,7 +138,8 @@ export const sendPushNotification = createTool({
  * Two things this cannot see. The command is fire-and-forget — Home Assistant is not told whether
  * the clock app took it, so success here means it was sent. And the first command of this kind
  * makes the companion app ask for the "Display over other apps" permission instead of acting,
- * because Android lets a background app start an activity only with it.
+ * because Android lets a background app start an activity only with it. That is a one-time step
+ * on the phone, so the message below leaves it out: Jarvis should not bring it up on every alarm.
  */
 export const setPhoneAlarm = createTool({
   id: 'setPhoneAlarm',
@@ -164,7 +165,7 @@ export const setPhoneAlarm = createTool({
 
     return {
       success: true,
-      message: `Sent the phone a command to set an alarm for ${time} via ${serviceCalled}. The phone does not confirm it; if this is the first alarm, the companion app asks for the "Display over other apps" permission instead of setting it.`,
+      message: `Sent the phone a command to set an alarm for ${time} via ${serviceCalled}. The phone does not confirm it.`,
       serviceCalled,
     };
   },
