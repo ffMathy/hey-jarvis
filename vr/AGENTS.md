@@ -564,17 +564,21 @@ separate terminal state:
 - **Why `failed` is separate from `ended`.** In the room, an ending is Jarvis
   leaving, while a failure is a panel that has to outlive him.
 
-**The greeting and the token start together; the session is dialled after the
+**The greeting and the token start together; the session is dialled behind the
 greeting.** The token request (as `jarvis-vr`) goes out the moment he is
 summoned, alongside the recording, which is hologram's `assets/greeting.mp3`
 imported with `?url`.
 
-- **Why wait.** Dialling after the greeting is what the phone does natively. The
-  session's microphone opening mid-greeting is what clipped the recording on the
-  phone, and it would let the agent hear the greeting before the session could be
-  muted. `waitsForGreetingBeforeDialling: false` dials while he is still greeting,
-  and mutes from `onConversationCreated` until he has finished.
-- **A refused recording.** The session sends no override, so the agent keeps its
+- **Why not wait.** The user wants the conversation up by the time he has
+  asked. What clipped the phone's recording was Android switching into call mode
+  mid-greeting, and the headset's microphone is already open for the wake word
+  with the processing the call asks for, so nothing switches here.
+  `waitsForGreetingBeforeDialling: false` dials while he is still arriving, and
+  mutes from `onConversationCreated` until he has finished, so the agent never
+  hears the greeting.
+- **A recording refused after dialling.** Dialled during the arrival, the agent
+  was already told not to greet, so it stays quiet until sir speaks.
+- **A refused recording.** Refused before anything was dialled, the session sends no override, so the agent keeps its
   own first message. A recording the browser never answers for is given up on by
   the shared `isGreetingOver` rule.
 - **Checking the greeting's end.** The 50 ms timer checks it, and so does every

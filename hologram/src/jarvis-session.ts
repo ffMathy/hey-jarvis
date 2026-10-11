@@ -178,13 +178,14 @@ interface PendingContext {
  * away mid-sentence over a non-fatal server message while his voice played on.
  *
  * On summon, the greeting starts and the token is requested at the same moment, so the handshake
- * overlaps him speaking. The session is dialled once the greeting is over, as a phone does it:
- * opening the session's microphone mid-greeting switches an Android audio stack into call mode,
- * which is what clipped the recording on the phone, and dialling behind it also let the agent hear
- * the greeting before the session could be muted. `waitsForGreetingBeforeDialling: false` dials
- * behind it instead, muted from `onConversationCreated` until he has finished. On a device with
- * call audio the greeting is played inside it (`callAudio`), and a device that has to find a
- * network first asks for it once he has started (`untilOnline`).
+ * overlaps him speaking. With `waitsForGreetingBeforeDialling: false`, which every device now runs
+ * with, the session is dialled behind the greeting — during his arrival, even — and muted from
+ * `onConversationCreated` until he has finished, so the agent never hears him as the user. Left
+ * true, it is dialled only once he has finished. What once clipped him when dialled behind on a
+ * phone was the switch into call mode a second into the recording; on a device with call audio
+ * that switch is made before he speaks (`callAudio`) and the greeting is played inside it, so the
+ * conversation's start changes nothing he is heard through. A device that has to find a network
+ * first asks for it once his greeting is ready to play (`untilOnline`).
  */
 export function createJarvisSession<Timer>(dependencies: JarvisSessionDependencies<Timer>): JarvisSession {
   const { participantName, startSession, greeting, events, callAudio, heldVoice, untilOnline, leaveNetwork } =
@@ -1065,8 +1066,9 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     }
     if (!playing) {
       // Refused: the agent keeps its own first message, so he is never left not greeting at all.
-      // Nor is there a greeting left to hold the call's audio for; the conversation starts its own.
-      if (current.callAudio === 'greeting') {
+      // Nor is there a greeting left to hold the call's audio for; the conversation starts its own —
+      // unless one was already dialled behind the arrival, which is about to take it over.
+      if (current.callAudio === 'greeting' && !current.dialled) {
         releaseCallAudio(current);
       }
       finishGreeting(current);

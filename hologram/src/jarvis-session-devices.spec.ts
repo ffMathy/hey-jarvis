@@ -33,6 +33,7 @@ function onAPhone(overrides: Partial<JarvisSessionDependencies<number>> = {}, { 
       callAudio: callAudio.callAudio,
       heldVoice: heldVoice.heldVoice,
       removeOrphanedAudio: undefined,
+      waitsForGreetingBeforeDialling: false,
       ...overrides,
     },
     { waitsForRoute: true },
@@ -66,7 +67,7 @@ async function greetOn(phone: Phone) {
   await settle();
 }
 
-/** Greeted, dialled once he has finished, and connected. */
+/** Greeted, dialled behind him, and connected once he has finished. */
 async function goLiveOn(phone: Phone) {
   await greetOn(phone);
   phone.tokens.grant();
@@ -136,17 +137,28 @@ describe('greeting inside the call’s audio, on a phone and a watch', () => {
     expect(phone.greeting.plays).toBe(0);
   });
 
-  it('dials only once he has finished, and without asking the agent to greet again', async () => {
+  it('dials while he greets, inside the call audio already up, muted, and never cutting him off', async () => {
     const phone = onAPhone();
 
     await greetOn(phone);
     phone.tokens.grant();
     await settle();
-    expect(phone.sdk.dials).toHaveLength(0);
-
-    await phone.clock.advance(phone.greeting.durationMilliseconds + 100);
+    expect(phone.callAudio.log).toEqual(['start']);
     expect(phone.sdk.dials).toHaveLength(1);
     expect(phone.sdk.latest.spoken?.overrides).toEqual({ agent: { firstMessage: '' } });
+
+    const conversation = phone.sdk.latest.conversation;
+    await phone.sdk.latest.connect();
+    expect(conversation.muting).toEqual([true]);
+    expect(phone.session.phase).toBe('greeting');
+    expect(phone.greeting.playing).toBe(true);
+    expect(phone.greeting.stops).toBe(0);
+
+    await phone.clock.advance(phone.greeting.durationMilliseconds + 100);
+    expect(conversation.muting).toEqual([true, false]);
+    expect(phone.session.phase).toBe('live');
+    expect(phone.greeting.stops).toBe(0);
+    expect(phone.callAudio.log).toEqual(['start']);
     // The SDK's own delay: the phone never set one, and three seconds of it is for its audio mode.
     expect(phone.sdk.latest.spoken && 'connectionDelay' in phone.sdk.latest.spoken).toBe(false);
   });
@@ -178,6 +190,27 @@ describe('greeting inside the call’s audio, on a phone and a watch', () => {
     phone.tokens.grant();
     await settle();
     expect(phone.sdk.latest.spoken?.overrides).toBeUndefined();
+    await phone.sdk.latest.connect();
+    phone.sdk.latest.agentHangsUp();
+    await settle();
+    expect(phone.callAudio.log).toEqual(['start', 'stop']);
+  });
+
+  it('keeps the call audio for a conversation dialled during his arrival when the greeting is then refused', async () => {
+    const phone = onAPhone({ greetAfterArrivalMs: MATERIALISE_SECONDS * 1000 });
+
+    phone.session.summon();
+    phone.tokens.grant();
+    await settle();
+    phone.greeting.routeReady();
+    await settle();
+    expect(phone.sdk.dials).toHaveLength(1);
+
+    await phone.clock.advance(MATERIALISE_SECONDS * 1000);
+    phone.greeting.refuse();
+    await settle();
+    expect(phone.callAudio.log).toEqual(['start']);
+
     await phone.sdk.latest.connect();
     phone.sdk.latest.agentHangsUp();
     await settle();
@@ -831,11 +864,10 @@ describe('what a screen draws from', () => {
   it('says whether the summoning has dialled, and reads nothing dialled once it is over', async () => {
     const phone = onAPhone();
     await greetOn(phone);
-    phone.tokens.grant();
-    await settle();
     expect(phone.session.snapshot.dialled).toBe(false);
 
-    await phone.clock.advance(phone.greeting.durationMilliseconds + 100);
+    phone.tokens.grant();
+    await settle();
     expect(phone.session.snapshot.dialled).toBe(true);
 
     await phone.sdk.latest.connect();
