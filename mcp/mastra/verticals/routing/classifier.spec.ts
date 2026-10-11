@@ -43,7 +43,14 @@ const LIGHT_TURN_OFF: HomeService = {
   entityDomains: ['light'],
 };
 
-const NOTHING_ELSE: RoutingContext = { agents: AGENTS, openQuestions: [], services: [], domains: [], lookups: [] };
+const NOTHING_ELSE: RoutingContext = {
+  agents: AGENTS,
+  openQuestions: [],
+  services: [],
+  domains: [],
+  lookups: [],
+  commands: [],
+};
 
 /** A distribution with the given confidence on `choice`, which is all the policy reads. */
 function sure(choice: string, confidence = 0.97) {
@@ -78,6 +85,7 @@ describe('routingQuestions', () => {
       services: [LIGHT_TURN_OFF],
       domains: [],
       lookups: [],
+      commands: [],
       runningRequest: 'what is the weather',
     });
     expect(full.answeredQuestion?.criteria).toEqual({ q1: 'Email, or a push notification?', none: expect.any(String) });
@@ -193,25 +201,6 @@ describe('readClassification', () => {
     });
   });
 
-  it('sets an alarm on the phone without the agent when it is sure the request is only that', () => {
-    const sureAlarm = readClassification(
-      answers('internetOfThings', { setsPhoneAlarm: { type: 'boolean', probability: 0.96 } }),
-      NOTHING_ELSE,
-    );
-    const unsureAlarm = readClassification(
-      answers('internetOfThings', { setsPhoneAlarm: { type: 'boolean', probability: 0.6 } }),
-      NOTHING_ELSE,
-    );
-    const alarmQuestion = readClassification(
-      answers('internetOfThings', { setsPhoneAlarm: { type: 'boolean', probability: 0.96 } }, 'lookup'),
-      NOTHING_ELSE,
-    );
-
-    expect(sureAlarm.fastRoute?.direct).toEqual({ kind: 'phoneAlarm' });
-    expect(unsureAlarm.fastRoute).not.toHaveProperty('direct');
-    expect(alarmQuestion.fastRoute).not.toHaveProperty('direct');
-  });
-
   it('answers a question about how the house is now from the kind of device it is about', () => {
     const classification = readClassification(
       answers(
@@ -290,6 +279,51 @@ describe('readClassification', () => {
     });
   });
 
+  describe('commands', () => {
+    const fakeCommand = {
+      id: 'weather.fakeCommand',
+      agentId: 'weather',
+      description: 'Do the one thing the weather agent can do',
+      answer: async () => 'done',
+    };
+    const withCommands = { ...NOTHING_ELSE, commands: [fakeCommand] };
+
+    it("carries out a command the agent's own vertical declares", () => {
+      const classification = readClassification(
+        answers('weather', { directCommand: sure('weather.fakeCommand') }),
+        withCommands,
+      );
+
+      expect(classification.fastRoute?.direct).toEqual({ kind: 'command', commandId: 'weather.fakeCommand' });
+    });
+
+    it("never carries out another agent's command, an unsure one, or one for a question", () => {
+      const wrongAgent = readClassification(
+        answers('internetOfThings', { directCommand: sure('weather.fakeCommand') }),
+        withCommands,
+      );
+      const unsure = readClassification(
+        answers('weather', { directCommand: sure('weather.fakeCommand', 0.6) }),
+        withCommands,
+      );
+      const question = readClassification(
+        answers('weather', { directCommand: sure('weather.fakeCommand') }, 'lookup'),
+        withCommands,
+      );
+
+      for (const classification of [wrongAgent, unsure, question]) {
+        expect(classification.fastRoute).not.toHaveProperty('direct');
+      }
+    });
+
+    it('offers every command by its description, with a way out', () => {
+      expect(routingQuestions(withCommands).directCommand?.criteria).toEqual({
+        'weather.fakeCommand': 'Do the one thing the weather agent can do',
+        none: expect.any(String),
+      });
+    });
+  });
+
   it('never picks a service for anything that is not a command', () => {
     const classification = readClassification(
       answers(
@@ -328,7 +362,6 @@ describe('classifyRequest', () => {
                 choice: 'command',
                 probabilities: { command: 0.9, lookup: 0.05, briefing: 0.03, conversation: 0.02 },
               },
-              setsPhoneAlarm: { type: 'boolean', probability: 0.01 },
             },
             warnings: [],
           };
@@ -339,8 +372,6 @@ describe('classifyRequest', () => {
     const classification = await classifyRequest(classifier, 'Turn off the living room lights', NOTHING_ELSE);
 
     expect(classification.fastRoute).toEqual({ agentId: 'internetOfThings', responseStyle: 'command' });
-    expect(evaluated).toEqual([
-      { state: 'Turn off the living room lights', questionIds: ['route', 'responseStyle', 'setsPhoneAlarm'] },
-    ]);
+    expect(evaluated).toEqual([{ state: 'Turn off the living room lights', questionIds: ['route', 'responseStyle'] }]);
   });
 });

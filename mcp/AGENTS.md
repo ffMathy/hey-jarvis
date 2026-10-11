@@ -2113,10 +2113,13 @@ to phrase (`routing/direct-answers.ts`). Four kinds:
 
 - **Smart home commands** (`internet-of-things/home-commands.ts`): the Home Assistant service, then a yes/no
   per entity it can act on, then the service call.
-- **Phone alarms** (`internet-of-things/phone-alarm.ts`): routing's call asks whether the request only sets
-  one alarm; once it is sure, a second short call picks the hour (of 24) and minute (of 60), then
-  `setPhoneAlarm` is called. A morning-or-evening hour ("set an alarm for 7"), a time from now ("in 20
-  minutes") or a named alarm stays with the agent.
+- **Commands** (`routing/direct-lookups.ts`): requests that change something, which a vertical declares
+  in its `commands.ts` with `createDirectCommand`. Routing only offers each by its description, on the call
+  it already makes, and only carries one out for a request routed to its own agent and phrased as a
+  command; everything else about it stays inside the vertical. Today: the phone alarm
+  (`internet-of-things/phone-alarm.ts`), where a second short Jev call picks the hour (of 24) and minute
+  (of 60) before `setPhoneAlarm` is called. A morning-or-evening hour ("set an alarm for 7"), a time from
+  now ("in 20 minutes") or a named alarm stays with the agent.
 - **Questions about the house** ("is the front door locked?"): the kind of device (Home Assistant's domains,
   fetched live), then a yes/no per entity of that kind, then their current states, units included. History,
   locations and anything unsure stay with the agent, which has the logbook and location tools.

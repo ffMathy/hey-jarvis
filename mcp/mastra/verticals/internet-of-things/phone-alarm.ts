@@ -1,8 +1,7 @@
 import type { ClassifierAnswers } from '@mastra/core/classifier';
-import type { DirectAnswerOutcome } from '../../utils/direct-lookup-factory.js';
+import { createDirectCommand, type DirectCommandContext } from '../../utils/direct-lookup-factory.js';
 import { confidentChoice } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
-import { executeTool } from '../../utils/tool-factory.js';
 import { setPhoneAlarm } from '../notification/tools.js';
 import { getHomeCommandClassifier } from './home-commands.js';
 
@@ -15,25 +14,14 @@ import { getHomeCommandClassifier } from './home-commands.js';
  * needs is an hour and a minute, though, and those are two choices from fixed lists, which is what
  * Jev answers (see `.claude/rules/jev-classifiers.md`):
  *
- * 1. **Is it an alarm.** A yes/no on the call routing already makes (see `routing/classifier.ts`).
+ * 1. **Is it an alarm.** The command's description is offered on the call routing already makes,
+ *    alongside every other vertical's, so spotting one costs no extra round trip.
  * 2. **When.** Once routing is sure, one more short call picks the hour from 24 and the minute from
  *    60, and checks the time was said as a time of day and the alarm was not given a name.
  *
  * Anything Jev is not sure of goes to the agent as before: "set an alarm for 7" is morning or
  * evening, "in twenty minutes" needs the clock, and a label is free text nothing here can write.
  */
-
-/** The question asked on routing's own call, so spotting an alarm costs no extra round trip. */
-export function phoneAlarmQuestions() {
-  return {
-    setsPhoneAlarm: {
-      type: 'boolean' as const,
-      instructions:
-        'Is this request only asking to set one alarm or wake-up call on the phone, and nothing else -- not a ' +
-        'timer, a reminder, or a change to an existing alarm?',
-    },
-  };
-}
 
 /** The key an hour is offered under, so the choice can be read back as a number. */
 function hourKey(hour: number): string {
@@ -133,29 +121,22 @@ export function alarmTimeFrom(answers: PhoneAlarmTimeAnswers, minimumConfidence:
   return hour === undefined || minute === undefined ? undefined : { hour, minute };
 }
 
-/** Sets the alarm, and says what came of it. */
-export type AlarmSetter = (time: AlarmTime) => Promise<string>;
-
-const setAlarmOnPhone: AlarmSetter = async (time) => (await executeTool(setPhoneAlarm, time)).message;
-
 /**
  * Sets an alarm on the phone without the agent, and says what came of it in words the voice model
  * can relay.
  *
- * Nothing is reported for sir's headset to light up: the alarm lives on the phone, not on an entity
- * in the house, just as the agent's `setUserPhoneAlarm` call reports nothing.
+ * The tool is called through `callTool`, as the agent's `setUserPhoneAlarm` would be, and like it
+ * reports nothing for sir's headset to light up: the alarm lives on the phone, not on an entity.
  *
- * Resolves to `undefined` when it declines -- no classifier, or Jev not sure when -- so the caller
- * hands the request to the agent.
+ * Resolves to `undefined` when it declines -- no classifier, or Jev not sure when -- so the request
+ * goes to the agent.
  *
- * @throws When the phone cannot be reached, so the caller can hand it on too
+ * @throws When the phone cannot be reached, so the request goes to the agent too
  */
 export async function setPhoneAlarmDirectly(
-  request: string,
-  minimumConfidence: number,
+  { request, minimumConfidence, callTool }: DirectCommandContext,
   classifier = getHomeCommandClassifier(),
-  setAlarm: AlarmSetter = setAlarmOnPhone,
-): Promise<DirectAnswerOutcome | undefined> {
+): Promise<string | undefined> {
   if (!classifier) {
     return undefined;
   }
@@ -172,7 +153,17 @@ export async function setPhoneAlarmDirectly(
     return undefined;
   }
 
-  const text = await setAlarm(time);
+  const { message } = await callTool(setPhoneAlarm, time);
   logger.info('Set a phone alarm without the agent', time);
-  return { text, entities: [] };
+  return message;
 }
+
+/** "Wake me at 6:30", carried out without the agent once routing is sure that is all it asks. */
+export const phoneAlarmCommand = createDirectCommand({
+  id: 'internetOfThings.phoneAlarm',
+  agentId: 'internetOfThings',
+  description:
+    'Set one alarm or wake-up call on the phone, and nothing else -- not a timer, a reminder, or a change to an ' +
+    'existing alarm',
+  answer: (context) => setPhoneAlarmDirectly(context),
+});

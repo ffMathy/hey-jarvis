@@ -1,8 +1,7 @@
-import { answerLookup, type DirectAnswerOutcome } from '../../utils/direct-lookup-factory.js';
+import { answerCommand, answerLookup, type DirectAnswerOutcome } from '../../utils/direct-lookup-factory.js';
 import { answerHomeQuestion, type HomeService, runHomeCommand } from '../internet-of-things/home-commands.js';
-import { setPhoneAlarmDirectly } from '../internet-of-things/phone-alarm.js';
 import { FAST_PATH_CONFIDENCE } from './classifier.js';
-import { findDirectLookup } from './direct-lookups.js';
+import { findDirectCommand, findDirectLookup } from './direct-lookups.js';
 
 /**
  * Requests answered without the agent they were routed to.
@@ -24,10 +23,10 @@ export type DirectAnswer =
   | { kind: 'homeCommand'; service: HomeService }
   /** A question about how things are in the house right now, about devices of this domain. */
   | { kind: 'homeQuestion'; domain: string }
-  /** An alarm on the phone, at a time Jev picks (see `internet-of-things/phone-alarm.ts`). */
-  | { kind: 'phoneAlarm' }
   /** One of an agent's own read-only lookups (see `direct-lookups.ts`). */
-  | { kind: 'lookup'; lookupId: string };
+  | { kind: 'lookup'; lookupId: string }
+  /** One of an agent's own commands (see `direct-lookups.ts`). */
+  | { kind: 'command'; commandId: string };
 
 /** Answers a request directly, or resolves to `undefined` when the agent should after all. */
 export async function answerDirectly(
@@ -39,11 +38,13 @@ export async function answerDirectly(
       return await runHomeCommand(userQuery, direct.service, FAST_PATH_CONFIDENCE);
     case 'homeQuestion':
       return await answerHomeQuestion(userQuery, direct.domain, FAST_PATH_CONFIDENCE);
-    case 'phoneAlarm':
-      return await setPhoneAlarmDirectly(userQuery, FAST_PATH_CONFIDENCE);
     case 'lookup': {
       const lookup = findDirectLookup(direct.lookupId);
       return lookup ? await answerLookup(lookup) : undefined;
+    }
+    case 'command': {
+      const command = findDirectCommand(direct.commandId);
+      return command ? await answerCommand(command, userQuery, FAST_PATH_CONFIDENCE) : undefined;
     }
   }
 }
@@ -55,9 +56,9 @@ export function describeDirectAnswer(direct: DirectAnswer): string {
       return `home command ${direct.service.id}`;
     case 'homeQuestion':
       return `home question about ${direct.domain}`;
-    case 'phoneAlarm':
-      return 'phone alarm';
     case 'lookup':
       return `lookup ${direct.lookupId}`;
+    case 'command':
+      return `command ${direct.commandId}`;
   }
 }

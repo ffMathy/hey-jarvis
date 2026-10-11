@@ -1,5 +1,5 @@
 import type { Classifier, ClassifierAnswers } from '@mastra/core/classifier';
-import type { DirectLookup } from '../../utils/direct-lookup-factory.js';
+import type { DirectCommand, DirectLookup } from '../../utils/direct-lookup-factory.js';
 import { confidentChoice, createLazyClassifier } from '../../utils/index.js';
 import {
   type HomeService,
@@ -8,7 +8,6 @@ import {
   homeServiceFrom,
   homeServiceQuestions,
 } from '../internet-of-things/home-commands.js';
-import { phoneAlarmQuestions } from '../internet-of-things/phone-alarm.js';
 import type { DirectAnswer } from './direct-answers.js';
 import type { OpenQuestion } from './questions.js';
 import { RESPONSE_STYLE_DESCRIPTIONS, type ResponseStyle } from './response-styles.js';
@@ -85,6 +84,8 @@ export interface RoutingContext {
   domains: string[];
   /** The lookups a request can be answered with directly (see `direct-lookups.ts`). */
   lookups: readonly DirectLookup[];
+  /** The commands a request can be carried out with directly (see `direct-lookups.ts`). */
+  commands: readonly DirectCommand[];
   /** The request still running in this session, if there is one. */
   runningRequest?: string;
 }
@@ -104,6 +105,7 @@ export function routingQuestions({
   services,
   domains,
   lookups,
+  commands,
   runningRequest,
 }: RoutingContext) {
   const homeAgentIsRoutable = agents.some((agent) => agent.id === HOME_AGENT_ID);
@@ -139,10 +141,10 @@ export function routingQuestions({
         'kinds, pick the one that needs the most words.',
       criteria: RESPONSE_STYLE_DESCRIPTIONS,
     },
-    ...(homeAgentIsRoutable && phoneAlarmQuestions()),
     ...(services.length > 0 && homeAgentIsRoutable && homeServiceQuestions(services)),
     ...(domains.length > 0 && homeAgentIsRoutable && homeQuestionQuestions(domains)),
     ...(lookups.length > 0 && lookupQuestions(lookups)),
+    ...(commands.length > 0 && commandQuestions(commands)),
     ...(openQuestions.length > 0 && {
       answeredQuestion: {
         type: 'choice' as const,
@@ -179,7 +181,7 @@ export interface FastRoute {
   responseStyle: ResponseStyle;
   /**
    * Set when the request can be answered without the agent: a smart home command Jev is sure of the
-   * service for, an alarm on the phone, or a question about the house it is sure of the kind of device for (see
+   * service for, one of the agent's own commands, or a question about the house it is sure of the kind of device for (see
    * `direct-answers.ts`).
    */
   direct?: DirectAnswer;
@@ -215,7 +217,7 @@ function isRelationToRunningRequest(value: string): value is RelationToRunningRe
  */
 export function readClassification(
   answers: RoutingAnswers,
-  { agents, openQuestions, services, domains, lookups }: Omit<RoutingContext, 'runningRequest'>,
+  { agents, openQuestions, services, domains, lookups, commands }: Omit<RoutingContext, 'runningRequest'>,
 ): RequestClassification {
   const responseStyle = answers.responseStyle.choice;
   const relation =
@@ -250,9 +252,10 @@ export function readClassification(
   }
 
   const direct =
-    route === HOME_AGENT_ID
+    commandDirectAnswerFrom(answers, route, responseStyle, commands) ??
+    (route === HOME_AGENT_ID
       ? homeDirectAnswerFrom(answers, responseStyle, services, domains)
-      : lookupDirectAnswerFrom(answers, route, responseStyle, lookups);
+      : lookupDirectAnswerFrom(answers, route, responseStyle, lookups));
   return { ...classification, fastRoute: { agentId: route, responseStyle, ...(direct && { direct }) } };
 }
 
@@ -297,10 +300,47 @@ function lookupDirectAnswerFrom(
   return lookup && lookup.agentId === route ? { kind: 'lookup', lookupId: lookup.id } : undefined;
 }
 
+/** The choice for a request that none of the commands carries out as it stands. */
+const NO_COMMAND = 'none';
+
+/** The question that picks the command a request is, from every command there is. */
+function commandQuestions(commands: readonly DirectCommand[]) {
+  const commandCriteria: Record<string, string> = {
+    ...Object.fromEntries(commands.map((command) => [command.id, command.description])),
+    [NO_COMMAND]: 'None of these exactly, more than one of them, or not a command at all',
+  };
+
+  return {
+    directCommand: {
+      type: 'choice' as const,
+      instructions: 'Is this request exactly one of these commands, and nothing more?',
+      criteria: commandCriteria,
+    },
+  };
+}
+
 /**
- * A request for the smart home agent that can be answered without it: an alarm on the phone, a
- * command whose service Jev is sure of, or a question about how things are now whose kind of device
- * it is sure of.
+ * A request that one of the agent's own commands carries out: a command, not a question, and one
+ * Jev is sure of that belongs to the agent the request was routed to.
+ */
+function commandDirectAnswerFrom(
+  answers: RoutingAnswers,
+  route: string,
+  responseStyle: ResponseStyle,
+  commands: readonly DirectCommand[],
+): DirectAnswer | undefined {
+  if (responseStyle !== 'command') {
+    return undefined;
+  }
+
+  const commandId = answers.directCommand && confidentChoice(answers.directCommand, FAST_PATH_CONFIDENCE);
+  const command = commands.find((candidate) => candidate.id === commandId);
+  return command && command.agentId === route ? { kind: 'command', commandId: command.id } : undefined;
+}
+
+/**
+ * A request for the smart home agent that can be answered without it: a command whose service Jev
+ * is sure of, or a question about how things are now whose kind of device it is sure of.
  */
 function homeDirectAnswerFrom(
   answers: RoutingAnswers,
@@ -309,9 +349,6 @@ function homeDirectAnswerFrom(
   domains: string[],
 ): DirectAnswer | undefined {
   if (responseStyle === 'command') {
-    if ((answers.setsPhoneAlarm?.probability ?? 0) >= FAST_PATH_CONFIDENCE) {
-      return { kind: 'phoneAlarm' };
-    }
     const { homeService, homeCommandGivesSetting } = answers;
     const service =
       homeService &&

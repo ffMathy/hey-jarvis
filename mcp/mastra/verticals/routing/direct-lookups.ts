@@ -1,7 +1,8 @@
-import type { DirectLookup } from '../../utils/direct-lookup-factory.js';
+import type { DirectCommand, DirectLookup } from '../../utils/direct-lookup-factory.js';
 import { calendarLookups } from '../calendar/lookups.js';
 import { codingLookups } from '../coding/lookups.js';
 import { emailLookups } from '../email/lookups.js';
+import { internetOfThingsCommands } from '../internet-of-things/commands.js';
 import { shoppingLookups } from '../shopping/lookups.js';
 import { todoListLookups } from '../todo-list/lookups.js';
 import { weatherLookups } from '../weather/lookups.js';
@@ -24,4 +25,17 @@ export const DIRECT_LOOKUPS: readonly DirectLookup[] = [
 /** A lookup by its id, or `undefined` when there is none by that name. */
 export function findDirectLookup(id: string): DirectLookup | undefined {
   return DIRECT_LOOKUPS.find((lookup) => lookup.id === id);
+}
+
+/**
+ * Every command routing can carry a request out with directly, from every vertical that has some.
+ *
+ * Gathered here for the same reason as the lookups: routing only offers them by their description,
+ * and how each is carried out stays inside the vertical that declares it.
+ */
+export const DIRECT_COMMANDS: readonly DirectCommand[] = [...internetOfThingsCommands];
+
+/** A command by its id, or `undefined` when there is none by that name. */
+export function findDirectCommand(id: string): DirectCommand | undefined {
+  return DIRECT_COMMANDS.find((command) => command.id === id);
 }

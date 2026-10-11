@@ -77,13 +77,72 @@ export function createDirectLookup(lookup: DirectLookup): DirectLookup {
  * answer this never gave would only point sir at the wrong thing.
  */
 export async function answerLookup(lookup: DirectLookup): Promise<DirectAnswerOutcome | undefined> {
+  return await answerWithTools((callTool) => lookup.answer(callTool));
+}
+
+/** Runs a direct answer, collecting what its tool calls touched, and hands both back together. */
+async function answerWithTools(
+  answer: (callTool: LookupToolCaller) => Promise<string | undefined>,
+): Promise<DirectAnswerOutcome | undefined> {
   const touched: AffectedEntity[] = [];
-  const text = await lookup.answer(async (tool, inputData) => {
+  const text = await answer(async (tool, inputData) => {
     const result = await executeTool(tool, inputData);
     touched.push(...readAffectedEntities(tool.id, inputData, result));
     return result;
   });
   return text === undefined ? undefined : { text, entities: cleanAffectedEntities(touched) };
+}
+
+/*
+ * Commands an agent's request can be carried out with, without the agent.
+ *
+ * The counterpart of a lookup for requests that change something: "wake me at 6:30". Routing's
+ * classifier only matches a request against a command's description; everything about carrying it
+ * out -- further Jev questions, the tool it calls -- stays inside the vertical that declares it, so
+ * routing never learns what any vertical can do.
+ */
+
+/** What a command is handed to carry a request out with. */
+export interface DirectCommandContext {
+  /** The request, in the user's own words. */
+  request: string;
+  /** How sure any further classifier answer must be before the command acts on it. */
+  minimumConfidence: number;
+  /** Calls a tool as the agent would, so what it touches is reported. */
+  callTool: LookupToolCaller;
+}
+
+export interface DirectCommand {
+  /** Unique across every vertical: `<agentId>.<what>`, e.g. `internetOfThings.phoneAlarm`. */
+  id: string;
+  /** The agent the command acts for, which a request must be routed to before it is offered. */
+  agentId: string;
+  /** What the command does, as a request would ask for it. This is what Jev is shown. */
+  description: string;
+  /**
+   * Carries the request out, and says what came of it in facts for the voice model to phrase.
+   *
+   * Resolves to `undefined` to decline -- unsure of some detail, say -- and may throw; either way
+   * the request goes to the agent as it would have without the command.
+   */
+  answer: (context: DirectCommandContext) => Promise<string | undefined>;
+}
+
+/** Declares a command, checking its id is namespaced by its agent. */
+export function createDirectCommand(command: DirectCommand): DirectCommand {
+  if (!command.id.startsWith(`${command.agentId}.`)) {
+    throw new Error(`Direct command "${command.id}" must be named "${command.agentId}.<what>"`);
+  }
+  return command;
+}
+
+/** Carries a command out, with what its tool calls touched, or resolves to `undefined` when it declines. */
+export async function answerCommand(
+  command: DirectCommand,
+  request: string,
+  minimumConfidence: number,
+): Promise<DirectAnswerOutcome | undefined> {
+  return await answerWithTools((callTool) => command.answer({ request, minimumConfidence, callTool }));
 }
 
 /** Facts in the compact form a lookup answers with. */

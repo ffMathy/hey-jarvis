@@ -3,13 +3,14 @@
  * declining to act on its answer.
  *
  * Declining is always safe -- the agent sets the alarm instead -- so most of what is pinned here is
- * that it declines whenever it is not sure. The phone is faked as the setter the alarm is handed to.
+ * that it declines whenever it is not sure. Home Assistant is faked at `fetch`, scoped to each test.
  */
 
-import { describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { Classifier } from '@mastra/core/classifier';
+import type { LookupToolCaller } from '../../utils/direct-lookup-factory.js';
+import { executeTool } from '../../utils/tool-factory.js';
 import {
-  type AlarmTime,
   alarmTimeFrom,
   type PhoneAlarmTimeAnswers,
   phoneAlarmTimeQuestions,
@@ -105,39 +106,75 @@ describe('setPhoneAlarmDirectly', () => {
     });
   }
 
-  it('sets the alarm Jev is sure of, and relays what the phone was sent', async () => {
-    const set: AlarmTime[] = [];
+  const ENVIRONMENT = [
+    'HEY_JARVIS_HOME_ASSISTANT_URL',
+    'HEY_JARVIS_HOME_ASSISTANT_TOKEN',
+    'HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE',
+  ] as const;
+  const saved = new Map<string, string | undefined>();
+  /** What the phone was sent, through Home Assistant's companion-app notify service. */
+  const phoneCommands: { url: string; body: unknown }[] = [];
+  let fetchSpy: ReturnType<typeof spyOn<typeof globalThis, 'fetch'>> | undefined;
+  /** Calls tools for real, so the command reaches the faked Home Assistant as the agent's would. */
+  const callTool: LookupToolCaller = (tool, inputData) => executeTool(tool, inputData);
 
-    const outcome = await setPhoneAlarmDirectly(
-      'wake me at 6:30',
-      SURE,
-      classifierAnswering(halfPastSix()),
-      async (time) => {
-        set.push(time);
-        return 'Sent the phone a command to set an alarm for 06:30';
-      },
+  beforeEach(() => {
+    for (const name of ENVIRONMENT) {
+      saved.set(name, process.env[name]);
+    }
+    process.env.HEY_JARVIS_HOME_ASSISTANT_URL = 'http://home-assistant.test';
+    process.env.HEY_JARVIS_HOME_ASSISTANT_TOKEN = 'test-token';
+    process.env.HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE = 'notify.mobile_app_phone';
+    phoneCommands.length = 0;
+
+    fetchSpy = spyOn(globalThis, 'fetch').mockImplementation(
+      Object.assign(
+        async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+          phoneCommands.push({ url: String(input), body: JSON.parse(String(init?.body ?? '{}')) });
+          return new Response('[]');
+        },
+        { preconnect: globalThis.fetch.preconnect },
+      ),
     );
-
-    expect(set).toEqual([{ hour: 6, minute: 30 }]);
-    expect(outcome).toEqual({ text: 'Sent the phone a command to set an alarm for 06:30', entities: [] });
   });
 
-  it('sets nothing when Jev is unsure when', async () => {
-    const set: AlarmTime[] = [];
+  afterEach(() => {
+    fetchSpy?.mockRestore();
+    for (const [name, value] of saved) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    }
+  });
 
-    const outcome = await setPhoneAlarmDirectly(
-      'set an alarm for 7',
-      SURE,
+  it('sets the alarm Jev is sure of on the phone, and relays what the phone was sent', async () => {
+    const text = await setPhoneAlarmDirectly(
+      { request: 'wake me at 6:30', minimumConfidence: SURE, callTool },
+      classifierAnswering(halfPastSix()),
+    );
+
+    expect(phoneCommands).toEqual([
+      {
+        url: 'http://home-assistant.test/api/services/notify/mobile_app_phone',
+        body: expect.objectContaining({ message: 'command_activity' }),
+      },
+    ]);
+    expect(JSON.stringify(phoneCommands[0]?.body)).toContain('android.intent.extra.alarm.HOUR:6:int');
+    expect(JSON.stringify(phoneCommands[0]?.body)).toContain('android.intent.extra.alarm.MINUTES:30:int');
+    expect(text).toContain('06:30');
+  });
+
+  it('sends the phone nothing when Jev is unsure when', async () => {
+    const text = await setPhoneAlarmDirectly(
+      { request: 'set an alarm for 7', minimumConfidence: SURE, callTool },
       classifierAnswering(
         halfPastSix({ alarmHour: { type: 'choice', choice: 'h7', probabilities: { h7: 0.55, h19: 0.45 } } }),
       ),
-      async (time) => {
-        set.push(time);
-        return 'set';
-      },
     );
 
-    expect(outcome).toBeUndefined();
-    expect(set).toEqual([]);
+    expect(text).toBeUndefined();
+    expect(phoneCommands).toEqual([]);
   });
 });
