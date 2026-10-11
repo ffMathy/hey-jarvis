@@ -100,7 +100,8 @@ export function phoneAlarmTimeQuestions() {
     },
     alarmHasLabel: {
       type: 'boolean' as const,
-      instructions: 'Does the request give the alarm a name, or say what it is for ("called laundry", "for the train")?',
+      instructions:
+        'Does the request give the alarm a name, or say what it is for ("called laundry", "for the train")?',
     },
   };
 }

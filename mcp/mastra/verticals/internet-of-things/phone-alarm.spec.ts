@@ -86,10 +86,15 @@ describe('setPhoneAlarmDirectly', () => {
   it('sets the alarm Jev is sure of, and relays what the phone was sent', async () => {
     const set: AlarmTime[] = [];
 
-    const outcome = await setPhoneAlarmDirectly('wake me at 6:30', SURE, classifierAnswering(halfPastSix()), async (time) => {
-      set.push(time);
-      return 'Sent the phone a command to set an alarm for 06:30';
-    });
+    const outcome = await setPhoneAlarmDirectly(
+      'wake me at 6:30',
+      SURE,
+      classifierAnswering(halfPastSix()),
+      async (time) => {
+        set.push(time);
+        return 'Sent the phone a command to set an alarm for 06:30';
+      },
+    );
 
     expect(set).toEqual([{ hour: 6, minute: 30 }]);
     expect(outcome).toEqual({ text: 'Sent the phone a command to set an alarm for 06:30', entities: [] });
