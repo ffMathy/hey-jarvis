@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.18.2](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.18.1...mcp-v2.18.2) (2026-10-11)
+
+
+### Bug Fixes
+
+* **mobile:** drop the sheet at once and hang up after commands ([#942](https://github.com/ffMathy/hey-jarvis/issues/942)) ([a5942e6](https://github.com/ffMathy/hey-jarvis/commit/a5942e6bb6807fc333b565a2b3482e1259090400))
+
 ## [2.18.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.18.0...mcp-v2.18.1) (2026-10-04)
 
 

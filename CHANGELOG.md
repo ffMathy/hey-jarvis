@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.20.2](https://github.com/ffMathy/hey-jarvis/compare/root-v4.20.1...root-v4.20.2) (2026-10-11)
+
+
+### Bug Fixes
+
+* **mobile:** drop the sheet at once and hang up after commands ([#942](https://github.com/ffMathy/hey-jarvis/issues/942)) ([a5942e6](https://github.com/ffMathy/hey-jarvis/commit/a5942e6bb6807fc333b565a2b3482e1259090400))
+* **mobile:** hang up when the assistant window is put away ([#940](https://github.com/ffMathy/hey-jarvis/issues/940)) ([193e669](https://github.com/ffMathy/hey-jarvis/commit/193e669bc2656305f48f1b8b0051d5dfe352d7ec))
+
 ## [4.20.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.20.0...root-v4.20.1) (2026-10-04)
 
 

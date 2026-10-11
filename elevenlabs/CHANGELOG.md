@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.7.0...elevenlabs-v2.7.1) (2026-10-11)
+
+
+### Bug Fixes
+
+* **mobile:** drop the sheet at once and hang up after commands ([#942](https://github.com/ffMathy/hey-jarvis/issues/942)) ([a5942e6](https://github.com/ffMathy/hey-jarvis/commit/a5942e6bb6807fc333b565a2b3482e1259090400))
+
 ## [2.7.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.6.0...elevenlabs-v2.7.0) (2026-10-01)
 
 
