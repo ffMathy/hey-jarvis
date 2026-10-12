@@ -5,21 +5,29 @@ name: Mobile Web
 # Publishes both of Jarvis's web builds to GitHub Pages, so he can be watched in a
 # browser, or stood in a room with on a headset, without installing anything:
 #
-#   /hey-jarvis/           the phone app's web build (mobile/)
-#   /hey-jarvis/vr/        the Meta Quest app that puts him in your room (vr/)
+#   /hey-jarvis/                 the phone app's web build (mobile/)
+#   /hey-jarvis/vr/              the Meta Quest app that puts him in your room (vr/)
+#   /hey-jarvis/pr/<n>/          pull request <n>'s phone app
+#   /hey-jarvis/pr/<n>/vr/       pull request <n>'s headset app
 #
 # What is at the root is the real phone app: the same conversation screen, the
 # same hologram, drawn by CanvasKit instead of native Skia. Taking over the assist
 # gesture is Android's alone and the app says so when it is on web, so the page
 # is for looking at Jarvis and talking to him, not for replacing your assistant.
 #
-# Runs only for a release: `release.yml` calls it once Release Please has tagged
-# one, handing it the tagged commit, so the page always shows what was released.
-# Pushes and pull requests publish nothing. It can still be started by hand from
-# the Actions tab, on any branch — which is how a branch's build can be looked at
-# on a headset before it is merged. Pages keeps one live site, so the last run
-# wins — and the site is one artifact, so every run builds and publishes both
-# apps: a run that published one alone would take the other off the site.
+# The root is the release: `release.yml` calls this once Release Please has tagged
+# one, handing it the tagged commit, so the root always shows what was released.
+# `web-preview.yml` calls it for every push to a pull request with `subpath:
+# pr/<n>`, so each pull request can be opened on a phone or a headset before it is
+# merged. It can also be started by hand from the Actions tab, which republishes
+# the root from whichever branch it is started on.
+#
+# Pages serves the `gh-pages` branch (Settings → Pages → Deploy from a branch),
+# because a site published as one artifact cannot hold a folder per pull request
+# beside the release: every deployment would replace the others. The release and
+# each preview write only their own part of the branch — see
+# `.scripts/publish-pages.sh`. Each part is built whole, phone and headset
+# together, so the two always come from the same commit.
 on:
   workflow_call:
     inputs:
@@ -28,43 +36,73 @@ on:
         type: string
         required: false
         default: ''
+      subpath:
+        description: 'Where on the site to publish: empty for the root, pr/<n> for a pull request preview.'
+        type: string
+        required: false
+        default: ''
+    outputs:
+      url:
+        description: 'Where the phone app was published; the headset app is in vr/ below it.'
+        value: ${{ jobs.publish.outputs.url }}
   workflow_dispatch:
 
 # Least privilege by default: the job below opts into exactly what it needs.
 permissions: {}
-
-# Two deployments cannot be in flight at once — Pages has one live site — but a
-# run already under way is left to finish rather than cancelled, so a push while
-# one is deploying does not leave the site half-written.
-concurrency:
-  group: mobile-web-pages
-  cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
-    permissions:
-      # Checking the code out.
-      contents: read
-      # Uploading the built site and pointing Pages at it.
-      pages: write
-      id-token: write
+    # One run per part of the site at a time, and a run already under way is left to
+    # finish rather than cancelled. Runs for different parts may overlap; the publish
+    # script settles who pushes first.
+    concurrency:
+      group: web-pages-${{ inputs.subpath || 'root' }}
+      cancel-in-progress: false
 
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+    permissions:
+      # Checking the code out, and pushing the built site to the `gh-pages` branch.
+      contents: write
+      # Asking Pages which address the site is served from.
+      pages: read
+
+    outputs:
+      url: ${{ steps.where.outputs.url }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6.1.0
         with:
-          # Empty for a manual run, which takes the commit that started it. Release
-          # passes the tagged commit — see `deploy` in `release.yml` for why.
+          # Empty for a manual run, which takes the commit that started it, and for a
+          # pull request, which takes its merge with main. Release passes the tagged
+          # commit — see `deploy` in `release.yml` for why.
           ref: ${{ inputs.ref }}
-          # Nothing here needs to push; never leave a usable token in .git/config.
+          # Never leave a usable token in .git/config: the token reaches only the
+          # steps below that are handed it.
           persist-credentials: false
+
+      # A project site lives under /<repo>/, and a preview under /<repo>/pr/<n>/, so
+      # the phone's build is told its own prefix — see `experiments.baseUrl` in
+      # app.config.ts. Without it every asset the page asks for is looked for at the
+      # domain root and comes back 404. Asked of Pages rather than assumed, so a
+      # custom domain, which serves from `/`, needs no change here.
+      - name: Find where the site is served
+        id: where
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUBPATH: ${{ inputs.subpath }}
+        run: |
+          site_url=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .html_url)
+          site_url=${site_url%/}
+          base_path=$(sed -E 's#^https?://[^/]+##' <<<"$site_url")
+          if [ -n "$SUBPATH" ]; then
+            site_url="$site_url/$SUBPATH"
+            base_path="$base_path/$SUBPATH"
+          fi
+          echo "url=$site_url/" >> "$GITHUB_OUTPUT"
+          echo "base_path=$base_path" >> "$GITHUB_OUTPUT"
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2.2.0
@@ -87,36 +125,38 @@ jobs:
       # First, so a headset app that does not build fails the run before the phone
       # app's slower export. `turbo build` also runs its initialize (the wasm into
       # public/vendor/), lint and typecheck, and writes it to dist/vr. Its
-      # asset URLs are relative, so it needs no base path of its own.
+      # asset URLs are relative, so it needs no base path of its own, and the same
+      # build works at the root and in a preview's folder.
       - name: Build the headset app
         run: bunx turbo build --filter=vr
 
-      - name: Configure Pages
-        id: pages
-        uses: actions/configure-pages@v6.0.0
-
-      # A project site lives under /<repo>/, so the build is told its own prefix —
-      # see `experiments.baseUrl` in app.config.ts. Without it every asset the page
-      # asks for is looked for at the domain root and comes back 404.
       - name: Export the web build
         env:
-          PAGES_BASE_URL: ${{ steps.pages.outputs.base_path }}
+          PAGES_BASE_URL: ${{ steps.where.outputs.base_path }}
         run: bunx expo export --platform web --output-dir dist --clear
         working-directory: mobile
 
-      # One folder for the one site: the phone app at its root, the headset app in
-      # vr/. Nothing in the phone's export is called vr, so they never clash.
+      # One folder for the one part of the site: the phone app at its root, the
+      # headset app in vr/. Nothing in the phone's export is called vr or pr, so
+      # they never clash with each other or with the previews beside the release.
       - name: Assemble the site
         run: |
           mkdir -p _site
           cp -r mobile/dist/. _site/
           cp -r dist/vr _site/vr
 
-      - name: Upload the site
-        uses: actions/upload-pages-artifact@v5.0.0
-        with:
-          path: _site
+      - name: Publish to gh-pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUBPATH: ${{ inputs.subpath }}
+        run: .scripts/publish-pages.sh "$SUBPATH" _site
 
-      - name: Deploy to Pages
-        id: deploy
-        uses: actions/deploy-pages@v5.0.1
+      - name: Summarise
+        env:
+          URL: ${{ steps.where.outputs.url }}
+        run: |
+          {
+            echo "### Published"
+            echo "- Phone app: $URL"
+            echo "- Headset app: ${URL}vr/"
+          } >> "$GITHUB_STEP_SUMMARY"

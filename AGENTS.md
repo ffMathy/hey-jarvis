@@ -195,10 +195,20 @@ ships on the next run.
 A release ships the phone, the watch and the web build too. Once the release is
 tagged, the `play` job hands the tagged commit to the `Play` workflow and the
 `pages` job hands it to `Mobile Web`, which publishes to GitHub Pages. Those are
-the only automatic ways into either workflow: pull requests and branch pushes
-publish nothing to Play or Pages. A pull request still builds the phone and
-watch APKs (`Mobile APK`, `Wear APK`) and keeps them as run artifacts, so the
-build is exercised before it is released without anything reaching testers.
+the only automatic ways into Play or the root of the Pages site: branch pushes
+publish nothing to Play. A pull request still builds the phone and watch APKs
+(`Mobile APK`, `Wear APK`) and keeps them as run artifacts, so the build is
+exercised before it is released without anything reaching testers.
+
+Every pull request from a branch of this repository also gets its own copy of
+both web builds — the phone app and the Quest app — through `Web Preview`, at
+`https://ffmathy.github.io/hey-jarvis/pr/<n>/` (and `…/pr/<n>/vr/`). One comment
+on the pull request links it and is updated in place (`.scripts/upsert-pr-comment.sh`), every push rebuilds it, and closing the pull
+request takes it down. The release at the root is never touched by a preview.
+For that to work Pages serves the `gh-pages` branch (Settings → Pages → *Deploy
+from a branch*, `gh-pages`, `/ (root)`) rather than an uploaded artifact, which
+would replace every preview on each deploy; `.scripts/publish-pages.sh` writes
+each part of that branch without disturbing the others.
 
 It publishes to the **closed test** (`alpha`), not production. Production is not
 open to a personal developer account until it has run a closed test with twelve
