@@ -41,6 +41,7 @@ import {
   pendingPointingUpdate,
   stepPointing,
   stepPointingUpdate,
+  tapPointing,
 } from '../entities/pointing';
 import {
   createEntityStore,
@@ -105,6 +106,10 @@ import { type CentreEye, pointAhead } from '../xr/viewer-pose';
  * The room decides, through its state machine, whether sir is placing things; this only draws and
  * reads, and hands back what the room has to act on: a pointing update to send, and the wrist button
  * or the drawer's Done being pressed.
+ *
+ * **On a phone** nothing in the room is pointed at with a hand: a placed entity is tapped on the
+ * screen instead (`tap`), the drawer opens on the screen rather than under the eyes, and a token is
+ * dragged with a finger (`entities/grab.ts`).
  */
 
 /** One frame, as the controller is shown it. */
@@ -129,6 +134,11 @@ export interface EntitiesFrame {
    * how the corona can be seen without a call, and a beat for the demo.
    */
   pretendWorking: boolean;
+  /**
+   * Whether this is sample mode, where an entity newly pointed at is lit as if he had been asked to
+   * work on it — the corona a real "turn that on" would bring, without a call.
+   */
+  sample: boolean;
 }
 
 /** What the room has to act on after a frame. */
@@ -155,6 +165,12 @@ export interface RoomEntities {
   conversationEnded(): void;
   /** Placing things has started — the drawer opens in front of sir in the next frame — or stopped. */
   setEditing(active: boolean): void;
+  /**
+   * A tap on a phone's screen along `ray`: points at the placed entity tapped, and says whether
+   * there was one — so the tap is not also taken for summoning him. Never while placing things,
+   * where every touch is the drawer's.
+   */
+  tap(ray: Ray): boolean;
   /** Once per XR frame, from the room's frame loop. */
   update(frame: EntitiesFrame): EntitiesOutcome;
   /** What `window.__jarvis.entities` shows, worked out when it is read. */
@@ -173,6 +189,8 @@ export interface RoomEntitiesOptions {
   anisotropy: number;
   /** Epoch milliseconds, for the registry, whose times have to mean the same thing next session. */
   clock?: () => number;
+  /** Whether the room is seen on a phone's screen (`isHandheld`), which opens the drawer on it. */
+  handheld?: boolean;
 }
 
 /** How long a line on the drawer about what just happened stays up, in seconds. */
@@ -227,6 +245,9 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
   let grab: GrabState = NOTHING_GRABBED;
   let carried: CarriedToken[] = [];
   let pointing: PointingState = NOT_POINTING;
+  /** What was pointed at in the last frame, and whether a tap has pointed since. */
+  let lastPointed: string | undefined;
+  let freshTap = false;
   let told: PointingUpdateState = NOTHING_TOLD;
   let lit: AffectedState = NOTHING_AFFECTED;
   const marks: string[] = [];
@@ -349,6 +370,9 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
     const enabled = drawer.buttons();
     pressWithFingers(pose, enabled, outcome);
     const carrying = new Set(carried.map((token) => token.grabber));
+    // A finger lifted off a phone's screen is gone from the frame rather than let go in it.
+    const present = new Set(grabbers.map((grabber) => grabber.id));
+    for (const id of pressedButton) if (!present.has(id)) pressedButton.delete(id);
     const seen = grabbers.map((grabber) => {
       const button = carrying.has(grabber.id) ? undefined : buttonSelected(pose, enabled, grabber, grabTokens);
       if (button !== undefined) {
@@ -405,7 +429,7 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
     if (openDrawer) {
       openDrawer = false;
       const ahead = pointAhead(frame.eye, 1).sub(frame.eye.position);
-      drawer.open(drawerPoseFacing(frame.eye.position, ahead));
+      drawer.open(drawerPoseFacing(frame.eye.position, ahead, options.handheld === true));
     }
     if (message !== undefined && time >= message.until) message = undefined;
     if (shown?.registry !== store.registry || shown.message !== message?.text) {
@@ -470,11 +494,22 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
     return entity.name === undefined ? { id: entity.id } : { id: entity.id, name: entity.name };
   }
 
-  /** What sir points at: chosen, ringed, named, and what the server should be told about it. */
+  /**
+   * What sir points at: chosen, ringed, named, and what the server should be told about it. Every
+   * placed entity has a marker meanwhile, so he can see what there is to point at.
+   */
   function point(frame: EntitiesFrame, outcome: EntitiesOutcome) {
     const targets = [...positions].map(([id, position]) => ({ id, position }));
+    tokens.set(
+      targets.map(({ position }) => ({ position, look: 'marker' as const })),
+      frame.eye.position,
+    );
     pointing = stepPointing(pointing, pointersFrom(frame.inputs, hands), targets, time);
     const pointed = pointing.pointed;
+    // In sample mode, something newly pointed at — or tapped again — is lit as if he were working on it.
+    if (frame.sample && pointed !== undefined && (freshTap || pointed.id !== lastPointed)) marks.push(pointed.id);
+    lastPointed = pointed?.id;
+    freshTap = false;
     const update = stepPointingUpdate(told, pointedEntity(pointed?.id), frame.live, time);
     told = update.state;
     if (update.send !== undefined) outcome.pointing = update.send;
@@ -572,6 +607,15 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
       } else {
         stopEditing();
       }
+    },
+    tap(ray) {
+      if (editing) return false;
+      const targets = [...positions].map(([id, position]) => ({ id, position }));
+      const tapped = tapPointing(pointing, ray, targets, time);
+      if (tapped === undefined) return false;
+      pointing = tapped;
+      freshTap = true;
+      return true;
     },
     update(frame) {
       time = frame.time;

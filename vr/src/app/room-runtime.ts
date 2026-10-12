@@ -6,12 +6,12 @@ import { createDebugHud, type DebugHud, type Diagnostics, extensionsOfInterest }
 import { KEYBOARD_GLYPH_REACH_METRES } from '../ui3d/keyboard-glyph';
 import { type AnchorKeeper, createAnchorKeeper } from '../xr/anchor-keeper';
 import { createDepthProbeFan, type DepthProbeFan } from '../xr/depth-probes';
-import { createInputSnapshots, type InputSnapshots } from '../xr/input-snapshots';
+import { createInputSnapshots, type InputSnapshots, isHandheld } from '../xr/input-snapshots';
 import type { OriginOffset } from '../xr/origin-offset';
 import { type Ray, raySphereDistance, type Vector3Like } from '../xr/ray';
 import { createSystemKeyboard, type SystemKeyboard } from '../xr/system-keyboard';
 import { type CentreEye, gazeOf, pointAhead } from '../xr/viewer-pose';
-import { createXrInput, type XrInput } from '../xr/xr-input';
+import { createXrInput, type XrInput, type XrSelect } from '../xr/xr-input';
 import { createXrStage, type XrFrameTick, type XrStage } from '../xr/xr-stage';
 import {
   type AppEffect,
@@ -260,6 +260,7 @@ function startRoom(
       session: stage.session,
       storage: options.entityStorage ?? forgetfulStorage(),
       anisotropy,
+      handheld: isHandheld(stage.session),
     }),
     keyboard: createSystemKeyboard(document),
     anchors: createAnchorKeeper<XRSpace, XRRigidTransform>((position) => new XRRigidTransform(position)),
@@ -304,6 +305,7 @@ function startRoom(
     type: 'entered',
     mode: options.mode,
     canType: stage.session.isSystemKeyboardSupported === true,
+    handheld: isHandheld(stage.session),
     readout: options.showReadout,
     holdErrors: options.holdErrors,
   });
@@ -352,7 +354,7 @@ function subscribe(room: Room) {
   const { stage, options, cleanups } = room;
   cleanups.push(stage.onFrame((tick) => onFrame(room, tick)));
   cleanups.push(stage.onVisibility((state) => dispatch(room, { type: 'visibility', state })));
-  cleanups.push(room.input.onSelect((select) => onSelect(room, select.hold, select.ray)));
+  cleanups.push(room.input.onSelect((select) => onSelect(room, select)));
   cleanups.push(room.input.onDismissButton(() => dispatch(room, { type: 'dismiss-button' })));
   cleanups.push(room.input.onEditButton(() => dispatch(room, { type: 'edit-button' })));
   cleanups.push(room.keyboard.onLine((text) => dispatch(room, { type: 'typed', text })));
@@ -417,14 +419,23 @@ function targetOf(room: Room, ray: Ray | undefined): SelectEvent['target'] {
   return him === undefined ? 'elsewhere' : 'him';
 }
 
-function onSelect(room: Room, hold: SelectEvent['hold'], ray: Ray | undefined) {
+function onSelect(room: Room, { hold, ray, source }: XrSelect) {
   // A wake engine that needs user activation to recover gets it from the next select, which is
   // the only activation there is inside the room.
   const wake = room.options.wake;
   if (wake !== undefined && (wake.health.needsGesture || wake.health.state === 'broken')) {
     wake.rebuild().catch(() => undefined);
   }
-  dispatch(room, { type: 'select', hold, target: targetOf(room, ray), ray });
+  const target = targetOf(room, ray);
+  // On a phone, a tap on something placed in the room points at it — it is not also a summon, nor
+  // the end of sample mode. Headsets point with a hand or a controller instead (`room-entities.ts`).
+  const tappedEntity =
+    hold === 'short' &&
+    target === 'elsewhere' &&
+    source.targetRayMode === 'screen' &&
+    ray !== undefined &&
+    room.entities.tap(ray);
+  if (!tappedEntity) dispatch(room, { type: 'select', hold, target, ray });
 }
 
 /** Puts `event` through the state machine and carries out what comes back, one event at a time. */
@@ -617,6 +628,7 @@ function updateEntities(room: Room, tick: XrFrameTick) {
     thinking: room.conversation.thinking,
     live: room.conversation.phase === 'live',
     pretendWorking: scene.kind === 'sample' && scene.mode === 'thinking',
+    sample: room.options.mode === 'sample',
   });
   if (outcome.pointing !== undefined) room.conversation.point(outcome.pointing.entity);
   // Before Done, which this very frame may also have pressed with the drop that is still settling.

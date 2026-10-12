@@ -7,6 +7,8 @@ import {
   type AppModel,
   BLURRED_CALL_LIMIT_MS,
   EDITING_GUIDE_LINES,
+  HANDHELD_EDITING_GUIDE_LINES,
+  HANDHELD_HINT_LINES,
   HINT_LINES,
   initialAppModel,
   KEEPING_LINES,
@@ -54,8 +56,10 @@ class Room {
     return this;
   }
 
-  inSample(): this {
-    this.send({ type: 'entered', mode: 'sample' });
+  /** Sample mode with him there: past the drawer of sample entities it opens on, and placed. */
+  inSample(readout?: boolean): this {
+    this.send({ type: 'entered', mode: 'sample', ...(readout === undefined ? {} : { readout }) });
+    this.send({ type: 'edit-done' });
     this.send({ type: 'placed' });
     return this;
   }
@@ -91,6 +95,15 @@ describe('entering the room', () => {
       { type: 'arm-wake' },
     ]);
     expect(room.view.hologram).toBe('hidden');
+  });
+
+  it('tells someone on a phone to tap the screen rather than pinch', () => {
+    const room = new Room();
+    expect(room.send({ type: 'entered', mode: 'conversation', handheld: true })).toContainEqual({
+      type: 'show-panel',
+      panel: 'hint',
+      lines: HANDHELD_HINT_LINES,
+    });
   });
 
   it('shows no hint and arms nothing when there is no wake engine at all', () => {
@@ -659,11 +672,21 @@ describe('captions', () => {
 });
 
 describe('sample mode', () => {
-  it('places him at once and starts on the first mood, with the frame-rate readout', () => {
-    const room = new Room();
+  it('opens on the drawer of sample entities, then places him and starts on the first mood, with the readout', () => {
+    const room = new Room({ kind: 'absent' });
     expect(room.send({ type: 'entered', mode: 'sample' })).toEqual([
-      { type: 'place', towards: undefined },
+      { type: 'show-panel', panel: 'guide', lines: EDITING_GUIDE_LINES },
       { type: 'set-frame-rate', target: 'highest' },
+      { type: 'editing', active: true },
+    ]);
+    expect(room.scene).toEqual({ kind: 'editing' });
+    // A pinch or a trigger pull is the drawer's while placing: it neither summons him nor leaves.
+    expect(room.send({ type: 'select', hold: 'short', target: 'elsewhere' })).toEqual([]);
+    expect(room.send({ type: 'edit-done' })).toEqual([
+      { type: 'place', towards: undefined },
+      { type: 'consume-held-selects' },
+      { type: 'hide-panel', panel: 'guide' },
+      { type: 'editing', active: false },
     ]);
     expect(room.send({ type: 'placed' })).toEqual([
       { type: 'arrive' },
@@ -674,9 +697,17 @@ describe('sample mode', () => {
     expect(room.scene).toEqual({ kind: 'sample', mode: 'speaking' });
   });
 
+  it('brings him in when the drawer is put away with B or Y too', () => {
+    const room = new Room({ kind: 'absent' });
+    room.send({ type: 'entered', mode: 'sample' });
+    expect(room.send({ type: 'dismiss-button' })).toContainEqual({ type: 'place', towards: undefined });
+    expect(room.scene).toEqual({ kind: 'placing', purpose: 'sample', towards: undefined });
+  });
+
   it('goes without the frame-rate readout in a room opened to be filmed, and only there', () => {
     const filmed = new Room();
     filmed.send({ type: 'entered', mode: 'sample', readout: false });
+    filmed.send({ type: 'edit-done' });
     expect(filmed.send({ type: 'placed' })).toEqual([
       { type: 'arrive' },
       { type: 'start-sample', mode: 'speaking' },
@@ -689,6 +720,7 @@ describe('sample mode', () => {
 
     // Every room decides afresh: the next one, entered without saying so, has its readout again.
     filmed.send({ type: 'entered', mode: 'sample' });
+    filmed.send({ type: 'edit-done' });
     expect(filmed.send({ type: 'placed' })).toContainEqual({ type: 'show-panel', panel: 'readout', lines: [] });
   });
 
@@ -913,6 +945,15 @@ describe('placing things', () => {
       ]);
       expect(room.scene).toEqual({ kind: 'editing' });
       expect(room.view.wakeArmed).toBe(false);
+    });
+
+    it('tells someone on a phone to drag a token rather than pinch it', () => {
+      const room = new Room({ kind: 'absent' });
+      expect(room.send({ type: 'entered', mode: 'placement', handheld: true })).toContainEqual({
+        type: 'show-panel',
+        panel: 'guide',
+        lines: HANDHELD_EDITING_GUIDE_LINES,
+      });
     });
 
     it('closes the room when it is done, having nothing to wait for — once placing things has let go', () => {

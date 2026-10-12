@@ -7,6 +7,7 @@ import {
   enterRoom,
   frames,
   hologramPosition,
+  openSampleMode,
   roomReport,
   scene,
   tap,
@@ -30,6 +31,7 @@ import {
   pointHandAt,
   pressControllerButton,
   REGISTRY_KEY,
+  SAMPLE_REGISTRY_KEY,
   seedRegistry,
   stored,
   then,
@@ -50,7 +52,8 @@ import { expect, photograph, ROOM_PICTURE_VIEWPORT, test } from './fixtures';
  *
  * Nothing here reaches ElevenLabs or a Jarvis server: what the server would be told sir points at
  * is read from the debug hook's `pendingPointing`, and the corona is lit by sample mode's thinking
- * mood, which lights every placed entity as a real mark would.
+ * mood, which lights every placed entity as a real mark would — with the placements copied into
+ * sample mode's own registry, which is all it shows.
  */
 
 const KITCHEN = { id: 'light.kitchen_ceiling', name: 'Kitchen ceiling light' };
@@ -384,8 +387,12 @@ test('what Jarvis works on is placed in the room by hand and controller, kept, p
   await test.step('sample mode’s thinking lights a corona round every placed entity', async () => {
     await page.goto(withOrigin(MOVED_AGAIN));
     await page.evaluate(() => window.__xrHarness?.ready);
-    await page.getByRole('button', { name: 'Try him in your room' }).click();
-    await expect.poll(() => scene(page), { timeout: 90000 }).toBe('sample:speaking');
+    // Sample mode shows its own entities only, so the real placements are copied in as samples would be.
+    await page.evaluate(
+      ([real, samples]) => window.localStorage.setItem(samples, window.localStorage.getItem(real) ?? ''),
+      [REGISTRY_KEY, SAMPLE_REGISTRY_KEY],
+    );
+    await openSampleMode(page);
     await aim(page, toEmulator(await hologramPosition(page), MOVED_AGAIN));
     await tap(page);
     await expect.poll(() => scene(page), { timeout: 30000 }).toBe('sample:listening');

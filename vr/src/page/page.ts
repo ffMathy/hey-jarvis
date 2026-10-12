@@ -21,7 +21,10 @@ import { loadVoiceFromWhereHeStands, saveVoiceFromWhereHeStands } from './voice-
  * things Jarvis works on in the room.
  */
 
-/** Which room to open: the real one, sample mode, or one to place things in. */
+/**
+ * Which room to open: the real one, sample mode — which opens on a drawer of made-up entities to try
+ * placing and pointing with (`entities/sample-entities.ts`) — or one to place the real ones in.
+ */
 export type RoomMode = 'conversation' | 'sample' | 'placement';
 
 /** What a room hands back to the page when it closes. */
@@ -246,7 +249,9 @@ export function startPage(document: Document, dependencies: PageDependencies): v
     facts.xr = supported ? 'supported' : 'unsupported';
     debug.phase = supported ? 'ready' : 'unsupported';
     if (!supported) {
-      say('This browser cannot put Jarvis in your room. Open this page in the browser on a Meta Quest.');
+      say(
+        'This browser cannot put Jarvis in your room. Open this page in the browser on a Meta Quest, or in Chrome on an Android phone with ARCore.',
+      );
     }
     render();
   }

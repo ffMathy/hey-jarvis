@@ -46,6 +46,13 @@ export const TOKEN_FROM_SLOT_TOP_METRES = 0.022;
 export const DRAWER_AHEAD_METRES = 0.42;
 export const DRAWER_BELOW_EYES_METRES = 0.3;
 
+/**
+ * Where it opens on a phone: straight ahead of the camera, level with it, and far enough off that the
+ * whole board fits a portrait screen. Nobody reaches into a phone's room with a hand, so the lectern
+ * under the eyes would only be out of the picture.
+ */
+export const HANDHELD_DRAWER_AHEAD_METRES = 0.7;
+
 /** How big a footer button is drawn, and how far from its middle a ray or a fingertip still counts. */
 export const DRAWER_BUTTON_RADIUS_METRES = 0.02;
 export const DRAWER_BUTTON_REACH_METRES = 0.03;
@@ -105,14 +112,16 @@ function normalised(vector: Vector3Like): Vector3Like {
 /**
  * The board opened in front of `eye`, `ahead` being the unit direction ahead along the floor: at
  * {@link DRAWER_AHEAD_METRES} and {@link DRAWER_BELOW_EYES_METRES}, level from side to side, and
- * tilted so it faces the eyes squarely.
+ * tilted so it faces the eyes squarely. On a phone (`handheld`) it opens level with the camera, at
+ * {@link HANDHELD_DRAWER_AHEAD_METRES}, so it is on the screen.
  */
-export function drawerPoseFacing(eye: Vector3Like, ahead: Vector3Like): DrawerPose {
+export function drawerPoseFacing(eye: Vector3Like, ahead: Vector3Like, handheld = false): DrawerPose {
   const level = normalised({ x: ahead.x, y: 0, z: ahead.z });
+  const distance = handheld ? HANDHELD_DRAWER_AHEAD_METRES : DRAWER_AHEAD_METRES;
   const centre = {
-    x: eye.x + level.x * DRAWER_AHEAD_METRES,
-    y: eye.y - DRAWER_BELOW_EYES_METRES,
-    z: eye.z + level.z * DRAWER_AHEAD_METRES,
+    x: eye.x + level.x * distance,
+    y: handheld ? eye.y : eye.y - DRAWER_BELOW_EYES_METRES,
+    z: eye.z + level.z * distance,
   };
   const normal = normalised(difference(centre, eye));
   const right = normalised(cross({ x: 0, y: 1, z: 0 }, normal));

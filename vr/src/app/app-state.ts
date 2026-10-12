@@ -121,6 +121,9 @@ export const UNEXPLAINED_FAILURE = 'Jarvis could not be reached.';
 /** The hint, shown in the empty room until he has been summoned once. */
 export const HINT_LINES: readonly string[] = ['Say “Hey Jarvis”', 'or pinch / pull the trigger'];
 
+/** The hint on a phone, where the room is tapped rather than pinched. */
+export const HANDHELD_HINT_LINES: readonly string[] = ['Say “Hey Jarvis”', 'or tap the screen'];
+
 /** The first line of the status shown whenever the wake engine is not listening; the second is its problem. */
 export const NOT_LISTENING_LINE = 'Not listening for “Hey Jarvis”';
 
@@ -130,6 +133,13 @@ export const EDITING_GUIDE_LINES: readonly string[] = [
   'Pinch or grip one in the drawer, and let go where it is',
   'Out of reach? Point and pinch, or pull the trigger, and again there',
   'Done, B or Y when you have finished',
+];
+
+/** The same on a phone, where a token is dragged with a finger and there is no B or Y. */
+export const HANDHELD_EDITING_GUIDE_LINES: readonly string[] = [
+  'Placing what Jarvis works on',
+  'Drag one out of the drawer, and let go on where it is',
+  'Done when you have finished',
 ];
 
 /** What the same line says while a room opened only to place things waits to keep its last drop. */
@@ -170,6 +180,8 @@ export interface AppModel {
   summonedOnce: boolean;
   /** Whether this headset shows its system keyboard to an immersive page. */
   canType: boolean;
+  /** Whether the room is on a phone's screen, which is tapped rather than pinched: only what it says differs. */
+  handheld: boolean;
   keyboardOpen: boolean;
   /** His latest line in writing, while he is present. */
   caption: string | undefined;
@@ -207,6 +219,8 @@ export type AppEvent =
       mode: RoomMode;
       /** Whether the session can show the system keyboard (`XRSession.isSystemKeyboardSupported`). */
       canType?: boolean;
+      /** Whether the room is on a phone's screen (`isHandheld`). */
+      handheld?: boolean;
       /** Whether sample mode shows its frame-rate readout; shown unless this says otherwise. */
       readout?: boolean;
       /** Whether an error panel stays up until it is dismissed; only for as long as it takes to read unless this says so. */
@@ -303,6 +317,7 @@ export function initialAppModel(wake: WakeReadiness = { kind: 'absent' }): AppMo
     dropsSettling: false,
     summonedOnce: false,
     canType: false,
+    handheld: false,
     keyboardOpen: false,
     caption: undefined,
     pendingProblem: undefined,
@@ -373,6 +388,14 @@ function leaveToExit(model: AppModel): Transition {
  */
 function leaveEditing(model: AppModel, now: number): Transition {
   const spend: AppEffect = { type: 'consume-held-selects' };
+  if (model.mode === 'sample') {
+    return go(
+      model,
+      { scene: { kind: 'placing', purpose: 'sample', towards: undefined } },
+      { type: 'place', towards: undefined },
+      spend,
+    );
+  }
   if (model.mode !== 'placement') return go(model, { scene: { kind: 'waiting' } }, spend);
   if (model.dropsSettling) return go(model, { scene: { kind: 'keeping', until: now + KEEPING_LONGEST_MS } }, spend);
   return closePlacement(model, spend);
@@ -388,18 +411,14 @@ function onEntered(model: AppModel, event: Extract<AppEvent, { type: 'entered' }
     ...initialAppModel(model.wake),
     mode: event.mode,
     canType: event.canType ?? false,
+    handheld: event.handheld ?? false,
     showsReadout: event.readout ?? true,
     holdsErrors: event.holdErrors ?? false,
     scene: { kind: 'waiting' },
   };
-  if (event.mode === 'sample') {
-    return go(
-      fresh,
-      { scene: { kind: 'placing', purpose: 'sample', towards: undefined } },
-      { type: 'place', towards: undefined },
-    );
-  }
-  if (event.mode === 'placement') return go(fresh, { scene: { kind: 'editing' } });
+  // Placing things opens on the drawer, and so does sample mode — on the sample entities, with him
+  // arriving once they are placed.
+  if (event.mode !== 'conversation') return go(fresh, { scene: { kind: 'editing' } });
   return stay(fresh);
 }
 
@@ -707,7 +726,8 @@ function hintOf(model: AppModel): readonly string[] | null {
     !model.checkingWake &&
     model.wake.kind === 'listening' &&
     !model.summonedOnce;
-  return shown ? HINT_LINES : null;
+  if (!shown) return null;
+  return model.handheld ? HANDHELD_HINT_LINES : HINT_LINES;
 }
 
 function statusOf(model: AppModel): readonly string[] | null {
@@ -716,7 +736,7 @@ function statusOf(model: AppModel): readonly string[] | null {
 }
 
 function guideOf(model: AppModel): readonly string[] | null {
-  if (model.scene.kind === 'editing') return EDITING_GUIDE_LINES;
+  if (model.scene.kind === 'editing') return model.handheld ? HANDHELD_EDITING_GUIDE_LINES : EDITING_GUIDE_LINES;
   return model.scene.kind === 'keeping' ? KEEPING_LINES : null;
 }
 

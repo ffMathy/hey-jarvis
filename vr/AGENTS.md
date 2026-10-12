@@ -42,10 +42,17 @@ listening, a status line saying why and what to do about it.
   problem hangs at his spot for as long as it takes to read, then he leaves and
   the wake word is armed again. The 2D page shows the last problem once the room
   is closed.
-- **Try him in your room** is sample mode: no key and no microphone. Select him
-  to walk his moods (speaking, listening, thinking, idle); select anywhere else to
-  leave. While he thinks there, everything you have placed lights up, as it would
-  while he worked on it.
+- **Try him in your room** is sample mode: no key and no microphone. It opens on
+  a drawer of made-up entities — a kitchen light, a TV, an inbox — since the real
+  drawer only offers what Jarvis has worked on in a conversation and so starts
+  empty. They are kept apart from the real ones, under
+  `jarvis.horizon.sample-entities` (`entities/sample-entities.ts`), and only
+  sample mode shows them; it never has a conversation, so nothing about them
+  reaches the Jarvis server. Place some, press Done (or B/Y), and he arrives.
+  Select him to walk his moods (speaking, listening, thinking, idle); select
+  anywhere else to leave. Point at a placed sample (on a phone, tap it) and it is
+  ringed and its corona lights, as if he had been asked to work on it; while he
+  thinks, every placed sample lights up.
 - **Placing what he works on:** whatever Jarvis works on for you — a light, an
   inbox, a calendar — goes into a drawer, by name. **Place entities** on the 2D
   page (no key, no microphone), or A/X or the button on the back of a raised wrist
@@ -57,6 +64,8 @@ listening, a status line saying why and what to do about it.
   point at one — a controller, or an index finger with the others curled — and a
   blue ring and its name say that "turn that on" now means it (see "Entities
   placed in the room" below).
+- **Where things are:** outside the drawer, every placed entity has a small dot
+  — no ring, never smaller than 0.35° — so you can see what there is to point at.
 - **No headset?** https://ffmathy.github.io/hey-jarvis/vr/preview.html shows
   him in 3D on a desktop, phase by phase (see "The preview page" below).
 - **His voice from where he stands:** on a headset with an echo canceller of its
@@ -75,6 +84,35 @@ listening, a status line saying why and what to do about it.
   which keeps a summoning waiting for a conversation that never opens, and
   `?errors=held`, which keeps an error panel up until a select or B
   (`test-seams.ts`; see "The browser tests").
+
+## Using it on a phone
+
+The same page works in Chrome on an Android phone with ARCore: **Enter your
+room** opens the phone's camera as the room, and Jarvis stands in it on the
+screen. The session says it is on a phone through `XRSession.interactionMode`
+(`screen-space`; `isHandheld` in `xr/input-snapshots.ts`), and only what the
+hands and controllers did changes:
+
+- **A tap on the screen is the select.** It summons him and walks sample mode's
+  moods; a press held for 0.8 s hangs up, as a held pinch does.
+- **Pointing is a tap.** There are no hands in a phone's room to point with, so a
+  tap on a placed entity points at it at once — ringed and named, and told to the
+  Jarvis server as a pointed finger is — and holds it for 15 s
+  (`TAP_HOLD_SECONDS`), long enough to tap the lamp and then say "Hey Jarvis,
+  turn that on". A tap on an entity never also summons him or ends sample mode.
+  Headsets keep pointing with a finger or a controller, and do not tap.
+- **Placing things is a drag.** **Place entities** (or **Try him in your
+  room**, with the samples) on the 2D page opens the drawer
+  level with the camera and 0.7 m off, so it fits a portrait screen; touch a
+  token, drag it to where it belongs — it sits where the line through your finger
+  meets the room, from the transient-input hit test — and lift your finger to drop
+  it. Drag it back onto the drawer to put it back. Tap Done to finish. There is
+  no A/X or wrist button on a phone, so the drawer is opened from the page only.
+  A phone's browser anchors a spot only for the session — it has no persistent
+  anchors — so a drop is kept on an anchor of that session
+  (`SESSION_ANCHOR_PREFIX` in `entities/room-anchors.ts`), and comes back as lost,
+  for placing again, next time.
+- **The hint and the guide** say "tap" and "drag" rather than "pinch".
 
 ## What is in here
 
@@ -187,7 +225,8 @@ them: the key, getting ready, **Allow the microphone**, **Enter your room**.
   keeping anything, so a mistyped key shows next to the field, not as an error
   panel in the room.
 - **Two rooms need no key and no microphone:** **Try him in your room** (sample
-  mode) and **Place entities**, which opens straight into the drawer and back to
+  mode, which opens on the drawer of sample entities and brings him in when it is
+  put away) and **Place entities**, which opens straight into the drawer and back to
   the page when it is done (`RoomMode` `'placement'`).
 - **"His voice from where he stands"** is the headset's one setting of its own
   (`page/voice-setting.ts`, under `jarvis.horizon.voice-from-where-he-stands`):
@@ -703,6 +742,7 @@ tells the server what sir points at.
 
 ```
 src/entities/registry.ts        every entity ever marked, and where each placed one is kept (localStorage)
+src/entities/sample-entities.ts made-up entities to try placing with, in a registry of their own
 src/entities/room-anchors.ts    a few persistent anchors, placements as offsets from them, restored each session
 src/entities/affected.ts        how long a corona stays lit
 src/entities/pointing.ts        what sir points at, and what the Jarvis server is told about it
@@ -759,8 +799,9 @@ pressed by the other hand's index tip; only while waiting or placing things. On 
 the palm, because Meta keeps a palm-up pinch for itself on both hands, and on the left it takes sir
 out of the room.
 
-**Pointing**, whenever sir is not placing things: a controller's ray, or an index finger in a point
-pose (index straight, the rest curled — a hand's system ray is there whether it points or not),
+**Pointing**, whenever sir is not placing things: on a phone a tap on the screen, nearest the
+finger's line inside 6°, points at once and holds for 15 s (`tapPointing`); on a headset a
+controller's ray, or an index finger in a point pose (index straight, the rest curled — a hand's system ray is there whether it points or not),
 picks the placed entity inside a cone of 4° or 7° round it, after a 0.28 s dwell, with a 2° margin
 before switching and a drop 0.2 s outside 1.5 times the cone; one beyond a controller's depth hit is
 passed over. It is ringed in the accent with its name over it. The Jarvis server is told the entity
@@ -894,7 +935,8 @@ CHROMIUM_EXECUTABLE_PATH works as it does for the browser tests.
 
 **The shot** (`demo-shot.ts`, pure, pinned by `demo-shot.spec.ts`): the real room, entered with a key,
 waiting with its hint, the head glancing so the hint is seen trailing the gaze; a cut, from the same
-pose, to sample mode — the real room cannot summon him without ElevenLabs — where he is placed 1.6 m
+pose, to sample mode — the real room cannot summon him without ElevenLabs — its drawer of samples put
+away with B in frames nobody sees, where he is placed 1.6 m
 ahead and arrives; a glance about 29° to the right and back while he greets, so he is on the left of
 the picture and heard from the left; a walk to arm's length (0.8 m, well outside his 2.5R fade), one
 full turn round him there while selects on him walk listening, thinking, idle and speaking, and a
@@ -1029,6 +1071,12 @@ the models first.
   sharp as it should be at the hint's 1.3 m and the drawer's half metre, and whether
   the half-level sharpening shimmers as the head moves; whether the tokens' rings
   crawl across the room, where they are a pixel or two wide.
+- **A phone.** Whether Chrome on Android grants `local-floor`, which the session
+  requires, on every ARCore phone; whether a tap's `select` arrives with a pose
+  for its ray; whether the transient-input hit test finds the room fast enough
+  for a drag; whether the 6° tap cone (`TAP_CONE_DEGREES`) is the size of a
+  fingertip on a real screen; and whether the wake word's microphone and the
+  camera can run together.
 - **Placing things.** How long persistent anchors take to restore and locate, how
   they behave across rooms, what `requestPersistentHandle` says at the limit of
   eight per origin, whether other Pages projects on `ffmathy.github.io` already
@@ -1118,7 +1166,8 @@ the models first.
   come back right for the wrong reason; a controller's ray and a pointing finger;
   A, a pinch, B; the wrist button; Done pulled with the trigger in a room with a
   conversation, held and let go without summoning him; sample mode's thinking
-  lighting a corona round each placed entity; and **Place entities** again, with a
+  lighting a corona round each placed entity (copied into sample mode's own
+  registry, which is all it shows); and **Place entities** again, with a
   drop far from every anchor and Done in the same frame, kept before the room
   closes. `entities-driver.ts` holds the emulated head, hands and
   controllers, converts between the emulator's space and the room's, and measures
