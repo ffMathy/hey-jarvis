@@ -246,7 +246,7 @@ export function startPage(document: Document, dependencies: PageDependencies): v
     facts.xr = supported ? 'supported' : 'unsupported';
     debug.phase = supported ? 'ready' : 'unsupported';
     if (!supported) {
-      say('This browser cannot put Jarvis in your room. Open this page in the browser on a Meta Quest.');
+      say('This browser cannot put Jarvis in your room. Open this page in the browser on a Meta Quest, or in Chrome on an Android phone with ARCore.');
     }
     render();
   }

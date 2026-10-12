@@ -21,7 +21,7 @@ describe('primaryButton', () => {
       enabled: false,
       action: 'none',
     });
-    expect(primaryButton({ ...READY, xr: 'unsupported' }).label).toBe('Open this page on a Meta Quest');
+    expect(primaryButton({ ...READY, xr: 'unsupported' }).label).toBe('Open this page on a Meta Quest or an AR phone');
   });
 
   it('asks for the ElevenLabs key before anything else', () => {

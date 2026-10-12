@@ -29,9 +29,20 @@ import { distanceBetween, type Ray, rayFromPose, type Vector3Like } from './ray'
  *
  * Each source is keyed by its hand and kind — `left-hand`, `right-controller` — which stays the same
  * when a controller is put down and picked up again, unlike the `XRInputSource` object.
+ *
+ * **A phone's screen is a third kind.** In a handheld AR session a finger on the screen is an input
+ * source of its own (`targetRayMode` `screen`) that exists only while the finger is down, its ray
+ * from the camera through the point touched. It is read as a `screen` input — `none-screen`, since
+ * it has no hand — with no grip, joints or buttons. Its depth comes from the transient-input hit test
+ * (`requestHitTestSourceForTransientInput`), asked for once, because a source that lives for one
+ * touch is gone long before a hit-test source made for it would arrive.
  */
 
 declare global {
+  interface XRSession {
+    /** Whether the session is shown on a screen held in the hand or worn on the head (WebXR AR Module). */
+    readonly interactionMode?: 'screen-space' | 'world-space';
+  }
   interface XRFrame {
     /**
      * Every space's pose in `baseSpace`, as 16-float column-major matrices one after another, in
@@ -41,7 +52,18 @@ declare global {
   }
 }
 
-export type InputKind = 'hand' | 'controller';
+export type InputKind = 'hand' | 'controller' | 'screen';
+
+/** The input profile a phone's touches come in as, for the transient-input hit test. */
+export const TOUCHSCREEN_PROFILE = 'generic-touchscreen';
+
+/**
+ * Whether `session` is on a phone or tablet held in the hand, where the room is seen on a screen and
+ * touched there, rather than on a headset where it is reached into with hands and controllers.
+ */
+export function isHandheld(session: Pick<XRSession, 'interactionMode'>): boolean {
+  return session.interactionMode === 'screen-space';
+}
 
 /** What a controller's buttons and thumbstick are doing this frame. */
 export interface ControllerButtons {
@@ -58,7 +80,7 @@ export interface InputSnapshot {
   id: string;
   kind: InputKind;
   handedness: XRHandedness;
-  /** A controller's laser, or a hand's system ray. */
+  /** A controller's laser, a hand's system ray, or the line from a phone's camera through the finger. */
   targetRay?: Ray;
   /** Where a controller is held. */
   grip?: Vector3Like;
@@ -122,11 +144,27 @@ export function createInputSnapshots(session: XRSession): InputSnapshots {
   const jointSpaces = new Map<XRHand, XRJointSpace[] | undefined>();
   const poses = new Float32Array(HAND_JOINTS.length * 16);
   const canHitTest = session.enabledFeatures?.includes('hit-test') === true;
+  let touchHitTest: XRTransientInputHitTestSource | undefined;
   let disposed = false;
+
+  if (canHitTest && isHandheld(session)) {
+    try {
+      session.requestHitTestSourceForTransientInput?.({ profile: TOUCHSCREEN_PROFILE }).then(
+        (hitTest) => {
+          if (disposed) hitTest.cancel();
+          else touchHitTest = hitTest;
+        },
+        () => undefined,
+      );
+    } catch {
+      // Nothing depends on it: a token dragged without it keeps the distance it was picked at.
+    }
+  }
 
   /** Asks for a hit-test source along `source`'s ray; nothing depends on getting one. */
   function watch(source: XRInputSource) {
-    if (!canHitTest || asked.has(source)) return;
+    // A touch's depth comes from the one transient-input hit test.
+    if (!canHitTest || asked.has(source) || source.targetRayMode === 'screen') return;
     asked.add(source);
     let request: Promise<XRHitTestSource> | undefined;
     try {
@@ -187,7 +225,20 @@ export function createInputSnapshots(session: XRSession): InputSnapshots {
     return jointsFromPoses(poses);
   }
 
+  /** How far along a touch's ray the transient-input hit test finds the room. */
+  function touchHitDistanceOf(frame: XRFrame, source: XRInputSource, space: XRReferenceSpace, ray: Ray) {
+    if (touchHitTest === undefined) return undefined;
+    try {
+      const touch = frame.getHitTestResultsForTransientInput(touchHitTest).find((result) => result.inputSource === source);
+      const hit = touch?.results[0]?.getPose(space);
+      return hit === undefined ? undefined : hitDistanceAlong(ray, hit.transform.position);
+    } catch {
+      return undefined;
+    }
+  }
+
   function hitDistanceOf(frame: XRFrame, source: XRInputSource, space: XRReferenceSpace, ray: Ray | undefined) {
+    if (ray !== undefined && source.targetRayMode === 'screen') return touchHitDistanceOf(frame, source, space, ray);
     const hitTest = hitTests.get(source);
     if (hitTest === undefined || ray === undefined) return undefined;
     try {
@@ -200,7 +251,8 @@ export function createInputSnapshots(session: XRSession): InputSnapshots {
   }
 
   function snapshotOf(frame: XRFrame, source: XRInputSource, space: XRReferenceSpace): InputSnapshot {
-    const kind: InputKind = source.hand === undefined ? 'controller' : 'hand';
+    const kind: InputKind =
+      source.targetRayMode === 'screen' ? 'screen' : source.hand === undefined ? 'controller' : 'hand';
     const rayPose = frame.getPose(source.targetRaySpace, space);
     const targetRay = rayPose && rayFromPose(rayPose.transform);
     return {
@@ -219,8 +271,8 @@ export function createInputSnapshots(session: XRSession): InputSnapshots {
     read(frame, space) {
       const snapshots: InputSnapshot[] = [];
       for (const source of session.inputSources) {
-        // Gaze and screen taps have no hand to hold anything with.
-        if (source.targetRayMode === 'tracked-pointer') snapshots.push(snapshotOf(frame, source, space));
+        // A gaze has nothing to hold anything with, or to point with but the head.
+        if (source.targetRayMode !== 'gaze') snapshots.push(snapshotOf(frame, source, space));
       }
       return snapshots;
     },
@@ -229,6 +281,8 @@ export function createInputSnapshots(session: XRSession): InputSnapshots {
       session.removeEventListener('inputsourceschange', onSourcesChange);
       for (const hitTest of hitTests.values()) hitTest.cancel();
       hitTests.clear();
+      touchHitTest?.cancel();
+      touchHitTest = undefined;
       asked.clear();
     },
   };

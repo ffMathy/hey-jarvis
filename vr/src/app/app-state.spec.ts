@@ -7,6 +7,8 @@ import {
   type AppModel,
   BLURRED_CALL_LIMIT_MS,
   EDITING_GUIDE_LINES,
+  HANDHELD_EDITING_GUIDE_LINES,
+  HANDHELD_HINT_LINES,
   HINT_LINES,
   initialAppModel,
   KEEPING_LINES,
@@ -91,6 +93,15 @@ describe('entering the room', () => {
       { type: 'arm-wake' },
     ]);
     expect(room.view.hologram).toBe('hidden');
+  });
+
+  it('tells someone on a phone to tap the screen rather than pinch', () => {
+    const room = new Room();
+    expect(room.send({ type: 'entered', mode: 'conversation', handheld: true })).toContainEqual({
+      type: 'show-panel',
+      panel: 'hint',
+      lines: HANDHELD_HINT_LINES,
+    });
   });
 
   it('shows no hint and arms nothing when there is no wake engine at all', () => {
@@ -913,6 +924,15 @@ describe('placing things', () => {
       ]);
       expect(room.scene).toEqual({ kind: 'editing' });
       expect(room.view.wakeArmed).toBe(false);
+    });
+
+    it('tells someone on a phone to drag a token rather than pinch it', () => {
+      const room = new Room({ kind: 'absent' });
+      expect(room.send({ type: 'entered', mode: 'placement', handheld: true })).toContainEqual({
+        type: 'show-panel',
+        panel: 'guide',
+        lines: HANDHELD_EDITING_GUIDE_LINES,
+      });
     });
 
     it('closes the room when it is done, having nothing to wait for — once placing things has let go', () => {

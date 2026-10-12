@@ -110,6 +110,20 @@ describe('grabbersFrom', () => {
   });
 });
 
+describe('a phone’s screen', () => {
+  const touch: InputSnapshot = { id: 'none-screen', kind: 'screen', handedness: 'none', targetRay: AHEAD, hitDistance: 1.2 };
+
+  it('selects along the line through the finger for as long as the finger is down, and holds nothing', () => {
+    expect(grabbersFrom([touch], NO_HANDS)).toEqual([
+      { id: 'none-screen', kind: 'screen', holding: false, selecting: true, ray: AHEAD, hitDistance: 1.2 },
+    ]);
+  });
+
+  it('is not pointing: on a phone a thing is tapped instead', () => {
+    expect(pointersFrom([touch], NO_HANDS)).toEqual([]);
+  });
+});
+
 describe('pointersFrom', () => {
   it('points along every controller, with its depth hit', () => {
     expect(pointersFrom([controller('right')], NO_HANDS)).toEqual([

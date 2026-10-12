@@ -329,3 +329,50 @@ describe('controllers', () => {
     expect(events.map((event) => event.kind)).toEqual(['grabbed', 'placed']);
   });
 });
+
+describe('on a phone’s screen', () => {
+  function touching(ray: Ray, overrides: Partial<Grabber> = {}): Grabber {
+    return { id: 'none-screen', kind: 'screen', holding: false, selecting: true, ray, ...overrides };
+  }
+
+  it('takes the token a finger touches, drags it along the line through the finger, and drops it when lifted', () => {
+    const lamp = { x: 0.6, y: 1.8, z: -2 };
+    const toLamp = rayTowards(lamp);
+    const hit = Math.hypot(lamp.x - EYE.x, lamp.y - EYE.y, lamp.z - EYE.z);
+    const { events, carried } = run([
+      [touching(rayTowards(KITCHEN.position))],
+      [touching(toLamp, { hitDistance: hit })],
+    ]);
+    expect(events).toEqual([
+      { kind: 'grabbed', id: 'light.kitchen', grabber: 'none-screen', mode: 'drag', from: 'drawer' },
+    ]);
+    expect(carried[0]?.mode).toBe('drag');
+    expect(carried[0]?.position.x).toBeCloseTo(lamp.x, 6);
+    expect(carried[0]?.position.z).toBeCloseTo(lamp.z, 6);
+
+    // The touch is gone from the frame the moment the finger lifts: that is letting go, not losing track.
+    const lifted = run([[touching(rayTowards(KITCHEN.position))], [touching(toLamp, { hitDistance: hit })], []]);
+    const placed = lifted.events.at(-1);
+    expect(placed?.kind).toBe('placed');
+    if (placed?.kind === 'placed') {
+      expect(placed.position.x).toBeCloseTo(lamp.x, 6);
+      expect(placed.position.y).toBeCloseTo(lamp.y, 6);
+    }
+    expect(lifted.carried).toEqual([]);
+  });
+
+  it('puts a token dragged back over the drawer back in', () => {
+    const { events } = run([
+      [touching(rayTowards(CEILING.position))],
+      [touching(rayTowards(DRAWER.centre), { hitDistance: 5 })],
+      [],
+    ]);
+    expect(events.map((event) => event.kind)).toEqual(['grabbed', 'unplaced']);
+  });
+
+  it('takes nothing when the finger lands on no token', () => {
+    const { events, carried } = run([[touching(rayTowards({ x: -2, y: 0.5, z: -1 }))], []]);
+    expect(events).toEqual([]);
+    expect(carried).toEqual([]);
+  });
+});

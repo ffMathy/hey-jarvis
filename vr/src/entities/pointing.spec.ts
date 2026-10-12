@@ -23,6 +23,9 @@ import {
   SWITCH_MARGIN_DEGREES,
   stepPointing,
   stepPointingUpdate,
+  TAP_CONE_DEGREES,
+  TAP_HOLD_SECONDS,
+  tapPointing,
 } from './pointing';
 
 const EYE = { x: 0, y: 1.5, z: 0 };
@@ -159,6 +162,50 @@ describe('choosing what is pointed at', () => {
     expect(state.candidate).toEqual({ id: 'light.b', since: DWELL_SECONDS * 0.8 });
     state = stepPointing(state, [source(10)], [target('light.a', 0), target('light.b', 10)], DWELL_SECONDS * 1.2);
     expect(state.pointed).toBeUndefined();
+  });
+});
+
+describe('tapping, on a phone', () => {
+  const lamp = target('light.lamp', 0);
+  const inbox = target('inbox:work', 20);
+
+  it('points at the entity tapped at once, with no dwell', () => {
+    const tapped = tapPointing(NOT_POINTING, rayAt(TAP_CONE_DEGREES - 1), [lamp, inbox], 10);
+    expect(tapped?.pointed).toEqual({ id: 'light.lamp', since: 10 });
+  });
+
+  it('points at nothing when the tap is on none of them', () => {
+    expect(tapPointing(NOT_POINTING, rayAt(TAP_CONE_DEGREES + 2), [lamp, inbox], 10)).toBeUndefined();
+  });
+
+  it('picks the one nearest the finger', () => {
+    const near = target('light.near', 3);
+    expect(tapPointing(NOT_POINTING, rayAt(4), [lamp, near], 10)?.pointed?.id).toBe('light.near');
+  });
+
+  it('holds the tapped one with nothing pointing at it, then lets it go', () => {
+    const tapped = tapPointing(NOT_POINTING, rayAt(0), [lamp], 10) ?? NOT_POINTING;
+    const held = hold(tapped, [], [lamp], 10, 10 + TAP_HOLD_SECONDS - 0.1);
+    expect(held.pointed?.id).toBe('light.lamp');
+    const after = hold(held, [], [lamp], 10 + TAP_HOLD_SECONDS, 10 + TAP_HOLD_SECONDS + 2 * DROP_GRACE_SECONDS);
+    expect(after.pointed).toBeUndefined();
+  });
+
+  it('lets it go when it is no longer in the room', () => {
+    const tapped = tapPointing(NOT_POINTING, rayAt(0), [lamp], 10) ?? NOT_POINTING;
+    expect(hold(tapped, [], [], 10, 11).pointed).toBeUndefined();
+  });
+
+  it('gives way to a ray pointing at something else', () => {
+    const tapped = tapPointing(NOT_POINTING, rayAt(0), [lamp, inbox], 10) ?? NOT_POINTING;
+    const moved = hold(tapped, [source(20, 'controller')], [lamp, inbox], 10, 11);
+    expect(moved.pointed?.id).toBe('inbox:work');
+  });
+
+  it('keeps when it was first pointed at when tapped again, and renews the hold', () => {
+    const first = tapPointing(NOT_POINTING, rayAt(0), [lamp], 10) ?? NOT_POINTING;
+    const again = tapPointing(first, rayAt(1), [lamp], 14);
+    expect(again).toEqual({ pointed: { id: 'light.lamp', since: 10 }, tappedUntil: 14 + TAP_HOLD_SECONDS });
   });
 });
 

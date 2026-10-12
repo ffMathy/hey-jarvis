@@ -71,11 +71,24 @@ export function readHands(
 /**
  * Each hand and controller as the grab reads it. A hand holds and selects with the same pinch, at
  * the point between its thumb and index tips; a controller holds with the grip and selects with the
- * trigger, and pushes a token riding its laser out or in with the thumbstick.
+ * trigger, and pushes a token riding its laser out or in with the thumbstick. A finger on a phone's
+ * screen selects for as long as it is there — the touch only exists while it is — along the line
+ * from the camera through it, and holds nothing within reach, since there is no hand in the room.
  */
 export function grabbersFrom(inputs: readonly InputSnapshot[], hands: HandReadings): Grabber[] {
   const grabbers: Grabber[] = [];
   for (const input of inputs) {
+    if (input.kind === 'screen') {
+      grabbers.push({
+        id: input.id,
+        kind: 'screen',
+        holding: false,
+        selecting: true,
+        ray: input.targetRay,
+        ...(input.hitDistance === undefined ? {} : { hitDistance: input.hitDistance }),
+      });
+      continue;
+    }
     if (input.kind === 'controller') {
       const buttons = input.buttons;
       grabbers.push({
@@ -114,7 +127,8 @@ export function grabbersFrom(inputs: readonly InputSnapshot[], hands: HandReadin
  * The rays sir points along this frame: every controller's laser — with how far along it the room
  * is, so a thing behind the wall it points at is passed over — and each hand's index finger while it
  * is in a point pose. A finger's ray has no depth hit: the hit test follows the hand's system ray,
- * which goes elsewhere.
+ * which goes elsewhere. A phone's touches are not pointing: on a phone a thing is tapped, not pointed
+ * at, and the tap is the room's select (`pointing.ts`'s `tapPointing`).
  */
 export function pointersFrom(inputs: readonly InputSnapshot[], hands: HandReadings): PointerSource[] {
   const pointers: PointerSource[] = [];
@@ -128,7 +142,7 @@ export function pointersFrom(inputs: readonly InputSnapshot[], hands: HandReadin
       );
       continue;
     }
-    if (input.joints === undefined || hands.get(input.id)?.pointing !== true) continue;
+    if (input.kind !== 'hand' || input.joints === undefined || hands.get(input.id)?.pointing !== true) continue;
     const ray = fingerRay(input.joints);
     if (ray !== undefined) pointers.push({ id: input.id, kind: 'hand', ray });
   }

@@ -76,6 +76,30 @@ listening, a status line saying why and what to do about it.
   `?errors=held`, which keeps an error panel up until a select or B
   (`test-seams.ts`; see "The browser tests").
 
+## Using it on a phone
+
+The same page works in Chrome on an Android phone with ARCore: **Enter your
+room** opens the phone's camera as the room, and Jarvis stands in it on the
+screen. The session says it is on a phone through `XRSession.interactionMode`
+(`screen-space`; `isHandheld` in `xr/input-snapshots.ts`), and only what the
+hands and controllers did changes:
+
+- **A tap on the screen is the select.** It summons him and walks sample mode's
+  moods; a press held for 0.8 s hangs up, as a held pinch does.
+- **Pointing is a tap.** There are no hands in a phone's room to point with, so a
+  tap on a placed entity points at it at once — ringed and named, and told to the
+  Jarvis server as a pointed finger is — and holds it for 15 s
+  (`TAP_HOLD_SECONDS`), long enough to tap the lamp and then say "Hey Jarvis,
+  turn that on". A tap on an entity never also summons him or ends sample mode.
+  Headsets keep pointing with a finger or a controller, and do not tap.
+- **Placing things is a drag.** **Place entities** on the 2D page opens the drawer
+  level with the camera and 0.7 m off, so it fits a portrait screen; touch a
+  token, drag it to where it belongs — it sits where the line through your finger
+  meets the room, from the transient-input hit test — and lift your finger to drop
+  it. Drag it back onto the drawer to put it back. Tap Done to finish. There is
+  no A/X or wrist button on a phone, so the drawer is opened from the page only.
+- **The hint and the guide** say "tap" and "drag" rather than "pinch".
+
 ## What is in here
 
 ```
@@ -759,8 +783,9 @@ pressed by the other hand's index tip; only while waiting or placing things. On 
 the palm, because Meta keeps a palm-up pinch for itself on both hands, and on the left it takes sir
 out of the room.
 
-**Pointing**, whenever sir is not placing things: a controller's ray, or an index finger in a point
-pose (index straight, the rest curled — a hand's system ray is there whether it points or not),
+**Pointing**, whenever sir is not placing things: on a phone a tap on the screen, nearest the
+finger's line inside 6°, points at once and holds for 15 s (`tapPointing`); on a headset a
+controller's ray, or an index finger in a point pose (index straight, the rest curled — a hand's system ray is there whether it points or not),
 picks the placed entity inside a cone of 4° or 7° round it, after a 0.28 s dwell, with a 2° margin
 before switching and a drop 0.2 s outside 1.5 times the cone; one beyond a controller's depth hit is
 passed over. It is ringed in the accent with its name over it. The Jarvis server is told the entity
@@ -1029,6 +1054,12 @@ the models first.
   sharp as it should be at the hint's 1.3 m and the drawer's half metre, and whether
   the half-level sharpening shimmers as the head moves; whether the tokens' rings
   crawl across the room, where they are a pixel or two wide.
+- **A phone.** Whether Chrome on Android grants `local-floor`, which the session
+  requires, on every ARCore phone; whether a tap's `select` arrives with a pose
+  for its ray; whether the transient-input hit test finds the room fast enough
+  for a drag; whether the 6° tap cone (`TAP_CONE_DEGREES`) is the size of a
+  fingertip on a real screen; and whether the wake word's microphone and the
+  camera can run together.
 - **Placing things.** How long persistent anchors take to restore and locate, how
   they behave across rooms, what `requestPersistentHandle` says at the limit of
   eight per origin, whether other Pages projects on `ffmathy.github.io` already

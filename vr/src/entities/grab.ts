@@ -18,11 +18,16 @@ import type { Ray, Vector3Like } from '../xr/ray';
  * stops being tracked while it carries something drops nothing: the carry is cancelled and the entity
  * stays where it was, since a hand lost to tracking is not a decision.
  *
+ * - **On a phone's screen:** touch a token and drag it, and it rides the line from the camera through
+ *   the finger, sitting where that line meets the room, as a far grab does; lift the finger and it is
+ *   dropped there. A touch exists only while the finger is down, so here a grabber gone from the frame
+ *   is a finger lifted — a decision — and what it carried is let go where it was last seen.
+ *
  * Pure: a state in, a state out and the events to carry out. The runtime turns a `placed` event into
  * a drop on the room anchors and a registry write, and an `unplaced` one into a registry write.
  */
 
-export type GrabberKind = 'hand' | 'controller';
+export type GrabberKind = 'hand' | 'controller' | 'screen';
 
 /** One hand or controller this frame. */
 export interface Grabber {
@@ -33,7 +38,7 @@ export interface Grabber {
   grip?: Vector3Like;
   /** A hand pinching, or a controller's grip squeezed. */
   holding: boolean;
-  /** A hand pinching, or a controller's trigger pulled. */
+  /** A hand pinching, a controller's trigger pulled, or a finger on the screen. */
   selecting: boolean;
   /** Where it points, or undefined when untracked. */
   ray?: Ray;
@@ -69,7 +74,7 @@ export interface GrabFrame {
   deltaSeconds: number;
 }
 
-export type GrabMode = 'near' | 'far';
+export type GrabMode = 'near' | 'far' | 'drag';
 
 export type GrabEvent =
   | { kind: 'grabbed'; id: string; grabber: string; mode: GrabMode; from: 'drawer' | 'room' }
@@ -257,9 +262,13 @@ function carry(
     const over: Carrying['over'] = isOnDrawer(frame.drawer, grabber.grip) ? 'drawer' : 'room';
     return { carrying: { ...carrying, position: { ...grabber.grip }, over }, events: [] };
   }
-  if (grabber.ray === undefined) return { events: [{ kind: 'cancelled', id: carrying.id }] };
+  if (grabber.ray === undefined) {
+    return { events: [carrying.mode === 'drag' ? letGo(carrying) : { kind: 'cancelled', id: carrying.id }] };
+  }
   const moved: Carrying = { ...carrying, ...ride(grabber, grabber.ray, carrying, frame.drawer, frame.deltaSeconds) };
-  return pressed.selecting ? { events: [letGo(moved)] } : { carrying: moved, events: [] };
+  // A drag ends when the finger comes off the screen; a far grab with the next press.
+  const lettingGo = carrying.mode === 'drag' ? released.selecting : pressed.selecting;
+  return lettingGo ? { events: [letGo(moved)] } : { carrying: moved, events: [] };
 }
 
 /** A grabber with empty hands: takes a token within reach on a hold, or one on its ray on a select. */
@@ -282,9 +291,10 @@ function take(grabber: Grabber, pressed: Buttons, frame: GrabFrame, taken: Set<s
   }
   const picked = pressed.selecting && ray !== undefined ? pickedByRay(grabber, ray, frame.tokens, taken) : undefined;
   if (picked === undefined) return { events: [] };
+  const mode: GrabMode = grabber.kind === 'screen' ? 'drag' : 'far';
   const carrying: Carrying = {
     id: picked.token.id,
-    mode: 'far',
+    mode,
     from: picked.token.from,
     distance: picked.distance,
     position: { ...picked.token.position },
@@ -292,7 +302,7 @@ function take(grabber: Grabber, pressed: Buttons, frame: GrabFrame, taken: Set<s
   };
   return {
     carrying,
-    events: [{ kind: 'grabbed', id: picked.token.id, grabber: grabber.id, mode: 'far', from: picked.token.from }],
+    events: [{ kind: 'grabbed', id: picked.token.id, grabber: grabber.id, mode, from: picked.token.from }],
   };
 }
 
@@ -317,9 +327,10 @@ export function stepGrab(state: GrabState, frame: GrabFrame): GrabStep {
   const buttons = new Map<string, Buttons>();
   const events: GrabEvent[] = [];
   const present = new Set(frame.grabbers.map((grabber) => grabber.id));
-  // A grabber gone from the frame altogether — a controller put down, a hand out of view — is untracked.
+  // A grabber gone from the frame altogether — a controller put down, a hand out of view — is untracked;
+  // a finger gone from the screen has let go.
   for (const [id, held] of state.carrying) {
-    if (!present.has(id)) events.push({ kind: 'cancelled', id: held.id });
+    if (!present.has(id)) events.push(held.mode === 'drag' ? letGo(held) : { kind: 'cancelled', id: held.id });
   }
   const taken = new Set([...state.carrying].filter(([id]) => present.has(id)).map(([, held]) => held.id));
   for (const grabber of frame.grabbers) {

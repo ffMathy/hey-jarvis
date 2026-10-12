@@ -71,7 +71,7 @@ function microphoneStep(microphone: MicrophoneState | undefined): PrimaryButton 
 /** The button for the first step not yet done. */
 export function primaryButton(facts: PageFacts): PrimaryButton {
   if (facts.xr === 'checking') return waiting('Checking this browser…');
-  if (facts.xr === 'unsupported') return waiting('Open this page on a Meta Quest');
+  if (facts.xr === 'unsupported') return waiting('Open this page on a Meta Quest or an AR phone');
   if (facts.room === 'entering') return waiting('Opening your room…');
   if (facts.room === 'inside') return waiting('Jarvis is in your room');
   if (!facts.hasSettings) return waiting('Add your ElevenLabs key first');

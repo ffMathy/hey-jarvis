@@ -16,6 +16,12 @@ import type { Ray, Vector3Like } from '../xr/ray';
  * - an entity well beyond what the ray hit — behind the wall it is pointing at — is passed over,
  *   when the caller knows where the ray hit.
  *
+ * **Tapping, on a phone.** A phone has no hands or controllers in the room to point with, so there
+ * an entity is tapped on the screen instead ({@link tapPointing}): the nearest to the line through
+ * the finger, inside {@link TAP_CONE_DEGREES}, is pointed at at once — a tap is already a decision,
+ * so it has no dwell — and stays pointed at for {@link TAP_HOLD_SECONDS} with nothing left pointing
+ * at it, since the finger has gone the moment it tapped. A ray that points at something else ends it.
+ *
  * **Telling the server.** What sir points at goes to the Jarvis server, over the line the headset
  * keeps open during a conversation (`jarvis-server-link.ts` in `hologram`), as an entity or as
  * nothing; the server keeps the latest and adds it to the requests it routes. People point and then
@@ -60,6 +66,15 @@ export const SWITCH_MARGIN_DEGREES = 2;
 /** How much wider than its cone the current target may stray before it starts to be dropped. */
 export const DROP_CONE_FACTOR = 1.5;
 
+/** The half-angle of a tap's cone: a fingertip covers a few degrees of a phone's view of the room. */
+export const TAP_CONE_DEGREES = 6;
+
+/**
+ * How long a tapped entity stays pointed at: as long as a target pointed at before the call is
+ * still sent once it is live, since people tap the lamp and then say "Hey Jarvis".
+ */
+export const TAP_HOLD_SECONDS = 15;
+
 /** How long a new target has to stay the best before it counts. */
 export const DWELL_SECONDS = 0.28;
 
@@ -76,6 +91,8 @@ export interface PointingState {
   readonly candidate?: { id: string; since: number };
   /** Since when the committed target has been outside its wider cone. */
   readonly strayingSince?: number;
+  /** Until when a tapped target stays pointed at with nothing pointing at it. */
+  readonly tappedUntil?: number;
 }
 
 export const NOT_POINTING: PointingState = {};
@@ -143,6 +160,28 @@ function preferred(aims: readonly Aim[], current: string | undefined): string | 
   return best.degrees < kept.degrees - SWITCH_MARGIN_DEGREES ? best.id : kept.id;
 }
 
+/**
+ * What a tap along `ray` — the line from a phone's camera through the finger — points at: the placed
+ * entity nearest its axis inside {@link TAP_CONE_DEGREES}, at once and held for
+ * {@link TAP_HOLD_SECONDS}; or undefined when the tap is on none of them.
+ */
+export function tapPointing(
+  state: PointingState,
+  ray: Ray,
+  targets: readonly PointingTarget[],
+  now: number,
+): PointingState | undefined {
+  let best: { id: string; degrees: number } | undefined;
+  for (const target of targets) {
+    const degrees = angleToTarget(ray, target.position);
+    if (degrees <= TAP_CONE_DEGREES && (best === undefined || degrees < best.degrees)) best = { id: target.id, degrees };
+  }
+  if (best === undefined) return undefined;
+  // Tapped again, it stays pointed at since it was first: only its hold is renewed.
+  const since = state.pointed?.id === best.id ? state.pointed.since : now;
+  return { pointed: { id: best.id, since }, tappedUntil: now + TAP_HOLD_SECONDS };
+}
+
 /** The next state, given this frame's pointing rays and the placed entities they could point at. */
 export function stepPointing(
   state: PointingState,
@@ -152,6 +191,10 @@ export function stepPointing(
 ): PointingState {
   const aims = aimsAt(sources, targets);
   const current = state.pointed?.id;
+  // A tapped target is held while it is still in the room and no ray points at anything else.
+  const tapHeld =
+    state.tappedUntil !== undefined && now < state.tappedUntil && targets.some((target) => target.id === current);
+  if (tapHeld && !aims.some((aim) => aim.inCone && aim.id !== current)) return state;
   const keptInWideCone = aims.some((aim) => aim.id === current && aim.inWideCone);
   const strayingSince = current === undefined || keptInWideCone ? undefined : (state.strayingSince ?? now);
   const dropped = strayingSince !== undefined && now - strayingSince >= DROP_GRACE_SECONDS;

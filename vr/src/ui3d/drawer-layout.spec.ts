@@ -16,6 +16,7 @@ import {
   drawerSurfaceOf,
   drawerToRoom,
   entriesOnPage,
+  HANDHELD_DRAWER_AHEAD_METRES,
   pageCount,
   roomToDrawer,
   SLOTS_PER_PAGE,
@@ -51,6 +52,16 @@ describe('drawerPoseFacing', () => {
     expect(turned.centre.x).toBeCloseTo(DRAWER_AHEAD_METRES, 6);
     expect(turned.centre.z).toBeCloseTo(EYE.z, 6);
     expect(turned.right.z).toBeCloseTo(1, 6);
+  });
+
+  it('opens on a phone level with the camera, upright, and far enough off to fit the screen', () => {
+    const phone = drawerPoseFacing(EYE, AHEAD, true);
+    expect(phone.centre).toEqual({ x: 0, y: EYE.y, z: EYE.z - HANDHELD_DRAWER_AHEAD_METRES });
+    expect(phone.normal.z).toBeCloseTo(1, 6);
+    expect(phone.up.y).toBeCloseTo(1, 6);
+    // A portrait phone shows about 50° across: the whole board is inside it.
+    const halfAngle = Math.atan(DRAWER_WIDTH_METRES / 2 / HANDHELD_DRAWER_AHEAD_METRES);
+    expect((halfAngle * 180) / Math.PI).toBeLessThan(25);
   });
 });
 
