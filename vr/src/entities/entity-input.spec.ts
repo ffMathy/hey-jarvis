@@ -111,7 +111,13 @@ describe('grabbersFrom', () => {
 });
 
 describe('a phone’s screen', () => {
-  const touch: InputSnapshot = { id: 'none-screen', kind: 'screen', handedness: 'none', targetRay: AHEAD, hitDistance: 1.2 };
+  const touch: InputSnapshot = {
+    id: 'none-screen',
+    kind: 'screen',
+    handedness: 'none',
+    targetRay: AHEAD,
+    hitDistance: 1.2,
+  };
 
   it('selects along the line through the finger for as long as the finger is down, and holds nothing', () => {
     expect(grabbersFrom([touch], NO_HANDS)).toEqual([

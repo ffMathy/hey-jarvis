@@ -174,7 +174,8 @@ export function tapPointing(
   let best: { id: string; degrees: number } | undefined;
   for (const target of targets) {
     const degrees = angleToTarget(ray, target.position);
-    if (degrees <= TAP_CONE_DEGREES && (best === undefined || degrees < best.degrees)) best = { id: target.id, degrees };
+    if (degrees <= TAP_CONE_DEGREES && (best === undefined || degrees < best.degrees))
+      best = { id: target.id, degrees };
   }
   if (best === undefined) return undefined;
   // Tapped again, it stays pointed at since it was first: only its hold is renewed.

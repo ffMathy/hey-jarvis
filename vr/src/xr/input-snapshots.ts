@@ -149,7 +149,7 @@ export function createInputSnapshots(session: XRSession): InputSnapshots {
 
   if (canHitTest && isHandheld(session)) {
     try {
-      session.requestHitTestSourceForTransientInput?.({ profile: TOUCHSCREEN_PROFILE }).then(
+      session.requestHitTestSourceForTransientInput?.({ profile: TOUCHSCREEN_PROFILE })?.then(
         (hitTest) => {
           if (disposed) hitTest.cancel();
           else touchHitTest = hitTest;
@@ -229,7 +229,9 @@ export function createInputSnapshots(session: XRSession): InputSnapshots {
   function touchHitDistanceOf(frame: XRFrame, source: XRInputSource, space: XRReferenceSpace, ray: Ray) {
     if (touchHitTest === undefined) return undefined;
     try {
-      const touch = frame.getHitTestResultsForTransientInput(touchHitTest).find((result) => result.inputSource === source);
+      const touch = frame
+        .getHitTestResultsForTransientInput(touchHitTest)
+        .find((result) => result.inputSource === source);
       const hit = touch?.results[0]?.getPose(space);
       return hit === undefined ? undefined : hitDistanceAlong(ray, hit.transform.position);
     } catch {
