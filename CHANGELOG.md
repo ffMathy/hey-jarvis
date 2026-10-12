@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.23.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.22.1...root-v4.23.0) (2026-10-12)
+
+
+### Features
+
+* **hologram:** greet once jarvis has arrived, and connect while he does ([#954](https://github.com/ffMathy/hey-jarvis/issues/954)) ([9d72dfb](https://github.com/ffMathy/hey-jarvis/commit/9d72dfbc2d4f7a10f043cfd33a4b8bd8ab8d90c5))
+
 ## [4.22.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.22.0...root-v4.22.1) (2026-10-11)
 
 
