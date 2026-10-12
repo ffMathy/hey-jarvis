@@ -34,6 +34,13 @@ import type { AnchorOffset, EntityPlacement, EntityRegistry } from './registry';
  *   refused one stays in the registry and is given back again at the start of the next session,
  *   rather than using one of the origin's eight for good with nothing left that knows its handle.
  *
+ * - **For one session, where nothing persists.** A phone's browser anchors a spot but cannot keep the
+ *   anchor from one session to the next (no `requestPersistentHandle`). There a drop is kept on the
+ *   anchor anyway, under a handle of this app's own ({@link SESSION_ANCHOR_PREFIX}) that no session
+ *   lists again, so its entities come back as lost next time and the drawer asks for them again —
+ *   rather than refusing the drop and losing the token the moment it is let go. Such a handle uses
+ *   none of the origin's eight, and is given back by forgetting it.
+ *
  * Generic over the space and transform types, like `xr/anchor-keeper.ts`, so the tests can hand it
  * plain objects; in the app they are `XRSpace` and `XRRigidTransform`, and an `XRSession` and an
  * `XRFrame` fit {@link PersistentAnchorSession} and {@link RoomAnchorFrame} as they are.
@@ -41,6 +48,14 @@ import type { AnchorOffset, EntityPlacement, EntityRegistry } from './registry';
 
 /** The most persistent anchors this app keeps, out of the eight Quest allows an origin. */
 export const MAX_ROOM_ANCHORS = 4;
+
+/** What the handle of an anchor kept for this session only starts with: never one a headset gave. */
+export const SESSION_ANCHOR_PREFIX = 'session:';
+
+/** Whether `uuid` names an anchor kept for one session only, which no later session can restore. */
+export function isSessionAnchor(uuid: string): boolean {
+  return uuid.startsWith(SESSION_ANCHOR_PREFIX);
+}
 
 /** How near an anchor has to be for a drop to use it rather than ask for a new one. */
 export const ANCHOR_REUSE_METRES = 2.5;
@@ -196,6 +211,7 @@ export function createRoomAnchors<Space, Transform>(
 ): RoomAnchors<Space, Transform> {
   const stored = new Map<string, StoredAnchor<Space>>();
   const pending: PendingDrop[] = [];
+  let sessionAnchors = 0;
   /** The space's reset count in the last frame updated. */
   let currentEpoch = 0;
 
@@ -234,6 +250,8 @@ export function createRoomAnchors<Space, Transform>(
       if (entry.state === 'missing') taken.delete(uuid);
       else taken.add(uuid);
     }
+    // Kept for this session only, they use none of the origin's few persistent ones.
+    for (const uuid of taken) if (isSessionAnchor(uuid)) taken.delete(uuid);
     const creating = pending.filter((drop) => drop.anchor === undefined && drop.failure === undefined).length;
     return taken.size + creating;
   }
@@ -259,22 +277,23 @@ export function createRoomAnchors<Space, Transform>(
       fail('The headset would not anchor that spot.');
       return;
     }
+    const keep = (uuid: string, anchor: PersistentAnchorLike<Space>) => {
+      track(uuid, anchor, now);
+      // A drop that has been replaced or taken back meanwhile no longer wants the anchor, so
+      // its handle is given back at once rather than left using one of the few the origin has.
+      if (pending.includes(drop)) drop.anchor = uuid;
+      else void release([uuid]);
+    };
     request.then(
       (anchor) => {
         const persist = anchor.requestPersistentHandle;
         if (persist === undefined) {
-          anchor.delete();
-          fail('This headset cannot keep anchors from one session to the next.');
+          sessionAnchors += 1;
+          keep(`${SESSION_ANCHOR_PREFIX}${Date.now().toString(36)}-${sessionAnchors}`, anchor);
           return;
         }
         persist.call(anchor).then(
-          (uuid) => {
-            track(uuid, anchor, now);
-            // A drop that has been replaced or taken back meanwhile no longer wants the anchor, so
-            // its handle is given back at once rather than left using one of the few the origin has.
-            if (pending.includes(drop)) drop.anchor = uuid;
-            else void release([uuid]);
-          },
+          (uuid) => keep(uuid, anchor),
           () => {
             anchor.delete();
             fail('The headset would not keep another anchor.');
@@ -310,6 +329,8 @@ export function createRoomAnchors<Space, Transform>(
 
   /** Deletes `uuid` from the headset: resolves with whether it is gone now. */
   function deleteHandle(uuid: string): Promise<boolean> {
+    // The headset never had it: forgetting it is all there is to giving it back.
+    if (isSessionAnchor(uuid)) return Promise.resolve(true);
     const remove = session.deletePersistentAnchor;
     if (remove === undefined) return Promise.resolve(false);
     // A refusal for a handle the headset no longer lists is a handle already gone, which is what
@@ -403,6 +424,12 @@ export function createRoomAnchors<Space, Transform>(
           everLocated: false,
         };
         stored.set(uuid, entry);
+        // Kept for the session it was made in, which is over.
+        if (isSessionAnchor(uuid)) {
+          entry.state = 'missing';
+          missing.push(uuid);
+          continue;
+        }
         if (handles === undefined || restorer === undefined) continue;
         if (!includes(handles, uuid)) {
           entry.state = 'missing';

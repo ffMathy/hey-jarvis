@@ -237,12 +237,12 @@ function sharedRoomOptions(modules: RoomModules, onInside: () => void) {
 }
 
 /**
- * A room with no conversation in it: sample mode, the moods driving him, or placing things, straight
- * into the drawer — or both, with the sample entities: the drawer of them first, then sample mode to
- * point at them in. None needs a key or a microphone.
+ * A room with no conversation in it: sample mode — a drawer of sample entities, then the moods
+ * driving him, with the samples to point at — or placing the real things, straight into the drawer.
+ * Neither needs a key or a microphone.
  */
 async function openRoomWithoutAgent(
-  mode: 'sample' | 'placement' | 'samples',
+  mode: 'sample' | 'placement',
   sessionRequest: Promise<XRSession>,
   onInside: () => void,
 ): Promise<RoomOutcome> {
@@ -251,10 +251,10 @@ async function openRoomWithoutAgent(
     const modules = await roomLoading;
     const [{ runRoom }] = modules;
     const shared = sharedRoomOptions(modules, onInside);
-    if (mode !== 'samples') return await runRoom(session, { ...shared, mode });
+    if (mode === 'placement') return await runRoom(session, { ...shared, mode });
     // Kept apart from the real ones, and never in a room with a conversation to tell about them.
     const entityStorage = sampleEntityStorage(browserStorage, () => Date.now());
-    return await runRoom(session, { ...shared, mode: 'sample', placeFirst: true, entityStorage });
+    return await runRoom(session, { ...shared, mode, entityStorage });
   } catch (error) {
     // A session nothing is drawing in is an empty room the user would have to find their own way
     // out of, so one that opened before the failure is closed with it.

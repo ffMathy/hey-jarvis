@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import type { EntitiesReport, RoomPoint } from '../../src/debug-hook';
 import { ENTITY_REGISTRY_KEY } from '../../src/entities/registry';
+import { SAMPLE_ENTITY_REGISTRY_KEY } from '../../src/entities/sample-entities';
 import { type QuaternionLike, rotate } from '../../src/xr/ray';
 import { debugState, frames } from './app-driver';
 import { expect } from './fixtures';
@@ -20,6 +21,9 @@ import { expect } from './fixtures';
 
 /** Where the app keeps its registry of entities (`src/entities/registry.ts`). */
 export const REGISTRY_KEY = ENTITY_REGISTRY_KEY;
+
+/** Where sample mode keeps its own entities, apart from the real ones. */
+export const SAMPLE_REGISTRY_KEY = SAMPLE_ENTITY_REGISTRY_KEY;
 
 /** Where the emulator keeps the persistent anchors it hands out. */
 export const EMULATED_ANCHORS_KEY = '@immersive-web-emulation-runtime/persistent-anchors';

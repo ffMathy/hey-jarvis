@@ -147,6 +147,17 @@ export async function pressB(page: Page) {
   await frames(page, 1);
 }
 
+/**
+ * Opens sample mode from the page and puts away the drawer of sample entities it opens on, with B,
+ * so he arrives: what "Try him in your room" is once nothing is to be placed.
+ */
+export async function openSampleMode(page: Page) {
+  await page.getByRole('button', { name: 'Try him in your room' }).click();
+  await expect.poll(() => scene(page), { timeout: 90000 }).toBe('editing');
+  await pressB(page);
+  await expect.poll(() => scene(page), { timeout: 90000 }).toBe('sample:speaking');
+}
+
 /** Stores the ElevenLabs settings before the page loads, as the page's own form would have. */
 export async function withSavedSettings(page: Page) {
   await page.addInitScript(({ key, settings }) => window.localStorage.setItem(key, JSON.stringify(settings)), {

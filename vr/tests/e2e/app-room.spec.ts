@@ -13,6 +13,7 @@ import {
   hologramPosition,
   insideLivingRoom,
   lengthenTheGreeting,
+  openSampleMode,
   photographError,
   pressB,
   roomReport,
@@ -46,8 +47,7 @@ test('a page opened to be filmed shows sample mode without its frame-rate readou
   // What the demo video's renderer opens (`.scripts/render-demo.ts`).
   await page.goto('/hey-jarvis/vr/?film');
   await page.evaluate(() => window.__xrHarness?.ready);
-  await page.getByRole('button', { name: 'Try him in your room' }).click();
-  await expect.poll(() => scene(page), { timeout: 90000 }).toBe('sample:speaking');
+  await openSampleMode(page);
   await frames(page, 2);
   const report = await roomReport(page);
   expect(report.view.panels.readout).toBeNull();
@@ -62,8 +62,7 @@ test('sample mode walks every mood in the room on a select on him, and leaves on
   await page.goto('/hey-jarvis/vr/');
   await page.evaluate(() => window.__xrHarness?.ready);
   // No key and no microphone asked for.
-  await page.getByRole('button', { name: 'Try him in your room' }).click();
-  await expect.poll(() => scene(page), { timeout: 90000 }).toBe('sample:speaking');
+  await openSampleMode(page);
   expect((await roomReport(page)).view.panels.readout).toEqual([]);
   const spot = await hologramPosition(page);
   expect(insideLivingRoom(spot)).toBe(true);

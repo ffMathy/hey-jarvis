@@ -28,9 +28,14 @@ import { UI_COLOURS } from './ui-colours';
  * gone. Jarvis's orange is kept for his corona, so what sir handles never looks like what Jarvis is
  * doing. Drawn over everything but the text, and through walls: a token placed behind the sofa is
  * still there to be moved.
+ *
+ * Outside placing things, each placed entity is a `marker`: the orb alone, small, with no ring, so
+ * sir can see what there is to point at — or, on a phone, to tap — without it looking like something
+ * to pick up. It never shrinks below {@link MARKER_MIN_DEGREES} across, so a lamp across the room
+ * still has one.
  */
 
-export type TokenLook = 'waiting' | 'placed' | 'lost' | 'carried';
+export type TokenLook = 'waiting' | 'placed' | 'lost' | 'carried' | 'marker';
 
 /** One token to draw. */
 export interface TokenSpot {
@@ -58,11 +63,25 @@ const RING_OUTER_METRES = TOKEN_RADIUS_METRES * 0.95;
 /** How much bigger a carried token is: it is the one sir is looking at. */
 const CARRIED_SCALE = 1.35;
 
+/** How big a marker is near to, against an orb: a dot, not a thing to take. */
+const MARKER_SCALE = 0.5;
+
+/** The least angle a marker's radius subtends at the eye. */
+export const MARKER_MIN_DEGREES = 0.35;
+
+/** How much an orb is scaled to be a marker at `distance` from the eye. */
+export function markerScaleAt(distance: number): number {
+  const least = (distance * Math.tan((MARKER_MIN_DEGREES * Math.PI) / 180)) / ORB_RADIUS_METRES;
+  return Math.max(MARKER_SCALE, least);
+}
+
 const RING_COLOURS: Record<TokenLook, string> = {
   waiting: UI_COLOURS.accent,
   carried: UI_COLOURS.accent,
   placed: UI_COLOURS.text,
   lost: UI_COLOURS.danger,
+  // Never seen: a marker's ring is scaled away.
+  marker: UI_COLOURS.text,
 };
 
 const ORB_COLOURS: Record<TokenLook, string> = {
@@ -70,6 +89,7 @@ const ORB_COLOURS: Record<TokenLook, string> = {
   carried: '#e0f2fe',
   placed: '#cbd5e1',
   lost: '#fecaca',
+  marker: '#e0f2fe',
 };
 
 function instanced(geometry: CircleGeometry | RingGeometry, material: MeshBasicMaterial): InstancedMesh {
@@ -115,9 +135,15 @@ export function createEntityTokens(): EntityTokens {
         if (spot === undefined) continue;
         placement.position.set(spot.position.x, spot.position.y, spot.position.z);
         placement.lookAt(eye.x, eye.y, eye.z);
-        placement.scale.setScalar(spot.look === 'carried' ? CARRIED_SCALE : 1);
+        const marker = spot.look === 'marker';
+        const distance = Math.hypot(spot.position.x - eye.x, spot.position.y - eye.y, spot.position.z - eye.z);
+        placement.scale.setScalar(marker ? markerScaleAt(distance) : spot.look === 'carried' ? CARRIED_SCALE : 1);
         placement.updateMatrix();
         orbs.setMatrixAt(index, placement.matrix);
+        if (marker) {
+          placement.scale.setScalar(0);
+          placement.updateMatrix();
+        }
         rings.setMatrixAt(index, placement.matrix);
         // The palette is sRGB, as the page's is; three keeps instance colours linear.
         orbs.setColorAt(index, colour.set(ORB_COLOURS[spot.look]));

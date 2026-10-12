@@ -98,8 +98,6 @@ export interface RoomOptions {
   now?: () => number;
   /** Where the things placed in the room are remembered: `localStorage` in the app, a map anywhere else. */
   entityStorage?: KeyValueStorage;
-  /** Sample mode only: opens on the drawer first, for the sample entities (`entities/sample-entities.ts`). */
-  placeFirst?: boolean;
   /** `?origin`: the room's space moved, for the browser tests (see `xr/origin-offset.ts`). */
   origin?: OriginOffset;
 }
@@ -310,7 +308,6 @@ function startRoom(
     handheld: isHandheld(stage.session),
     readout: options.showReadout,
     holdErrors: options.holdErrors,
-    placeFirst: options.placeFirst,
   });
 }
 
@@ -631,6 +628,7 @@ function updateEntities(room: Room, tick: XrFrameTick) {
     thinking: room.conversation.thinking,
     live: room.conversation.phase === 'live',
     pretendWorking: scene.kind === 'sample' && scene.mode === 'thinking',
+    sample: room.options.mode === 'sample',
   });
   if (outcome.pointing !== undefined) room.conversation.point(outcome.pointing.entity);
   // Before Done, which this very frame may also have pressed with the drop that is still settling.

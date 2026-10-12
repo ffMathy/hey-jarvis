@@ -56,8 +56,10 @@ class Room {
     return this;
   }
 
-  inSample(): this {
-    this.send({ type: 'entered', mode: 'sample' });
+  /** Sample mode with him there: past the drawer of sample entities it opens on, and placed. */
+  inSample(readout?: boolean): this {
+    this.send({ type: 'entered', mode: 'sample', ...(readout === undefined ? {} : { readout }) });
+    this.send({ type: 'edit-done' });
     this.send({ type: 'placed' });
     return this;
   }
@@ -670,24 +672,9 @@ describe('captions', () => {
 });
 
 describe('sample mode', () => {
-  it('places him at once and starts on the first mood, with the frame-rate readout', () => {
-    const room = new Room();
-    expect(room.send({ type: 'entered', mode: 'sample' })).toEqual([
-      { type: 'place', towards: undefined },
-      { type: 'set-frame-rate', target: 'highest' },
-    ]);
-    expect(room.send({ type: 'placed' })).toEqual([
-      { type: 'arrive' },
-      { type: 'start-sample', mode: 'speaking' },
-      { type: 'hologram', state: 'shown' },
-      { type: 'show-panel', panel: 'readout', lines: [] },
-    ]);
-    expect(room.scene).toEqual({ kind: 'sample', mode: 'speaking' });
-  });
-
-  it('opens on the drawer first with the sample entities, and brings him in once placing them is done', () => {
+  it('opens on the drawer of sample entities, then places him and starts on the first mood, with the readout', () => {
     const room = new Room({ kind: 'absent' });
-    expect(room.send({ type: 'entered', mode: 'sample', placeFirst: true })).toEqual([
+    expect(room.send({ type: 'entered', mode: 'sample' })).toEqual([
       { type: 'show-panel', panel: 'guide', lines: EDITING_GUIDE_LINES },
       { type: 'set-frame-rate', target: 'highest' },
       { type: 'editing', active: true },
@@ -701,13 +688,26 @@ describe('sample mode', () => {
       { type: 'hide-panel', panel: 'guide' },
       { type: 'editing', active: false },
     ]);
-    room.send({ type: 'placed' });
+    expect(room.send({ type: 'placed' })).toEqual([
+      { type: 'arrive' },
+      { type: 'start-sample', mode: 'speaking' },
+      { type: 'hologram', state: 'shown' },
+      { type: 'show-panel', panel: 'readout', lines: [] },
+    ]);
     expect(room.scene).toEqual({ kind: 'sample', mode: 'speaking' });
+  });
+
+  it('brings him in when the drawer is put away with B or Y too', () => {
+    const room = new Room({ kind: 'absent' });
+    room.send({ type: 'entered', mode: 'sample' });
+    expect(room.send({ type: 'dismiss-button' })).toContainEqual({ type: 'place', towards: undefined });
+    expect(room.scene).toEqual({ kind: 'placing', purpose: 'sample', towards: undefined });
   });
 
   it('goes without the frame-rate readout in a room opened to be filmed, and only there', () => {
     const filmed = new Room();
     filmed.send({ type: 'entered', mode: 'sample', readout: false });
+    filmed.send({ type: 'edit-done' });
     expect(filmed.send({ type: 'placed' })).toEqual([
       { type: 'arrive' },
       { type: 'start-sample', mode: 'speaking' },
@@ -720,6 +720,7 @@ describe('sample mode', () => {
 
     // Every room decides afresh: the next one, entered without saying so, has its readout again.
     filmed.send({ type: 'entered', mode: 'sample' });
+    filmed.send({ type: 'edit-done' });
     expect(filmed.send({ type: 'placed' })).toContainEqual({ type: 'show-panel', panel: 'readout', lines: [] });
   });
 

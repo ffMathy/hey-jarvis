@@ -409,10 +409,19 @@ async function openSampleMode(render: Render, cutFrame: number) {
   await page.evaluate(() => window.__xrHarness?.device.activeSession?.end());
   await pump('the page to come back after the room', (report) => report.phase === 'ready');
   await page.getByRole('button', { name: 'Try him in your room' }).click();
+  // Sample mode opens on its drawer of sample entities; B puts it away, and he is placed.
+  await pump('the drawer of sample entities to open', (report) => report.scene === 'editing');
+  const setB = (value: 0 | 1) =>
+    page.evaluate(
+      (pressed) => window.__xrHarness?.device.controllers.right?.updateButtonValue('b-button', pressed),
+      value,
+    );
+  await setB(1);
   await pump(
     'sample mode to open',
     (report) => report.scene === 'placing' || (report.scene?.startsWith('sample:') ?? false),
   );
+  await setB(0);
   const now = await page.evaluate(() => performance.now());
   render.segmentOrigin = { now: now + frameMilliseconds, frame: cutFrame };
 }

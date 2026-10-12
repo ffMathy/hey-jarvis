@@ -134,6 +134,11 @@ export interface EntitiesFrame {
    * how the corona can be seen without a call, and a beat for the demo.
    */
   pretendWorking: boolean;
+  /**
+   * Whether this is sample mode, where an entity newly pointed at is lit as if he had been asked to
+   * work on it — the corona a real "turn that on" would bring, without a call.
+   */
+  sample: boolean;
 }
 
 /** What the room has to act on after a frame. */
@@ -240,6 +245,9 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
   let grab: GrabState = NOTHING_GRABBED;
   let carried: CarriedToken[] = [];
   let pointing: PointingState = NOT_POINTING;
+  /** What was pointed at in the last frame, and whether a tap has pointed since. */
+  let lastPointed: string | undefined;
+  let freshTap = false;
   let told: PointingUpdateState = NOTHING_TOLD;
   let lit: AffectedState = NOTHING_AFFECTED;
   const marks: string[] = [];
@@ -486,11 +494,22 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
     return entity.name === undefined ? { id: entity.id } : { id: entity.id, name: entity.name };
   }
 
-  /** What sir points at: chosen, ringed, named, and what the server should be told about it. */
+  /**
+   * What sir points at: chosen, ringed, named, and what the server should be told about it. Every
+   * placed entity has a marker meanwhile, so he can see what there is to point at.
+   */
   function point(frame: EntitiesFrame, outcome: EntitiesOutcome) {
     const targets = [...positions].map(([id, position]) => ({ id, position }));
+    tokens.set(
+      targets.map(({ position }) => ({ position, look: 'marker' as const })),
+      frame.eye.position,
+    );
     pointing = stepPointing(pointing, pointersFrom(frame.inputs, hands), targets, time);
     const pointed = pointing.pointed;
+    // In sample mode, something newly pointed at — or tapped again — is lit as if he were working on it.
+    if (frame.sample && pointed !== undefined && (freshTap || pointed.id !== lastPointed)) marks.push(pointed.id);
+    lastPointed = pointed?.id;
+    freshTap = false;
     const update = stepPointingUpdate(told, pointedEntity(pointed?.id), frame.live, time);
     told = update.state;
     if (update.send !== undefined) outcome.pointing = update.send;
@@ -595,6 +614,7 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
       const tapped = tapPointing(pointing, ray, targets, time);
       if (tapped === undefined) return false;
       pointing = tapped;
+      freshTap = true;
       return true;
     },
     update(frame) {

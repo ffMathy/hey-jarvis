@@ -42,10 +42,17 @@ listening, a status line saying why and what to do about it.
   problem hangs at his spot for as long as it takes to read, then he leaves and
   the wake word is armed again. The 2D page shows the last problem once the room
   is closed.
-- **Try him in your room** is sample mode: no key and no microphone. Select him
-  to walk his moods (speaking, listening, thinking, idle); select anywhere else to
-  leave. While he thinks there, everything you have placed lights up, as it would
-  while he worked on it.
+- **Try him in your room** is sample mode: no key and no microphone. It opens on
+  a drawer of made-up entities — a kitchen light, a TV, an inbox — since the real
+  drawer only offers what Jarvis has worked on in a conversation and so starts
+  empty. They are kept apart from the real ones, under
+  `jarvis.horizon.sample-entities` (`entities/sample-entities.ts`), and only
+  sample mode shows them; it never has a conversation, so nothing about them
+  reaches the Jarvis server. Place some, press Done (or B/Y), and he arrives.
+  Select him to walk his moods (speaking, listening, thinking, idle); select
+  anywhere else to leave. Point at a placed sample (on a phone, tap it) and it is
+  ringed and its corona lights, as if he had been asked to work on it; while he
+  thinks, every placed sample lights up.
 - **Placing what he works on:** whatever Jarvis works on for you — a light, an
   inbox, a calendar — goes into a drawer, by name. **Place entities** on the 2D
   page (no key, no microphone), or A/X or the button on the back of a raised wrist
@@ -57,13 +64,8 @@ listening, a status line saying why and what to do about it.
   point at one — a controller, or an index finger with the others curled — and a
   blue ring and its name say that "turn that on" now means it (see "Entities
   placed in the room" below).
-- **Try with sample entities:** the drawer only offers what Jarvis has worked on
-  in a conversation, so it starts empty. This button opens it full of made-up
-  ones — a kitchen light, a TV, an inbox — kept apart from the real ones under
-  `jarvis.horizon.sample-entities` (`entities/sample-entities.ts`). Place them,
-  press Done, and he arrives in sample mode, where they can be pointed at (or
-  tapped, on a phone) and light up while he thinks. A room with samples never
-  has a conversation, so nothing about them reaches the Jarvis server.
+- **Where things are:** outside the drawer, every placed entity has a small dot
+  — no ring, never smaller than 0.35° — so you can see what there is to point at.
 - **No headset?** https://ffmathy.github.io/hey-jarvis/vr/preview.html shows
   him in 3D on a desktop, phase by phase (see "The preview page" below).
 - **His voice from where he stands:** on a headset with an echo canceller of its
@@ -99,13 +101,17 @@ hands and controllers did changes:
   (`TAP_HOLD_SECONDS`), long enough to tap the lamp and then say "Hey Jarvis,
   turn that on". A tap on an entity never also summons him or ends sample mode.
   Headsets keep pointing with a finger or a controller, and do not tap.
-- **Placing things is a drag.** **Place entities** (or **Try with sample
-  entities**) on the 2D page opens the drawer
+- **Placing things is a drag.** **Place entities** (or **Try him in your
+  room**, with the samples) on the 2D page opens the drawer
   level with the camera and 0.7 m off, so it fits a portrait screen; touch a
   token, drag it to where it belongs — it sits where the line through your finger
   meets the room, from the transient-input hit test — and lift your finger to drop
   it. Drag it back onto the drawer to put it back. Tap Done to finish. There is
   no A/X or wrist button on a phone, so the drawer is opened from the page only.
+  A phone's browser anchors a spot only for the session — it has no persistent
+  anchors — so a drop is kept on an anchor of that session
+  (`SESSION_ANCHOR_PREFIX` in `entities/room-anchors.ts`), and comes back as lost,
+  for placing again, next time.
 - **The hint and the guide** say "tap" and "drag" rather than "pinch".
 
 ## What is in here
@@ -219,7 +225,8 @@ them: the key, getting ready, **Allow the microphone**, **Enter your room**.
   keeping anything, so a mistyped key shows next to the field, not as an error
   panel in the room.
 - **Two rooms need no key and no microphone:** **Try him in your room** (sample
-  mode) and **Place entities**, which opens straight into the drawer and back to
+  mode, which opens on the drawer of sample entities and brings him in when it is
+  put away) and **Place entities**, which opens straight into the drawer and back to
   the page when it is done (`RoomMode` `'placement'`).
 - **"His voice from where he stands"** is the headset's one setting of its own
   (`page/voice-setting.ts`, under `jarvis.horizon.voice-from-where-he-stands`):
@@ -928,7 +935,8 @@ CHROMIUM_EXECUTABLE_PATH works as it does for the browser tests.
 
 **The shot** (`demo-shot.ts`, pure, pinned by `demo-shot.spec.ts`): the real room, entered with a key,
 waiting with its hint, the head glancing so the hint is seen trailing the gaze; a cut, from the same
-pose, to sample mode — the real room cannot summon him without ElevenLabs — where he is placed 1.6 m
+pose, to sample mode — the real room cannot summon him without ElevenLabs — its drawer of samples put
+away with B in frames nobody sees, where he is placed 1.6 m
 ahead and arrives; a glance about 29° to the right and back while he greets, so he is on the left of
 the picture and heard from the left; a walk to arm's length (0.8 m, well outside his 2.5R fade), one
 full turn round him there while selects on him walk listening, thinking, idle and speaking, and a
@@ -1158,7 +1166,8 @@ the models first.
   come back right for the wrong reason; a controller's ray and a pointing finger;
   A, a pinch, B; the wrist button; Done pulled with the trigger in a room with a
   conversation, held and let go without summoning him; sample mode's thinking
-  lighting a corona round each placed entity; and **Place entities** again, with a
+  lighting a corona round each placed entity (copied into sample mode's own
+  registry, which is all it shows); and **Place entities** again, with a
   drop far from every anchor and Done in the same frame, kept before the room
   closes. `entities-driver.ts` holds the emulated head, hands and
   controllers, converts between the emulator's space and the room's, and measures

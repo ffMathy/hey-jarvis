@@ -6,6 +6,7 @@ import {
   ANCHOR_REUSE_METRES,
   createRoomAnchors,
   type DropResult,
+  isSessionAnchor,
   MAX_ROOM_ANCHORS,
   NOT_FOUND_AFTER_SECONDS,
   type PersistentAnchorLike,
@@ -117,6 +118,13 @@ function expectPoint(actual: Vector3Like | undefined, expected: Vector3Like) {
 }
 
 describe('restoring', () => {
+  it('gives back an anchor kept for one session, which no later session can restore', () => {
+    const session = new FakeSession([A]);
+    const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
+    expect(anchors.restore(['session:abc-1', A], 0)).toEqual(['session:abc-1']);
+    expect(session.restoring.has('session:abc-1')).toBe(false);
+  });
+
   it('restores the handles the headset lists, and gives back the ones it does not', async () => {
     const session = new FakeSession([A]);
     const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
@@ -279,14 +287,30 @@ describe('dropping far from every anchor', () => {
     expectPoint({ x: placed.offset[0], y: placed.offset[1], z: placed.offset[2] }, point);
   });
 
-  it('falls back when the anchor cannot be made persistent at all', async () => {
-    const { anchors, frame } = await farDrop();
+  it('keeps the drop on its new anchor for this session when a phone cannot make it persistent', async () => {
+    const { anchors, frame, point, session } = await farDrop();
     const anchor = new FakeAnchor('space-new');
     anchor.requestPersistentHandle = undefined;
     frame.created[0]?.resolve(anchor);
     await settle();
-    expect(anchor.deleted).toBe(true);
-    expect(anchors.update(frame, 'local-floor', 6, 0)[0]).toMatchObject({ kind: 'placed', anchor: A });
+    expect(anchor.deleted).toBe(false);
+    frame.poses.set('space-new', poseFromQuaternion(point, LEVEL));
+    const [placed] = anchors.update(frame, 'local-floor', 6, 0);
+    if (placed?.kind !== 'placed') throw new Error('Expected a placement.');
+    expect(isSessionAnchor(placed.anchor)).toBe(true);
+    expect(placed.offset).toEqual([0, 0, 0]);
+    expectPoint(anchors.positionOf({ anchor: placed.anchor, offset: placed.offset, placedAt: 6 }), point);
+    // Given back by forgetting it: the headset never had it to delete.
+    expect(await anchors.release([placed.anchor])).toEqual([placed.anchor]);
+    expect(session.deleted).toEqual([]);
+  });
+
+  it('does not count an anchor kept for one session against the persistent ones', async () => {
+    const { anchors, frame, registry } = await restored([A], [poseFromQuaternion({ x: 0, y: 0, z: 0 }, LEVEL)]);
+    let crowded = registry;
+    for (let index = 0; index < MAX_ROOM_ANCHORS; index++) crowded = rememberAnchor(crowded, `session:${index}`, 1);
+    const result = anchors.drop(frame, 'local-floor', 'light.kitchen', { x: 0, y: 2.2, z: -4 }, crowded, 5);
+    expect(result).toEqual({ kind: 'pending', id: 'light.kitchen' });
   });
 
   it('falls back when the spot cannot be anchored', async () => {

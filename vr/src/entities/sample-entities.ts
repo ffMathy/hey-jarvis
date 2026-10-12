@@ -12,9 +12,9 @@ import {
  * Made-up entities to try placing things with, before Jarvis has worked on anything real.
  *
  * The drawer only ever offers what an agent has marked in a conversation, so a new headset or phone
- * opens it empty. **Try with sample entities** on the page fills it with these instead. They are
- * kept apart from the real ones, in a registry of their own under
- * {@link SAMPLE_ENTITY_REGISTRY_KEY}, and only ever shown in sample mode, which has no conversation:
+ * opens it empty. Sample mode (**Try him in your room**) opens on a drawer of these instead, and he
+ * arrives once they are placed. They are kept apart from the real ones, in a registry of their own
+ * under {@link SAMPLE_ENTITY_REGISTRY_KEY}, and only ever shown in sample mode, which has no conversation:
  * so they are never mixed into the real drawer, never lit by a real mark, and pointing at one never
  * tells the Jarvis server about an id that does not exist. Where they are put is remembered like
  * anything else's, so they are still standing there the next time.

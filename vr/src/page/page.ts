@@ -22,10 +22,10 @@ import { loadVoiceFromWhereHeStands, saveVoiceFromWhereHeStands } from './voice-
  */
 
 /**
- * Which room to open: the real one, sample mode, one to place things in, or sample mode opened on a
- * drawer of made-up entities to try placing and pointing with (`entities/sample-entities.ts`).
+ * Which room to open: the real one, sample mode — which opens on a drawer of made-up entities to try
+ * placing and pointing with (`entities/sample-entities.ts`) — or one to place the real ones in.
  */
-export type RoomMode = 'conversation' | 'sample' | 'placement' | 'samples';
+export type RoomMode = 'conversation' | 'sample' | 'placement';
 
 /** What a room hands back to the page when it closes. */
 export interface RoomOutcome {
@@ -74,7 +74,6 @@ export function startPage(document: Document, dependencies: PageDependencies): v
   const help = required(document, '#microphone-help', HTMLElement);
   const sample = required(document, '#sample', HTMLButtonElement);
   const place = required(document, '#place', HTMLButtonElement);
-  const samples = required(document, '#samples', HTMLButtonElement);
   const settingsSection = required(document, '#settings', HTMLDetailsElement);
   const form = required(document, '#settings-form', HTMLFormElement);
   const apiKeyField = required(document, '#api-key', HTMLInputElement);
@@ -124,7 +123,6 @@ export function startPage(document: Document, dependencies: PageDependencies): v
     progress.value = button.progress ?? 0;
     sample.disabled = !canOpenWithoutAgent(facts);
     place.disabled = !canOpenWithoutAgent(facts);
-    samples.disabled = !canOpenWithoutAgent(facts);
     const guidance = microphoneHelp(facts.microphone);
     help.hidden = guidance === undefined;
     help.textContent = guidance ?? '';
@@ -207,10 +205,6 @@ export function startPage(document: Document, dependencies: PageDependencies): v
 
   place.addEventListener('click', () => {
     if (canOpenWithoutAgent(facts)) enterRoom('placement');
-  });
-
-  samples.addEventListener('click', () => {
-    if (canOpenWithoutAgent(facts)) enterRoom('samples');
   });
 
   spatialVoice.addEventListener('change', () => {
