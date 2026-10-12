@@ -685,6 +685,26 @@ describe('sample mode', () => {
     expect(room.scene).toEqual({ kind: 'sample', mode: 'speaking' });
   });
 
+  it('opens on the drawer first with the sample entities, and brings him in once placing them is done', () => {
+    const room = new Room({ kind: 'absent' });
+    expect(room.send({ type: 'entered', mode: 'sample', placeFirst: true })).toEqual([
+      { type: 'show-panel', panel: 'guide', lines: EDITING_GUIDE_LINES },
+      { type: 'set-frame-rate', target: 'highest' },
+      { type: 'editing', active: true },
+    ]);
+    expect(room.scene).toEqual({ kind: 'editing' });
+    // A pinch or a trigger pull is the drawer's while placing: it neither summons him nor leaves.
+    expect(room.send({ type: 'select', hold: 'short', target: 'elsewhere' })).toEqual([]);
+    expect(room.send({ type: 'edit-done' })).toEqual([
+      { type: 'place', towards: undefined },
+      { type: 'consume-held-selects' },
+      { type: 'hide-panel', panel: 'guide' },
+      { type: 'editing', active: false },
+    ]);
+    room.send({ type: 'placed' });
+    expect(room.scene).toEqual({ kind: 'sample', mode: 'speaking' });
+  });
+
   it('goes without the frame-rate readout in a room opened to be filmed, and only there', () => {
     const filmed = new Room();
     filmed.send({ type: 'entered', mode: 'sample', readout: false });

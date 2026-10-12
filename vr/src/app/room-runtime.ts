@@ -98,6 +98,8 @@ export interface RoomOptions {
   now?: () => number;
   /** Where the things placed in the room are remembered: `localStorage` in the app, a map anywhere else. */
   entityStorage?: KeyValueStorage;
+  /** Sample mode only: opens on the drawer first, for the sample entities (`entities/sample-entities.ts`). */
+  placeFirst?: boolean;
   /** `?origin`: the room's space moved, for the browser tests (see `xr/origin-offset.ts`). */
   origin?: OriginOffset;
 }
@@ -308,6 +310,7 @@ function startRoom(
     handheld: isHandheld(stage.session),
     readout: options.showReadout,
     holdErrors: options.holdErrors,
+    placeFirst: options.placeFirst,
   });
 }
 

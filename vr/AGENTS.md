@@ -57,6 +57,13 @@ listening, a status line saying why and what to do about it.
   point at one — a controller, or an index finger with the others curled — and a
   blue ring and its name say that "turn that on" now means it (see "Entities
   placed in the room" below).
+- **Try with sample entities:** the drawer only offers what Jarvis has worked on
+  in a conversation, so it starts empty. This button opens it full of made-up
+  ones — a kitchen light, a TV, an inbox — kept apart from the real ones under
+  `jarvis.horizon.sample-entities` (`entities/sample-entities.ts`). Place them,
+  press Done, and he arrives in sample mode, where they can be pointed at (or
+  tapped, on a phone) and light up while he thinks. A room with samples never
+  has a conversation, so nothing about them reaches the Jarvis server.
 - **No headset?** https://ffmathy.github.io/hey-jarvis/vr/preview.html shows
   him in 3D on a desktop, phase by phase (see "The preview page" below).
 - **His voice from where he stands:** on a headset with an echo canceller of its
@@ -92,7 +99,8 @@ hands and controllers did changes:
   (`TAP_HOLD_SECONDS`), long enough to tap the lamp and then say "Hey Jarvis,
   turn that on". A tap on an entity never also summons him or ends sample mode.
   Headsets keep pointing with a finger or a controller, and do not tap.
-- **Placing things is a drag.** **Place entities** on the 2D page opens the drawer
+- **Placing things is a drag.** **Place entities** (or **Try with sample
+  entities**) on the 2D page opens the drawer
   level with the camera and 0.7 m off, so it fits a portrait screen; touch a
   token, drag it to where it belongs — it sits where the line through your finger
   meets the room, from the transient-input hit test — and lift your finger to drop
@@ -727,6 +735,7 @@ tells the server what sir points at.
 
 ```
 src/entities/registry.ts        every entity ever marked, and where each placed one is kept (localStorage)
+src/entities/sample-entities.ts made-up entities to try placing with, in a registry of their own
 src/entities/room-anchors.ts    a few persistent anchors, placements as offsets from them, restored each session
 src/entities/affected.ts        how long a corona stays lit
 src/entities/pointing.ts        what sir points at, and what the Jarvis server is told about it

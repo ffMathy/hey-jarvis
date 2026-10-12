@@ -4,6 +4,7 @@ import { createGreetingPlayer } from './conversation/greeting-player';
 import { greetingRecordingUrl } from './conversation/greeting-recording';
 import type { SpatialVoice } from './conversation/spatial-voice';
 import { initialDebugState, publishDebugState } from './debug-hook';
+import { sampleEntityStorage } from './entities/sample-entities';
 import type { Painter } from './hologram3d/canvaskit';
 import { createBrowserMicrophoneKeeper } from './page/microphone';
 import { type RoomOutcome, startPage } from './page/page';
@@ -237,10 +238,11 @@ function sharedRoomOptions(modules: RoomModules, onInside: () => void) {
 
 /**
  * A room with no conversation in it: sample mode, the moods driving him, or placing things, straight
- * into the drawer. Neither needs a key or a microphone.
+ * into the drawer — or both, with the sample entities: the drawer of them first, then sample mode to
+ * point at them in. None needs a key or a microphone.
  */
 async function openRoomWithoutAgent(
-  mode: 'sample' | 'placement',
+  mode: 'sample' | 'placement' | 'samples',
   sessionRequest: Promise<XRSession>,
   onInside: () => void,
 ): Promise<RoomOutcome> {
@@ -248,7 +250,11 @@ async function openRoomWithoutAgent(
   try {
     const modules = await roomLoading;
     const [{ runRoom }] = modules;
-    return await runRoom(session, { ...sharedRoomOptions(modules, onInside), mode });
+    const shared = sharedRoomOptions(modules, onInside);
+    if (mode !== 'samples') return await runRoom(session, { ...shared, mode });
+    // Kept apart from the real ones, and never in a room with a conversation to tell about them.
+    const entityStorage = sampleEntityStorage(browserStorage, () => Date.now());
+    return await runRoom(session, { ...shared, mode: 'sample', placeFirst: true, entityStorage });
   } catch (error) {
     // A session nothing is drawing in is an empty room the user would have to find their own way
     // out of, so one that opened before the failure is closed with it.

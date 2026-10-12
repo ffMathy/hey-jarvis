@@ -221,6 +221,11 @@ export type AppEvent =
       canType?: boolean;
       /** Whether the room is on a phone's screen (`isHandheld`). */
       handheld?: boolean;
+      /**
+       * Sample mode only: opens on the drawer, and he arrives once placing things is done — how the
+       * sample entities are tried, placed first and then pointed at.
+       */
+      placeFirst?: boolean;
       /** Whether sample mode shows its frame-rate readout; shown unless this says otherwise. */
       readout?: boolean;
       /** Whether an error panel stays up until it is dismissed; only for as long as it takes to read unless this says so. */
@@ -388,9 +393,15 @@ function leaveToExit(model: AppModel): Transition {
  */
 function leaveEditing(model: AppModel, now: number): Transition {
   const spend: AppEffect = { type: 'consume-held-selects' };
+  if (model.mode === 'sample') return go(model, ...startSample(), spend);
   if (model.mode !== 'placement') return go(model, { scene: { kind: 'waiting' } }, spend);
   if (model.dropsSettling) return go(model, { scene: { kind: 'keeping', until: now + KEEPING_LONGEST_MS } }, spend);
   return closePlacement(model, spend);
+}
+
+/** Sample mode begins: a spot is found for him, straight ahead. */
+function startSample(): [Partial<AppModel>, AppEffect] {
+  return [{ scene: { kind: 'placing', purpose: 'sample', towards: undefined } }, { type: 'place', towards: undefined }];
 }
 
 /** The room opened only to place things closes: nothing to wait for, and nobody to fade. */
@@ -409,11 +420,7 @@ function onEntered(model: AppModel, event: Extract<AppEvent, { type: 'entered' }
     scene: { kind: 'waiting' },
   };
   if (event.mode === 'sample') {
-    return go(
-      fresh,
-      { scene: { kind: 'placing', purpose: 'sample', towards: undefined } },
-      { type: 'place', towards: undefined },
-    );
+    return event.placeFirst === true ? go(fresh, { scene: { kind: 'editing' } }) : go(fresh, ...startSample());
   }
   if (event.mode === 'placement') return go(fresh, { scene: { kind: 'editing' } });
   return stay(fresh);
