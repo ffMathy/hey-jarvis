@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.24.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.23.0...root-v4.24.0) (2026-10-12)
+
+
+### Features
+
+* **vr:** tap to point and drag to place on a phone ([#957](https://github.com/ffMathy/hey-jarvis/issues/957)) ([c7da309](https://github.com/ffMathy/hey-jarvis/commit/c7da309b87491a0b9af88ed9830f79b1749ea9b0))
+
 ## [4.23.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.22.1...root-v4.23.0) (2026-10-12)
 
 
