@@ -47,36 +47,44 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      # Reading the comment script.
+      contents: read
       pull-requests: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6.1.0
+        with:
+          sparse-checkout: .scripts
+          persist-credentials: false
+
       # One comment per pull request, edited on every push, rather than one per push.
       - name: Link the preview
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           SHA: ${{ github.event.pull_request.head.sha }}
           URL: ${{ needs.publish.outputs.url }}
         run: |
-          gh pr comment "$PR" --edit-last --create-if-none --body "$(cat <<EOF
+          .scripts/upsert-pr-comment.sh "$PR" web-preview <<EOF
           ### Web preview
 
           Built from $SHA.
 
-          - **Phone app:** $URL
-          - **Headset app:** ${URL}vr/ (open it in Quest Browser)
-          - **Hologram phases, no headset needed:** ${URL}vr/preview.html
+          | | |
+          | --- | --- |
+          | **Phone app** | $URL |
+          | **Headset app** (open it in Quest Browser) | ${URL}vr/ |
+          | **Hologram phases**, no headset needed | ${URL}vr/preview.html |
 
           It is rebuilt on every push and taken down when this pull request is closed.
           EOF
-          )"
 
   remove:
     if: ${{ github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      # Reading the publish script, and pushing the branch without the preview.
+      # Reading the scripts, and pushing the branch without the preview.
       contents: write
       pull-requests: write
     steps:
@@ -95,13 +103,14 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: .scripts/publish-pages.sh "pr/$PR"
 
-      # A pull request that never got a preview has no comment to edit, which is fine.
+      # A pull request that never got a preview has no comment to update, which is fine.
       - name: Say so on the pull request
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
         run: |
-          gh pr comment "$PR" --edit-last --body "### Web preview
+          .scripts/upsert-pr-comment.sh "$PR" web-preview --update-only <<EOF
+          ### Web preview
 
-          Taken down now that this pull request is closed." || true
+          Taken down now that this pull request is closed.
+          EOF

@@ -202,8 +202,8 @@ exercised before it is released without anything reaching testers.
 
 Every pull request from a branch of this repository also gets its own copy of
 both web builds — the phone app and the Quest app — through `Web Preview`, at
-`https://ffmathy.github.io/hey-jarvis/pr/<n>/` (and `…/pr/<n>/vr/`). A comment
-on the pull request links it, every push rebuilds it, and closing the pull
+`https://ffmathy.github.io/hey-jarvis/pr/<n>/` (and `…/pr/<n>/vr/`). One comment
+on the pull request links it and is updated in place (`.scripts/upsert-pr-comment.sh`), every push rebuilds it, and closing the pull
 request takes it down. The release at the root is never touched by a preview.
 For that to work Pages serves the `gh-pages` branch (Settings → Pages → *Deploy
 from a branch*, `gh-pages`, `/ (root)`) rather than an uploaded artifact, which
