@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#05070a" />
+    <title>Jarvis preview</title>
+    <link rel="icon" type="image/png" href="./icon-512.png" />
+    <style>:root{--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark;--background:#05070a;--panel:#0d1117;--text:#e8ecf0;--muted:#8a949e;--accent:#dc5c20;--passthrough:#8c8c8c}*{box-sizing:border-box}body{background:var(--background);min-height:100vh;color:var(--text);flex-direction:column;align-items:center;gap:1rem;margin:0;padding:1rem;font-family:system-ui,sans-serif;display:flex}h1{letter-spacing:.3em;text-transform:uppercase;margin:0;font-size:1.4rem;font-weight:300}#stage{aspect-ratio:1;touch-action:none;background:#000;border-radius:.5rem;width:min(100%,72vh,900px);position:relative;overflow:hidden}#stage[data-background=grey]{background:var(--passthrough)}#view{width:100%;height:100%;display:block}#controls{flex-wrap:wrap;justify-content:center;gap:.75rem 1.5rem;max-width:60rem;display:flex}fieldset{background:var(--panel);border:1px solid #1f2630;border-radius:.5rem;flex-wrap:wrap;align-items:center;gap:.4rem;margin:0;padding:.4rem .6rem;display:flex}legend{color:var(--muted);padding:0 .3rem;font-size:.8rem}button{color:var(--text);font:inherit;cursor:pointer;background:0 0;border:1px solid #2a323d;border-radius:999px;padding:.45rem .9rem;font-size:.9rem}button[aria-pressed=true]{border-color:var(--accent);background:var(--accent);color:var(--background)}button:disabled{color:var(--muted);cursor:default}input[type=range]{accent-color:var(--accent)}#readout{min-height:1.4em;color:var(--muted);font-variant-numeric:tabular-nums;text-align:center;margin:0;font-size:.85rem}a{color:var(--muted)}</style>
+    <script type="module" crossorigin src="./assets/preview-CTIK4jsM.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/room-session-DQVW18aK.js">
+    <link rel="modulepreload" crossorigin href="./assets/canvaskit-BC66_cMp.js">
+    <link rel="modulepreload" crossorigin href="./assets/three-DIZGKSF5.js">
+    <link rel="modulepreload" crossorigin href="./assets/body-strokes-CPIndaOl.js">
+    <link rel="modulepreload" crossorigin href="./assets/hologram3d-DotQc8L5.js">
+    <link rel="modulepreload" crossorigin href="./assets/xr-stage-BP8eogCE.js">
+  </head>
+  <body>
+    <h1>Jarvis</h1>
+    <div id="stage" data-background="black">
+      <canvas id="view"></canvas>
+    </div>
+    <p id="readout" role="status" aria-live="off">Getting Jarvis ready…</p>
+    <div id="controls">
+      <fieldset id="phases">
+        <legend>What he is doing</legend>
+        <button type="button" data-phase="arriving">Arriving</button>
+        <button type="button" data-phase="greeting">Greeting</button>
+        <button type="button" data-phase="speaking">Speaking</button>
+        <button type="button" data-phase="listening">Listening</button>
+        <button type="button" data-phase="thinking">Thinking</button>
+        <button type="button" data-phase="idle">Idle</button>
+        <button type="button" data-phase="leaving">Leaving</button>
+      </fieldset>
+      <fieldset>
+        <legend>Drawn</legend>
+        <button type="button" data-mode="volumetric">In 3D</button>
+        <button type="button" data-mode="flat">Flat, as the phone</button>
+      </fieldset>
+      <fieldset>
+        <legend>Behind him</legend>
+        <button type="button" data-background="black">Black</button>
+        <button type="button" data-background="grey">Passthrough grey</button>
+      </fieldset>
+      <fieldset>
+        <legend>Seen from</legend>
+        <button type="button" data-view="front">The front</button>
+        <button type="button" data-view="side">45° to the side</button>
+        <button type="button" data-view="orbit">Walking round him</button>
+      </fieldset>
+      <fieldset>
+        <legend>How much of the room his light hides</legend>
+        <input id="alpha" type="range" min="0" max="1" step="0.05" value="0.85" aria-label="Alpha factor" />
+        <output id="alpha-value" for="alpha">0.85</output>
+      </fieldset>
+      <fieldset>
+        <legend>On a headset</legend>
+        <button id="enter-room" type="button" disabled>Enter your room</button>
+      </fieldset>
+    </div>
+    <p id="readout-help">
+      Drag to look round him, scroll to come closer. In the room, pull the trigger or pinch to go to the next phase.
+      <a href="./">Back to the app</a>
+    </p>
+  </body>
+</html>
