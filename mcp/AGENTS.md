@@ -1393,10 +1393,19 @@ flare on every tool call and fold back into him when done (`../vr/AGENTS.md`, "S
 The delegation id is the plan's step id, which carries the plan's own id, so it is unique across
 requests. `delegation_working` is read off the same `workflow-step-output` chunks as slow tools and
 affected entities (`asWorkingEvents`), and off a resumed agent's own stream when an answer is carried
-back. As with affected entities, none of it reaches the voice agent. Each agent is drawn with a
-glyph of its own from `GLYPH_BY_AGENT` in `hologram/src/agent-work.ts`, and
-`routing/agent-glyphs.spec.ts` fails when an agent `getPublicAgents` returns is missing from it — so
-a new routable agent needs a glyph on sir's devices too (see `hologram/AGENTS.md`).
+back. As with affected entities, none of it reaches the voice agent.
+
+**Each vertical draws its own agent.** Every message carries `glyph`, the SVG path the agent's
+vertical declares in its `glyph.ts` (`export const weatherGlyph = { agentId, path } satisfies
+AgentGlyph`, exported from the vertical's `index.ts`), gathered in `verticals/agent-glyphs.ts`
+(`AGENT_GLYPHS`, `glyphOfAgent`) for routing to look up. A glyph fits the circle of radius 1 round
+0,0, y down, and is drawn as round-capped strokes 0.15 wide: closed shapes and lines, no fills, and
+only the commands M, L, H, V, A, C, Q and Z, which is all the devices accept. The glyph files import
+nothing but that type, because the headset's preview page reads them at build time to show every
+glyph without a server. `routing/agent-glyphs.spec.ts` fails when an agent `getPublicAgents` returns
+has no glyph, when one names an agent routing cannot reach, when two agents share a path, and when a
+path uses anything the devices refuse or reaches past radius 1 — so a new routable agent needs a
+`glyph.ts` in its vertical, and nothing else on any device.
 
 <a id="pointing"></a>
 **What sir points at:**

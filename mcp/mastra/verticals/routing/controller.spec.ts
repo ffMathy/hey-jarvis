@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { type AffectedEntity, markAsAffectingEntities } from '../../utils/affected-entities.js';
 import { onLiveEvent } from '../../utils/live-events.js';
 import { markAsSlow } from '../../utils/slow-tasks.js';
+import { calendarGlyph } from '../calendar/glyph.js';
 import {
   asRoutingEvents,
   buildSnapshot,
@@ -484,6 +485,25 @@ describe('what the devices are told of each agent at work', () => {
     const told = activityWhile(() => progress.handle({ type: 'finished' }));
 
     expect(told).toEqual(['calendar failed', 'internetOfThings failed', 'weather failed']);
+  });
+
+  it('sends the glyph its agent’s vertical draws it with, and none for an agent without one', () => {
+    const told: { agentId: string; glyph?: string }[] = [];
+    const stop = onLiveEvent((event) => {
+      if (event.type === 'agentActivity') told.push({ agentId: event.agentId, glyph: event.glyph });
+    });
+    try {
+      const progress = new RoutingProgress();
+      progress.handle({ type: 'delegation_start', delegationId: 'one', taskId: 'diary', agentId: 'calendar' });
+      progress.handle({ type: 'delegation_start', delegationId: 'two', taskId: 'odd', agentId: 'noSuchAgent' });
+    } finally {
+      stop();
+    }
+
+    expect(told).toEqual([
+      { agentId: 'calendar', glyph: calendarGlyph.path },
+      { agentId: 'noSuchAgent', glyph: undefined },
+    ]);
   });
 
   it('says nothing more of one that is done, however late its chunks arrive', () => {

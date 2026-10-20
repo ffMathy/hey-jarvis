@@ -1,20 +1,22 @@
 import { BlendMode, PaintStyle, StrokeCap, StrokeJoin } from '@shopify/react-native-skia/lib/module/skia/types';
-import { orbitPoint, type SatelliteOrbit } from './agent-work';
+import { orbitPoint, PLAIN_RING_GLYPH, type SatelliteOrbit } from './agent-work';
 import { type HologramCanvas, type HologramSkia, SPHERE_FRACTION } from './hologram-drawing';
 
 /**
  * The satellites on a screen: the phone's, and its web build's. Each agent a request is using goes
- * round the sphere as a small glyph (`agent-work.ts` says which, where and how lit) — the same
- * glyphs, in the same order, as the headset draws in the room (`vr/src/hologram3d/satellites.ts`): a
- * sun for the weather, a page for the calendar, an envelope for email, a hexagon for the house, a
- * triangle for shopping, a tick for the to-do list, angle brackets for coding, a lens for web
- * research, a pot for cooking, a pin for the commute, an arrow coming round for reflection, a bar
- * chart for visualize, an eye for vision, and a plain ring for an agent not listed yet.
+ * round the sphere as a small glyph (`agent-work.ts` says which, where and how lit) — the glyph its
+ * vertical on the server declares, sent with every `agentActivity` as an SVG path, the same path the
+ * headset draws in the room (`vr/src/hologram3d/satellites.ts`).
  *
  * Drawn in his colours and blended as he is (Screen), over him, after `drawHologram` in the same
  * picture: a glyph, a hot dot at its middle, a little halo round it, a ring flaring out from it on
  * each tool it calls, and a slow pulse while it waits on sir. The ring is tilted, so a satellite is
  * a little larger and brighter passing in front of him and smaller and dimmer passing behind.
+ *
+ * A glyph is made into a path as it is drawn, every frame: a frame draws a handful, and a path cached
+ * across frames would have to be kept somewhere a worklet may write, which on a phone it may not.
+ * The paths a frame made are handed back, for a renderer over CanvasKit to delete once its picture
+ * is recorded, as it does the drawing's own (`createReleasableHologramResources`).
  *
  * It keeps the main entry's rule (see `hologram/AGENTS.md`): Skia arrives as an argument, its enums
  * as plain values, and the drawing runs as a worklet on the phone's UI thread, in CanvasKit in a
@@ -30,53 +32,14 @@ export const SCREEN_GLYPH_RADII = 0.13;
 /** How long the pulse of one waiting on sir takes. */
 export const ASKING_PULSE_SECONDS = 1.6;
 
+/** How wide a glyph's strokes are, in glyph radii: the same on every device. */
+export const GLYPH_STROKE_WIDTH = 0.15;
+
 /** How much smaller and dimmer a satellite is at the far side of the ring than at the near side. */
 const FAR_SIDE_SCALE = 0.8;
 const FAR_SIDE_LIGHT = 0.45;
 
-/** Each glyph as an SVG path in glyph radii, y down — the headset's distance fields, as strokes. */
-const GLYPH_PATHS = [
-  // The weather: a sun, a ring with eight rays.
-  `${circle(0, 0, 0.42)} ${Array.from({ length: 8 }, (_, ray) => {
-    const angle = (ray * Math.PI) / 4;
-    return `M ${0.66 * Math.cos(angle)} ${0.66 * Math.sin(angle)} L ${0.92 * Math.cos(angle)} ${0.92 * Math.sin(angle)}`;
-  }).join(' ')}`,
-  // The calendar: a page with its binding along the top.
-  'M -0.62 -0.55 L 0.62 -0.55 L 0.62 0.55 L -0.62 0.55 Z M -0.62 -0.25 L 0.62 -0.25',
-  // Email: an envelope, its flap folded down to the middle.
-  'M -0.7 -0.48 L 0.7 -0.48 L 0.7 0.48 L -0.7 0.48 Z M -0.7 -0.48 L 0 0 L 0.7 -0.48',
-  // The house: a hexagon.
-  `${Array.from({ length: 6 }, (_, corner) => {
-    const angle = Math.PI / 6 + (corner * Math.PI) / 3;
-    return `${corner === 0 ? 'M' : 'L'} ${0.7 * Math.cos(angle)} ${0.7 * Math.sin(angle)}`;
-  }).join(' ')} Z`,
-  // Shopping: a triangle.
-  'M 0 -0.66 L 0.64 0.44 L -0.64 0.44 Z',
-  // To-do: a tick.
-  'M -0.6 0 L -0.15 0.45 L 0.65 -0.5',
-  // Coding: angle brackets.
-  'M -0.25 -0.55 L -0.72 0 L -0.25 0.55 M 0.25 -0.55 L 0.72 0 L 0.25 0.55',
-  // Web research: a lens with its handle.
-  `${circle(-0.12, -0.12, 0.42)} M 0.18 0.18 L 0.66 0.66`,
-  // Cooking: a pot with its rim, steaming.
-  'M -0.6 -0.05 A 0.6 0.6 0 0 0 0.6 -0.05 M -0.75 -0.05 L 0.75 -0.05 M -0.2 -0.3 L -0.2 -0.6 M 0.2 -0.3 L 0.2 -0.6',
-  // Commute: a map pin.
-  `${circle(0, -0.22, 0.38)} M -0.3 0.02 L 0 0.72 L 0.3 0.02`,
-  // Reflection: an arrow coming round on itself.
-  'M 0.421 0.354 A 0.55 0.55 0 1 1 0.421 -0.354 M 0.151 -0.426 L 0.421 -0.354 L 0.397 -0.632',
-  // Visualize: a bar chart.
-  'M -0.7 0.6 L 0.7 0.6 M -0.4 0.6 L -0.4 0.1 M 0 0.6 L 0 -0.55 M 0.4 0.6 L 0.4 -0.2',
-  // Vision: an eye.
-  `M -0.748 0 A 0.9 0.9 0 0 1 0.748 0 A 0.9 0.9 0 0 1 -0.748 0 Z ${circle(0, 0, 0.22)}`,
-  // An agent not listed yet: a plain ring.
-  circle(0, 0, 0.45),
-];
-
-function circle(centreX: number, centreY: number, radius: number): string {
-  return `M ${centreX + radius} ${centreY} A ${radius} ${radius} 0 1 0 ${centreX - radius} ${centreY} A ${radius} ${radius} 0 1 0 ${centreX + radius} ${centreY} Z`;
-}
-
-/** Made once per view: the glyphs' paths and the paints, which a frame only re-tints. */
+/** Made once per view: the paints, which a frame only re-tints. */
 export function createSatelliteResources(Skia: HologramSkia) {
   const paint = (colour: string, style: PaintStyle, width = 0) => {
     const made = Skia.Paint();
@@ -90,13 +53,8 @@ export function createSatelliteResources(Skia: HologramSkia) {
     return made;
   };
   return {
-    glyphs: GLYPH_PATHS.map((path) => {
-      const made = Skia.Path.MakeFromSVGString(path);
-      if (made === null) throw new Error(`A satellite glyph is not a path: ${path}`);
-      return made;
-    }),
-    glyphStroke: paint('#ff7e28', PaintStyle.Stroke, 0.15),
-    flareGlyphStroke: paint('#ff8e3c', PaintStyle.Stroke, 0.15),
+    glyphStroke: paint('#ff7e28', PaintStyle.Stroke, GLYPH_STROKE_WIDTH),
+    flareGlyphStroke: paint('#ff8e3c', PaintStyle.Stroke, GLYPH_STROKE_WIDTH),
     flareRing: paint('#ff8e3c', PaintStyle.Stroke, 0.07),
     core: paint('#ff8e3c', PaintStyle.Fill),
     halo: paint('#dc5c20', PaintStyle.Fill),
@@ -105,19 +63,61 @@ export function createSatelliteResources(Skia: HologramSkia) {
 
 export type SatelliteResources = ReturnType<typeof createSatelliteResources>;
 
+/** A path made for a frame, which a renderer over CanvasKit deletes once the frame is recorded. */
+export type MadeGlyphPath = ReturnType<HologramSkia['Path']['MakeFromSVGString']>;
+
+/**
+ * Draws one satellite centred on 0,0 of `canvas` at a radius of 1 — its halo, glyph, dot and flare —
+ * `light` bright and `flare` into a tool call. Returns the path it made of the glyph.
+ */
+export function drawSatelliteGlyph(
+  canvas: HologramCanvas,
+  Skia: HologramSkia,
+  glyph: string,
+  light: number,
+  flare: number,
+  resources: SatelliteResources,
+): MadeGlyphPath {
+  'worklet';
+  resources.halo.setAlphaf(Math.min(1, 0.16 * light * (1 + 1.5 * flare)));
+  canvas.drawCircle(0, 0, 1.15, resources.halo);
+  canvas.drawCircle(0, 0, 0.7, resources.halo);
+
+  // A path the server sent that Skia cannot read is a plain ring: it is still an agent at work.
+  const path = Skia.Path.MakeFromSVGString(glyph) ?? Skia.Path.MakeFromSVGString(PLAIN_RING_GLYPH);
+  if (path !== null) {
+    resources.glyphStroke.setAlphaf(light * (1 - flare));
+    canvas.drawPath(path, resources.glyphStroke);
+    if (flare > 0) {
+      resources.flareGlyphStroke.setAlphaf(light * flare);
+      canvas.drawPath(path, resources.flareGlyphStroke);
+    }
+  }
+
+  resources.core.setAlphaf(light * (0.6 + 0.4 * flare));
+  canvas.drawCircle(0, 0, 0.1, resources.core);
+
+  if (flare > 0) {
+    resources.flareRing.setAlphaf(light * flare);
+    canvas.drawCircle(0, 0, 1.75 - 0.95 * flare, resources.flareRing);
+  }
+  return path;
+}
+
 /**
  * Draws `orbits` round the sphere of a `size` square canvas, at `time` seconds on the drawing's own
- * clock — the frame clock's, so they go round as smoothly as he turns.
+ * clock — the frame clock's, so they go round as smoothly as he turns. Returns the paths it made.
  */
 export function drawSatellites(
   canvas: HologramCanvas,
+  Skia: HologramSkia,
   size: number,
   time: number,
   orbits: readonly SatelliteOrbit[],
   resources: SatelliteResources,
-) {
+): MadeGlyphPath[] {
   'worklet';
-  if (orbits.length === 0) return;
+  const made: MadeGlyphPath[] = [];
   const radius = size * SPHERE_FRACTION;
   const pulse = 0.5 + 0.5 * Math.cos((2 * Math.PI * time) / ASKING_PULSE_SECONDS);
   for (let index = 0; index < orbits.length; index++) {
@@ -132,28 +132,8 @@ export function drawSatellites(
     canvas.save();
     canvas.translate(size / 2 + across * radius * SCREEN_ORBIT_RADII, size / 2 - up * radius * SCREEN_ORBIT_RADII);
     canvas.scale(glyphRadius, glyphRadius);
-
-    resources.halo.setAlphaf(Math.min(1, 0.16 * light * (1 + 1.5 * orbit.flare)));
-    canvas.drawCircle(0, 0, 1.15, resources.halo);
-    canvas.drawCircle(0, 0, 0.7, resources.halo);
-
-    const glyph = resources.glyphs[orbit.glyph] ?? resources.glyphs[resources.glyphs.length - 1];
-    if (glyph !== undefined) {
-      resources.glyphStroke.setAlphaf(light * (1 - orbit.flare));
-      canvas.drawPath(glyph, resources.glyphStroke);
-      if (orbit.flare > 0) {
-        resources.flareGlyphStroke.setAlphaf(light * orbit.flare);
-        canvas.drawPath(glyph, resources.flareGlyphStroke);
-      }
-    }
-
-    resources.core.setAlphaf(light * (0.6 + 0.4 * orbit.flare));
-    canvas.drawCircle(0, 0, 0.1, resources.core);
-
-    if (orbit.flare > 0) {
-      resources.flareRing.setAlphaf(light * orbit.flare);
-      canvas.drawCircle(0, 0, 1.75 - 0.95 * orbit.flare, resources.flareRing);
-    }
+    made.push(drawSatelliteGlyph(canvas, Skia, orbit.glyph, light, orbit.flare, resources));
     canvas.restore();
   }
+  return made;
 }

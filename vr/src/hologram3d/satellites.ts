@@ -18,17 +18,18 @@ import type { SatelliteSpot } from '../satellites/satellite-spots';
 import { STROKE_PAINTS, THINNEST_STROKE_PIXELS } from './body-strokes';
 import { CORONA_RENDER_ORDER } from './corona';
 import { glslColour, glslFloat } from './fragment-glsl';
+import { createGlyphAtlas, GLYPH_ATLAS_REACH, type GlyphAtlas } from './glyph-atlas';
 import { HALO_PAINTS } from './halo-union';
 import type { Vector3Like } from './view-basis';
 import { ALPHA_FROM_LIGHT } from './view-plane-quad';
 
 /**
  * The satellites round Jarvis, one for each of his agents a request is using
- * (`satellites/satellite-spots.ts` says where each is and how lit, from `hologram`'s `agent-work.ts`): a small glyph per agent, each its own
- * (`GLYPH_BY_AGENT` in `hologram`, the same as the phone draws) — a sun for the weather, a page for
- * the calendar, a hexagon for the house — in his stroke colours, a hot dot at
- * its middle, a little of his halo round it, a ring flaring out from it on every tool it calls, and a
- * slow pulse while it waits on sir.
+ * (`satellites/satellite-spots.ts` says where each is and how lit, from `hologram`'s
+ * `agent-work.ts`): a small glyph per agent — the SVG path its vertical on the server declares, drawn
+ * into a texture (`glyph-atlas.ts`) and tinted here in his stroke colours — a hot dot at its middle, a
+ * little of his halo round it, a ring flaring out from it on every tool it calls, and a slow pulse
+ * while it waits on sir.
  *
  * Drawn as his coronas are (`corona.ts`): one instanced draw of quads turned to the centre eye in the
  * vertex shader, Screen in colour and alpha, raw encoded sRGB, alpha ALPHA_FROM_LIGHT × max(light),
@@ -102,6 +103,8 @@ precision highp float;
 
 uniform float time;
 uniform float alphaFromLight;
+// The glyphs, one slot each, side by side: see glyph-atlas.ts.
+uniform sampler2D glyphs;
 
 in vec2 local;
 flat in float fade;
@@ -112,15 +115,14 @@ flat in float askingOut;
 out vec4 colour;
 
 const vec3 HALO = ${glslColour(HALO_PAINTS.colour)};
-const vec3 DIM = ${glslColour(STROKE_PAINTS.dim.colour)};
 const vec3 BRIGHT = ${glslColour(STROKE_PAINTS.bright.colour)};
 const vec3 HOT = ${glslColour(STROKE_PAINTS.hot.colour)};
 const float THINNEST_PIXELS = ${glslFloat(THINNEST_STROKE_PIXELS)};
 const float ASKING_PULSE_SECONDS = ${glslFloat(ASKING_PULSE_SECONDS)};
 const float TAU = 6.283185307179586;
 
-// A glyph's stroke: its half-width, in glyph radii.
-const float STROKE_HALF = 0.075;
+const float GLYPH_SLOTS = ${glslFloat(MAX_SATELLITES)};
+const float GLYPH_ATLAS_REACH = ${glslFloat(GLYPH_ATLAS_REACH)};
 
 float coverage(float edgeDistance, float pixel) {
   return clamp(0.5 - edgeDistance / pixel, 0.0, 1.0);
@@ -136,118 +138,11 @@ vec3 screen(vec3 below, vec3 above) {
   return below + above - below * above;
 }
 
-float segment(vec2 point, vec2 from, vec2 to) {
-  vec2 along = to - from;
-  float share = clamp(dot(point - from, along) / dot(along, along), 0.0, 1.0);
-  return length(point - from - along * share);
-}
-
-float box(vec2 point, vec2 halfSize) {
-  vec2 outside = abs(point) - halfSize;
-  return length(max(outside, 0.0)) + min(max(outside.x, outside.y), 0.0);
-}
-
-float hexagon(vec2 point, float size) {
-  const vec3 k = vec3(-0.866025404, 0.5, 0.577350269);
-  point = abs(point);
-  point -= 2.0 * min(dot(k.xy, point), 0.0) * k.xy;
-  point -= vec2(clamp(point.x, -k.z * size, k.z * size), size);
-  return length(point) * sign(point.y);
-}
-
-float triangle(vec2 point, float size) {
-  const float k = 1.7320508;
-  point.y += size * 0.3;
-  point.x = abs(point.x) - size;
-  point.y = point.y + size / k;
-  if (point.x + k * point.y > 0.0) point = vec2(point.x - k * point.y, -k * point.x - point.y) / 2.0;
-  point.x -= clamp(point.x, -2.0 * size, 0.0);
-  return -length(point) * sign(point.y);
-}
-
-// The part of a circle below the level line at cut, and the two ends where it meets that line.
-float capBelow(vec2 point, vec2 centre, float radius, float cut) {
-  vec2 from = point - centre;
-  float reach = length(from);
-  vec2 nearest = centre + (reach > 1e-5 ? from / reach : vec2(0.0, -1.0)) * radius;
-  if (nearest.y <= cut) return abs(reach - radius);
-  float halfChord = sqrt(max(radius * radius - (cut - centre.y) * (cut - centre.y), 0.0));
-  return min(length(point - vec2(centre.x + halfChord, cut)), length(point - vec2(centre.x - halfChord, cut)));
-}
-
-// How far from the glyph's strokes this point is, for each agent's glyph.
-float glyphDistance(vec2 point, int glyph) {
-  if (glyph == 0) {
-    // The weather: a sun, a ring with eight rays.
-    float ring = abs(length(point) - 0.42);
-    float angle = atan(point.y, point.x);
-    float ray = mod(angle + TAU / 16.0, TAU / 8.0) - TAU / 16.0;
-    vec2 polar = vec2(length(point), ray * length(point));
-    float rays = segment(polar, vec2(0.66, 0.0), vec2(0.92, 0.0));
-    return min(ring, rays);
-  }
-  if (glyph == 1) {
-    // The calendar: a page with its binding along the top.
-    float page = abs(box(point, vec2(0.62, 0.55)));
-    float binding = segment(point, vec2(-0.62, 0.25), vec2(0.62, 0.25));
-    return min(page, binding);
-  }
-  if (glyph == 2) {
-    // Email: an envelope, its flap folded down to the middle.
-    float envelope = abs(box(point, vec2(0.7, 0.48)));
-    float flap = min(segment(point, vec2(-0.7, 0.48), vec2(0.0, 0.0)), segment(point, vec2(0.7, 0.48), vec2(0.0, 0.0)));
-    return min(envelope, flap);
-  }
-  if (glyph == 3) return abs(hexagon(point, 0.62)); // The house.
-  if (glyph == 4) return abs(triangle(point, 0.62)); // Shopping.
-  if (glyph == 5) {
-    // To-do: a tick.
-    return min(segment(point, vec2(-0.6, 0.0), vec2(-0.15, -0.45)), segment(point, vec2(-0.15, -0.45), vec2(0.65, 0.5)));
-  }
-  if (glyph == 6) {
-    // Coding: angle brackets.
-    vec2 mirrored = vec2(abs(point.x), point.y);
-    return min(segment(mirrored, vec2(0.25, 0.55), vec2(0.72, 0.0)), segment(mirrored, vec2(0.72, 0.0), vec2(0.25, -0.55)));
-  }
-  if (glyph == 7) {
-    // Web research: a lens with its handle.
-    return min(abs(length(point - vec2(-0.12, 0.12)) - 0.42), segment(point, vec2(0.18, -0.18), vec2(0.66, -0.66)));
-  }
-  if (glyph == 8) {
-    // Cooking: a pot with its rim, steaming.
-    float pot = capBelow(point, vec2(0.0, 0.05), 0.6, 0.05);
-    float rim = segment(point, vec2(-0.75, 0.05), vec2(0.75, 0.05));
-    float steam = min(segment(point, vec2(-0.2, 0.3), vec2(-0.2, 0.6)), segment(point, vec2(0.2, 0.3), vec2(0.2, 0.6)));
-    return min(pot, min(rim, steam));
-  }
-  if (glyph == 9) {
-    // Commute: a map pin.
-    float head = abs(length(point - vec2(0.0, 0.22)) - 0.38);
-    float tip = min(segment(point, vec2(-0.3, -0.02), vec2(0.0, -0.72)), segment(point, vec2(0.3, -0.02), vec2(0.0, -0.72)));
-    return min(head, tip);
-  }
-  if (glyph == 10) {
-    // Reflection: an arrow coming round on itself — a ring open on the right, its head at the top end.
-    vec2 top = vec2(0.421, 0.354);
-    float ring = abs(atan(point.y, point.x)) > 0.6981317 ? abs(length(point) - 0.55)
-      : min(length(point - top), length(point - vec2(top.x, -top.y)));
-    float head = min(segment(point, vec2(0.151, 0.426), top), segment(point, top, vec2(0.397, 0.632)));
-    return min(ring, head);
-  }
-  if (glyph == 11) {
-    // Visualize: a bar chart.
-    float bars = min(segment(point, vec2(-0.4, -0.6), vec2(-0.4, -0.1)), segment(point, vec2(0.0, -0.6), vec2(0.0, 0.55)));
-    bars = min(bars, segment(point, vec2(0.4, -0.6), vec2(0.4, 0.2)));
-    return min(bars, segment(point, vec2(-0.7, -0.6), vec2(0.7, -0.6)));
-  }
-  if (glyph == 12) {
-    // Vision: an eye — two lids and a pupil.
-    float upper = capBelow(vec2(point.x, -point.y), vec2(0.0, 0.5), 0.9, 0.0);
-    float lower = capBelow(point, vec2(0.0, 0.5), 0.9, 0.0);
-    return min(min(upper, lower), abs(length(point) - 0.22));
-  }
-  // An agent not listed yet: a plain ring.
-  return abs(length(point) - 0.45);
+// How much of the glyph in an atlas slot covers this point, in glyph radii from its middle, y up.
+float glyphCoverage(vec2 point, float slot) {
+  vec2 inSlot = 0.5 + point / (2.0 * GLYPH_ATLAS_REACH);
+  if (any(lessThan(inSlot, vec2(0.0))) || any(greaterThan(inSlot, vec2(1.0)))) return 0.0;
+  return texture(glyphs, vec2((slot + inSlot.x) / GLYPH_SLOTS, inSlot.y)).a;
 }
 
 void main() {
@@ -259,7 +154,7 @@ void main() {
   vec3 light = HALO * (0.22 * exp(-radius * radius * 1.6) * (1.0 + 1.5 * flareOut));
 
   // The glyph, lit up by a flare.
-  float stroke = line(glyphDistance(local, int(glyphOut + 0.5)), STROKE_HALF, pixel);
+  float stroke = glyphCoverage(local, floor(glyphOut + 0.5));
   light = screen(light, mix(BRIGHT, HOT, flareOut) * stroke * pulse);
 
   // A hot dot at its middle, as at his.
@@ -289,7 +184,7 @@ export interface Satellites {
 }
 
 /** The satellites, as one instanced draw of up to MAX_SATELLITES view-facing quads. */
-export function createSatellites(): Satellites {
+export function createSatellites(atlas: GlyphAtlas = createGlyphAtlas()): Satellites {
   const geometry = new InstancedBufferGeometry();
   geometry.setAttribute('corner', new BufferAttribute(new Float32Array([-1, -1, 1, -1, 1, 1, -1, 1]), 2));
   geometry.setIndex([0, 1, 2, 0, 2, 3]);
@@ -314,6 +209,7 @@ export function createSatellites(): Satellites {
     eye: { value: new Vector3() },
     time: { value: 0 },
     alphaFromLight: { value: ALPHA_FROM_LIGHT },
+    glyphs: { value: atlas.texture },
   };
   const material = new RawShaderMaterial({
     glslVersion: GLSL3,
@@ -342,13 +238,14 @@ export function createSatellites(): Satellites {
     object: mesh,
     set(spots) {
       const count = Math.min(spots.length, MAX_SATELLITES);
+      const slots = atlas.slotsFor(spots.slice(0, count).map((spot) => spot.glyph));
       for (let index = 0; index < count; index++) {
         const spot = spots[index];
         if (spot === undefined) continue;
         centres.setXYZ(index, spot.position.x, spot.position.y, spot.position.z);
         levels.setX(index, Math.min(1, Math.max(0, spot.level)));
         flares.setX(index, Math.min(1, Math.max(0, spot.flare)));
-        glyphs.setX(index, spot.glyph);
+        glyphs.setX(index, slots[index] ?? 0);
         asking.setX(index, spot.asking ? 1 : 0);
       }
       for (const attribute of [centres, levels, flares, glyphs, asking]) attribute.needsUpdate = true;
@@ -362,6 +259,7 @@ export function createSatellites(): Satellites {
     dispose() {
       geometry.dispose();
       material.dispose();
+      atlas.dispose();
     },
   };
 }

@@ -5,11 +5,15 @@
  * stops to ask something, and answers or fails. The headset shows each one as a satellite round him.
  *
  * The delegation and the agent are opaque, like an entity's id: compared, never parsed — a new agent
- * on the server should need no change on a device, which shows one it does not know as it shows any.
+ * on the server should need no change on a device. So the message also says how to draw it: the
+ * glyph its vertical on the server declares (`mcp/mastra/verticals/agent-glyphs.ts`), an SVG path a
+ * device draws whatever agent it is for.
  *
  * The message comes from a server this device does not control, over the network, so it is read
  * strictly: the declared shape only, a state from the list below, and ids that are usable strings
- * within the limit. Anything else is dropped. The worst a wrong one can do is draw a satellite.
+ * within the limit, and a glyph only of the path commands a glyph is made of (`DRAWABLE_GLYPH`).
+ * Anything else is dropped — a glyph on its own, the message without it. The worst a wrong one can
+ * do is draw a satellite.
  */
 
 /**
@@ -37,6 +41,23 @@ export interface AgentActivity {
   /** Opaque: `weather`, `calendar`, `internetOfThings`… as the server's planner names its agents. */
   readonly agentId: string;
   readonly state: AgentActivityState;
+  /**
+   * The agent's glyph: an SVG path in glyph radii, y down, drawn as strokes. Left out, a device draws
+   * a plain ring.
+   */
+  readonly glyph?: string;
+}
+
+/** The longest glyph that is taken: a few times longer than any the server's verticals draw. */
+export const AGENT_GLYPH_MAX_LENGTH = 1000;
+
+/** What a glyph may be made of: the path commands M, L, H, V, A, C, Q and Z, and numbers. */
+export const DRAWABLE_GLYPH = /^[MmLlHhVvAaCcQqZz0-9.,\s-]+$/;
+
+function usableGlyph(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const glyph = value.trim();
+  return glyph.length > 0 && glyph.length <= AGENT_GLYPH_MAX_LENGTH && DRAWABLE_GLYPH.test(glyph) ? glyph : undefined;
 }
 
 /** The longest delegation or agent id that is taken: longer than any the server makes. */
@@ -59,5 +80,6 @@ export function agentActivityOf(message: unknown): AgentActivity | undefined {
   const agentId = usableId('agentId' in message ? message.agentId : undefined);
   const state = 'state' in message ? message.state : undefined;
   if (delegationId === undefined || agentId === undefined || !isState(state)) return undefined;
-  return { delegationId, agentId, state };
+  const glyph = usableGlyph('glyph' in message ? message.glyph : undefined);
+  return glyph === undefined ? { delegationId, agentId, state } : { delegationId, agentId, state, glyph };
 }

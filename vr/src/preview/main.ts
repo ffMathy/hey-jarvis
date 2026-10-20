@@ -3,6 +3,7 @@ import { canEnterRoom, requestRoomSession } from '../xr/room-session';
 import type { HologramPreviewHook, PreviewBackground, PreviewMode, PreviewPhase } from './preview-hook';
 import { PREVIEW_PHASES } from './preview-hook';
 import { createPreviewRoom } from './room';
+import { startSatellitesPanel } from './satellites-panel';
 import { createStage, type StageView } from './stage';
 
 /**
@@ -109,6 +110,8 @@ async function start(): Promise<HologramPreviewHook> {
     enterButton.disabled = !can;
   });
 
+  const satellites = startSatellitesPanel(stage.satellites, painter);
+
   stage.setMode(initialMode);
   press('mode', initialMode);
   press('phase', stage.phase);
@@ -149,6 +152,9 @@ async function start(): Promise<HologramPreviewHook> {
     get room() {
       return room.status();
     },
+    get satellites() {
+      return satellites.report();
+    },
   };
 }
 
@@ -178,6 +184,7 @@ window.__hologramPreview = {
   get room() {
     return NOT_IN_ROOM;
   },
+  satellites: [],
 };
 starting.then((hook) => {
   window.__hologramPreview = hook;

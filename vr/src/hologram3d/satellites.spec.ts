@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 import { MAX_SATELLITES } from 'hologram';
-import { CustomBlending, InstancedBufferAttribute, OneFactor, OneMinusSrcColorFactor } from 'three';
+import { CustomBlending, InstancedBufferAttribute, OneFactor, OneMinusSrcColorFactor, Texture } from 'three';
 import type { SatelliteSpot } from '../satellites/satellite-spots';
 import { CORONA_RENDER_ORDER } from './corona';
+import { assignGlyphSlots, type GlyphAtlas } from './glyph-atlas';
 import {
   createSatellites,
   MIN_APPARENT_RADIUS_DEGREES,
@@ -12,13 +13,32 @@ import {
 } from './satellites';
 
 function spot(x: number, overrides: Partial<SatelliteSpot> = {}): SatelliteSpot {
-  return { position: { x, y: 1.4, z: -1.5 }, glyph: 3, level: 1, flare: 0, asking: false, ...overrides };
+  return { position: { x, y: 1.4, z: -1.5 }, glyph: 'M 0 0 L 1 0', level: 1, flare: 0, asking: false, ...overrides };
 }
 
 function attribute(satellites: ReturnType<typeof createSatellites>, name: string): InstancedBufferAttribute {
   const found = satellites.object.geometry.getAttribute(name);
   if (!(found instanceof InstancedBufferAttribute)) throw new Error(`${name} is not an instanced attribute.`);
   return found;
+}
+
+/** Every glyph the fake atlas was asked to draw, in order. */
+let drawn: string[] = [];
+
+/** An atlas with no canvas: each new glyph gets the next slot, as the real one's first glyphs do. */
+function fakeAtlas(): GlyphAtlas {
+  drawn = [];
+  let held: (string | undefined)[] = [];
+  return {
+    texture: new Texture(),
+    slotsFor(glyphs) {
+      const placed = assignGlyphSlots(held, glyphs);
+      held = placed.held;
+      for (const slot of placed.drawn) drawn.push(held[slot] ?? '');
+      return placed.slots;
+    },
+    dispose: () => undefined,
+  };
 }
 
 describe('satelliteRadiusAt', () => {
@@ -31,13 +51,17 @@ describe('satelliteRadiusAt', () => {
 
 describe('the satellites’ draw', () => {
   it('is one instance per satellite, carrying where, which glyph, how lit, its flare and whether it asks', () => {
-    const satellites = createSatellites();
-    satellites.set([spot(0.1, { glyph: 0, level: 0.4 }), spot(-0.2, { glyph: 6, flare: 0.5, asking: true })]);
+    const satellites = createSatellites(fakeAtlas());
+    satellites.set([
+      spot(0.1, { glyph: 'M 0 0 L 1 0', level: 0.4 }),
+      spot(-0.2, { glyph: 'M 0 0 L 0 1', flare: 0.5, asking: true }),
+    ]);
 
     expect(satellites.object.geometry.instanceCount).toBe(2);
     expect(satellites.object.visible).toBe(true);
     expect(attribute(satellites, 'centre').getX(1)).toBeCloseTo(-0.2, 6);
-    expect(attribute(satellites, 'glyph').getX(1)).toBe(6);
+    expect(attribute(satellites, 'glyph').getX(1)).toBe(1);
+    expect(drawn).toEqual(['M 0 0 L 1 0', 'M 0 0 L 0 1']);
     expect(attribute(satellites, 'level').getX(0)).toBeCloseTo(0.4, 6);
     expect(attribute(satellites, 'flare').getX(1)).toBeCloseTo(0.5, 6);
     expect(attribute(satellites, 'asking').getX(1)).toBe(1);
@@ -45,7 +69,7 @@ describe('the satellites’ draw', () => {
   });
 
   it(`draws at most ${MAX_SATELLITES}, clamps what it is handed, and hides when there are none`, () => {
-    const satellites = createSatellites();
+    const satellites = createSatellites(fakeAtlas());
     satellites.set(Array.from({ length: MAX_SATELLITES + 4 }, (_, index) => spot(index, { level: 3, flare: -1 })));
 
     expect(satellites.object.geometry.instanceCount).toBe(MAX_SATELLITES);
@@ -57,7 +81,7 @@ describe('the satellites’ draw', () => {
   });
 
   it('is drawn after his coronas and before the text panels, Screen-blended with no depth, as his layers are', () => {
-    const { object } = createSatellites();
+    const { object } = createSatellites(fakeAtlas());
 
     expect(SATELLITE_RENDER_ORDER).toBeGreaterThan(CORONA_RENDER_ORDER);
     expect(SATELLITE_RENDER_ORDER).toBeLessThan(10);
@@ -71,7 +95,7 @@ describe('the satellites’ draw', () => {
   });
 
   it('turns every glyph to the centre eye it is handed each frame', () => {
-    const satellites = createSatellites();
+    const satellites = createSatellites(fakeAtlas());
     satellites.update(0.016, { x: 0.3, y: 1.6, z: 0.1 });
 
     const uniforms = satellites.object.material.uniforms;

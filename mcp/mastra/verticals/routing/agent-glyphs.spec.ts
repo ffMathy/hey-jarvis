@@ -1,39 +1,46 @@
 import { describe, expect, it } from 'bun:test';
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
+import { AGENT_GLYPHS } from '../agent-glyphs.js';
 import { getPublicAgents } from '../index.js';
 
 /**
- * Every agent routing can send a request to has a glyph of its own on sir's devices — across
- * packages, read as text.
- *
- * Routing tells the devices which agents a request is using (`agentActivity`, see "Which agents are
- * at work" in `mcp/AGENTS.md`), and the headset and the phone draw each as a satellite with its
- * agent's glyph, from `GLYPH_BY_AGENT` in `hologram/src/agent-work.ts`. An agent missing from that
- * table still shows, as a plain ring, so nothing fails when one is added here and forgotten there —
- * which is why this reads the table as it is and fails instead.
+ * Every agent routing can send a request to is drawn on sir's devices with a glyph its vertical
+ * declares (`verticals/agent-glyphs.ts`), sent on every `agentActivity`. An agent without one still
+ * shows, as a plain ring, so nothing would fail if a new agent were added and its glyph forgotten —
+ * which is why this does.
  */
 
-const AGENT_WORK = readFileSync(path.join(import.meta.dir, '../../../../hologram/src/agent-work.ts'), 'utf8');
+/** What the devices accept as a glyph (`hologram`'s `agent-activity.ts`): these commands and numbers. */
+const DRAWABLE_PATH = /^[MmLlHhVvAaCcQqZz0-9.,\s-]+$/;
 
-/** The table's entries, `agentId: glyph`, as written. */
-function glyphTable(): Map<string, number> {
-  const [, body = ''] = AGENT_WORK.match(/export const GLYPH_BY_AGENT[^=]*= \{([^}]*)\}/) ?? [];
-  return new Map([...body.matchAll(/(\w+): (\d+),/g)].map(([, agentId = '', glyph = '']) => [agentId, Number(glyph)]));
-}
+/** The longest glyph the devices take. */
+const LONGEST_GLYPH = 1000;
 
 describe('the glyph each agent is drawn with on sir’s devices', () => {
-  it('exists for every agent routing can send a request to', async () => {
-    const table = glyphTable();
-    const missing = (await getPublicAgents()).map((agent) => agent.id).filter((agentId) => !table.has(agentId));
+  it('exists for every agent routing can send a request to, and for no other', async () => {
+    const routable = (await getPublicAgents()).map((agent) => agent.id).sort();
 
-    expect(table.size).toBeGreaterThan(0);
-    expect(missing).toEqual([]);
+    expect(AGENT_GLYPHS.map((glyph) => glyph.agentId).sort()).toEqual(routable);
   });
 
   it('is never shared by two agents', () => {
-    const glyphs = [...glyphTable().values()];
+    const paths = AGENT_GLYPHS.map((glyph) => glyph.path);
 
-    expect(new Set(glyphs).size).toBe(glyphs.length);
+    expect(new Set(paths).size).toBe(paths.length);
+  });
+
+  it('is a path the devices will draw: their commands only, and not too long', () => {
+    for (const { agentId, path } of AGENT_GLYPHS) {
+      expect({ agentId, drawable: DRAWABLE_PATH.test(path) }).toEqual({ agentId, drawable: true });
+      expect(path.length).toBeLessThanOrEqual(LONGEST_GLYPH);
+    }
+  });
+
+  it('fits the circle of radius 1 it is drawn in', () => {
+    for (const { agentId, path } of AGENT_GLYPHS) {
+      const coordinates = (path.match(/-?\d*\.?\d+/g) ?? []).map(Number);
+      // An arc's flags and rotation are numbers too, and all of them are 0 or 1 here.
+      const largest = Math.max(...coordinates.map(Math.abs));
+      expect({ agentId, fits: largest <= 1 }).toEqual({ agentId, fits: true });
+    }
   });
 });

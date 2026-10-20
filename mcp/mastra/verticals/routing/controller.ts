@@ -8,6 +8,7 @@ import type { DirectAnswerOutcome } from '../../utils/direct-lookup-factory.js';
 import { type AgentActivityState, publishLiveEvent } from '../../utils/live-events.js';
 import { logger } from '../../utils/logger.js';
 import { isSlowTask } from '../../utils/slow-tasks.js';
+import { glyphOfAgent } from '../agent-glyphs.js';
 import { dismissPhoto, findPhoto, photosWaiting, unmarkPhotoLookedAt } from '../vision/photos.js';
 import { getRoutingClassifier } from './classifier.js';
 import { sendCompletionNotice } from './completion-notice.js';
@@ -397,11 +398,21 @@ export class RoutingProgress {
     }
   }
 
-  /** Publishes where a delegation has got to (`agentActivity`), for the headset's satellites. */
+  /**
+   * Publishes where a delegation has got to (`agentActivity`), for the satellites sir's devices draw
+   * round Jarvis, with the glyph its agent's vertical draws it with.
+   */
   private reportActivity(delegationId: string, agentId: string, state: AgentActivityState): void {
     // A tool call is a moment, and the agent is still working after it.
     this.activityByDelegationId.set(delegationId, state === 'tool' ? 'working' : state);
-    publishLiveEvent({ type: 'agentActivity', delegationId, agentId, state });
+    const glyph = glyphOfAgent(agentId);
+    publishLiveEvent({
+      type: 'agentActivity',
+      delegationId,
+      agentId,
+      state,
+      ...(glyph === undefined ? {} : { glyph }),
+    });
   }
 
   private handleDelegationSlow(event: Extract<RoutingEvent, { type: 'delegation_slow' }>): void {

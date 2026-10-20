@@ -620,13 +620,14 @@ function JarvisHologramView({
     // once from the start of the arrival: see `hologramFrameOf`.
     drawHologram(canvas, drawnSize, hologramFrameOf(current, density.value.density), scene, resources);
     // Round him, on his clock, so they go round as smoothly as he turns: see `satellite-drawing.ts`.
-    drawSatellites(canvas, drawnSize, current.time, orbits.value, satelliteResources);
+    const glyphPaths = drawSatellites(canvas, Skia, drawnSize, current.time, orbits.value, satelliteResources);
     if (DRAWN_IN_A_LAYER) {
       canvas.restore();
     }
     const recorded = recorder.finishRecordingAsPicture();
     if (RELEASES_PATHS_BY_HAND) {
       releasable?.release();
+      for (const path of glyphPaths) path?.dispose();
     }
     const took = performance.now() - startedAt;
     built.value += 1;

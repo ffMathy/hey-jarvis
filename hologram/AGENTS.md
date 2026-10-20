@@ -206,11 +206,15 @@ usable is dropped.
 **Which agents are at work comes from the server too.** As a request's plan names
 each delegation, its agent starts, calls a tool, stops to ask, and answers or
 fails, the server broadcasts
-`{"type":"agentActivity","delegationId":…,"agentId":…,"state":…}`, the state one
-of `planned`, `working`, `tool` (a moment: still working after it), `asking`,
-`answered` and `failed`. `agentActivityOf` (`agent-activity.ts`) reads it as
-strictly as an entity: both ids opaque, trimmed, non-empty and at most 200
-characters, the state from that list, and anything else dropped.
+`{"type":"agentActivity","delegationId":…,"agentId":…,"state":…,"glyph":…}`, the
+state one of `planned`, `working`, `tool` (a moment: still working after it),
+`asking`, `answered` and `failed`, and the glyph the SVG path its agent's
+vertical on the server draws it with (`mcp/mastra/verticals/agent-glyphs.ts`).
+`agentActivityOf` (`agent-activity.ts`) reads it as strictly as an entity: both
+ids opaque, trimmed, non-empty and at most 200 characters, the state from that
+list, a glyph of at most 1000 characters made only of the path commands M, L, H,
+V, A, C, Q and Z and numbers (`DRAWABLE_GLYPH`), and anything else dropped — a
+glyph on its own, the message without it.
 
 Every device that shows them shares one lifecycle, `agent-work.ts`: a satellite
 per delegation, dim while planned, lit while working, flaring on each tool call,
@@ -228,12 +232,15 @@ as Skia strokes, dimmer and smaller passing behind him). On the phone,
 `satellites` prop, or the nearest `AgentSatellitesContext`, holds. The watch
 holds the line and shows none.
 
-Every agent routing can send a request to has a glyph of its own
-(`GLYPH_BY_AGENT`), and an agent not in the table yet is a plain ring rather
-than a borrowed likeness. Adding an agent on the server means adding it there and
-drawing its glyph twice, as SVG strokes in `satellite-drawing.ts` and as a
-distance field in the headset's shader; the server's
-`routing/agent-glyphs.spec.ts` reads the table and fails until it is in it. With `pretending`, the hook has sample mode's
+**No device knows any agent's glyph.** Each vertical on the server declares its
+own, in its `glyph.ts`, and it comes with every message, so a new agent needs no
+change on any device. A satellite whose messages brought none is a plain ring
+(`PLAIN_RING_GLYPH`). A glyph is an SVG path in glyph radii — it fits the circle
+of radius 1 — with y down, drawn as round-capped strokes `GLYPH_STROKE_WIDTH`
+wide: by Skia on the phone, from the string each frame (and the paths released
+after recording in a browser), and by a 2D canvas into the headset's glyph
+atlas. Sample mode's three pretend agents have made-up glyphs of their own
+(`SAMPLE_AGENTS`), since the real ones are only the server's. With `pretending`, the hook has sample mode's
 three pretend agents at work (`pretendWork`), so they can be seen with no server.
 
 **What sir points at goes to the server.** `ServerLink.point(entity)` sends `{"type":"pointing","entity":{…}}`, or `"entity":null` for

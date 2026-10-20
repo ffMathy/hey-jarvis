@@ -32,10 +32,10 @@ describe('the satellites in the room', () => {
   });
 
   it('carry the glyph, the level, the flare and whether it asks, as the drawing wants them', () => {
-    const state = stepWork(recordActivity(NO_WORK, { ...WORKING, state: 'tool' }, 0), 0);
+    const state = stepWork(recordActivity(NO_WORK, { ...WORKING, state: 'tool', glyph: 'M 0 -0.7 L 0.7 0 Z' }, 0), 0);
     const [spot] = satelliteSpots(state, 0, CENTRE, RADIUS);
 
-    expect(spot).toMatchObject({ glyph: 0, flare: 1, asking: false, level: 0 });
+    expect(spot).toMatchObject({ glyph: 'M 0 -0.7 L 0.7 0 Z', flare: 1, asking: false, level: 0 });
     expect(Object.keys(spot ?? {}).sort()).toEqual(['asking', 'flare', 'glyph', 'level', 'position']);
   });
 });

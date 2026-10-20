@@ -154,6 +154,21 @@ describe('a line to the server', () => {
     ]);
   });
 
+  it('passes on the glyph an agent is drawn with, and drops one that is not a plain path', () => {
+    const { platform, latest } = fakePlatform();
+    const received: JarvisServerMessage[] = [];
+    connectToServer({ address: ADDRESS, device: 'vr' }, platform).subscribe((message) => received.push(message));
+    latest().open();
+    const activity = { type: 'agentActivity', delegationId: 'plan-1', agentId: 'weather', state: 'working' } as const;
+
+    latest().receive(JSON.stringify({ ...activity, glyph: ' M 0 -0.7 L 0.7 0 Z ' }));
+    latest().receive(JSON.stringify({ ...activity, glyph: 'M 0 0 L 1 1 url(#x)' }));
+    latest().receive(JSON.stringify({ ...activity, glyph: `M 0 0 ${'L 1 1 '.repeat(200)}` }));
+    latest().receive(JSON.stringify({ ...activity, glyph: 7 }));
+
+    expect(received).toEqual([{ ...activity, glyph: 'M 0 -0.7 L 0.7 0 Z' }, activity, activity, activity]);
+  });
+
   it('keeps only the usable entities of a frame, and drops a frame with none', () => {
     const { platform, latest } = fakePlatform();
     const received: JarvisServerMessage[] = [];

@@ -131,7 +131,8 @@ src/ui3d/                  text in the room: the hint, status line, guide, error
                            drawer, tokens, names, pointing reticle and wrist button
 src/entities/              what Jarvis works on, placed in the room: registry, room anchors, corona lifetime,
                            pointing, hand poses, grabbing, what the hands and controllers mean to them
-src/satellites/            seeing him work: a satellite round him for each agent a request is using
+src/satellites/            seeing him work: where each satellite is round him (the glyph atlas and the draw
+                           are in src/hologram3d/)
 src/wake/                  "Hey Jarvis": the microphone, the worklet, the onnxruntime-web worker, the watchdog
 src/room/                  where he stands: room snapshots, the occupancy grid, placement and its worker
 src/conversation/          hologram's session with the headset's parts: the greeting, his track, his voice from where he stands, orphaned audio
@@ -833,12 +834,18 @@ The phone and its web build show the same satellites round the sphere on the scr
 lifecycle in `hologram` (`agent-work.ts`; see `../hologram/AGENTS.md`). What is the headset's own is
 where they are in the room (`satellites/satellite-spots.ts`) and how they are drawn there.
 
-While a request runs, each of the agents it uses circles him as a small glyph of its own — a sun
-for the weather, a page for the calendar, an envelope for email, a hexagon for the house, a triangle
-for shopping, a tick for the to-do list, angle brackets for coding, a lens for web research, a pot
-for cooking, a pin for the commute, an arrow coming round for reflection, a bar chart for visualize
-and an eye for vision; a plain ring for an agent not listed yet (`GLYPH_BY_AGENT` in `hologram`'s
-`agent-work.ts`) — so a pause while he thinks reads as work under way rather than silence.
+While a request runs, each of the agents it uses circles him as a small glyph of its own — the SVG
+path its vertical on the server declares (`mcp/mastra/verticals/<vertical>/glyph.ts`), sent with
+every message: a sun for the weather, a page for the calendar, an eye for vision and so on, and a
+plain ring for an agent whose vertical draws none — so a pause while he thinks reads as work under
+way rather than silence.
+
+**The glyph atlas** (`hologram3d/glyph-atlas.ts`). A glyph arrives as a path, so it cannot be
+written into the shader: the page strokes it once with a 2D canvas's `Path2D` — white, round-capped,
+the phone's stroke width — into one of eight 128-pixel slots side by side in a mipmapped texture, and
+the satellites' shader reads its slot's coverage and tints it in his colours. A glyph keeps its slot
+while any satellite wears it, and a new one is drawn into a slot no glyph still wanted holds
+(`assignGlyphSlots`, pure and pinned by its spec).
 
 The server says where each delegation has got to in an `agentActivity` message on the line the page
 keeps open (`hologram`'s `agent-activity.ts`; the server's side is "What a request touches" in
@@ -955,6 +962,19 @@ flat or 3D, and the alpha factor. **Enter your room** opens the same hologram in
 headset, 1.6 m ahead; there a select moves on to the next phase. It is what the
 browser tests photograph and measure, through `window.__hologramPreview`
 (`preview-hook.ts`).
+
+**Testing the glyphs** (`satellites-panel.ts`). Under the controls, a button for every vertical's
+glyph, read at build time from the server's own glyph files (`mcp/mastra/verticals/agent-glyphs.ts`
+and the `glyph.ts` files it gathers, which import nothing — which is why `tsconfig.json`'s `rootDir`
+is the repository's, and why `turbo.json` puts those files in `vr#typecheck`'s and `vr#build`'s hash).
+A tap sets that agent to work round him on the stage, as the headset draws it, and again has it
+answer; beside the stage they are drawn as the phone draws them, by `hologram`'s
+`satellite-drawing.ts` in CanvasKit. Buttons for all of them send every agent to work (at most eight
+at once, as on every device), call a tool, have one ask sir or fail, and finish them all. A path of
+your own can be tried too, and is read by `agentActivityOf` exactly as one from the server: one the
+devices refuse says so and shows as a plain ring. Everything goes through `agentActivity` messages,
+built as routing builds them. `window.__hologramPreview.satellites` lists what is out, and
+`tests/e2e/preview-satellites.spec.ts` drives the panel.
 
 ## The demo video
 

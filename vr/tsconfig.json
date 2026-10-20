@@ -1,7 +1,9 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": ".",
+    // The repository's root, not this package's: the preview page reads the server's glyph files
+    // (`mcp/mastra/verticals/*/glyph.ts`, which import nothing) at build time.
+    "rootDir": "..",
     // Nothing emits from here: Vite compiles the sources for the browser. The output
     // directory is a safety net for the same reason as in `mobile/tsconfig.json` — an
     // emit with no `outDir` would land beside the sources.

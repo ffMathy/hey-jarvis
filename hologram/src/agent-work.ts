@@ -4,7 +4,8 @@ import type { AgentActivity } from './agent-activity';
  * Seeing him work: one satellite round Jarvis for each of his agents a request is using, from the
  * Jarvis server's `agentActivity` messages (`agent-activity.ts`). Every device that is him shows
  * them the same way: the headset round him in the room (`vr/src/hologram3d/satellites.ts`), the
- * phone and its web build round the sphere on the screen (`satellite-drawing.ts`).
+ * phone and its web build round the sphere on the screen (`satellite-drawing.ts`), each with the glyph
+ * its agent's vertical on the server draws it with.
  *
  * - **Planned**, a delegation's satellite comes out dim on his orbit: the plan names it, and it has
  *   not been seen to do anything yet.
@@ -53,49 +54,18 @@ export const ORBIT_TILT_RADIANS = (18 * Math.PI) / 180;
 const SPACING_RATE = 3;
 
 /**
- * The glyph each agent the server routes requests to is drawn with — every one its own, so a
- * satellite always says which agent it is. `satellite-drawing.ts` and the headset's
- * `hologram3d/satellites.ts` draw them, in this order. The server's own spec
- * (`mcp/mastra/verticals/routing/agent-glyphs.spec.ts`) reads this table and fails when an agent
- * routing can send a request to is missing from it.
+ * The glyph a satellite is drawn with when its agent's message brought none: a plain ring, so an
+ * agent whose vertical draws nothing still shows as at work. The rest come from the server, each
+ * vertical declaring its own (`mcp/mastra/verticals/agent-glyphs.ts`).
  */
-export const GLYPH_BY_AGENT: Readonly<Record<string, number>> = {
-  weather: 0,
-  calendar: 1,
-  email: 2,
-  internetOfThings: 3,
-  shoppingList: 4,
-  todoList: 5,
-  coding: 6,
-  webResearch: 7,
-  cooking: 8,
-  commute: 9,
-  reflection: 10,
-  visualize: 11,
-  vision: 12,
-};
-
-/**
- * The glyph for an agent the table does not know yet: a plain ring, so a new agent on the server
- * still shows as at work, and never in another agent's likeness.
- */
-export const UNKNOWN_AGENT_GLYPH = 13;
-
-/** How many glyphs there are to draw, the unknown agent's included. */
-export const GLYPH_COUNT = UNKNOWN_AGENT_GLYPH + 1;
-
-/** The glyph `agentId` is drawn with: its own, or {@link UNKNOWN_AGENT_GLYPH}. */
-export function glyphOf(agentId: string): number {
-  // Own keys only: an id is whatever the server sent, `constructor` included.
-  const known = Object.hasOwn(GLYPH_BY_AGENT, agentId) ? GLYPH_BY_AGENT[agentId] : undefined;
-  return known ?? UNKNOWN_AGENT_GLYPH;
-}
+export const PLAIN_RING_GLYPH = 'M 0.45 0 A 0.45 0.45 0 1 0 -0.45 0 A 0.45 0.45 0 1 0 0.45 0 Z';
 
 type SatelliteStatus = 'planned' | 'working' | 'asking' | 'answered' | 'failed';
 
 interface Satellite {
   readonly agentId: string;
-  readonly glyph: number;
+  /** Its agent's glyph, as its latest message drew it; none yet, and it is a plain ring. */
+  readonly glyph: string | undefined;
   readonly status: SatelliteStatus;
   /** When it last had news. */
   readonly heardAt: number;
@@ -154,6 +124,7 @@ export function recordActivity(state: AgentWorkState, activity: AgentActivity, n
   satellites.set(activity.delegationId, {
     ...known,
     status,
+    glyph: activity.glyph ?? known.glyph,
     heardAt: now,
     toolAt: activity.state === 'tool' ? now : known.toolAt,
     endedAt: isEnded(status) ? now : undefined,
@@ -168,7 +139,7 @@ function addSatellite(state: AgentWorkState, activity: AgentActivity, now: numbe
   const satellites = new Map(state.satellites);
   satellites.set(activity.delegationId, {
     agentId: activity.agentId,
-    glyph: glyphOf(activity.agentId),
+    glyph: activity.glyph,
     status,
     heardAt: now,
     toolAt: activity.state === 'tool' ? now : undefined,
@@ -256,7 +227,8 @@ export function stepWork(state: AgentWorkState, now: number): AgentWorkState {
  * goes round as smoothly as that device draws frames however seldom this is worked out.
  */
 export interface SatelliteOrbit {
-  glyph: number;
+  /** An SVG path in glyph radii, y down: see `agent-activity.ts`. */
+  glyph: string;
   /** How lit it is, 0–1: its presence, its brightness for its status, and its fold. */
   level: number;
   /** A tool call's flare, 1 the moment it is called and 0 once it has died away. */
@@ -287,7 +259,7 @@ export function satelliteOrbits(state: AgentWorkState, now: number): SatelliteOr
     const brightness = satellite.status === 'planned' ? PLANNED_BRIGHTNESS : 1;
     const flare = satellite.toolAt === undefined ? 0 : Math.max(0, 1 - (now - satellite.toolAt) / FLARE_SECONDS);
     return {
-      glyph: satellite.glyph,
+      glyph: satellite.glyph ?? PLAIN_RING_GLYPH,
       level: ease(satellite.presence) * brightness * (1 - fold * (failed ? 1 : 0.6)),
       flare: flare * flare,
       asking: satellite.status === 'asking',
@@ -330,8 +302,15 @@ export function describeWork(state: AgentWorkState): { agentId: string; status: 
     .map(({ agentId, status }) => ({ agentId, status }));
 }
 
-/** The agents sample mode's thinking pretends to have at work, with no server. */
-export const SAMPLE_AGENTS = ['weather', 'calendar', 'internetOfThings'] as const;
+/**
+ * The agents sample mode's thinking pretends to have at work, with no server: made up, with glyphs
+ * of their own, since every real agent's glyph is its vertical's on the server.
+ */
+export const SAMPLE_AGENTS = [
+  { agentId: 'sampleDiamond', glyph: 'M 0 -0.7 L 0.7 0 L 0 0.7 L -0.7 0 Z' },
+  { agentId: 'sampleSquare', glyph: 'M -0.55 -0.55 L 0.55 -0.55 L 0.55 0.55 L -0.55 0.55 Z' },
+  { agentId: 'sampleCross', glyph: 'M -0.65 0 L 0.65 0 M 0 -0.65 L 0 0.65' },
+] as const;
 
 /** How often one of sample mode's pretend agents calls a tool, taking turns. */
 export const SAMPLE_TOOL_SECONDS = 1.4;
@@ -346,19 +325,19 @@ const sampleDelegationId = (agentId: string) => `sample-${agentId}`;
 export function pretendWork(state: AgentWorkState, pretending: boolean, now: number): AgentWorkState {
   let next = state;
   const beat = Math.floor(now / SAMPLE_TOOL_SECONDS);
-  SAMPLE_AGENTS.forEach((agentId, index) => {
+  SAMPLE_AGENTS.forEach(({ agentId, glyph }, index) => {
     const delegationId = sampleDelegationId(agentId);
     const satellite = next.satellites.get(delegationId);
     const live = satellite !== undefined && !isEnded(satellite.status);
     if (!pretending) {
-      if (live) next = recordActivity(next, { delegationId, agentId, state: 'answered' }, now);
+      if (live) next = recordActivity(next, { delegationId, agentId, glyph, state: 'answered' }, now);
       return;
     }
-    if (!live) next = recordActivity(next, { delegationId, agentId, state: 'working' }, now);
+    if (!live) next = recordActivity(next, { delegationId, agentId, glyph, state: 'working' }, now);
     const toolAt = next.satellites.get(delegationId)?.toolAt;
     const calledThisBeat = toolAt !== undefined && Math.floor(toolAt / SAMPLE_TOOL_SECONDS) === beat;
     if (beat % SAMPLE_AGENTS.length === index && !calledThisBeat) {
-      next = recordActivity(next, { delegationId, agentId, state: 'tool' }, now);
+      next = recordActivity(next, { delegationId, agentId, glyph, state: 'tool' }, now);
     }
   });
   return next;

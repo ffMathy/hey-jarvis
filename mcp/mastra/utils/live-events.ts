@@ -41,6 +41,11 @@ export interface AgentActivity {
   /** The agent delegated to, as the planner names it: `weather`, `calendar`, `internetOfThings`… */
   agentId: string;
   state: AgentActivityState;
+  /**
+   * How the agent is drawn, as an SVG path its vertical declares (`verticals/agent-glyphs.ts`);
+   * left out for an agent with none, which a device draws as a plain ring.
+   */
+  glyph?: string;
 }
 
 type LiveEventListener = (event: LiveEvent) => void;

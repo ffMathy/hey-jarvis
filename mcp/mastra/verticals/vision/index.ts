@@ -1,5 +1,6 @@
 // Vision vertical exports
 export { getPhotoReaderAgent, getVisionAgent, PHOTO_READER_AGENT_ID } from './agents.js';
+export { visionGlyph } from './glyph.js';
 export {
   type ConversationVerdict,
   checkLiveConversation,

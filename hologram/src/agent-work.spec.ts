@@ -7,14 +7,12 @@ import {
   FAILED_DRIFT,
   FLARE_SECONDS,
   FOLD_SECONDS,
-  GLYPH_BY_AGENT,
-  GLYPH_COUNT,
-  glyphOf,
   MAX_SATELLITES,
   NO_WORK,
   ORBIT_SECONDS,
   ORBIT_TILT_RADIANS,
   orbitPoint,
+  PLAIN_RING_GLYPH,
   PLANNED_BRIGHTNESS,
   pretendWork,
   recordActivity,
@@ -24,7 +22,6 @@ import {
   STALE_SECONDS,
   satelliteOrbits,
   stepWork,
-  UNKNOWN_AGENT_GLYPH,
 } from './agent-work';
 
 const CENTRE = { x: 0, y: 0, z: 0 };
@@ -207,19 +204,21 @@ describe('where a satellite is on the orbit', () => {
   });
 });
 
-describe('the glyph each agent is drawn with', () => {
-  it('is its own for every agent it knows, none shared', () => {
-    const glyphs = Object.keys(GLYPH_BY_AGENT).map(glyphOf);
+describe('the glyph each satellite is drawn with', () => {
+  it('is the one its agent’s message brought', () => {
+    const state = play([0, { ...news('a', 'weather', 'working'), glyph: 'M 0 -0.7 L 0.7 0 Z' }]);
 
-    expect(new Set(glyphs).size).toBe(glyphs.length);
-    expect(glyphs).not.toContain(UNKNOWN_AGENT_GLYPH);
-    for (const glyph of glyphs) expect(Number.isInteger(glyph) && glyph >= 0 && glyph < GLYPH_COUNT).toBe(true);
+    expect(satelliteOrbits(state, 0)[0]?.glyph).toBe('M 0 -0.7 L 0.7 0 Z');
   });
 
-  it('is the plain ring for an agent it does not know yet, never another agent’s', () => {
-    for (const agentId of ['emailResponseParser', 'constructor', '__proto__', 'x'.repeat(200)]) {
-      expect(glyphOf(agentId)).toBe(UNKNOWN_AGENT_GLYPH);
-    }
+  it('is a plain ring until a message brings one, and kept when a later one brings none', () => {
+    const bare = play([0, news('a', 'mystery', 'planned')]);
+    const drawn = stepWork(recordActivity(bare, { ...news('a', 'mystery', 'working'), glyph: 'M 0 0 L 1 0' }, 1), 1);
+    const later = stepWork(recordActivity(drawn, news('a', 'mystery', 'tool'), 2), 2);
+
+    expect(satelliteOrbits(bare, 0)[0]?.glyph).toBe(PLAIN_RING_GLYPH);
+    expect(satelliteOrbits(drawn, 1)[0]?.glyph).toBe('M 0 0 L 1 0');
+    expect(satelliteOrbits(later, 2)[0]?.glyph).toBe('M 0 0 L 1 0');
   });
 });
 
@@ -236,8 +235,9 @@ describe('sample mode’s pretend work', () => {
       });
     }
 
-    expect(describeWork(state).map(({ agentId }) => agentId)).toEqual([...SAMPLE_AGENTS]);
-    expect(flared).toEqual([...SAMPLE_AGENTS]);
+    expect(describeWork(state).map(({ agentId }) => agentId)).toEqual(SAMPLE_AGENTS.map(({ agentId }) => agentId));
+    expect(flared).toEqual(SAMPLE_AGENTS.map(({ agentId }) => agentId));
+    expect(satelliteOrbits(state, 0).map(({ glyph }) => glyph)).toEqual(SAMPLE_AGENTS.map(({ glyph }) => glyph));
   });
 
   it('has them answer once it stops', () => {
