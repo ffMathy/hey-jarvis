@@ -13,7 +13,7 @@ import '@elevenlabs/react-native';
 import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import type { ElevenLabsSettings } from 'hologram';
-import { useJarvisServer } from 'hologram/react/lifecycle';
+import { AgentSatellitesContext, useAgentSatellites, useJarvisServer } from 'hologram/react/lifecycle';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { useAnswerTheWatch } from './answer-the-watch';
@@ -142,7 +142,10 @@ export function App({ summoned = false, showing }: AppProps) {
   useAnswerTheWatch(settings, serverAddress, serverToken);
   // The line to sir's Jarvis server, open for as long as the app runs and has an address, whatever
   // screen is showing and whether or not he is talking to Jarvis (`jarvis-server-link.ts` in hologram).
-  useJarvisServer(serverAddress, serverToken, 'phone');
+  const serverLink = useJarvisServer(serverAddress, serverToken, 'phone');
+  // Which of his agents a request is using, from that line, drawn round him on whichever screen shows
+  // him (`AgentSatellitesContext`). Sample mode has its own, pretended (`sample-screen.tsx`).
+  const satellites = useAgentSatellites(serverLink);
 
   const launchUrl = Linking.useURL();
   // Two ways in, and they are genuinely different: the assistant's own window renders this
@@ -287,7 +290,7 @@ export function App({ summoned = false, showing }: AppProps) {
   const isSeeThrough = isScreenSeeThrough(screen, conversationInSheet);
 
   return (
-    <>
+    <AgentSatellitesContext.Provider value={satellites}>
       <StatusBar style="light" />
       <View style={[styles.root, isSeeThrough ? styles.seeThrough : styles.opaque]}>
         {screen === 'loading' ? <ActivityIndicator color={theme.colors.accent} /> : null}
@@ -323,7 +326,7 @@ export function App({ summoned = false, showing }: AppProps) {
           />
         ) : null}
       </View>
-    </>
+    </AgentSatellitesContext.Provider>
   );
 }
 

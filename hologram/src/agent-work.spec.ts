@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { AgentActivity, AgentActivityState } from 'hologram';
+import type { AgentActivity, AgentActivityState } from './agent-activity';
 import {
   type AgentWorkState,
   APPEAR_SECONDS,
@@ -11,7 +11,9 @@ import {
   glyphOf,
   MAX_SATELLITES,
   NO_WORK,
-  ORBIT_RADII,
+  ORBIT_SECONDS,
+  ORBIT_TILT_RADIANS,
+  orbitPoint,
   PLANNED_BRIGHTNESS,
   pretendWork,
   recordActivity,
@@ -19,12 +21,11 @@ import {
   SAMPLE_AGENTS,
   SAMPLE_TOOL_SECONDS,
   STALE_SECONDS,
-  satelliteSpots,
+  satelliteOrbits,
   stepWork,
 } from './agent-work';
 
-const CENTRE = { x: 0, y: 1.4, z: -1.5 };
-const RADIUS = 0.22;
+const CENTRE = { x: 0, y: 0, z: 0 };
 
 function news(delegationId: string, agentId: string, state: AgentActivityState): AgentActivity {
   return { delegationId, agentId, state };
@@ -35,6 +36,14 @@ function play(...events: [time: number, activity: AgentActivity][]): AgentWorkSt
   let state = NO_WORK;
   for (const [time, activity] of events) state = stepWork(recordActivity(state, activity, time), time);
   return state;
+}
+
+/** Each satellite at `time`, with where it is on an orbit of radius 1 round {@link CENTRE}. */
+function spotsAt(state: AgentWorkState, time: number) {
+  return satelliteOrbits(state, time).map((orbit) => {
+    const { across, up, towards } = orbitPoint(orbit, time);
+    return { ...orbit, position: { x: across, y: up, z: towards } };
+  });
 }
 
 function distanceFromCentre(position: { x: number; y: number; z: number }): number {
@@ -58,8 +67,8 @@ describe('a request’s agents, as satellites', () => {
     const planned = stepWork(play([0, news('plan-0-weather', 'weather', 'planned')]), APPEAR_SECONDS);
     const working = stepWork(recordActivity(planned, news('plan-0-weather', 'weather', 'working'), 1), 1);
 
-    expect(satelliteSpots(planned, 1, CENTRE, RADIUS)[0]?.level).toBeCloseTo(PLANNED_BRIGHTNESS, 6);
-    expect(satelliteSpots(working, 1, CENTRE, RADIUS)[0]?.level).toBeCloseTo(1, 6);
+    expect(spotsAt(planned, 1)[0]?.level).toBeCloseTo(PLANNED_BRIGHTNESS, 6);
+    expect(spotsAt(working, 1)[0]?.level).toBeCloseTo(1, 6);
   });
 
   it(`flare on every tool their agent calls, dying away over ${FLARE_SECONDS} s`, () => {
@@ -68,22 +77,22 @@ describe('a request’s agents, as satellites', () => {
       [2, news('plan-0-weather', 'weather', 'tool')],
     );
 
-    expect(satelliteSpots(state, 2, CENTRE, RADIUS)[0]?.flare).toBe(1);
-    expect(satelliteSpots(state, 2 + FLARE_SECONDS / 2, CENTRE, RADIUS)[0]?.flare).toBeCloseTo(0.25, 6);
-    expect(satelliteSpots(state, 2 + FLARE_SECONDS, CENTRE, RADIUS)[0]?.flare).toBe(0);
+    expect(spotsAt(state, 2)[0]?.flare).toBe(1);
+    expect(spotsAt(state, 2 + FLARE_SECONDS / 2)[0]?.flare).toBeCloseTo(0.25, 6);
+    expect(spotsAt(state, 2 + FLARE_SECONDS)[0]?.flare).toBe(0);
     expect(describeWork(state)).toEqual([{ agentId: 'weather', status: 'working' }]);
   });
 
-  it(`circle him at ${ORBIT_RADII} of his radii, spread evenly round the ring`, () => {
+  it('circle him on the orbit, spread evenly round the ring', () => {
     let state = play(
       [0, news('a', 'weather', 'working')],
       [0, news('b', 'calendar', 'working')],
       [0, news('c', 'email', 'working')],
     );
     for (let time = 0; time <= 10; time += 0.1) state = stepWork(state, time);
-    const spots = satelliteSpots(state, 10, CENTRE, RADIUS);
+    const spots = spotsAt(state, 10);
 
-    for (const spot of spots) expect(distanceFromCentre(spot.position)).toBeCloseTo(ORBIT_RADII * RADIUS, 6);
+    for (const spot of spots) expect(distanceFromCentre(spot.position)).toBeCloseTo(1, 6);
     const gaps = spots.map((spot, index) => {
       const next = spots[(index + 1) % spots.length];
       return next === undefined
@@ -94,35 +103,30 @@ describe('a request’s agents, as satellites', () => {
             next.position.y - spot.position.y,
           );
     });
-    expect(gaps[0]).toBeGreaterThan(RADIUS);
+    expect(gaps[0]).toBeGreaterThan(1);
     for (const gap of gaps) expect(gap).toBeCloseTo(gaps[0] ?? 0, 2);
   });
 
   it(`fold back into him over ${FOLD_SECONDS} s when they answer, and are then forgotten`, () => {
     const state = play([0, news('a', 'weather', 'working')], [1, news('a', 'weather', 'answered')]);
 
-    expect(distanceFromCentre(satelliteSpots(state, 1, CENTRE, RADIUS)[0]?.position ?? CENTRE)).toBeCloseTo(
-      ORBIT_RADII * RADIUS,
-      6,
-    );
-    expect(
-      distanceFromCentre(satelliteSpots(state, 1 + FOLD_SECONDS * 0.999, CENTRE, RADIUS)[0]?.position ?? CENTRE),
-    ).toBeLessThan(0.01);
+    expect(distanceFromCentre(spotsAt(state, 1)[0]?.position ?? CENTRE)).toBeCloseTo(1, 6);
+    expect(distanceFromCentre(spotsAt(state, 1 + FOLD_SECONDS * 0.999)[0]?.position ?? CENTRE)).toBeLessThan(0.01);
     expect(describeWork(stepWork(state, 1 + FOLD_SECONDS + 0.01))).toEqual([]);
   });
 
   it('drift out and go out when they fail, rather than reaching him', () => {
     const state = play([0, news('a', 'weather', 'working')], [1, news('a', 'weather', 'failed')]);
-    const late = satelliteSpots(state, 1 + FOLD_SECONDS * 0.999, CENTRE, RADIUS)[0];
+    const late = spotsAt(state, 1 + FOLD_SECONDS * 0.999)[0];
 
-    expect(distanceFromCentre(late?.position ?? CENTRE)).toBeCloseTo(ORBIT_RADII * RADIUS * (1 + FAILED_DRIFT), 2);
+    expect(distanceFromCentre(late?.position ?? CENTRE)).toBeCloseTo(1 + FAILED_DRIFT, 2);
     expect(late?.level).toBeLessThan(0.01);
   });
 
   it('pulse while waiting on sir, and stay out however long he takes', () => {
     const state = stepWork(play([0, news('a', 'coding', 'asking')]), STALE_SECONDS * 3);
 
-    expect(satelliteSpots(state, STALE_SECONDS * 3, CENTRE, RADIUS)[0]?.asking).toBe(true);
+    expect(spotsAt(state, STALE_SECONDS * 3)[0]?.asking).toBe(true);
     expect(describeWork(state)).toEqual([{ agentId: 'coding', status: 'asking' }]);
   });
 
@@ -170,8 +174,34 @@ describe('a request’s agents, as satellites', () => {
   it('come out over a moment rather than appearing at once', () => {
     const state = play([0, news('a', 'weather', 'working')]);
 
-    expect(satelliteSpots(state, 0, CENTRE, RADIUS)[0]?.level).toBe(0);
-    expect(satelliteSpots(stepWork(state, APPEAR_SECONDS), APPEAR_SECONDS, CENTRE, RADIUS)[0]?.level).toBeCloseTo(1, 6);
+    expect(spotsAt(state, 0)[0]?.level).toBe(0);
+    expect(spotsAt(stepWork(state, APPEAR_SECONDS), APPEAR_SECONDS)[0]?.level).toBeCloseTo(1, 6);
+  });
+});
+
+describe('where a satellite is on the orbit', () => {
+  it(`goes round once every ${ORBIT_SECONDS} s, wherever it starts`, () => {
+    const start = orbitPoint({ turn: 0.2, reach: 1 }, 3);
+    const later = orbitPoint({ turn: 0.2, reach: 1 }, 3 + ORBIT_SECONDS);
+
+    expect(later.across).toBeCloseTo(start.across, 9);
+    expect(later.up).toBeCloseTo(start.up, 9);
+    expect(later.towards).toBeCloseTo(start.towards, 9);
+  });
+
+  it('passes below his centre in front of him and above it behind, as a ring seen from a little above', () => {
+    const front = orbitPoint({ turn: 0.25, reach: 1 }, 0);
+    const back = orbitPoint({ turn: 0.75, reach: 1 }, 0);
+
+    expect(front.towards).toBeCloseTo(Math.cos(ORBIT_TILT_RADIANS), 9);
+    expect(front.up).toBeCloseTo(-Math.sin(ORBIT_TILT_RADIANS), 9);
+    expect(back.up).toBeCloseTo(Math.sin(ORBIT_TILT_RADIANS), 9);
+  });
+
+  it('is as far out as its reach', () => {
+    const { across, up, towards } = orbitPoint({ turn: 0.13, reach: 0.4 }, 1.7);
+
+    expect(Math.hypot(across, up, towards)).toBeCloseTo(0.4, 9);
   });
 });
 
@@ -206,7 +236,7 @@ describe('sample mode’s pretend work', () => {
     const flared: string[] = [];
     for (let time = 0; time < SAMPLE_TOOL_SECONDS * SAMPLE_AGENTS.length; time += 0.05) {
       state = stepWork(pretendWork(state, true, time), time);
-      const spots = satelliteSpots(state, time, CENTRE, RADIUS);
+      const spots = spotsAt(state, time);
       spots.forEach((spot, index) => {
         const agent = describeWork(state)[index]?.agentId;
         if (spot.flare === 1 && agent !== undefined && flared.at(-1) !== agent) flared.push(agent);

@@ -20,6 +20,7 @@
 export * from './affected-entities';
 export * from './agent-activity';
 export * from './agent-audio-track';
+export * from './agent-work';
 export * from './conversation-life';
 export * from './conversation-token';
 export * from './density-control';
@@ -40,6 +41,7 @@ export * from './played-voice';
 export * from './queued-audio';
 export * from './sample-drive';
 export * from './sample-mode';
+export * from './satellite-drawing';
 export * from './session-contract';
 export * from './simulated-voice';
 export * from './tool-activity';

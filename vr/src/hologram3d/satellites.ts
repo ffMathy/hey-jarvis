@@ -1,3 +1,4 @@
+import { ASKING_PULSE_SECONDS, MAX_SATELLITES } from 'hologram';
 import {
   AddEquation,
   BufferAttribute,
@@ -13,7 +14,7 @@ import {
   RawShaderMaterial,
   Vector3,
 } from 'three';
-import { MAX_SATELLITES, type SatelliteSpot } from '../satellites/agent-work';
+import type { SatelliteSpot } from '../satellites/satellite-spots';
 import { STROKE_PAINTS, THINNEST_STROKE_PIXELS } from './body-strokes';
 import { CORONA_RENDER_ORDER } from './corona';
 import { glslColour, glslFloat } from './fragment-glsl';
@@ -23,7 +24,7 @@ import { ALPHA_FROM_LIGHT } from './view-plane-quad';
 
 /**
  * The satellites round Jarvis, one for each of his agents a request is using
- * (`satellites/agent-work.ts` says where each is and how lit): a small glyph per agent — a sun for
+ * (`satellites/satellite-spots.ts` says where each is and how lit, from `hologram`'s `agent-work.ts`): a small glyph per agent — a sun for
  * the weather, a page for the calendar, a hexagon for the house — in his stroke colours, a hot dot at
  * its middle, a little of his halo round it, a ring flaring out from it on every tool it calls, and a
  * slow pulse while it waits on sir.
@@ -42,9 +43,6 @@ export const MIN_APPARENT_RADIUS_DEGREES = 0.55;
 
 /** After his coronas, before the text panels at 10. */
 export const SATELLITE_RENDER_ORDER = CORONA_RENDER_ORDER + 1;
-
-/** How long the pulse of one waiting on sir takes. */
-export const ASKING_PULSE_SECONDS = 1.6;
 
 /** How far out the quad reaches, in glyph radii: room for the flare's ring. */
 const QUAD_REACH = 1.9;

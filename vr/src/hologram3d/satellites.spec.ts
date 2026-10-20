@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
+import { MAX_SATELLITES } from 'hologram';
 import { CustomBlending, InstancedBufferAttribute, OneFactor, OneMinusSrcColorFactor } from 'three';
-import { MAX_SATELLITES, type SatelliteSpot } from '../satellites/agent-work';
+import type { SatelliteSpot } from '../satellites/satellite-spots';
 import { CORONA_RENDER_ORDER } from './corona';
 import {
   createSatellites,

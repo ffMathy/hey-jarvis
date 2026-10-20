@@ -829,6 +829,10 @@ HUD has one `entities` line.
 
 ## Seeing him work (`src/satellites/`, `app/room-satellites.ts`, `hologram3d/satellites.ts`)
 
+The phone and its web build show the same satellites round the sphere on the screen, from the same
+lifecycle in `hologram` (`agent-work.ts`; see `../hologram/AGENTS.md`). What is the headset's own is
+where they are in the room (`satellites/satellite-spots.ts`) and how they are drawn there.
+
 While a request runs, each of the agents it uses circles him as a small glyph — a sun for the
 weather, a page for the calendar, an envelope for email, a hexagon for the house, a triangle for
 shopping, a tick for the to-do list, angle brackets for coding, a lens for web research and any agent
@@ -836,7 +840,7 @@ not listed — so a pause while he thinks reads as work under way rather than si
 
 The server says where each delegation has got to in an `agentActivity` message on the line the page
 keeps open (`hologram`'s `agent-activity.ts`; the server's side is "What a request touches" in
-`../mcp/AGENTS.md`), and `satellites/agent-work.ts` turns that into satellites, purely:
+`../mcp/AGENTS.md`), and `hologram`'s `agent-work.ts` — the lifecycle the phone shares — turns that into satellites, purely:
 
 | Message | Satellite |
 | --- | --- |

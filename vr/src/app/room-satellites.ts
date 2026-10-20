@@ -1,16 +1,16 @@
-import type { AgentActivity } from 'hologram';
-import { createSatellites } from '../hologram3d/satellites';
-import type { Vector3Like } from '../hologram3d/view-basis';
 import {
+  type AgentActivity,
   type AgentWorkState,
   describeWork,
   NO_WORK,
   pretendWork,
   recordActivity,
   releaseWork,
-  satelliteSpots,
   stepWork,
-} from '../satellites/agent-work';
+} from 'hologram';
+import { createSatellites } from '../hologram3d/satellites';
+import type { Vector3Like } from '../hologram3d/view-basis';
+import { satelliteSpots } from '../satellites/satellite-spots';
 
 /** One frame, as the satellites need it. */
 export interface SatelliteFrame {
@@ -38,7 +38,7 @@ export interface RoomSatellites {
 }
 
 /**
- * Holds the satellites' state (`satellites/agent-work.ts`) and draws it (`hologram3d/satellites.ts`).
+ * Holds the satellites' state (`hologram`'s `agent-work.ts`) and draws it (`hologram3d/satellites.ts`).
  * Messages arrive between frames, on the page's clock; they are queued and taken in at the start of
  * the next frame, so every time in the state is the XR frame's. A message that arrives while he is
  * not in the room is still taken in — a request asked from the phone has satellites too, which show

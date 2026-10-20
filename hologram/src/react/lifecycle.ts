@@ -13,6 +13,7 @@
  * that nothing on this side of the line reaches across it.
  */
 
+export { AgentSatellitesContext, useAgentSatellites } from './agent-satellites';
 export { useIsForeground } from './is-foreground';
 export { useJarvisServer } from './jarvis-server';
 export { LEAVING_SECONDS } from './leaving';

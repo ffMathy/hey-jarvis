@@ -1,9 +1,10 @@
-import type { AgentActivity } from 'hologram';
-import type { Vector3Like } from '../hologram3d/view-basis';
+import type { AgentActivity } from './agent-activity';
 
 /**
  * Seeing him work: one satellite round Jarvis for each of his agents a request is using, from the
- * Jarvis server's `agentActivity` messages (`hologram`'s `agent-activity.ts`).
+ * Jarvis server's `agentActivity` messages (`agent-activity.ts`). Every device that is him shows
+ * them the same way: the headset round him in the room (`vr/src/hologram3d/satellites.ts`), the
+ * phone and its web build round the sphere on the screen (`satellite-drawing.ts`).
  *
  * - **Planned**, a delegation's satellite comes out dim on his orbit: the plan names it, and it has
  *   not been seen to do anything yet.
@@ -16,7 +17,9 @@ import type { Vector3Like } from '../hologram3d/view-basis';
  * (but one asking) goes out as failed, since a dropped line or a lost event would otherwise leave it
  * circling all evening, and the end of the conversation folds every one in.
  *
- * Pure: a state in, a state out, times in seconds on any steady clock (the XR frame's).
+ * Pure: a state in, a state out, times in seconds on any steady clock (the XR frame's, the phone's
+ * `performance.now`). Where each one is round him is {@link satelliteOrbits}' to say, as a place on
+ * an orbit of radius 1; each device scales that to his size.
  */
 
 /** How long a tool call's flare takes to die away. */
@@ -37,9 +40,6 @@ export const MAX_SATELLITES = 8;
 /** How bright a planned satellite is, against a working one's 1. */
 export const PLANNED_BRIGHTNESS = 0.4;
 
-/** The orbit's radius, in his radii: outside his halo, inside the panels under him. */
-export const ORBIT_RADII = 1.75;
-
 /** How far out a failed satellite drifts before it is gone, in orbit radii. */
 export const FAILED_DRIFT = 0.35;
 
@@ -53,7 +53,8 @@ export const ORBIT_TILT_RADIANS = (18 * Math.PI) / 180;
 const SPACING_RATE = 3;
 
 /**
- * The glyph each of the server's agents is drawn with (`hologram3d/satellites.ts` draws them); an
+ * The glyph each of the server's agents is drawn with (`satellite-drawing.ts` and the headset's
+ * `hologram3d/satellites.ts` draw them, in the same order); an
  * agent not listed gets one from its id, so a new agent on the server needs no change here.
  */
 export const GLYPH_COUNT = 8;
@@ -237,9 +238,12 @@ export function stepWork(state: AgentWorkState, now: number): AgentWorkState {
   return { ...state, satellites, steppedAt: now };
 }
 
-/** One satellite to draw: where, which glyph, and how lit. */
-export interface SatelliteSpot {
-  position: Vector3Like;
+/**
+ * One satellite to draw, wherever a device draws it: which glyph, how lit, and where on the orbit —
+ * as a fixed share of a turn, which the device adds its own clock to ({@link orbitPoint}), so it
+ * goes round as smoothly as that device draws frames however seldom this is worked out.
+ */
+export interface SatelliteOrbit {
   glyph: number;
   /** How lit it is, 0–1: its presence, its brightness for its status, and its fold. */
   level: number;
@@ -247,6 +251,10 @@ export interface SatelliteSpot {
   flare: number;
   /** Whether it is waiting on sir, which the drawing pulses. */
   asking: boolean;
+  /** Where it is round the orbit at time 0, in turns. */
+  turn: number;
+  /** How far out it is, in orbit radii: 1 on the orbit, less as it folds in, more as a failed one drifts out. */
+  reach: number;
 }
 
 /** Smoothstep, 0–1. */
@@ -256,39 +264,51 @@ function ease(value: number): number {
 }
 
 /**
- * Where each satellite is at `now`, round `centre` on an orbit of {@link ORBIT_RADII} of his `radius`,
- * tilted off level, and in the order they came. An answered one's orbit closes on his centre as it
- * folds; a failed one's opens as it goes out.
+ * Every satellite at `now`, in the order they came. An answered one's reach closes on his centre as
+ * it folds; a failed one's opens as it goes out.
  */
-export function satelliteSpots(
-  state: AgentWorkState,
-  now: number,
-  centre: Vector3Like,
-  radius: number,
-): SatelliteSpot[] {
-  const turn = now / ORBIT_SECONDS;
-  const cosTilt = Math.cos(ORBIT_TILT_RADIANS);
-  const sinTilt = Math.sin(ORBIT_TILT_RADIANS);
-  const spots: SatelliteSpot[] = [];
+export function satelliteOrbits(state: AgentWorkState, now: number): SatelliteOrbit[] {
   const ordered = [...state.satellites.values()].sort((first, second) => first.order - second.order);
-  for (const satellite of ordered) {
+  return ordered.map((satellite) => {
     const fold = satellite.endedAt === undefined ? 0 : ease((now - satellite.endedAt) / FOLD_SECONDS);
     const failed = satellite.status === 'failed';
-    const reach = ORBIT_RADII * radius * (failed ? 1 + FAILED_DRIFT * fold : 1 - fold);
-    const angle = 2 * Math.PI * (turn + satellite.offset);
-    const across = Math.cos(angle) * reach;
-    const along = Math.sin(angle) * reach;
     const brightness = satellite.status === 'planned' ? PLANNED_BRIGHTNESS : 1;
     const flare = satellite.toolAt === undefined ? 0 : Math.max(0, 1 - (now - satellite.toolAt) / FLARE_SECONDS);
-    spots.push({
-      position: { x: centre.x + across, y: centre.y + along * sinTilt, z: centre.z + along * cosTilt },
+    return {
       glyph: satellite.glyph,
       level: ease(satellite.presence) * brightness * (1 - fold * (failed ? 1 : 0.6)),
       flare: flare * flare,
       asking: satellite.status === 'asking',
-    });
-  }
-  return spots;
+      turn: satellite.offset,
+      reach: failed ? 1 + FAILED_DRIFT * fold : 1 - fold,
+    };
+  });
+}
+
+/** Where a satellite is on an orbit of radius 1 round his centre at `time`. */
+export interface OrbitPoint {
+  /** To his right. */
+  across: number;
+  /** Above his centre. */
+  up: number;
+  /** Towards whoever is looking at him: positive in front of him, negative behind. */
+  towards: number;
+}
+
+/**
+ * Where `orbit` is at `time` seconds on the drawing device's clock: going round once every
+ * {@link ORBIT_SECONDS}, on a ring tilted {@link ORBIT_TILT_RADIANS} so its near side is below his
+ * centre and its far side above, as a ring seen from a little above it is.
+ */
+export function orbitPoint(orbit: Pick<SatelliteOrbit, 'turn' | 'reach'>, time: number): OrbitPoint {
+  'worklet';
+  const angle = 2 * Math.PI * (time / ORBIT_SECONDS + orbit.turn);
+  const along = Math.sin(angle) * orbit.reach;
+  return {
+    across: Math.cos(angle) * orbit.reach,
+    up: -along * Math.sin(ORBIT_TILT_RADIANS),
+    towards: along * Math.cos(ORBIT_TILT_RADIANS),
+  };
 }
 
 /** What the debug hook says of the satellites: each one's agent and status, in the order they came. */
