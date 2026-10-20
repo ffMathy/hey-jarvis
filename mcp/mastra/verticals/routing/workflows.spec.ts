@@ -823,7 +823,8 @@ describe('a request whose tools touch things', () => {
 
   it('pushes what it touches to the devices, and leaves every poll response as it would be without it', async () => {
     const pushed: unknown[] = [];
-    const stop = onLiveEvent((event) => pushed.push(event));
+    // Which agents were at work is pushed beside it, for the headset's satellites; this is about the entities.
+    const stop = onLiveEvent((event) => event.type === 'affectedEntities' && pushed.push(event));
     try {
       await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the sofa lamp', async: false });
       const delegationId = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings');
@@ -835,6 +836,7 @@ describe('a request whose tools touch things', () => {
 
       expect(pushed).toEqual([{ type: 'affectedEntities', entities: [SOFA_LAMP] }]);
       expect(Object.keys(closing)).not.toContain('affectedEntities');
+      expect(Object.keys(closing)).not.toContain('agentActivity');
       expect(closing.instructions).not.toContain('markAffected');
       expect(closing.instructions).toContain('All tasks have completed');
     } finally {

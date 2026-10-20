@@ -44,6 +44,7 @@ import {
 import { publishRoomDebugState } from './room-debug-hook';
 import { createRoomEntities, type RoomEntities } from './room-entities';
 import { createRoomPanels, type RoomPanels } from './room-panels';
+import { createRoomSatellites, type RoomSatellites } from './room-satellites';
 import { createSampleDriver, type SampleDriver } from './sample-driver';
 
 /**
@@ -199,6 +200,8 @@ interface Room {
   input: XrInput;
   inputs: InputSnapshots;
   entities: RoomEntities;
+  /** The satellites round him, one for each agent a request is using. */
+  satellites: RoomSatellites;
   keyboard: SystemKeyboard;
   anchors: AnchorKeeper<XRSpace, XRRigidTransform>;
   depth: DepthProbeFan | undefined;
@@ -262,6 +265,7 @@ function startRoom(
       anisotropy,
       handheld: isHandheld(stage.session),
     }),
+    satellites: createRoomSatellites(),
     keyboard: createSystemKeyboard(document),
     anchors: createAnchorKeeper<XRSpace, XRRigidTransform>((position) => new XRRigidTransform(position)),
     depth: undefined,
@@ -291,7 +295,7 @@ function startRoom(
     resolve(room.outcome);
   };
 
-  stage.scene.add(holder, room.entities.object, ...room.panels.objects);
+  stage.scene.add(holder, room.entities.object, room.satellites.object, ...room.panels.objects);
   if (room.hud !== undefined) stage.scene.add(room.hud.object);
   publishEntities(room);
   room.conversation = options.createConversation?.(conversationEvents(room)) ?? createSilentConversation();
@@ -321,6 +325,11 @@ function publishEntities(room: Room) {
     configurable: true,
     enumerable: true,
   });
+  Object.defineProperty(room.options.debug, 'satellites', {
+    get: () => room.satellites.report(),
+    configurable: true,
+    enumerable: true,
+  });
 }
 
 /** Leaves the last report on `window.__jarvis` once the room has gone, as data rather than a getter. */
@@ -331,16 +340,27 @@ function unpublishEntities(room: Room) {
     enumerable: true,
     writable: true,
   });
+  Object.defineProperty(room.options.debug, 'satellites', {
+    value: room.satellites.report(),
+    configurable: true,
+    enumerable: true,
+    writable: true,
+  });
 }
 
 function conversationEvents(room: Room): ConversationEvents {
   return {
     onPhase: (phase) => {
-      // Whatever held his coronas lit was his work for that conversation, which is over.
-      if (phase === 'ended' || phase === 'failed') room.entities.conversationEnded();
+      // Whatever held his coronas lit, and kept his satellites out, was his work for that
+      // conversation, which is over.
+      if (phase === 'ended' || phase === 'failed') {
+        room.entities.conversationEnded();
+        room.satellites.conversationEnded();
+      }
       dispatch(room, { type: 'session-phase', phase });
     },
     onAffected: (entities) => room.entities.affected(entities),
+    onAgentActivity: (activity) => room.satellites.activity(activity),
     onProblem: (message) => dispatch(room, { type: 'problem', message }),
     onCaption: (text) => dispatch(room, { type: 'caption', text }),
     onDiagnostics: (diagnostics) => {
@@ -575,6 +595,7 @@ function release(room: Room) {
   room.inputs.dispose();
   unpublishEntities(room);
   room.entities.dispose();
+  room.satellites.dispose();
   room.keyboard.dispose();
   room.depth?.dispose();
   room.anchors.clear();
@@ -603,6 +624,7 @@ function onFrame(room: Room, tick: XrFrameTick) {
   }
   updateEntities(room, tick);
   drawHologram(room, tick);
+  updateSatellites(room, tick);
   const spot = room.hologramState === 'hidden' ? undefined : copyPoint(room.holder.position);
   // After the hologram has followed his anchor this frame, so his voice is where he is drawn.
   room.options.voice?.follow(tick.centreEye, spot);
@@ -696,6 +718,21 @@ function drawHologram(room: Room, tick: XrFrameTick) {
     room.goneReported = true;
     dispatch(room, { type: 'presence-gone' });
   }
+}
+
+/** His satellites, round where he has just been drawn; none while he is not in the room. */
+function updateSatellites(room: Room, tick: XrFrameTick) {
+  const { scene } = room.model;
+  room.satellites.update({
+    time: tick.time / 1000,
+    deltaSeconds: tick.deltaSeconds,
+    eye: tick.centreEye,
+    him:
+      room.hologramState === 'hidden'
+        ? undefined
+        : { centre: copyPoint(room.holder.position), radius: room.hologram.radius },
+    pretendWorking: scene.kind === 'sample' && scene.mode === 'thinking',
+  });
 }
 
 function refreshReadouts(room: Room, tick: XrFrameTick) {

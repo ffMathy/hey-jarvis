@@ -151,6 +151,8 @@ export interface JarvisDebugState {
   voice: VoiceReport | null;
   /** The things he works on, placed in the room, once a room has been opened. */
   entities: EntitiesReport | null;
+  /** The satellites round him, one per agent a request is using, in the order they came. */
+  satellites: { agentId: string; status: string }[] | null;
 }
 
 declare global {
@@ -172,6 +174,7 @@ export function initialDebugState(): JarvisDebugState {
     problem: null,
     voice: null,
     entities: null,
+    satellites: null,
   };
 }
 

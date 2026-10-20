@@ -1,4 +1,5 @@
 import { type AffectedEntity, affectedEntitiesOf, affectedEntityOf } from './affected-entities';
+import { type AgentActivity, agentActivityOf } from './agent-activity';
 
 /**
  * A device's line to the Jarvis server: a WebSocket each device that is Jarvis — the phone, the
@@ -39,11 +40,16 @@ export const FIRST_RETRY_MS = 1_000;
 export const LONGEST_RETRY_MS = 30_000;
 
 /**
- * What the server sends a device: `ready` once it has read the hello, and `affectedEntities`
- * whenever a tool in a request reports what it touched — sent to every device that has said hello. A device that shows nothing of it (the phone, the
- * watch) simply ignores it; the headset lights the entities up where they stand.
+ * What the server sends a device: `ready` once it has read the hello, `affectedEntities` whenever a
+ * tool in a request reports what it touched, and `agentActivity` as each agent a request uses starts,
+ * calls a tool and finishes — sent to every device that has said hello. A device that shows nothing of
+ * them (the phone, the watch) simply ignores them; the headset lights the entities up where they
+ * stand, and draws the agents as satellites round him.
  */
-export type JarvisServerMessage = { type: 'ready' } | { type: 'affectedEntities'; entities: readonly AffectedEntity[] };
+export type JarvisServerMessage =
+  | { type: 'ready' }
+  | { type: 'affectedEntities'; entities: readonly AffectedEntity[] }
+  | ({ type: 'agentActivity' } & AgentActivity);
 
 /** As much of a `WebSocket` as a line uses, which a browser's, React Native's and Bun's all are. */
 export interface ServerSocket {
@@ -179,7 +185,8 @@ function parsedFrame(data: unknown): unknown {
 /**
  * A message the server sent, or `undefined` for one this device does not know — and for an
  * `affectedEntities` message that names nothing usable (see `affected-entities.ts`), which would
- * only tell a device that nothing happened.
+ * only tell a device that nothing happened, and an `agentActivity` one that is not usable
+ * (`agent-activity.ts`).
  */
 function readServerMessage(data: unknown): JarvisServerMessage | undefined {
   const parsed = parsedFrame(data);
@@ -192,6 +199,10 @@ function readServerMessage(data: unknown): JarvisServerMessage | undefined {
   if (parsed.type === 'affectedEntities') {
     const entities = affectedEntitiesOf(parsed);
     return entities.length > 0 ? { type: 'affectedEntities', entities } : undefined;
+  }
+  if (parsed.type === 'agentActivity') {
+    const activity = agentActivityOf(parsed);
+    return activity === undefined ? undefined : { type: 'agentActivity', ...activity };
   }
   return undefined;
 }

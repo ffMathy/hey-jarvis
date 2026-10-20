@@ -18,6 +18,29 @@
       "inputs": ["**/*.ts", "**/*.tsx", "tsconfig*.json"],
       "cache": true
     },
+    // vr's preview page reads every vertical's glyph from the MCP server's files at build time
+    // (`mcp/mastra/verticals/agent-glyphs.ts`), so they are in its typecheck's and its build's hash:
+    // otherwise a glyph changed on the server would replay a preview built with the old one.
+    "vr#typecheck": {
+      "dependsOn": ["^transit"],
+      "inputs": [
+        "**/*.ts",
+        "**/*.tsx",
+        "tsconfig*.json",
+        "$TURBO_ROOT$/mcp/mastra/verticals/agent-glyphs.ts",
+        "$TURBO_ROOT$/mcp/mastra/verticals/*/glyph.ts"
+      ],
+      "cache": true
+    },
+    "vr#build": {
+      "dependsOn": ["^build", "lint", "typecheck", "initialize"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/mcp/mastra/verticals/agent-glyphs.ts",
+        "$TURBO_ROOT$/mcp/mastra/verticals/*/glyph.ts"
+      ],
+      "outputs": ["../dist/**"]
+    },
     "lint": {
       "dependsOn": ["typecheck"],
       "inputs": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.json", "$TURBO_ROOT$/biome.json"],

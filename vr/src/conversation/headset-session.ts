@@ -1,6 +1,8 @@
 import {
   type AffectedEntity,
+  type AgentActivity,
   type AgentTrackRoom,
+  activityOfMessage,
   createJarvisSession,
   type ElevenLabsSettings,
   type GreetingPlayer,
@@ -58,10 +60,18 @@ export interface HeadsetSessionOptions {
    * up where they stand. With no server address the page's line is none, and it is never called.
    */
   onAffected?(entities: readonly AffectedEntity[]): void;
+  /**
+   * Where one of the agents a request is using has got to, every time the server says so over that
+   * line (its `agentActivity` message, validated): the room draws it as a satellite round him.
+   */
+  onAgentActivity?(activity: AgentActivity): void;
 }
 
+/** What the room hears of the server's messages, and which of them it wants. */
+export type ServerMessageListeners = Pick<HeadsetSessionOptions, 'onAffected' | 'onAgentActivity'>;
+
 /** What {@link headsetSessionDependencies} makes the session from: everything but the server's line. */
-export type HeadsetSessionDependencyOptions = Omit<HeadsetSessionOptions, 'server' | 'onAffected'>;
+export type HeadsetSessionDependencyOptions = Omit<HeadsetSessionOptions, 'server' | keyof ServerMessageListeners>;
 
 /** As much of the spatial voice as a conversation reaches for. */
 export type HeadsetVoice = Pick<
@@ -159,13 +169,16 @@ export function headsetSessionDependencies({
 
 /**
  * What the headset does with a message from the server: the entities a request touched go to the
- * room's `onAffected`, and everything else (`ready`) is the line's own business.
+ * room's `onAffected`, its agents' news to `onAgentActivity`, and everything else (`ready`) is the
+ * line's own business.
  */
-export function serverMessageHandler(
-  onAffected: HeadsetSessionOptions['onAffected'],
-): (message: JarvisServerMessage) => void {
+export function serverMessageHandler({
+  onAffected,
+  onAgentActivity,
+}: ServerMessageListeners): (message: JarvisServerMessage) => void {
   return (message) => {
     if (message.type === 'affectedEntities') onAffected?.(message.entities);
+    if (message.type === 'agentActivity') onAgentActivity?.(activityOfMessage(message));
   };
 }
 
@@ -178,9 +191,14 @@ export type HeadsetSession = JarvisSession & Pick<ServerLink, 'point'>;
  * is working on (`onAffected`), and where it says what sir points at (`point`), which the server
  * writes into the requests it routes. The line itself is the page's, and outlives the session.
  */
-export function createHeadsetSession({ server, onAffected, ...options }: HeadsetSessionOptions): HeadsetSession {
+export function createHeadsetSession({
+  server,
+  onAffected,
+  onAgentActivity,
+  ...options
+}: HeadsetSessionOptions): HeadsetSession {
   const session = createJarvisSession(headsetSessionDependencies(options));
-  const stopListening = server.subscribe(serverMessageHandler(onAffected));
+  const stopListening = server.subscribe(serverMessageHandler({ onAffected, onAgentActivity }));
   const dispose = session.dispose;
   return Object.assign(session, {
     point: server.point,

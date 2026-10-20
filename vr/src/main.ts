@@ -312,6 +312,7 @@ async function openConversationRoom(
           giveUpConnectingAfterMs: seams.giveUpConnectingAfterMs,
           server: serverLink,
           onAffected: (entities) => events.onAffected?.(entities),
+          onAgentActivity: (activity) => events.onAgentActivity?.(activity),
         }),
       stopMicrophone,
       diagnostics: flags.has('debug') ? roomDiagnostics : undefined,

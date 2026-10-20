@@ -179,7 +179,9 @@ let stopListening: (() => void) | undefined;
 
 beforeEach(() => {
   pushed = [];
-  stopListening = onLiveEvent((event) => pushed.push(...event.entities));
+  stopListening = onLiveEvent((event) => {
+    if (event.type === 'affectedEntities') pushed.push(...event.entities);
+  });
 });
 
 afterEach(() => {

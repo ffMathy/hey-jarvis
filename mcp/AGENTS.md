@@ -1383,6 +1383,37 @@ listed.
 because a mismatch in the chunk shape would be silent: the request would answer, and nothing would
 ever glow. It also answers a question, to pin the resumed-agent path.
 
+**Which agents are at work:**
+The headset also shows sir which of Jarvis's agents a request is using, as satellites round him that
+flare on every tool call and fold back into him when done (`../vr/AGENTS.md`, "Seeing him work"). So
+`RoutingProgress` publishes `{ type: "agentActivity", delegationId, agentId, state }` on
+`utils/live-events.ts` as each delegation moves on:
+
+| State | When |
+| --- | --- |
+| `planned` | `delegation_start`: the plan names it, before anything runs |
+| `working` | the first chunk its agent streams (`delegation_working`), once |
+| `tool` | every `tool-call` chunk its agent streams: a moment, and it is still `working` after it |
+| `asking` | it suspended on a question sir can answer; `failed` when it cannot be asked |
+| `answered` / `failed` | `delegation_end`, failed for an error or an empty answer; and every delegation still outstanding when the run ends or fails |
+
+The delegation id is the plan's step id, which carries the plan's own id, so it is unique across
+requests. `delegation_working` is read off the same `workflow-step-output` chunks as slow tools and
+affected entities (`asWorkingEvents`), and off a resumed agent's own stream when an answer is carried
+back. As with affected entities, none of it reaches the voice agent.
+
+**Each vertical draws its own agent.** Every message carries `glyph`, the SVG path the agent's
+vertical declares in its `glyph.ts` (`export const weatherGlyph = { agentId, path } satisfies
+AgentGlyph`, exported from the vertical's `index.ts`), gathered in `verticals/agent-glyphs.ts`
+(`AGENT_GLYPHS`, `glyphOfAgent`) for routing to look up. A glyph fits the circle of radius 1 round
+0,0, y down, and is drawn as round-capped strokes 0.15 wide: closed shapes and lines, no fills, and
+only the commands M, L, H, V, A, C, Q and Z, which is all the devices accept. The glyph files import
+nothing but that type, because the headset's preview page reads them at build time to show every
+glyph without a server. `routing/agent-glyphs.spec.ts` fails when an agent `getPublicAgents` returns
+has no glyph, when one names an agent routing cannot reach, when two agents share a path, and when a
+path uses anything the devices refuse or reaches past radius 1 — so a new routable agent needs a
+`glyph.ts` in its vertical, and nothing else on any device.
+
 <a id="pointing"></a>
 **What sir points at:**
 On the headset, "turn that on" means the thing sir is pointing at. The headset says what that is over
@@ -3145,6 +3176,7 @@ credentials, and read by the headset from the storage it shares with the phone's
 | device → server | `{"type":"hello","device":"phone"\|"watch"\|"vr"}` | The first frame, within 10 seconds |
 | server → device | `{"type":"ready"}` | This socket is now sent every live event |
 | server → device | `{"type":"affectedEntities","entities":[{"id":"…","name":"…"}]}` | A request's tool just read or changed these |
+| server → device | `{"type":"agentActivity","delegationId":"…","agentId":"…","state":"…"}` | Where one of a request's agents has got to |
 | device → server | `{"type":"pointing","entity":{"id":"…","name":"…"}}` or `"entity":null` | What sir points at now, or nothing |
 
 **No authentication**: the hello names the device, for the log, and is not a credential. A refusal is
@@ -3152,7 +3184,7 @@ a close: `4400` a first frame that is not a hello, `4408` no hello in time; an u
 open sockets is answered `503`. A device tries again with a growing delay after anything but `4400`. Frames over a kilobyte close their socket (`1009`), and every socket is pinged
 every 30 seconds, which also keeps Cloudflare from closing a quiet one after 100.
 
-After `ready`, a socket is sent every event published on `utils/live-events.ts` — today `{"type":"affectedEntities","entities":[{"id":"…","name":"…"}]}`, see
+After `ready`, a socket is sent every event published on `utils/live-events.ts` — today `affectedEntities` and `agentActivity`, see
 [What a request touches](#affected-entities). A device acts on the events it cares about and ignores
 the rest. What a socket says sir points at is kept until it says otherwise or closes, and written into
 the next request routed — see [What sir points at](#pointing).

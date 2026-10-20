@@ -112,6 +112,44 @@
       a {
         color: var(--muted);
       }
+      #satellites {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 1rem;
+        max-width: 60rem;
+      }
+      #satellites-phone {
+        width: 240px;
+        height: 240px;
+        border-radius: 0.5rem;
+        background: #000;
+      }
+      #satellites fieldset {
+        align-self: flex-start;
+      }
+      #satellite-agents button.glyph[aria-pressed='true'] {
+        background: #2a1608;
+        color: var(--text);
+      }
+      #satellite-agents button.glyph {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.2rem;
+        border-radius: 0.5rem;
+        font-size: 0.75rem;
+      }
+      #satellite-path {
+        width: min(28rem, 80vw);
+        font: inherit;
+        font-size: 0.8rem;
+        background: transparent;
+        color: var(--text);
+        border: 1px solid #2a323d;
+        border-radius: 0.4rem;
+        padding: 0.4rem;
+      }
     </style>
   </head>
   <body>
@@ -157,6 +195,30 @@
         <button id="enter-room" type="button" disabled>Enter your room</button>
       </fieldset>
     </div>
+    <section id="satellites" aria-label="His agents at work">
+      <fieldset>
+        <legend>His agents at work — tap one to set it working, again to have it answer (at most 8 at once)</legend>
+        <div id="satellite-agents"></div>
+      </fieldset>
+      <fieldset>
+        <legend>All of them</legend>
+        <button type="button" data-satellites="all">Every agent</button>
+        <button type="button" data-satellites="tool">Call a tool</button>
+        <button type="button" data-satellites="ask">One asks sir</button>
+        <button type="button" data-satellites="fail">One fails</button>
+        <button type="button" data-satellites="finish">Finish all</button>
+      </fieldset>
+      <fieldset>
+        <legend>As the phone draws them</legend>
+        <canvas id="satellites-phone" width="480" height="480"></canvas>
+      </fieldset>
+      <fieldset>
+        <legend>Try a glyph of your own: an SVG path in glyph radii, y down</legend>
+        <input id="satellite-path" type="text" value="M 0 -0.7 L 0.7 0 L 0 0.7 L -0.7 0 Z" aria-label="Glyph path" />
+        <button id="satellite-try" type="button">Try this path</button>
+        <p id="satellite-status" role="status"></p>
+      </fieldset>
+    </section>
     <p id="readout-help">
       Drag to look round him, scroll to come closer. In the room, pull the trigger or pinch to go to the next phase.
       <a href="./">Back to the app</a>

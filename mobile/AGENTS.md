@@ -56,7 +56,7 @@ phone (assist gesture)
                                                           open for as long as the app runs
 ```
 
-The agent on the other end is the same one `elevenlabs/` deploys, with the same prompt and the same `routePromptWorkflow` tools. This app adds a way to reach it, not a second Jarvis. The camera button and the live line are the two things that reach past ElevenLabs, and only once sir has given the phone his Jarvis server's address: see "Showing him something", and `jarvis-server-link.ts` in `hologram` for the line. The line is opened by `app.tsx` (`useJarvisServer`) as soon as there is an address, and stays open across conversations and between them. The address is handed to the watch with the credentials, so it opens the same line.
+The agent on the other end is the same one `elevenlabs/` deploys, with the same prompt and the same `routePromptWorkflow` tools. This app adds a way to reach it, not a second Jarvis. The camera button and the live line are the two things that reach past ElevenLabs, and only once sir has given the phone his Jarvis server's address: see "Showing him something", and `jarvis-server-link.ts` in `hologram` for the line. The line is opened by `app.tsx` (`useJarvisServer`) as soon as there is an address, and stays open across conversations and between them. What it hears of his agents at work (`useAgentSatellites`) is put round him as satellites on whichever screen shows him, through `AgentSatellitesContext` at the top of the app: see "Which agents are at work" in `hologram/AGENTS.md`. The address is handed to the watch with the credentials, so it opens the same line.
 
 ## File Structure
 
@@ -503,7 +503,7 @@ the slot path and the upload path's shape to the server's routes and to how it m
 
 ## Sample mode
 
-Before the app is set up there is nothing for the hologram to follow, so the settings screen offers **"No key yet? Try the hologram"**. It opens `sample-screen.tsx`: the same hologram, in a sheet, walking through what Jarvis does.
+Before the app is set up there is nothing for the hologram to follow, so the settings screen offers **"No key yet? Try the hologram"**. It opens `sample-screen.tsx`: the same hologram, in a sheet, walking through what Jarvis does. While he is thinking, three pretend agents circle him as satellites, taking turns to call a tool, as a real request's would (`useAgentSatellites(undefined, true)`).
 
 The moods, their order and names, the simulated voice, the mood toast and the frame-rate readout are not this app's: they are `hologram`'s (`sample-mode.ts` and `sample-drive.ts` in the main entry, and `hologram/react/sample`), because the watch's waiting screen is a sample mode too. Only where they sit on the screen is decided here.
 

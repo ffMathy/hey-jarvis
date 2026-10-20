@@ -1,5 +1,6 @@
 // Shopping vertical exports
 export { getShoppingListAgent, getShoppingListSummaryAgent } from './agents.js';
+export { shoppingListGlyph } from './glyph.js';
 export { shoppingLookups } from './lookups.js';
 export { shoppingTools } from './tools.js';
 export { orderChangedWorkflow, registerShoppingTriggers } from './triggers.js';

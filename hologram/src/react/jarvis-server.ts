@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { connectToServer, type JarvisDevice } from '../jarvis-server-link';
+import { useEffect, useState } from 'react';
+import { connectToServer, type JarvisDevice, type ServerLink } from '../jarvis-server-link';
 
 /**
  * Keeps the app's line to the Jarvis server open for as long as the component holding it is mounted
@@ -8,12 +8,22 @@ import { connectToServer, type JarvisDevice } from '../jarvis-server-link';
  * accepts, when there is one. A new address or token closes the old line and opens a new one; no
  * address closes it.
  *
- * For the phone and the watch, which point at nothing and show nothing of what a request touches,
- * so nothing is read from the line: holding it open is the whole of their part.
+ * Returns the line while it is open, for whatever wants to hear the server: the phone hands it to
+ * `useAgentSatellites`, to show which of his agents are at work. The watch only holds it open.
  */
-export function useJarvisServer(address: string | undefined, token: string | undefined, device: JarvisDevice): void {
+export function useJarvisServer(
+  address: string | undefined,
+  token: string | undefined,
+  device: JarvisDevice,
+): ServerLink | undefined {
+  const [line, setLine] = useState<ServerLink | undefined>(undefined);
   useEffect(() => {
     const link = connectToServer({ address, token, device });
-    return link.close;
+    setLine(link);
+    return () => {
+      setLine(undefined);
+      link.close();
+    };
   }, [address, token, device]);
+  return line;
 }

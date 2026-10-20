@@ -1,5 +1,5 @@
 import { Canvas, Picture, Skia } from '@shopify/react-native-skia';
-import { memo, useEffect, useMemo } from 'react';
+import { memo, useContext, useEffect, useMemo } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import Animated, {
   type SharedValue,
@@ -16,8 +16,10 @@ import {
   createHologramResources,
   createHologramScene,
   createReleasableHologramResources,
+  createSatelliteResources,
   type DensityPace,
   drawHologram,
+  drawSatellites,
   foldSpectrum,
   frameStepSeconds,
   hearingFromPresence,
@@ -27,12 +29,14 @@ import {
   perceivedLevel,
   READ_INTERVAL_MS,
   restartArrival,
+  type SatelliteOrbit,
   SCENE_SEED,
   seedFromRemembered,
   steerDensity,
   VOICE_BAND_COUNT,
 } from '../index';
 import type { JarvisVoice, UserVoice } from '../voice-contract';
+import { AgentSatellitesContext } from './agent-satellites';
 import { useIsForeground } from './is-foreground';
 
 export interface JarvisHologramProps {
@@ -160,6 +164,11 @@ export interface JarvisHologramProps {
    * the canvas can fill the sheet with no seam between them.
    */
   background?: string;
+  /**
+   * The satellites to draw round him: which of his agents a request is using (`useAgentSatellites`).
+   * Left out, the nearest {@link AgentSatellitesContext}'s, and none without one.
+   */
+  satellites?: SharedValue<SatelliteOrbit[]>;
 }
 
 /**
@@ -338,6 +347,7 @@ function JarvisHologramView({
   buildMilliseconds,
   opaque = false,
   background,
+  satellites,
 }: JarvisHologramProps) {
   const { listening, speaking, getVolume, getSpectrum } = voice;
   const isForeground = useIsForeground();
@@ -352,6 +362,10 @@ function JarvisHologramView({
   );
   const resources = useMemo(() => releasable?.resources ?? createHologramResources(Skia, scene), [releasable, scene]);
   useEffect(() => () => releasable?.dispose(), [releasable]);
+  const satelliteResources = useMemo(() => createSatelliteResources(Skia), []);
+  const noSatellites = useSharedValue<SatelliteOrbit[]>([]);
+  const shared = useContext(AgentSatellitesContext);
+  const orbits = satellites ?? shared ?? noSatellites;
 
   const targetLevel = useSharedValue(0);
   // The person talking to him, as last read: see `user`.
@@ -605,12 +619,15 @@ function JarvisHologramView({
     // The level judged against how loud this voice actually gets, and the materialisation played
     // once from the start of the arrival: see `hologramFrameOf`.
     drawHologram(canvas, drawnSize, hologramFrameOf(current, density.value.density), scene, resources);
+    // Round him, on his clock, so they go round as smoothly as he turns: see `satellite-drawing.ts`.
+    const glyphPaths = drawSatellites(canvas, Skia, drawnSize, current.time, orbits.value, satelliteResources);
     if (DRAWN_IN_A_LAYER) {
       canvas.restore();
     }
     const recorded = recorder.finishRecordingAsPicture();
     if (RELEASES_PATHS_BY_HAND) {
       releasable?.release();
+      for (const path of glyphPaths) path?.dispose();
     }
     const took = performance.now() - startedAt;
     built.value += 1;

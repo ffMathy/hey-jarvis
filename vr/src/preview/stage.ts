@@ -1,6 +1,7 @@
 import { analyseFrame, createHologramScene, type HologramFrame, SCENE_SEED, SPHERE_FRACTION } from 'hologram';
 import { PerspectiveCamera, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { createRoomSatellites, type RoomSatellites } from '../app/room-satellites';
 import {
   ALPHA_FROM_LIGHT,
   createJarvisHologram3D,
@@ -45,6 +46,8 @@ export type StageView = PreviewView | 'orbit';
 
 export interface Stage {
   readonly hologram: JarvisHologram3D;
+  /** His satellites, drawn round him as the room draws them: what the satellites panel drives. */
+  readonly satellites: RoomSatellites;
   readonly phase: PreviewPhase;
   setPhase(phase: PreviewPhase): void;
   setMode(mode: PreviewMode): void;
@@ -88,6 +91,11 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
 
   let hologram = await newHologram(renderer, painter);
   scene.add(hologram.object);
+  const satellites = createRoomSatellites();
+  scene.add(satellites.object);
+  // The satellites' own clock: the stills step his frame clock from a fresh arrival, and the
+  // satellites, which only go round, need nothing but time going forward.
+  let satelliteSeconds = 0;
   let phase: PreviewPhase = 'greeting';
   let secondsIntoPhase = 0;
   const drives = createPhaseDrives(() => secondsIntoPhase);
@@ -124,6 +132,14 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
 
   function render(deltaSeconds: number, drive: HologramDrive) {
     hologram.update(deltaSeconds, drive, { position: camera.position, orientation: camera.quaternion });
+    satelliteSeconds += deltaSeconds;
+    satellites.update({
+      time: satelliteSeconds,
+      deltaSeconds,
+      eye: camera,
+      him: { centre: { x: 0, y: 0, z: 0 }, radius: hologram.radius },
+      pretendWorking: false,
+    });
     renderer.render(scene, camera);
   }
 
@@ -255,6 +271,7 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
     get hologram() {
       return hologram;
     },
+    satellites,
     get phase() {
       return phase;
     },
