@@ -53,12 +53,13 @@ export const ORBIT_TILT_RADIANS = (18 * Math.PI) / 180;
 const SPACING_RATE = 3;
 
 /**
- * The glyph each of the server's agents is drawn with (`satellite-drawing.ts` and the headset's
- * `hologram3d/satellites.ts` draw them, in the same order); an
- * agent not listed gets one from its id, so a new agent on the server needs no change here.
+ * The glyph each agent the server routes requests to is drawn with — every one its own, so a
+ * satellite always says which agent it is. `satellite-drawing.ts` and the headset's
+ * `hologram3d/satellites.ts` draw them, in this order. The server's own spec
+ * (`mcp/mastra/verticals/routing/agent-glyphs.spec.ts`) reads this table and fails when an agent
+ * routing can send a request to is missing from it.
  */
-export const GLYPH_COUNT = 8;
-const GLYPH_BY_AGENT: Readonly<Record<string, number>> = {
+export const GLYPH_BY_AGENT: Readonly<Record<string, number>> = {
   weather: 0,
   calendar: 1,
   email: 2,
@@ -67,16 +68,27 @@ const GLYPH_BY_AGENT: Readonly<Record<string, number>> = {
   todoList: 5,
   coding: 6,
   webResearch: 7,
+  cooking: 8,
+  commute: 9,
+  reflection: 10,
+  visualize: 11,
+  vision: 12,
 };
 
-/** The glyph `agentId` is drawn with: its own, or one picked steadily from its id. */
+/**
+ * The glyph for an agent the table does not know yet: a plain ring, so a new agent on the server
+ * still shows as at work, and never in another agent's likeness.
+ */
+export const UNKNOWN_AGENT_GLYPH = 13;
+
+/** How many glyphs there are to draw, the unknown agent's included. */
+export const GLYPH_COUNT = UNKNOWN_AGENT_GLYPH + 1;
+
+/** The glyph `agentId` is drawn with: its own, or {@link UNKNOWN_AGENT_GLYPH}. */
 export function glyphOf(agentId: string): number {
   // Own keys only: an id is whatever the server sent, `constructor` included.
   const known = Object.hasOwn(GLYPH_BY_AGENT, agentId) ? GLYPH_BY_AGENT[agentId] : undefined;
-  if (known !== undefined) return known;
-  let hash = 0;
-  for (let index = 0; index < agentId.length; index++) hash = (hash * 31 + agentId.charCodeAt(index)) >>> 0;
-  return hash % GLYPH_COUNT;
+  return known ?? UNKNOWN_AGENT_GLYPH;
 }
 
 type SatelliteStatus = 'planned' | 'working' | 'asking' | 'answered' | 'failed';

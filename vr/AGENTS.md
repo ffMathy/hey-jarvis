@@ -833,10 +833,12 @@ The phone and its web build show the same satellites round the sphere on the scr
 lifecycle in `hologram` (`agent-work.ts`; see `../hologram/AGENTS.md`). What is the headset's own is
 where they are in the room (`satellites/satellite-spots.ts`) and how they are drawn there.
 
-While a request runs, each of the agents it uses circles him as a small glyph — a sun for the
-weather, a page for the calendar, an envelope for email, a hexagon for the house, a triangle for
-shopping, a tick for the to-do list, angle brackets for coding, a lens for web research and any agent
-not listed — so a pause while he thinks reads as work under way rather than silence.
+While a request runs, each of the agents it uses circles him as a small glyph of its own — a sun
+for the weather, a page for the calendar, an envelope for email, a hexagon for the house, a triangle
+for shopping, a tick for the to-do list, angle brackets for coding, a lens for web research, a pot
+for cooking, a pin for the commute, an arrow coming round for reflection, a bar chart for visualize
+and an eye for vision; a plain ring for an agent not listed yet (`GLYPH_BY_AGENT` in `hologram`'s
+`agent-work.ts`) — so a pause while he thinks reads as work under way rather than silence.
 
 The server says where each delegation has got to in an `agentActivity` message on the line the page
 keeps open (`hologram`'s `agent-activity.ts`; the server's side is "What a request touches" in

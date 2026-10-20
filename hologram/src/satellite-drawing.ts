@@ -4,11 +4,12 @@ import { type HologramCanvas, type HologramSkia, SPHERE_FRACTION } from './holog
 
 /**
  * The satellites on a screen: the phone's, and its web build's. Each agent a request is using goes
- * round the sphere as a small glyph (`agent-work.ts` says which, where and how lit) — the same eight
+ * round the sphere as a small glyph (`agent-work.ts` says which, where and how lit) — the same
  * glyphs, in the same order, as the headset draws in the room (`vr/src/hologram3d/satellites.ts`): a
  * sun for the weather, a page for the calendar, an envelope for email, a hexagon for the house, a
- * triangle for shopping, a tick for the to-do list, angle brackets for coding, and a lens for web
- * research and any agent not listed.
+ * triangle for shopping, a tick for the to-do list, angle brackets for coding, a lens for web
+ * research, a pot for cooking, a pin for the commute, an arrow coming round for reflection, a bar
+ * chart for visualize, an eye for vision, and a plain ring for an agent not listed yet.
  *
  * Drawn in his colours and blended as he is (Screen), over him, after `drawHologram` in the same
  * picture: a glyph, a hot dot at its middle, a little halo round it, a ring flaring out from it on
@@ -55,8 +56,20 @@ const GLYPH_PATHS = [
   'M -0.6 0 L -0.15 0.45 L 0.65 -0.5',
   // Coding: angle brackets.
   'M -0.25 -0.55 L -0.72 0 L -0.25 0.55 M 0.25 -0.55 L 0.72 0 L 0.25 0.55',
-  // Web research, and any agent not listed: a lens with its handle.
+  // Web research: a lens with its handle.
   `${circle(-0.12, -0.12, 0.42)} M 0.18 0.18 L 0.66 0.66`,
+  // Cooking: a pot with its rim, steaming.
+  'M -0.6 -0.05 A 0.6 0.6 0 0 0 0.6 -0.05 M -0.75 -0.05 L 0.75 -0.05 M -0.2 -0.3 L -0.2 -0.6 M 0.2 -0.3 L 0.2 -0.6',
+  // Commute: a map pin.
+  `${circle(0, -0.22, 0.38)} M -0.3 0.02 L 0 0.72 L 0.3 0.02`,
+  // Reflection: an arrow coming round on itself.
+  'M 0.421 0.354 A 0.55 0.55 0 1 1 0.421 -0.354 M 0.151 -0.426 L 0.421 -0.354 L 0.397 -0.632',
+  // Visualize: a bar chart.
+  'M -0.7 0.6 L 0.7 0.6 M -0.4 0.6 L -0.4 0.1 M 0 0.6 L 0 -0.55 M 0.4 0.6 L 0.4 -0.2',
+  // Vision: an eye.
+  `M -0.748 0 A 0.9 0.9 0 0 1 0.748 0 A 0.9 0.9 0 0 1 -0.748 0 Z ${circle(0, 0, 0.22)}`,
+  // An agent not listed yet: a plain ring.
+  circle(0, 0, 0.45),
 ];
 
 function circle(centreX: number, centreY: number, radius: number): string {

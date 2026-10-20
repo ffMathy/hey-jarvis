@@ -220,13 +220,20 @@ a place on a tilted ring of radius 1 (`satelliteOrbits`, `orbitPoint`), and each
 device scales that to his size and adds its own clock, so they go round as
 smoothly as that device draws him. The headset draws them in the room
 (`vr/src/hologram3d/satellites.ts`); the phone and its web build draw them on the
-screen, in the same picture as him (`satellite-drawing.ts`, the same eight glyphs
+screen, in the same picture as him (`satellite-drawing.ts`, the same glyphs
 as Skia strokes, dimmer and smaller passing behind him). On the phone,
 `useJarvisServer` returns the line, `useAgentSatellites` (in
 `hologram/react/lifecycle`) works the satellites out on the JS thread every
 `READ_INTERVAL_MS` into a shared value, and `JarvisHologram` draws whatever its
 `satellites` prop, or the nearest `AgentSatellitesContext`, holds. The watch
-holds the line and shows none. With `pretending`, the hook has sample mode's
+holds the line and shows none.
+
+Every agent routing can send a request to has a glyph of its own
+(`GLYPH_BY_AGENT`), and an agent not in the table yet is a plain ring rather
+than a borrowed likeness. Adding an agent on the server means adding it there and
+drawing its glyph twice, as SVG strokes in `satellite-drawing.ts` and as a
+distance field in the headset's shader; the server's
+`routing/agent-glyphs.spec.ts` reads the table and fails until it is in it. With `pretending`, the hook has sample mode's
 three pretend agents at work (`pretendWork`), so they can be seen with no server.
 
 **What sir points at goes to the server.** `ServerLink.point(entity)` sends `{"type":"pointing","entity":{…}}`, or `"entity":null` for

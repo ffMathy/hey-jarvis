@@ -1393,7 +1393,10 @@ flare on every tool call and fold back into him when done (`../vr/AGENTS.md`, "S
 The delegation id is the plan's step id, which carries the plan's own id, so it is unique across
 requests. `delegation_working` is read off the same `workflow-step-output` chunks as slow tools and
 affected entities (`asWorkingEvents`), and off a resumed agent's own stream when an answer is carried
-back. As with affected entities, none of it reaches the voice agent.
+back. As with affected entities, none of it reaches the voice agent. Each agent is drawn with a
+glyph of its own from `GLYPH_BY_AGENT` in `hologram/src/agent-work.ts`, and
+`routing/agent-glyphs.spec.ts` fails when an agent `getPublicAgents` returns is missing from it — so
+a new routable agent needs a glyph on sir's devices too (see `hologram/AGENTS.md`).
 
 <a id="pointing"></a>
 **What sir points at:**

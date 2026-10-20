@@ -24,8 +24,9 @@ import { ALPHA_FROM_LIGHT } from './view-plane-quad';
 
 /**
  * The satellites round Jarvis, one for each of his agents a request is using
- * (`satellites/satellite-spots.ts` says where each is and how lit, from `hologram`'s `agent-work.ts`): a small glyph per agent — a sun for
- * the weather, a page for the calendar, a hexagon for the house — in his stroke colours, a hot dot at
+ * (`satellites/satellite-spots.ts` says where each is and how lit, from `hologram`'s `agent-work.ts`): a small glyph per agent, each its own
+ * (`GLYPH_BY_AGENT` in `hologram`, the same as the phone draws) — a sun for the weather, a page for
+ * the calendar, a hexagon for the house — in his stroke colours, a hot dot at
  * its middle, a little of his halo round it, a ring flaring out from it on every tool it calls, and a
  * slow pulse while it waits on sir.
  *
@@ -164,6 +165,16 @@ float triangle(vec2 point, float size) {
   return -length(point) * sign(point.y);
 }
 
+// The part of a circle below the level line at cut, and the two ends where it meets that line.
+float capBelow(vec2 point, vec2 centre, float radius, float cut) {
+  vec2 from = point - centre;
+  float reach = length(from);
+  vec2 nearest = centre + (reach > 1e-5 ? from / reach : vec2(0.0, -1.0)) * radius;
+  if (nearest.y <= cut) return abs(reach - radius);
+  float halfChord = sqrt(max(radius * radius - (cut - centre.y) * (cut - centre.y), 0.0));
+  return min(length(point - vec2(centre.x + halfChord, cut)), length(point - vec2(centre.x - halfChord, cut)));
+}
+
 // How far from the glyph's strokes this point is, for each agent's glyph.
 float glyphDistance(vec2 point, int glyph) {
   if (glyph == 0) {
@@ -198,8 +209,45 @@ float glyphDistance(vec2 point, int glyph) {
     vec2 mirrored = vec2(abs(point.x), point.y);
     return min(segment(mirrored, vec2(0.25, 0.55), vec2(0.72, 0.0)), segment(mirrored, vec2(0.72, 0.0), vec2(0.25, -0.55)));
   }
-  // Web research, and any agent not listed: a lens with its handle.
-  return min(abs(length(point - vec2(-0.12, 0.12)) - 0.42), segment(point, vec2(0.18, -0.18), vec2(0.66, -0.66)));
+  if (glyph == 7) {
+    // Web research: a lens with its handle.
+    return min(abs(length(point - vec2(-0.12, 0.12)) - 0.42), segment(point, vec2(0.18, -0.18), vec2(0.66, -0.66)));
+  }
+  if (glyph == 8) {
+    // Cooking: a pot with its rim, steaming.
+    float pot = capBelow(point, vec2(0.0, 0.05), 0.6, 0.05);
+    float rim = segment(point, vec2(-0.75, 0.05), vec2(0.75, 0.05));
+    float steam = min(segment(point, vec2(-0.2, 0.3), vec2(-0.2, 0.6)), segment(point, vec2(0.2, 0.3), vec2(0.2, 0.6)));
+    return min(pot, min(rim, steam));
+  }
+  if (glyph == 9) {
+    // Commute: a map pin.
+    float head = abs(length(point - vec2(0.0, 0.22)) - 0.38);
+    float tip = min(segment(point, vec2(-0.3, -0.02), vec2(0.0, -0.72)), segment(point, vec2(0.3, -0.02), vec2(0.0, -0.72)));
+    return min(head, tip);
+  }
+  if (glyph == 10) {
+    // Reflection: an arrow coming round on itself — a ring open on the right, its head at the top end.
+    vec2 top = vec2(0.421, 0.354);
+    float ring = abs(atan(point.y, point.x)) > 0.6981317 ? abs(length(point) - 0.55)
+      : min(length(point - top), length(point - vec2(top.x, -top.y)));
+    float head = min(segment(point, vec2(0.151, 0.426), top), segment(point, top, vec2(0.397, 0.632)));
+    return min(ring, head);
+  }
+  if (glyph == 11) {
+    // Visualize: a bar chart.
+    float bars = min(segment(point, vec2(-0.4, -0.6), vec2(-0.4, -0.1)), segment(point, vec2(0.0, -0.6), vec2(0.0, 0.55)));
+    bars = min(bars, segment(point, vec2(0.4, -0.6), vec2(0.4, 0.2)));
+    return min(bars, segment(point, vec2(-0.7, -0.6), vec2(0.7, -0.6)));
+  }
+  if (glyph == 12) {
+    // Vision: an eye — two lids and a pupil.
+    float upper = capBelow(vec2(point.x, -point.y), vec2(0.0, 0.5), 0.9, 0.0);
+    float lower = capBelow(point, vec2(0.0, 0.5), 0.9, 0.0);
+    return min(min(upper, lower), abs(length(point) - 0.22));
+  }
+  // An agent not listed yet: a plain ring.
+  return abs(length(point) - 0.45);
 }
 
 void main() {

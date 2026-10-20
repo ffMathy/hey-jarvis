@@ -7,6 +7,7 @@ import {
   FAILED_DRIFT,
   FLARE_SECONDS,
   FOLD_SECONDS,
+  GLYPH_BY_AGENT,
   GLYPH_COUNT,
   glyphOf,
   MAX_SATELLITES,
@@ -23,6 +24,7 @@ import {
   STALE_SECONDS,
   satelliteOrbits,
   stepWork,
+  UNKNOWN_AGENT_GLYPH,
 } from './agent-work';
 
 const CENTRE = { x: 0, y: 0, z: 0 };
@@ -206,26 +208,17 @@ describe('where a satellite is on the orbit', () => {
 });
 
 describe('the glyph each agent is drawn with', () => {
-  it('is its own for the agents it knows, and different for each', () => {
-    const known = [
-      'weather',
-      'calendar',
-      'email',
-      'internetOfThings',
-      'shoppingList',
-      'todoList',
-      'coding',
-      'webResearch',
-    ];
+  it('is its own for every agent it knows, none shared', () => {
+    const glyphs = Object.keys(GLYPH_BY_AGENT).map(glyphOf);
 
-    expect(new Set(known.map(glyphOf)).size).toBe(known.length);
+    expect(new Set(glyphs).size).toBe(glyphs.length);
+    expect(glyphs).not.toContain(UNKNOWN_AGENT_GLYPH);
+    for (const glyph of glyphs) expect(Number.isInteger(glyph) && glyph >= 0 && glyph < GLYPH_COUNT).toBe(true);
   });
 
-  it('is a steady one of the glyphs for an agent it does not know, whatever its id', () => {
-    for (const agentId of ['cooking', 'commute', 'constructor', '__proto__', 'x'.repeat(200)]) {
-      const glyph = glyphOf(agentId);
-      expect(glyph).toBe(glyphOf(agentId));
-      expect(Number.isInteger(glyph) && glyph >= 0 && glyph < GLYPH_COUNT).toBe(true);
+  it('is the plain ring for an agent it does not know yet, never another agent’s', () => {
+    for (const agentId of ['emailResponseParser', 'constructor', '__proto__', 'x'.repeat(200)]) {
+      expect(glyphOf(agentId)).toBe(UNKNOWN_AGENT_GLYPH);
     }
   });
 });
