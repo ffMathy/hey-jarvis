@@ -23,8 +23,13 @@ import { type HologramCanvas, type HologramSkia, SPHERE_FRACTION } from './holog
  * browser, and headless in the specs.
  */
 
-/** The orbit's radius, in his radii: inside the canvas, which ends at 1 / (2 × SPHERE_FRACTION). */
-export const SCREEN_ORBIT_RADII = 1.55;
+/**
+ * The orbit's radius, in his radii: inside what a screen shows of the canvas, not just inside the
+ * canvas. The phone's whole-screen canvas is drawn 1.35 times wider than the screen so his chips are
+ * never cut off by its edge (`CHIP_HEADROOM` in `mobile/src/hologram-size.ts`), which leaves 1.37 of
+ * his radii either side of him on the screen: this, and a glyph, fit in it.
+ */
+export const SCREEN_ORBIT_RADII = 1.22;
 
 /** A glyph's radius, in his radii. */
 export const SCREEN_GLYPH_RADII = 0.13;

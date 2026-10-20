@@ -79,6 +79,12 @@ describe('the satellites on a screen', () => {
     expect(outermost).toBeLessThan(SIZE / 2);
   });
 
+  it('fit on the screen of a phone whose canvas is drawn wider than it, glyph included', () => {
+    // The phone's whole-screen canvas is 1.35 times the screen's width (`CHIP_HEADROOM`).
+    const screenHalfWidth = SIZE / 2 / 1.35;
+    expect(RADIUS * (SCREEN_ORBIT_RADII + SCREEN_GLYPH_RADII)).toBeLessThan(screenHalfWidth);
+  });
+
   it('draw nothing when there are none', () => {
     expect(litPixels(render([]))).toBe(0);
   });

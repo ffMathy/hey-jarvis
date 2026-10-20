@@ -73,6 +73,14 @@ function isState(value: unknown): value is AgentActivityState {
   return AGENT_ACTIVITY_STATES.some((state) => state === value);
 }
 
+/**
+ * The activity in an `agentActivity` message the line has already read, without the message's own
+ * `type`: everything a satellite is made from, the glyph included.
+ */
+export function activityOfMessage({ delegationId, agentId, state, glyph }: AgentActivity): AgentActivity {
+  return glyph === undefined ? { delegationId, agentId, state } : { delegationId, agentId, state, glyph };
+}
+
 /** The activity an `agentActivity` message carries, or `undefined` for one that is not usable. Never throws. */
 export function agentActivityOf(message: unknown): AgentActivity | undefined {
   if (typeof message !== 'object' || message === null) return undefined;

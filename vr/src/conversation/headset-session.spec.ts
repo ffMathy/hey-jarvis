@@ -119,9 +119,19 @@ describe('what the room hears of what he is working on', () => {
     });
 
     handle({ type: 'agentActivity', delegationId: 'plan-1-0-weather', agentId: 'weather', state: 'working' });
+    handle({
+      type: 'agentActivity',
+      delegationId: 'plan-1-0-weather',
+      agentId: 'weather',
+      state: 'tool',
+      glyph: 'M 0 0 L 1 0',
+    });
     handle({ type: 'affectedEntities', entities: touched });
 
-    expect(news).toEqual([{ delegationId: 'plan-1-0-weather', agentId: 'weather', state: 'working' }]);
+    expect(news).toEqual([
+      { delegationId: 'plan-1-0-weather', agentId: 'weather', state: 'working' },
+      { delegationId: 'plan-1-0-weather', agentId: 'weather', state: 'tool', glyph: 'M 0 0 L 1 0' },
+    ]);
     expect(entities).toEqual([touched]);
   });
 });

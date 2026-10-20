@@ -1,5 +1,6 @@
 import { createContext, useEffect, useRef } from 'react';
 import { type SharedValue, useSharedValue } from 'react-native-reanimated';
+import { activityOfMessage } from '../agent-activity';
 import {
   type AgentWorkState,
   NO_WORK,
@@ -48,8 +49,7 @@ export function useAgentSatellites(link: ServerLink | undefined, pretending = fa
     if (link === undefined) return;
     return link.subscribe((message) => {
       if (message.type !== 'agentActivity') return;
-      const { delegationId, agentId, state } = message;
-      work.current = recordActivity(work.current, { delegationId, agentId, state }, nowSeconds());
+      work.current = recordActivity(work.current, activityOfMessage(message), nowSeconds());
     });
   }, [link]);
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { AFFECTED_ENTITY_ID_MAX_LENGTH, AFFECTED_ENTITY_NAME_MAX_LENGTH } from './affected-entities';
+import { activityOfMessage } from './agent-activity';
 import {
   connectToServer,
   FIRST_RETRY_MS,
@@ -167,6 +168,22 @@ describe('a line to the server', () => {
     latest().receive(JSON.stringify({ ...activity, glyph: 7 }));
 
     expect(received).toEqual([{ ...activity, glyph: 'M 0 -0.7 L 0.7 0 Z' }, activity, activity, activity]);
+  });
+
+  it('hands on a message’s activity, glyph and all, without the message’s type', () => {
+    const glyph = 'M 0 -0.7 L 0.7 0 Z';
+
+    expect(activityOfMessage({ delegationId: 'd', agentId: 'weather', state: 'tool', glyph })).toEqual({
+      delegationId: 'd',
+      agentId: 'weather',
+      state: 'tool',
+      glyph,
+    });
+    expect(activityOfMessage({ delegationId: 'd', agentId: 'weather', state: 'tool' })).toEqual({
+      delegationId: 'd',
+      agentId: 'weather',
+      state: 'tool',
+    });
   });
 
   it('keeps only the usable entities of a frame, and drops a frame with none', () => {

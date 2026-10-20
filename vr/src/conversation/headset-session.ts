@@ -2,6 +2,7 @@ import {
   type AffectedEntity,
   type AgentActivity,
   type AgentTrackRoom,
+  activityOfMessage,
   createJarvisSession,
   type ElevenLabsSettings,
   type GreetingPlayer,
@@ -177,10 +178,7 @@ export function serverMessageHandler({
 }: ServerMessageListeners): (message: JarvisServerMessage) => void {
   return (message) => {
     if (message.type === 'affectedEntities') onAffected?.(message.entities);
-    if (message.type === 'agentActivity') {
-      const { delegationId, agentId, state } = message;
-      onAgentActivity?.({ delegationId, agentId, state });
-    }
+    if (message.type === 'agentActivity') onAgentActivity?.(activityOfMessage(message));
   };
 }
 
