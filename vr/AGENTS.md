@@ -131,6 +131,7 @@ src/ui3d/                  text in the room: the hint, status line, guide, error
                            drawer, tokens, names, pointing reticle and wrist button
 src/entities/              what Jarvis works on, placed in the room: registry, room anchors, corona lifetime,
                            pointing, hand poses, grabbing, what the hands and controllers mean to them
+src/satellites/            seeing him work: a satellite round him for each agent a request is using
 src/wake/                  "Hey Jarvis": the microphone, the worklet, the onnxruntime-web worker, the watchdog
 src/room/                  where he stands: room snapshots, the occupancy grid, placement and its worker
 src/conversation/          hologram's session with the headset's parts: the greeting, his track, his voice from where he stands, orphaned audio
@@ -825,6 +826,40 @@ where it is now), lit and pointed at, what the server would be told sir points a
 (`pendingPointing`), the drawer's slots and buttons with their positions, the tokens in hand, each hand and controller as placing reads it (pinch point,
 grip, index tip, rays), the wrist button, and every anchor's state — worked out only when read. The
 HUD has one `entities` line.
+
+## Seeing him work (`src/satellites/`, `app/room-satellites.ts`, `hologram3d/satellites.ts`)
+
+While a request runs, each of the agents it uses circles him as a small glyph — a sun for the
+weather, a page for the calendar, an envelope for email, a hexagon for the house, a triangle for
+shopping, a tick for the to-do list, angle brackets for coding, a lens for web research and any agent
+not listed — so a pause while he thinks reads as work under way rather than silence.
+
+The server says where each delegation has got to in an `agentActivity` message on the line the page
+keeps open (`hologram`'s `agent-activity.ts`; the server's side is "What a request touches" in
+`../mcp/AGENTS.md`), and `satellites/agent-work.ts` turns that into satellites, purely:
+
+| Message | Satellite |
+| --- | --- |
+| `planned` | comes out dim (`PLANNED_BRIGHTNESS`) on the orbit, in the widest gap of the ring |
+| `working` | lit |
+| `tool` | lit, and flares — a hot ring going out from the glyph — for `FLARE_SECONDS` |
+| `asking` | lit and pulsing, held for as long as it waits on sir |
+| `answered` | its orbit closes on his centre over `FOLD_SECONDS`: it folds back into him |
+| `failed` | drifts outwards and goes out over the same time, never reaching him |
+
+The orbit is `ORBIT_RADII` of his radius, tilted `ORBIT_TILT_RADIANS` off level so they pass in front
+of him and behind, and goes round once in `ORBIT_SECONDS`; the satellites ease to even spacing as
+they come and go. At most `MAX_SATELLITES` are out. One with no news for `STALE_SECONDS` (but one
+asking) goes out as failed, so a lost message never leaves one circling, and the end of the
+conversation folds every one in. A message that comes while he is not in the room is still taken in
+— a request asked on the phone has satellites too — but nothing is drawn without him to circle.
+
+The room queues each message and takes it in at the start of the next frame, so every time in the
+state is the XR frame's (`app/room-satellites.ts`). They are drawn as his coronas are: one instanced
+draw of view-facing quads, Screen-blended in his stroke colours, no depth, never under
+`MIN_APPARENT_RADIUS_DEGREES`, after the coronas and before the panels. Sample mode's thinking has
+three pretend agents at work (`pretendWork`), taking turns to call a tool, so they can be seen without
+a server; they answer when it stops. `window.__jarvis.satellites` lists each one's agent and status.
 
 ## How he is drawn (`src/hologram3d/`)
 
