@@ -9,6 +9,7 @@ import {
   storageRetentionWorkflow,
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow,
+  weeklyNewsDigestWorkflow,
 } from './verticals/index.js';
 
 /**
@@ -90,6 +91,12 @@ export const SCHEDULED_WORKFLOWS: ScheduledWorkflowDeclaration[] = [
   {
     workflowId: weeklyMealPlanningWorkflow.id,
     cron: CronPatterns.WEEKLY_SUNDAY_8AM,
+  },
+  // Weekly news digest - every Monday at 7am
+  // The past week's news and daily.dev's most upvoted posts, visualized and pushed to the phone
+  {
+    workflowId: weeklyNewsDigestWorkflow.id,
+    cron: CronPatterns.WEEKLY_MONDAY_7AM,
   },
   // Email checking - every minute
   // Checks for new emails and updates tracking (does NOT trigger state reactor)

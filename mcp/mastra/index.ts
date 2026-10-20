@@ -33,6 +33,7 @@ import {
   stateChangeNotificationWorkflow,
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow,
+  weeklyNewsDigestWorkflow,
 } from './verticals/index.js';
 import { getChangeRelevanceClassifier } from './verticals/internet-of-things/change-relevance.js';
 import { getHomeCommandClassifier } from './verticals/internet-of-things/home-commands.js';
@@ -130,6 +131,7 @@ export async function getMastra(): Promise<Mastra> {
       weatherMonitoringWorkflow,
       generateMealPlanWorkflow,
       weeklyMealPlanningWorkflow,
+      weeklyNewsDigestWorkflow,
       implementFeatureWorkflow,
       stateChangeNotificationWorkflow,
       humanInTheLoopDemoWorkflow,
