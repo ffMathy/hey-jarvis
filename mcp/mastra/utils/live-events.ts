@@ -11,13 +11,37 @@ import { logger } from './logger.js';
  * serves no sockets, it simply goes nowhere.
  *
  * A device subscribes by holding a socket open, and acts on the events it cares about: the headset
- * lights up what a request is touching, and the phone and the watch need not do anything at all.
+ * lights up what a request is touching and shows which agents are working on it, and the phone and
+ * the watch need not do anything at all.
  */
-export type LiveEvent = {
-  type: 'affectedEntities';
-  /** What a request's tool just read or changed. See `affected-entities.ts`. */
-  entities: AffectedEntity[];
-};
+export type LiveEvent =
+  | {
+      type: 'affectedEntities';
+      /** What a request's tool just read or changed. See `affected-entities.ts`. */
+      entities: AffectedEntity[];
+    }
+  | ({ type: 'agentActivity' } & AgentActivity);
+
+/**
+ * Where one of a request's delegations has got to, for sir's headset to show him at work: a
+ * satellite round Jarvis for each agent a request is using, which flares on every tool it calls
+ * and folds back into him when it answers.
+ *
+ * - `planned` — the plan names it, and it has not been seen to do anything yet;
+ * - `working` — its agent has started streaming;
+ * - `tool` — its agent just called a tool: a moment, not a state, and it is still working after it;
+ * - `asking` — it stopped on a question only sir can answer;
+ * - `answered` / `failed` — it is done, one way or the other.
+ */
+export type AgentActivityState = 'planned' | 'working' | 'tool' | 'asking' | 'answered' | 'failed';
+
+export interface AgentActivity {
+  /** The delegation, unique across requests (a plan's step ids carry the plan's own id). Opaque. */
+  delegationId: string;
+  /** The agent delegated to, as the planner names it: `weather`, `calendar`, `internetOfThings`… */
+  agentId: string;
+  state: AgentActivityState;
+}
 
 type LiveEventListener = (event: LiveEvent) => void;
 

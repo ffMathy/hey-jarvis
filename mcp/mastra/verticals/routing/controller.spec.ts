@@ -18,6 +18,7 @@ import {
   buildSnapshot,
   getRoutingRuntime,
   MOST_AFFECTED_ENTITIES_PER_REQUEST,
+  type RoutingEvent,
   RoutingProgress,
   resetRoutingRuntime,
 } from './controller.js';
@@ -71,6 +72,11 @@ function suspendedOutput(
       },
     },
   };
+}
+
+/** The event a delegation's agent streaming anything is read as: `toolCall` when it called a tool. */
+function working(delegationId: string, toolCall = false): RoutingEvent {
+  return { type: 'delegation_working', delegationId, toolCall };
 }
 
 /** A plan run that has announced everything it intends to do, and done none of it yet. */
@@ -150,6 +156,7 @@ describe('a delegation that stops to ask the user something', () => {
 
   it('is read off the step’s streamed output, since the step itself never reports a result', () => {
     expect(asRoutingEvents(suspendedOutput(CALENDAR_STEP), PLAN)).toEqual([
+      working(CALENDAR_STEP),
       {
         type: 'delegation_suspended',
         delegationId: CALENDAR_STEP,
@@ -163,19 +170,20 @@ describe('a delegation that stops to ask the user something', () => {
     ]);
   });
 
-  it('ignores everything else a step streams', () => {
+  it('reads anything else a step streams only as its agent being at work', () => {
     const textDelta = {
       type: 'workflow-step-output',
       payload: { stepName: CALENDAR_STEP, output: { type: 'text-delta', runId: 'agent-run-1', payload: {} } },
     };
 
-    expect(asRoutingEvents(textDelta, PLAN)).toEqual([]);
+    expect(asRoutingEvents(textDelta, PLAN)).toEqual([working(CALENDAR_STEP)]);
   });
 
   it('closes the rest of its chain, which was waiting for an answer that will now come later', () => {
     const events = asRoutingEvents(suspendedOutput(LOCATION_STEP), PLAN);
 
     expect(events).toMatchObject([
+      working(LOCATION_STEP),
       { type: 'delegation_suspended', delegationId: LOCATION_STEP },
       { type: 'delegation_end', delegationId: WEATHER_STEP, isError: true },
     ]);
@@ -247,6 +255,7 @@ describe('a delegation that starts something slow', () => {
     markAsSlow({ id: 'readTheWholeCodebase' });
 
     expect(asRoutingEvents(toolCallOutput(CALENDAR_STEP, 'readTheWholeCodebase'), PLAN)).toEqual([
+      working(CALENDAR_STEP, true),
       { type: 'delegation_slow', delegationId: CALENDAR_STEP },
     ]);
   });
@@ -255,12 +264,15 @@ describe('a delegation that starts something slow', () => {
     markAsSlow({ id: 'buildTheWholeFeature' });
 
     expect(asRoutingEvents(toolCallOutput(CALENDAR_STEP, 'workflow-buildTheWholeFeature'), PLAN)).toEqual([
+      working(CALENDAR_STEP, true),
       { type: 'delegation_slow', delegationId: CALENDAR_STEP },
     ]);
   });
 
   it('ignores a tool that answers quickly', () => {
-    expect(asRoutingEvents(toolCallOutput(CALENDAR_STEP, 'listCalendarEvents'), PLAN)).toEqual([]);
+    expect(asRoutingEvents(toolCallOutput(CALENDAR_STEP, 'listCalendarEvents'), PLAN)).toEqual([
+      working(CALENDAR_STEP, true),
+    ]);
   });
 
   it('is announced once, and not at all once the user has asked to be notified', () => {
@@ -307,6 +319,7 @@ describe('a delegation whose tool touched things', () => {
 
   it('is read off the result of a tool marked as touching things', () => {
     expect(asRoutingEvents(toolResultOutput(LOCATION_STEP, 'switchTheSpecLamps', SWITCHED), PLAN)).toEqual([
+      working(LOCATION_STEP),
       {
         type: 'delegation_affected_entities',
         delegationId: LOCATION_STEP,
@@ -324,20 +337,24 @@ describe('a delegation whose tool touched things', () => {
       },
     };
 
-    expect(asRoutingEvents(call, PLAN)).toEqual([]);
+    expect(asRoutingEvents(call, PLAN)).toEqual([working(LOCATION_STEP, true)]);
   });
 
   it('ignores a tool nobody marked, and a result its reader cannot read', () => {
-    expect(asRoutingEvents(toolResultOutput(LOCATION_STEP, 'getAllDevices', SWITCHED), PLAN)).toEqual([]);
+    expect(asRoutingEvents(toolResultOutput(LOCATION_STEP, 'getAllDevices', SWITCHED), PLAN)).toEqual([
+      working(LOCATION_STEP),
+    ]);
     expect(
       asRoutingEvents(toolResultOutput(LOCATION_STEP, 'switchTheSpecLamps', { switched: 'everything' }), PLAN),
-    ).toEqual([]);
+    ).toEqual([working(LOCATION_STEP)]);
   });
 
   it('ignores a call Mastra refused before it ran, which it streams as a result rather than an error', () => {
     const refused = { error: true, message: 'Tool input validation failed', validationErrors: {} };
 
-    expect(asRoutingEvents(toolResultOutput(LOCATION_STEP, 'switchTheSpecLamps', refused), PLAN)).toEqual([]);
+    expect(asRoutingEvents(toolResultOutput(LOCATION_STEP, 'switchTheSpecLamps', refused), PLAN)).toEqual([
+      working(LOCATION_STEP),
+    ]);
   });
 
   it('ignores a step that is not one of the plan’s delegations', () => {
@@ -396,7 +413,9 @@ describe('a delegation whose tool touched things', () => {
 /** The entities every `affectedEntities` event published while `act` ran carried, one list per event. */
 function pushedWhile(act: () => void): AffectedEntity[][] {
   const pushed: AffectedEntity[][] = [];
-  const stop = onLiveEvent((event) => pushed.push(event.entities));
+  const stop = onLiveEvent((event) => {
+    if (event.type === 'affectedEntities') pushed.push(event.entities);
+  });
   try {
     act();
   } finally {
@@ -404,6 +423,77 @@ function pushedWhile(act: () => void): AffectedEntity[][] {
   }
   return pushed;
 }
+
+describe('what the devices are told of each agent at work', () => {
+  /** Every `agentActivity` published while `act` ran, as `delegationId state`. */
+  function activityWhile(act: () => void): string[] {
+    const told: string[] = [];
+    const stop = onLiveEvent((event) => {
+      if (event.type === 'agentActivity') told.push(`${event.agentId} ${event.state}`);
+    });
+    try {
+      act();
+    } finally {
+      stop();
+    }
+    return told;
+  }
+
+  it('names every agent the plan will use the moment it is planned', () => {
+    expect(activityWhile(startedPlan)).toEqual(['calendar planned', 'internetOfThings planned', 'weather planned']);
+  });
+
+  it('says an agent is working once, however much it streams, and again on every tool it calls', () => {
+    const progress = startedPlan();
+    const told = activityWhile(() => {
+      progress.handle(working(CALENDAR_STEP));
+      progress.handle(working(CALENDAR_STEP));
+      progress.handle(working(CALENDAR_STEP, true));
+      progress.handle(working(CALENDAR_STEP));
+      progress.handle(working(CALENDAR_STEP, true));
+    });
+
+    expect(told).toEqual(['calendar working', 'calendar tool', 'calendar tool']);
+  });
+
+  it('says how each one ended: answered, failed, or stopped to ask', () => {
+    forgetOpenQuestions();
+    const progress = startedPlan();
+    const told = activityWhile(() => {
+      progress.handle({
+        type: 'delegation_end',
+        delegationId: CALENDAR_STEP,
+        result: { text: 'Free' },
+        isError: false,
+      });
+      for (const event of asRoutingEvents(suspendedOutput(LOCATION_STEP), PLAN)) {
+        progress.handle(event);
+      }
+    });
+
+    expect(told).toEqual([
+      'calendar answered',
+      'internetOfThings working',
+      'internetOfThings asking',
+      'weather failed',
+    ]);
+  });
+
+  it('says one the run never got to has failed, so no satellite is left circling', () => {
+    const progress = startedPlan();
+    const told = activityWhile(() => progress.handle({ type: 'finished' }));
+
+    expect(told).toEqual(['calendar failed', 'internetOfThings failed', 'weather failed']);
+  });
+
+  it('says nothing more of one that is done, however late its chunks arrive', () => {
+    const progress = startedPlan();
+    progress.handle({ type: 'delegation_end', delegationId: CALENDAR_STEP, result: { text: 'Free' }, isError: false });
+    const told = activityWhile(() => progress.handle(working(CALENDAR_STEP, true)));
+
+    expect(told).toEqual([]);
+  });
+});
 
 describe('a plan run, folded', () => {
   it('names every delegation as outstanding before a single step has run', () => {

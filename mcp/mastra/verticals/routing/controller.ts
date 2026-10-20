@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { type AffectedEntity, readAffectedEntities } from '../../utils/affected-entities.js';
 import type { DirectAnswer } from '../../utils/direct-answer-source.js';
 import type { DirectAnswerOutcome } from '../../utils/direct-lookup-factory.js';
-import { publishLiveEvent } from '../../utils/live-events.js';
+import { type AgentActivityState, publishLiveEvent } from '../../utils/live-events.js';
 import { logger } from '../../utils/logger.js';
 import { isSlowTask } from '../../utils/slow-tasks.js';
 import { dismissPhoto, findPhoto, photosWaiting, unmarkPhotoLookedAt } from '../vision/photos.js';
@@ -80,6 +80,8 @@ export type RoutingEvent =
   | { type: 'delegation_slow'; delegationId: string }
   /** A delegation's tool read or changed these things. See `utils/affected-entities.ts`. */
   | { type: 'delegation_affected_entities'; delegationId: string; entities: AffectedEntity[] }
+  /** A delegation's agent streamed something: `toolCall` when it was calling a tool. */
+  | { type: 'delegation_working'; delegationId: string; toolCall: boolean }
   /** The request failed outright. */
   | { type: 'error'; message: string }
   /** The plan run ended. */
@@ -182,6 +184,11 @@ export class RoutingProgress {
    */
   private readonly affectedEntityNamed = new Map<string, boolean>();
   /**
+   * The last thing each delegation was reported as doing (`agentActivity`), so a stream of text
+   * deltas is reported once, as `working`, rather than once a chunk.
+   */
+  private readonly activityByDelegationId = new Map<string, AgentActivityState>();
+  /**
    * Whether the user asked to be notified when this request is done.
    *
    * Such a request no longer belongs to the conversation that started it: a newer request does
@@ -282,6 +289,10 @@ export class RoutingProgress {
     switch (event.type) {
       case 'delegation_start':
         this.outstandingByDelegationId.set(event.delegationId, { taskId: event.taskId, agentId: event.agentId });
+        this.reportActivity(event.delegationId, event.agentId, 'planned');
+        return;
+      case 'delegation_working':
+        this.handleDelegationWorking(event);
         return;
       case 'delegation_end':
         this.handleDelegationEnd(event);
@@ -330,6 +341,11 @@ export class RoutingProgress {
     // and Jarvis, told to summarize it, has nothing to summarize and no reason to mention
     // that anything went wrong.
     const answeredWithNothing = !event.isError && answer.length === 0;
+    this.reportActivity(
+      event.delegationId,
+      delegation.agentId,
+      event.isError || answeredWithNothing ? 'failed' : 'answered',
+    );
     this.settle({
       taskId: delegation.taskId,
       agentId: delegation.agentId,
@@ -346,6 +362,7 @@ export class RoutingProgress {
     this.outstandingByDelegationId.delete(event.delegationId);
 
     const readable = readSuspension(event.suspension);
+    this.reportActivity(event.delegationId, delegation.agentId, 'problem' in readable ? 'failed' : 'asking');
     if ('problem' in readable) {
       this.settle({ ...delegation, result: `stopped part way: ${readable.problem}`, failed: true });
       return;
@@ -362,6 +379,29 @@ export class RoutingProgress {
     logger.info('Delegation is waiting on an answer from the user', { ...delegation, questionId: question.id });
     this.questions.push(question);
     this.wake();
+  }
+
+  /**
+   * Tells sir's devices that a delegation's agent is at work: once when it starts, and again on every
+   * tool it calls, which the headset shows as a flare on that agent's satellite.
+   */
+  private handleDelegationWorking(event: Extract<RoutingEvent, { type: 'delegation_working' }>): void {
+    const delegation = this.outstandingByDelegationId.get(event.delegationId);
+    if (!delegation) {
+      return;
+    }
+    if (event.toolCall) {
+      this.reportActivity(event.delegationId, delegation.agentId, 'tool');
+    } else if (this.activityByDelegationId.get(event.delegationId) === 'planned') {
+      this.reportActivity(event.delegationId, delegation.agentId, 'working');
+    }
+  }
+
+  /** Publishes where a delegation has got to (`agentActivity`), for the headset's satellites. */
+  private reportActivity(delegationId: string, agentId: string, state: AgentActivityState): void {
+    // A tool call is a moment, and the agent is still working after it.
+    this.activityByDelegationId.set(delegationId, state === 'tool' ? 'working' : state);
+    publishLiveEvent({ type: 'agentActivity', delegationId, agentId, state });
   }
 
   private handleDelegationSlow(event: Extract<RoutingEvent, { type: 'delegation_slow' }>): void {
@@ -454,8 +494,9 @@ export class RoutingProgress {
    * them open would leave the request unfinishable.
    */
   private abandonOutstandingDelegations(reason: string): void {
-    for (const delegation of this.outstandingByDelegationId.values()) {
+    for (const [delegationId, delegation] of this.outstandingByDelegationId) {
       logger.warn('Delegation never answered', { ...delegation, reason });
+      this.reportActivity(delegationId, delegation.agentId, 'failed');
       const outcome: DelegationOutcome = { ...delegation, result: reason, failed: true };
       this.pending.push(outcome);
       this.all.push(outcome);
@@ -679,6 +720,7 @@ export function asRoutingEvents(chunk: unknown, plan: RoutingPlan): RoutingEvent
   const parsed = asWorkflowChunk(chunk);
   if (parsed?.type === 'workflow-step-output') {
     return [
+      ...asWorkingEvents(parsed.payload, plan),
       ...asSlowTaskEvents(parsed.payload, plan),
       ...asAffectedEntityEvents(parsed.payload, plan),
       ...asSuspensionEvents(parsed.payload, plan),
@@ -743,16 +785,22 @@ export function asRoutingEvents(chunk: unknown, plan: RoutingPlan): RoutingEvent
  */
 const WAITING_ON_AN_EARLIER_QUESTION = 'did not run, because the step before it stopped to ask the user something';
 
-/** Whether one of an agent's own chunks is it calling a tool that was marked slow. */
-function isSlowToolCall(chunk: unknown): boolean {
+/** The tool one of an agent's own chunks is calling, if it is a `tool-call` chunk. */
+function toolNameOfCall(chunk: unknown): string | undefined {
   if (typeof chunk !== 'object' || chunk === null || !('type' in chunk) || chunk.type !== 'tool-call') {
-    return false;
+    return undefined;
   }
   const payload = 'payload' in chunk ? chunk.payload : undefined;
   if (typeof payload !== 'object' || payload === null || !('toolName' in payload)) {
-    return false;
+    return undefined;
   }
-  return typeof payload.toolName === 'string' && isSlowTask(payload.toolName);
+  return typeof payload.toolName === 'string' ? payload.toolName : undefined;
+}
+
+/** Whether one of an agent's own chunks is it calling a tool that was marked slow. */
+function isSlowToolCall(chunk: unknown): boolean {
+  const toolName = toolNameOfCall(chunk);
+  return toolName !== undefined && isSlowTask(toolName);
 }
 
 /**
@@ -769,6 +817,18 @@ function delegationIdOfStepOutput(payload: Record<string, unknown>, plan: Routin
 
   const delegationId = stepName.split('.').pop() ?? stepName;
   return plan.agentByStepId.has(delegationId) ? delegationId : undefined;
+}
+
+/**
+ * A delegation's agent at work, read off a step's streamed output: anything it streams, and its
+ * tool calls in particular. The plan says what will be delegated; this is what says it has started.
+ */
+function asWorkingEvents(payload: Record<string, unknown>, plan: RoutingPlan): RoutingEvent[] {
+  const delegationId = delegationIdOfStepOutput(payload, plan);
+  if (!delegationId) {
+    return [];
+  }
+  return [{ type: 'delegation_working', delegationId, toolCall: toolNameOfCall(payload.output) !== undefined }];
 }
 
 /**
@@ -1081,6 +1141,7 @@ async function resumeWithAnswer(
     let suspension: DelegationSuspension | undefined;
     for await (const chunk of output.fullStream) {
       suspension = asDelegationSuspension(chunk) ?? suspension;
+      progress.handle({ type: 'delegation_working', delegationId, toolCall: toolNameOfCall(chunk) !== undefined });
       if (isSlowToolCall(chunk)) {
         progress.handle({ type: 'delegation_slow', delegationId });
       }

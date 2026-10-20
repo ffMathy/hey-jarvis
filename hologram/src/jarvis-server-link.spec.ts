@@ -131,6 +131,29 @@ describe('a line to the server', () => {
     ]);
   });
 
+  it('passes on where each agent of a request has got to, and drops what is not usable', () => {
+    const { platform, latest } = fakePlatform();
+    const received: JarvisServerMessage[] = [];
+    connectToServer({ address: ADDRESS, device: 'vr' }, platform).subscribe((message) => received.push(message));
+    latest().open();
+
+    latest().receive(
+      JSON.stringify({ type: 'agentActivity', delegationId: ' plan-1-0-weather ', agentId: 'weather', state: 'tool' }),
+    );
+    latest().receive(
+      JSON.stringify({ type: 'agentActivity', delegationId: 'plan-1', agentId: 'weather', state: 'dancing' }),
+    );
+    latest().receive(JSON.stringify({ type: 'agentActivity', delegationId: '', agentId: 'weather', state: 'working' }));
+    latest().receive(JSON.stringify({ type: 'agentActivity', delegationId: 'plan-1', agentId: 7, state: 'working' }));
+    latest().receive(
+      JSON.stringify({ type: 'agentActivity', delegationId: 'x'.repeat(201), agentId: 'weather', state: 'working' }),
+    );
+
+    expect(received).toEqual([
+      { type: 'agentActivity', delegationId: 'plan-1-0-weather', agentId: 'weather', state: 'tool' },
+    ]);
+  });
+
   it('keeps only the usable entities of a frame, and drops a frame with none', () => {
     const { platform, latest } = fakePlatform();
     const received: JarvisServerMessage[] = [];
