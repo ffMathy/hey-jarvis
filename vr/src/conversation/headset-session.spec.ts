@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import { type AffectedEntity, type AgentTrackRoom, type GreetingPlayer, HEADSET_PARTICIPANT_NAME } from 'hologram';
+import {
+  type AffectedEntity,
+  type AgentActivity,
+  type AgentTrackRoom,
+  type GreetingPlayer,
+  HEADSET_PARTICIPANT_NAME,
+} from 'hologram';
 import { findAgentRoom, type ListeningAudioContext } from './agent-room';
 import {
   HEADSET_OFFLINE_PROBLEM,
@@ -86,7 +92,7 @@ describe('what the room hears of what he is working on', () => {
 
   it('is every affectedEntities message the server sends, passed on as it came', () => {
     const reports: Array<readonly AffectedEntity[]> = [];
-    const handle = serverMessageHandler((entities) => reports.push(entities));
+    const handle = serverMessageHandler({ onAffected: (entities) => reports.push(entities) });
 
     handle({ type: 'ready' });
     handle({ type: 'affectedEntities', entities: touched });
@@ -96,9 +102,37 @@ describe('what the room hears of what he is working on', () => {
   });
 
   it('is nothing at all for a room that does not ask', () => {
-    const handle = serverMessageHandler(undefined);
+    const handle = serverMessageHandler({});
 
     expect(() => handle({ type: 'affectedEntities', entities: touched })).not.toThrow();
+    expect(() =>
+      handle({ type: 'agentActivity', delegationId: 'plan-1', agentId: 'weather', state: 'tool' }),
+    ).not.toThrow();
+  });
+
+  it('passes on every agent’s news, without the message’s type, and nothing else to it', () => {
+    const news: AgentActivity[] = [];
+    const entities: Array<readonly AffectedEntity[]> = [];
+    const handle = serverMessageHandler({
+      onAffected: (touchedNow) => entities.push(touchedNow),
+      onAgentActivity: (activity) => news.push(activity),
+    });
+
+    handle({ type: 'agentActivity', delegationId: 'plan-1-0-weather', agentId: 'weather', state: 'working' });
+    handle({
+      type: 'agentActivity',
+      delegationId: 'plan-1-0-weather',
+      agentId: 'weather',
+      state: 'tool',
+      glyph: 'M 0 0 L 1 0',
+    });
+    handle({ type: 'affectedEntities', entities: touched });
+
+    expect(news).toEqual([
+      { delegationId: 'plan-1-0-weather', agentId: 'weather', state: 'working' },
+      { delegationId: 'plan-1-0-weather', agentId: 'weather', state: 'tool', glyph: 'M 0 0 L 1 0' },
+    ]);
+    expect(entities).toEqual([touched]);
   });
 });
 

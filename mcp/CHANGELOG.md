@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.19.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.18.4...mcp-v2.19.0) (2026-10-20)
+
+
+### Features
+
+* **hologram:** show the agents he has at work as satellites round him ([#964](https://github.com/ffMathy/hey-jarvis/issues/964)) ([860ad8a](https://github.com/ffMathy/hey-jarvis/commit/860ad8a2a442f6c93b0629479d2a39b586d25060))
+* **mcp:** send a visualized weekly news and daily.dev digest ([#952](https://github.com/ffMathy/hey-jarvis/issues/952)) ([f68be7a](https://github.com/ffMathy/hey-jarvis/commit/f68be7a0a10ad895e66633a469f787c34072e6e5))
+
 ## [2.18.4](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.18.3...mcp-v2.18.4) (2026-10-11)
 
 

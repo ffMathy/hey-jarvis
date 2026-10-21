@@ -1,5 +1,6 @@
 // Reflection vertical exports
 export { getReflectionAgent } from './agent.js';
+export { reflectionGlyph } from './glyph.js';
 export {
   errorSummary,
   type FailedStepReport,

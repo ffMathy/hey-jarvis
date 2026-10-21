@@ -1,4 +1,4 @@
-import { type AffectedEntity, type JarvisVoice, SILENT_VOICE, type UserVoice } from 'hologram';
+import { type AffectedEntity, type AgentActivity, type JarvisVoice, SILENT_VOICE, type UserVoice } from 'hologram';
 import type { Object3D, WebGLRenderer } from 'three';
 import type { DepthProbe } from '../xr/depth-probes';
 import type { PoseLike, Vector3Like } from '../xr/ray';
@@ -85,6 +85,11 @@ export interface ConversationEvents {
    * agent took the request, with a name to show when it had one, validated and never empty.
    */
   onAffected?(entities: readonly AffectedEntity[]): void;
+  /**
+   * Where one of the agents a request is using has got to, every time the Jarvis server says so
+   * over the same line (its `agentActivity` message), validated: drawn as a satellite round him.
+   */
+  onAgentActivity?(activity: AgentActivity): void;
 }
 
 export interface ConversationPort {

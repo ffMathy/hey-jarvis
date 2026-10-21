@@ -1,5 +1,5 @@
 import { hearsSomeone, moodOf, nextSampleMode, PARTICLE_COUNT, SAMPLE_MODE_LABELS, type SampleMode } from 'hologram';
-import { LEAVING_SECONDS } from 'hologram/react/lifecycle';
+import { LEAVING_SECONDS, useAgentSatellites } from 'hologram/react/lifecycle';
 import { FrameRate, ModeToast, useSimulatedUser, useSimulatedVoice } from 'hologram/react/sample';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -60,6 +60,9 @@ export function SampleScreen({ inAssistantWindow = false, showing, onLeave }: Sa
   const voice = useSimulatedVoice(settled ? moodOf(mode) : undefined);
   // Listening is the one mood where it is somebody else talking: Jarvis is silent and hears them.
   const user = useSimulatedUser(settled && hearsSomeone(mode));
+  // While he pretends to think, three pretend agents circle him, taking turns to call a tool — what
+  // a real request looks like, with no server (`pretendWork` in hologram's `agent-work.ts`).
+  const satellites = useAgentSatellites(undefined, settled && mode === 'thinking');
   const { width, height } = useWindowDimensions();
   // How big the square is, and whether there is a sheet around it at all, are the same decision —
   // so both live in `sample-sheet.tsx` rather than being worked out again here. On a phone it is
@@ -176,6 +179,7 @@ export function SampleScreen({ inAssistantWindow = false, showing, onLeave }: Sa
             voice={voice}
             user={user}
             thinking={mode === 'thinking'}
+            satellites={satellites}
             leaving={leaving}
             frameRate={frameRate}
             buildMilliseconds={buildMilliseconds}

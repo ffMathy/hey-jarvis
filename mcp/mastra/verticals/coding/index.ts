@@ -14,6 +14,7 @@ export {
   streamClaudeSessionEvents,
   waitForClaudeSessionTurn,
 } from './claude-sessions.js';
+export { codingGlyph } from './glyph.js';
 export { codingLookups } from './lookups.js';
 export {
   type ClaudeSessionContext,

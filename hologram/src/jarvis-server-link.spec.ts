@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { AFFECTED_ENTITY_ID_MAX_LENGTH, AFFECTED_ENTITY_NAME_MAX_LENGTH } from './affected-entities';
+import { activityOfMessage } from './agent-activity';
 import {
   connectToServer,
   FIRST_RETRY_MS,
@@ -129,6 +130,60 @@ describe('a line to the server', () => {
         entities: [{ id: 'light.kitchen_ceiling', name: 'Kitchen ceiling' }, { id: 'inbox:work' }],
       },
     ]);
+  });
+
+  it('passes on where each agent of a request has got to, and drops what is not usable', () => {
+    const { platform, latest } = fakePlatform();
+    const received: JarvisServerMessage[] = [];
+    connectToServer({ address: ADDRESS, device: 'vr' }, platform).subscribe((message) => received.push(message));
+    latest().open();
+
+    latest().receive(
+      JSON.stringify({ type: 'agentActivity', delegationId: ' plan-1-0-weather ', agentId: 'weather', state: 'tool' }),
+    );
+    latest().receive(
+      JSON.stringify({ type: 'agentActivity', delegationId: 'plan-1', agentId: 'weather', state: 'dancing' }),
+    );
+    latest().receive(JSON.stringify({ type: 'agentActivity', delegationId: '', agentId: 'weather', state: 'working' }));
+    latest().receive(JSON.stringify({ type: 'agentActivity', delegationId: 'plan-1', agentId: 7, state: 'working' }));
+    latest().receive(
+      JSON.stringify({ type: 'agentActivity', delegationId: 'x'.repeat(201), agentId: 'weather', state: 'working' }),
+    );
+
+    expect(received).toEqual([
+      { type: 'agentActivity', delegationId: 'plan-1-0-weather', agentId: 'weather', state: 'tool' },
+    ]);
+  });
+
+  it('passes on the glyph an agent is drawn with, and drops one that is not a plain path', () => {
+    const { platform, latest } = fakePlatform();
+    const received: JarvisServerMessage[] = [];
+    connectToServer({ address: ADDRESS, device: 'vr' }, platform).subscribe((message) => received.push(message));
+    latest().open();
+    const activity = { type: 'agentActivity', delegationId: 'plan-1', agentId: 'weather', state: 'working' } as const;
+
+    latest().receive(JSON.stringify({ ...activity, glyph: ' M 0 -0.7 L 0.7 0 Z ' }));
+    latest().receive(JSON.stringify({ ...activity, glyph: 'M 0 0 L 1 1 url(#x)' }));
+    latest().receive(JSON.stringify({ ...activity, glyph: `M 0 0 ${'L 1 1 '.repeat(200)}` }));
+    latest().receive(JSON.stringify({ ...activity, glyph: 7 }));
+
+    expect(received).toEqual([{ ...activity, glyph: 'M 0 -0.7 L 0.7 0 Z' }, activity, activity, activity]);
+  });
+
+  it('hands on a message’s activity, glyph and all, without the message’s type', () => {
+    const glyph = 'M 0 -0.7 L 0.7 0 Z';
+
+    expect(activityOfMessage({ delegationId: 'd', agentId: 'weather', state: 'tool', glyph })).toEqual({
+      delegationId: 'd',
+      agentId: 'weather',
+      state: 'tool',
+      glyph,
+    });
+    expect(activityOfMessage({ delegationId: 'd', agentId: 'weather', state: 'tool' })).toEqual({
+      delegationId: 'd',
+      agentId: 'weather',
+      state: 'tool',
+    });
   });
 
   it('keeps only the usable entities of a frame, and drops a frame with none', () => {

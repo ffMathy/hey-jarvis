@@ -138,6 +138,8 @@ export interface HologramPreviewHook {
    */
   setRoomPhase(phase: PreviewPhase, holdAtSeconds?: number): void;
   readonly room: RoomStatus;
+  /** The satellites round him on the stage: each one's agent and status, in the order they came. */
+  readonly satellites: { agentId: string; status: string }[];
 }
 
 declare global {

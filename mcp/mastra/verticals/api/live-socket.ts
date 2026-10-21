@@ -28,6 +28,7 @@ import { forgetPointing, reportPointing } from '../../utils/pointing.js';
  * | device → server | `{ type: "hello", device }` | The first frame, within {@link HELLO_TIMEOUT_MS} |
  * | server → device | `{ type: "ready" }` | This socket will now be sent every live event |
  * | server → device | `{ type: "affectedEntities", entities: [{ id, name? }] }` | A request's tool just read or changed these |
+ * | server → device | `{ type: "agentActivity", delegationId, agentId, state }` | Where one of a request's agents has got to |
  * | device → server | `{ type: "pointing", entity: { id, name? } \| null }` | What sir is pointing at now, or nothing |
  *
  * Every event published on `utils/live-events.ts` goes to every socket that has said hello: a

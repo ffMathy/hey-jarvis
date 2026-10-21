@@ -36,7 +36,7 @@ that rule.
 
 | Entry | Imports | What it holds |
 | --- | --- | --- |
-| `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the frame clock every device steps him on (`frame-clock.ts`) and the numbers it runs by (`frame-timing.ts`), the voice tracker, the simulated voices, sample mode's moods, the voices each mood hands the sphere (`sample-drive.ts`) and its readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the conversation itself: the session every device holds it in (`jarvis-session.ts`, its shapes in `session-contract.ts`), what its failures say (`failure-text.ts`), which of his lines it writes down (`written-caption.ts`), the headset's half-duplex fallback (`half-duplex.ts`), what a request touches and what sir points at (`affected-entities.ts`: an entity's shape, its limits and its parser), the line every device keeps to the Jarvis server during a conversation (`jarvis-server-link.ts`), and the pieces it is built from — whether a conversation is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) |
+| `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the frame clock every device steps him on (`frame-clock.ts`) and the numbers it runs by (`frame-timing.ts`), the voice tracker, the simulated voices, sample mode's moods, the voices each mood hands the sphere (`sample-drive.ts`) and its readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the conversation itself: the session every device holds it in (`jarvis-session.ts`, its shapes in `session-contract.ts`), what its failures say (`failure-text.ts`), which of his lines it writes down (`written-caption.ts`), the headset's half-duplex fallback (`half-duplex.ts`), what a request touches and what sir points at (`affected-entities.ts`: an entity's shape, its limits and its parser), which agents a request has at work (`agent-activity.ts`) and the satellites they are drawn as (`agent-work.ts`, `satellite-drawing.ts`), the line every device keeps to the Jarvis server during a conversation (`jarvis-server-link.ts`), and the pieces it is built from — whether a conversation is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) |
 | `hologram/react` | React, Reanimated, Skia | the Skia canvas and the frame callback that steps the frame clock |
 | `hologram/react/sample` | React, Reanimated — not Skia | sample mode's clock-made voice, mood toast and frame-rate readout, shared by the phone's sample screen and the watch's waiting screen |
 | `hologram/conversation` | React, `@elevenlabs/client`, `@livekit/react-native`'s audio session, hologram's own native greeting player (`expo-audio` in a browser) — not Skia | `useJarvisSession`, which hands the main entry's session the SDK, the greeting's player and the call's audio, and holds its snapshot for a screen |
@@ -211,6 +211,46 @@ reads it strictly: the declared shape only, each value trimmed and non-empty, an
 id of at most 200 characters and a name of at most 120, no more than 50 per
 message, each id once, and anything else left out. A frame that names nothing
 usable is dropped.
+
+**Which agents are at work comes from the server too.** As a request's plan names
+each delegation, its agent starts, calls a tool, stops to ask, and answers or
+fails, the server broadcasts
+`{"type":"agentActivity","delegationId":…,"agentId":…,"state":…,"glyph":…}`, the
+state one of `planned`, `working`, `tool` (a moment: still working after it),
+`asking`, `answered` and `failed`, and the glyph the SVG path its agent's
+vertical on the server draws it with (`mcp/mastra/verticals/agent-glyphs.ts`).
+`agentActivityOf` (`agent-activity.ts`) reads it as strictly as an entity: both
+ids opaque, trimmed, non-empty and at most 200 characters, the state from that
+list, a glyph of at most 1000 characters made only of the path commands M, L, H,
+V, A, C, Q and Z and numbers (`DRAWABLE_GLYPH`), and anything else dropped — a
+glyph on its own, the message without it.
+
+Every device that shows them shares one lifecycle, `agent-work.ts`: a satellite
+per delegation, dim while planned, lit while working, flaring on each tool call,
+pulsing while it asks, folding into him when it answers and drifting out when it
+fails; gone after 90 s without news, at most 8 at once. It says where each is as
+a place on a tilted ring of radius 1 (`satelliteOrbits`, `orbitPoint`), and each
+device scales that to his size and adds its own clock, so they go round as
+smoothly as that device draws him. The headset draws them in the room
+(`vr/src/hologram3d/satellites.ts`); the phone and its web build draw them on the
+screen, in the same picture as him (`satellite-drawing.ts`, the same glyphs
+as Skia strokes, dimmer and smaller passing behind him). On the phone,
+`useJarvisServer` returns the line, `useAgentSatellites` (in
+`hologram/react/lifecycle`) works the satellites out on the JS thread every
+`READ_INTERVAL_MS` into a shared value, and `JarvisHologram` draws whatever its
+`satellites` prop, or the nearest `AgentSatellitesContext`, holds. The watch
+holds the line and shows none.
+
+**No device knows any agent's glyph.** Each vertical on the server declares its
+own, in its `glyph.ts`, and it comes with every message, so a new agent needs no
+change on any device. A satellite whose messages brought none is a plain ring
+(`PLAIN_RING_GLYPH`). A glyph is an SVG path in glyph radii — it fits the circle
+of radius 1 — with y down, drawn as round-capped strokes `GLYPH_STROKE_WIDTH`
+wide: by Skia on the phone, from the string each frame (and the paths released
+after recording in a browser), and by a 2D canvas into the headset's glyph
+atlas. Sample mode's three pretend agents have made-up glyphs of their own
+(`SAMPLE_AGENTS`), since the real ones are only the server's. With `pretending`, the hook has sample mode's
+three pretend agents at work (`pretendWork`), so they can be seen with no server.
 
 **What sir points at goes to the server.** `ServerLink.point(entity)` sends `{"type":"pointing","entity":{…}}`, or `"entity":null` for
 nothing, held to the same limits (`affectedEntityOf`). Only the latest is kept:
