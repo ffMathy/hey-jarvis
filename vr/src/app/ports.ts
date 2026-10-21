@@ -167,7 +167,7 @@ export interface HologramPort {
   /** Leaves the next second's frames out of the dropped-frame backstop: they hitch for reasons not his. */
   settle(): void;
   /** Once per frame before the room is drawn, against this frame's centre eye. */
-  update(deltaSeconds: number, drive: HologramDrive, centreEye: PoseLike): void;
+  update(deltaSeconds: number, drive: HologramDrive, centreEye: PoseLike, displayRate?: number): void;
   /** 0–1; 0 once he has gone after `leaving`. */
   readonly presence: number;
   radius: number;

@@ -737,7 +737,7 @@ function drawHologram(room: Room, tick: XrFrameTick) {
   // Blurred, the headset draws its own panels over the room — the system keyboard, its menu — on
   // the same GPU, and the frames they cost are theirs: none of them is judged, nor the second after.
   if (room.stage.visibility === 'visible-blurred') room.hologram.settle();
-  room.hologram.update(tick.deltaSeconds, drive, tick.centreEye);
+  room.hologram.update(tick.deltaSeconds, drive, tick.centreEye, tick.displayRate);
   if (leaving && room.hologram.presence <= 0 && !room.goneReported) {
     room.goneReported = true;
     dispatch(room, { type: 'presence-gone' });

@@ -88,6 +88,8 @@ export interface XrFrameTick {
   time: number;
   /** Seconds since the previous frame, 0 on the first, at most {@link LONGEST_FRAME_SECONDS}. */
   deltaSeconds: number;
+  /** The display's own rate in hertz, when the headset says what it is (`XRSession.frameRate`). */
+  displayRate: number | undefined;
   /** How many times the reference space has been reset. */
   epoch: number;
 }
@@ -192,7 +194,8 @@ export async function createXrStage(session: XRSession, options: XrStageOptions 
         previousTime === undefined ? 0 : Math.min(LONGEST_FRAME_SECONDS, Math.max(0, (time - previousTime) / 1000));
       previousTime = time;
       const centreEye = centreEyeOfPose(viewerPose);
-      notify(frameListeners, { frame, referenceSpace, viewerPose, centreEye, time, deltaSeconds, epoch });
+      const displayRate = session.frameRate;
+      notify(frameListeners, { frame, referenceSpace, viewerPose, centreEye, time, deltaSeconds, displayRate, epoch });
     }
     renderer.render(scene, camera);
   });

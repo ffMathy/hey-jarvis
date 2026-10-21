@@ -961,18 +961,24 @@ when the head comes within 2.5R, and is gone inside 1.5R. R is 0.22 m at rest
 (`dimensions.ts`); placement may squeeze him to 0.13 m.
 
 Density is 1, with a backstop (`density-backstop.ts`) that halves it when frames
-drop: three in thirty half again longer than the window's fastest, in two windows
-running — a lone bad window is a hitch. It used to halve on one window and for
-good, which every summon's hitches could set off: nothing compiles his shaders
-before his first frame, CanvasKit compiles its programs as it meets each path, and
-the display switches from 72 Hz to 90 as placement, the greeting and the call all
-start. So the second after `arrive()`, a new display rate, a change of visibility,
-and every blurred frame, is not judged at all (`settle`, called by the room). And
-the share comes back: after ten seconds without a drop it doubles, on trial for as
-long as it was waited for; frames dropping during the trial halve it again and
-double the next wait, up to 160 s, so a headset that cannot hold the count pays one
-hitch every few minutes rather than a climb-lag-shed cycle, and one that was busy
-for a moment has every particle back. Never below an eighth.
+drop: three in thirty half again longer than a frame on time, in two windows
+running — a lone bad window is a hitch. A frame on time is the display's own
+period, from `XRSession.frameRate` (the XR stage hands it on with every frame),
+since a fall from 90 Hz to a clean 45 makes every frame of a window as long as
+every other, and a window judged against its own fastest frame sees nothing late;
+without the rate it is the shortest on-time interval seen since the last settle. It
+used to halve on one window and for good, which every summon's hitches could set
+off: nothing compiles his shaders before his first frame, CanvasKit compiles its
+programs as it meets each path, and the display switches from 72 Hz to 90 as
+placement, the greeting and the call all start. So the second after `arrive()`, a
+new display rate, a change of visibility, and every blurred frame, is not judged at
+all (`settle`, called by the room). And the share comes back: after ten seconds
+without a drop it doubles, on trial for as long as it was waited for; frames
+dropping during the trial halve it again and double the next wait, up to 160 s, so
+a headset that cannot hold the count pays one hitch per probe — 10, 20, 40 and 80 s
+apart in each room, then every 160 s — rather than a climb-lag-shed cycle, and one
+that was busy for a moment gets the particles back a doubling at a time. Never
+below an eighth.
 
 Known deviations from the phone: strokes of one tier that cross add up rather than
 forming a union, so the arrival's first half-second and the listening knots are a

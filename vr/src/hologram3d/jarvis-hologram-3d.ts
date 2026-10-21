@@ -67,9 +67,10 @@ export interface JarvisHologram3D {
   settle(): void;
   /**
    * Once per XR frame, before `renderer.render`: moves his clock on, then draws what lives off the
-   * screen — CanvasKit's layers and the halo union — against this frame's centre eye.
+   * screen — CanvasKit's layers and the halo union — against this frame's centre eye. `displayRate`
+   * is the display's own rate, when the headset says it: what the backstop judges a frame on time by.
    */
-  update(deltaSeconds: number, drive: HologramDrive, centreEye: PoseLike): void;
+  update(deltaSeconds: number, drive: HologramDrive, centreEye: PoseLike, displayRate?: number): void;
   /** Moves the clock on without drawing anything: for a preview that jumps to a moment. */
   advance(deltaSeconds: number, drive: HologramDrive): void;
   /** 0–1: 0 once he has fully gone after `leaving`. */
@@ -252,10 +253,10 @@ export async function createJarvisHologram3D(
     settle() {
       backstop?.settle();
     },
-    update(deltaSeconds, drive, centreEye) {
+    update(deltaSeconds, drive, centreEye, displayRate) {
       const started = performance.now();
       clock.advance(deltaSeconds, drive);
-      if (backstop !== null) diagnostics.density = backstop.observe(deltaSeconds);
+      if (backstop !== null) diagnostics.density = backstop.observe(deltaSeconds, displayRate);
       draw(centreEye);
       diagnostics.cpuMilliseconds = performance.now() - started;
     },

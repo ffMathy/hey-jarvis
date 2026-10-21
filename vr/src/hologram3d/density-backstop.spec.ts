@@ -46,6 +46,22 @@ function feedFrames(backstop: DensityBackstop, seconds: number, hitching = false
   }
 }
 
+/** A 90 Hz display's period, for what a headset says its rate is. */
+const NINETY = 1 / 90;
+
+/** Thirty frames, every one of them `interval` long. */
+function steadyWindow(interval: number) {
+  return Array.from({ length: BACKSTOP_WINDOW }, () => interval);
+}
+
+/**
+ * `windows` whole windows of frames `interval` apart, with the display's rate as the headset says
+ * it, if it does. Whole windows, so that every judgement lands where the test expects it.
+ */
+function feedWindows(backstop: DensityBackstop, interval: number, windows: number, displayRate?: number) {
+  for (let frame = 0; frame < windows * BACKSTOP_WINDOW; frame++) backstop.observe(interval, displayRate);
+}
+
 /** A backstop that frames dropping have halved once. */
 function halved() {
   const backstop = createDensityBackstop();
@@ -129,6 +145,87 @@ describe('the dropped-frame backstop', () => {
       for (let frame = 0; frame < BACKSTOP_WINDOW; frame++) backstop.observe(frame % 2 === 0 ? 1 / 45 : 1 / 44);
     }
     expect(backstop.density).toBe(1);
+  });
+});
+
+describe('judging a frame on time', () => {
+  it('halves him when a display the headset says runs at 90 Hz falls to a clean 45', () => {
+    const backstop = createDensityBackstop();
+    feedWindows(backstop, NINETY, 3, 90);
+    // Every frame of a clean 45 is as long as every other, so none of them is late against its window.
+    feedWindows(backstop, NINETY * 2, 1, 90);
+    expect(backstop.density).toBe(1);
+    feedWindows(backstop, NINETY * 2, 1, 90);
+    expect(backstop.density).toBe(0.5);
+  });
+
+  it('catches a summon that lands straight on half the display’s rate, when the headset says what it is', () => {
+    const backstop = createDensityBackstop();
+    backstop.settle();
+    // The settled second is forty-five frames of a clean 45, and one more for rounding; the two
+    // windows after it are all a clean 45 too, with nothing on time before them to judge them by.
+    for (let frame = 0; frame < 46; frame++) backstop.observe(NINETY * 2, 90);
+    feedWindows(backstop, NINETY * 2, 2, 90);
+    expect(backstop.density).toBe(0.5);
+  });
+
+  it('takes a display the headset says is slower for a slower display, not for frames being dropped', () => {
+    const backstop = createDensityBackstop();
+    feedWindows(backstop, FRAME, 72, 72);
+    expect(backstop.density).toBe(1);
+  });
+
+  it('catches a clean fall to half rate without the display’s rate, against the frames on time before it', () => {
+    const backstop = createDensityBackstop();
+    feed(backstop, steadyWindow(NINETY));
+    feed(backstop, steadyWindow(NINETY * 2));
+    expect(backstop.density).toBe(1);
+    feed(backstop, steadyWindow(NINETY * 2));
+    expect(backstop.density).toBe(0.5);
+  });
+
+  it('fails a share given back that comes back at a clean half rate, and waits twice as long', () => {
+    // A window of thirty frames at 90 Hz is a third of a second.
+    const windowsIn = (seconds: number) => Math.ceil(seconds * 3);
+    const backstop = createDensityBackstop();
+    feedWindows(backstop, NINETY, 3, 90);
+    feedWindows(backstop, NINETY * 2, 2, 90);
+    expect(backstop.density).toBe(0.5);
+    feedWindows(backstop, NINETY, windowsIn(BACKSTOP_FIRST_WAIT_SECONDS + 1), 90);
+    expect(backstop.density).toBe(1);
+    // The share given back is a clean 45 again: on trial, and it fails.
+    feedWindows(backstop, NINETY * 2, 2, 90);
+    expect(backstop.density).toBe(0.5);
+    feedWindows(backstop, NINETY, windowsIn(BACKSTOP_FIRST_WAIT_SECONDS * 2 - 1), 90);
+    expect(backstop.density).toBe(0.5);
+    feedWindows(backstop, NINETY, windowsIn(2), 90);
+    expect(backstop.density).toBe(1);
+  });
+
+  it('takes no stray short frame for the display’s rate, without it', () => {
+    const backstop = createDensityBackstop();
+    const strays = steadyWindow(FRAME);
+    strays[4] = FRAME / 10;
+    strays[17] = FRAME / 10;
+    feed(backstop, strays);
+    // Judged against a tenth of a frame, every frame after it would be late.
+    for (let round = 0; round < 20; round++) feed(backstop, window(2));
+    expect(backstop.density).toBe(1);
+  });
+
+  it('judges by what is on time at the new rate once settled, without the display’s rate', () => {
+    // From 120 Hz to 72, unsettled, every frame is late against what was on time before.
+    const unsettled = createDensityBackstop();
+    feed(unsettled, steadyWindow(1 / 120));
+    feed(unsettled, window(0));
+    feed(unsettled, window(0));
+    expect(unsettled.density).toBe(0.5);
+
+    const settled = createDensityBackstop();
+    feed(settled, steadyWindow(1 / 120));
+    settled.settle();
+    feedFor(settled, 2);
+    expect(settled.density).toBe(1);
   });
 });
 
