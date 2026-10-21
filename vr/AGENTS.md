@@ -961,12 +961,15 @@ when the head comes within 2.5R, and is gone inside 1.5R. R is 0.22 m at rest
 (`dimensions.ts`); placement may squeeze him to 0.13 m.
 
 Density is 1, with a backstop (`density-backstop.ts`) that halves it when frames
-drop: three in thirty half again longer than a frame on time, in two windows
-running — a lone bad window is a hitch. A frame on time is the display's own
-period, from `XRSession.frameRate` (the XR stage hands it on with every frame),
-since a fall from 90 Hz to a clean 45 makes every frame of a window as long as
-every other, and a window judged against its own fastest frame sees nothing late;
-without the rate it is the shortest on-time interval seen since the last settle. It
+drop: three in thirty more than three quarters again longer than a frame on time,
+beside a window with at least two — a lone bad window is a hitch, and the pair is
+what a GPU just behind its budget makes, dropping one frame in twelve on a steady
+beat. A frame on time is the display's own period, from `XRSession.frameRate` (the
+XR stage hands it on with every frame), since a fall from 90 Hz to a clean 45 makes
+every frame of a window as long as every other, and a window judged against its
+own fastest frame sees nothing late; without the rate it is a quarter of the way up
+the shortest intervals seen since the last settle. A film (`?film`) has no backstop:
+its faked clock is not the display's. It
 used to halve on one window and for good, which every summon's hitches could set
 off: nothing compiles his shaders before his first frame, CanvasKit compiles its
 programs as it meets each path, and the display switches from 72 Hz to 90 as

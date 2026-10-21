@@ -214,18 +214,69 @@ describe('judging a frame on time', () => {
   });
 
   it('judges by what is on time at the new rate once settled, without the display’s rate', () => {
-    // From 120 Hz to 72, unsettled, every frame is late against what was on time before.
+    // From 120 Hz to 60, unsettled, every frame is late against what was on time before.
     const unsettled = createDensityBackstop();
     feed(unsettled, steadyWindow(1 / 120));
-    feed(unsettled, window(0));
-    feed(unsettled, window(0));
+    feed(unsettled, steadyWindow(1 / 60));
+    feed(unsettled, steadyWindow(1 / 60));
     expect(unsettled.density).toBe(0.5);
 
     const settled = createDensityBackstop();
     feed(settled, steadyWindow(1 / 120));
     settled.settle();
-    feedFor(settled, 2);
+    feedWindows(settled, 1 / 60, 6);
     expect(settled.density).toBe(1);
+  });
+
+  it('takes 60 Hz frames under a reported 90 for an emulator on a monitor, not for frames dropped', () => {
+    // A 60 Hz frame is exactly half again a 90 Hz one, and stamped to a tenth of a millisecond, as a
+    // browser stamps them, two in three come out a hair longer. A dropped frame is two periods at least.
+    const backstop = createDensityBackstop();
+    for (let frame = 0; frame < 120 * BACKSTOP_WINDOW; frame++) backstop.observe(frame % 3 === 2 ? 0.0166 : 0.0167, 90);
+    expect(backstop.density).toBe(1);
+  });
+
+  it('takes no short interval a late callback leaves behind for the display’s rate, without it', () => {
+    // Three callbacks of one window run 5 ms late: each makes one long interval and one short one,
+    // and nothing is dropped. Taken for a frame on time, the short ones would make every frame late.
+    const backstop = createDensityBackstop();
+    const jittered = steadyWindow(NINETY);
+    for (const late of [5, 15, 25]) {
+      jittered[late] = NINETY + 0.005;
+      jittered[late + 1] = NINETY - 0.005;
+    }
+    feed(backstop, jittered);
+    feedWindows(backstop, NINETY, 180);
+    expect(backstop.density).toBe(1);
+  });
+});
+
+describe('frames dropped on a beat', () => {
+  /** Frames at 90 Hz with one in `every` dropped, for `windows` windows. */
+  function beat(backstop: DensityBackstop, every: number, windows: number) {
+    for (let frame = 0; frame < windows * BACKSTOP_WINDOW; frame++) {
+      backstop.observe(frame % every === 0 ? NINETY * 2 : NINETY, 90);
+    }
+  }
+
+  it('halves him when one frame in twelve is dropped, three in one window and two in the next', () => {
+    const backstop = createDensityBackstop();
+    beat(backstop, 12, 2);
+    expect(backstop.density).toBe(0.5);
+  });
+
+  it('still lets a frame dropped in fifteen go, two a window however long it goes on', () => {
+    const backstop = createDensityBackstop();
+    beat(backstop, 15, 300);
+    expect(backstop.density).toBe(1);
+  });
+
+  it('takes a lone bad window followed by a single late frame for a hitch', () => {
+    const backstop = createDensityBackstop();
+    feed(backstop, window(6));
+    feed(backstop, window(1));
+    feed(backstop, window(0));
+    expect(backstop.density).toBe(1);
   });
 });
 
@@ -354,6 +405,30 @@ describe('giving the particles back', () => {
     drop(backstop);
     expect(backstop.density).toBe(0.5);
     feedFor(backstop, BACKSTOP_FIRST_WAIT_SECONDS + 1);
+    expect(backstop.density).toBe(1);
+  });
+
+  it('never passes a trial on a window that is dropping frames: the next decides, and it fails', () => {
+    // Frames at 80 Hz under a reported 90 are on time, and a window of them is 0.375 s, so no wait
+    // ends exactly on a window: ten seconds is 26.7 windows, twenty is 53.3.
+    const EIGHTY = 1 / 80;
+    const backstop = createDensityBackstop();
+    feedWindows(backstop, EIGHTY, 3, 90);
+    feedWindows(backstop, NINETY * 2, 2, 90);
+    expect(backstop.density).toBe(0.5);
+    feedWindows(backstop, EIGHTY, 27, 90);
+    expect(backstop.density).toBe(1);
+    // On trial for ten seconds: it holds for 9.75 of them, then falls to a clean 45 in the window
+    // that would have completed them.
+    feedWindows(backstop, EIGHTY, 26, 90);
+    feedWindows(backstop, NINETY * 2, 1, 90);
+    expect(backstop.density).toBe(1);
+    feedWindows(backstop, NINETY * 2, 1, 90);
+    expect(backstop.density).toBe(0.5);
+    // Failed on trial, so the next try waits twenty seconds rather than ten.
+    feedWindows(backstop, EIGHTY, 53, 90);
+    expect(backstop.density).toBe(0.5);
+    feedWindows(backstop, EIGHTY, 1, 90);
     expect(backstop.density).toBe(1);
   });
 

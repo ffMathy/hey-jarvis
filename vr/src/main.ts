@@ -211,7 +211,13 @@ function sharedRoomOptions(modules: RoomModules, onInside: () => void) {
   const [, { createRoomPlacement }, { createJarvisHologram3D }, { createRoomModelWorker, createRoomTracker }] = modules;
   return {
     createHologram: async (renderer) => {
-      const hologram = await createJarvisHologram3D(renderer, { assetBase, painter: loadPainterOnce() });
+      const hologram = await createJarvisHologram3D(renderer, {
+        assetBase,
+        painter: loadPainterOnce(),
+        // A film is shot on a faked clock, a frame of it however long the emulator took to draw it,
+        // while the emulator says its display runs at 90 Hz: every frame of it would read as dropped.
+        densityBackstop: !flags.has('film'),
+      });
       if (flags.has('flat')) hologram.mode = 'flat';
       return hologram;
     },

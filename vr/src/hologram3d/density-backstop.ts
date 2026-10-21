@@ -6,8 +6,9 @@
  * the only one left is the frame interval, which a headset quantises — 90 Hz falls straight to 45.
  * A controller cannot steer against a cliff like that, and the body at full density is a few
  * thousand small quads, which should be cheap. So he is drawn in full, and the share is halved only
- * when frames are seen to drop: an interval half again longer than a frame on time, three times in
- * thirty frames, in two windows running.
+ * when frames are seen to drop: an interval three quarters again longer than a frame on time (see
+ * {@link BACKSTOP_LATE_SHARE}), three times in a window of thirty frames, beside a window with at
+ * least two.
  *
  * **A frame on time is the display's own period, when the headset says what it is**
  * (`XRSession.frameRate`, handed in with every frame). It used to be the shortest interval in the
@@ -15,10 +16,10 @@
  * 90 Hz to a clean 45, every frame of the next window takes 2/90 of a second, the shortest among them
  * included, so not one of them is late. Only the window the fall happened in ever was. Where the
  * rate is not known — older runtimes, the emulator — it is the shortest on-time interval seen since
- * the last settle, kept from one window to the next for the same reason: each window's third
- * shortest, so that a stray short frame or two cannot pass for the display's rate and make every
- * frame after it late. Without the rate, a summon that lands straight on half the display's rate is
- * not caught, since nothing on time was seen to judge it by; with it, it is.
+ * the last settle, kept from one window to the next for the same reason: each window's eighth
+ * shortest (see `ON_TIME_RANK`), so that stray short intervals cannot pass for the display's rate and
+ * make every frame after them late. Without the rate, a summon that lands straight on half the
+ * display's rate is not caught, since nothing on time was seen to judge it by; with it, it is.
  *
  * **It used to halve on one such window, and for good,** on the grounds that flickering back up
  * would only find the cliff again. But a summon is full of hitches that are no GPU falling behind:
@@ -33,9 +34,10 @@
  *   room calls it when it asks for a new display rate, whenever the session is hidden, blurred or
  *   shown again, and on every frame the headset's own panels are drawn over the room (blurred).
  * - **A lone bad window is a hitch.** A GPU that cannot hold the count drops frames in the next
- *   window too, so it takes two running to halve him, and a halving starts the count afresh: the
- *   next one needs two more, at the new share. A lone bad window neither thins him nor holds back
- *   the share coming back.
+ *   window too, so it takes a late window beside one late or nearly so to halve him, and a halving
+ *   starts the count afresh: the next one needs two more, at the new share. A lone bad window
+ *   neither thins him nor holds back the share coming back, though it never decides a trial: the
+ *   window after it does.
  * - **The share comes back, carefully.** After {@link BACKSTOP_FIRST_WAIT_SECONDS} of frames without
  *   a drop it is doubled, never past all of them. That is a probe, and the cliff may still be there,
  *   so the share given back is on trial for as long as it was waited for: if frames drop during the
@@ -67,10 +69,25 @@ export interface DensityBackstop {
 
 /** How many frames are looked at together. */
 export const BACKSTOP_WINDOW = 30;
-/** How many of them have to be late. */
+/** How many of them make a window late; the window beside it must have one fewer, at least. */
 export const BACKSTOP_LATE_FRAMES = 3;
-/** How much longer than a frame on time a late one is. */
-export const BACKSTOP_LATE_SHARE = 1.5;
+/**
+ * How much longer than a frame on time a late one is: three quarters again.
+ *
+ * A display shows whole frames, so a dropped one takes at least two periods, and anything short of
+ * that is a frame on time that ran a little late. It was half again, and 1.5 periods of 90 Hz is
+ * exactly a 60 Hz frame: the emulator on an ordinary monitor, which says 90 and delivers 60, sat on
+ * the line, and rounding alone decided which of its frames were late.
+ */
+export const BACKSTOP_LATE_SHARE = 1.75;
+/**
+ * Which of a window's intervals, shortest first, stands for a frame on time when the display's
+ * rate is not known: the eighth, a quarter of the way up. A callback that runs late hands the next
+ * one a short interval, so the shortest few can be well under the display's period; as the
+ * reference they made every frame on time after them late, until the next settle. A quarter of the
+ * way up is past seven of those and still on time in a window half of whose frames were dropped.
+ */
+const ON_TIME_RANK = BACKSTOP_WINDOW >> 2;
 /** The fewest particles he is ever thinned to: an eighth still reads as him. */
 export const BACKSTOP_FLOOR = 0.125;
 /**
@@ -102,11 +119,13 @@ const STALL_SECONDS = 0.1;
 
 export function createDensityBackstop(): DensityBackstop {
   let density = 1;
-  // The window's intervals, in one array for the backstop's whole life.
+  // The window's intervals, and a copy to put in order, in two arrays for the backstop's whole life.
   const intervals = new Float64Array(BACKSTOP_WINDOW);
+  const ordered = new Float64Array(BACKSTOP_WINDOW);
   let filled = 0;
   let unjudgedSeconds = 0;
-  let lastWindowLate = false;
+  /** How many frames of the last window were late, or 0 when it does not count: after a halving or a settle. */
+  let previousLateFrames = 0;
   let waitSeconds = BACKSTOP_FIRST_WAIT_SECONDS;
   /** Seconds of frames judged since frames last dropped or the share was last given back. */
   let steadySeconds = 0;
@@ -117,25 +136,11 @@ export function createDensityBackstop(): DensityBackstop {
   /** The shortest on-time interval seen since the last settle: what a frame on time takes, when the rate is not known. */
   let onTimeSeconds = Number.POSITIVE_INFINITY;
 
-  /** The window's third shortest interval: a frame on time, with a stray short one or two left out. */
+  /** A frame on time in this window, from its intervals alone: see {@link ON_TIME_RANK}. */
   function windowOnTime() {
-    let shortest = Number.POSITIVE_INFINITY;
-    let second = Number.POSITIVE_INFINITY;
-    let third = Number.POSITIVE_INFINITY;
-    for (let frame = 0; frame < BACKSTOP_WINDOW; frame++) {
-      const interval = intervals[frame];
-      if (interval < shortest) {
-        third = second;
-        second = shortest;
-        shortest = interval;
-      } else if (interval < second) {
-        third = second;
-        second = interval;
-      } else if (interval < third) {
-        third = interval;
-      }
-    }
-    return third;
+    ordered.set(intervals);
+    ordered.sort();
+    return ordered[ON_TIME_RANK];
   }
 
   /** How many of the window's frames are late, against a frame on time. */
@@ -161,10 +166,15 @@ export function createDensityBackstop(): DensityBackstop {
     onTrial = false;
   }
 
-  /** Another window without frames dropping: once there have been enough of them, the share comes back. */
-  function holdSteady(seconds: number) {
+  /**
+   * Another window without frames dropping: once there have been enough of them, the share comes
+   * back. A late window counts towards the wait, so a lone hitch holds nothing back, but never
+   * decides it: the next window says whether it was a hitch or the share failing, and a share given
+   * back that was failing must be halved on trial, not passed and doubled.
+   */
+  function holdSteady(seconds: number, late: boolean) {
     steadySeconds += seconds;
-    if (steadySeconds < waitSeconds) return;
+    if (late || steadySeconds < waitSeconds) return;
     if (onTrial) {
       // Held for as long as it was waited for: whatever made the last share fail has passed.
       onTrial = false;
@@ -178,12 +188,17 @@ export function createDensityBackstop(): DensityBackstop {
 
   function judgeWindow() {
     onTimeSeconds = Math.min(onTimeSeconds, windowOnTime());
-    const windowLate = lateFrames(displaySeconds > 0 ? displaySeconds : onTimeSeconds) >= BACKSTOP_LATE_FRAMES;
-    const dropping = windowLate && lastWindowLate;
+    const late = lateFrames(displaySeconds > 0 ? displaySeconds : onTimeSeconds);
+    // A late window beside one that is late, or nearly: a GPU just behind its budget drops frames on
+    // a steady beat — one in twelve, say — and a beat like that puts three in one window and two in
+    // the next for as long as it lasts, so two late windows running would never come.
+    const dropping =
+      Math.max(late, previousLateFrames) >= BACKSTOP_LATE_FRAMES &&
+      Math.min(late, previousLateFrames) >= BACKSTOP_LATE_FRAMES - 1;
     // A halving starts the count afresh: the next takes two more bad windows, at the new share.
-    lastWindowLate = windowLate && !dropping;
+    previousLateFrames = dropping ? 0 : late;
     if (dropping) halve();
-    else holdSteady(windowSeconds());
+    else holdSteady(windowSeconds(), late >= BACKSTOP_LATE_FRAMES);
     filled = 0;
   }
 
@@ -204,7 +219,7 @@ export function createDensityBackstop(): DensityBackstop {
     settle() {
       unjudgedSeconds = BACKSTOP_SETTLE_SECONDS;
       filled = 0;
-      lastWindowLate = false;
+      previousLateFrames = 0;
       // What was on time before may not be now: a settle is often a new display rate.
       onTimeSeconds = Number.POSITIVE_INFINITY;
     },
