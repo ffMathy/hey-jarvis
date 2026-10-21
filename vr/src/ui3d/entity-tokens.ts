@@ -75,6 +75,12 @@ export function markerScaleAt(distance: number): number {
   return Math.max(MARKER_SCALE, least);
 }
 
+/** How much a token's orb is scaled, `distance` from the eye: a marker by its least angle, a carried one up. */
+function orbScaleOf(look: TokenLook, distance: number): number {
+  if (look === 'marker') return markerScaleAt(distance);
+  return look === 'carried' ? CARRIED_SCALE : 1;
+}
+
 const RING_COLOURS: Record<TokenLook, string> = {
   waiting: UI_COLOURS.accent,
   carried: UI_COLOURS.accent,
@@ -126,28 +132,33 @@ export function createEntityTokens(): EntityTokens {
   const placement = new Object3D();
   const colour = new Color();
 
+  /** Puts token `index`'s orb and ring at `spot`, both turned to face `eye`, in its look's size and colours. */
+  function placeToken(index: number, spot: TokenSpot, eye: Vector3Like) {
+    placement.position.set(spot.position.x, spot.position.y, spot.position.z);
+    placement.lookAt(eye.x, eye.y, eye.z);
+    const distance = Math.hypot(spot.position.x - eye.x, spot.position.y - eye.y, spot.position.z - eye.z);
+    placement.scale.setScalar(orbScaleOf(spot.look, distance));
+    placement.updateMatrix();
+    orbs.setMatrixAt(index, placement.matrix);
+    // A marker is the orb alone. Its ring is scaled to nothing rather than left out, so the orbs and
+    // the rings keep one instance a token at the same index.
+    if (spot.look === 'marker') {
+      placement.scale.setScalar(0);
+      placement.updateMatrix();
+    }
+    rings.setMatrixAt(index, placement.matrix);
+    // The palette is sRGB, as the page's is; three keeps instance colours linear.
+    orbs.setColorAt(index, colour.set(ORB_COLOURS[spot.look]));
+    rings.setColorAt(index, colour.set(RING_COLOURS[spot.look]));
+  }
+
   return {
     objects: [orbs, rings],
     set(spots, eye) {
       const count = Math.min(spots.length, MAX_TOKENS);
       for (let index = 0; index < count; index++) {
         const spot = spots[index];
-        if (spot === undefined) continue;
-        placement.position.set(spot.position.x, spot.position.y, spot.position.z);
-        placement.lookAt(eye.x, eye.y, eye.z);
-        const marker = spot.look === 'marker';
-        const distance = Math.hypot(spot.position.x - eye.x, spot.position.y - eye.y, spot.position.z - eye.z);
-        placement.scale.setScalar(marker ? markerScaleAt(distance) : spot.look === 'carried' ? CARRIED_SCALE : 1);
-        placement.updateMatrix();
-        orbs.setMatrixAt(index, placement.matrix);
-        if (marker) {
-          placement.scale.setScalar(0);
-          placement.updateMatrix();
-        }
-        rings.setMatrixAt(index, placement.matrix);
-        // The palette is sRGB, as the page's is; three keeps instance colours linear.
-        orbs.setColorAt(index, colour.set(ORB_COLOURS[spot.look]));
-        rings.setColorAt(index, colour.set(RING_COLOURS[spot.look]));
+        if (spot !== undefined) placeToken(index, spot, eye);
       }
       for (const mesh of [orbs, rings]) {
         mesh.count = count;
