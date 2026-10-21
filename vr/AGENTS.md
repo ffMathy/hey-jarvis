@@ -833,9 +833,10 @@ HUD has one `entities` line.
 add `object` to the scene, set its position (the anchor), call `arrive()` on every
 summon and `update(delta, drive, centreEye)` once per XR frame before
 `renderer.render`, with the centre eye read from `frame.getViewerPose` at the start
-of the frame (three's XR camera lags one). `?flat` (`mode = 'flat'`) draws the
-phone's whole picture on one quad instead: the first thing this app ever drew, kept
-as the reference the 3D look is checked against.
+of the frame (three's XR camera lags one), and `settle()` when the next second's
+frames will hitch for reasons not his (see the backstop below). `?flat`
+(`mode = 'flat'`) draws the phone's whole picture on one quad instead: the first
+thing this app ever drew, kept as the reference the 3D look is checked against.
 
 Per frame, on the CPU:
 
@@ -908,10 +909,22 @@ be pure added light, which washes out in a bright room, and max(rgb) is Screen
 against the room. It is to be tuned on a headset. Every part is drawn unfaded and
 the fade is the blend's constant colour, so arriving, leaving and the close-range
 guard fade him as one layer, exactly as the phone's saveLayer does. He fades out
-when the head comes within 2.5R, and is gone inside 1.5R. Density is 1, with a
-backstop that halves it for good if three frames in thirty are late
-(`density-backstop.ts`). R is 0.22 m at rest (`dimensions.ts`); placement may
-squeeze him to 0.13 m.
+when the head comes within 2.5R, and is gone inside 1.5R. R is 0.22 m at rest
+(`dimensions.ts`); placement may squeeze him to 0.13 m.
+
+Density is 1, with a backstop (`density-backstop.ts`) that halves it when frames
+drop: three in thirty half again longer than the window's fastest, in two windows
+running — a lone bad window is a hitch. It used to halve on one window and for
+good, which every summon's hitches could set off: nothing compiles his shaders
+before his first frame, CanvasKit compiles its programs as it meets each path, and
+the display switches from 72 Hz to 90 as placement, the greeting and the call all
+start. So the second after `arrive()`, a new display rate, a change of visibility,
+and every blurred frame, is not judged at all (`settle`, called by the room). And
+the share comes back: after ten seconds without a drop it doubles, on trial for as
+long as it was waited for; frames dropping during the trial halve it again and
+double the next wait, up to 160 s, so a headset that cannot hold the count pays one
+hitch every few minutes rather than a climb-lag-shed cycle, and one that was busy
+for a moment has every particle back. Never below an eighth.
 
 Known deviations from the phone: strokes of one tier that cross add up rather than
 forming a union, so the arrival's first half-second and the listening knots are a
@@ -1074,7 +1087,10 @@ the models first.
   picture into three's context every frame stalls at 72/90 Hz; the halo and stroke
   passes' cost at 0.8, 1.6 and 2.6 m; the alpha factor in a bright and a dim room;
   whether 1.2-pixel hot cores shimmer; whether the projection layer composites as
-  the spec says; stereo comfort; whether `updateTargetFrameRate` behaves.
+  the spec says; stereo comfort; whether `updateTargetFrameRate` behaves; whether
+  the density backstop's second of grace covers a summon and its ten seconds and
+  two windows are the right numbers — the HUD's `density` shows it halve and come
+  back.
 - **Smooth edges and text.** What four samples a pixel cost in Quest Browser
   (the HUD's frame time, against a build with `antialias: false`), and whether its
   projection layer takes the render-to-texture path: the HUD's `gl` line has to

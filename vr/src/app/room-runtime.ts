@@ -6,6 +6,7 @@ import { createDebugHud, type DebugHud, type Diagnostics, extensionsOfInterest }
 import { KEYBOARD_GLYPH_REACH_METRES } from '../ui3d/keyboard-glyph';
 import { type AnchorKeeper, createAnchorKeeper } from '../xr/anchor-keeper';
 import { createDepthProbeFan, type DepthProbeFan } from '../xr/depth-probes';
+import type { FrameRateTarget } from '../xr/frame-rate';
 import { createInputSnapshots, type InputSnapshots, isHandheld } from '../xr/input-snapshots';
 import type { OriginOffset } from '../xr/origin-offset';
 import { type Ray, raySphereDistance, type Vector3Like } from '../xr/ray';
@@ -353,7 +354,14 @@ function conversationEvents(room: Room): ConversationEvents {
 function subscribe(room: Room) {
   const { stage, options, cleanups } = room;
   cleanups.push(stage.onFrame((tick) => onFrame(room, tick)));
-  cleanups.push(stage.onVisibility((state) => dispatch(room, { type: 'visibility', state })));
+  cleanups.push(
+    stage.onVisibility((state) => {
+      // Hidden, blurred or shown again, the frames around the change are paced by the compositor
+      // putting its own things away or back, and are not his to answer for.
+      room.hologram.settle();
+      dispatch(room, { type: 'visibility', state });
+    }),
+  );
   cleanups.push(room.input.onSelect((select) => onSelect(room, select)));
   cleanups.push(room.input.onDismissButton(() => dispatch(room, { type: 'dismiss-button' })));
   cleanups.push(room.input.onEditButton(() => dispatch(room, { type: 'edit-button' })));
@@ -500,7 +508,7 @@ function carryOutEffect(room: Room, effect: AppEffect) {
     case 'hide-panel':
       return panels.hide(effect.panel);
     case 'set-frame-rate':
-      return room.stage.setFrameRate(effect.target);
+      return setFrameRate(room, effect.target);
     case 'editing':
       return room.entities.setEditing(effect.active);
     case 'consume-held-selects':
@@ -546,6 +554,19 @@ function arrive(room: Room) {
   }
   room.goneReported = false;
   room.hologram.arrive();
+}
+
+/**
+ * Asks the headset for a new display rate — 72 to 90 as he is summoned, back down when he has
+ * gone. The frames either side of the switch are the compositor's to explain, not his, so the
+ * dropped-frame backstop is told to let them go: when the rate is asked for, and again once the
+ * headset has switched, however long that takes.
+ */
+function setFrameRate(room: Room, target: FrameRateTarget) {
+  room.hologram.settle();
+  void room.stage.setFrameRate(target).then(() => {
+    if (!room.released) room.hologram.settle();
+  });
 }
 
 function showHologram(room: Room, state: AppView['hologram']) {
@@ -691,6 +712,9 @@ function drawHologram(room: Room, tick: XrFrameTick) {
           thinking: room.conversation.thinking,
           leaving,
         };
+  // Blurred, the headset draws its own panels over the room — the system keyboard, its menu — on
+  // the same GPU, and the frames they cost are theirs: none of them is judged, nor the second after.
+  if (room.stage.visibility === 'visible-blurred') room.hologram.settle();
   room.hologram.update(tick.deltaSeconds, drive, tick.centreEye);
   if (leaving && room.hologram.presence <= 0 && !room.goneReported) {
     room.goneReported = true;

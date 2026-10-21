@@ -56,9 +56,15 @@ export interface JarvisHologram3D {
   /**
    * Restarts the arrival vortex (time 0, fully present) and faces him to the viewer: every summon.
    * His front faces `towards` when it is given, and wherever the centre eye is on the next
-   * `update` otherwise.
+   * `update` otherwise. The second after it is not judged for dropped frames (`settle`).
    */
   arrive(towards?: Vector3Like): void;
+  /**
+   * Tells the dropped-frame backstop that the next second's frames are not his to answer for: the
+   * room calls it for a new display rate, on any change of the session's visibility and on every
+   * frame while it is blurred (see `density-backstop.ts`).
+   */
+  settle(): void;
   /**
    * Once per XR frame, before `renderer.render`: moves his clock on, then draws what lives off the
    * screen — CanvasKit's layers and the halo union — against this frame's centre eye.
@@ -232,6 +238,9 @@ export async function createJarvisHologram3D(
     object,
     arrive(towards) {
       clock.arrive();
+      // A summon is the room's busiest second — first-use compiles, placement, the greeting and the
+      // call starting — and none of it is the body being too much for the GPU.
+      backstop?.settle();
       if (towards === undefined) {
         // Faced to wherever the viewer is when he is next drawn.
         front = null;
@@ -239,6 +248,9 @@ export async function createJarvisHologram3D(
         object.updateWorldMatrix(true, false);
         front = frontTowards(centre.setFromMatrixPosition(object.matrixWorld), towards);
       }
+    },
+    settle() {
+      backstop?.settle();
     },
     update(deltaSeconds, drive, centreEye) {
       const started = performance.now();

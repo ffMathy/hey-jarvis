@@ -159,6 +159,8 @@ export interface HologramPort {
   readonly object: Object3D;
   /** Restarts the arrival: called on every summon, including one that cancels a leaving. */
   arrive(): void;
+  /** Leaves the next second's frames out of the dropped-frame backstop: they hitch for reasons not his. */
+  settle(): void;
   /** Once per frame before the room is drawn, against this frame's centre eye. */
   update(deltaSeconds: number, drive: HologramDrive, centreEye: PoseLike): void;
   /** 0–1; 0 once he has gone after `leaving`. */
