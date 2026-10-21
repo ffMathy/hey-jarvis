@@ -18,7 +18,7 @@ import { createFragmentUniforms, writeFragmentUniforms } from './fragment-glsl';
 import { createFrameClock, type HologramDrive } from './frame-clock';
 import { createHaloUnion, HALO_TEXELS } from './halo-union';
 import { setLayerFade } from './layer-blending';
-import { createRowAttributes } from './row-geometry';
+import { createRowGeometry } from './row-geometry';
 import { createSparkleTexture } from './sparkle-texture';
 import {
   bodyFrame,
@@ -122,11 +122,12 @@ export async function createJarvisHologram3D(
   const painter = await (options.painter ?? loadPainter(new URL('vendor/', options.assetBase)));
   const scene = createHologramScene(SCENE_SEED);
   const flat = createFlatHologram(painter, options.drawingSize ?? DRAWING_SIZE_PIXELS, scene);
-  const attributes = createRowAttributes(buildHologramRows(scene));
+  // One geometry for both passes that read the rows, so the GPU holds the rows once.
+  const rowGeometry = createRowGeometry(buildHologramRows(scene));
   const fragmentUniforms = createFragmentUniforms();
   const sparkle = createSparkleTexture(scene.textureSeed);
-  const strokes = createBodyStrokes(attributes, fragmentUniforms, sparkle);
-  const halo = createHaloUnion(attributes, fragmentUniforms);
+  const strokes = createBodyStrokes(rowGeometry, fragmentUniforms, sparkle);
+  const halo = createHaloUnion(rowGeometry, fragmentUniforms);
   const quad = createViewPlaneQuad(1);
   const clock = createFrameClock();
   const backstop = options.densityBackstop === false ? null : createDensityBackstop();
@@ -281,6 +282,7 @@ export async function createJarvisHologram3D(
       quad.dispose();
       strokes.dispose();
       halo.dispose();
+      rowGeometry.dispose();
       sparkle.dispose();
       flat.dispose();
     },

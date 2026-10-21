@@ -13,6 +13,7 @@ import {
   ConstantAlphaFactor,
   ConstantColorFactor,
   DoubleSide,
+  InstancedBufferGeometry,
   MaxEquation,
   OneMinusSrcAlphaFactor,
   OneMinusSrcColorFactor,
@@ -32,10 +33,11 @@ import {
   writeFragmentUniforms,
 } from './fragment-glsl';
 import { createHaloUnion, HALO_PAINTS, HALO_TEXELS } from './halo-union';
-import { createRowAttributes } from './row-geometry';
+import { createRowGeometry, ROW_ATTRIBUTES } from './row-geometry';
 
 const scene = createHologramScene(SCENE_SEED);
-const attributes = createRowAttributes(buildHologramRows(scene));
+const rows = buildHologramRows(scene);
+const rowGeometry = createRowGeometry(rows);
 
 function frameAt(overrides: Partial<HologramFrame>): HologramFrame {
   return {
@@ -98,9 +100,57 @@ describe('the fragment uniforms', () => {
   });
 });
 
+describe('the rows’ geometry', () => {
+  const corner = rowGeometry.getAttribute('corner');
+
+  it('is one plain indexed list, not instances: four corners and two triangles a row, in the rows’ order', () => {
+    expect(rows.count).toBe(10168);
+    expect(rowGeometry).not.toBeInstanceOf(InstancedBufferGeometry);
+    expect(corner.count).toBe(10168 * 4);
+    expect(rowGeometry.index?.count).toBe(10168 * 6);
+    // Each row's quad wound 0-1-2 and 0-2-3, row after row: the triangles one instance per row
+    // drew, in the order it drew them, which is what keeps the blended pixels the same.
+    expect(Array.from(rowGeometry.index?.array.slice(0, 12) ?? [])).toEqual([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
+    const last = (rows.count - 1) * 4;
+    expect(Array.from(rowGeometry.index?.array.slice(-6) ?? [])).toEqual([0, 1, 2, 0, 2, 3].map((at) => last + at));
+  });
+
+  it('gives every corner of a row that row’s numbers, exactly, and its corner at ±1', () => {
+    for (const row of [0, 1, 4321, rows.bodyCount - 1, rows.bodyCount, rows.count - 1]) {
+      for (const [name, size] of ROW_ATTRIBUTES) {
+        const attribute = rowGeometry.getAttribute(name);
+        expect(attribute.itemSize).toBe(size);
+        const expected = Array.from(rows[name].subarray(row * size, (row + 1) * size));
+        for (let vertex = row * 4; vertex < row * 4 + 4; vertex++) {
+          expect(Array.from(attribute.array.slice(vertex * size, (vertex + 1) * size))).toEqual(expected);
+        }
+      }
+      const corners = Array.from(corner.array.slice(row * 8, row * 8 + 8));
+      expect(corners).toEqual([-1, -1, 1, -1, 1, 1, -1, 1]);
+    }
+  });
+
+  it('numbers its vertices in 16 bits while they fit, and in 32 past that rather than wrapping round', () => {
+    expect(rowGeometry.index?.array).toBeInstanceOf(Uint16Array);
+    const count = 65536 / 4 + 1;
+    const many = createRowGeometry({
+      count,
+      bodyCount: count,
+      streamCount: 0,
+      rest: new Float32Array(count * 4),
+      shape: new Float32Array(count * 4),
+      hashes: new Float32Array(count * 4),
+      identity: new Float32Array(count * 4),
+      thinning: new Float32Array(count),
+    });
+    expect(many.index?.array).toBeInstanceOf(Uint32Array);
+    expect(many.index?.array.at(-1)).toBe(count * 4 - 1);
+  });
+});
+
 describe('the body’s strokes', () => {
   const uniforms = createFragmentUniforms();
-  const strokes = createBodyStrokes(attributes, uniforms, new Texture());
+  const strokes = createBodyStrokes(rowGeometry, uniforms, new Texture());
   const { material } = strokes.mesh;
 
   it('are Screened over the room and faded as one layer with the rest of him', () => {
@@ -122,14 +172,24 @@ describe('the body’s strokes', () => {
     expect(material.side).toBe(DoubleSide);
   });
 
-  it('read the same uniforms as the halo pass, so both place every fragment alike', () => {
-    const halo = createHaloUnion(attributes, uniforms);
+  it('read the same uniforms and the same rows as the halo pass, so both place every fragment alike', () => {
+    const halo = createHaloUnion(rowGeometry, uniforms);
     expect(material.uniforms.time).toBe(uniforms.time);
     expect(halo.mesh.material.uniforms.time).toBe(uniforms.time);
-    expect(halo.mesh.geometry.attributes.rest).toBe(attributes.rest);
-    expect(strokes.mesh.geometry.attributes.rest).toBe(attributes.rest);
-    expect(strokes.mesh.geometry.instanceCount).toBe(10168);
+    expect(halo.mesh.geometry).toBe(rowGeometry);
+    expect(strokes.mesh.geometry).toBe(rowGeometry);
     expect(strokes.mesh.frustumCulled).toBe(false);
+  });
+
+  it('leave the rows’ geometry to whoever made it, since the other pass still draws it', () => {
+    const shared = createRowGeometry(rows);
+    let disposed = false;
+    shared.addEventListener('dispose', () => {
+      disposed = true;
+    });
+    createBodyStrokes(shared, createFragmentUniforms(), new Texture()).dispose();
+    createHaloUnion(shared, createFragmentUniforms()).dispose();
+    expect(disposed).toBe(false);
   });
 
   it('are painted as the drawing paints its tiers', () => {
@@ -141,7 +201,7 @@ describe('the body’s strokes', () => {
 });
 
 describe('the halo union', () => {
-  const halo = createHaloUnion(attributes, createFragmentUniforms());
+  const halo = createHaloUnion(rowGeometry, createFragmentUniforms());
 
   it('keeps the most any halo covers each texel by, in two halves of a small byte target', () => {
     expect([halo.target.width, halo.target.height]).toEqual([HALO_TEXELS * 2, HALO_TEXELS]);

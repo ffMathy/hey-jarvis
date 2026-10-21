@@ -863,11 +863,25 @@ On the GPU:
    by one, the halos were a flat orange coin; the phone strokes each tier's halos
    as one path, so they are a union.
 4. **Per eye, the view-plane quad** (`view-plane-quad.ts`): CanvasKit's picture
-   Screened with the halos' light, facing the centre eye.
-5. **Per eye, the body's strokes** (`body-strokes.ts`): one instanced draw of
-   view-facing glyph quads (dash, L, bracket, T, Z, ring, cell as distance fields,
+   Screened with the halos' light, facing the centre eye. It is the whole square,
+   corners and all: the halos are where the centre eye sees each fragment, so
+   perspective carries them past the 1.86R the phone's drawing stays inside
+   (1.92R at 1.6 m while he talks, the corners at 0.4 m), and a quad cut to a
+   fixed circle would clip them.
+5. **Per eye, the body's strokes** (`body-strokes.ts`): one draw of view-facing
+   glyph quads (dash, L, bracket, T, Z, ring, cell as distance fields,
    antialiased, never under 1.2 px) where each fragment really is, with the
    drawing's tier paints and sparkle.
+
+The halo union and the strokes draw one shared geometry (`row-geometry.ts`): a
+plain indexed list of every row's quad, four vertices and two triangles a row,
+each vertex carrying its whole row. It used to be 10,168 instances of a
+four-vertex quad, which is what Arm's and Qualcomm's guidance warns against
+(an instance that small leaves most of each vertex wave idle); on SwiftShader
+the plain list made the halo union about four times as fast and each eye's
+strokes about three, and it draws the same triangles in the same order, so the
+preview's stills came out the same to the byte. The price is memory: each row is
+held four times, 3 MB rather than 0.7.
 
 Where each fragment is comes from `fragment-3d.ts`: the phone's per-fragment
 helpers from `hologram`, with the body turning about the vertical in its own frame
@@ -1183,9 +1197,10 @@ the models first.
   tests'; `element-volume-probe.ts` checks the rule for the SDK's elements on real
   elements playing real streams.
 - **Slow frames, and the budgets the specs hold.** SwiftShader draws the room at
-  about eight frames a second while he is away and about one and a half while he
-  is there, half that on a loaded machine (a CI runner is no faster), and his clock
-  moves at most a tenth of a second a frame. Two of the app's budgets run on the
+  about eight frames a second while he is away and about five while he is there
+  (two, before his rows were one plain list rather than instances), half that on a
+  loaded machine (a CI runner is no faster), and his clock moves at most a tenth
+  of a second a frame. Two of the app's budgets run on the
   wall clock instead: the twenty seconds a summoning waits for its conversation,
   and the six seconds at least that an error panel is up. The specs that keep him
   greeting on a token that never comes, and the ones that photograph a panel (a

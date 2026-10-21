@@ -1,10 +1,10 @@
 import { HALO_RING_SHARE } from 'hologram';
 import {
+  type BufferGeometry,
   Color,
   CustomBlending,
   DoubleSide,
   GLSL3,
-  type InstancedBufferGeometry,
   LinearFilter,
   MaxEquation,
   Mesh,
@@ -20,7 +20,6 @@ import {
   WebGLRenderTarget,
 } from 'three';
 import { FRAGMENT_GLSL, type FragmentUniforms, GLYPH_GLSL, glslFloat } from './fragment-glsl';
-import { createRowGeometry, type RowAttributes } from './row-geometry';
 
 /**
  * The particle halos, as the phone paints them: a union per tier, not a pile.
@@ -129,15 +128,17 @@ export interface HaloUnion {
   /** Coverage: the pinned group in the left half, the turning group in the right; R, G, B = dim, mid, bright. */
   texture: Texture;
   uniforms: HaloUniforms;
-  /** The instanced draw of every row's halo, in a scene of its own, and the target it draws into. */
-  mesh: Mesh<InstancedBufferGeometry, RawShaderMaterial>;
+  /** The draw of every row's halo, in a scene of its own, and the target it draws into. */
+  mesh: Mesh<BufferGeometry, RawShaderMaterial>;
   target: WebGLRenderTarget;
   /** Draws this frame's coverage. Call after the fragment uniforms are written and before the room is rendered. */
   render(renderer: WebGLRenderer): void;
+  /** Lets go of the target and the material; the rows' geometry is the caller's, shared with the strokes. */
   dispose(): void;
 }
 
-export function createHaloUnion(attributes: RowAttributes, fragmentUniforms: FragmentUniforms): HaloUnion {
+/** The halos of every row of `rowGeometry` (`row-geometry.ts`), placed by `fragmentUniforms`. */
+export function createHaloUnion(rowGeometry: BufferGeometry, fragmentUniforms: FragmentUniforms): HaloUnion {
   const target = new WebGLRenderTarget(HALO_TEXELS * 2, HALO_TEXELS, {
     type: UnsignedByteType,
     format: RGBAFormat,
@@ -171,7 +172,7 @@ export function createHaloUnion(attributes: RowAttributes, fragmentUniforms: Fra
     blendSrcAlpha: OneFactor,
     blendDstAlpha: OneFactor,
   });
-  const mesh: Mesh<InstancedBufferGeometry, RawShaderMaterial> = new Mesh(createRowGeometry(attributes), material);
+  const mesh = new Mesh(rowGeometry, material);
   mesh.frustumCulled = false;
   const scene = new Scene();
   scene.add(mesh);
@@ -206,7 +207,6 @@ export function createHaloUnion(attributes: RowAttributes, fragmentUniforms: Fra
     dispose() {
       target.dispose();
       material.dispose();
-      mesh.geometry.dispose();
     },
   };
 }

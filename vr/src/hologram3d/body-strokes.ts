@@ -1,7 +1,6 @@
-import { DoubleSide, GLSL3, type InstancedBufferGeometry, Mesh, RawShaderMaterial, type Texture, Vector4 } from 'three';
+import { type BufferGeometry, DoubleSide, GLSL3, Mesh, RawShaderMaterial, type Texture, Vector4 } from 'three';
 import { FRAGMENT_GLSL, type FragmentUniforms, GLYPH_GLSL, glslColour, glslFloat } from './fragment-glsl';
 import { LAYER_BLENDING, setLayerFade } from './layer-blending';
-import { createRowGeometry, type RowAttributes } from './row-geometry';
 import { SPARKLE_REPEAT } from './sparkle-texture';
 import { ALPHA_FROM_LIGHT } from './view-plane-quad';
 
@@ -160,22 +159,23 @@ export interface StrokeUniforms {
 }
 
 export interface BodyStrokes {
-  mesh: Mesh<InstancedBufferGeometry, RawShaderMaterial>;
+  mesh: Mesh<BufferGeometry, RawShaderMaterial>;
   uniforms: StrokeUniforms;
+  /** Lets go of the material; the rows' geometry is the caller's, shared with the halo union. */
   dispose(): void;
 }
 
 /**
- * The strokes as one instanced draw, Screen-blended over the room and faded as one layer with the
- * rest of him (see `layer-blending.ts`), writing alpha as a share of the light (see
- * ALPHA_FROM_LIGHT), with no depth written.
+ * The strokes as one draw of every row of `rowGeometry` (`row-geometry.ts`), Screen-blended over
+ * the room and faded as one layer with the rest of him (see `layer-blending.ts`), writing alpha as
+ * a share of the light (see ALPHA_FROM_LIGHT), with no depth written.
  *
  * Unlike the phone, strokes of one tier that cross add up rather than forming a union — the phone
  * strokes each tier as one path. They are thin and seldom cross, which is why the halos, which
  * overlap everywhere, get a union pass of their own and these do not.
  */
 export function createBodyStrokes(
-  attributes: RowAttributes,
+  rowGeometry: BufferGeometry,
   fragmentUniforms: FragmentUniforms,
   sparkle: Texture,
 ): BodyStrokes {
@@ -199,7 +199,7 @@ export function createBodyStrokes(
     ...LAYER_BLENDING,
   });
   setLayerFade(material, 1);
-  const mesh = new Mesh(createRowGeometry(attributes), material);
+  const mesh = new Mesh(rowGeometry, material);
   // The quad's corners are only moved into place by the shader, so three's bounds say nothing.
   mesh.frustumCulled = false;
   const viewport = new Vector4();
@@ -212,7 +212,6 @@ export function createBodyStrokes(
     uniforms,
     dispose() {
       material.dispose();
-      mesh.geometry.dispose();
     },
   };
 }

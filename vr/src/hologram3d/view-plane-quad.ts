@@ -128,6 +128,13 @@ export function createViewPlaneQuad(side: number): ViewPlaneQuad {
   });
   setLayerFade(material, 1);
 
+  // The whole square, although the phone's drawing lights nothing past about 1.86R of his centre
+  // and the square reaches 1.85R along its middles and 2.6R into its corners. The halos are
+  // Screened in here too, drawn where the centre eye sees each fragment, and perspective carries
+  // the near ones further: while he talked they reached 1.92R at 1.6 m, 2.15R at 0.6 m and the
+  // corners at 0.4 m, so a quad cut to a fixed circle would clip them. Cutting the corners without
+  // changing a pixel would take a polygon resized every frame for how near the eye is, for about an
+  // eighth of this quad's fill at 1.6 m and next to nothing inside half a metre.
   const mesh = new Mesh(new PlaneGeometry(side, side), material);
   // Nothing to show until the first picture has been drawn.
   mesh.visible = false;
