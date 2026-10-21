@@ -5,8 +5,11 @@ import type { HologramRows } from './body-rows';
 const CORNERS = [-1, -1, 1, -1, 1, 1, -1, 1];
 const TRIANGLES = [0, 1, 2, 0, 2, 3];
 
-/** How many vertices a 16-bit index can number. */
-const SHORT_INDEX_VERTICES = 65536;
+/**
+ * How many vertices a 16-bit index can number: 0 to 65534, since WebGL 2 always takes 65535 in a
+ * 16-bit index as a primitive restart, not as a vertex (three's own `arrayNeedsUint32` stops there too).
+ */
+const SHORT_INDEX_VERTICES = 65535;
 
 /** The rows' attributes, as the shaders name them (`FRAGMENT_GLSL`), and how many numbers each holds a row. */
 export const ROW_ATTRIBUTES = [
@@ -48,7 +51,8 @@ function onEveryCorner(values: Float32Array, size: number): BufferAttribute {
  *
  * The price is memory: each row's 68 bytes are held once per corner, 3 MB rather than 0.7 MB, and
  * each vertex reads its own copy. The index is 16-bit while the vertices fit one, as ten thousand
- * rows do, and 32-bit past 16,384 rows rather than wrapping round silently.
+ * rows do, and 32-bit from 16,384 rows on, rather than wrapping round silently or naming the
+ * restart index.
  */
 export function createRowGeometry(rows: HologramRows): BufferGeometry {
   const geometry = new BufferGeometry();

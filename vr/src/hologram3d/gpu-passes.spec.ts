@@ -131,20 +131,27 @@ describe('the rows’ geometry', () => {
   });
 
   it('numbers its vertices in 16 bits while they fit, and in 32 past that rather than wrapping round', () => {
+    const rowsOf = (count: number) =>
+      createRowGeometry({
+        count,
+        bodyCount: count,
+        streamCount: 0,
+        rest: new Float32Array(count * 4),
+        shape: new Float32Array(count * 4),
+        hashes: new Float32Array(count * 4),
+        identity: new Float32Array(count * 4),
+        thinning: new Float32Array(count),
+      });
     expect(rowGeometry.index?.array).toBeInstanceOf(Uint16Array);
-    const count = 65536 / 4 + 1;
-    const many = createRowGeometry({
-      count,
-      bodyCount: count,
-      streamCount: 0,
-      rest: new Float32Array(count * 4),
-      shape: new Float32Array(count * 4),
-      hashes: new Float32Array(count * 4),
-      identity: new Float32Array(count * 4),
-      thinning: new Float32Array(count),
-    });
-    expect(many.index?.array).toBeInstanceOf(Uint32Array);
-    expect(many.index?.array.at(-1)).toBe(count * 4 - 1);
+    const fewest = rowsOf(65536 / 4 - 1);
+    expect(fewest.index?.array).toBeInstanceOf(Uint16Array);
+    expect(fewest.index?.array.at(-1)).toBe(65531);
+    // At 16,384 rows the last vertex would be 65535, which a 16-bit index in WebGL 2 is a restart.
+    for (const count of [65536 / 4, 65536 / 4 + 1]) {
+      const many = rowsOf(count);
+      expect(many.index?.array).toBeInstanceOf(Uint32Array);
+      expect(many.index?.array.at(-1)).toBe(count * 4 - 1);
+    }
   });
 });
 
