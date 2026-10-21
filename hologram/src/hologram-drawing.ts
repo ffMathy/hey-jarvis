@@ -206,7 +206,7 @@
 // - On a phone every worklet here runs under Hermes with no JIT, as bytecode compiled at runtime
 //   without optimisation: per particle it measured about twelve times what V8 with its JIT pays,
 //   on a desktop harness. Work done per fragment is what costs there.
-// - So the loops that run once a particle — appendBody, appendStream and appendCrescent — are written
+// - So the loops that run once a fragment or crescent piece — appendBody, appendStream and appendCrescent — are written
 //   out by hand: the per-fragment helpers (readFragment, placeFragment, swirlFragment and the rest) are
 //   inlined into them with the same operations in the same order, the frame's state is read once, and
 //   every per-fragment temporary is a `let` declared before the loop rather than a `const` inside it,
@@ -1176,8 +1176,8 @@ export type HologramScene = ReturnType<typeof createHologramScene>;
  *
  * What is left of the crossings is small. On a Hermes built the way React Native builds it, wrapped
  * the way the worklets runtime wraps it and timed on a desktop, handing the arrays over costs about
- * 190 ns a command — 2 ms of the 27 ms it takes to build a frame at full density — and nearly all the
- * rest is the drawing's own JavaScript, which Hermes runs as unoptimised bytecode with no JIT.
+ * 190 ns a command — 2 ms of the 27 ms it took to build a frame at full density — and nearly all the
+ * rest was the drawing's own JavaScript, which Hermes runs as unoptimised bytecode with no JIT.
  *
  * Most of that JavaScript has since gone: the particle loops are written out by hand (see `appendBody`),
  * and a full-density frame that took about 19 ms on the harness that measured them takes about 6. They
@@ -2102,7 +2102,10 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
     burstCount: Math.floor(frame.burstCount),
     // wrapped to one turn: the canvas takes float32 angles, which would lose the per-frame
     // step of a sphere left mounted for hours
-    /** Somewhere for placeFragment to put its four numbers: made once a frame, not once a fragment. */
+    /**
+     * Somewhere for placeFragment to put its four numbers: made once a frame, not once a fragment.
+     * Only what composes the body from the helpers uses it; the phone's loop keeps its numbers in locals.
+     */
     scratch: [0, 0, 0, 0],
     /** The same for whether a fragment is lit at all, and what it is; see {@link readFragment}. */
     reading: [0, 0, 0, 0, 0],
@@ -2288,9 +2291,11 @@ export function fragmentTier(brightness: number, strength: number, id: number, h
 /**
  * Where a fragment lands on screen this frame, and how much of it survives the limb.
  *
- * Writes `x`, `y`, `depth` and `edge` into `out` rather than returning them, because a frame
- * places a couple of thousand fragments and an object apiece would be a frame's worth of
- * rubbish to collect.
+ * Writes `x`, `y`, `depth` and `edge` into `out` rather than returning them, because whatever
+ * composes the body from it places a couple of thousand fragments a frame, and an object apiece
+ * would be a frame's worth of rubbish to collect. The phone's own loop does this arithmetic inline
+ * (see `appendBody`); this is the definition it is held to, and what the headset's reference
+ * composes the body from.
  */
 export function placeFragment(
   body: number[],
@@ -2326,8 +2331,10 @@ export function placeFragment(
  *
  * Returns the strength, or 0 for a fragment that is not drawn, and writes what the caller needs
  * into `into`: strength, glyph, which pair of builders it belongs to, which blink it is on, and its
- * brightness tier. An array rather than an object because this runs three thousand times a frame,
- * and it is the array {@link HologramFrameState.reading} keeps for exactly that reason.
+ * brightness tier. An array rather than an object because whatever composes the body from it asks it
+ * of thousands of fragments a frame, and it is the array {@link HologramFrameState.reading} keeps
+ * for exactly that reason. The phone's own loop asks these questions inline (see `appendBody`); this
+ * is the definition it is held to, and what the headset composes the body from.
  */
 export function readFragment(body: number[], offset: number, state: HologramFrameState, into: number[]): number {
   'worklet';

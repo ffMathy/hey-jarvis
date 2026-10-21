@@ -96,8 +96,8 @@ kept in the order of the density share's key (`roundedInDensityOrder`), so the
 loop stops where the kept rows end (`densityRowsEnd`) instead of reading every
 row to throw most of them away — which under Hermes, with no JIT, was 4.1 of
 the 5.3 ms a picture took to build at the floor, on a desktop harness. And the
-loops that run once a particle (`appendBody`, `appendStream`, `appendCrescent`)
-are written out by hand rather than composed from the per-fragment helpers,
+loops that run once a fragment or crescent piece (`appendBody`, `appendStream`,
+`appendCrescent`) are written out by hand rather than composed from the per-fragment helpers,
 because on a device every call between worklets allocates: on the same kind of
 harness a full-density picture went from 18.9 to 5.9 ms to build, and one at the
 floor from 0.63 to 0.32. The helpers stay the definition — the headset is built
@@ -487,8 +487,10 @@ declared after every worklet it calls.
 ## A second renderer: the headset
 
 The headset draws the body in three dimensions on the GPU and the rest of him
-with CanvasKit, and it composes him from the same pieces the view does rather
-than from copies of them. So the main entry exports what that needs:
+with CanvasKit, and it composes him from the per-fragment helpers rather than
+from copies of them. The view's body and shell loops are hand-written copies of
+those same helpers, for speed, and `particle-loop.spec.ts` holds them to the
+helpers bit for bit. So the main entry exports what that needs:
 `analyseFrame` and its `HologramFrameState`, the per-fragment helpers
 (`readFragment`, `fragmentStrength`, `placeFragment`, `swirlFragment`,
 `latticeFragment`, `scanned`, `densityRowsEnd` and the rest), the body's and
