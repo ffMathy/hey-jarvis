@@ -64,6 +64,19 @@
           }
         }
       }
+    },
+    {
+      "includes": ["hologram/src/hologram-drawing.ts"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noExcessiveCognitiveComplexity": {
+              "level": "warn",
+              "options": { "maxAllowedComplexity": 129 }
+            }
+          }
+        }
+      }
     }
   ]
 }

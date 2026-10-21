@@ -95,7 +95,16 @@ drawing's half of the same work is that the scene's body and shell rows are
 kept in the order of the density share's key (`roundedInDensityOrder`), so the
 loop stops where the kept rows end (`densityRowsEnd`) instead of reading every
 row to throw most of them away — which under Hermes, with no JIT, was 4.1 of
-the 5.3 ms a picture took to build at the floor, on a desktop harness.
+the 5.3 ms a picture took to build at the floor, on a desktop harness. And the
+loops that run once a particle (`appendBody`, `appendStream`, `appendCrescent`)
+are written out by hand rather than composed from the per-fragment helpers,
+because on a device every call between worklets allocates: on the same kind of
+harness a full-density picture went from 18.9 to 5.9 ms to build, and one at the
+floor from 0.63 to 0.32. The helpers stay the definition — the headset is built
+from them — and `particle-loop.spec.ts` holds the loops to them bit for bit, so
+change a fragment in its helper first. That one file is allowed functions as
+complex as the body's loop in `biome.json`, since splitting the loop back up is
+the cost it exists to remove.
 
 `src/conversation/` is where the ElevenLabs SDK is called for real, and it is
 thinner still: `useJarvisSession` hands the main entry's session
@@ -482,6 +491,14 @@ room from.
 pins the picture itself: byte-identical frames for a given time and voice,
 containment inside the canvas, how much the sphere swells and brightens when
 spoken to, and that no state leaks between frames.
+
+`particle-loop.spec.ts` holds the hand-written particle loops to a frozen copy
+of the ones they replaced, composed from the helpers, in the pattern of
+`frame-clock.spec.ts`: every state the loops branch on, at densities from none
+to all, in the phone's scene and the watch's, at times from 0 to past where the
+clocks stop being floored by truncation (2^29 s), negative, NaN and infinite,
+built both ways into builders kept between frames, with `Object.is` on every
+number of every command. A change that moves one bit of one command fails there.
 
 What it cannot see is speed on a device. CanvasKit here rasterises on the CPU,
 under Bun's JavaScript engine with its JIT, and a phone or a watch does neither.
