@@ -625,8 +625,12 @@ sheet's ink — Screened onto it. In it, Skia's canvas (test id `hologram-flat`,
 on a view round it, since Skia's web canvas takes no test id) is a `TextureView`
 whatever `opaque` says, draws no background and calls `drawHologram` with
 `fadeOutside`; the GPU's canvas over it (`hologram-body`, `pointerEvents` none)
-is Screened onto it with `mixBlendMode: 'screen'`, and the GPU body is drawn
-with `fade: 1` and `alphaFromLight: 1`. The satellites are in Skia's picture, so
+is Screened onto it with `mixBlendMode: 'screen'` by a view round it, and the GPU
+body is drawn with `fade: 1` and `alphaFromLight: 1`. That view shows the canvas
+only while the layer (below) is `gpu`: a context that has gone leaves its canvas
+behind, which a browser paints, the next time the page is laid out, as its own
+lost-context placeholder — a white square, all there was of him once Screened —
+and which a device may go on showing as the last frame it was handed. The satellites are in Skia's picture, so
 they arrive and leave with him there, where the flat drawing's own fade never
 reached them. Without the GPU's canvas the tree is today's: Skia paints the
 background and fades him itself.

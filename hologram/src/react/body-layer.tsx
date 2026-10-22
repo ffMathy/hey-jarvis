@@ -1,6 +1,12 @@
 import { Component, type ReactNode, useCallback, useEffect, useState } from 'react';
 import { StyleSheet } from 'react-native';
-import { runOnJS, runOnUI, type SharedValue, useSharedValue } from 'react-native-reanimated';
+import Animated, {
+  runOnJS,
+  runOnUI,
+  type SharedValue,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
 import {
   createFlatCamera,
   createGpuBody,
@@ -276,14 +282,19 @@ export function useBodyLayer({ wanted, scene, isForeground, density, startingSha
     }
   };
 
+  // Shown only while the GPU draws the body. A context that has gone leaves its canvas behind, and
+  // a browser paints that canvas, the next time the page is laid out, as a placeholder of its own —
+  // a white square, which Screened over him is all there is to see — while a device's view can go
+  // on showing the last frame it was handed, a body frozen over Skia's moving one. Pending, there
+  // is nothing of him to show yet either way.
+  const shown = useAnimatedStyle(() => ({ opacity: layer.value === 'gpu' ? 1 : 0 }));
+
   const glView =
     glMounted && BodyGlView !== undefined ? (
       <GlViewBoundary onFailure={giveUp}>
-        <BodyGlView
-          testID="hologram-body"
-          style={[StyleSheet.absoluteFill, styles.body]}
-          onContextCreate={onContextCreate}
-        />
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.body, shown]}>
+          <BodyGlView testID="hologram-body" style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />
+        </Animated.View>
       </GlViewBoundary>
     ) : null;
 
