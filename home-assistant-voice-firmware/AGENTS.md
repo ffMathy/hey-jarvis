@@ -87,7 +87,7 @@ vad:
 ## Troubleshooting Wake Word Issues
 
 ### Wake Word Not Detecting
-1. **Check ESPHome Version**: Ensure you're using ESPHome 2024.7.0 or later
+1. **Check ESPHome Version**: The firmware needs ESPHome 2026.10.0 or later (see [ESPHome Version](#esphome-version))
 2. **Verify Model URLs**: All models must use full GitHub URLs (see above)
 3. **Enable VAD**: Voice Activity Detection must be configured
 4. **Check Logs**: Monitor ESPHome logs for "wake word detected" messages
@@ -128,6 +128,24 @@ The firmware uses ESPHome with Turborepo monorepo conventions. Configuration fil
 - `home-assistant-voice.elevenlabs.yaml`: ElevenLabs-optimized configuration
 - `home-assistant-voice.8mb.yaml`: Full-featured build for 8MB+ flash
 - `home-assistant-voice.factory.yaml`: Production build
+
+### ESPHome Version
+The firmware needs **ESPHome 2026.10.0 or later**. `esphome.min_version` in
+`home-assistant-voice.elevenlabs.yaml` enforces it, and no older release can build it.
+
+ESPHome 2026.10.0 (esphome/esphome#20072) keeps audio files in flash. As a result, every
+`media_player.files` id is now a `const audio::AudioFile *`, and that is also the type
+`play_file` takes. The `play_sound` script receives a file as a parameter, so its
+`sound_file` parameter is a pointer to const as well. ESPHome rejects a parameter type
+that contains a space, so `const` cannot be written out. The type is spelled
+`std::add_pointer_t<std::add_const_t<audio::AudioFile>>` instead. Do not loosen it back
+to `audio::AudioFile*`, which breaks every call site, and do not reach for `const_cast`.
+
+`initialize` (which `build` depends on) reads that `min_version`. It upgrades an
+installed ESPHome that is older and installs the latest release when none is present.
+Neither CI nor the setup scripts pin ESPHome, so a new release can break the build with
+no change in this repository, as 2026.10.0 did. When a fix relies on a newer ESPHome,
+raise `min_version` in the same change.
 
 ### Configuration Files
 Each YAML file configures:
