@@ -414,8 +414,13 @@ function JarvisHologramView({
 }: JarvisHologramProps) {
   const { listening, speaking, getVolume, getSpectrum } = voice;
   const isForeground = useIsForeground();
-  const drawnSize = Math.round(size * DRAWN_RESOLUTION);
-  // The GPU body's canvas in pixels, which on a device is the size it is laid out at: see `drawingBufferSide`.
+  // On the pixel grid. React Native rounds where a view's edges land to whole pixels, not its size,
+  // so a view a fraction of a pixel across comes out a pixel wider or narrower depending on where
+  // it is laid out — and expo-gl sizes the GPU body's canvas from the view, which would then be a
+  // pixel off Skia's square. A whole number of pixels is that number wherever it lands.
+  const drawnSize = PixelRatio.roundToNearestPixel(size * DRAWN_RESOLUTION);
+  // The GPU body's canvas in pixels, which on a device is the size it is laid out at, and whole by
+  // construction: see `drawingBufferSide`.
   const laidOutPixels = Math.round(drawnSize * PixelRatio.get());
   const scene = useMemo(() => createHologramScene(SCENE_SEED, particleCount), [particleCount]);
   // What `analyseFrame` reads of the scene, which is all the GPU's frame needs of it: the frame

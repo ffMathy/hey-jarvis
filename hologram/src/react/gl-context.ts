@@ -89,6 +89,8 @@ export const finishPreviousFrame: FinishPreviousFrame = (gl) => {
 /**
  * What the view is laid out at, in pixels: expo-gl sets `drawingBufferWidth` once, when it makes
  * the context, and never again as the view is resized, while the surface itself follows the view.
+ * The view's side is on the pixel grid (`drawnSize` in the view), so the surface is exactly that
+ * many pixels across wherever the view is laid out.
  */
 export const drawingBufferSide: DrawingBufferSide = (_gl, laidOutPixels) => {
   'worklet';
