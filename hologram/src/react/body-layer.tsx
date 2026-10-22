@@ -97,7 +97,7 @@ function haloTexelsFor(gl: BodyGl): number {
 function warmUp(gl: BodyGl, body: GpuBody, script: HologramScript) {
   const arrived = createFrameClockState();
   arrived.time = MATERIALISE_SECONDS;
-  const state = analyseFrame(hologramFrameOf(arrived, 0), 1, script);
+  const state = analyseFrame(hologramFrameOf(arrived), 1, script);
   const side = Math.max(1, gl.drawingBufferWidth);
   const screen = { width: side, height: side, squareX: side / 2, squareY: side / 2, squareSide: side };
   const camera = placeFlatCamera(createFlatCamera(), screen, state.radius, FRONT_VIEW, Number.POSITIVE_INFINITY);

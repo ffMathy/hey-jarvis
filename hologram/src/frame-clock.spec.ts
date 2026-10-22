@@ -52,7 +52,7 @@ interface FrameLoop {
   /** What the view does when the app comes back to the foreground. */
   backInFront(): void;
   /** What the picture hands `drawHologram`. */
-  picture(density: number): HologramFrame;
+  picture(): HologramFrame;
 }
 
 /**
@@ -101,7 +101,7 @@ function createReferenceLoop(quietestSpeech: number | undefined, speaking: boole
       frame.time = 0;
       frame.presence = 1;
     },
-    picture(density) {
+    picture() {
       const current = frame;
       const activity = current.activity;
       return {
@@ -118,7 +118,6 @@ function createReferenceLoop(quietestSpeech: number | undefined, speaking: boole
         hearing: current.hearing,
         hearingLevel: current.hearingLevel,
         presence: current.presence,
-        density,
       };
     },
   };
@@ -153,8 +152,8 @@ function createSharedLoop(quietestSpeech: number | undefined, speaking: boolean)
     backInFront() {
       restartArrival(state);
     },
-    picture(density) {
-      return hologramFrameOf(state, density);
+    picture() {
+      return hologramFrameOf(state);
     },
   };
 }
@@ -377,10 +376,9 @@ function runSideBySide(seed: number, frames: number, quietestSpeech: number | un
     if (sinceLastPictureMs > 1000) coverage.longSteps += 1;
     sinceLastPictureMs = 0;
 
-    const density = random();
-    expect({ frame: index, picture: shared.picture(density), state: shared.state }).toEqual({
+    expect({ frame: index, picture: shared.picture(), state: shared.state }).toEqual({
       frame: index,
-      picture: reference.picture(density),
+      picture: reference.picture(),
       state: reference.state,
     });
     noteCoverage(coverage, reference.state);
@@ -466,6 +464,6 @@ describe('restartArrival', () => {
     expect(state.level).toBe(level);
     expect(state.thinking).toBe(thinking);
     expect(state.hearing).toBe(hearing);
-    expect(hologramFrameOf(state, 1).appearance).toBe(0);
+    expect(hologramFrameOf(state).appearance).toBe(0);
   });
 });

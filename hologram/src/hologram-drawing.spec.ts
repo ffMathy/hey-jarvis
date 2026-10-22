@@ -72,7 +72,6 @@ function silence(time: number): HologramFrame {
     appearance: 1,
     thinking: 0,
     presence: 1,
-    density: 1,
   };
 }
 
@@ -90,7 +89,6 @@ function speech(time: number, level: number, bands: number[], burstAge = 10, bur
     appearance: 1,
     thinking: 0,
     presence: 1,
-    density: 1,
   };
 }
 
@@ -863,7 +861,7 @@ function framesFromTheClock(): HologramFrame[] {
     restartArrival(clock);
     for (let step = 0; step < 90; step++) {
       advanceFrameClock(clock, 1 / 60, 0, silent, false, false, leaving && step > 45, 0, 0);
-      const frame = hologramFrameOf(clock, 1);
+      const frame = hologramFrameOf(clock);
       frames.push({ ...frame, bands: [...frame.bands] });
     }
   }

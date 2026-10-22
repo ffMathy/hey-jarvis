@@ -226,16 +226,6 @@ export interface HologramFrame {
   /** 0–1 arrival progress, 1 = fully here: the view passes min(1, time / MATERIALISE_SECONDS). */
   appearance: number;
   /**
-   * 0–1: what share of the particles to draw at all.
-   *
-   * Not a look: it is what the phone can afford. The cost of a frame is the geometry in it, and
-   * how much geometry a given phone manages at the target frame rate is not knowable in advance —
-   * so the view measures what it is getting and moves this until it is right. See
-   * `density-control.ts`. Which particles are in is decided by a hash of each one's id, so the
-   * ones already drawn stay drawn as it rises and the swarm thickens rather than rearranging.
-   */
-  density: number;
-  /**
    * 0–1: how much of him is here at all. 1 unless he is leaving.
    *
    * Kept apart from {@link appearance} so the view can send him away without rewinding the clock
@@ -1867,7 +1857,6 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
   return {
     time,
     radius,
-    density: clamp01(frame.density),
     thinking,
     // Where the plane is, sweeping upward — y runs down the screen, so it starts positive. From
     // the clock alone, like everything else here, so it needs nothing remembered between frames.

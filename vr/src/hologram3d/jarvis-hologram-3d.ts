@@ -207,7 +207,7 @@ export async function createJarvisHologram3D(
     head.set(centreEye.position.x, centreEye.position.y, centreEye.position.z);
     front ??= frontTowards(centre, head);
     view = viewBasisTowards(centre, head, view);
-    const frame = clock.frame(diagnostics.density);
+    const frame = clock.frame();
     lastFrame = frame;
     const state = analyseFrame(frame, 1, scene);
     const distance = centre.distanceTo(head);

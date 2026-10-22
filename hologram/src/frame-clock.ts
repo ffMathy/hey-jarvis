@@ -155,7 +155,7 @@ export function restartArrival(state: FrameClockState): FrameClockState {
 }
 
 /**
- * What the drawing is to show now, with `density` of the particles.
+ * What the drawing is to show now.
  *
  * The level is judged against how loud this voice actually gets rather than against full scale: a
  * phone microphone in a quiet room never comes near 1, and the sphere answering the absolute
@@ -163,7 +163,7 @@ export function restartArrival(state: FrameClockState): FrameClockState {
  * materialisation plays once, from the start of the arrival. The bands are the clock's own array,
  * not a copy, so the frame is only good until the next step.
  */
-export function hologramFrameOf(state: FrameClockState, density: number): HologramFrame {
+export function hologramFrameOf(state: FrameClockState): HologramFrame {
   'worklet';
   const activity = state.activity;
   return {
@@ -180,6 +180,5 @@ export function hologramFrameOf(state: FrameClockState, density: number): Hologr
     hearing: state.hearing,
     hearingLevel: state.hearingLevel,
     presence: state.presence,
-    density,
   };
 }

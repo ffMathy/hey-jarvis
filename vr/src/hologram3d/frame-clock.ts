@@ -47,8 +47,8 @@ export interface FrameClock {
   arrive(): void;
   /** Moves the clock on by one frame's worth of time, reading the voice when a reading is due. */
   advance(deltaSeconds: number, drive: HologramDrive): void;
-  /** What the drawing is to show now, with `density` of the particles. */
-  frame(density: number): HologramFrame;
+  /** What the drawing is to show now. */
+  frame(): HologramFrame;
   /** Seconds since the last arrival. */
   readonly time: number;
   /** 0–1: how much of him is here; 0 once he has gone. */
@@ -146,8 +146,8 @@ export function createFrameClock(quietestSpeech: number = QUIETEST_SPEECH): Fram
         targetHearingLevel,
       );
     },
-    frame(density) {
-      return hologramFrameOf(state, density);
+    frame() {
+      return hologramFrameOf(state);
     },
     get time() {
       return state.time;

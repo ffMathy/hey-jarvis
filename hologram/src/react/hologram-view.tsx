@@ -431,7 +431,7 @@ function JarvisHologramView({
       view = tiltedView(tiltState.value, camera.value.basis);
     }
     const share = density.value.density;
-    const state = analyseFrame(hologramFrameOf(current, share), 1, script);
+    const state = analyseFrame(hologramFrameOf(current), 1, script);
     // Skia's square is the whole canvas, and so is the GPU's.
     const side = drawingBufferSide(drawing.gl, laidOutPixels);
     const screen = { width: side, height: side, squareX: side / 2, squareY: side / 2, squareSide: side };
@@ -576,7 +576,7 @@ function JarvisHologramView({
     // The level judged against how loud this voice actually gets, and the materialisation played
     // once from the start of the arrival: see `hologramFrameOf`. Everything but his body, which is
     // the GPU's, drawn unfaded and faded with the GPU's canvas as one group by `arrivalNow`.
-    drawHologram(canvas, drawnSize, hologramFrameOf(current, 0), pictureScene, resources, true);
+    drawHologram(canvas, drawnSize, hologramFrameOf(current), pictureScene, resources, true);
     // Round him, on his clock, so they go round as smoothly as he turns: see `satellite-drawing.ts`.
     // They are in the faded group, so they arrive and leave with him.
     const glyphPaths = drawSatellites(canvas, Skia, drawnSize, current.time, orbits.value, satelliteResources);

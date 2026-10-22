@@ -32,6 +32,8 @@ declare global {
     tiltTo?: (x: number, y: number, z: number) => void;
     /** How many gravity sensors are started: one while the tilt is listening, none otherwise. */
     startedGravitySensors?: () => number;
+    /** What lost the GPU body's context, kept to give it back with. */
+    bodyContextLoss?: WEBGL_lose_context;
   }
 }
 
@@ -686,9 +688,11 @@ test('takes his body away while the GPU’s context is lost, and draws it again 
   const canvas = page.getByTestId('hologram-body').locator('canvas');
   const lost = await canvas.evaluate((element) => {
     const gl = element instanceof HTMLCanvasElement ? element.getContext('webgl2') : null;
-    const extension = gl?.getExtension('WEBGL_lose_context');
+    const extension = gl?.getExtension('WEBGL_lose_context') ?? undefined;
     extension?.loseContext();
-    return extension !== null && extension !== undefined;
+    // Kept, since a context that has gone hands out no extensions: it is what gives it back.
+    window.bodyContextLoss = extension;
+    return extension !== undefined;
   });
   expect(lost).toBe(true);
 
@@ -714,10 +718,7 @@ test('takes his body away while the GPU’s context is lost, and draws it again 
 
   // The browser hands the context back, expo-gl hands it to the view again, and the body is set up
   // in it afresh and drawn from the next frame on.
-  await canvas.evaluate((element) => {
-    const gl = element instanceof HTMLCanvasElement ? element.getContext('webgl2') : null;
-    gl?.getExtension('WEBGL_lose_context')?.restoreContext();
-  });
+  await page.evaluate(() => window.bodyContextLoss?.restoreContext());
   await expect
     .poll(async () => {
       await stepFrames(page, 1);

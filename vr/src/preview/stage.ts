@@ -328,7 +328,7 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
       stepToMoment(request.phase, request.seconds, clock);
       return checkPort(
         renderer,
-        clock.frame(1),
+        clock.frame(),
         viewBasisTowards({ x: 0, y: 0, z: 0 }, eyeDirection(request.angle, request.elevation), null),
         request.eyeDistance,
       );

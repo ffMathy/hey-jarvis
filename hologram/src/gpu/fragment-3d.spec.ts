@@ -54,7 +54,6 @@ function stateAt(moment: Partial<HologramFrame>): HologramFrameState {
     burstStrength: 0,
     burstCount: 0,
     appearance: 1,
-    density: 1,
     presence: 1,
     thinking: 0,
     ...moment,
