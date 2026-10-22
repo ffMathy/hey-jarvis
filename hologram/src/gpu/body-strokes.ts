@@ -19,9 +19,9 @@ import { SPARKLE_REPEAT } from './sparkle';
 
 /**
  * The tiers' paints are the drawing's, from `hologram/src/hologram-drawing.ts`: the colours from
- * `createHologramResources` (bodyDimStroke, bodyMidStroke, bodyBrightStroke, bodyHotStroke, about
- * line 1675) and the widths and alphas `drawBody` and `drawBodyHighlights` set inline (about lines
- * 2569–2602). Widths are full widths in the drawing's unit; the shaders use halves.
+ * `createHologramResources` (bodyDimStroke, bodyMidStroke, bodyBrightStroke, bodyHotStroke) and the
+ * widths and alphas `drawBody` and `drawBodyHighlights` set inline. Widths are full widths in the
+ * drawing's unit; the shaders use halves.
  */
 export const STROKE_PAINTS = {
   dim: { colour: 0xcc6e2c, width: 0.014, alpha: 0.62 },

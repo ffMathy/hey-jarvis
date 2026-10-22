@@ -7,11 +7,10 @@ import { glslFloat } from './glsl';
  *
  * Each tier's halos on the phone are one path stroked once, so where a hundred of them overlap the
  * paint still lands on the pixel once. Stacked one by one they would add up to a flat saturated
- * orange coin over most of the disc — the critique measured 0.79–0.85 mean halo brightness that
- * way against the phone's 0.375. So the halos are drawn once a frame, before any eye, into a
- * small target with MAX blending: red, green and blue are how much of each spot the dim, mid and
- * bright halos cover, and the halos' light (`halo-light.ts`) turns that coverage into light the way
- * the phone's Screen blend does.
+ * orange coin over most of the disc, more than twice as bright on average as the phone's union. So
+ * the halos are drawn once a frame, before any eye, into a small target with MAX blending: red,
+ * green and blue are how much of each spot the dim, mid and bright halos cover, and the halos' light
+ * (`halo-light.ts`) turns that coverage into light the way the phone's Screen blend does.
  *
  * They are drawn in the view plane, as the phone's are, each where the centre eye sees its stroke:
  * scaled by the perspective of its depth, so the halo lies under the stroke. The pinned fragments
@@ -24,8 +23,8 @@ export const HALO_TEXELS = 512;
 
 /**
  * How wide each tier's halo is, in the drawing's unit, and how strong, before the voice's glow:
- * `drawBody` and `drawBodyHighlights` in `hologram/src/hologram-drawing.ts` (about lines
- * 2569–2595) pass these to `drawParticleHalo`, which multiplies the strength by HALO_RING_SHARE.
+ * `drawBody` and `drawBodyHighlights` in `hologram/src/hologram-drawing.ts` pass these to
+ * `drawParticleHalo`, which multiplies the strength by HALO_RING_SHARE.
  */
 export const HALO_PAINTS = {
   colour: 0xdc5c20,

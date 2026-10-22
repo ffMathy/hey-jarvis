@@ -163,7 +163,7 @@ timer, and holds its snapshot in React. Every rule of the conversation is the
 main entry's — see below.
 
 If you find yourself wanting a microphone, a permission prompt, a navigation
-decision or a screen layout in any of the three, it belongs in the app, not
+decision or a screen layout in any of the four, it belongs in the app, not
 here.
 
 ## One conversation, three devices
