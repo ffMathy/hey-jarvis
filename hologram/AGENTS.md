@@ -39,9 +39,9 @@ that rule.
 
 | Entry | Imports | What it holds |
 | --- | --- | --- |
-| `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the frame clock every device steps him on (`frame-clock.ts`) and the numbers it runs by (`frame-timing.ts`), the phone's tilt to look around (`tilt.ts`), the voice tracker, the simulated voices, sample mode's moods, the voices each mood hands the sphere (`sample-drive.ts`) and its readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the conversation itself: the session every device holds it in (`jarvis-session.ts`, its shapes in `session-contract.ts`), what its failures say (`failure-text.ts`), which of his lines it writes down (`written-caption.ts`), the headset's half-duplex fallback (`half-duplex.ts`), what a request touches and what sir points at (`affected-entities.ts`: an entity's shape, its limits and its parser), which agents a request has at work (`agent-activity.ts`) and the satellites they are drawn as (`agent-work.ts`, `satellite-drawing.ts`), the line every device keeps to the Jarvis server during a conversation (`jarvis-server-link.ts`), and the pieces it is built from — whether a conversation is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) |
+| `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the frame clock every device steps him on (`frame-clock.ts`) and the numbers it runs by (`frame-timing.ts`), the phone's tilt to look around (`tilt.ts`), which renderer draws his body and where each starts the density loop (`body-layer.ts`), the voice tracker, the simulated voices, sample mode's moods, the voices each mood hands the sphere (`sample-drive.ts`) and its readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the conversation itself: the session every device holds it in (`jarvis-session.ts`, its shapes in `session-contract.ts`), what its failures say (`failure-text.ts`), which of his lines it writes down (`written-caption.ts`), the headset's half-duplex fallback (`half-duplex.ts`), what a request touches and what sir points at (`affected-entities.ts`: an entity's shape, its limits and its parser), which agents a request has at work (`agent-activity.ts`) and the satellites they are drawn as (`agent-work.ts`, `satellite-drawing.ts`), the line every device keeps to the Jarvis server during a conversation (`jarvis-server-link.ts`), and the pieces it is built from — whether a conversation is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) |
 | `hologram/gpu` | types, its own siblings and the main entry's modules — the context is handed in | the body's fragment arithmetic in GLSL and the CPU reference it is held to (`fragment-glsl.ts`, `fragment-3d.ts`), the rows every pass reads and their vertices (`body-rows.ts`, `row-vertices.ts`), the halo union, the strokes and the halos' light as shader sources (`halo-union.ts`, `body-strokes.ts`, `halo-light.ts`), the sparkle's bytes (`sparkle.ts`), the view-basis maths (`view-basis.ts`), and the raw renderer the phone and the watch draw it with (`gpu-body.ts`) through the camera a flat screen needs (`flat-camera.ts`) |
-| `hologram/react` | React, Reanimated, Skia | the Skia canvas and the frame callback that steps the frame clock |
+| `hologram/react` | React, Reanimated, Skia, and expo-gl once its native module is found | the Skia canvas, the GPU body's canvas over it and everything that decides which draws the body (`body-layer.tsx`, `gl-context.ts`), the tilt's sensor (`tilt-sensor.tsx`), and the frame callback that steps the frame clock |
 | `hologram/react/sample` | React, Reanimated — not Skia | sample mode's clock-made voice, mood toast and frame-rate readout, shared by the phone's sample screen and the watch's waiting screen |
 | `hologram/conversation` | React, `@elevenlabs/client`, `@livekit/react-native`'s audio session, hologram's own native greeting player (`expo-audio` in a browser) — not Skia | `useJarvisSession`, which hands the main entry's session the SDK, the greeting's player and the call's audio, and holds its snapshot for a screen |
 
@@ -50,7 +50,8 @@ a screen open a conversation before CanvasKit has finished loading in a browser,
 which is the case `mobile/src/jarvis-hologram.web.tsx` exists to handle — and it
 is why the conversation hook is not simply part of `hologram/react`.
 `react.contract.spec.ts` holds it to that, as it does `./react/lifecycle` and
-`./react/sample`.
+`./react/sample`, and keeps all three clear of expo-gl too: only the view may
+load it, and only once it has found expo-gl's native module in the build.
 
 ## The rule that makes this package work
 
@@ -126,9 +127,10 @@ ways in Chromium, from the matrices three drew with, and fails on one byte
 apart. Here, `gpu-body.spec.ts` checks the passes, their targets and their
 blending against a context that writes its calls down.
 
-`src/react/` is where React, Reanimated and Skia are called for real, and it is
-deliberately thin: a Skia canvas, a frame callback, the voice read every 40 ms,
-and the tracker stepped on the UI thread. It takes a `JarvisVoice` and asks it
+`src/react/` is where React, Reanimated, Skia and expo-gl are called for real,
+and it is deliberately thin: a Skia canvas and the GPU body's canvas over it, a
+frame callback, the voice read every 40 ms, and the tracker stepped on the UI
+thread. It takes a `JarvisVoice` and asks it
 two questions — nothing in it knows where the audio came from, so the phone can
 hand it a WebRTC track and the watch its own microphone.
 
@@ -596,6 +598,97 @@ takes each app's own `Room` guard rather than importing `livekit-client`,
 because an `instanceof` is only true against the copy the app's SDK built the
 room from.
 
+## His body on the GPU, on a phone and a watch
+
+The view draws his body — the thousands of fragments and their halos — on the
+GPU by default, with `hologram/gpu`'s renderer through expo-gl, and leaves the
+rest of him to Skia's picture, drawn at density nought. That is what turns him
+in three dimensions with the tilt (below), and it takes the body's strokes off
+the picture, which was most of what every frame cost. Skia's body is the
+fallback, unchanged.
+
+**Where it is tried.** `body` on the view, `'gpu'` unless a screen says
+`'skia'`, fixed when the view mounts (`gpuBodyWanted`): on Android 10 or later
+with expo-gl's native module in the build, or in a browser with WebGL 2. Below
+Android 10 React Native ignores `mixBlendMode`, which is how the two canvases are
+composed, so those phones keep Skia's body. The apps force Skia's body with
+`body="skia"`: the phone's web build on `?flat` (the headset's name for its flat
+mode), and both apps' native builds when bundled with
+`EXPO_PUBLIC_HOLOGRAM_BODY=skia`.
+
+**One view tree, on a device and in a browser.** The outer view paints the
+background. Inside it the scaled view (`DRAWN_RESOLUTION`) is the group the two
+canvases are composed in: isolated, rendered into a texture of its own at the
+drawn size on Android (`renderToHardwareTextureAndroid`), faded by the arrival
+(`arrivalOf`, written each frame), and on a background that is not black — the
+sheet's ink — Screened onto it. In it, Skia's canvas (test id `hologram-flat`,
+on a view round it, since Skia's web canvas takes no test id) is a `TextureView`
+whatever `opaque` says, draws no background and calls `drawHologram` with
+`fadeOutside`; the GPU's canvas over it (`hologram-body`, `pointerEvents` none)
+is Screened onto it with `mixBlendMode: 'screen'`, and the GPU body is drawn
+with `fade: 1` and `alphaFromLight: 1`. The satellites are in Skia's picture, so
+they arrive and leave with him there, where the flat drawing's own fade never
+reached them. Without the GPU's canvas the tree is today's: Skia paints the
+background and fades him itself.
+
+**Which renderer, frame by frame** (`body-layer.tsx`). A layer of `pending`,
+`gpu` or `skia` (`BodyLayer`, in `body-layer.ts`) lives in a shared value:
+
+- **Pending** on mounting and on every return to the foreground, while the GL
+  view is there: the frame callback holds his clock at the start of the
+  arrival, where nothing of him shows, until the context is ready — then the
+  body is the GPU's — or `GPU_READY_TIMEOUT_MS` (800) has passed, and he arrives
+  with Skia's. A GPU body that comes up later is used at the next arrival.
+- **Skia's for the mount, and the GL view gone**, when the context is WebGL 1 or
+  OpenGL ES 2, `createGpuBody` throws (logged with its reason), the GL view
+  throws (an error boundary round it), or `getError` says the first frame on a
+  context went wrong — asked once, since it waits for the GPU.
+- **Skia's from the next frame** when the context goes while he is on screen:
+  expo-gl answers a call on a context that has gone with `undefined`, and a
+  browser's `webglcontextlost` drops it from `gl-context.web.ts`'s registry. The
+  GPU has the body back at the next arrival if a context has come back by then.
+- **The density loop starts again** whenever the body changes renderer, from
+  `bodyStartingShare`: Skia's where it always has, the GPU's at no less than
+  `GPU_STARTING_SHARE` (half). `createDensityControl` is a worklet for that.
+
+**Set up on the JS thread, drawn on the UI thread, and never both.** expo-gl
+lets the JS runtime and the UI runtime share a context, and records the calls of
+both into one batch with no lock, so a GL call from each at once is a native
+crash rather than an exception. `onContextCreate` runs on the JS thread: it
+checks for WebGL 2, calls `createGpuBody` — its compile and link checks wait for
+the GPU, which is fine there — draws one frame at density nought so the driver
+finishes compiling while he is still pending, and calls `endFrameEXP`. Then it
+hands the body, plain data with `{ id }` handles, to the UI thread through a
+shared value with the context's id, and never calls GL again; nothing is deleted
+by hand, the objects go with the context. The frame callback finds the context
+by id (`getWorkletContext`, which needs `enableExperimentalWorkletSupport` and
+Reanimated's `_WORKLET_RUNTIME`) and draws on the clock it has just stepped, so
+the body and the picture are of the same moment. In a browser everything is on
+the page's thread, and `gl-context.web.ts` keeps the contexts in a map of its own;
+`gl-contract.ts` types what the two halves of `gl-context` hand the body layer, so
+neither can drift from the other.
+
+**`flushEXP` is the back-pressure.** expo-gl queues each frame's calls without
+limit, and its GL thread runs every queued frame before it swaps once, so a GPU
+that falls behind would be handed more and more frames while the UI thread went
+on counting sixty a second. Each GPU frame starts with `flushEXP`, which blocks
+until the GL thread has run the previous one, so the frame rate the density loop
+measures is the rate frames reach the screen; that wait is the GPU's and is not
+counted as build time. What is counted is the picture plus issuing the GPU's
+frame — well under a millisecond — so the build time always says there is room
+and the frame rate's ceiling is what holds the share down. A browser throttles
+its frames itself and needs none.
+
+The phone's and the watch's sample readouts end with `gpu` or `2d`
+(`describeFrameRate`), from the view's `bodyLayer`.
+
+What none of this has been seen doing on a device: expo-gl's worklet support on
+the UI runtime with this Reanimated, Android composing the two `TextureView`s
+with Screen in the same frame, how long `flushEXP` waits on a phone's or a
+watch's GPU, how long the pending hold lasts on a first launch, and whether the
+assistant's window loses its context between summonings. The phone's web build
+in Chromium exercises the rest.
+
 ## Tilt to look around, on the phone
 
 `tilt.ts` turns the phone's gravity — Reanimated's GRAVITY sensor, read every
@@ -629,6 +722,13 @@ it allocates nothing, and the front is written into the state's own array.
   towards the eye rather than the eye backing off with him. The camera draws an eye
   `ORTHOGRAPHIC_EYE_DISTANCE` radii off or further flat: float32 depth cannot hold
   one that far, and the fade back out ends on a remainder that puts it there.
+
+The view steps it only while the GPU draws the body and its `tilt` prop is set,
+from `TiltSensor` (`tilt-sensor.tsx`): Reanimated's GRAVITY sensor at
+`TILT_SENSOR_INTERVAL_MS`, mounted only while the app is in front and the GPU
+body's view is there, since nothing else unregisters it. Its front, taken as the
+eye's direction in the screen's own frame, gives the view basis
+(`viewBasisTowards`), and `tiltEyeSquares` goes straight to `placeFlatCamera`.
 
 `tilt.spec.ts` holds it to that on gestures stepped at 60 and 120 frames a second.
 How it feels — the sign of each gesture, the gain, the deadband — is a device's to
