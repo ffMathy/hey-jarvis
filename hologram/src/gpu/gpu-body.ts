@@ -187,13 +187,15 @@ export interface GpuBody {
   rowCount: number;
   indexCount: number;
   indexType: number;
+  /** Written every frame, so a frame allocates as little as it can. */
   fragmentUniforms: FragmentUniforms;
   haloPlacement: HaloUnionPlacement;
   shares: [number, number, number];
   haloUnion: LinkedProgram;
   strokes: LinkedProgram;
   haloLight: LinkedProgram;
-  rowArray: WebGLVertexArrayObject;
+  /** Each program's vertex array: the halo union's and the strokes' over the same row buffers. */
+  haloUnionArray: WebGLVertexArrayObject;
   strokeArray: WebGLVertexArrayObject;
   squareArray: WebGLVertexArrayObject;
   buffers: WebGLBuffer[];
@@ -334,7 +336,7 @@ export function createGpuBody(gl: HologramGl, scene: HologramScene, options: Gpu
   rowAttributes.push(['corner', arrayBuffer(gl, buffers, ARRAY_BUFFER, vertices.corner), 2]);
   const rowIndex = arrayBuffer(gl, buffers, ELEMENT_ARRAY_BUFFER, vertices.index);
   // One vertex array per program over the same buffers: the linker numbers each program's attributes.
-  const rowArray = vertexArray(gl, haloUnion.program, rowAttributes, rowIndex);
+  const haloUnionArray = vertexArray(gl, haloUnion.program, rowAttributes, rowIndex);
   const strokeArray = vertexArray(gl, strokes.program, rowAttributes, rowIndex);
   const squareCorners = arrayBuffer(gl, buffers, ARRAY_BUFFER, SQUARE_CORNERS);
   const squareIndex = arrayBuffer(gl, buffers, ELEMENT_ARRAY_BUFFER, SQUARE_TRIANGLES);
@@ -376,7 +378,7 @@ export function createGpuBody(gl: HologramGl, scene: HologramScene, options: Gpu
     haloUnion,
     strokes,
     haloLight,
-    rowArray,
+    haloUnionArray,
     strokeArray,
     squareArray,
     buffers,
@@ -423,7 +425,7 @@ function drawHaloUnion(gl: HologramGl, body: GpuBody, radiusShare: number) {
   setFragmentUniforms(gl, program, body.fragmentUniforms);
   setUniform(gl, program.uniforms.texelUnits, placement.texelUnits);
   setUniform(gl, program.uniforms.radiusFraction, placement.radiusFraction);
-  gl.bindVertexArray(body.rowArray);
+  gl.bindVertexArray(body.haloUnionArray);
   gl.drawElements(TRIANGLES, body.indexCount, body.indexType, 0);
 }
 
@@ -503,7 +505,7 @@ export function drawGpuBody(gl: HologramGl, body: GpuBody, frame: GpuBodyFrame) 
 /** Lets go of everything `createGpuBody` made. */
 export function disposeGpuBody(gl: HologramGl, body: GpuBody) {
   for (const buffer of body.buffers) gl.deleteBuffer(buffer);
-  gl.deleteVertexArray(body.rowArray);
+  gl.deleteVertexArray(body.haloUnionArray);
   gl.deleteVertexArray(body.strokeArray);
   gl.deleteVertexArray(body.squareArray);
   gl.deleteProgram(body.haloUnion.program);

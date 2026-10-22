@@ -1,9 +1,10 @@
+import type { Vector3Like } from 'hologram/gpu';
+
 /**
  * The head, as the room hands it to the hologram: its pose, and how near it may come to him.
  *
- * Headset-only, which is why it stayed here when the view-basis maths moved to `hologram/gpu`.
+ * Headset-only, so it is here rather than with the view-basis maths in `hologram/gpu`.
  */
-import type { Vector3Like } from 'hologram/gpu';
 
 /** A pose in the session's reference space. */
 export interface PoseLike {
