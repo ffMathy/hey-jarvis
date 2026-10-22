@@ -77,6 +77,20 @@ createJarvisSession({ ...deps, waitsForGreetingBeforeDialling: false });
 createJarvisSession(deps);
 ```
 
+### Replace old code, never keep it behind a switch
+
+**NEVER keep the old implementation behind a flag, prop, query parameter, environment variable or fallback when you replace it.** Delete it in the same change. A kept-around path is code nobody runs, that every later change still has to carry and test, and it quietly becomes the thing that ships when the new path hiccups.
+
+```typescript
+// ❌ BAD - the 2D body survives behind three switches "just in case"
+<JarvisHologram body={process.env.EXPO_PUBLIC_HOLOGRAM_BODY === 'skia' || query.has('flat') ? 'skia' : 'gpu'} />
+
+// ✅ GOOD - the GPU body is the body; the 2D one is gone
+<JarvisHologram />
+```
+
+If the new code cannot run somewhere, say so and decide what that platform gets — do not keep the old code as a silent fallback.
+
 ## DRY (Don't Repeat Yourself)
 
 Extract duplication when you see:
