@@ -4,8 +4,9 @@
  * Kept apart from the package's main entry on purpose. That entry imports nothing from outside the
  * package but types and Skia's plain enum values, which is what lets the drawing be run headlessly
  * in the tests and under CanvasKit in a browser; this one needs React, Reanimated and Skia for
- * real. Importing `hologram` gets you the design and the voice tracking with no framework attached;
- * importing `hologram/react` gets you something you can render.
+ * real, and expo-gl for the GPU body: on a device only once its native module is found, and in a
+ * browser with the lazily imported view. Importing `hologram` gets you the design and the voice
+ * tracking with no framework attached; importing `hologram/react` gets you something you can render.
  *
  * **In a browser, importing this at startup is a bug.** Everything here reaches
  * `@shopify/react-native-skia`, which cannot be touched before CanvasKit's WebAssembly has loaded;
