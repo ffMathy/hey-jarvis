@@ -15,7 +15,7 @@ import {
   readShellFragment,
   scanned,
   swirlFragment,
-} from 'hologram';
+} from '../hologram-drawing';
 
 /**
  * One body or stream fragment in three dimensions: the phone's per-fragment arithmetic, composed
@@ -25,7 +25,7 @@ import {
  * and the unit tests hold it to the phone: seen from the front it lands every fragment exactly
  * where `appendBody` and `appendStream` put it. The browser tests then hold the GPU to this.
  *
- * The mapping, from `research/hologram.md` §6:
+ * The mapping:
  * - The body turns about the vertical in its own frame — x right, y up, z towards where the user
  *   stood when he arrived — as `placeFragment` turns it about the screen's vertical.
  * - Everything the phone does in the plane of the screen happens in the plane through his centre
@@ -101,6 +101,7 @@ export function vortexScale(x: number, y: number, id: number, state: HologramFra
 
 /** The lattice's spacing this frame, as `latticeTarget` breathes it. */
 export function latticeSpacing(state: HologramFrameState) {
+  'worklet';
   return LATTICE_SPACING * (1 + LATTICE_BREATH * state.hearingLevel * Math.sin(state.time * LATTICE_PULSE));
 }
 

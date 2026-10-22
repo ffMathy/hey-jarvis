@@ -455,8 +455,10 @@ const RING_TICK_STRIDE = 2;
 const EPOCH_STRIDE = 10;
 const COMET_STRIDE = 5;
 /** Side of the tiled sparkle texture in texels, and how wide a texel is on the sphere: a stroke spans about two. */
-const SPARKLE_TEXTURE_TEXELS = 64;
-const SPARKLE_TEXEL_SIZE = 0.018;
+export const SPARKLE_TEXTURE_TEXELS = 64;
+export const SPARKLE_TEXEL_SIZE = 0.018;
+/** What the scene's texture seed is mixed with to seed the sparkle, here and on the GPU (`gpu/sparkle.ts`). */
+export const SPARKLE_SEED_MIX = 0x2545f491;
 
 /**
  * The limb bloom and the limb ridge are rings of light round the edge of the ball, and their
@@ -1357,7 +1359,7 @@ function appendEllipse(
  * Premultiplied grey RGBA. Each texel comes from an integer hash of its index, which is far
  * cheaper than the scene's generator on an interpreter.
  */
-function buildSparkleTexture(seed: number) {
+export function sparklePixels(seed: number) {
   const texels = SPARKLE_TEXTURE_TEXELS;
   const pixels = new Uint8Array(texels * texels * 4);
   for (let texel = 0; texel < texels * texels; texel++) {
@@ -1623,7 +1625,7 @@ export function createHologramResources(Skia: SkiaApiType, scene: HologramScene)
     ),
   );
 
-  // The body's strokes vary in brightness along their length (see buildSparkleTexture).
+  // The body's strokes vary in brightness along their length (see sparklePixels).
   const sparkleImage = Skia.Image.MakeImage(
     {
       width: SPARKLE_TEXTURE_TEXELS,
@@ -1631,7 +1633,7 @@ export function createHologramResources(Skia: SkiaApiType, scene: HologramScene)
       alphaType: AlphaType.Premul,
       colorType: ColorType.RGBA_8888,
     },
-    Skia.Data.fromBytes(buildSparkleTexture(scene.textureSeed ^ 0x2545f491)),
+    Skia.Data.fromBytes(sparklePixels(scene.textureSeed ^ SPARKLE_SEED_MIX)),
     SPARKLE_TEXTURE_TEXELS * 4,
   );
   if (!sparkleImage) throw new Error('The hologram could not make its sparkle texture');
@@ -2503,7 +2505,7 @@ export function latticeFragment(x: number, y: number, id: number, state: Hologra
  * latticeTarget, scanned and fragmentTier do, and for a dash what appendGlyph and nextCommand do, in
  * the same order and with the same floating-point operations on the same operands, so every command it
  * writes is bit for bit the one the helpers would have written. The helpers stay as they were: the
- * headset composes the body from them (`vr/src/hologram3d/fragment-3d.ts`), and `particle-loop.spec.ts`
+ * GPU's body is composed from them (`gpu/fragment-3d.ts`), and `particle-loop.spec.ts`
  * holds this loop to a frozen copy of the one composed from them, with `Object.is` on every number of
  * every command, over a grid of times, voices, arrivals, densities and both scene sizes. A change to
  * what a fragment does belongs in its helper first and here second, and the spec fails until both agree.

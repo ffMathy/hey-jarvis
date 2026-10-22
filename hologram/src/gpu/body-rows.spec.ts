@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'bun:test';
+import { SCENE_SEED } from '../frame-timing';
 import {
   BODY_STRIDE,
   createHologramScene,
   densityKey,
   densityRowsEnd,
   PARTICLE_COUNT,
-  SCENE_SEED,
   STREAM_STRIDE,
   THINNED_TABLES,
-} from 'hologram';
+} from '../hologram-drawing';
 import { buildHologramRows } from './body-rows';
 
 const scene = createHologramScene(SCENE_SEED);

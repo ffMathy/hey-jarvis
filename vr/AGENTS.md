@@ -136,7 +136,8 @@ src/satellites/            seeing him work: where each satellite is round him (t
 src/wake/                  "Hey Jarvis": the microphone, the worklet, the onnxruntime-web worker, the watchdog
 src/room/                  where he stands: room snapshots, the occupancy grid, placement and its worker
 src/conversation/          hologram's session with the headset's parts: the greeting, his track, his voice from where he stands, orphaned audio
-src/hologram3d/            Jarvis in 3D: the frame clock, the body's strokes, the halo union, CanvasKit
+src/hologram3d/            Jarvis in 3D: the frame clock, the body's strokes and the halo union as three.js
+                           draws hologram/gpu's passes, CanvasKit
 src/preview/               the preview page
 public/models/             the openWakeWord models and their LICENCE.txt (committed)
 public/vendor/             canvaskit.wasm and onnxruntime-web's wasm (gitignored; see initialize)
@@ -903,7 +904,10 @@ Per frame, on the CPU:
    there is a real GPU and its CPU rasteriser otherwise: on SwiftShader the GPU
    backend took about a second a frame and the CPU one under a tenth of that.
 
-On the GPU:
+On the GPU, in passes whose shaders, rows and arithmetic are `hologram/gpu`'s —
+shared with the phone and the watch, which draw them with no three.js (see
+`../hologram/AGENTS.md`) — and which the files here wrap in three.js's
+materials, targets and meshes:
 
 3. **The halo union** (`halo-union.ts`), once a frame, before either eye: every lit
    fragment's halo as a capsule, MAX-blended into a 1024×512 byte target (R/G/B =
@@ -922,27 +926,29 @@ On the GPU:
    antialiased, never under 1.2 px) where each fragment really is, with the
    drawing's tier paints and sparkle.
 
-The halo union and the strokes draw one shared geometry (`row-geometry.ts`): a
-plain indexed list of every row's quad, four vertices and two triangles a row,
-each vertex carrying its whole row. It used to be 10,168 instances of a
-four-vertex quad, which is what Arm's and Qualcomm's guidance warns against
-(an instance that small leaves most of each vertex wave idle); on SwiftShader
+The halo union and the strokes draw one shared geometry (`row-geometry.ts`, over
+`hologram/gpu`'s `buildRowVertices`): a plain indexed list of every row's quad,
+four vertices and two triangles a row, each vertex carrying its whole row. It
+used to be 10,168 instances of a four-vertex quad, which is what Arm's and
+Qualcomm's guidance warns against (an instance that small leaves most of each
+vertex wave idle); on SwiftShader
 the plain list made the halo union about four times as fast and each eye's
 strokes about three, and it draws the same triangles in the same order, so the
 preview's stills came out the same to the byte. The price is memory: each row is
 held four times, 3 MB rather than 0.7.
 
-Where each fragment is comes from `fragment-3d.ts`: the phone's per-fragment
-helpers from `hologram`, with the body turning about the vertical in its own frame
-(its front faces where the user stood when he arrived) and everything the phone
-does on screen — the wander, the vortex, the lattice, the inner layer's turn, a
-glyph's direction — done in the plane through his centre that faces the centre
-eye. Depth is kept: the vortex scales it, the lattice snaps it into layers where
-the centre eye sees them line up, the thinking plane is level with the floor.
-`fragment-glsl.ts` is that file, line for line, in GLSL; each draw evaluates it in
-its vertex shader (three 0.186 has no transform feedback, and a float state pass
-needs an extension a Quest may not have). The unit tests hold `fragment-3d.ts` to
-the phone; `hologram-port.spec.ts` holds the GLSL to `fragment-3d.ts`.
+Where each fragment is comes from `hologram/gpu`'s `fragment-3d.ts`: the phone's
+per-fragment helpers from `hologram`, with the body turning about the vertical in
+its own frame (its front faces where the user stood when he arrived) and
+everything the phone does on screen — the wander, the vortex, the lattice, the
+inner layer's turn, a glyph's direction — done in the plane through his centre
+that faces the centre eye. Depth is kept: the vortex scales it, the lattice snaps
+it into layers where the centre eye sees them line up, the thinking plane is
+level with the floor. Its `fragment-glsl.ts` is that file, line for line, in
+GLSL; each draw evaluates it in its vertex shader (three 0.186 has no transform
+feedback, and a float state pass needs an extension a Quest may not have). The
+unit tests hold `fragment-3d.ts` to the phone; `hologram-port.spec.ts` holds the
+GLSL to `fragment-3d.ts`.
 
 The renderer takes four samples a pixel (`xr/xr-stage.ts`), for the room's plain
 triangles; fragments are still shaded once a pixel, so none of these passes looks
@@ -957,7 +963,7 @@ be pure added light, which washes out in a bright room, and max(rgb) is Screen
 against the room. It is to be tuned on a headset. Every part is drawn unfaded and
 the fade is the blend's constant colour, so arriving, leaving and the close-range
 guard fade him as one layer, exactly as the phone's saveLayer does. He fades out
-when the head comes within 2.5R, and is gone inside 1.5R. R is 0.22 m at rest
+when the head comes within 2.5R, and is gone inside 1.5R (`head.ts`). R is 0.22 m at rest
 (`dimensions.ts`); placement may squeeze him to 0.13 m.
 
 Density is 1, with a backstop (`density-backstop.ts`) that halves it when frames

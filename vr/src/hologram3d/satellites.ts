@@ -1,5 +1,13 @@
 import { ASKING_PULSE_SECONDS, MAX_SATELLITES } from 'hologram';
 import {
+  glslColour,
+  glslFloat,
+  HALO_PAINTS,
+  STROKE_PAINTS,
+  THINNEST_STROKE_PIXELS,
+  type Vector3Like,
+} from 'hologram/gpu';
+import {
   AddEquation,
   BufferAttribute,
   CustomBlending,
@@ -15,12 +23,8 @@ import {
   Vector3,
 } from 'three';
 import type { SatelliteSpot } from '../satellites/satellite-spots';
-import { STROKE_PAINTS, THINNEST_STROKE_PIXELS } from './body-strokes';
 import { CORONA_RENDER_ORDER } from './corona';
-import { glslColour, glslFloat } from './fragment-glsl';
 import { createGlyphAtlas, GLYPH_ATLAS_REACH, type GlyphAtlas } from './glyph-atlas';
-import { HALO_PAINTS } from './halo-union';
-import type { Vector3Like } from './view-basis';
 import { ALPHA_FROM_LIGHT } from './view-plane-quad';
 
 /**

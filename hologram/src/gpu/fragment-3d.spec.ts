@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { MATERIALISE_SECONDS, SCENE_SEED } from '../frame-timing';
 import {
   analyseFrame,
   BODY_ID_FIELD,
@@ -12,16 +13,14 @@ import {
   LATTICE_STROKE_SHRINK,
   latticeFragment,
   latticeTarget,
-  MATERIALISE_SECONDS,
   placeFragment,
   readFragment,
   readShellFragment,
-  SCENE_SEED,
   STREAM_STRIDE,
   scanned,
   swirlFragment,
-  VOICE_BAND_COUNT,
-} from 'hologram';
+} from '../hologram-drawing';
+import { VOICE_BAND_COUNT } from '../voice-levels';
 import {
   FRONT_VIEW,
   type PlacedFragment,

@@ -7,6 +7,18 @@ import {
   STREAM_STRIDE,
 } from 'hologram';
 import {
+  buildHologramRows,
+  createFragmentUniforms,
+  FRAGMENT_GLSL,
+  type PlacedFragment,
+  placeBodyFragment,
+  placeStreamFragment,
+  ROW_ATTRIBUTES,
+  type Vector3Tuple,
+  type ViewBasis,
+  writeFragmentUniforms,
+} from 'hologram/gpu';
+import {
   BufferGeometry,
   FloatType,
   GLSL3,
@@ -19,16 +31,7 @@ import {
   type WebGLRenderer,
   WebGLRenderTarget,
 } from 'three';
-import { buildHologramRows } from '../hologram3d/body-rows';
-import {
-  type PlacedFragment,
-  placeBodyFragment,
-  placeStreamFragment,
-  type Vector3Tuple,
-  type ViewBasis,
-} from '../hologram3d/fragment-3d';
-import { createFragmentUniforms, FRAGMENT_GLSL, writeFragmentUniforms } from '../hologram3d/fragment-glsl';
-import { createRowGeometry, ROW_ATTRIBUTES } from '../hologram3d/row-geometry';
+import { createRowGeometry } from '../hologram3d/row-geometry';
 import type { PortCheck } from './preview-hook';
 
 /** Texels across the readback: every row gets one. */
@@ -94,9 +97,10 @@ function referenceRows(
 }
 
 /**
- * Holds the GPU port to the CPU reference: runs `fragment-glsl.ts` for every row, reads what it
- * placed back out of a float target, and compares it with what `fragment-3d.ts` places for the same
- * frame and view. The browser tests call it through the preview's hook; nothing in the app does.
+ * Holds the GPU port to the CPU reference: runs `hologram/gpu`'s `fragment-glsl.ts` for every row,
+ * reads what it placed back out of a float target, and compares it with what its `fragment-3d.ts`
+ * places for the same frame and view. The browser tests call it through the preview's hook;
+ * nothing in the app does.
  */
 export function checkPort(
   renderer: WebGLRenderer,

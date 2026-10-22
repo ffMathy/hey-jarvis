@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { PULSE_SECONDS, SCAN_HALF_WIDTH, SCAN_SECONDS } from 'hologram';
+import { glslColour, glslFloat, HALO_PAINTS, STROKE_PAINTS, THINNEST_STROKE_PIXELS } from 'hologram/gpu';
 import {
   CustomBlending,
   InstancedBufferAttribute,
@@ -7,7 +8,6 @@ import {
   OneMinusSrcAlphaFactor,
   OneMinusSrcColorFactor,
 } from 'three';
-import { STROKE_PAINTS, THINNEST_STROKE_PIXELS } from './body-strokes';
 import {
   bloomRadiusAt,
   CORONA_RADIUS_METRES,
@@ -20,8 +20,6 @@ import {
   pulseAt,
   scanHeightAt,
 } from './corona';
-import { glslColour, glslFloat } from './fragment-glsl';
-import { HALO_PAINTS } from './halo-union';
 import { ALPHA_FROM_LIGHT } from './view-plane-quad';
 
 function spot(x: number, level = 1): CoronaSpot {

@@ -6,29 +6,32 @@ import {
   SCENE_SEED,
   SPHERE_FRACTION,
 } from 'hologram';
+import {
+  bodyFrame,
+  buildHologramRows,
+  createFragmentUniforms,
+  frontTowards,
+  type HaloUnionPlacement,
+  haloUnionPlacement,
+  inFrame,
+  type Vector3Like,
+  type Vector3Tuple,
+  type ViewBasis,
+  viewBasisTowards,
+  writeFragmentUniforms,
+} from 'hologram/gpu';
 import { Group, Matrix4, type Object3D, Vector3, type WebGLRenderer } from 'three';
-import { buildHologramRows } from './body-rows';
 import { createBodyStrokes } from './body-strokes';
 import { loadPainter, type Painter } from './canvaskit';
 import { createDensityBackstop } from './density-backstop';
 import { HOLOGRAM_RADIUS_METRES } from './dimensions';
 import { createFlatHologram, DRAWING_SIZE_PIXELS, type DrawingSurfaceKind } from './flat-hologram';
-import type { Vector3Tuple, ViewBasis } from './fragment-3d';
-import { createFragmentUniforms, writeFragmentUniforms } from './fragment-glsl';
 import { createFrameClock, type HologramDrive } from './frame-clock';
-import { createHaloUnion, HALO_TEXELS } from './halo-union';
+import { createHaloUnion } from './halo-union';
+import { closeRangeFade, type PoseLike } from './head';
 import { setLayerFade } from './layer-blending';
 import { createRowGeometry } from './row-geometry';
 import { createSparkleTexture } from './sparkle-texture';
-import {
-  bodyFrame,
-  closeRangeFade,
-  frontTowards,
-  inFrame,
-  type PoseLike,
-  type Vector3Like,
-  viewBasisTowards,
-} from './view-basis';
 import { createViewPlaneQuad } from './view-plane-quad';
 
 /**
@@ -135,6 +138,7 @@ export async function createJarvisHologram3D(
   const sparkle = createSparkleTexture(scene.textureSeed);
   const strokes = createBodyStrokes(rowGeometry, fragmentUniforms, sparkle);
   const halo = createHaloUnion(rowGeometry, fragmentUniforms);
+  const haloPlacement: HaloUnionPlacement = { texelUnits: 0, radiusFraction: 0 };
   const quad = createViewPlaneQuad(1);
   const clock = createFrameClock();
   const backstop = options.densityBackstop === false ? null : createDensityBackstop();
@@ -196,8 +200,9 @@ export async function createJarvisHologram3D(
       diagnostics.density,
       distance / drawnRadius,
     );
-    halo.uniforms.radiusFraction.value = state.radius;
-    halo.uniforms.texelUnits.value = 1 / (state.radius * HALO_TEXELS);
+    const placement = haloUnionPlacement(state.radius, haloPlacement);
+    halo.uniforms.radiusFraction.value = placement.radiusFraction;
+    halo.uniforms.texelUnits.value = placement.texelUnits;
     halo.render(renderer);
     quad.showHalo(halo.texture, state.glowGain);
     strokes.uniforms.unitMetres.value = drawnRadius;

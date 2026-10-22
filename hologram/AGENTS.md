@@ -3,15 +3,17 @@
 Jarvis himself: the sphere, the voice tracking that drives it, and the
 conversation with the agent doing the talking. Shared by every app that *is*
 him — `mobile/` and `watch/`, and `vr/`, the Quest headset app that stands
-him in your room, which uses only the main entry and the assets.
+him in your room, which uses the main entry, `hologram/gpu` and the assets.
 
 > **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (Turborepo commands, commit standards, 1Password, etc.)
 
-## Three entry points
+## Four entry points
 
 ```
 hologram               the design, the voice tracking, the ElevenLabs credentials, and the
                        conversation's framework-free parts — no framework
+hologram/gpu           his body on the GPU: the headset's passes and a renderer over a bare
+                       WebGL 2 context — no framework either
 hologram/react         the same sphere as a React Native view you can render
                        (plus ./react/lifecycle and ./react/sample, which are Skia-free)
 hologram/conversation  the hook a React Native screen holds its conversation with
@@ -22,7 +24,8 @@ hologram/assets/*      the files themselves (the greeting, the icons), for a bun
 The split is the whole architecture of this package, and the rule below is why
 it exists. Reach for `hologram` when you want to know what Jarvis looks like,
 how loud someone is, or what it takes to reach his agent; `hologram/react` when
-you want him on a screen; `hologram/conversation` when you want him talking.
+you want him on a screen; `hologram/conversation` when you want him talking;
+`hologram/gpu` when you want his body drawn by a GPU rather than by Skia.
 
 **Why the ElevenLabs half is in here rather than in a package of its own.** It
 was briefly its own workspace package, and that was one package too many: the
@@ -37,6 +40,7 @@ that rule.
 | Entry | Imports | What it holds |
 | --- | --- | --- |
 | `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the frame clock every device steps him on (`frame-clock.ts`) and the numbers it runs by (`frame-timing.ts`), the voice tracker, the simulated voices, sample mode's moods, the voices each mood hands the sphere (`sample-drive.ts`) and its readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the conversation itself: the session every device holds it in (`jarvis-session.ts`, its shapes in `session-contract.ts`), what its failures say (`failure-text.ts`), which of his lines it writes down (`written-caption.ts`), the headset's half-duplex fallback (`half-duplex.ts`), what a request touches and what sir points at (`affected-entities.ts`: an entity's shape, its limits and its parser), which agents a request has at work (`agent-activity.ts`) and the satellites they are drawn as (`agent-work.ts`, `satellite-drawing.ts`), the line every device keeps to the Jarvis server during a conversation (`jarvis-server-link.ts`), and the pieces it is built from — whether a conversation is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) |
+| `hologram/gpu` | types, its own siblings and the main entry's modules — the context is handed in | the body's fragment arithmetic in GLSL and the CPU reference it is held to (`fragment-glsl.ts`, `fragment-3d.ts`), the rows every pass reads and their vertices (`body-rows.ts`, `row-vertices.ts`), the halo union, the strokes and the halos' light as shader sources (`halo-union.ts`, `body-strokes.ts`, `halo-light.ts`), the sparkle's bytes (`sparkle.ts`), the view-basis maths (`view-basis.ts`), and the raw renderer the phone and the watch draw it with (`gpu-body.ts`) through the camera a flat screen needs (`flat-camera.ts`) |
 | `hologram/react` | React, Reanimated, Skia | the Skia canvas and the frame callback that steps the frame clock |
 | `hologram/react/sample` | React, Reanimated — not Skia | sample mode's clock-made voice, mood toast and frame-rate readout, shared by the phone's sample screen and the watch's waiting screen |
 | `hologram/conversation` | React, `@elevenlabs/client`, `@livekit/react-native`'s audio session, hologram's own native greeting player (`expo-audio` in a browser) — not Skia | `useJarvisSession`, which hands the main entry's session the SDK, the greeting's player and the call's audio, and holds its snapshot for a screen |
@@ -75,6 +79,33 @@ with no account, no credential, no SDK and no device.
 as `HologramSkia` and `HologramCanvas` — `Pick<>`s of the real types naming only
 the calls it makes. Adding a call means widening those picks, which is the point:
 the type says exactly how much of Skia the hologram needs.
+
+**`hologram/gpu` keeps the same rule.** It runs in four places too — under `bun
+test`, in the headset's browser beside three.js, in a browser beside CanvasKit
+and on a phone or a watch beside expo-gl — and imports none of them. The headset
+wraps its shader sources in three.js materials (`vr/src/hologram3d/`), and the
+raw renderer, `createGpuBody` and `drawGpuBody`, takes the GL context as an
+argument typed as `HologramGl`, a `Pick<>` of `WebGL2RenderingContext` naming
+the calls it makes, which a browser's context and expo-gl's both fit; the GL
+enums are numbers in the module rather than read off the context. Its modules
+import the main entry's modules directly (`../hologram-drawing`,
+`../frame-timing`), never the `..` barrel, for the reason under "Worklets"
+below. `gpu.contract.spec.ts` holds it to both. Biome reads `gl.useProgram` as a
+React hook, so `biome.json` turns `useHookAtTopLevel` off for that folder alone,
+where nothing is React.
+
+What runs every frame there is a worklet — `drawGpuBody` and everything it
+calls, `placeFlatCamera`, `writeFragmentUniforms` and the view-basis maths — so
+an app can draw on whichever thread holds its context. `createGpuBody` is
+JS-thread code: it builds the rows, compiles the three programs and uploads about
+3 MB of vertices, once, and throws when the context refuses any of it (an ES 2
+context cannot compile the GLSL ES 3.00 shaders), which is the app's cue to keep
+the body in Skia. The renderer leaves GL state as it set it, so it needs a
+context of its own. It draws what the headset draws, pass for pass and in
+three's order — the halo union into its own target, then the strokes, then the
+halos' light, Screened and faded as one layer — and whether the pixels agree is
+a browser's to say; `gpu-body.spec.ts` checks the passes, their targets and
+their blending against a context that writes its calls down.
 
 `src/react/` is where React, Reanimated and Skia are called for real, and it is
 deliberately thin: a Skia canvas, a frame callback, the voice read every 40 ms,
@@ -488,7 +519,10 @@ declared after every worklet it calls.
 
 The headset draws the body in three dimensions on the GPU and the rest of him
 with CanvasKit, and it composes him from the per-fragment helpers rather than
-from copies of them. The view's body and shell loops are hand-written copies of
+from copies of them. The GPU half — the fragment arithmetic and its CPU
+reference, the rows, and the halo union, strokes and halos' light — is
+`hologram/gpu`, which the headset draws through three.js and which a phone or a
+watch can draw through `drawGpuBody`. The view's body and shell loops are hand-written copies of
 those same helpers, for speed, and `particle-loop.spec.ts` holds them to the
 helpers bit for bit. So the main entry exports what that needs:
 `analyseFrame` and its `HologramFrameState`, the per-fragment helpers

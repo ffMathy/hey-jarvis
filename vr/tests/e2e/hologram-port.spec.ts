@@ -5,11 +5,11 @@ import { expect, test } from './fixtures';
 /**
  * The GPU's fragment arithmetic, held to the CPU reference that the unit tests hold to the phone.
  *
- * `fragment-glsl.ts` is a transliteration of `fragment-3d.ts`, and nothing but running it can say
- * the two agree: the preview page runs the GLSL for every one of the body's and the stream's rows,
- * reads back where it put each one, and compares that with the reference, row by row. float32 can
- * put a fragment on the other side of a blink's or a tier's edge now and then, so a handful may
- * disagree; the places must not.
+ * `hologram/gpu`'s `fragment-glsl.ts` is a transliteration of its `fragment-3d.ts`, and nothing
+ * but running it can say the two agree: the preview page runs the GLSL for every one of the body's
+ * and the stream's rows, reads back where it put each one, and compares that with the reference,
+ * row by row. float32 can put a fragment on the other side of a blink's or a tier's edge now and
+ * then, so a handful may disagree; the places must not.
  */
 
 /** The eye 1.6 m from his centre, in radii. */

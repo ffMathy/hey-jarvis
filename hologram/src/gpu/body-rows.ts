@@ -7,11 +7,12 @@ import {
   type HologramScene,
   STREAM_ID_FIELD,
   STREAM_STRIDE,
-} from 'hologram';
+} from '../hologram-drawing';
 
 /**
  * The body's and the stream's fragments as the GPU reads them: one row per fragment, four numbers
- * to an attribute, which `row-geometry.ts` gives every corner of the fragment's quad.
+ * to an attribute, which `buildRowVertices` (`row-vertices.ts`) gives every corner of the
+ * fragment's quad.
  *
  * The scene is the phone's own (`createHologramScene(SCENE_SEED)`), so the headset's Jarvis is made
  * of the same ten thousand fragments in the same places. Every per-fragment number that is a hash

@@ -1,4 +1,5 @@
 import { analyseFrame, createHologramScene, type HologramFrame, SCENE_SEED, SPHERE_FRACTION } from 'hologram';
+import { viewBasisTowards } from 'hologram/gpu';
 import { PerspectiveCamera, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { createRoomSatellites, type RoomSatellites } from '../app/room-satellites';
@@ -11,7 +12,6 @@ import {
   type Painter,
 } from '../hologram3d';
 import { createFrameClock } from '../hologram3d/frame-clock';
-import { viewBasisTowards } from '../hologram3d/view-basis';
 import { RENDERER_PARAMETERS } from '../xr/xr-stage';
 import { createPhaseDrives, type PhaseDrive, SETTLE_SECONDS } from './phase-drives';
 import { pictureStats } from './picture-stats';

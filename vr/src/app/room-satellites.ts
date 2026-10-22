@@ -8,8 +8,8 @@ import {
   releaseWork,
   stepWork,
 } from 'hologram';
+import type { Vector3Like } from 'hologram/gpu';
 import { createSatellites } from '../hologram3d/satellites';
-import type { Vector3Like } from '../hologram3d/view-basis';
 import { satelliteSpots } from '../satellites/satellite-spots';
 
 /** One frame, as the satellites need it. */

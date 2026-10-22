@@ -66,6 +66,16 @@
       }
     },
     {
+      "includes": ["hologram/src/gpu/**"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "useHookAtTopLevel": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["hologram/src/hologram-drawing.ts"],
       "linter": {
         "rules": {
