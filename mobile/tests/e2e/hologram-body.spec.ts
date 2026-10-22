@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page, test } from '@playwright/test';
+import { type Browser, expect, type Locator, type Page, test } from '@playwright/test';
 import { blockExternalRequests } from './external-requests';
 
 /**
@@ -20,16 +20,24 @@ import { blockExternalRequests } from './external-requests';
  * entry takes Skia's enums from a module Node cannot load, and this runs under Node. Each says which
  * constant it is, and a change to one shows up here as a failure rather than as a quiet mismatch.
  *
- * What these cannot see is a device: expo-gl's native view, Android composing it, and the tilt's
- * sensor. The browser's GLView is a `<canvas>` with a WebGL 2 context drawn from the page's thread.
+ * What these cannot see is a device: expo-gl's native view, Android composing it, and a phone's own
+ * gravity sensor. The browser's GLView is a `<canvas>` with a WebGL 2 context drawn from the page's
+ * thread, and the tilt is fed by a stand-in for the browser's sensor (`installAGravitySensor`).
  */
 
 declare global {
   interface Window {
     /** The GPU body's canvas at the end of each frame it drew, kept by `measureEveryBodyFrame`. */
     bodyFrames?: Array<{ width: number; height: number; pixels: Uint8Array<ArrayBuffer> }>;
+    /** Hands every started gravity sensor a reading at once: see `installAGravitySensor`. */
+    tiltTo?: (x: number, y: number, z: number) => void;
+    /** How many gravity sensors are started: one while the tilt is listening, none otherwise. */
+    startedGravitySensors?: () => number;
   }
 }
+
+/** A gravity reading in Reanimated's device coordinates: x right, y up the screen, z out of it, pointing at the ground. */
+type Reading = [x: number, y: number, z: number];
 
 /** A picture's pixels, four bytes each, rows from the top. */
 interface Pixels {
@@ -90,6 +98,16 @@ const ARRIVED_FRAMES = 10;
  */
 const SHED_FRAMES = 50;
 
+/** Frames for a tilt to settle back to the front, held: five seconds, past three of `TILT_REST_SECONDS` (1.5 s). */
+const SETTLED_FRAMES = 50;
+
+/**
+ * The least share of the GPU body's canvas that comes out differently when the eye moves: as it
+ * comes in from infinitely far to the phone's, measured at 36%, and as a 15° tip turns him, at 31%.
+ * A tenth is far below either and far above the nothing a view that never moved would differ by.
+ */
+const MOVED_EYE_SHARE = 0.1;
+
 /** What the readout calls the floor: `FEWEST_PARTICLES` of `PARTICLE_COUNT`, 2.5% of 10,000. */
 const FLOOR_SPARKS = '250 sparks';
 
@@ -112,6 +130,15 @@ const SPHERE_AT_LARGEST = 0.27 * 1.18;
  * 7, and the faintest of his halos are in the twenties and thirties.
  */
 const LIT_LUMA = 24;
+
+/** What a phone held upright reads: gravity down the screen. */
+const UPRIGHT: Reading = [0, -9.81, 0];
+
+/** What a phone reads with its top edge tipped `degrees` away from the person holding it. */
+function tippedAway(degrees: number): Reading {
+  const radians = (degrees * Math.PI) / 180;
+  return [0, -9.81 * Math.cos(radians), -9.81 * Math.sin(radians)];
+}
 
 /** How many steps the lazily loaded view may take to mount: React reveals it after a timer of its own. */
 const MOUNT_STEPS_AT_MOST = 10;
@@ -163,6 +190,71 @@ async function stepFrames(page: Page, frames: number): Promise<void> {
 }
 
 /**
+ * A gravity sensor where the browser has none, in the shape Reanimated's web path uses: it makes a
+ * `GravitySensor`, listens for its `reading` events and reads its `x`, `y` and `z` — on a desktop,
+ * in its own device coordinates, as they are handed on. Nothing reads on its own:
+ * `window.tiltTo` hands every started sensor a reading at once, so a test gives one before each
+ * frame it steps and the stopped clock stays the only thing that moves.
+ */
+function installAGravitySensor() {
+  const started = new Set<FakeGravitySensor>();
+  class FakeGravitySensor extends EventTarget {
+    x = 0;
+    y = 0;
+    z = 0;
+    start() {
+      started.add(this);
+    }
+    stop() {
+      started.delete(this);
+    }
+  }
+  Reflect.set(window, 'GravitySensor', FakeGravitySensor);
+  window.tiltTo = (x, y, z) => {
+    for (const sensor of started) {
+      sensor.x = x;
+      sensor.y = y;
+      sensor.z = z;
+      sensor.dispatchEvent(new Event('reading'));
+    }
+  };
+  window.startedGravitySensors = () => started.size;
+}
+
+/** Steps the stopped clock as `stepFrames` does, handing the gravity sensor `reading` before each frame, or nothing. */
+async function stepReading(page: Page, frames: number, reading: Reading | undefined): Promise<void> {
+  for (let frame = 0; frame < frames; frame++) {
+    if (reading !== undefined) {
+      await page.evaluate(([x, y, z]) => window.tiltTo?.(x, y, z), reading);
+    }
+    await page.clock.fastForward(FRAME_MS);
+  }
+}
+
+/**
+ * Sends the page to the background or brings it back, as far as the app can tell — which is what
+ * the phone's app sees between summonings — and waits for the tilt's sensor to stop or start with it.
+ */
+async function bringToTheFront(page: Page, front: boolean): Promise<void> {
+  await page.evaluate((visible) => {
+    Reflect.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => (visible ? 'visible' : 'hidden'),
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, front);
+  await expect.poll(() => page.evaluate(() => window.startedGravitySensors?.())).toBe(front ? 1 : 0);
+}
+
+/** Another page in a context of its own, the size of `like`, opened as `like` was. */
+async function anotherPageLike(browser: Browser, like: Page): Promise<Page> {
+  const context = await browser.newContext({ viewport: like.viewportSize() });
+  const page = await context.newPage();
+  await blockExternalRequests(page);
+  return page;
+}
+
+/**
  * Keeps the GPU body's canvas at the end of every frame it draws, from now on, in
  * `window.bodyFrames`.
  *
@@ -202,8 +294,8 @@ function bytesFromThePage(base64: string): Uint8Array {
   return new Uint8Array(Buffer.from(base64, 'base64'));
 }
 
-/** The frames `measureEveryBodyFrame` has kept since it last handed any over, measured. */
-async function takeBodyFrames(page: Page): Promise<BodyFrame[]> {
+/** The frames `measureEveryBodyFrame` has kept since it last handed any over, as pictures. */
+async function takeBodyPictures(page: Page): Promise<Pixels[]> {
   const frames = await page.evaluate(async () => {
     const kept = window.bodyFrames ?? [];
     window.bodyFrames = [];
@@ -218,9 +310,49 @@ async function takeBodyFrames(page: Page): Promise<BodyFrame[]> {
       }),
     );
   });
-  return frames.map(({ width, height, base64 }) =>
-    bodyFrameOf({ width, height, rgba: flipRows(bytesFromThePage(base64), width, height) }),
-  );
+  return frames.map(({ width, height, base64 }) => ({
+    width,
+    height,
+    rgba: flipRows(bytesFromThePage(base64), width, height),
+  }));
+}
+
+/** The frames `measureEveryBodyFrame` has kept since it last handed any over, measured. */
+async function takeBodyFrames(page: Page): Promise<BodyFrame[]> {
+  return (await takeBodyPictures(page)).map(bodyFrameOf);
+}
+
+/**
+ * Steps `frames` as `stepReading` does and returns the GPU body's picture in the last of them,
+ * dropping the rest unread.
+ */
+async function stepToTheBody(page: Page, frames: number, reading: Reading | undefined): Promise<Pixels> {
+  await stepReading(page, frames - 1, reading);
+  await page.evaluate(() => {
+    window.bodyFrames = [];
+  });
+  await stepReading(page, 1, reading);
+  const last = (await takeBodyPictures(page)).at(-1);
+  if (last === undefined) {
+    throw new Error('The GPU body drew nothing in that frame');
+  }
+  return last;
+}
+
+/** How many pixels two pictures of one size differ at, in any channel. */
+function differingPixels(first: Pixels, second: Pixels): number {
+  expect([second.width, second.height]).toEqual([first.width, first.height]);
+  let differing = 0;
+  for (let index = 0; index < first.width * first.height; index++) {
+    const offset = index * 4;
+    const same =
+      first.rgba[offset] === second.rgba[offset] &&
+      first.rgba[offset + 1] === second.rgba[offset + 1] &&
+      first.rgba[offset + 2] === second.rgba[offset + 2] &&
+      first.rgba[offset + 3] === second.rgba[offset + 3];
+    differing += same ? 0 : 1;
+  }
+  return differing;
 }
 
 /** GL's rows run from the bottom, a picture's from the top. */
@@ -599,6 +731,127 @@ test('hands his body to Skia within a few frames when the GPU’s context is los
   await stepFrames(page, 5);
   await expect(page.getByTestId('frame-rate')).toHaveText(/ · 2d$/);
   expect(pageErrors).toEqual([]);
+});
+
+/**
+ * Makes the GPU body's context look lost to every frame, while leaving it to be made and the body
+ * built in it: the frame callback's first look at it (`finishPreviousFrame`) finds it gone. That is
+ * the browser's version of the case a device cannot be made to show here — expo-gl's lookup on the
+ * UI runtime coming back empty, or its first `flushEXP` failing — where nothing gives the body up
+ * and only `GPU_READY_TIMEOUT_MS` lets his clock go.
+ */
+function loseTheBodysContextToEveryFrame() {
+  const isContextLost = WebGL2RenderingContext.prototype.isContextLost;
+  Reflect.defineProperty(WebGL2RenderingContext.prototype, 'isContextLost', {
+    value(this: WebGL2RenderingContext) {
+      const canvas = this.canvas;
+      const isTheBody = canvas instanceof HTMLCanvasElement && canvas.closest('[data-testid="hologram-body"]') !== null;
+      return isTheBody || Reflect.apply(isContextLost, this, []);
+    },
+  });
+}
+
+test('arrives with Skia’s body once a GPU body that never comes has kept him waiting long enough', async ({ page }) => {
+  await page.addInitScript(loseTheBodysContextToEveryFrame);
+  const pageErrors = collectPageErrors(page);
+  await openSampleModeOnAStoppedClock(page, '/');
+
+  // Held at the start of his arrival, where nothing of him shows (measured at no pixel lit), with
+  // the GL view still there: waiting, which a GPU body given up at once would not be.
+  await stepFrames(page, BEFORE_THE_TIMEOUT_FRAMES);
+  await expect(page.getByTestId('hologram-body')).toHaveCount(1);
+  await expect(page.getByTestId('hologram').locator('canvas')).toHaveCount(2);
+  expect((await withHidden(page, ['frame-rate'], () => lookAtHim(page))).litShare).toBeLessThan(0.005);
+
+  // Then the wait runs out, and he arrives with Skia's body.
+  await stepFrames(page, ARRIVED_FRAMES + 4);
+  expect((await withHidden(page, ['frame-rate'], () => lookAtHim(page))).litShare).toBeGreaterThan(0.05);
+  await expect(page.getByTestId('frame-rate')).toHaveText(/ · 2d$/);
+  expect(pageErrors).toEqual([]);
+});
+
+test('turns his body as the phone tilts, from the phone’s eye, and back to the front once it is held still', async ({
+  page,
+  browser,
+}) => {
+  // Three phones stepped alike: one whose sensor never reads, one held upright throughout, and one
+  // held upright and then tipped.
+  const unread = page;
+  const still = await anotherPageLike(browser, page);
+  const tipped = await anotherPageLike(browser, page);
+  const pageErrors = [unread, still, tipped].map(collectPageErrors);
+  const mountedAfter: number[] = [];
+  for (const phone of [unread, still, tipped]) {
+    await phone.addInitScript(installAGravitySensor);
+    mountedAfter.push(await openSampleModeOnAStoppedClock(phone, '/'));
+    await measureEveryBodyFrame(phone.getByTestId('hologram-body').locator('canvas'));
+  }
+  expect(new Set(mountedAfter).size).toBe(1);
+
+  // Readings arriving bring the eye in from infinitely far, where the flat drawing sees him from, to
+  // the phone's: the same moment drawn differently. And two phones handed the same readings draw the
+  // same picture to the byte, which is what lets the two after this be compared at all.
+  const neverRead = await stepToTheBody(unread, ARRIVED_FRAMES, undefined);
+  const heldStill = await stepToTheBody(still, ARRIVED_FRAMES, UPRIGHT);
+  const notYetTipped = await stepToTheBody(tipped, ARRIVED_FRAMES, UPRIGHT);
+  const canvasPixels = heldStill.width * heldStill.height;
+  expect(differingPixels(heldStill, neverRead)).toBeGreaterThan(canvasPixels * MOVED_EYE_SHARE);
+  expect(differingPixels(heldStill, notYetTipped)).toBe(0);
+
+  // Tipped 15° top edge away, he turns within half a second.
+  const stillThen = await stepToTheBody(still, 5, UPRIGHT);
+  const tippedThen = await stepToTheBody(tipped, 5, tippedAway(15));
+  const turned = differingPixels(stillThen, tippedThen);
+  expect(turned).toBeGreaterThan(canvasPixels * MOVED_EYE_SHARE);
+
+  // Held there, he comes back to the front as the rest pose follows the phone: a phone held still,
+  // however it is held, shows him straight on. Measured at no pixel apart; a hundredth of the turn
+  // allows for the last of the ease, and is far below a view still turned by any of it.
+  const stillLater = await stepToTheBody(still, SETTLED_FRAMES, UPRIGHT);
+  const tippedLater = await stepToTheBody(tipped, SETTLED_FRAMES, tippedAway(15));
+  expect(differingPixels(stillLater, tippedLater)).toBeLessThan(turned / 100);
+
+  for (const phone of [still, tipped]) {
+    await expect(phone.getByTestId('frame-rate')).toHaveText(/ · gpu$/);
+  }
+  await still.context().close();
+  await tipped.context().close();
+  for (const errors of pageErrors) {
+    expect(errors).toEqual([]);
+  }
+});
+
+test('arrives straight on after the app was away, however the phone was turned meanwhile', async ({
+  page,
+  browser,
+}) => {
+  // Two phones held upright through his arrival; then the app goes away and comes back, one phone
+  // still upright and the other lying back, as from a pocket to a hand.
+  const still = page;
+  const moved = await anotherPageLike(browser, page);
+  const pageErrors = [still, moved].map(collectPageErrors);
+  for (const phone of [still, moved]) {
+    await phone.addInitScript(installAGravitySensor);
+    await openSampleModeOnAStoppedClock(phone, '/');
+    await measureEveryBodyFrame(phone.getByTestId('hologram-body').locator('canvas'));
+    await stepReading(phone, ARRIVED_FRAMES, UPRIGHT);
+    await bringToTheFront(phone, false);
+    await bringToTheFront(phone, true);
+    // A phone's sensor answers an interval after it starts, not at once.
+    await stepReading(phone, 2, undefined);
+  }
+
+  // The first reading after he comes back is the rest pose, so both show him straight on, to the
+  // byte. One kept from before the app went away would be the rest pose instead, and the phone that
+  // moved would show him turned as far as the tilt goes: a fifth of the canvas apart, measured.
+  const heldStill = await stepToTheBody(still, ARRIVED_FRAMES, UPRIGHT);
+  const lyingBack = await stepToTheBody(moved, ARRIVED_FRAMES, tippedAway(60));
+  expect(differingPixels(heldStill, lyingBack)).toBe(0);
+
+  await moved.context().close();
+  for (const errors of pageErrors) {
+    expect(errors).toEqual([]);
+  }
 });
 
 test('looks the same with his body on the GPU as in Skia’s drawing, seen straight on', async ({ page, browser }) => {
