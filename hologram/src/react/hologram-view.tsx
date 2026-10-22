@@ -863,16 +863,20 @@ function JarvisHologramView({
   //
   // With the GPU body that view is also the group both canvases are composed in: the GPU's canvas
   // Screened onto Skia's inside it, the whole faded by the arrival, rendered at the drawn size, and
-  // on a background that is not black Screened onto it, which the outer view then paints.
+  // on a background that is not black Screened onto it, which the outer view then paints, and
+  // bounds as the backdrop of the Screen.
   return (
     <View
-      style={{
-        width: size,
-        height: size,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: glMounted ? background : undefined,
-      }}
+      style={[
+        {
+          width: size,
+          height: size,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: glMounted ? background : undefined,
+        },
+        glMounted && screensOntoBackground ? styles.screenedBackdrop : null,
+      ]}
     >
       <Animated.View
         renderToHardwareTextureAndroid={glMounted}
@@ -915,6 +919,13 @@ const styles = StyleSheet.create({
   group: { isolation: 'isolate' },
   /** The same, and the group Screened onto the view behind it, which paints the background. */
   groupScreenedOntoBackground: { isolation: 'isolate', mixBlendMode: 'screen' },
+  /**
+   * That view behind, as the backdrop the group is Screened onto and nothing wider. With only a
+   * background colour Fabric flattens a view away and mounts its children in the nearest view that
+   * groups anything — in the conversation sheet, the pressable that fills it — and Android then
+   * draws the Screen in two layers that size, rather than his square, whenever it redraws them.
+   */
+  screenedBackdrop: { isolation: 'isolate' },
 });
 
 /**

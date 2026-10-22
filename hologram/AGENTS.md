@@ -617,7 +617,10 @@ mode), and both apps' native builds when bundled with
 `EXPO_PUBLIC_HOLOGRAM_BODY=skia`.
 
 **One view tree, on a device and in a browser.** The outer view paints the
-background. Inside it the scaled view (`DRAWN_RESOLUTION`) is the group the two
+background, and where the group is Screened onto it is isolated too: a view with
+nothing but a background colour is flattened away on Fabric, and the Screen would
+take the nearest view that groups anything as its backdrop — in the conversation
+sheet, the pressable filling it, two sheet-sized layers. Inside it the scaled view (`DRAWN_RESOLUTION`) is the group the two
 canvases are composed in: isolated, rendered into a texture of its own at the
 drawn size on Android (`renderToHardwareTextureAndroid`), faded by the arrival
 (`arrivalOf`, written each frame), and on a background that is not black — the
