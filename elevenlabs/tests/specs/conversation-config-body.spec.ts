@@ -23,6 +23,32 @@ describe('toConversationConfigBody', () => {
     expect(body).toEqual({ turn: { turn_timeout: 3, silence_end_call_timeout: 30 } });
   });
 
+  it('should send the Realtime model even though the SDK has no field for it', () => {
+    // Saved by `fetch` under the API's own snake_case name, as every key the SDK does not know is.
+    const body = toConversationConfigBody({
+      realtime_model: 'eleven_realtime_v1_max',
+      turn: { turnTimeout: 3 },
+    } as ConversationalConfig);
+
+    expect(body).toEqual({ realtime_model: 'eleven_realtime_v1_max', turn: { turn_timeout: 3 } });
+  });
+
+  it('should send a null Realtime model, which puts the agent back in Custom mode', () => {
+    const body = toConversationConfigBody({ realtime_model: null } as ConversationalConfig);
+
+    expect(body).toEqual({ realtime_model: null });
+  });
+
+  it('should send the Realtime model the committed agent config names', () => {
+    const { conversationConfig } = agentConfig;
+    if (!conversationConfig || !('realtime_model' in conversationConfig)) {
+      throw new Error('The committed agent config names no Realtime model');
+    }
+    const body = toConversationConfigBody(conversationConfig) as { realtime_model: unknown };
+
+    expect(body.realtime_model).toBe('eleven_realtime_v1_max');
+  });
+
   it('should serialize the committed agent config with its TTS model intact', () => {
     const { conversationConfig } = agentConfig;
     const modelId = conversationConfig?.tts?.modelId;
