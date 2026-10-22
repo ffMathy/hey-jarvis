@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.26.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.25.0...root-v4.26.0) (2026-10-22)
+
+
+### Features
+
+* **hologram:** draw his body in 3D on the GPU on phones and watches ([#978](https://github.com/ffMathy/hey-jarvis/issues/978)) ([3a30843](https://github.com/ffMathy/hey-jarvis/commit/3a308435c1c2e327bf9afaa03cf4952b47c5bf19))
+
 ## [4.25.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.24.0...root-v4.25.0) (2026-10-20)
 
 
