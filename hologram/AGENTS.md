@@ -69,6 +69,13 @@ the same drawing runs in four places:
 - CanvasKit headless, in `hologram-drawing.spec.ts` and the contact sheets;
 - the headset, which has no React at all.
 
+`main-entry.contract.spec.ts` holds every module directly in `src/` to it, by
+parsing them with Bun's own transpiler: an import or re-export not marked as a
+type, from anywhere but a sibling or that one Skia module, fails it. A path into
+`./react` or `./conversation` counts as outside, since those are other entries.
+Mark a type-only import `import type` (or each specifier `type`) even where a
+bundler would drop it anyway — the test counts what the source says.
+
 The two ElevenLabs files keep the same rule for the same payoff. `fetch` is a
 global rather than an import, so the token request and every failure ElevenLabs
 can answer with — a rejected key, a key without permission, an unknown agent, an
@@ -531,6 +538,21 @@ helpers bit for bit. So the main entry exports what that needs:
 (`readFragment`, `fragmentStrength`, `placeFragment`, `swirlFragment`,
 `latticeFragment`, `scanned`, `densityRowsEnd` and the rest), the body's and
 the stream's row layouts, and the constants they read; and the frame clock.
+`analyseFrame` reads nothing of the scene but its script (`HologramScript`), so a
+frame callback that only analyses frames can capture that rather than the whole
+scene.
+
+**Fading him from outside the drawing.** The drawing fades him in and out
+through a layer of its own, at `arrivalOf(appearance, presence)` — the arrival
+`analyseFrame` works out, exported so nothing keeps a copy of it that drifts. A
+view that lays a body drawn on the GPU beside the Skia picture cannot fade the
+two separately: Screen-blending two faded layers is brighter where they overlap
+than fading the blend of them. So `drawHologram(…, fadeOutside)` skips that layer
+and the view fades the group of both by `arrivalOf` instead, which over black or
+over nothing comes out within a few levels of the layer's own fade
+(`hologram-drawing.spec.ts` holds it to four). At rest there is no layer, and the
+two draw the same bytes. The drawing never paints a background — the view does,
+with `drawColor` inside its own layer — so leaving one out is the view's to do.
 
 The frame clock is one implementation, `frame-clock.ts`, stepped by both: a
 state made once (`createFrameClockState`), the gate that holds back a step

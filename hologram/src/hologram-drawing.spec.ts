@@ -1,8 +1,12 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
+import { AlphaType, ColorType } from '@shopify/react-native-skia/lib/module/skia/types';
 import { JsiSkApi } from '@shopify/react-native-skia/lib/module/skia/web';
 import { LoadSkiaWeb } from '@shopify/react-native-skia/lib/module/web/LoadSkiaWeb';
+import { advanceFrameClock, createFrameClockState, hologramFrameOf, restartArrival } from './frame-clock';
 import { MATERIALISE_SECONDS } from './frame-timing';
 import {
+  analyseFrame,
+  arrivalOf,
   BODY_TURN_SECONDS,
   bodyTurnRadians,
   createHologramResources,
@@ -927,3 +931,167 @@ describe('letting go of paths by hand, for CanvasKit', () => {
     releasable.dispose();
   });
 });
+
+/**
+ * Renders a frame as the view on a phone does — inside one layer, on its background if it has one —
+ * and returns its pixels premultiplied, so that a faint pixel on a see-through canvas is compared as
+ * the light it is rather than blown up by dividing out its alpha.
+ */
+function renderAsTheView(
+  frame: HologramFrame,
+  hologram: Hologram,
+  background: string | undefined,
+  fadeOutside: boolean,
+): Uint8Array {
+  const surface = Skia.Surface.MakeOffscreen(SIZE, SIZE) ?? Skia.Surface.Make(SIZE, SIZE);
+  if (!surface) {
+    throw new Error('Could not create a surface to draw on');
+  }
+  const canvas = surface.getCanvas();
+  canvas.clear(Skia.Color('#00000000'));
+  canvas.saveLayer(undefined, Skia.XYWHRect(0, 0, SIZE, SIZE));
+  if (background !== undefined) {
+    canvas.drawColor(Skia.Color(background));
+  }
+  drawHologram(canvas, SIZE, frame, hologram.scene, hologram.resources, fadeOutside);
+  canvas.restore();
+  return snapshotOf(surface);
+}
+
+/**
+ * The picture drawn with `fadeOutside` on a see-through canvas, then faded as one group by `alpha`
+ * over `background` (or over nothing): what the view does with the GPU body beside it, where the
+ * wrapper round both canvases carries the fade and the view behind it carries the colour.
+ */
+function fadedAsAGroup(frame: HologramFrame, hologram: Hologram, background: string | undefined, alpha: number) {
+  const picture = Skia.Surface.MakeOffscreen(SIZE, SIZE) ?? Skia.Surface.Make(SIZE, SIZE);
+  const shown = Skia.Surface.MakeOffscreen(SIZE, SIZE) ?? Skia.Surface.Make(SIZE, SIZE);
+  if (!picture || !shown) {
+    throw new Error('Could not create a surface to draw on');
+  }
+  const canvas = picture.getCanvas();
+  canvas.clear(Skia.Color('#00000000'));
+  drawHologram(canvas, SIZE, frame, hologram.scene, hologram.resources, true);
+  picture.flush();
+  const image = picture.makeImageSnapshot();
+  const fade = Skia.Paint();
+  fade.setAlphaf(alpha);
+  const view = shown.getCanvas();
+  view.clear(Skia.Color(background ?? '#00000000'));
+  view.drawImage(image, 0, 0, fade);
+  return snapshotOf(shown);
+}
+
+function snapshotOf(surface: NonNullable<ReturnType<typeof Skia.Surface.Make>>): Uint8Array {
+  surface.flush();
+  const pixels = surface.makeImageSnapshot().readPixels(0, 0, {
+    width: SIZE,
+    height: SIZE,
+    alphaType: AlphaType.Premul,
+    colorType: ColorType.RGBA_8888,
+  });
+  if (!(pixels instanceof Uint8Array)) {
+    throw new Error('Could not read the pixels back');
+  }
+  return pixels;
+}
+
+/** The most any one channel of any one pixel differs by between two renders, 0–255. */
+function largestDifference(first: Uint8Array, second: Uint8Array): number {
+  let largest = 0;
+  for (let index = 0; index < first.length; index++) {
+    largest = Math.max(largest, Math.abs((first[index] ?? 0) - (second[index] ?? 0)));
+  }
+  return largest;
+}
+
+/** The appearance at which {@link arrivalOf} reaches `share` while he arrives, found by halving. */
+function appearanceArrivedBy(share: number): number {
+  let low = 0;
+  let high = 1;
+  for (let step = 0; step < 60; step++) {
+    const middle = (low + high) / 2;
+    if (arrivalOf(middle, 1) < share) low = middle;
+    else high = middle;
+  }
+  return high;
+}
+
+describe('fading him outside the drawing, for a view that lays the GPU body beside it', () => {
+  /** Half arrived, nearly arrived and half gone, each with the arrival it should come to. */
+  const fades = [
+    { arrival: 0.5, frame: { ...speech(4.3, 0.8, spectrum('low', 0.6)), appearance: appearanceArrivedBy(0.5) } },
+    { arrival: 0.9, frame: { ...speech(4.3, 0.8, spectrum('low', 0.6)), appearance: appearanceArrivedBy(0.9) } },
+    { arrival: 0.5, frame: { ...speech(4.3, 0.8, spectrum('low', 0.6)), presence: 0.5 } },
+  ];
+
+  it('draws the very same picture at rest, whichever does the fading, on any background', () => {
+    const hologram = mount();
+    for (const frame of [silence(6), speech(4.3, 0.8, spectrum('low', 0.6), 0.05, 2)]) {
+      expect(arrivalOf(frame.appearance, frame.presence)).toBe(1);
+      for (const background of [undefined, '#000000', '#0b1220']) {
+        const inside = renderAsTheView(frame, hologram, background, false);
+        const outside = renderAsTheView(frame, hologram, background, true);
+        expect(difference(inside, outside)).toBe(0);
+      }
+    }
+  });
+
+  it('comes out as its own fade does once the whole of it is faded by the arrival, over black or over nothing', () => {
+    const hologram = mount();
+    for (const { arrival, frame } of fades) {
+      const alpha = arrivalOf(frame.appearance, frame.presence);
+      expect(alpha).toBeCloseTo(arrival, 9);
+      for (const background of ['#000000', undefined]) {
+        const drawingsOwn = renderAsTheView(frame, hologram, background, false);
+        // The fade is far from nothing at these moments, so matching it means something.
+        expect(largestDifference(drawingsOwn, renderAsTheView(frame, hologram, background, true))).toBeGreaterThan(20);
+        expect(largestDifference(drawingsOwn, fadedAsAGroup(frame, hologram, background, alpha))).toBeLessThanOrEqual(
+          4,
+        );
+      }
+    }
+  });
+
+  it('works out the same arrival analyseFrame does, all the way through arriving, staying and leaving', () => {
+    const scene = createHologramScene(SEED);
+    const frames = framesFromTheClock();
+    const arrivals = frames.map((frame) => arrivalOf(frame.appearance, frame.presence));
+    const analysed = frames.map((frame) => analyseFrame(frame, SIZE, scene).arrival);
+
+    expect(arrivals.every((arrival, index) => Object.is(arrival, analysed[index]))).toBe(true);
+    // Through all of it: not there, partly there and wholly there.
+    expect(arrivals).toContain(0);
+    expect(arrivals).toContain(1);
+    expect(arrivals.some((arrival) => arrival > 0 && arrival < 1)).toBe(true);
+  });
+
+  it('works out the same arrival analyseFrame does for a frame made by hand: out of range, not a number, infinite', () => {
+    const scene = createHologramScene(SEED);
+    for (const appearance of [-1, 0, 0.05, 0.2, 1, 7, Number.NaN, Number.POSITIVE_INFINITY]) {
+      for (const presence of [-1, 0, 0.3, 1, 2, Number.NaN, Number.NEGATIVE_INFINITY]) {
+        const frame = { ...silence(3), appearance, presence };
+        expect(Object.is(arrivalOf(appearance, presence), analyseFrame(frame, SIZE, scene).arrival)).toBe(true);
+      }
+    }
+  });
+});
+
+/**
+ * The frames the frame clock hands the drawing at 60 a second through two arrivals that stay and two
+ * that leave halfway through: each one copied, since the clock's frame is only good until its next step.
+ */
+function framesFromTheClock(): HologramFrame[] {
+  const clock = createFrameClockState();
+  const silent = new Array(VOICE_BAND_COUNT).fill(0);
+  const frames: HologramFrame[] = [];
+  for (const leaving of [false, true, false, true]) {
+    restartArrival(clock);
+    for (let step = 0; step < 90; step++) {
+      advanceFrameClock(clock, 1 / 60, 0, silent, false, false, leaving && step > 45, 0, 0);
+      const frame = hologramFrameOf(clock, 1);
+      frames.push({ ...frame, bands: [...frame.bands] });
+    }
+  }
+  return frames;
+}

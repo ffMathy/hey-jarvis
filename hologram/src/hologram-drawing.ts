@@ -1165,6 +1165,13 @@ export function createHologramScene(seed: number, particleCount: number = PARTIC
 /** The random geometry one hologram is drawn from, as `createHologramScene` builds it. */
 export type HologramScene = ReturnType<typeof createHologramScene>;
 
+/**
+ * The part of a scene {@link analyseFrame} reads: the script, and nothing of the geometry. A frame
+ * callback that only analyses frames can capture this where the whole scene, about a hundred
+ * thousand numbers, would be copied into the worklet runtime with it.
+ */
+export type HologramScript = Pick<HologramScene, 'epochs' | 'scriptPeriod'>;
+
 // ---- resources: Skia objects built once per mounted canvas --------------------------------
 
 /**
@@ -1982,7 +1989,7 @@ function rimTarget(element: number, dominant: number) {
  * epoch's line kind and its envelope, and the red flash.
  * Everything is a function of time alone, so it never jumps.
  */
-function readScript(scene: HologramScene, time: number) {
+function readScript(scene: HologramScript, time: number) {
   'worklet';
   const epochs = scene.epochs;
   const period = scene.scriptPeriod;
@@ -2017,8 +2024,23 @@ function readScript(scene: HologramScene, time: number) {
   };
 }
 
+/**
+ * How much of him shows, 0–1, from a frame's {@link HologramFrame.appearance} and
+ * {@link HologramFrame.presence}: the whole sphere fades in over the first fifth of the vortex, so
+ * the first particles leaving the core are seen as they go and their own travel does the arriving,
+ * and leaving fades it out by the same alpha.
+ *
+ * The drawing fades by it in a layer of its own. A view that shows him as more than one surface —
+ * the body drawn on the GPU beside this picture — fades the lot by it instead, which is what
+ * {@link drawHologram}'s `fadeOutside` is for, and takes it from here so the two cannot drift apart.
+ */
+export function arrivalOf(appearance: number, presence: number) {
+  'worklet';
+  return smooth01(clamp01(appearance) / 0.2) * clamp01(presence);
+}
+
 /** Everything a frame derives from its fields; see the file header for the mapping. */
-export function analyseFrame(frame: HologramFrame, size: number, scene: HologramScene) {
+export function analyseFrame(frame: HologramFrame, size: number, scene: HologramScript) {
   'worklet';
   const time = frame.time;
   // How far on the vortex is: 1 once it is over.
@@ -2043,10 +2065,7 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
   const presence = clamp01(frame.presence);
   const hearing = clamp01(frame.hearing ?? 0);
   const hearingLevel = clamp01(frame.hearingLevel ?? 0);
-  // The whole sphere fades in over the first fifth of the vortex, so the first particles leaving
-  // the core are seen as they go; their own travel is what does the arriving. Leaving fades it
-  // out through the same layer.
-  const arrival = smooth01(swirl / 0.2) * presence;
+  const arrival = arrivalOf(frame.appearance, frame.presence);
   // How much bigger he is this frame than at rest. Mostly loudness, so the sphere breathes with
   // the sentence rather than stepping up and sitting there; the envelope keeps it from dropping
   // back to nothing between syllables.
@@ -3874,13 +3893,23 @@ function drawThinkingPulse(canvas: HologramCanvas, resources: Resources, state: 
   canvas.drawCircle(0, 0, 0.15 + 1.05 * state.pulse, paint);
 }
 
-/** Draws one frame of the hologram into a size×size square. */
+/**
+ * Draws one frame of the hologram into a size×size square.
+ *
+ * With `fadeOutside`, his arriving and leaving are left to whoever shows the picture: everything is
+ * drawn at full strength, and the caller fades the whole of it by {@link arrivalOf}. That is for a
+ * view that lays the body drawn on the GPU beside this picture. Each faded by itself, the two come
+ * out brighter wherever they overlap than the drawing does, because Screen-blending two faded layers
+ * is not fading the blend of them; faded as one group, over black or nothing, they come out as this
+ * layer would have made them.
+ */
 export function drawHologram(
   canvas: HologramCanvas,
   size: number,
   frame: HologramFrame,
   scene: HologramScene,
   resources: Resources,
+  fadeOutside = false,
 ) {
   'worklet';
   // start clean: a previous frame that threw mid-way must not leak half-built contours
@@ -3897,8 +3926,8 @@ export function drawHologram(
   // 0.2) and the whole of leaving — and no drawing afterwards, though Skia keeps its texture. On a
   // phone it sits inside the layer the
   // view draws everything into (DRAWN_IN_A_LAYER in hologram-view.tsx), so for those moments there
-  // are two.
-  const arriving = state.arrival < 1;
+  // are two. Not when the caller fades the picture itself, which is what `fadeOutside` says.
+  const arriving = state.arrival < 1 && !fadeOutside;
   if (arriving) {
     resources.arrivalFade.setAlphaf(state.arrival);
     canvas.saveLayer(resources.arrivalFade);
