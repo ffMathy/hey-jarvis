@@ -276,7 +276,10 @@ audio, on the speaker, at call volume. The token is fetched beside him, and the 
 only once he had finished — until the user asked for it to connect while he greets. With call mode
 already in force before he speaks, the switch that clipped him is not made mid-greeting any more,
 so the session is now dialled behind him, as in a browser, muted until he has finished. A browser
-plays it with expo-audio.
+plays it with expo-audio. WebRTC opening its microphone behind him was a second switch — the call
+is only fully set up once a call's input is open too, so the greeting started loud and caught as
+the conversation connected — and `hologram`'s `CallMicrophone` now opens that input before he
+speaks (see `hologram/AGENTS.md`).
 Still to settle on a device: that he is heard this way, and that `vad_score` events arrive over
 WebRTC as they do over the firmware's socket.
 
