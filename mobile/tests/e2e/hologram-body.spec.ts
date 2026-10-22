@@ -190,6 +190,13 @@ async function measureEveryBodyFrame(body: Locator): Promise<void> {
   });
 }
 
+/** The colour space a canvas's WebGL 2 drawing buffer is read in, from the context it already has. */
+function colourSpaceOf(canvas: Locator): Promise<string | undefined> {
+  return canvas.evaluate((element) =>
+    element instanceof HTMLCanvasElement ? element.getContext('webgl2')?.drawingBufferColorSpace : undefined,
+  );
+}
+
 /** Bytes from the page, which hands them over as base64 rather than as a list of numbers. */
 function bytesFromThePage(base64: string): Uint8Array {
   return new Uint8Array(Buffer.from(base64, 'base64'));
@@ -460,6 +467,13 @@ test('draws his body on the GPU where the browser has WebGL 2, centred in the sp
   const skiaAlone = await withHidden(page, ['hologram-body'], async () => pixelsOf(page, await hologram.screenshot()));
   const bodyAlone = await withHidden(page, ['hologram-flat'], async () => pixelsOf(page, await hologram.screenshot()));
   expect(largestScreenError(composed, skiaAlone, bodyAlone)).toBeLessThan(16);
+
+  // Its canvas is read in the colour space Skia's is, which React Native Skia tags Display P3, so
+  // one paint is one colour across the two wherever the browser manages colour. Chromium here does
+  // not, so the pictures above look the same either way, and only the tag can say.
+  const skiasCanvas = page.getByTestId('hologram-flat').locator('canvas');
+  expect(await colourSpaceOf(skiasCanvas)).toBe('display-p3');
+  expect(await colourSpaceOf(body)).toBe('display-p3');
 
   // The readout, which says which renderer drew the frames it counts.
   await expect(page.getByTestId('frame-rate')).toHaveText(/ · gpu$/);

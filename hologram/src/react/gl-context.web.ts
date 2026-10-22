@@ -52,10 +52,20 @@ export const BodyGlView: BodyGlViewComponent = BrowserBodyGlView;
  * expo-gl's browser GLView falls back to WebGL 1 without a word where WebGL 2 is refused. A
  * context lost is forgotten at once, so the next frame finds nothing and the body goes back to
  * Skia; the browser then restores it, and the GLView hands it over again.
+ *
+ * **Read as Display P3, as Skia's canvas is.** React Native Skia tags its web canvas's drawing
+ * buffer `display-p3` while drawing the same sRGB paint numbers into it, so a browser that manages
+ * colour reads the rest of him as P3. Left sRGB, the body's canvas would show the same paint as
+ * another colour beside it — his body paler and yellower than the rim, the core and the halos Skia
+ * draws round it. Set here, on every context adopted, restored ones included, before the body is
+ * made in it; a browser without the property tags neither canvas.
  */
 export const adoptGlContext: AdoptGlContext = (gl) => {
   if (!(gl instanceof WebGL2RenderingContext)) {
     return undefined;
+  }
+  if ('drawingBufferColorSpace' in gl) {
+    gl.drawingBufferColorSpace = 'display-p3';
   }
   const contextId = nextContextId++;
   contexts.set(contextId, gl);
