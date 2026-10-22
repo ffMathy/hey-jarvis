@@ -618,25 +618,30 @@ mode), and both apps' native builds when bundled with
 
 **One view tree, on a device and in a browser.** The outer view paints the
 background, and where the group is Screened onto it is isolated too: a view with
-nothing but a background colour is flattened away on Fabric, and the Screen would
-take the nearest view that groups anything as its backdrop — in the conversation
-sheet, the pressable filling it, two sheet-sized layers. Inside it the scaled view (`DRAWN_RESOLUTION`) is the group the two
-canvases are composed in: isolated, rendered into a texture of its own at the
-drawn size on Android (`renderToHardwareTextureAndroid`), faded by the arrival
-(`arrivalOf`, written each frame), and on a background that is not black — the
-sheet's ink — Screened onto it. In it, Skia's canvas (test id `hologram-flat`,
-on a view round it, since Skia's web canvas takes no test id) is a `TextureView`
-whatever `opaque` says, draws no background and calls `drawHologram` with
-`fadeOutside`; the GPU's canvas over it (`hologram-body`, `pointerEvents` none)
-is Screened onto it with `mixBlendMode: 'screen'` by a view round it, and the GPU
-body is drawn with `fade: 1` and `alphaFromLight: 1`. That view shows the canvas
-only while the layer (below) is `gpu`: a context that has gone leaves its canvas
-behind, which a browser paints, the next time the page is laid out, as its own
-lost-context placeholder — a white square, all there was of him once Screened —
-and which a device may go on showing as the last frame it was handed. The satellites are in Skia's picture, so
-they arrive and leave with him there, where the flat drawing's own fade never
-reached them. Without the GPU's canvas the tree is today's: Skia paints the
-background and fades him itself.
+nothing but a background colour is flattened away on Fabric, and the Screen
+would take the nearest view that groups anything as its backdrop — in the
+conversation sheet the pressable that fills it, which drew the Screen through
+two sheet-sized layers. Inside it the scaled view (`DRAWN_RESOLUTION`) is the
+group the two canvases are composed in: isolated, rendered into a texture of its
+own at the drawn size on Android (`renderToHardwareTextureAndroid`), faded by
+the arrival (`arrivalOf`, written each frame), and on a background that is not
+black — the sheet's ink — Screened onto it. In it, Skia's canvas (test id
+`hologram-flat`, on a view round it, since Skia's web canvas takes no test id)
+is a `TextureView` whatever `opaque` says — for as long as the view is mounted,
+even once Skia has taken the body back, since a `SurfaceView` swapped in
+mid-show starts black with the cover already lifted — draws no background and
+calls `drawHologram` with `fadeOutside`; the GPU's canvas over it
+(`hologram-body`, `pointerEvents` none) is Screened onto it with `mixBlendMode:
+'screen'` by a view round it, and the GPU body is drawn with `fade: 1` and
+`alphaFromLight: 1`. That view shows the canvas only while the layer (below) is
+`gpu`: a context that has gone leaves its canvas behind, which a browser paints,
+the next time the page is laid out, as its own lost-context placeholder — a
+white square, all there was of him once Screened — and which a device may go on
+showing as the last frame it was handed. The satellites are in Skia's picture,
+so they arrive and leave with him there, where the flat drawing's own fade never
+reached them. Without the GPU's canvas Skia paints the background and fades him
+itself, as it always did, and only a view that never tried the GPU puts Skia's
+canvas on a `SurfaceView` when told it is `opaque`.
 
 **Which renderer, frame by frame** (`body-layer.tsx`). A layer of `pending`,
 `gpu` or `skia` (`BodyLayer`, in `body-layer.ts`) lives in a shared value:

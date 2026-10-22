@@ -134,8 +134,8 @@ context within 800 ms, keeps Skia's body. Unlike the phone it shows him **straig
 `tilt`, so the eye is infinitely far and the body looks as the flat drawing does. The waiting screen's
 readout ends with `gpu` or `2d`.
 
-With the GPU body Skia's canvas is a `TextureView` whatever `opaque` says, and the view behind it paints
-the black. The halo target is sized to the canvas, a texel to a pixel, rather than the headset's 512 a side.
+With the GPU body Skia's canvas is a `TextureView` whatever `opaque` says, for as long as the view is
+mounted, and the view behind it paints the black. The halo target is sized to the canvas, a texel to a pixel, rather than the headset's 512 a side.
 
 **To force Skia's body**, bundle with `EXPO_PUBLIC_HOLOGRAM_BODY=skia`, which `jarvis-hologram.tsx` reads
 at bundle time, as the phone's does.

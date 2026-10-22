@@ -169,10 +169,13 @@ export interface JarvisHologramProps {
    * on anything that slides: a SurfaceView is its own layer and does not move with the view tree,
    * which is why the sheet finishes arriving before Jarvis appears in it.
    *
-   * **It holds only for Skia's body.** While the GPU's canvas is there (see {@link body}) it is
-   * Screened onto Skia's inside the window, and a `SurfaceView` is not in the window but under it:
-   * a blend there would see the hole punched for it rather than the picture. So with the GPU body
-   * the canvas is a `TextureView` whatever this says.
+   * **It holds only where the GPU body is never tried.** While the GPU's canvas is there (see
+   * {@link body}) it is Screened onto Skia's inside the window, and a `SurfaceView` is not in the
+   * window but under it: a blend there would see the hole punched for it rather than the picture.
+   * So a view that tries the GPU body keeps the canvas a `TextureView` whatever this says, for as
+   * long as it is mounted — even once Skia has taken the body back, since a `SurfaceView` swapped
+   * in mid-show would start black with the cover already lifted. The Skia body the pending timeout
+   * or a lost context falls back to is on that `TextureView` already.
    */
   opaque?: boolean;
   /**
@@ -888,7 +891,7 @@ function JarvisHologramView({
       >
         {/* Skia's web canvas is a `div` of its own that takes no test id, so the id is on a view round it. */}
         <View testID="hologram-flat" style={{ width: drawnSize, height: drawnSize }}>
-          <Canvas opaque={opaque && !glMounted} style={{ width: drawnSize, height: drawnSize }}>
+          <Canvas opaque={opaque && !wanted} style={{ width: drawnSize, height: drawnSize }}>
             <Picture picture={picture} />
           </Canvas>
         </View>

@@ -89,8 +89,9 @@ const WEB_SHARE = 0.92;
  * would put a visible dark square on a page that is already dark. So it stays clear and the page
  * shows through.
  *
- * Both hold for Skia's flat body. With his body on the GPU the hologram makes its canvas a
- * `TextureView` whatever `opaque` says, and paints the background behind both its canvases itself.
+ * Both hold where the hologram never tries his body on the GPU. Where it does, it keeps its canvas
+ * a `TextureView` whatever `opaque` says for as long as it is mounted, and paints the background
+ * behind both its canvases itself.
  */
 export const SAMPLE_CANVAS: { opaque: boolean; background?: string } = HAS_SHEET
   ? { opaque: true, background: SHEET_INK }

@@ -199,9 +199,10 @@ bundle with `EXPO_PUBLIC_HOLOGRAM_BODY=skia` (read in `jarvis-hologram.tsx`, at 
 the web build with `?flat`.
 
 In the sheet one thing changes: with the GPU body Skia's canvas is a `TextureView` whatever `opaque`
-says, because a `SurfaceView` sits under the window, where nothing can be blended onto it. The view
-behind the two canvases paints `SHEET_INK` instead, and the two are Screened onto it as one group.
-The sheet still waits for `settled` before he is drawn.
+says, because a `SurfaceView` sits under the window, where nothing can be blended onto it — and it
+stays one if Skia takes the body back mid-show, since a `SurfaceView` swapped in would start black.
+The view behind the two canvases paints `SHEET_INK` instead, and the two are Screened onto it as one
+group. The sheet still waits for `settled` before he is drawn.
 
 None of it has been seen on a phone yet: whether expo-gl's worklet support draws from the UI thread
 with this Reanimated, whether Android composes the two canvases in the same frame, what the GPU
