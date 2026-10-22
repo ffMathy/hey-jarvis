@@ -38,12 +38,21 @@ export const TEST_AGENT_MCP_SERVER_ID = 'GMOqF385QS1GsrZKfQk6';
  * ourselves, leniently, and sending it as an additional body parameter keeps every
  * other field of the request validated as before. Unknown object keys are stripped,
  * exactly as `update` itself strips them.
+ *
+ * One unknown key is carried across anyway: `realtime_model`, which puts the agent on
+ * an Eleven Realtime speech-to-speech model and which no published SDK has a field for
+ * yet. `fetch` saves it under that snake_case name, as it saves every key the SDK does
+ * not know, so it is sent back under the same name. Stripped, the deploy would have
+ * left the agent on whichever mode it was already in, without a word.
  */
 export function toConversationConfigBody(conversationConfig: ConversationalConfig): unknown {
-  return serialization.ConversationalConfig.jsonOrThrow(conversationConfig, {
+  const body = serialization.ConversationalConfig.jsonOrThrow(conversationConfig, {
     allowUnrecognizedEnumValues: true,
     unrecognizedObjectKeys: 'strip',
   });
+  return 'realtime_model' in conversationConfig
+    ? { ...body, realtime_model: conversationConfig.realtime_model }
+    : body;
 }
 
 /**

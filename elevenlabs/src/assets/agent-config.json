@@ -1,6 +1,7 @@
 {
   "name": "J.A.R.V.I.S.",
   "conversationConfig": {
+    "realtime_model": "eleven_realtime_v1_max",
     "asr": {
       "quality": "high",
       "provider": "scribe_realtime",
