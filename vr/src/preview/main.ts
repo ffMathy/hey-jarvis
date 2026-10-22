@@ -142,6 +142,9 @@ async function start(): Promise<HologramPreviewHook> {
     async checkPort(request) {
       return stage.checkPort(request);
     },
+    checkGpuBody(request) {
+      return stage.checkGpuBody(request);
+    },
     stereo(request, separation) {
       setBackground(request.background);
       return stage.stereo(request, separation);
@@ -177,6 +180,7 @@ window.__hologramPreview = {
   ready: starting.then(() => undefined),
   show: (request) => starting.then((hook) => hook.show(request)),
   checkPort: (request) => starting.then((hook) => hook.checkPort(request)),
+  checkGpuBody: (request) => starting.then((hook) => hook.checkGpuBody(request)),
   stereo: (request, separation) => starting.then((hook) => hook.stereo(request, separation)),
   setRoomPhase: (phase, holdAtSeconds) => {
     starting.then((hook) => hook.setRoomPhase(phase, holdAtSeconds));

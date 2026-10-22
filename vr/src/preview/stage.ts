@@ -13,10 +13,13 @@ import {
 } from '../hologram3d';
 import { createFrameClock } from '../hologram3d/frame-clock';
 import { RENDERER_PARAMETERS } from '../xr/xr-stage';
+import { checkGpuBody, createRawBody, type RawBody } from './gpu-body-check';
 import { createPhaseDrives, type PhaseDrive, SETTLE_SECONDS } from './phase-drives';
 import { pictureStats } from './picture-stats';
 import { checkPort } from './port-check';
 import type {
+  GpuBodyCheck,
+  GpuBodyCheckRequest,
   PortCheck,
   PortCheckRequest,
   PreviewMode,
@@ -62,9 +65,23 @@ export interface Stage {
   stereo(request: StillRequest, separation: number): Promise<string>;
   /** Stops the live loop and compares the GPU's fragment arithmetic with the CPU reference. */
   checkPort(request: PortCheckRequest): PortCheck;
+  /**
+   * Stops the live loop and draws the body at one moment and view, from a fresh arrival, with the
+   * headset's three.js passes and with the phone's raw renderer, and compares the two.
+   */
+  checkGpuBody(request: GpuBodyCheckRequest): Promise<GpuBodyCheck>;
   /** Back to the live loop, from `phase`. */
   resume(): void;
   pause(): void;
+}
+
+/** Which way the eye is from his centre: `angle` radians round him to the viewer's right, `elevation` up. */
+function eyeDirection(angle: number, elevation: number) {
+  return {
+    x: Math.sin(angle) * Math.cos(elevation),
+    y: Math.sin(elevation),
+    z: Math.cos(angle) * Math.cos(elevation),
+  };
 }
 
 /** A fresh hologram on `renderer`, which does not thin itself: every preview frame is drawn in full. */
@@ -88,6 +105,8 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
   controls.maxDistance = 8;
   // For working out how large he is drawn; only the script's epochs are read from it.
   const measuringScene = createHologramScene(SCENE_SEED);
+  // The phone's renderer, on a context of its own, made the first time the body is checked.
+  let rawBody: RawBody | null = null;
 
   let hologram = await newHologram(renderer, painter);
   scene.add(hologram.object);
@@ -239,6 +258,34 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
     return btoa(binary);
   }
 
+  /** Stands `lens` `distance` metres from his centre, in the direction `angle` and `elevation` name, looking at him. */
+  function aim(lens: PerspectiveCamera, distance: number, angle: number, elevation: number) {
+    const { x, y, z } = eyeDirection(angle, elevation);
+    lens.position.set(x, y, z).multiplyScalar(distance);
+    lens.lookAt(0, 0, 0);
+    lens.updateMatrixWorld();
+  }
+
+  async function checkBody(request: GpuBodyCheckRequest): Promise<GpuBodyCheck> {
+    running = false;
+    // A hologram of the check's own, so the stage's is left as it was.
+    const checked = await newHologram(renderer, painter);
+    try {
+      const size = renderer.getDrawingBufferSize(new Vector2());
+      const lens = new PerspectiveCamera(request.fieldOfView, size.x / size.y, 0.05, 100);
+      // He arrives facing an eye straight ahead, as on the stage, and is then seen from the view asked for.
+      aim(lens, request.distance, 0, 0);
+      checked.arrive(lens.position);
+      stepToMoment(request.phase, request.seconds, checked);
+      aim(lens, request.distance, request.angle, request.elevation);
+      checked.update(0, drives[request.phase].drive, { position: lens.position, orientation: lens.quaternion });
+      rawBody ??= createRawBody(renderer);
+      return checkGpuBody(renderer, rawBody, checked, lens);
+    } finally {
+      checked.dispose();
+    }
+  }
+
   async function still(request: StillRequest): Promise<StillResult> {
     await prepareStill(request);
     const drive = drives[request.phase];
@@ -295,19 +342,14 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
       running = false;
       const clock = createFrameClock();
       stepToMoment(request.phase, request.seconds, clock);
-      const { angle, elevation } = request;
-      const eye = {
-        x: Math.sin(angle) * Math.cos(elevation),
-        y: Math.sin(elevation),
-        z: Math.cos(angle) * Math.cos(elevation),
-      };
       return checkPort(
         renderer,
         clock.frame(1),
-        viewBasisTowards({ x: 0, y: 0, z: 0 }, eye, null),
+        viewBasisTowards({ x: 0, y: 0, z: 0 }, eyeDirection(request.angle, request.elevation), null),
         request.eyeDistance,
       );
     },
+    checkGpuBody: checkBody,
     resume() {
       hologram.mode = mode;
       hologram.alphaFactor = alphaFactor;

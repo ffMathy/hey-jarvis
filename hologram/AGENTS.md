@@ -104,8 +104,10 @@ the body in Skia. The renderer leaves GL state as it set it, so it needs a
 context of its own. It draws what the headset draws, pass for pass and in
 three's order — the halo union into its own target, then the strokes, then the
 halos' light, Screened and faded as one layer — and whether the pixels agree is
-a browser's to say; `gpu-body.spec.ts` checks the passes, their targets and
-their blending against a context that writes its calls down.
+a browser's to say: vr's `hologram-gpu-body.spec.ts` draws the same moments both
+ways in Chromium, from the matrices three drew with, and fails on one byte
+apart. Here, `gpu-body.spec.ts` checks the passes, their targets and their
+blending against a context that writes its calls down.
 
 `src/react/` is where React, Reanimated and Skia are called for real, and it is
 deliberately thin: a Skia canvas, a frame callback, the voice read every 40 ms,

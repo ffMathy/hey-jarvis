@@ -948,7 +948,12 @@ level with the floor. Its `fragment-glsl.ts` is that file, line for line, in
 GLSL; each draw evaluates it in its vertex shader (three 0.186 has no transform
 feedback, and a float state pass needs an extension a Quest may not have). The
 unit tests hold `fragment-3d.ts` to the phone; `hologram-port.spec.ts` holds the
-GLSL to `fragment-3d.ts`.
+GLSL to `fragment-3d.ts`; and `hologram-gpu-body.spec.ts` holds the raw renderer
+the phone and the watch draw the body with (`drawGpuBody`) to these passes, byte
+for byte: the preview draws a moment with three.js, CanvasKit's picture blacked
+out, then with `drawGpuBody` on a context of its own from the matrices and
+uniforms three drew the strokes with (`src/preview/gpu-body-check.ts`), near and
+far, from the front, the side, above and below.
 
 The renderer takes four samples a pixel (`xr/xr-stage.ts`), for the room's plain
 triangles; fragments are still shaded once a pixel, so none of these passes looks
