@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.14.0...home-assistant-voice-firmware-v0.15.0) (2026-10-22)
+
+
+### Features
+
+* **hologram:** draw his body in 3D on the GPU on phones and watches ([#978](https://github.com/ffMathy/hey-jarvis/issues/978)) ([3a30843](https://github.com/ffMathy/hey-jarvis/commit/3a308435c1c2e327bf9afaa03cf4952b47c5bf19))
+
 ## [0.14.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.13.1...home-assistant-voice-firmware-v0.14.0) (2026-10-01)
 
 
