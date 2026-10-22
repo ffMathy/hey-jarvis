@@ -191,7 +191,7 @@ async function measureEveryBodyFrame(body: Locator): Promise<void> {
 }
 
 /** Bytes from the page, which hands them over as base64 rather than as a list of numbers. */
-async function bytesFromThePage(base64: string): Promise<Uint8Array> {
+function bytesFromThePage(base64: string): Uint8Array {
   return new Uint8Array(Buffer.from(base64, 'base64'));
 }
 
@@ -211,10 +211,8 @@ async function takeBodyFrames(page: Page): Promise<BodyFrame[]> {
       }),
     );
   });
-  return Promise.all(
-    frames.map(async ({ width, height, base64 }) =>
-      bodyFrameOf({ width, height, rgba: flipRows(await bytesFromThePage(base64), width, height) }),
-    ),
+  return frames.map(({ width, height, base64 }) =>
+    bodyFrameOf({ width, height, rgba: flipRows(bytesFromThePage(base64), width, height) }),
   );
 }
 
@@ -275,7 +273,59 @@ async function pixelsOf(page: Page, screenshot: Buffer): Promise<Pixels> {
     });
     return { width: image.width, height: image.height, base64: asDataUrl.slice(asDataUrl.indexOf(',') + 1) };
   }, screenshot.toString('base64'));
-  return { width, height, rgba: await bytesFromThePage(base64) };
+  return { width, height, rgba: bytesFromThePage(base64) };
+}
+
+/** A pixel's luma, 0–255. */
+function lumaAt(rgba: Uint8Array, index: number): number {
+  return 0.2126 * (rgba[index * 4] ?? 0) + 0.7152 * (rgba[index * 4 + 1] ?? 0) + 0.0722 * (rgba[index * 4 + 2] ?? 0);
+}
+
+/**
+ * The share of a picture's light that falls inside the sphere at its largest, centred on a box in
+ * it: the light being each pixel's luma above the box's corner, which is the page behind him.
+ */
+function shareInsideTheSphere({ width, rgba }: Pixels, box: Box): number {
+  const centreX = box.x + box.width / 2;
+  const centreY = box.y + box.height / 2;
+  const behind = lumaAt(rgba, Math.round(box.y) * width + Math.round(box.x));
+  let light = 0;
+  let inside = 0;
+  for (let index = 0; index < rgba.length / 4; index++) {
+    const above = Math.max(0, lumaAt(rgba, index) - behind);
+    const distance = Math.hypot((index % width) + 0.5 - centreX, Math.floor(index / width) + 0.5 - centreY);
+    light += above;
+    inside += distance <= SPHERE_AT_LARGEST * box.width ? above : 0;
+  }
+  return inside / Math.max(light, 1);
+}
+
+/**
+ * Screens two channel values over the page behind them: each is taken as light added to that dark
+ * background, and the background is counted once.
+ */
+function screened(first: number, second: number, behind: number): number {
+  const firstLight = Math.max(0, first - behind);
+  const secondLight = Math.max(0, second - behind);
+  return behind + firstLight + secondLight - (firstLight * secondLight) / 255;
+}
+
+/**
+ * The most any channel of the composed picture is from Skia's picture and the GPU body's Screened
+ * together, each taken with the other's canvas hidden: three pictures of one moment.
+ */
+function largestScreenError(composed: Pixels, skiaAlone: Pixels, bodyAlone: Pixels): number {
+  let largest = 0;
+  for (let index = 0; index < composed.rgba.length; index++) {
+    if (index % 4 === 3) {
+      continue;
+    }
+    // The first pixel is the corner of the square, which is the page behind him.
+    const behind = composed.rgba[index % 4] ?? 0;
+    const expected = screened(skiaAlone.rgba[index] ?? 0, bodyAlone.rgba[index] ?? 0, behind);
+    largest = Math.max(largest, Math.abs((composed.rgba[index] ?? 0) - expected));
+  }
+  return largest;
 }
 
 /** Whether a pixel is inside a box. */
@@ -293,8 +343,7 @@ function lookOf({ width, height, rgba }: Pixels, box: Box = { x: 0, y: 0, width,
   for (let index = 0; index < width * height; index++) {
     const x = index % width;
     const y = Math.floor(index / width);
-    const pixelLuma =
-      0.2126 * (rgba[index * 4] ?? 0) + 0.7152 * (rgba[index * 4 + 1] ?? 0) + 0.0722 * (rgba[index * 4 + 2] ?? 0);
+    const pixelLuma = lumaAt(rgba, index);
     const isLit = pixelLuma > LIT_LUMA ? 1 : 0;
     if (!isInside(x, y, box)) {
       litOutside += isLit;
@@ -393,10 +442,24 @@ test('draws his body on the GPU where the browser has WebGL 2, centred in the sp
     throw new Error('The hologram has no box on the page');
   }
   const bodyOnThePage = await withHidden(page, ['hologram-flat', 'frame-rate'], async () =>
-    lookOf(await pixelsOf(page, await page.screenshot()), square),
+    pixelsOf(page, await page.screenshot()),
   );
-  expect(bodyOnThePage.litShare).toBeGreaterThan(0.02);
-  expect(bodyOnThePage.litOutside).toBe(0);
+  const bodyInTheSquare = lookOf(bodyOnThePage, square);
+  expect(bodyInTheSquare.litShare).toBeGreaterThan(0.02);
+  expect(bodyInTheSquare.litOutside).toBe(0);
+  // And where the sphere is in that square, not only somewhere in it: all of its light was, at this
+  // moment, against 76% for a canvas laid out half again too large and 8% for one laid out to the side.
+  expect(shareInsideTheSphere(bodyOnThePage, square)).toBeGreaterThan(0.85);
+
+  // Screened onto Skia's picture, light added to light: the page shows, pixel by pixel, what Screening
+  // the two pictures together gives, each taken with the other's canvas hidden. Measured at most 8
+  // levels off, from counting the page's own dark background into each picture; laid over Skia's
+  // picture instead of Screened onto it, the body put pixels 58 levels off.
+  const hologram = page.getByTestId('hologram');
+  const composed = await pixelsOf(page, await hologram.screenshot());
+  const skiaAlone = await withHidden(page, ['hologram-body'], async () => pixelsOf(page, await hologram.screenshot()));
+  const bodyAlone = await withHidden(page, ['hologram-flat'], async () => pixelsOf(page, await hologram.screenshot()));
+  expect(largestScreenError(composed, skiaAlone, bodyAlone)).toBeLessThan(16);
 
   // The readout, which says which renderer drew the frames it counts.
   await expect(page.getByTestId('frame-rate')).toHaveText(/ · gpu$/);
