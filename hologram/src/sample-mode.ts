@@ -1,4 +1,3 @@
-import type { BodyLayer } from './body-layer';
 import type { SimulatedMood } from './simulated-voice';
 import type { JarvisVoice } from './voice-contract';
 
@@ -89,21 +88,14 @@ export interface FrameRateReading {
   buildMilliseconds: number;
   /** The share of the scene's particles being drawn, 0–1. */
   share: number;
-  /** Which renderer draws his body, where the view says: see `body-layer.ts`. */
-  body?: BodyLayer;
 }
-
-/** How the readout names each renderer: nothing while it is still being decided. */
-const BODY_TAGS: Record<BodyLayer, string> = { pending: '', gpu: ' · gpu', skia: ' · 2d' };
 
 /**
  * The readout's one line of text.
  *
  * `particles` is how many there are when none are held back, so the share can be said as a count.
  * Build time is optional because it is the first thing to go where there is no room for it: on a
- * round watch face the line has to fit the chord of a circle. The renderer comes last, `gpu` or
- * `2d`, because what the other numbers mean turns on it: with the body on the GPU the build time is
- * the picture of everything else plus issuing the GPU's frame, and the sparks are the GPU's.
+ * round watch face the line has to fit the chord of a circle.
  */
 export function describeFrameRate(
   reading: FrameRateReading,
@@ -112,8 +104,7 @@ export function describeFrameRate(
 ): string {
   const rate = `${Math.round(reading.rate)} fps`;
   const sparks = `${Math.round(reading.share * particles)} sparks`;
-  const body = reading.body === undefined ? '' : BODY_TAGS[reading.body];
   return withBuildTime
-    ? `${rate} · build ${reading.buildMilliseconds.toFixed(1)} ms · ${sparks}${body}`
-    : `${rate} · ${sparks}${body}`;
+    ? `${rate} · build ${reading.buildMilliseconds.toFixed(1)} ms · ${sparks}`
+    : `${rate} · ${sparks}`;
 }

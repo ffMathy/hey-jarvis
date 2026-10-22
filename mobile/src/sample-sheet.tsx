@@ -33,12 +33,8 @@ function sheetHeight(width: number, height: number): number {
 export const SHEET_INK = '#0b1220';
 
 /**
- * How far the canvas is held back from the sheet's edge.
- *
- * Not decoration. An opaque canvas is a `SurfaceView`, a hardware layer of its own that a parent
- * cannot clip — not with `overflow: hidden`, not with a corner radius. Anything it draws outside
- * the sheet stays outside the sheet, and the border ends up drawn across the middle of it. Holding
- * it back by more than the radius is what keeps the edge clean.
+ * How far the canvas is held back from the sheet's edge: by more than the sheet's corner radius, so
+ * his square sits wholly inside the sheet's border rather than across it.
  */
 export const SHEET_INSET = 14;
 
@@ -50,11 +46,10 @@ const SHEET_EDGE = '#243043';
  *
  * **There is not one on the web, and the reason is that the sheet is not a design — it is a thing
  * Android made necessary.** It exists because an assistant is summoned over the app you were using,
- * so it has to leave that app visible; and because an opaque Skia canvas is a `SurfaceView`, which
- * has to sit still on something solid. Neither is true in a browser. There is no app behind the
- * page to preserve, and there is no `SurfaceView` — so a sheet along the bottom is a strip of the
- * window doing the work of a full screen, with Jarvis stuck in the bottom of it and the
- * rest of the page black. Which is exactly how it looked.
+ * so it has to leave that app visible. That is not true in a browser: there is no app behind the
+ * page to preserve, so a sheet along the bottom is a strip of the window doing the work of a full
+ * screen, with Jarvis stuck in the bottom of it and the rest of the page black. Which is exactly how
+ * it looked.
  *
  * On the web he is simply in the middle, as big as the window allows.
  */
@@ -79,23 +74,13 @@ export function sampleHologramSize(width: number, height: number): number {
 const WEB_SHARE = 0.92;
 
 /**
- * How the canvas should be set up, which also follows from whether there is a sheet.
+ * What the hologram is drawn on, which also follows from whether there is a sheet.
  *
- * On a phone it is told it is opaque, which is what makes Skia use a `SurfaceView` instead of a
- * `TextureView` and is most of the frame rate — and an opaque canvas has nothing behind it, so it
- * has to paint the sheet's own colour or it is a black rectangle sitting on the sheet.
- *
- * On the web neither applies: there is no `SurfaceView` to opt into, and painting a background
- * would put a visible dark square on a page that is already dark. So it stays clear and the page
- * shows through.
- *
- * Both hold where the hologram never tries his body on the GPU. Where it does, it keeps its canvas
- * a `TextureView` whatever `opaque` says for as long as it is mounted, and paints the background
- * behind both its canvases itself.
+ * On a phone it is the sheet's own colour, which the hologram paints behind him and Screens him
+ * onto, so the square meets the sheet with no seam. On the web painting a background would put a
+ * visible dark square on a page that is already dark, so it stays clear and the page shows through.
  */
-export const SAMPLE_CANVAS: { opaque: boolean; background?: string } = HAS_SHEET
-  ? { opaque: true, background: SHEET_INK }
-  : { opaque: false };
+export const SAMPLE_CANVAS: { background?: string } = HAS_SHEET ? { background: SHEET_INK } : {};
 
 /** How long it takes to arrive, and to go. */
 const ARRIVE_MS = 260;
@@ -105,15 +90,12 @@ const LEAVE_MS = 200;
  * The panel Jarvis is summoned into: solid, along the bottom, sliding up from under the screen.
  *
  * **Its shape is a performance decision as much as a look.** Jarvis used to be drawn straight onto
- * a see-through window over the home screen, which costs twice: Skia's canvas falls back to a
- * `TextureView` when it cannot be told it is opaque — an extra copy of every frame — and the
- * compositor blends the whole screen against whatever is behind it. On something solid, neither
- * happens.
+ * a see-through window over the home screen, and the compositor blended the whole screen against
+ * whatever was behind it. On something solid it does not.
  *
- * **And it is why Jarvis waits.** The fast path is a `SurfaceView`, which is its own hardware layer
- * and does not move with the view tree — animate one and it tears or lags behind. So the sheet
- * arrives first, as an ordinary view, and only once it has stopped does anything ask for a canvas.
- * `onSettled` is that moment. He materialises after it, which he was going to do anyway.
+ * **Jarvis waits for it.** The sheet arrives first, as an ordinary view, and only once it has
+ * stopped does anything ask for a canvas, so his arrival is not spent sliding. `onSettled` is that
+ * moment. He materialises after it, which he was going to do anyway.
  *
  * The scrim above the sheet stays see-through on purpose: what is behind is the app the user was
  * in, and an assistant that blacks it out has replaced it rather than come to help.

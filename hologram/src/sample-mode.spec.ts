@@ -58,12 +58,4 @@ describe('the frame-rate readout', () => {
   it('drops the build time where there is no room for it', () => {
     expect(describeFrameRate(reading, 1200, { withBuildTime: false })).toBe('40 fps · 300 sparks');
   });
-
-  it('says which renderer draws his body once that is decided', () => {
-    expect(describeFrameRate({ ...reading, body: 'gpu' }, 1200)).toBe('40 fps · build 3.1 ms · 300 sparks · gpu');
-    expect(describeFrameRate({ ...reading, body: 'skia' }, 1200, { withBuildTime: false })).toBe(
-      '40 fps · 300 sparks · 2d',
-    );
-    expect(describeFrameRate({ ...reading, body: 'pending' }, 1200)).toBe('40 fps · build 3.1 ms · 300 sparks');
-  });
 });

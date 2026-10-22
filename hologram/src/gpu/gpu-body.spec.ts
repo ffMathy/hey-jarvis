@@ -85,7 +85,6 @@ function frameAt(overrides: Partial<HologramFrame>): HologramFrame {
     burstStrength: 0,
     burstCount: 0,
     appearance: 1,
-    density: 1,
     presence: 1,
     thinking: 0,
     ...overrides,

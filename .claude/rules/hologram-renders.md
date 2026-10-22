@@ -12,6 +12,13 @@ Every clip or still of the hologram that is rendered offline — the README's ph
 (`render-showcase.ts`), the cover, the Play assets, and any preview a change is judged by
 (`render-preview.ts`) — has to show the best Jarvis the depicted device can actually draw.
 
+## His body is not in them yet
+
+The scripts draw with `drawHologram` under CanvasKit in Bun, and his body is drawn only on the GPU
+(`hologram/gpu`): `drawHologram` draws everything but the body. **NEVER regenerate a committed clip,
+still or icon from them** until they draw the body on a GPU — in a headless browser through
+`hologram/gpu`, as `vr/src/preview` does — or the output is Jarvis without his body.
+
 ## Particle count
 
 **ALWAYS render at the most particles the depicted device can hold** — `PARTICLE_COUNT` for the

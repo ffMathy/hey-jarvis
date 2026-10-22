@@ -72,8 +72,7 @@ listening, a status line saying why and what to do about it.
   own, his voice comes from his spot in the room, and it moves with your head;
   otherwise it comes from the headset, as before. A switch on the 2D page turns it
   off (see "His voice from where he stands" below).
-- **URL flags:** `?debug` shows a diagnostics HUD in the room; `?flat` draws him
-  as the phone's flat picture instead of in 3D; `?microphone=raw` listens for
+- **URL flags:** `?debug` shows a diagnostics HUD in the room; `?microphone=raw` listens for
   the wake word without echo cancellation, noise suppression or gain control, to
   try on a headset whether it hears better that way; `?voice=spatial` plays his
   voice from where he stands even when the microphone says the headset has no
@@ -883,9 +882,8 @@ add `object` to the scene, set its position (the anchor), call `arrive()` on eve
 summon and `update(delta, drive, centreEye)` once per XR frame before
 `renderer.render`, with the centre eye read from `frame.getViewerPose` at the start
 of the frame (three's XR camera lags one), and `settle()` when the next second's
-frames will hitch for reasons not his (see the backstop below). `?flat`
-(`mode = 'flat'`) draws the phone's whole picture on one quad instead: the first
-thing this app ever drew, kept as the reference the 3D look is checked against.
+frames will hitch for reasons not his (see the backstop below). He is drawn
+one way only, his body in three dimensions beside CanvasKit's picture of the rest.
 
 Per frame, on the CPU:
 
@@ -897,8 +895,8 @@ Per frame, on the CPU:
    differently: the voice is read every READ_INTERVAL_MS on the clock's own time,
    and the arrival restarts on `arrive()` (`restartArrival`).
 2. **`analyseFrame`**, and CanvasKit drawing everything flat — the whorl, the core,
-   the rim, the chips, the pulse — at **density 0**, which skips the body and the
-   stream and nothing else (`flat-hologram.ts`). CanvasKit is the full build React
+   the rim, the chips, the pulse — with `drawHologram`, which draws everything but
+   the body and the stream (`flat-hologram.ts`). CanvasKit is the full build React
    Native Skia's web API expects, from `./vendor/`, wrapped in `JsiSkApi` exactly as
    hologram's own tests and the phone's web build do. Its surface is WebGL when
    there is a real GPU and its CPU rasteriser otherwise: on SwiftShader the GPU
@@ -1005,7 +1003,7 @@ Jarvis in 3D on a normal desktop canvas, with a camera to drag round him, black 
 passthrough grey behind him, a button for each phase (arriving, greeting,
 speaking, listening, thinking, idle, leaving — driven by the greeting's
 measurement, the simulated voices and a simulated listener, as sample mode is),
-flat or 3D, and the alpha factor. **Enter your room** opens the same hologram in a
+and the alpha factor. **Enter your room** opens the same hologram in a
 headset, 1.6 m ahead; there a select moves on to the next phase. It is what the
 browser tests photograph and measure, through `window.__hologramPreview`
 (`preview-hook.ts`).
@@ -1327,7 +1325,8 @@ the models first.
   arriving, greeting, both error panels, every sample mood, and the drawer, a
   carried and a placed token, the pointing reticle and a corona round a placed
   entity (`entities-*.png`) — and the hologram
-  specs every phase; each is attached to the report, and copied to
+  specs every phase, from the front and the side, on black and on grey, and told
+  apart by how each is lit; each is attached to the report, and copied to
   `HOLOGRAM_SCREENS_DIR` when that is set. `hologram-room.spec.ts` logs the
   emulator's frame times, which say nothing about a Quest's.
 - **Pictures at a headset's density, nearly.** The emulator's XR framebuffer is

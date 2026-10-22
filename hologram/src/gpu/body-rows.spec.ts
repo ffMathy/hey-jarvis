@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 import { SCENE_SEED } from '../frame-timing';
 import {
+  BODY_ID_FIELD,
   BODY_STRIDE,
   createHologramScene,
   densityKey,
-  densityRowsEnd,
   PARTICLE_COUNT,
+  STREAM_ID_FIELD,
   STREAM_STRIDE,
-  THINNED_TABLES,
 } from '../hologram-drawing';
 import { buildHologramRows } from './body-rows';
 
@@ -63,13 +63,18 @@ describe('the hologram’s rows on the GPU', () => {
     }
   });
 
-  it('thins exactly the rows the phone’s density share thins', () => {
-    for (const density of [0.1, 0.5, 0.9]) {
-      const kept = densityRowsEnd(scene.body, BODY_STRIDE, THINNED_TABLES.body.idField, density) / BODY_STRIDE;
-      for (let row = 0; row < rows.bodyCount; row++) {
-        expect(rows.thinning[row] < density).toBe(row < kept);
-      }
+  it('thins each row by its id’s density key, so a share keeps the same rows as it rises', () => {
+    for (let row = 0; row < rows.bodyCount; row += 7) {
+      expect(rows.thinning[row]).toBe(Math.fround(densityKey(scene.body[row * BODY_STRIDE + BODY_ID_FIELD])));
     }
-    expect(rows.thinning[5]).toBeCloseTo(densityKey(scene.body[5 * BODY_STRIDE + 6]), 6);
+    for (let row = 0; row < rows.streamCount; row++) {
+      const id = scene.stream[row * STREAM_STRIDE + STREAM_ID_FIELD];
+      expect(rows.thinning[rows.bodyCount + row]).toBe(Math.fround(densityKey(id)));
+    }
+    // About the share of each table, at every share: the keys are spread evenly over 0 to 1.
+    for (const density of [0.1, 0.5, 0.9]) {
+      const kept = rows.thinning.filter((key) => key < density).length;
+      expect(kept / rows.count).toBeCloseTo(density, 1);
+    }
   });
 });

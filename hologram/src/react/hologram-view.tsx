@@ -1,5 +1,5 @@
 import { Canvas, Picture, Skia } from '@shopify/react-native-skia';
-import { memo, useContext, useEffect, useMemo, useState } from 'react';
+import { memo, useContext, useEffect, useMemo } from 'react';
 import { PixelRatio, Platform, StyleSheet, View } from 'react-native';
 import Animated, {
   type SharedValue,
@@ -7,7 +7,6 @@ import Animated, {
   useDerivedValue,
   useFrameCallback,
   useSharedValue,
-  withTiming,
 } from 'react-native-reanimated';
 import { createFlatCamera, drawGpuBody, placeFlatCamera, STRAIGHT_ON, tiltedView } from '../gpu';
 import {
@@ -15,9 +14,6 @@ import {
   advanceTiltBy,
   analyseFrame,
   arrivalOf,
-  type BodyLayer,
-  type BodyRenderer,
-  bodyStartingShare,
   createDensityControl,
   createFrameClockState,
   createHologramResources,
@@ -35,22 +31,21 @@ import {
   hearingFromPresence,
   hearingLevelFromVolume,
   hologramFrameOf,
-  keepsProvenShare,
   MATERIALISE_SECONDS,
   PARTICLE_COUNT,
   perceivedLevel,
+  pictureSceneOf,
   READ_INTERVAL_MS,
   resetTilt,
   restartArrival,
   type SatelliteOrbit,
   SCENE_SEED,
-  seedFromRemembered,
   steerDensity,
   VOICE_BAND_COUNT,
 } from '../index';
 import type { JarvisVoice, UserVoice } from '../voice-contract';
 import { AgentSatellitesContext } from './agent-satellites';
-import { gpuBodyWanted, useBodyLayer } from './body-layer';
+import { type GpuBodyDrawing, useBodyLayer } from './body-layer';
 import { drawingBufferSide } from './gl-context';
 import { useIsForeground } from './is-foreground';
 import { NO_GRAVITY, TiltSensor } from './tilt-sensor';
@@ -107,27 +102,6 @@ export interface JarvisHologramProps {
    */
   particleShare?: SharedValue<number>;
   /**
-   * Somewhere to put the most this phone has been seen drawing at the cap, for keeping.
-   *
-   * Different from {@link particleShare}, which is what is being drawn now and falls whenever
-   * something else on the phone gets busy. This only rises, and it is the one worth writing down.
-   *
-   * Only while Skia draws his body: what is written down only ever starts Skia's body again (see
-   * {@link startingShare}), and a share the GPU's body held says nothing about it. While the GPU
-   * draws the body nothing is written here.
-   */
-  provenShare?: SharedValue<number>;
-  /**
-   * What share to begin Skia's body at, from whatever was written down last time — half of it. The
-   * GPU's body begins at a share of its own: see `bodyStartingShare`.
-   *
-   * Left out, the loop starts at the floor and climbs, which is what a phone that has never been
-   * measured does and what every phone does after an update that moves the drawing's cost. Given,
-   * it is `startFromRemembered` of a count this phone was seen holding, which is deliberately only
-   * half: see `REMEMBERED_SHARE`. Either way the first second is spent going up, never down.
-   */
-  startingShare?: number;
-  /**
    * The frame rate the density loop holds, and the build budget it steers by. Left out, it is the
    * phone's forty; the watch asks for thirty, and spends what that frees on particles. See
    * `DensityPace`.
@@ -139,63 +113,28 @@ export interface JarvisHologramProps {
    *
    * Left alone it is {@link PARTICLE_COUNT}, which is what a phone gets. A watch asks for fewer,
    * and this is the only way to give it them: building the scene is not free — that many fragments
-   * times `BODY_STRIDE` numbers, sorted and serialised into the worklet runtime when the view
-   * mounts — and that cost cannot be steered away from on any device, which is why it is a
-   * parameter and not a measurement. The share in `density-control.ts` no longer costs the loop
-   * the rest of the scene: the loop stops where the kept fragments end.
+   * times `BODY_STRIDE` numbers, built into the GPU's rows when the view mounts — and that cost
+   * cannot be steered away from on any device, which is why it is a parameter and not a
+   * measurement.
    */
   particleCount?: number;
   /**
-   * Somewhere to put how long *building* one picture takes, in milliseconds, if anyone is watching.
+   * Somewhere to put how long *building* one frame takes, in milliseconds, if anyone is watching:
+   * Skia's picture of everything but his body, and the calls that issue the GPU's frame of it.
    *
-   * The companion to {@link frameRate}, and together they say where a slow frame goes. A frame has
-   * two halves: this one, which is JavaScript on the UI thread, and painting the picture, which is
-   * Skia. On a phone the same drawing ran at 58 frames a second in Chrome and 8 to 11 in the app, at
-   * about a tenth of the particles. The harnesses built to find out why put the frame rate on the
-   * painting, because the app's canvas had no stencil (see {@link DRAWN_IN_A_LAYER}), and the
-   * particle count on this half as well, because Hermes runs it as unoptimised bytecode with no JIT
-   * — about twelve times slower per particle than V8 with its JIT, on the same desktop; see
-   * `roundedInDensityOrder` in the drawing. Neither was read off the phone, and this readout, beside
-   * {@link frameRate}, is what would.
-   *
-   * The same timing is what the density loop now steers by, whether or not this is passed: see
-   * `BUILD_BUDGET_MS`. This is only where the readout finds it.
+   * The companion to {@link frameRate}, and together they say where a slow frame goes: this half
+   * is JavaScript on the UI thread, and the rest is the GPU drawing. The same timing is what the
+   * density loop steers by, whether or not this is passed: see `BUILD_BUDGET_MS`. This is only
+   * where the readout finds it.
    */
   buildMilliseconds?: SharedValue<number>;
   /**
-   * Whether there is anything behind the canvas worth seeing through it.
+   * The colour he is drawn on, where he is not drawn over whatever is behind the view.
    *
-   * It is not a look, it is which Android view Skia draws into. Left alone, `<Canvas>` uses a
-   * `TextureView`: an extra copy of every frame into a texture, and a sync with the UI thread to
-   * composite it. Told it is opaque, it uses a `SurfaceView`, which SurfaceFlinger puts on the
-   * screen directly.
-   *
-   * So pass it wherever the hologram sits on something solid — the sheet, the conversation screen
-   * — and leave it alone where the point is to see through to what is behind. And do not pass it
-   * on anything that slides: a SurfaceView is its own layer and does not move with the view tree,
-   * which is why the sheet finishes arriving before Jarvis appears in it.
-   *
-   * **It holds only where the GPU body is never tried.** While the GPU's canvas is there (see
-   * {@link body}) it is Screened onto Skia's inside the window, and a `SurfaceView` is not in the
-   * window but under it: a blend there would see the hole punched for it rather than the picture.
-   * So a view that tries the GPU body keeps the canvas a `TextureView` whatever this says, for as
-   * long as it is mounted — even once Skia has taken the body back, since a `SurfaceView` swapped
-   * in mid-show would start black with the cover already lifted. The Skia body the pending timeout
-   * or a lost context falls back to is on that `TextureView` already.
-   */
-  opaque?: boolean;
-  /**
-   * What colour to paint the canvas before drawing on it.
-   *
-   * Needed because of {@link opaque}. A `SurfaceView` is its own hardware layer with nothing behind
-   * it, so an opaque canvas that paints no background is a black rectangle sitting on whatever it
-   * was placed on — which is exactly how it looked in the sheet. Given a colour it paints that, and
-   * the canvas can fill the sheet with no seam between them.
-   *
-   * With the GPU body the view behind both canvases paints it instead, and neither canvas paints
-   * anything behind him: the two are one group, faded as one and, on anything but black, Screened
-   * onto this colour as one, as every part of him is drawn. A canvas painting it would put the
-   * colour into the group, and the fade would take it with him.
+   * The view behind both canvases paints it, and neither canvas paints anything behind him: the two
+   * are one group, faded as one by his arrival and, on anything but black, Screened onto this colour
+   * as one, as every part of him is drawn. A canvas painting it would put the colour into the
+   * group, and the fade would take it with him.
    */
   background?: string;
   /**
@@ -204,49 +143,13 @@ export interface JarvisHologramProps {
    */
   satellites?: SharedValue<SatelliteOrbit[]>;
   /**
-   * Which renderer draws his body. Left out it is the GPU, in three dimensions through
-   * `hologram/gpu`, wherever the device has what that needs — Android 10 and expo-gl's native
-   * module on a phone or a watch, WebGL 2 in a browser — and Skia's flat drawing wherever it does
-   * not, or the GPU fails. Asked for Skia, the GPU is never tried, which is how an app forces the
-   * flat body. Read once, when the view mounts. See `body-layer.tsx`.
-   */
-  body?: BodyRenderer;
-  /**
    * Whether tilting the device turns the view round him, by up to `TILT_LARGEST_DEGREES` from a
-   * rest pose that follows how it is held, so a device held still shows him straight on. Only with
-   * the body on the GPU, which is what can show him from the side. The phone asks for it; the watch
+   * rest pose that follows how it is held, so a device held still shows him straight on. Only while
+   * his body is drawn, which is what can show him from the side. The phone asks for it; the watch
    * does not. See `tilt.ts`.
    */
   tilt?: boolean;
-  /**
-   * Somewhere to put which renderer is drawing his body, if anyone is watching: the readout's last
-   * word. Written with the frame rate.
-   */
-  bodyLayer?: SharedValue<BodyLayer>;
 }
-
-/**
- * How long the canvas is covered for when it first appears, in milliseconds.
- *
- * **An opaque canvas is a `SurfaceView`, and a `SurfaceView` starts black.** It is a hardware layer
- * of its own: the window is punched through where it sits, and until the first frame has been
- * drawn into it what shows is an empty buffer — a black square, for as long as it takes Skia to
- * build a picture and hand it over. Against a dark sheet that is a flash of something squarer and
- * blacker than everything round it, arriving exactly when the sheet has finished sliding up and the
- * eye is already there.
- *
- * So a plain view of the background colour is laid over the canvas and faded off once there is
- * something underneath it. Nothing is hidden by that: it is over in a sixth of a second and the
- * sphere spends its first {@link MATERIALISE_SECONDS} coming out of nothing anyway.
- *
- * With the GPU body neither canvas is a `SurfaceView` and nothing starts black, and the cover is
- * kept regardless: it comes off with the first frame the clock steps, and while the GPU body is
- * pending there is none, so it also covers the two canvases being made.
- */
-const UNCOVER_MS = 160;
-
-/** How long to wait for a first frame before taking the cover off regardless. See its use. */
-const GIVE_UP_COVERING_MS = 900;
 
 /**
  * What share of the screen's own resolution the sphere is drawn at, before being scaled back up.
@@ -263,14 +166,6 @@ const GIVE_UP_COVERING_MS = 900;
  * strokes, with no text and no hard edges anywhere in it. On a phone at three device pixels to the
  * point it is drawn at 1.35.
  *
- * **On the phone's GPU it was not what set the frame rate.** The app ran at the same few frames a
- * second whatever the canvas's size, and what it was paying for, as far as a model of it can say, was
- * Skia triangulating the halos on the CPU for want of a stencil — see {@link DRAWN_IN_A_LAYER}.
- * Building the picture under Hermes is what held down how many particles it drew, not the frame
- * rate: the one reading taken on the phone then had the build at 2.6 ms of a 120 ms frame. What the
- * GPU itself pays per pixel, now that it draws the halos, has not been measured; the phone's own
- * browser, which draws them the same way, held 58.
- *
  * **The GPU body is drawn at it too.** Its canvas is laid out beside Skia's in the same scaled
  * view, and on Android that view is rendered into a texture of its own at this size
  * (`renderToHardwareTextureAndroid`), so the two are Screened together at the drawn size and scaled
@@ -278,60 +173,6 @@ const GIVE_UP_COVERING_MS = 900;
  * came out up to fourteen levels off at bright edges, in a model of it.
  */
 const DRAWN_RESOLUTION = 0.45;
-
-/**
- * Whether the picture is drawn inside a layer of its own, which on Android is expected to take most of
- * the cost out of painting it.
- *
- * **React Native Skia gives its Android window no stencil buffer** (`EGL_STENCIL_SIZE 0`, in
- * `gl/Display.h` unchanged from 2.6.2 through 2.12.0 and in every earlier release checked), where
- * CanvasKit's WebGL canvas in a browser gets eight bits of one by default. Skia's GPU backend draws a
- * stroke with antialiasing off through its tessellator, on the GPU, only when the target has a
- * stencil and the context can draw instanced geometry. Without a stencil it turns each such stroke
- * into its outline on the CPU and triangulates it — or, past about two thousand dashes in one path,
- * rasterises it into a mask — every frame, and the paths are new every frame, so nothing it caches is
- * ever used again. The particle halos are exactly those: six paths a frame of thousands of wide
- * round-capped dashes, drawn without antialiasing (see `HALO_ANTIALIASED`). In a model of the two
- * canvases — the real drawing in CanvasKit on WebGL, in headless Chromium over SwiftShader, at 714 px
- * (238 dp at 3x; a 1080-px-wide phone's whole-screen canvas is about 620) and full density — that is
- * 12.6 MB of triangles and 230-250 ms of Skia's CPU a frame without a stencil, against about 30 ms
- * with one, nearly all of the difference in the triangulator. It has outliers too: single frames that
- * took four, ten and twenty seconds, on geometry the triangulator happened to choke on.
- *
- * A layer is a surface Skia allocates for itself, so it can always give it a stencil, and drawn into
- * one the halos go to the GPU as they do in a browser: in the same model, 30-32 ms at full density,
- * the browser's own figure, with no outlier past 70 ms in 680 frames. The picture comes out within
- * one level of the browser's, but for a single pixel in one frame. The background is drawn *inside*
- * the layer rather than under it, because every paint here is Screen-blended against whatever is
- * already there and the picture has to blend against the same pixels either way: under it, the
- * sheet's colour came out up to 29 levels off. With the GPU body nothing is drawn behind him in the
- * layer at all — the background goes behind both canvases, which are Screened onto it as one
- * group — and the halos left in it are the rest of him, the body's being the GPU's.
- *
- * What it costs, going by Skia's source rather than a phone: an offscreen surface the size of the
- * canvas, rounded up to a power of two, with a stencil attached — about 5 MB at the whole-screen size
- * on a 1080-px-wide phone, 1.25 MB in its sheet (5 MB on a wider screen) and a third of a megabyte on
- * a watch, kept for the life of the app — and one full-canvas draw of it onto the window a frame.
- * While he arrives or leaves the drawing adds a layer of its own inside this one, so there are two.
- *
- * Why a layer rather than asking React Native Skia for a stencil, which would be one number in its
- * `gl/Display.h`: that is a patch to a native dependency that has to be carried across every upgrade,
- * and on its own it may not even be correct. React Native Skia wraps the window's surface once and
- * keeps it, so Skia clears that stencil on the first frame only and loads it after that — and EGL
- * leaves a window's stencil undefined after every swap. A layer's stencil is Skia's own.
- *
- * Only on Android, where the window has no stencil: the web has one already and would only pay for
- * the copy. And it helps only where the context can draw instanced geometry — OpenGL ES 3, or ES 2
- * with the instancing extensions — and where Skia has not turned its tessellator off for the GPU,
- * which it does for Intel, Mali-T, Adreno 3xx and 4xx and old PowerVR Rogue drivers. Current Pixel
- * phones and watches are not among those, but the first Pixel Watch's Exynos 9110 has a Mali-T, and
- * there the layer does nothing but cost its copy. React Native Skia asks EGL for ES 2, and the
- * EGL spec lets a driver return a later version and says it typically does, but what a phone
- * returns has not been read off one. Where either is missing, the layer costs its copy and changes
- * nothing else. All of the milliseconds above are WebAssembly on a desktop CPU with an emulated GPU:
- * the ratios are what should carry over to a phone, not the milliseconds.
- */
-const DRAWN_IN_A_LAYER = Platform.OS === 'android';
 
 /**
  * Whether the paths each frame makes have to be deleted by hand once the picture is recorded.
@@ -359,12 +200,6 @@ const FRAME_RATE_OVER_SECONDS = 0.5;
  * all. `density-control.ts` then has to defend itself against a reading that was never a
  * measurement of anything it can change, and no amount of care there can put back information the
  * measurement threw away.
- *
- * Not every such gap was innocent. Before the picture was drawn in a layer ({@link DRAWN_IN_A_LAYER}),
- * and still wherever the layer cannot hand the halos to the GPU, Skia's triangulator has rare frames
- * that cost it seconds, in a model of the app's canvas — and a
- * gap like that *is* the drawing, just not in a way the particle count can steer, since it turns on
- * one frame's geometry. Capping it here is still right.
  *
  * So a gap longer than this is counted as this. A fifth of a second is five frames a second, which
  * is already far past anything the controller distinguishes — it treats everything below half the
@@ -406,17 +241,12 @@ function JarvisHologramView({
   leaving = false,
   frameRate,
   particleShare,
-  provenShare,
-  startingShare,
   pace,
   particleCount = PARTICLE_COUNT,
   buildMilliseconds,
-  opaque = false,
   background,
   satellites,
-  body = 'gpu',
   tilt = false,
-  bodyLayer,
 }: JarvisHologramProps) {
   const { listening, speaking, getVolume, getSpectrum } = voice;
   const isForeground = useIsForeground();
@@ -435,11 +265,16 @@ function JarvisHologramView({
   // In a browser, resources that remember the paths each frame makes, so they can be deleted once
   // the picture is recorded: see RELEASES_PATHS_BY_HAND. Undefined on a device, where the worklet
   // then captures nothing it could not carry to the UI thread.
+  // What the picture is drawn from: the scene without the body, which only the GPU's rows need.
+  const pictureScene = useMemo(() => pictureSceneOf(scene), [scene]);
   const releasable = useMemo(
-    () => (RELEASES_PATHS_BY_HAND ? createReleasableHologramResources(Skia, scene) : undefined),
-    [scene],
+    () => (RELEASES_PATHS_BY_HAND ? createReleasableHologramResources(Skia, pictureScene) : undefined),
+    [pictureScene],
   );
-  const resources = useMemo(() => releasable?.resources ?? createHologramResources(Skia, scene), [releasable, scene]);
+  const resources = useMemo(
+    () => releasable?.resources ?? createHologramResources(Skia, pictureScene),
+    [releasable, pictureScene],
+  );
   useEffect(() => () => releasable?.dispose(), [releasable]);
   const satelliteResources = useMemo(() => createSatelliteResources(Skia), []);
   const noSatellites = useSharedValue<SatelliteOrbit[]>([]);
@@ -549,57 +384,17 @@ function JarvisHologramView({
   // density loop steers by — see `steerDensity` — so it is timed whether or not anyone is watching.
   const built = useSharedValue(0);
   const buildingFor = useSharedValue(0);
-  // How many of the particles this phone can afford, worked out while it draws them.
-  //
-  // Started from half of what this phone was last seen *holding*, and from the floor when there is
-  // no such number — never from what it happened to be drawing a moment ago. It used to read the
-  // live share back out of `particleShare`, on the reasoning that a view built again is the same
-  // phone and should not have to re-measure. The reasoning is sound and the value is not: a shared
-  // value outlives the view, and the assistant's window keeps its React surface between summonings
-  // precisely so the second summoning has something to draw. So "built again" meant every
-  // summoning after the first, and Jarvis opened at whatever count he had been dismissed at — on a
-  // phone that had spent the time since doing something else entirely. The cost of dropping it is
-  // a second of climbing after a re-render; the cost of keeping it was an entrance at a thousand
-  // particles a phone could no longer afford. See `createDensityControl`.
-  //
-  // The GPU body starts higher than that: see `bodyStartingShare`. Whether it is tried is fixed for
-  // the mount, so the loop is started for one renderer and started again only if the body moves.
-  const [wanted] = useState(() => gpuBodyWanted(body));
-  const density = useSharedValue(createDensityControl(bodyStartingShare(wanted ? 'gpu' : 'skia', startingShare), pace));
-  const { glMounted, layer, glView, startOnGpu, gpuForFrame } = useBodyLayer({
-    wanted,
-    scene,
-    isForeground,
-    density,
-    startingShare,
-    pace,
-  });
+  // How many of the particles this device can afford, worked out while it draws them, from
+  // `STARTING_SHARE`. Never from what it happened to be drawing a moment ago: a shared value outlives
+  // the view, and the assistant's window keeps its React surface between summonings, so carrying
+  // the share over would open Jarvis at whatever count he was dismissed at. See `createDensityControl`.
+  const density = useSharedValue(createDensityControl(pace));
+  const { layer, glView, glMounted, bodyThisFrame, bodyReady } = useBodyLayer({ scene, isForeground });
 
-  // And again when it arrives, because it does not arrive in time to be the initial value above.
-  // Reading it back is a promise and `useSharedValue` only ever uses its argument once, so without
-  // this the count written down last time is read and then thrown away. See `seedFromRemembered`.
-  useEffect(() => {
-    if (startingShare === undefined) {
-      return;
-    }
-    density.modify((control) => {
-      'worklet';
-      seedFromRemembered(control, startingShare);
-      return control;
-    });
-  }, [startingShare, density]);
-
-  // Whether the black of a fresh `SurfaceView` is still showing; see UNCOVER_MS. One per mount, so
-  // a hologram built again — which is what a second summoning does — covers itself again.
-  const covering = useSharedValue(1);
-  const covered = useAnimatedStyle(() => ({ opacity: covering.value }));
-
-  // With the GPU body, how much of him is here, for the group of both canvases to be faded by: the
-  // drawing's own fade cannot reach the GPU's canvas, and fading the two apart would be brighter
-  // where they overlap. See `fadeOutside` on `drawHologram`. Without it, 1, and the drawing fades
-  // itself: the style stays on the view either way, since one taken off can leave its last opacity
-  // behind on a device, and the GL view can go mid-show.
-  const arrivalNow = useSharedValue(wanted ? 0 : 1);
+  // How much of him is here, for the group of both canvases to be faded by: the drawing's own fade
+  // cannot reach the GPU's canvas, and fading the two apart would be brighter where they overlap.
+  // See `fadeOutside` on `drawHologram`.
+  const arrivalNow = useSharedValue(0);
   const faded = useAnimatedStyle(() => ({ opacity: arrivalNow.value }));
   // On anything but black the group is Screened onto the background as every part of him is drawn;
   // on black, laying it on top is the same thing, for one layer less.
@@ -612,7 +407,7 @@ function JarvisHologramView({
     [background],
   );
   // How long issuing the GPU's last frame took, in milliseconds, which the picture counts as part of
-  // its own build: with the body on the GPU, a frame's JavaScript is the two together.
+  // its own build: a frame's JavaScript is the two together.
   const issuing = useSharedValue(0);
   // Filled in every frame the GPU draws, so a frame allocates no matrices.
   const camera = useSharedValue(createFlatCamera());
@@ -621,30 +416,10 @@ function JarvisHologramView({
   const tiltState = useSharedValue(createTiltState());
   const gravity = useSharedValue<Gravity>(NO_GRAVITY);
 
-  // And a way out of it that does not depend on anything else working.
-  //
-  // The cover is removed by the frame callback below, because the honest signal is a frame having
-  // been asked for. But a cover that is only ever lifted by something else running is a cover that
-  // hides Jarvis completely if that something else does not — an opaque square exactly where he
-  // should be, which is a far worse failure than the flash it exists to hide. So it also comes off
-  // on a timer, whatever happened. Whichever fires first wins; the second finds it already going.
-  useEffect(() => {
-    const anyway = setTimeout(() => {
-      if (covering.value === 1) {
-        covering.value = withTiming(0, { duration: UNCOVER_MS });
-      }
-    }, GIVE_UP_COVERING_MS);
-    return () => clearTimeout(anyway);
-  }, [covering]);
-
   // One frame of the body on the GPU, from the clock as it has just been stepped. The wait for the
   // previous frame is the GPU's time and is left out of what is timed here: see `finishPreviousFrame`.
-  const drawBodyOnGpu = (current: FrameClockState, deltaSeconds: number) => {
+  const drawBodyOnGpu = (drawing: GpuBodyDrawing, current: FrameClockState, deltaSeconds: number) => {
     'worklet';
-    const drawing = gpuForFrame();
-    if (drawing === undefined) {
-      return;
-    }
     const startedAt = performance.now();
     let view = STRAIGHT_ON;
     if (tilt) {
@@ -656,7 +431,7 @@ function JarvisHologramView({
       view = tiltedView(tiltState.value, camera.value.basis);
     }
     const share = density.value.density;
-    const state = analyseFrame(hologramFrameOf(current, share), 1, script);
+    const state = analyseFrame(hologramFrameOf(current), 1, script);
     // Skia's square is the whole canvas, and so is the GPU's.
     const side = drawingBufferSide(drawing.gl, laidOutPixels);
     const screen = { width: side, height: side, squareX: side / 2, squareY: side / 2, squareSide: side };
@@ -670,21 +445,18 @@ function JarvisHologramView({
     issuing.value = performance.now() - startedAt;
   };
 
-  // What the GPU's tree adds to a frame: the group's fade, and the body where the GPU draws it.
+  // What the GPU's tree adds to a frame: the group's fade, and the body where there is one to draw.
   const showBody = (deltaSeconds: number) => {
     'worklet';
-    if (!glMounted) {
-      if (arrivalNow.value !== 1) {
-        arrivalNow.value = 1;
-      }
-      return;
-    }
     const current = frame.value;
     // The drawing's own arrival, without a frame built for it: `hologramFrameOf`'s appearance.
     arrivalNow.value = arrivalOf(Math.min(1, current.time / MATERIALISE_SECONDS), current.presence);
-    if (layer.value === 'gpu') {
-      drawBodyOnGpu(current, deltaSeconds);
+    const drawing = bodyThisFrame();
+    if (drawing === undefined) {
+      issuing.value = 0;
+      return;
     }
+    drawBodyOnGpu(drawing, current, deltaSeconds);
   };
 
   // The frame counted toward the rate, and every FRAME_RATE_OVER_SECONDS the density steered by it.
@@ -711,13 +483,6 @@ function JarvisHologramView({
     if (particleShare !== undefined) {
       particleShare.value = density.value.density;
     }
-    // Only Skia's, the one body it is read back to start: see `keepsProvenShare`.
-    if (provenShare !== undefined && keepsProvenShare(layer.value)) {
-      provenShare.value = density.value.proven;
-    }
-    if (bodyLayer !== undefined) {
-      bodyLayer.value = layer.value;
-    }
     drawn.value = 0;
     measuring.value = 0;
     built.value = 0;
@@ -725,9 +490,9 @@ function JarvisHologramView({
   };
 
   const clock = useFrameCallback((info) => {
-    // Held at the start of the arrival, where nothing of him shows, while the GPU body is pending;
-    // and the time that passes meanwhile is not his. See `useBodyLayer`.
-    if (layer.value === 'pending' && !startOnGpu()) {
+    // Held at the start of the arrival, where nothing of him shows, while his body is pending; and
+    // the time that passes meanwhile is not his. See `useBodyLayer`.
+    if (layer.value === 'pending' && !bodyReady()) {
       waiting.value = 0;
       return;
     }
@@ -738,11 +503,6 @@ function JarvisHologramView({
       return;
     }
     waiting.value = 0;
-    // A frame has been asked for, so a picture is about to exist. Exactly 1 only before the fade
-    // has started, so this runs once.
-    if (covering.value === 1) {
-      covering.value = withTiming(0, { duration: UNCOVER_MS });
-    }
     frame.modify((current) => {
       'worklet';
       return advanceFrameClock(
@@ -791,21 +551,11 @@ function JarvisHologramView({
     clock.setActive(isForeground);
   }, [clock, isForeground, frame, tiltState]);
 
-  // With the GPU's canvas there, the view behind both paints the background: see `background`.
-  const paintedBackground = glMounted ? undefined : background;
-
-  // The share of the body the picture draws: none while the GPU draws it, when the picture is
-  // everything else. Pending, he has not yet appeared, so the share does not matter.
-  const pictureShare = () => {
-    'worklet';
-    return layer.value === 'gpu' ? 0 : density.value.density;
-  };
-
-  // One picture's build counted toward the density loop and the readout — with the GPU's frame where
-  // the GPU drew the body, since a frame's JavaScript is then the two together.
+  // One picture's build counted toward the density loop and the readout, with the GPU's frame: a
+  // frame's JavaScript is the two together.
   const countBuild = (pictureMilliseconds: number) => {
     'worklet';
-    const took = pictureMilliseconds + (layer.value === 'gpu' ? issuing.value : 0);
+    const took = pictureMilliseconds + issuing.value;
     built.value += 1;
     buildingFor.value += took;
     if (buildMilliseconds !== undefined) {
@@ -822,26 +572,14 @@ function JarvisHologramView({
     // fields of it.
     const current = frame.value;
     const recorder = Skia.PictureRecorder();
-    const bounds = Skia.XYWHRect(0, 0, drawnSize, drawnSize);
-    const canvas = recorder.beginRecording(bounds);
-    // Everything, the background included, in one layer Skia can give a stencil: see DRAWN_IN_A_LAYER.
-    if (DRAWN_IN_A_LAYER) {
-      canvas.saveLayer(undefined, bounds);
-    }
-    if (paintedBackground !== undefined) {
-      canvas.drawColor(Skia.Color(paintedBackground));
-    }
+    const canvas = recorder.beginRecording(Skia.XYWHRect(0, 0, drawnSize, drawnSize));
     // The level judged against how loud this voice actually gets, and the materialisation played
-    // once from the start of the arrival: see `hologramFrameOf`. With the GPU's canvas there he is
-    // drawn unfaded, and faded with it as one group by `arrivalNow`, whichever renderer has his body.
-    drawHologram(canvas, drawnSize, hologramFrameOf(current, pictureShare()), scene, resources, glMounted);
+    // once from the start of the arrival: see `hologramFrameOf`. Everything but his body, which is
+    // the GPU's, drawn unfaded and faded with the GPU's canvas as one group by `arrivalNow`.
+    drawHologram(canvas, drawnSize, hologramFrameOf(current), pictureScene, resources, true);
     // Round him, on his clock, so they go round as smoothly as he turns: see `satellite-drawing.ts`.
-    // With the GPU's canvas there they are in the faded group, so they arrive and leave with him,
-    // where the flat drawing's fade never reached them; they are his, and that is where they belong.
+    // They are in the faded group, so they arrive and leave with him.
     const glyphPaths = drawSatellites(canvas, Skia, drawnSize, current.time, orbits.value, satelliteResources);
-    if (DRAWN_IN_A_LAYER) {
-      canvas.restore();
-    }
     const recorded = recorder.finishRecordingAsPicture();
     if (RELEASES_PATHS_BY_HAND) {
       releasable?.release();
@@ -850,8 +588,6 @@ function JarvisHologramView({
     countBuild(performance.now() - startedAt);
     return recorded;
   });
-
-  const group = screensOntoBackground ? styles.groupScreenedOntoBackground : styles.group;
 
   // Laid out small and scaled up: see DRAWN_RESOLUTION. The scale is about the canvas's own
   // centre, which is the container's centre too, so the sphere lands exactly where a full-sized
@@ -863,34 +599,28 @@ function JarvisHologramView({
   // size in a browser and full size on a phone. Found by measuring the element in a real page,
   // because nothing about it fails.
   //
-  // With the GPU body that view is also the group both canvases are composed in: the GPU's canvas
-  // Screened onto Skia's inside it, the whole faded by the arrival, rendered at the drawn size, and
-  // on a background that is not black Screened onto it, which the outer view then paints, and
-  // bounds as the backdrop of the Screen.
+  // That view is also the group both canvases are composed in: the GPU's canvas Screened onto
+  // Skia's inside it, the whole faded by the arrival, rendered at the drawn size, and on a
+  // background that is not black Screened onto it, which the outer view then paints, and bounds
+  // as the backdrop of the Screen.
   return (
     <View
       style={[
-        {
-          width: size,
-          height: size,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: glMounted ? background : undefined,
-        },
-        glMounted && screensOntoBackground ? styles.screenedBackdrop : null,
+        { width: size, height: size, alignItems: 'center', justifyContent: 'center', backgroundColor: background },
+        screensOntoBackground ? styles.screenedBackdrop : null,
       ]}
     >
       <Animated.View
-        renderToHardwareTextureAndroid={glMounted}
+        renderToHardwareTextureAndroid
         style={[
           { width: drawnSize, height: drawnSize, transform: [{ scale: 1 / DRAWN_RESOLUTION }] },
-          glMounted ? group : null,
+          screensOntoBackground ? styles.groupScreenedOntoBackground : styles.group,
           faded,
         ]}
       >
         {/* Skia's web canvas is a `div` of its own that takes no test id, so the id is on a view round it. */}
-        <View testID="hologram-flat" style={{ width: drawnSize, height: drawnSize }}>
-          <Canvas opaque={opaque && !wanted} style={{ width: drawnSize, height: drawnSize }}>
+        <View testID="hologram-picture" style={{ width: drawnSize, height: drawnSize }}>
+          <Canvas style={{ width: drawnSize, height: drawnSize }}>
             <Picture picture={picture} />
           </Canvas>
         </View>
@@ -898,20 +628,6 @@ function JarvisHologramView({
       </Animated.View>
       {/* Only while there is something to tilt: nothing else stops the sensor. See `TiltSensor`. */}
       {tilt && isForeground && glMounted ? <TiltSensor gravity={gravity} /> : null}
-      {/*
-        Over the canvas rather than under it, and after it in the tree so that it is: a `SurfaceView`
-        composites below the window, and anything drawn into the window after the hole was punched
-        lands on top of it. Only where there is a colour to cover it *with* — on the web there is no
-        `SurfaceView`, nothing starts black, and a square of anything would be the only bug here.
-
-        The scaled canvas above comes back to exactly `size` across, so this covers it exactly.
-      */}
-      {background === undefined ? null : (
-        <Animated.View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { backgroundColor: background }, covered]}
-        />
-      )}
     </View>
   );
 }

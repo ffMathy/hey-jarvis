@@ -52,7 +52,7 @@ describe('the frame clock', () => {
     const target = perceivedLevel(0.09);
     const activity = advanceVoiceActivity(createVoiceActivityState(), target, step);
     const level = easeLevel(0, target, step);
-    const frame = clock.frame(1);
+    const frame = clock.frame();
     expect(frame.time).toBeCloseTo(step, 12);
     expect(frame.level).toBeCloseTo(voiceDrive(level, activity.loudest), 12);
     const bands = easeBands(new Array(VOICE_BAND_COUNT).fill(0), foldSpectrum(SPECTRUM), step);
@@ -69,7 +69,6 @@ describe('the frame clock', () => {
     expect(frame.hearing).toBeCloseTo(easeHearing(0, hearingFromPresence(0.7), step), 12);
     expect(frame.hearingLevel).toBeCloseTo(easeHearingLevel(0, hearingLevelFromVolume(0.04), step), 12);
     expect(frame.appearance).toBeCloseTo(step / MATERIALISE_SECONDS, 12);
-    expect(frame.density).toBe(1);
   });
 
   it('reads the voice every 40 ms of its own time, not every frame', () => {
@@ -104,7 +103,7 @@ describe('the frame clock', () => {
     clock.arrive();
     expect(clock.time).toBe(0);
     expect(clock.presence).toBe(1);
-    expect(clock.frame(1).appearance).toBe(0);
+    expect(clock.frame().appearance).toBe(0);
   });
 
   it('is gone LEAVING_SECONDS after he is sent away, and not before', () => {
@@ -121,8 +120,8 @@ describe('the frame clock', () => {
     const clock = createFrameClock();
     const voice = { ...steadyVoice(0.5), listening: false };
     for (let frame = 0; frame < 30; frame++) clock.advance(1 / 60, drive({ voice }));
-    expect(clock.frame(1).level).toBe(0);
-    expect(clock.frame(1).agitation).toBe(0);
+    expect(clock.frame().level).toBe(0);
+    expect(clock.frame().agitation).toBe(0);
   });
 
   it('ignores a step that is not a finite number of seconds', () => {

@@ -62,7 +62,7 @@ void main() {
 }
 `;
 
-/** The flat hologram in the room: a square that always turns to face the viewer. */
+/** CanvasKit's picture of him in the room: a square that always turns to face the viewer. */
 export interface ViewPlaneQuad {
   mesh: Mesh<PlaneGeometry, RawShaderMaterial>;
   /** Shows `picture` from the next render on, and closes the one it replaces. */

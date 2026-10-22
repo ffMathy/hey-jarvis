@@ -54,7 +54,6 @@ function stateAt(moment: Partial<HologramFrame>): HologramFrameState {
     burstStrength: 0,
     burstCount: 0,
     appearance: 1,
-    density: 1,
     presence: 1,
     thinking: 0,
     ...moment,
@@ -70,7 +69,7 @@ interface PhoneFragment {
   x: number;
   y: number;
   depth: number;
-  /** Half the stroke along it, as `appendGlyph` is handed it: the direction times the half-length. */
+  /** Half the stroke along it: the direction times the half-length. */
   alongX: number;
   alongY: number;
   tier: number;
@@ -79,9 +78,9 @@ interface PhoneFragment {
 }
 
 /**
- * `appendBody`'s loop body as composed from the helpers, for one row. The phone's loop writes that
- * arithmetic out by hand, and `hologram/src/particle-loop.spec.ts` holds it to this composition bit
- * for bit — so this stays composed from the helpers, which is what makes it a reference.
+ * One body row as the per-fragment helpers in the drawing compose it, in the plane of the screen:
+ * where it is, which way it lies, its tier and glyph. Composed from the helpers and nothing else,
+ * which is what makes it the flat projection the 3D placement is held to.
  */
 function phoneBody(offset: number, state: HologramFrameState): PhoneFragment | null {
   const body = scene.body;
@@ -121,7 +120,7 @@ function phoneBody(offset: number, state: HologramFrameState): PhoneFragment | n
   };
 }
 
-/** `appendStream`'s loop body, likewise. */
+/** One stream row, likewise. */
 function phoneStream(offset: number, state: HologramFrameState): PhoneFragment | null {
   const stream = scene.stream;
   const strength = readShellFragment(stream, offset, state);
@@ -311,5 +310,34 @@ describe('a fragment seen from elsewhere in the room', () => {
         expect(radial / (length3(placed.axis) * reach || 1)).toBeCloseTo(0, 3);
       }
     }
+  });
+});
+
+describe('the body while he thinks', () => {
+  it('is lit by a plane climbing up through him, from the bottom of the ball to the top', () => {
+    // The state the user asked to be "completely different": a plane travelling up through the
+    // ball, lighting only what it passes. Sampled across one pass — SCAN_SECONDS is 2.6, so this one
+    // runs from 5.2 to 7.8 — and held to the trend across it, since what the plane passes is a lumpy
+    // swarm whose lit middle steps sideways wherever it crosses a dense band.
+    const litHeight = (time: number) => {
+      const state = stateAt({ time, thinking: 1 });
+      let total = 0;
+      let count = 0;
+      for (let offset = 0; offset < scene.body.length; offset += BODY_STRIDE) {
+        const placed = placeBodyFragment(scene.body, offset, state, FRONT_VIEW);
+        if (placed === null) continue;
+        total += placed.plane[1];
+        count++;
+      }
+      return total / count;
+    };
+    const early = [5.4, 5.8, 6.2].map(litHeight);
+    const late = [6.6, 7.0, 7.4].map(litHeight);
+
+    // Down the view plane is y growing, so a climb is the lit middle's y falling: every sample in
+    // the second half above every one in the first, and by a real distance, in radii.
+    expect(Math.max(...late)).toBeLessThan(Math.min(...early));
+    const mean = (of: number[]) => of.reduce((all, one) => all + one, 0) / of.length;
+    expect(mean(early) - mean(late)).toBeGreaterThan(0.12);
   });
 });

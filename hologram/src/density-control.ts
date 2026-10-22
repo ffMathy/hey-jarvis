@@ -1,15 +1,10 @@
 /**
- * How many of Jarvis's particles a phone can afford, worked out while it draws them.
+ * How many of Jarvis's particles a device can afford, worked out while it draws them.
  *
- * The drawing's cost grows with its particles in both halves of a frame. Building the picture is
- * JavaScript run per particle — on a phone under Hermes, with no JIT — and painting it is Skia
- * turning paths into something a GPU can draw, which for the particle halos, on a canvas with no
- * stencil, meant triangulating them on the CPU every frame. How many a given phone can manage at
- * the pace it is asked for is not a thing anyone can know in advance — the same phone drew this at
- * 8 frames a second in the app and 58 in its own browser, for reasons it took a layer with a
- * stencil (`DRAWN_IN_A_LAYER` in `hologram-view.tsx`) and a sorted scene (`densityRowsEnd` in the
- * drawing) to address — so instead of choosing a number, the drawing measures what it is getting
- * and moves the number until the number is right.
+ * His body is drawn on the GPU, and what each of its particles costs there — the halo union, the
+ * strokes and the halos' light, per pixel and per fragment — is not a thing anyone can know in
+ * advance for a given phone or watch at the pace it is asked for. So instead of choosing a number,
+ * the view measures what it is getting and moves the number until the number is right.
  *
  * It is a PID controller, in the incremental (velocity) form: each measurement decides how much to
  * *change* the particle count, not what the count should be. That form is the right one here
@@ -32,20 +27,13 @@
  * does it, it grows steadily with every particle drawn, and it is not rounded to a refresh. So the
  * loop steers the mean build time of each window toward {@link BUILD_BUDGET_MS}, and settles.
  *
- * **It does not see the painting**, which is Skia's half of a frame and happens after the picture
- * is handed over. So the frame rate is kept as a backstop rather than a target: two windows running
- * behind it set a ceiling the count may not climb past (see {@link BELOW_WHERE_IT_FELL}), which
- * catches a phone whose painting runs out of room before its building does. And with no build
- * time to go on — nothing timed yet — the loop steers by the frame rate as it used to.
- *
- * A phone whose painting runs out first is not hypothetical. Before the picture was drawn in a
- * layer (`DRAWN_IN_A_LAYER` in `hologram-view.tsx`), the app's canvas had no stencil, and in a
- * CanvasKit model of that canvas painting rather than building was the half that ran out. Its cost
- * did not even rise steadily with the count there: half the particles cost more to paint than all
- * of them, 285 ms against 242, because past about 2,048 dashes a halo path has more verbs than
- * Skia's triangulator will take and goes to a cheaper mask instead. A ceiling found on the way up a
- * curve like that can sit lower than it needs to. With a stencil the model's painting rises
- * steadily with the count again.
+ * **It does not see the GPU's half**, which happens after the frame's calls are issued. So the frame
+ * rate is kept as a backstop rather than a target: two windows running behind it set a ceiling the
+ * count may not climb past (see {@link BELOW_WHERE_IT_FELL}), which catches a device whose GPU runs
+ * out of room before its building does. With the body on the GPU that is the usual case: building
+ * is Skia's picture of the rest of him and the calls that issue the GPU's frame, so the build time
+ * says there is room and the ceiling is what holds the share. And with no build time to go on —
+ * nothing timed yet — the loop steers by the frame rate.
  *
  * ## Why an error in time rather than in rate
  *
@@ -53,9 +41,8 @@
  * not a frame rate, even though a frame rate is what it is handed. They are reciprocals, so it
  * looks like a distinction without a difference, and it matters.
  *
- * Frame *time* is roughly a straight line in the particle count — on a canvas with a stencil, at
- * least; see above for one without — a fixed cost for everything that is not particles, plus a
- * cost per particle. Frame *rate* is one over that, which is a hyperbola. A controller has one set
+ * Frame *time* is roughly a straight line in the particle count — a fixed cost for everything that
+ * is not particles, plus a cost per particle. Frame *rate* is one over that, which is a hyperbola. A controller has one set
  * of gains, and one set of gains can only be right if the thing it steers responds by the same
  * amount wherever it happens to be. In frame-rate terms it does not: the same handful of particles
  * is worth twenty frames a second near the knee of the curve and two frames a second away from it,
@@ -225,10 +212,7 @@ const MEASUREMENT_SHARE = 0.3;
  *
  * **These two are the whole of the bug this file was rewritten for, so they are worth reading
  * carefully.** A measurement arrives as a frame rate and a window, and the loop used to take both
- * at face value. When a phone stalls — a re-render, a collection, another app waking up, or, on a
- * canvas with no stencil, one of the rare frames Skia's triangulator spends seconds on (one took
- * twenty in a CanvasKit model of the app's canvas before `DRAWN_IN_A_LAYER`, where the frames a
- * fiftieth of a second either side took about 30 ms) — one frame can take two seconds, and the
+ * at face value. When a phone stalls — a re-render, a collection, another app waking up — one frame can take two seconds, and the
  * window that contains it reports half a frame a second over two seconds. Both halves of that then
  * made the step bigger: the error was enormous because the rate was nearly zero, and the step was
  * scaled by a window that was four times its usual length. The two multiplied, and one such window
@@ -303,29 +287,6 @@ const LEAST_TRUST = 0.06;
 const PLAIN_TROUBLE = 0.5;
 
 /**
- * How much of a remembered count to begin with, next time: half of it.
- *
- * **Half, and the halving is the whole point rather than a margin on it.** It was nine tenths, on
- * the reasoning that a phone which managed a number yesterday will manage it today and the climb
- * is two seconds nobody should have to watch. That reasoning has a hole in it, and the hole is
- * what the user actually saw: a phone is not the same phone twice. The number was proved on a cool
- * phone with nothing else running, and it was then handed back verbatim to a hot phone with a
- * conversation, a microphone and whatever else Android felt like doing — which drew all of them at
- * a few frames a second, and then died.
- *
- * Beginning at half of it means the phone is never asked, cold, for more than it has already been
- * seen to hold comfortably, and the loop spends its first second finding out what today's phone is
- * good for rather than recovering from an assumption about yesterday's. Climbing back from a half
- * costs a few seconds at {@link RISING_PER_SECOND} — and that second is spent going *up*,
- * which is the direction nobody notices. The second it replaces was spent shedding, which is the
- * direction everybody does.
- *
- * With nothing remembered at all there is nothing to halve, and the loop starts at
- * {@link FEWEST_PARTICLES} — see `startFromRemembered`.
- */
-const REMEMBERED_SHARE = 0.5;
-
-/**
  * How far under the count where the phone fell behind the loop may climb back to: at most nine
  * tenths of it, and less the further behind it fell.
  *
@@ -377,29 +338,6 @@ const CEILING_LIFT_PER_SECOND = 0.05;
 export interface DensityControl {
   /** 0–1: the share of the particles being drawn. This is the controller's integrator. */
   density: number;
-  /**
-   * The most particles this phone has ever been seen drawing while holding the target, 0 until it
-   * has.
-   *
-   * Only ever upward, and it is what is worth writing down and starting from next time: not a
-   * guess about the hardware, but a thing this phone actually did. A busy minute should not be
-   * allowed to talk it down — the loop will shed for the busy minute, and `density` is where that
-   * shows; this is the high-water mark, and the point of a high-water mark is that it stays.
-   *
-   * **Only counts where the loop has arrived, and that is a correction rather than a refinement.**
-   * It used to be set from any window at all whose frame rate cleared the target, which sounds
-   * like the same thing and is not, because of where the climb spends its time. Below the count a
-   * phone can afford, its frame rate is pinned to the screen's refresh and stays there whatever
-   * the count does — so every rung of a climb that is about to overshoot reads as "comfortably
-   * making the target", right up to the rung that is not. The number written down was therefore
-   * the last one before the cliff: not what the phone could hold, but the most it could be given
-   * before it fell over. Started from on a phone that was hotter or busier than the one that
-   * proved it, that is a sphere too heavy to draw, which is what the user watched crawl and crash.
-   *
-   * So it is recorded where the loop has stopped moving: on the target, or at the ceiling with
-   * room still to spare. Both are the phone *holding* a count rather than passing through it.
-   */
-  proven: number;
   /** The error, low-passed. See {@link MEASUREMENT_SHARE} — every term works off this one number. */
   error: number;
   /** What {@link error} was one window ago, and two, which is what P and D are differences of. */
@@ -453,38 +391,32 @@ function clamp(value: number, lowest: number, highest: number): number {
 }
 
 /**
- * Where it starts: at the floor, climbing — unless it is being handed half of what it proved.
+ * The share the loop starts at: half of all of him.
  *
- * `startingDensity` is only ever `startFromRemembered` of a count this phone was seen *holding*,
- * which is half of it. There is deliberately no way to start it anywhere else. It used to be
- * handed the live share off the previous appearance as well, so that a hologram built again did
- * not have to re-measure — and since the assistant's window keeps its React surface between
- * summonings, "built again" included every summoning after the first. Jarvis therefore opened at
- * whatever he happened to be drawing when he was last dismissed, on a phone that had since gone
- * and done something else. That is the entrance the user reported: far too many particles, a few
- * frames a second, and eventually no Jarvis at all.
+ * The loop steers by how long a frame's JavaScript takes (see {@link BUILD_BUDGET_MS}), and with his
+ * body on the GPU that is Skia's picture of the rest of him and the calls that issue the GPU's frame
+ * — well under a millisecond, whatever the share. So the build time always says there is room, the
+ * share climbs at {@link RISING_PER_SECOND}, and the frame-rate ceiling is what stops it. Starting at
+ * {@link FEWEST_PARTICLES} would spend six seconds climbing to where any GPU that draws him at all
+ * could start; half is where the loop would settle on a GPU too weak for all of him.
+ */
+export const STARTING_SHARE = 0.5;
+
+/**
+ * A loop for a device's {@link DensityPace}, at {@link STARTING_SHARE} unless told otherwise.
  *
- * Otherwise it begins sparse. It began at *everything*, on the reasoning that a phone which can
- * manage it never has to find out. What that looks like is the first second being the worst second
- * — Jarvis arrives stuttering and then recovers, which is the one moment anybody is looking at him.
- * Starting under what any phone can draw and climbing means the arrival is smooth and the swarm
- * fills in behind it, which is also just a better entrance.
- *
- * `RISING_PER_SECOND` paces that climb: from the floor to everything is about six seconds on a
- * phone that can take it, and from half of a remembered count a few.
- *
- * A worklet, though it runs once per mount on the JS thread: a view whose body moves between the
- * GPU and Skia starts the loop again from the frame callback, on the UI thread (`body-layer.ts`).
+ * Nothing is carried over from a previous mount, on purpose. The assistant's window keeps its React
+ * surface between summonings, so a share carried over from a previous appearance would open Jarvis
+ * at whatever he was drawing when he was last dismissed, on a phone that has since gone and done
+ * something else. Each mount climbs and finds today's phone for itself.
  */
 export function createDensityControl(
-  startingDensity: number = FEWEST_PARTICLES,
   pace: DensityPace = PHONE_PACE,
+  startingDensity: number = STARTING_SHARE,
 ): DensityControl {
-  'worklet';
   const density = startingDensity <= 0 ? FEWEST_PARTICLES : clamp(startingDensity, FEWEST_PARTICLES, 1);
   return {
     density,
-    proven: 0,
     error: 0,
     previousError: 0,
     errorBeforeThat: 0,
@@ -501,46 +433,6 @@ export function createDensityControl(
     targetFramesPerSecond: pace.targetFramesPerSecond,
     buildBudgetMs: pace.buildBudgetMs,
   };
-}
-
-/**
- * Where to begin, given what this phone managed last time.
- *
- * Kept here rather than wherever the number is stored, because it is a decision about the loop
- * rather than about storage: see {@link REMEMBERED_SHARE} for why it is half of the old value and
- * not the old value.
- */
-export function startFromRemembered(proven: number): number {
-  return proven <= 0 ? FEWEST_PARTICLES : clamp(proven * REMEMBERED_SHARE, FEWEST_PARTICLES, 1);
-}
-
-/**
- * Starts a control at a remembered share, if it has not measured anything yet.
- *
- * **This exists because the remembered number arrives late.** Reading it back is a promise — a
- * keystore read on a phone, `localStorage` in a browser — so it is not there on the first render,
- * and the control is built on the first render. Handing it to `createDensityControl` therefore
- * handed it `undefined` every time: the number was written down faithfully, read back faithfully,
- * and then ignored, and the user watched the climb happen from scratch on every launch.
- *
- * Only before anything has been measured, and only upward. Once a real frame rate has been seen,
- * what the loop has worked out here and now beats anything remembered from last time; and a
- * remembered share below where the climb has already reached would be a step backwards.
- *
- * **Below `clamp`, and it has to be.** A worklet captures what it closes over in an object built
- * where the function is *defined*, and Reanimated's plugin rewrites a worklet from a hoisted
- * `function` declaration into a `const` that is not hoisted. Written above `clamp`, this captured
- * it before it existed, and the whole web bundle died on load with "Cannot access 'o' before
- * initialization" — a blank white page, from a source file where the ordering looked irrelevant
- * because function declarations hoist. The non-worklet functions above may still call `clamp`
- * freely: they are not transformed, and they run long after the module has finished loading.
- */
-export function seedFromRemembered(control: DensityControl, share: number): void {
-  'worklet';
-  if (control.windows !== 0 || share <= control.density) {
-    return;
-  }
-  control.density = clamp(share, FEWEST_PARTICLES, 1);
 }
 
 /**
@@ -568,7 +460,8 @@ function steeringReading(frameReading: number, buildMilliseconds: number, buildB
  * ceiling is already a count the phone was just seen to be unable to hold, less a margin, so there
  * is nothing to find out by approaching it gradually.
  *
- * Below `clamp`, for the reason `seedFromRemembered` gives.
+ * Below `clamp`, and it has to be: a worklet captures what it closes over where it is defined, and
+ * Reanimated's plugin turns a worklet declared with `function` into a `const` that is not hoisted.
  */
 function lowerTheCeiling(control: DensityControl, trusted: number, drawnNow: number, drawnBefore: number): boolean {
   'worklet';
@@ -631,22 +524,6 @@ function liftTheCeiling(
   }
   control.ceiling = clamp(control.ceiling + CEILING_LIFT_PER_SECOND * windowSeconds, FEWEST_PARTICLES, 1);
   control.lifted = true;
-}
-
-/**
- * Raises `proven` to the count being drawn, if the loop has arrived there and is holding the target.
- *
- * Arrived is either sitting on the target, or pinned at the ceiling with room to spare — which is
- * as arrived as a phone that can draw everything it is allowed to ever gets. See `proven` for why
- * only these count.
- */
-function recordWhatItHolds(control: DensityControl, framesPerSecond: number, onTarget: boolean): void {
-  'worklet';
-  const atCeiling = control.density >= control.ceiling && control.error <= 0;
-  const holding = (onTarget || atCeiling) && framesPerSecond >= control.targetFramesPerSecond;
-  if (holding && control.density > control.proven) {
-    control.proven = control.density;
-  }
 }
 
 /**
@@ -713,9 +590,7 @@ export function steerDensity(
   control.error += (trusted - control.error) * MEASUREMENT_SHARE;
 
   const error = control.error;
-  // Arrived, and worth remembering as what this phone holds: see `recordWhatItHolds`.
   const onTarget = error > -SETTLED_WITHIN && error < SETTLED_WITHIN;
-  recordWhatItHolds(control, framesPerSecond, onTarget);
 
   if (onTarget || cut) {
     // Inside the band nothing moves: see SETTLED_WITHIN. And a window that has just been cut down

@@ -209,7 +209,6 @@ function arriving(index: number): HologramFrame {
     appearance: Math.min(1, 0.64 + Math.floor(index / 3) * 0.06),
     thinking: 0,
     presence: 1,
-    density: 0,
   };
 }
 

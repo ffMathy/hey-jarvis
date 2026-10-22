@@ -12,14 +12,12 @@ import {
   createHologramResources,
   createHologramScene,
   createReleasableHologramResources,
-  densityKey,
   drawHologram,
   type HologramFrame,
   PARTICLE_COUNT,
   ROLL_DEGREES_PER_SECOND,
   SHELL_DEGREES_PER_SECOND,
   SPHERE_FRACTION,
-  THINNED_TABLES,
 } from './hologram-drawing';
 import { VOICE_BAND_COUNT } from './voice-levels';
 
@@ -74,7 +72,6 @@ function silence(time: number): HologramFrame {
     appearance: 1,
     thinking: 0,
     presence: 1,
-    density: 1,
   };
 }
 
@@ -92,7 +89,6 @@ function speech(time: number, level: number, bands: number[], burstAge = 10, bur
     appearance: 1,
     thinking: 0,
     presence: 1,
-    density: 1,
   };
 }
 
@@ -142,20 +138,6 @@ function luminance(pixels: Uint8Array, index: number): number {
 /** Distance of a pixel's centre from the sphere's centre, in sphere radii. */
 function radiusOf(x: number, y: number): number {
   return Math.hypot(x + 0.5 - SIZE / 2, y + 0.5 - SIZE / 2) / RADIUS;
-}
-
-/** Where the light sits up and down the square, 0 at the top and 1 at the bottom. */
-function lightHeight(pixels: Uint8Array): number {
-  let weighted = 0;
-  let total = 0;
-  for (let y = 0; y < SIZE; y++) {
-    for (let x = 0; x < SIZE; x++) {
-      const here = luminance(pixels, (y * SIZE + x) * 4);
-      weighted += here * y;
-      total += here;
-    }
-  }
-  return total === 0 ? 0.5 : weighted / total / SIZE;
 }
 
 /** How far out the light sits, in sphere radii at rest: the luminance-weighted mean distance from the middle. */
@@ -374,38 +356,6 @@ describe('the hologram', () => {
     expect(JSON.stringify(createHologramScene(SEED))).toBe(JSON.stringify(createHologramScene(SEED)));
   });
 
-  it('holds its brightness while he speaks, and says so by moving instead', () => {
-    // The film's rule, which this test pinned, then stopped pinning, and now pins again. The
-    // sphere's brightness holds to a few percent through a spoken line — what changes is
-    // behaviour, and the test below is the one that requires it. In between, the user could not
-    // tell on a phone whether Jarvis was talking, so a glow was added and tuned six times; with
-    // the sphere now most of the screen wide and the sparks drawn out into lines, the movement
-    // carries it, and they have asked for the brightening gone.
-    //
-    // What is left is not quite zero, and should not be: speech throws chips past the limb, frays
-    // the limb and swells the sphere, and all of those are more lit pixels. That is the film's own
-    // few percent, and it comes from area rather than from anything being turned up.
-    for (const time of [6, 13.4, 22.8]) {
-      const silent = discBrightness(render(silence(time)));
-      const ordinary = discBrightness(render(speech(time, 0.3, new Array(VOICE_BAND_COUNT).fill(0.27))));
-      const loud = discBrightness(render(speech(time, 1, new Array(VOICE_BAND_COUNT).fill(0.9))));
-
-      // Measured at PARTICLE_COUNT: 1.06-1.10 for an ordinary voice, 1.11-1.15 for a shout.
-      //
-      // **These numbers rise with the ceiling, and that is not a leak.** They were 1.03-1.06 and
-      // 1.10-1.13 when the cap was a thousand fragments rather than three. Nothing about how a
-      // fragment is lit changed; there are three times as many of them, so the chips thrown past the
-      // limb, the frayed limb and the swell are all three times the extra area — and area is what
-      // this measures. The check that the *strokes* are not turned up is the ratio staying far below
-      // what a glow would do to it: speech at full volume brightens a thought-free sphere by 40% and
-      // more when the glow is what is driving it, which is the next test but one.
-      expect(ordinary / silent).toBeLessThan(1.12);
-      expect(loud / silent).toBeLessThan(1.18);
-      // And it does not *darken* while he talks either, which would read as him flinching.
-      expect(ordinary / silent).toBeGreaterThan(0.95);
-    }
-  });
-
   it('shows speech as activity: chips thrown beyond the limb, and more change than when calm', () => {
     const bands = new Array(VOICE_BAND_COUNT).fill(0.7);
     for (const time of [6, 13.4, 22.8]) {
@@ -533,15 +483,6 @@ describe('the hologram', () => {
     }
   });
 
-  it('spirals out only the particles it is drawing, so a thinned swarm arrives thinned', () => {
-    // The vortex moves particles; it never adds any. A device drawing a share of the scene sees
-    // that share arrive. The core, the whorl and the rim are not particles and are not thinned, so
-    // the frame as a whole dims by less than the share does — but it has to dim.
-    const hologram = mount();
-    const midway = (density: number) => brightness(render({ ...silence(3), appearance: 0.5, density }, hologram));
-    expect(midway(0.3)).toBeLessThan(midway(1) * 0.9);
-  });
-
   it('brings its rim elements and protrusions in and out smoothly, with nothing popping at a script boundary', () => {
     const hologram = mount();
     for (const boundary of scriptBoundaries(hologram.scene)) {
@@ -578,37 +519,6 @@ describe('the hologram', () => {
     // whole square: the slowest test here by an order, and it runs past the default five seconds.
   }, 60_000);
 
-  it('thinks by sweeping a plane up through itself, which is like nothing else it does', () => {
-    // The state the user asked to be "completely different". Everything else the sphere does is
-    // some mixture of turning, churning and glowing; this is a plane travelling from the bottom of
-    // the ball to the top, lighting only what it passes, with the whorl and the rim receded behind
-    // it. What is pinned is the travel: where the light sits has to climb through a pass.
-    const hologram = mount();
-    const thought = (time: number) => render({ ...silence(time), thinking: 1 }, hologram);
-    // Sampled right across *one* pass — SCAN_SECONDS is 2.6, so this one runs from 5.2 to 7.8 —
-    // and the trend across it is what is asserted, rather than three instants being strictly
-    // ordered. They are not, and expecting them to be was the test's mistake rather than the
-    // drawing's: the plane lights whatever it passes, and what it passes is a lumpy swarm, so the
-    // centre of the light steps sideways whenever it crosses a dense band. Between 5.4 s and 6.3 s
-    // it moves by under a fiftieth of the square, in whichever direction that band happens to fall.
-    // Over the pass as a whole it moves twenty times that, every time.
-    const across = [5.4, 5.8, 6.2, 6.6, 7.0, 7.4].map((time) => lightHeight(thought(time)));
-    const early = across.slice(0, 3);
-    const late = across.slice(3);
-    const mean = (of: number[]) => of.reduce((all, one) => all + one, 0) / of.length;
-
-    expect(mean(early)).toBeGreaterThan(mean(late));
-    // Every sample in the second half is above every sample in the first: a climb rather than a
-    // drift, without requiring any two neighbours to be in order.
-    expect(Math.max(...late)).toBeLessThan(Math.min(...early));
-    // A real move, not a wobble — and measured in sphere radii rather than in fractions of the
-    // square, because the square is set by how far the chips fly and has nothing to do with this.
-    // It comes to about a sixth of a radius, which is less than the plane itself travels because
-    // the core, the rim and the shadow stay where they are and hold the centre of the light toward
-    // the middle. Bounded below that with room, not against it.
-    expect(((mean(early) - mean(late)) * SIZE) / RADIUS).toBeGreaterThan(0.12);
-  });
-
   it('thinks without glowing, so a thought is never mistaken for a word', () => {
     // Speech brightens the ball by 40% and more, deliberately. A thought must not, or the two
     // states say the same thing to anyone glancing at the screen.
@@ -619,45 +529,6 @@ describe('the hologram', () => {
 
       expect(thought).toBeLessThan(calm);
     }
-  });
-
-  it('listens by snapping onto a turning lattice inside him, which breathes with their voice', () => {
-    // Someone talking to him is shown by the swarm itself: his particles snap onto a hexagonal
-    // lattice that turns slowly inside the ball. Measured as how uneven the light inside the disc
-    // is — a swarm spread evenly through the ball is smooth, knots with dark between them are
-    // not — and nothing may be thrown past the limb, which is what his own speech does.
-    const hologram = mount();
-    const unevenness = (pixels: Uint8Array) => {
-      const values: number[] = [];
-      for (let y = 0; y < SIZE; y += 4) {
-        for (let x = 0; x < SIZE; x += 4) {
-          if (radiusOf(x, y) < 0.9) values.push(luminance(pixels, (y * SIZE + x) * 4));
-        }
-      }
-      const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
-      const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
-      return Math.sqrt(variance) / mean;
-    };
-    const time = 5.4;
-    const calm = render(silence(time), hologram);
-    const quiet = render({ ...silence(time), hearing: 1, hearingLevel: 0.1 }, hologram);
-    const loud = render({ ...silence(time), hearing: 1, hearingLevel: 1 }, hologram);
-
-    // A lattice's knots are finer than the clusters it replaced, so it roughens the disc by about a
-    // quarter rather than a third — at every moment, not just this one — and more the more he attends.
-    for (const moment of [3, 4, time, 7.3]) {
-      const listening = render({ ...silence(moment), hearing: 1, hearingLevel: 0.1 }, hologram);
-      expect(unevenness(listening)).toBeGreaterThan(unevenness(render(silence(moment), hologram)) * 1.2);
-    }
-    const half = render({ ...silence(time), hearing: 0.5, hearingLevel: 0.1 }, hologram);
-    expect(unevenness(half)).toBeGreaterThan(unevenness(calm));
-    expect(unevenness(quiet)).toBeGreaterThan(unevenness(half));
-    // Their voice makes the lattice breathe, so how loud they are changes the picture.
-    expect(difference(loud, quiet)).toBeGreaterThan(1);
-    expect(brightBeyondLeftLimb(loud)).toBeLessThanOrEqual(brightBeyondLeftLimb(calm) + 1);
-    // And the lattice turns: a second later its knots are somewhere else.
-    const later = render({ ...silence(time + 1), hearing: 1, hearingLevel: 0.1 }, hologram);
-    expect(difference(later, quiet)).toBeGreaterThan(1);
   });
 
   it('leaves by shrinking and fading, and takes his shadow with him', () => {
@@ -678,122 +549,6 @@ describe('the hologram', () => {
     // Nothing of him, and nothing of his shadow: every pixel back to the screen behind.
     for (let index = 0; index < gone.length; index += 4) {
       expect(luminance(gone, index)).toBeCloseTo(background, 0);
-    }
-  });
-
-  it('thins to a share of its particles without rearranging the ones that stay', () => {
-    // The phone decides how many it can afford while it draws them (`density-control.ts`), so the
-    // share moves while you are looking at it. Which particles are in has to be decided by each
-    // one's own id rather than by where it falls in the list: as the share rises the swarm must
-    // thicken, not reshuffle, or every adjustment would be a visible jolt.
-    const hologram = mount();
-    const thin = render({ ...silence(6), density: 0.4 }, hologram);
-    const thick = render({ ...silence(6), density: 0.8 }, hologram);
-    const whole = render(silence(6), hologram);
-
-    // Fewer particles is less light, in order.
-    expect(brightness(thin)).toBeLessThan(brightness(thick));
-    expect(brightness(thick)).toBeLessThan(brightness(whole));
-
-    // And every pixel the thin one lights, the thick one lights at least as much: nothing that was
-    // there has moved or gone out. Allowing for antialiasing where a new neighbour darkens an edge.
-    let dimmed = 0;
-    for (let index = 0; index < thin.length; index += 4) {
-      if (luminance(thin, index) > luminance(thick, index) + 12) {
-        dimmed++;
-      }
-    }
-    expect(dimmed / (thin.length / 4)).toBeLessThan(0.002);
-  });
-
-  it('keeps the particles a share thins in the order the share takes them, rounded', () => {
-    // The loop stops where the rows a share keeps end, which is only the right place if every row
-    // before it is kept and every row after it is not — so both tables the share thins are held in
-    // its order. And every number is rounded before the order is taken, or the key the rows were
-    // ordered by would not be the key the loop tests. None of the pixel tests would notice either
-    // going wrong: a scene out of order draws a plausible sphere of the wrong particles.
-    const { scene } = mount();
-    for (const table of ['body', 'stream'] as const) {
-      const rows = scene[table];
-      const { stride, idField } = THINNED_TABLES[table];
-      let previous = -1;
-      for (let offset = 0; offset < rows.length; offset += stride) {
-        const key = densityKey(rows[offset + idField]);
-        expect(key).toBeGreaterThanOrEqual(previous);
-        expect(key).toBeLessThan(1);
-        previous = key;
-      }
-      expect(rows.every((value) => Math.round(value * 1e5) / 1e5 === value)).toBe(true);
-    }
-  });
-
-  it('visits exactly the particles its share keeps, and none of the rest', () => {
-    // On a phone the picture is built under Hermes, with no JIT, and there even turning a row away
-    // costs something: about a sixth of what drawing it does. When the loop read every row and threw
-    // most away, the 9,750 of 10,000 it turned away at the floor came to 4.1 ms — half of the build
-    // budget, on a desktop harness, for particles nobody saw. So the loop stops where the kept rows
-    // end instead.
-    //
-    // Unlike the rest of this file this counts reads rather than pixels, because what it pins is a
-    // cost, and which particles are drawn: the picture is the same as the old loop's, which was
-    // checked call for call outside this suite, and none of the tests above notice which particles
-    // a share draws.
-    const hologram = mount();
-    let reads = 0;
-    const readsPerRow = { body: new Map<number, number>(), stream: new Map<number, number>() };
-    const counted = (table: 'body' | 'stream') =>
-      new Proxy(hologram.scene[table], {
-        get(target, property, receiver) {
-          if (typeof property === 'string' && /^\d+$/.test(property)) {
-            reads++;
-            const row = Math.floor(Number(property) / THINNED_TABLES[table].stride);
-            readsPerRow[table].set(row, (readsPerRow[table].get(row) ?? 0) + 1);
-          }
-          return Reflect.get(target, property, receiver);
-        },
-      });
-    const watched = {
-      scene: { ...hologram.scene, body: counted('body'), stream: counted('stream') },
-      resources: hologram.resources,
-    };
-    const keysOf = (table: 'body' | 'stream') => {
-      const rows = hologram.scene[table];
-      const { stride, idField } = THINNED_TABLES[table];
-      return Array.from({ length: rows.length / stride }, (_, row) => densityKey(rows[row * stride + idField]));
-    };
-    const keys = { body: keysOf('body'), stream: keysOf('stream') };
-    const visit = (density: number) => {
-      reads = 0;
-      readsPerRow.body.clear();
-      readsPerRow.stream.clear();
-      render({ ...silence(6), density }, watched);
-      // The search for where the kept rows end reads one number from each row it probes; the loop
-      // reads several from every row it visits. So a row read more than once is a row visited.
-      const visited = (table: 'body' | 'stream') =>
-        [...readsPerRow[table]]
-          .filter(([, count]) => count > 1)
-          .map(([row]) => row)
-          .sort((first, second) => first - second);
-      return { reads, body: visited('body'), stream: visited('stream') };
-    };
-    const keptUnder = (table: 'body' | 'stream', density: number) =>
-      keys[table].flatMap((key, row) => (key < density ? [row] : []));
-
-    const floor = visit(0.025);
-    const whole = visit(1);
-    // A fortieth of the particles, and about a fortieth of the reads: reading every row to turn it
-    // away came to about a seventh.
-    expect(floor.reads).toBeLessThan(whole.reads * 0.06);
-    expect(whole.body.length).toBe(PARTICLE_COUNT);
-    expect(whole.stream.length).toBe(keys.stream.length);
-
-    // Exactly the rows whose key is under the share, in both tables — at round shares, and at a
-    // share that *is* one row's key, which that row is not kept at.
-    const shares = [0, 0.025, 0.4, 0.8, keys.body[4321], keys.stream[97]];
-    for (const share of shares) {
-      const { body, stream } = visit(share);
-      expect(body).toEqual(keptUnder('body', share));
-      expect(stream).toEqual(keptUnder('stream', share));
     }
   });
 
@@ -822,10 +577,6 @@ describe('the hologram', () => {
     expect(bigger.body.length).toBeGreaterThan(createHologramScene(SEED).body.length);
     // Every fragment is the same number of values wide, so the count is exactly proportional.
     expect(bigger.body.length).toBe(Math.round(createHologramScene(SEED).body.length * 1.3));
-
-    // And it still draws: the same frame, a denser swarm, nothing thrown outside the square.
-    const dense = render(silence(6), { scene: bigger, resources: createHologramResources(Skia, bigger) });
-    expect(brightness(dense)).toBeGreaterThan(brightness(render(silence(6))));
   });
 
   it('stays inside its square even at full volume, chips and all', () => {
@@ -1110,7 +861,7 @@ function framesFromTheClock(): HologramFrame[] {
     restartArrival(clock);
     for (let step = 0; step < 90; step++) {
       advanceFrameClock(clock, 1 / 60, 0, silent, false, false, leaving && step > 45, 0, 0);
-      const frame = hologramFrameOf(clock, 1);
+      const frame = hologramFrameOf(clock);
       frames.push({ ...frame, bands: [...frame.bands] });
     }
   }

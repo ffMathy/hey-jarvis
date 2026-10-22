@@ -4,8 +4,8 @@ import {
   createDensityControl,
   type DensityControl,
   FEWEST_PARTICLES,
-  seedFromRemembered,
-  startFromRemembered,
+  PHONE_PACE,
+  STARTING_SHARE,
   steerDensity,
   TARGET_FRAMES_PER_SECOND,
   WATCH_PACE,
@@ -36,18 +36,6 @@ function phone(affordable: number) {
   return (density: number) => Math.min(CAPPED_AT, (TARGET_FRAMES_PER_SECOND * affordable) / Math.max(density, 0.01));
 }
 
-/**
- * A phone that can only present whole refreshes, which is every real phone.
- *
- * Six milliseconds of everything that is not particles and twenty-four for all of them, on a
- * sixty hertz screen: one refresh up to about 44% of the particles and two beyond it, with nothing
- * in between. That edge is where the loop lives and what a remembered count has to land near.
- */
-function sixtyHertzCliff(density: number): number {
-  const vsync = 1000 / 60;
-  return 1 / Math.max(1 / 120, (Math.max(1, Math.ceil((6 + 24 * density) / vsync)) * vsync) / 1000);
-}
-
 /** Runs the loop for `seconds` against a phone, half a second at a time as the view measures. */
 function settle(control: DensityControl, drawsAt: (density: number) => number, seconds: number): number[] {
   const seen: number[] = [];
@@ -59,8 +47,22 @@ function settle(control: DensityControl, drawsAt: (density: number) => number, s
 }
 
 describe('deciding how many particles this phone can afford', () => {
-  it('leaves a phone that can draw all of them alone', () => {
+  it('starts at half of all of him, where any GPU that draws him at all can start', () => {
+    expect(createDensityControl().density).toBe(STARTING_SHARE);
+    expect(STARTING_SHARE).toBe(0.5);
+    expect(createDensityControl(WATCH_PACE).density).toBe(STARTING_SHARE);
+  });
+
+  it('settles a phone whose GPU can only afford a fifth of him there, down from where it starts', () => {
     const control = createDensityControl();
+    settle(control, phone(0.2), 30);
+
+    expect(control.density).toBeGreaterThan(0.12);
+    expect(control.density).toBeLessThan(0.25);
+  });
+
+  it('leaves a phone that can draw all of them alone', () => {
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     settle(control, phone(1.4), 20);
 
     expect(control.density).toBe(1);
@@ -68,7 +70,7 @@ describe('deciding how many particles this phone can afford', () => {
 
   it('finds what a slower phone can manage, and stays there', () => {
     // A phone that affords 40% of the particles at the target rate.
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     const path = settle(control, phone(0.4), 40);
 
     expect(control.density).toBeGreaterThan(0.3);
@@ -82,9 +84,9 @@ describe('deciding how many particles this phone can afford', () => {
     // The same device, asked for the watch's pace instead of the phone's: it has to settle on
     // more particles — about four thirds as many, since frame time is a straight line in the count
     // — and hold at least thirty frames a second while it does.
-    const onPhone = createDensityControl();
+    const onPhone = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     settle(onPhone, phone(0.4), 40);
-    const onWatch = createDensityControl(undefined, WATCH_PACE);
+    const onWatch = createDensityControl(WATCH_PACE, FEWEST_PARTICLES);
     const path = settle(onWatch, phone(0.4), 40);
 
     expect(onWatch.density).toBeGreaterThan(onPhone.density * 1.2);
@@ -94,7 +96,7 @@ describe('deciding how many particles this phone can afford', () => {
   });
 
   it('sheds particles quickly when the phone falls behind, and adds them back slowly', () => {
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     settle(control, phone(1.4), 10);
     expect(control.density).toBe(1);
 
@@ -113,7 +115,7 @@ describe('deciding how many particles this phone can afford', () => {
   });
 
   it('never strips him back past what still looks like Jarvis', () => {
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     // A phone that cannot manage the target at any density at all.
     settle(control, () => 4, 60);
 
@@ -121,7 +123,7 @@ describe('deciding how many particles this phone can afford', () => {
   });
 
   it('does nothing until something has actually been measured', () => {
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     const before = control.density;
     steerDensity(control, 0, 0.5);
 
@@ -130,7 +132,7 @@ describe('deciding how many particles this phone can afford', () => {
   });
 
   it('starts sparse and fills in steadily, so the arrival is not the worst second', () => {
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     expect(control.density).toBe(FEWEST_PARTICLES);
 
     // Not in a rush. It used to be most of the way in three seconds, which is faster than a late
@@ -151,7 +153,7 @@ describe('deciding how many particles this phone can afford', () => {
     // stall, over in a frame or two, landing in a window half a second wide. The loop used to read
     // it as the phone collapsing and shed the lot, so the spark count fell back to where it
     // started every time the user tapped.
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     settle(control, phone(1.4), 8);
     const before = control.density;
     expect(before).toBe(1);
@@ -162,7 +164,7 @@ describe('deciding how many particles this phone can afford', () => {
   });
 
   it('still sheds when the phone is genuinely slow, one window later', () => {
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     settle(control, phone(1.4), 8);
 
     // Two in a row is not a hiccup.
@@ -170,72 +172,6 @@ describe('deciding how many particles this phone can afford', () => {
     steerDensity(control, 20, 0.5);
 
     expect(control.density).toBeLessThan(0.8);
-  });
-
-  it('remembers the most it was ever seen holding the target, and only upward', () => {
-    const control = createDensityControl();
-    settle(control, phone(1.4), 8);
-    expect(control.proven).toBe(1);
-
-    // Something else gets busy and it has to shed. What it *managed* is still what it managed.
-    settle(control, phone(0.3), 6);
-    expect(control.density).toBeLessThan(0.6);
-    expect(control.proven).toBe(1);
-  });
-
-  it('remembers nothing at all until it has stopped climbing', () => {
-    // The bug behind the crash. Below the count a phone can afford, its frame rate is pinned to
-    // the screen's refresh whatever the count is — so every rung of the climb reads as
-    // "comfortably making the target", including the rung that is about to fall off the cliff.
-    // Written down and started from on a hotter phone the next day, that is a sphere too heavy to
-    // draw. Nothing is worth remembering until the loop has stopped moving.
-    const control = createDensityControl();
-    const mid = settle(control, phone(0.5), 1.5);
-
-    // It is on its way up and nowhere near arrived...
-    expect(mid[mid.length - 1]).toBeGreaterThan(FEWEST_PARTICLES);
-    expect(control.density).toBeLessThan(0.5);
-    // ...and it has claimed nothing.
-    expect(control.proven).toBe(0);
-
-    // Once it has settled, what it settled at is what it claims — and that is a count it held.
-    settle(control, phone(0.5), 40);
-    expect(control.proven).toBeGreaterThan(0.3);
-    expect(control.proven).toBeLessThanOrEqual(control.density + 0.05);
-  });
-
-  it('claims the ceiling on a phone that never has to slow down for it', () => {
-    // A phone with room to spare never enters the settled band at all: its error sits at whatever
-    // the refresh over the target works out to, for ever. Pinned at the ceiling with room left is
-    // the only "arrived" such a phone ever reports, and it has to count or nothing is ever written
-    // down for the phones that need remembering least.
-    const control = createDensityControl();
-    settle(control, phone(1.4), 20);
-
-    expect(control.density).toBe(1);
-    expect(control.proven).toBe(1);
-  });
-
-  it('starts next time at half of what it managed last time', () => {
-    // Half, not nine tenths. The phone that proved the number was cool and idle; the phone being
-    // handed it back is hot and holding a conversation, and asking it for nearly all of yesterday's
-    // count is what the user watched crawl and then crash. See REMEMBERED_SHARE.
-    expect(startFromRemembered(0.8)).toBeCloseTo(0.4, 5);
-    expect(startFromRemembered(1)).toBeCloseTo(0.5, 5);
-    // Nothing remembered, and nothing to go on: begin where a phone that has never been asked does.
-    expect(startFromRemembered(0)).toBe(FEWEST_PARTICLES);
-    // And never under the floor, however little it managed. Below it rather than at it: the input
-    // used to be 0.05, which *was* the floor, and stopped meaning anything the moment the floor
-    // moved under it.
-    expect(startFromRemembered(0.01)).toBe(FEWEST_PARTICLES);
-  });
-
-  it('never begins above what the phone proved, whatever it proved', () => {
-    // The whole safety property in one line: a start is always under a count this phone has been
-    // seen holding, so the first second of a summoning is spent climbing rather than shedding.
-    for (const proven of [0.1, 0.25, 0.5, 0.75, 1]) {
-      expect(startFromRemembered(proven)).toBeLessThanOrEqual(proven);
-    }
   });
 
   it('climbs from the floor when the phone is making the target, rather than sitting there', () => {
@@ -246,7 +182,7 @@ describe('deciding how many particles this phone can afford', () => {
     // there were then, on a machine that could draw thousands.
     //
     // What has to happen instead: a phone with room climbs into it.
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     expect(control.density).toBe(FEWEST_PARTICLES);
 
     const path = settle(control, phone(0.8), 30);
@@ -261,7 +197,7 @@ describe('deciding how many particles this phone can afford', () => {
     // Anything at or above the target is headroom, whatever the screen's refresh happens to be —
     // 60, 90 or 120. None of them may look like a phone that cannot keep up.
     for (const measured of [40, 60, 90, 120]) {
-      const control = createDensityControl(0.5);
+      const control = createDensityControl(PHONE_PACE, 0.5);
       steerDensity(control, measured, 0.5);
       steerDensity(control, measured, 0.5);
 
@@ -272,7 +208,7 @@ describe('deciding how many particles this phone can afford', () => {
   it('does not hunt across the target once it has arrived', () => {
     // The failure this is here to catch is visible on screen rather than in a number: a loop that
     // overshoots in both directions is a swarm breathing in and out for as long as you watch it.
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     const path = settle(control, phone(0.55), 60);
     const late = path.slice(-40);
 
@@ -286,85 +222,6 @@ describe('deciding how many particles this phone can afford', () => {
     }
 
     expect(turns).toBeLessThan(3);
-  });
-});
-
-describe('one launch after another, which is what halving has to survive', () => {
-  /**
-   * A phone that can only present whole refreshes, run through eight summonings in a row.
-   *
-   * **The thing to prove is that it does not walk downhill.** Halving what was remembered is only
-   * safe if each launch climbs back and re-proves roughly what the last one did; a policy that
-   * started at half and then settled at half again would take Jarvis to the floor over a week of
-   * use, one summoning at a time, and nobody would ever catch it happening.
-   */
-  function launches(draws: (density: number) => number, count: number, seconds: number): number[] {
-    const proven: number[] = [];
-    let remembered = 0;
-    for (let launch = 0; launch < count; launch++) {
-      const control = createDensityControl(startFromRemembered(remembered));
-      settle(control, draws, seconds);
-      remembered = control.proven;
-      proven.push(remembered);
-    }
-    return proven;
-  }
-
-  it('re-proves roughly the same count every time rather than drifting to the floor', () => {
-    const proven = launches(sixtyHertzCliff, 8, 30);
-
-    // Every launch after the first found something worth drawing...
-    expect(Math.min(...proven.slice(1))).toBeGreaterThan(0.2);
-    // ...and the last is no worse than the first, which is the whole property.
-    expect(proven[proven.length - 1] ?? 0).toBeGreaterThanOrEqual((proven[0] ?? 0) * 0.9);
-  });
-
-  it('leaves a phone that can draw the lot back at the lot, every time', () => {
-    // It still starts at half — the user asked for that and it costs a second of climbing — but a
-    // phone with room to spare must end every single summoning back at the ceiling.
-    const proven = launches(phone(1.4), 5, 20);
-
-    expect(proven.every((share) => share === 1)).toBe(true);
-    // And each of those launches began at half of it rather than at it.
-    expect(startFromRemembered(1)).toBe(0.5);
-  });
-});
-
-describe('starting from what this phone managed last time', () => {
-  it('takes the remembered share when nothing has been measured yet', () => {
-    // The case this is all for: the control is built before the read comes back, so it starts at
-    // the floor, and the remembered number has to be applied afterwards rather than at birth.
-    const control = createDensityControl();
-    seedFromRemembered(control, 0.72);
-
-    expect(control.density).toBe(0.72);
-  });
-
-  it('ignores it once a real frame rate has been seen', () => {
-    // What the loop has worked out on this phone, now, beats anything from last time — and a
-    // storage read that lands a second late must not undo a second of measuring.
-    const control = createDensityControl();
-    steerDensity(control, 12, 0.5);
-    steerDensity(control, 12, 0.5);
-    const measured = control.density;
-
-    seedFromRemembered(control, 0.9);
-
-    expect(control.density).toBe(measured);
-  });
-
-  it('never steps backwards', () => {
-    const control = createDensityControl(0.6);
-    seedFromRemembered(control, 0.3);
-
-    expect(control.density).toBe(0.6);
-  });
-
-  it('will not seed below the floor', () => {
-    const control = createDensityControl();
-    seedFromRemembered(control, 0.001);
-
-    expect(control.density).toBe(FEWEST_PARTICLES);
   });
 });
 
@@ -448,7 +305,7 @@ describe('the phone stalling, which is not the phone being slow', () => {
    * was long *because* the phone had stopped. One slow frame, the whole sphere.
    */
   it('does not strip the sphere because one frame took two seconds', () => {
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     settle(control, phone(0.6), 20);
     const settled = control.density;
     expect(settled).toBeGreaterThan(0.4);
@@ -460,7 +317,7 @@ describe('the phone stalling, which is not the phone being slow', () => {
   });
 
   it('answers a real freeze without going anywhere near the floor', () => {
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     settle(control, phone(0.6), 20);
     const settled = control.density;
 
@@ -481,7 +338,7 @@ describe('the phone stalling, which is not the phone being slow', () => {
     //
     // So it climbs back to under where it froze, quickly rather than in a crawl, and waits there
     // until the frame rate has plainly had room for a while before trying any higher.
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     settle(control, phone(0.6), 20);
     const settled = control.density;
 
@@ -517,7 +374,7 @@ describe('a phone that heats up, which is what the user watched freeze', () => {
   it('spends nearly all its time smooth rather than lagging every few seconds', () => {
     // The loop used to spend half of every minute at thirty frames a second: climb past the edge,
     // lag, shed, see sixty again, climb straight back past it.
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     const drawsAt = heatingPhone();
     let lagging = 0;
     for (let window = 0; window < 120; window++) {
@@ -536,7 +393,7 @@ describe('a phone that heats up, which is what the user watched freeze', () => {
     // and pinned a watch that had only hitched to its floor for good. It lifts again now, once the
     // frame rate has plainly had room — and each lift that finds the edge doubles the wait before
     // the next, so over four minutes the phone lags in a handful of short, ever rarer moments.
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     const drawsAt = heatingPhone();
     const lagsStartAt: number[] = [];
     let lagging = 0;
@@ -565,7 +422,7 @@ describe('a phone that heats up, which is what the user watched freeze', () => {
 
 describe('on a screen that can only present whole refreshes', () => {
   it('walks up to the cliff and stays there instead of falling off it', () => {
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     const path = watch(control, SIXTY_HERTZ, 60);
     const late = path.filter((sample) => sample.at >= 30).map((sample) => sample.density);
 
@@ -579,7 +436,7 @@ describe('on a screen that can only present whole refreshes', () => {
     // The same gains, the same file, a screen with twice the resolution in time. A controller whose
     // error is a frame rate cannot do this: the same reading means -0.5 on one screen and -2 on the
     // other, so gains that hold one tear the other apart.
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     const path = watch(control, HUNDRED_AND_TWENTY_HERTZ, 60);
     const late = path.filter((sample) => sample.at >= 30).map((sample) => sample.density);
 
@@ -588,7 +445,7 @@ describe('on a screen that can only present whole refreshes', () => {
   });
 
   it('rides out a stall without ever reaching the floor', () => {
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     const path = watch(control, SIXTY_HERTZ, 60, { at: 20, lasting: 1.5 });
     const after = path.filter((sample) => sample.at >= 20).map((sample) => sample.density);
 
@@ -652,7 +509,7 @@ describe('a watch that hitched once', () => {
     // What the user saw: thirty-eight frames a second, and a count that never went up. Two slow
     // windows while the view mounts and the vortex plays are enough to set a ceiling, and set at
     // the floor that ceiling used to hold for as long as the screen stayed open.
-    const control = createDensityControl(undefined, WATCH_PACE);
+    const control = createDensityControl(WATCH_PACE, FEWEST_PARTICLES);
     steerWatch(
       control,
       roomyWatch((window) => window >= 1 && window <= 3),
@@ -663,7 +520,7 @@ describe('a watch that hitched once', () => {
   });
 
   it('climbs back after a hitch in the middle, once the frames have plainly come back', () => {
-    const control = createDensityControl(undefined, WATCH_PACE);
+    const control = createDensityControl(WATCH_PACE, FEWEST_PARTICLES);
     const seen = steerWatch(
       control,
       roomyWatch((window) => window === 8 || window === 9),
@@ -680,7 +537,7 @@ describe('a watch that hitched once', () => {
 describe('steering by how long a picture takes to build', () => {
   it('settles on the build budget and stays there, rather than hunting across a refresh', () => {
     // A phone whose building is the expensive half: the budget, not the edge, is what stops it.
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     const seen = steerFor(control, timedPhone({ buildPerParticle: 10, paintPerParticle: 2 }), 80);
 
     const late = seen.slice(-20);
@@ -694,7 +551,7 @@ describe('steering by how long a picture takes to build', () => {
   });
 
   it('follows a phone that heats up down smoothly, without once dropping to thirty', () => {
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     const seen = steerFor(control, timedPhone({ buildPerParticle: 10, paintPerParticle: 2 }), 240);
 
     expect(seen.filter((window) => window.framesPerSecond < TARGET_FRAMES_PER_SECOND)).toHaveLength(0);
@@ -705,7 +562,7 @@ describe('steering by how long a picture takes to build', () => {
   it('is still caught by the frame rate on a phone whose painting runs out first', () => {
     // Building is cheap here and never gets near its budget, so the build time says "room" all the
     // way up — which is the case the frame-rate ceiling exists for.
-    const control = createDensityControl();
+    const control = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     const seen = steerFor(control, timedPhone({ buildPerParticle: 1, paintPerParticle: 20 }), 240);
 
     expect(control.ceiling).toBeLessThan(1);
@@ -714,8 +571,8 @@ describe('steering by how long a picture takes to build', () => {
   });
 
   it('steers by the frame rate until there is a build time to steer by', () => {
-    const byFrameRate = createDensityControl();
-    const byNothingTimed = createDensityControl();
+    const byFrameRate = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
+    const byNothingTimed = createDensityControl(PHONE_PACE, FEWEST_PARTICLES);
     settle(byFrameRate, phone(0.4), 20);
     for (let window = 0; window * 0.5 < 20; window++) {
       steerDensity(byNothingTimed, phone(0.4)(byNothingTimed.density), 0.5, 0);

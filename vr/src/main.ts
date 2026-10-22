@@ -42,8 +42,7 @@ import { canEnterRoom, requestRoomSession } from './xr/room-session';
  * time someone has found the button; the SDK and LiveKit are about 600 kB on their own, which the
  * page never needs.
  *
- * URL flags: `?debug` shows the diagnostics HUD in the room, `?flat` draws him as the phone's flat
- * picture instead of in 3D, `?microphone=raw` listens for the wake word without echo cancellation,
+ * URL flags: `?debug` shows the diagnostics HUD in the room, `?microphone=raw` listens for the wake word without echo cancellation,
  * noise suppression or gain control, to try on a headset whether it hears better, and
  * `?voice=spatial` plays his voice from where he stands even when the microphone says the headset
  * has no echo canceller of its own that could keep it out (see `conversation/voice-route.ts`),
@@ -211,15 +210,13 @@ function sharedRoomOptions(modules: RoomModules, onInside: () => void) {
   const [, { createRoomPlacement }, { createJarvisHologram3D }, { createRoomModelWorker, createRoomTracker }] = modules;
   return {
     createHologram: async (renderer) => {
-      const hologram = await createJarvisHologram3D(renderer, {
+      return createJarvisHologram3D(renderer, {
         assetBase,
         painter: loadPainterOnce(),
         // A film is shot on a faked clock, a frame of it however long the emulator took to draw it,
         // while the emulator says its display runs at 90 Hz: every frame of it would read as dropped.
         densityBackstop: !flags.has('film'),
       });
-      if (flags.has('flat')) hologram.mode = 'flat';
-      return hologram;
     },
     // A new model for every room: the snapshots are in the session's own reference space, which
     // is gone with the session.

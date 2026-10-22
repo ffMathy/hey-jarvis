@@ -22,7 +22,7 @@ export type DrawingSurfaceKind = 'webgl' | 'cpu';
  */
 export const DRAWING_SIZE_PIXELS = 512;
 
-/** The phone's whole drawing, rasterised once a frame into a picture the headset can show. */
+/** The phone's picture of everything but his body, rasterised once a frame into a picture the headset can show. */
 export interface FlatHologram {
   kind: DrawingSurfaceKind;
   /** Draws `frame` and hands the result over; the caller owns, and must close, the bitmap. */
@@ -141,7 +141,9 @@ function makeDrawingTarget(painter: Painter, size: number): DrawingTarget {
 }
 
 /**
- * Jarvis exactly as the phone draws him, flat, for the view-plane quad.
+ * The layers of Jarvis that live in the view plane — the whorl, the core, the rim, the chips —
+ * exactly as the phone's Skia picture draws them, for the view-plane quad. His body is drawn in
+ * three dimensions beside it, on the GPU.
  *
  * Cleared to opaque black every frame, because that is what the phone draws him over: every
  * layer of him is Screen-blended, and Screen over black is the light alone. The quad's shader

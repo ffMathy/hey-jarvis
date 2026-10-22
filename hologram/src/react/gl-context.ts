@@ -16,7 +16,10 @@ import type {
  *
  * **Only where the app was built with expo-gl's native module.** Loading expo-gl asks for the
  * module as it loads and throws without it, so it is required here only once the module is known
- * to be there; a development client built before the dependency was added keeps Skia's body.
+ * to be there; a development client built before the dependency was added draws him without his
+ * body. The phone and the watch both require Android 10 or later (`minSdkVersion`), the first on
+ * which React Native Screens a view onto its siblings (`mixBlendMode`), which is how the body is
+ * laid over Skia's picture.
  *
  * **The UI thread draws, through expo-gl's worklet support.** `enableExperimentalWorkletSupport`
  * puts every context the view makes into the UI runtime too, under the same id, and
@@ -24,13 +27,6 @@ import type {
  * calls GL again, because both runtimes write into one unlocked batch of calls: a call from each at
  * once is a native crash, not an exception.
  */
-
-/**
- * Android 10, the first on which React Native Screens a view onto its siblings (`mixBlendMode`),
- * which is how the body is laid over Skia's picture. Below it the style is silently ignored and the
- * body would be laid on top unblended, up to ninety levels off.
- */
-const FIRST_API_LEVEL_WITH_BLEND_MODES = 29;
 
 const expoGl = Platform.OS === 'android' && requireOptionalNativeModule('ExpoGL') !== null ? loadExpoGl() : undefined;
 
@@ -40,9 +36,6 @@ function loadExpoGl(): typeof import('expo-gl') {
 
 /** expo-gl's own lookup of a context on the UI runtime, captured on its own: a worklet carries functions, not modules. */
 const lookUpWorkletContext = expoGl?.getWorkletContext;
-
-export const GPU_BODY_SUPPORTED =
-  expoGl !== undefined && typeof Platform.Version === 'number' && Platform.Version >= FIRST_API_LEVEL_WITH_BLEND_MODES;
 
 function deviceBodyGlView(GLView: typeof import('expo-gl').GLView) {
   return function DeviceBodyGlView({ testID, style, onContextCreate }: BodyGlViewProps) {

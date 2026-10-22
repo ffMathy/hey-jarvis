@@ -123,8 +123,6 @@ export function createPerformance(frameSeconds: number, thoughtFadeSeconds: numb
       presence,
       hearing,
       hearingLevel,
-      // All of them. Nothing here is racing a screen.
-      density: 1,
     };
   };
 }

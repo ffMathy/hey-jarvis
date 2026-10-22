@@ -2,19 +2,18 @@ import { type Browser, expect, type Locator, type Page, test } from '@playwright
 import { blockExternalRequests } from './external-requests';
 
 /**
- * Jarvis's body on the GPU, in the phone's web build: where the browser has WebGL 2 his body is
- * drawn by `hologram/gpu` on a canvas of its own (`hologram-body`), Screened onto Skia's picture of
- * the rest of him (`hologram-flat`), and anywhere it cannot be, Skia draws all of him as it always
- * did. See "His body on the GPU, on a phone and a watch" in `hologram/AGENTS.md`.
+ * Jarvis's body on the GPU, in the phone's web build: his body is drawn by `hologram/gpu` on a
+ * canvas of its own (`hologram-body`), Screened onto Skia's picture of the rest of him
+ * (`hologram-picture`). Where the browser cannot draw it, there is no body and the rest of him is
+ * drawn all the same. See "His body on the GPU, on a phone and a watch" in `hologram/AGENTS.md`.
  *
  * **Every test here runs on a stopped clock.** Playwright's fake clock replaces the page's
  * `requestAnimationFrame`, timers, `Date` and `performance`, and the page is stopped before sample
  * mode opens, so every frame he is drawn in is one this file steps. That is what makes the pictures
  * comparable at all. On the real clock the frame rate is whatever the machine running the tests
- * manages, the density loop steers the share of particles by it, and the two renderers start that
- * share at different places (`GPU_STARTING_SHARE`, and the floor for Skia), so the GPU's picture
- * and Skia's would be of different moments with different particles in them. Stepped, both are of
- * the same moment, with the same particles, every time.
+ * manages and the density loop steers the share of particles by it, so two pictures would be of
+ * different moments with different particles in them. Stepped, both are of the same moment, with
+ * the same particles, every time.
  *
  * The numbers below that are the hologram's own are written out rather than imported: its main
  * entry takes Skia's enums from a module Node cannot load, and this runs under Node. Each says which
@@ -33,6 +32,8 @@ declare global {
     tiltTo?: (x: number, y: number, z: number) => void;
     /** How many gravity sensors are started: one while the tilt is listening, none otherwise. */
     startedGravitySensors?: () => number;
+    /** What lost the GPU body's context, kept to give it back with. */
+    bodyContextLoss?: WEBGL_lose_context;
   }
 }
 
@@ -81,9 +82,8 @@ interface Box {
 /**
  * How long each stepped frame is, in milliseconds of the page's clock: ten frames a second, a
  * quarter of the forty the density loop holds (`TARGET_FRAMES_PER_SECOND`). Below half of that the
- * loop reads a device that cannot keep up and sheds particles as fast as it sheds them, so whatever
- * share a renderer starts at, it ends at the floor — which is what lets the GPU's picture and
- * Skia's be compared.
+ * loop reads a device that cannot keep up and sheds particles as fast as it sheds them, so it ends
+ * at the floor, the same share in every page stepped alike.
  */
 const FRAME_MS = 100;
 
@@ -91,10 +91,9 @@ const FRAME_MS = 100;
 const ARRIVED_FRAMES = 10;
 
 /**
- * Frames until the GPU's share is at the floor. It starts at half the particles
- * (`GPU_STARTING_SHARE`) and was measured reaching the floor by the fortieth stepped frame, the
- * readout halving every half second on the way; ten more for margin. Skia's starts at the floor and
- * stays there.
+ * Frames until the share is at the floor. It starts at half the particles (`STARTING_SHARE`) and was
+ * measured reaching the floor by the fortieth stepped frame, the readout halving every half second
+ * on the way; ten more for margin.
  */
 const SHED_FRAMES = 50;
 
@@ -112,8 +111,8 @@ const MOVED_EYE_SHARE = 0.1;
 const FLOOR_SPARKS = '250 sparks';
 
 /**
- * The last frame before a GPU body that is never ready would be given up on (`GPU_READY_TIMEOUT_MS`,
- * 800 ms), with a frame to spare: drawn by then, he was not kept waiting for it.
+ * The last frame before a body that is never ready would stop holding his arrival
+ * (`BODY_READY_TIMEOUT_MS`, 800 ms), with a frame to spare: drawn by then, he was not kept waiting.
  */
 const BEFORE_THE_TIMEOUT_FRAMES = 6;
 
@@ -174,7 +173,7 @@ async function openSampleModeOnAStoppedClock(page: Page, path: string): Promise<
   await (await viewChunk).finished();
 
   let steps = 0;
-  while ((await page.getByTestId('hologram-flat').count()) === 0) {
+  while ((await page.getByTestId('hologram-picture').count()) === 0) {
     expect(steps, 'the hologram view never mounted').toBeLessThan(MOUNT_STEPS_AT_MOST);
     await page.clock.fastForward(FRAME_MS);
     steps++;
@@ -580,7 +579,7 @@ test('draws his body on the GPU where the browser has WebGL 2, centred in the sp
   if (square === null) {
     throw new Error('The hologram has no box on the page');
   }
-  const bodyOnThePage = await withHidden(page, ['hologram-flat', 'frame-rate'], async () =>
+  const bodyOnThePage = await withHidden(page, ['hologram-picture', 'frame-rate'], async () =>
     pixelsOf(page, await page.screenshot()),
   );
   const bodyInTheSquare = lookOf(bodyOnThePage, square);
@@ -597,40 +596,26 @@ test('draws his body on the GPU where the browser has WebGL 2, centred in the sp
   const hologram = page.getByTestId('hologram');
   const composed = await pixelsOf(page, await hologram.screenshot());
   const skiaAlone = await withHidden(page, ['hologram-body'], async () => pixelsOf(page, await hologram.screenshot()));
-  const bodyAlone = await withHidden(page, ['hologram-flat'], async () => pixelsOf(page, await hologram.screenshot()));
+  const bodyAlone = await withHidden(page, ['hologram-picture'], async () =>
+    pixelsOf(page, await hologram.screenshot()),
+  );
   expect(largestScreenError(composed, skiaAlone, bodyAlone)).toBeLessThan(16);
 
   // Its canvas is read in the colour space Skia's is, which React Native Skia tags Display P3, so
   // one paint is one colour across the two wherever the browser manages colour. Chromium here does
   // not, so the pictures above look the same either way, and only the tag can say.
-  const skiasCanvas = page.getByTestId('hologram-flat').locator('canvas');
+  const skiasCanvas = page.getByTestId('hologram-picture').locator('canvas');
   expect(await colourSpaceOf(skiasCanvas)).toBe('display-p3');
   expect(await colourSpaceOf(body)).toBe('display-p3');
 
-  // The readout, which says which renderer drew the frames it counts.
-  await expect(page.getByTestId('frame-rate')).toHaveText(/ · gpu$/);
-  expect(pageErrors).toEqual([]);
-});
-
-test('keeps his body in Skia’s drawing on ?flat', async ({ page }) => {
-  const pageErrors = collectPageErrors(page);
-  await openSampleModeOnAStoppedClock(page, '/?flat');
-  await stepFrames(page, ARRIVED_FRAMES + 10);
-
-  // No GPU canvas at all, and Skia's draws him.
-  await expect(page.getByTestId('hologram-body')).toHaveCount(0);
-  await expect(page.getByTestId('hologram').locator('canvas')).toHaveCount(1);
-  const flat = lookOf(await pixelsOf(page, await page.getByTestId('hologram-flat').screenshot()));
-  expect(flat.litShare).toBeGreaterThan(0.05);
-  await expect(page.getByTestId('frame-rate')).toHaveText(/ · 2d$/);
   expect(pageErrors).toEqual([]);
 });
 
 /**
- * Two ways a browser leaves the GPU body without WebGL 2: one that has none at all — no
- * `WebGL2RenderingContext`, and no context for asking — where the view never tries; and one that
- * has the API but will not give the body's canvas a context, where expo-gl quietly hands over a
- * WebGL 1 context instead and the view has to turn it down and take the GL view away. Only the
+ * Two ways a browser leaves him without WebGL 2 for his body: one that has none at all — no
+ * `WebGL2RenderingContext`, and no context for asking — where the view never makes a GL view; and
+ * one that has the API but will not give the body's canvas a context, where expo-gl quietly hands
+ * over a WebGL 1 context instead and the view has to turn it down and take the GL view away. Only the
  * body's canvas is refused there, because CanvasKit cannot do without WebGL 2 where the API exists
  * either, and that is CanvasKit's to fail, not this.
  */
@@ -662,58 +647,61 @@ const BROWSERS_WITHOUT_WEBGL_2 = [
 ];
 
 for (const withoutWebGl2 of BROWSERS_WITHOUT_WEBGL_2) {
-  test(`draws all of him in Skia, from the start, in ${withoutWebGl2.name}`, async ({ page }) => {
+  test(`draws the rest of him without a body, from the start, in ${withoutWebGl2.name}`, async ({ page }) => {
     await page.addInitScript(withoutWebGl2.takeAway);
     const pageErrors = collectPageErrors(page);
     await openSampleModeOnAStoppedClock(page, '/');
 
-    // He is arriving already, before a GPU body that never came would have been given up on: the
-    // body went to Skia at once rather than holding him back at the start of the arrival.
+    // He is arriving already, before a body that never came would have stopped holding him: with no
+    // GL view to wait for, nothing held him back at the start of the arrival.
     await stepFrames(page, BEFORE_THE_TIMEOUT_FRAMES);
     await expect(page.getByTestId('hologram-body')).toHaveCount(0);
     await expect(page.getByTestId('hologram').locator('canvas')).toHaveCount(1);
-    const arriving = await lookAtHim(page);
+    const arriving = await withHidden(page, ['frame-rate'], () => lookAtHim(page));
     expect(arriving.litShare).toBeGreaterThan(0.01);
 
-    // And goes on moving, with nothing broken: no error, and a readout that says who draws him.
-    await stepFrames(page, ARRIVED_FRAMES);
-    const arrived = await lookAtHim(page);
-    expect(arrived.litShare).toBeGreaterThan(0.05);
+    // And goes on moving, with nothing broken: his clock runs, the density loop with it, and there
+    // is no error.
+    await stepFrames(page, SHED_FRAMES);
+    const arrived = await withHidden(page, ['frame-rate'], () => lookAtHim(page));
+    expect(arrived.litShare).toBeGreaterThan(0.03);
     expect(arrived.meanLuma).not.toBe(arriving.meanLuma);
-    await expect(page.getByTestId('frame-rate')).toHaveText(/ · 2d$/);
+    await expect(page.getByTestId('frame-rate')).toHaveText(new RegExp(`${FLOOR_SPARKS}$`));
     expect(pageErrors).toEqual([]);
   });
 }
 
-test('hands his body to Skia within a few frames when the GPU’s context is lost', async ({ page }) => {
+test('takes his body away while the GPU’s context is lost, and draws it again once it is restored', async ({
+  page,
+}) => {
   const pageErrors = collectPageErrors(page);
   await openSampleModeOnAStoppedClock(page, '/');
   await stepFrames(page, SHED_FRAMES);
-  await expect(page.getByTestId('frame-rate')).toHaveText(new RegExp(`${FLOOR_SPARKS} · gpu$`));
+  await expect(page.getByTestId('frame-rate')).toHaveText(new RegExp(`${FLOOR_SPARKS}$`));
 
-  // What his body adds to the picture, at the floor, where Skia's will be drawn too.
+  // What his body adds to the picture, at the floor.
   const withTheGpuBody = await lookAtHim(page);
   const withoutABody = await lookAtSkiaAlone(page);
   const bodyLit = withTheGpuBody.litShare - withoutABody.litShare;
   expect(bodyLit).toBeGreaterThan(0.02);
 
-  const lost = await page
-    .getByTestId('hologram-body')
-    .locator('canvas')
-    .evaluate((canvas) => {
-      const gl = canvas instanceof HTMLCanvasElement ? canvas.getContext('webgl2') : null;
-      const extension = gl?.getExtension('WEBGL_lose_context');
-      extension?.loseContext();
-      return extension !== null && extension !== undefined;
-    });
+  const canvas = page.getByTestId('hologram-body').locator('canvas');
+  const lost = await canvas.evaluate((element) => {
+    const gl = element instanceof HTMLCanvasElement ? element.getContext('webgl2') : null;
+    const extension = gl?.getExtension('WEBGL_lose_context') ?? undefined;
+    extension?.loseContext();
+    // Kept, since a context that has gone hands out no extensions: it is what gives it back.
+    window.bodyContextLoss = extension;
+    return extension !== undefined;
+  });
   expect(lost).toBe(true);
 
-  // Three frames later the picture on screen has a body again, and it is Skia's: at least half of
-  // what the GPU's added, where the frames between change the rest of him by a few hundredths of
-  // that at most. A view that kept the body on a context that had gone would show none.
+  // A few frames later there is no body on screen, and the rest of him goes on: what is lit is what
+  // Skia's picture lights, to within a few hundredths of what the body added, where a view still
+  // showing the canvas would show its last frame or the browser's placeholder.
   await stepFrames(page, 3);
-  const handedOver = await lookAtHim(page);
-  expect(handedOver.litShare - withoutABody.litShare).toBeGreaterThan(bodyLit / 2);
+  const bodiless = await lookAtHim(page);
+  expect(Math.abs(bodiless.litShare - withoutABody.litShare)).toBeLessThan(bodyLit / 4);
 
   // Laid out again — a window resized, a phone turned — and still him: a browser paints a canvas
   // whose context has gone as a placeholder of its own, a white square, which Screened over him
@@ -725,11 +713,18 @@ test('hands his body to Skia within a few frames when the GPU’s context is los
   await page.setViewportSize({ width: viewport.width, height: viewport.height - 40 });
   await stepFrames(page, 2);
   const laidOutAgain = await lookAtHim(page);
-  expect(laidOutAgain.litShare).toBeLessThan(handedOver.litShare * 1.5);
-  expect(laidOutAgain.litShare).toBeGreaterThan(handedOver.litShare / 1.5);
+  expect(laidOutAgain.litShare).toBeLessThan(bodiless.litShare * 1.5);
+  expect(laidOutAgain.litShare).toBeGreaterThan(bodiless.litShare / 1.5);
 
-  await stepFrames(page, 5);
-  await expect(page.getByTestId('frame-rate')).toHaveText(/ · 2d$/);
+  // The browser hands the context back, expo-gl hands it to the view again, and the body is set up
+  // in it afresh and drawn from the next frame on.
+  await page.evaluate(() => window.bodyContextLoss?.restoreContext());
+  await expect
+    .poll(async () => {
+      await stepFrames(page, 1);
+      return (await lookAtHim(page)).litShare - (await lookAtSkiaAlone(page)).litShare;
+    })
+    .toBeGreaterThan(bodyLit / 2);
   expect(pageErrors).toEqual([]);
 });
 
@@ -737,8 +732,8 @@ test('hands his body to Skia within a few frames when the GPU’s context is los
  * Makes the GPU body's context look lost to every frame, while leaving it to be made and the body
  * built in it: the frame callback's first look at it (`finishPreviousFrame`) finds it gone. That is
  * the browser's version of the case a device cannot be made to show here — expo-gl's lookup on the
- * UI runtime coming back empty, or its first `flushEXP` failing — where nothing gives the body up
- * and only `GPU_READY_TIMEOUT_MS` lets his clock go.
+ * UI runtime coming back empty, or its first `flushEXP` failing — where nothing takes the GL view
+ * away and only `BODY_READY_TIMEOUT_MS` lets his clock go.
  */
 function loseTheBodysContextToEveryFrame() {
   const isContextLost = WebGL2RenderingContext.prototype.isContextLost;
@@ -751,7 +746,7 @@ function loseTheBodysContextToEveryFrame() {
   });
 }
 
-test('arrives with Skia’s body once a GPU body that never comes has kept him waiting long enough', async ({ page }) => {
+test('arrives without a body once a body that never comes has kept him waiting long enough', async ({ page }) => {
   await page.addInitScript(loseTheBodysContextToEveryFrame);
   const pageErrors = collectPageErrors(page);
   await openSampleModeOnAStoppedClock(page, '/');
@@ -763,10 +758,15 @@ test('arrives with Skia’s body once a GPU body that never comes has kept him w
   await expect(page.getByTestId('hologram').locator('canvas')).toHaveCount(2);
   expect((await withHidden(page, ['frame-rate'], () => lookAtHim(page))).litShare).toBeLessThan(0.005);
 
-  // Then the wait runs out, and he arrives with Skia's body.
+  // Then the wait runs out, and the rest of him arrives, with his clock running and nothing drawn
+  // on the body's canvas.
   await stepFrames(page, ARRIVED_FRAMES + 4);
-  expect((await withHidden(page, ['frame-rate'], () => lookAtHim(page))).litShare).toBeGreaterThan(0.05);
-  await expect(page.getByTestId('frame-rate')).toHaveText(/ · 2d$/);
+  const arrived = await withHidden(page, ['frame-rate'], () => lookAtHim(page));
+  expect(arrived.litShare).toBeGreaterThan(0.03);
+  const skiaAlone = await withHidden(page, ['frame-rate', 'hologram-body'], () => lookAtHim(page));
+  expect(arrived.litShare).toBe(skiaAlone.litShare);
+  await stepFrames(page, 2);
+  expect((await withHidden(page, ['frame-rate'], () => lookAtHim(page))).meanLuma).not.toBe(arrived.meanLuma);
   expect(pageErrors).toEqual([]);
 });
 
@@ -788,7 +788,7 @@ test('turns his body as the phone tilts, from the phone’s eye, and back to the
   }
   expect(new Set(mountedAfter).size).toBe(1);
 
-  // Readings arriving bring the eye in from infinitely far, where the flat drawing sees him from, to
+  // Readings arriving bring the eye in from infinitely far, straight on as a flat projection, to
   // the phone's: the same moment drawn differently. And two phones handed the same readings draw the
   // same picture to the byte, which is what lets the two after this be compared at all.
   const neverRead = await stepToTheBody(unread, ARRIVED_FRAMES, undefined);
@@ -811,9 +811,6 @@ test('turns his body as the phone tilts, from the phone’s eye, and back to the
   const tippedLater = await stepToTheBody(tipped, SETTLED_FRAMES, tippedAway(15));
   expect(differingPixels(stillLater, tippedLater)).toBeLessThan(turned / 100);
 
-  for (const phone of [still, tipped]) {
-    await expect(phone.getByTestId('frame-rate')).toHaveText(/ · gpu$/);
-  }
   await still.context().close();
   await tipped.context().close();
   for (const errors of pageErrors) {
@@ -852,46 +849,4 @@ test('arrives straight on after the app was away, however the phone was turned m
   for (const errors of pageErrors) {
     expect(errors).toEqual([]);
   }
-});
-
-test('looks the same with his body on the GPU as in Skia’s drawing, seen straight on', async ({ page, browser }) => {
-  // The same moment both ways: each page is opened and stepped the same way on a clock of its own,
-  // and measured while it stands still.
-  const pageErrors = collectPageErrors(page);
-  const gpuMountedAfter = await openSampleModeOnAStoppedClock(page, '/');
-  await stepFrames(page, SHED_FRAMES);
-  await expect(page.getByTestId('frame-rate')).toHaveText(new RegExp(`${FLOOR_SPARKS} · gpu$`));
-  const onTheGpu = await lookAtHim(page);
-  const withoutABody = await lookAtSkiaAlone(page);
-
-  const flatContext = await browser.newContext({ viewport: page.viewportSize() });
-  const flatPage = await flatContext.newPage();
-  await blockExternalRequests(flatPage);
-  const flatPageErrors = collectPageErrors(flatPage);
-  const flatMountedAfter = await openSampleModeOnAStoppedClock(flatPage, '/?flat');
-  await stepFrames(flatPage, SHED_FRAMES);
-  await expect(flatPage.getByTestId('frame-rate')).toHaveText(new RegExp(`${FLOOR_SPARKS} · 2d$`));
-  const inSkia = await lookAtHim(flatPage);
-  await flatContext.close();
-
-  // Mounted on the same step, so his clock and his voice were at the same place in both, and both
-  // drew the same particles, at the floor.
-  expect(flatMountedAfter).toBe(gpuMountedAfter);
-
-  // Neither picture is just the rest of him: each has a body, and about as much of one. Without it
-  // the lit area here was 47,655 pixels, and with either body over 66,000.
-  expect(onTheGpu.litShare).toBeGreaterThan(withoutABody.litShare * 1.2);
-  expect(inSkia.litShare).toBeGreaterThan(withoutABody.litShare * 1.2);
-
-  // And the two look alike. Measured at two moments, the GPU's picture and Skia's differed by at
-  // most 0.4% in mean luma, 1.4% in lit area and 0.1% of the side in where the light is centred;
-  // the tolerances are several times those, and far below what a body missing, misplaced or
-  // misscaled moves them by.
-  expect(Math.abs(onTheGpu.meanLuma / inSkia.meanLuma - 1)).toBeLessThan(0.03);
-  expect(Math.abs(onTheGpu.litShare / inSkia.litShare - 1)).toBeLessThan(0.05);
-  expect(Math.abs(onTheGpu.centreX - inSkia.centreX)).toBeLessThan(0.005);
-  expect(Math.abs(onTheGpu.centreY - inSkia.centreY)).toBeLessThan(0.005);
-
-  expect(pageErrors).toEqual([]);
-  expect(flatPageErrors).toEqual([]);
 });

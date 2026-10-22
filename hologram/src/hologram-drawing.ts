@@ -27,32 +27,17 @@
 //                       furry with short fragments across them, plus the long loop rising 37°
 //                       past the core, the saturated ")" arc at 0.57R and the faint near half of
 //                       the edge-on ellipse — all of it turning the other way; and data streaks
-//   drawBody            while someone talks to him, the body snaps onto a slowly turning
-//                       hexagonal lattice that breathes with their voice (see latticeFragment);
-//                       otherwise the fragment body's dim and mid strokes: PARTICLE_COUNT fragments
-//                       inside 0.94R, of which the density share draws what the device affords
-//                       (four in five plain dashes, the rest L, bracket, T, Z glyphs, rings and
-//                       cell outlines mostly near the core; median 0.083R, clumped into the mass
-//                       with bare fill between the clumps, heavier on the left) and a
-//                       168-fragment turning shell in the lower hemisphere. Half of those between
-//                       0.3R and 0.62R ride the counter-turning inner layer; the rest are pinned.
-//                       Every tier carries a halo of its own — a wide faint stroke round each
-//                       fragment (HALO_RINGS) — so the light between the
-//                       strokes comes from the strokes rather than from the wash behind them, and
-//                       goes out and comes back on each fragment's own clock. Mid and
-//                       bright strokes vary in brightness along their length (a tiled sparkle
-//                       texture). Fewer strokes than the film's, each wider than its hairlines
-//                       would be, so the texture reads as ribbons rather than as line art (film
-//                       run widths 0.022-0.031R)
+//   (the body)          the fragment body is not drawn here: PARTICLE_COUNT fragments inside
+//                       0.94R and a 168-fragment turning shell in the lower hemisphere, with
+//                       their halos, drawn in three dimensions on the GPU by `hologram/gpu` and
+//                       laid over this picture. The scene's body and stream tables, and the
+//                       per-fragment helpers below (readFragment, placeFragment, swirlFragment,
+//                       latticeFragment and the rest), are what it is drawn from and held to.
 //   drawLines           comet arcs curling from the core to the lower right; radial spokes
 //                       or a swoosh fan of hairlines when the script calls for them
 //   drawCore            elongated bloom with a darker middle, the hooked 0.1R ring softened by
 //                       its glow, the bar, and a furry knot of spikes on the ring's upper left,
 //                       re-drawn 6 times a second
-//   drawBodyHighlights  the bright fragments with a wide glow that steps down to nothing over
-//                       its outer half, and a narrow hot core
-//                       (the film's #ffd26c, pulled toward orange so stacked strokes stay
-//                       amber)
 //   drawThinRing        a hairline circle at 1R, brightest from 1 to 4 o'clock, over a lumpy ridge
 //                       of light just inside the limb that rolls with the rim layer, painted as
 //                       a band rather than a disc (see LIMB_RIDGE_BAND)
@@ -192,30 +177,13 @@
 //   a Gaussian mask filter was measured and costs more than the ring it would replace,
 //   because its price follows a path's bounding box rather than its ink. It is drawn over
 //   black.
-// - Two rules keep the widest paints affordable. A shader that is transparent over most of
-//   the disc is painted as a band, not a disc (LIMB_BLOOM_BAND); and the particle halos — the
-//   widest strokes here, six paths a frame at one ring (HALO_RINGS) — are the one thing drawn
-//   without antialiasing (HALO_ANTIALIASED). On a CPU rasteriser leaving the halos aliased saved
-//   about a fifth of the frame. On a GPU it is right only with a stencil, which the app's canvas
-//   gets by being drawn inside a layer (DRAWN_IN_A_LAYER in hologram-view.tsx): without one, Skia
-//   triangulates these halos on the CPU every frame, and above the floor they were most of it.
-// - The body's and the stream's rows are kept in the order of the density share's key
-//   (roundedInDensityOrder), and the loop visits only the rows the share keeps (densityRowsEnd).
-//   Anything that changes which field the share is taken over, or adds a table the share thins,
-//   has to keep that order, or the loop stops in the wrong place.
+// - A shader that is transparent over most of the disc is painted as a band, not a disc
+//   (LIMB_BLOOM_BAND), which keeps the widest paints affordable.
 // - On a phone every worklet here runs under Hermes with no JIT, as bytecode compiled at runtime
-//   without optimisation: per particle it measured about twelve times what V8 with its JIT pays,
-//   on a desktop harness. Work done per fragment is what costs there.
-// - So the loops that run once a fragment or crescent piece — appendBody, appendStream and appendCrescent — are written
-//   out by hand: the per-fragment helpers (readFragment, placeFragment, swirlFragment and the rest) are
-//   inlined into them with the same operations in the same order, the frame's state is read once, and
-//   every per-fragment temporary is a `let` declared before the loop rather than a `const` inside it,
-//   because a call between worklets allocates and a declaration inside a loop is reset on every pass.
-//   appendBody says what that bought. The helpers stay the definition of what a fragment does (the
-//   headset composes the body from them), and particle-loop.spec.ts holds the loops to a frozen copy of
-//   the ones composed from them, bit for bit: change a fragment in its helper first, then in the loop.
-//   biome.json lets this file's functions be as complex as the body's loop is, since splitting it back
-//   into functions is the very cost it exists to remove.
+//   without optimisation. So the one loop that runs once a crescent piece, appendCrescent, works out
+//   each piece once and keeps its temporaries as `let`s declared before the loop, and
+//   crescent-loop.spec.ts holds it to a frozen copy of the loop it replaced, bit for bit.
+//   biome.json lets this file's functions be as complex as that loop is.
 // - Geometry lives in unit space under canvas.translate(centre)·scale(R), so gradient
 //   shaders are built once, and the rolling layers are drawn under canvas.rotate. Beyond
 //   paints, gradients and path builders, the textures use Data.fromBytes, Image.MakeImage
@@ -257,16 +225,6 @@ export interface HologramFrame {
   burstCount: number;
   /** 0–1 arrival progress, 1 = fully here: the view passes min(1, time / MATERIALISE_SECONDS). */
   appearance: number;
-  /**
-   * 0–1: what share of the particles to draw at all.
-   *
-   * Not a look: it is what the phone can afford. The cost of a frame is the geometry in it, and
-   * how much geometry a given phone manages at the target frame rate is not knowable in advance —
-   * so the view measures what it is getting and moves this until it is right. See
-   * `density-control.ts`. Which particles are in is decided by a hash of each one's id, so the
-   * ones already drawn stay drawn as it rises and the swarm thickens rather than rearranging.
-   */
-  density: number;
   /**
    * 0–1: how much of him is here at all. 1 unless he is leaving.
    *
@@ -331,9 +289,7 @@ type SkiaApiType = HologramSkia;
  *
  * Paying for that in canvas rather than in sphere is deliberate, and it is nearly free: Skia only
  * rasterises what is drawn, and the drawn things are all sized from the sphere. What the extra
- * square costs is the surface it is cleared on — and on a phone the layer the picture is drawn into,
- * which is the canvas's size (`DRAWN_IN_A_LAYER` in `hologram-view.tsx`) — not the picture painted
- * into it.
+ * square costs is the surface it is cleared on, not the picture painted into it.
  */
 export const SPHERE_FRACTION = 0.27;
 /** The outer rim layer rolls clockwise in the screen plane: one turn in about 33 s, as the film's ladder ring. */
@@ -435,16 +391,6 @@ export const STREAM_STRIDE = 11;
 export const BODY_ID_FIELD = 6;
 export const STREAM_ID_FIELD = 7;
 
-/**
- * How the two tables a density share thins are laid out: how wide a row is, and where its id is.
- *
- * Exported for the spec, which holds both tables to being in the share's order — see
- * `roundedInDensityOrder` — since nothing that looks at pixels would notice if one stopped being.
- */
-export const THINNED_TABLES = {
-  body: { stride: BODY_STRIDE, idField: BODY_ID_FIELD },
-  stream: { stride: STREAM_STRIDE, idField: STREAM_ID_FIELD },
-};
 const CRESCENT_PIECE_STRIDE = 3;
 const CRESCENT_PIECES_PER_STRAND = 14;
 const TRUSS_PIECE_STRIDE = 6;
@@ -504,32 +450,6 @@ const LIMB_BLOOM_BAND = 0.25;
 const LIMB_RIDGE_RADIUS = 0.955;
 const LIMB_RIDGE_BAND = 0.17;
 
-/**
- * The particle halos are the one thing in the drawing painted without antialiasing.
- *
- * Analytic antialiasing of a wide stroke is expensive out of all proportion to what it buys
- * here: on this drawing, switching it on for the halo paints alone took the frame loop from
- * 3651 ms to 4430 ms — a fifth of the whole frame — because the halos are the widest strokes in
- * the scene. What it buys is a smooth edge, and a halo ring's edge was then a step of eighteen luma
- * against the amber behind it: one jagged pixel on that boundary is invisible at 1:1 and only
- * findable at four times magnification. Those figures are from when the halo had two and then three
- * rings; it has one now ({@link HALO_RINGS}).
- *
- * **All of that was measured on a CPU rasteriser. On a GPU it holds only with a stencil.** Skia's
- * GPU backend draws a stroke with antialiasing off through its tessellator, on the GPU, when the
- * canvas has a stencil, the context can draw instanced geometry and the GPU is not one Skia keeps off
- * its tessellator (see `DRAWN_IN_A_LAYER` in `hologram-view.tsx`), and there these halos cost under a
- * millisecond of Skia's CPU a frame. Antialiased, they would go to masks rasterised on the CPU, as
- * the body's strokes do, and the whole frame would cost a tenth to a third more at the floor and
- * twice as much at full density (CanvasKit on WebGL, Skia's CPU time). Without a stencil it is the
- * other way round: these are triangulated on the CPU every frame, and above the floor they were
- * 80-86% of the frame — `DRAWN_IN_A_LAYER` is how the app's canvas got one. On a context that cannot
- * draw instanced geometry, or a GPU Skia keeps off its tessellator, the layer does not help, and
- * there antialiased halos measured a quarter to a third of the frame's cost from a quarter of the
- * particles up, with a visual difference under the noise floor.
- */
-const HALO_ANTIALIASED = false;
-
 /** A fragment is lit for this share of its clock's cycle, fading in and out over a third of that at each end. */
 export const FRAGMENT_DUTY = 0.6;
 /**
@@ -568,13 +488,11 @@ export const FRAGMENT_CODE_GLYPH_STEP = 12;
  * rather than the one the hardware allows, and those are different questions.
  *
  * What it costs on every phone, fast or slow, is the scene: this many fragments times
- * {@link BODY_STRIDE} numbers, built, put in the density share's order and serialised once into the
- * worklet runtime when the view mounts. That is the only part of raising it that nobody can opt out
+ * {@link BODY_STRIDE} numbers, built and laid out as the GPU's rows when the view mounts. That is the only part of raising it that nobody can opt out
  * of, and it is worth knowing the size of it: 100,000 numbers, which `createHologramScene` spends
  * about 20 ms building on a desktop under V8 once warm (about 35 on a first, cold call), and about
- * 70 ms under a Hermes compiled ahead of time the way React Native ships it, on the same desktop —
- * the density order is about 6 of those 70 — against about half that at five thousand. A
- * phone is some multiple of that, and then Reanimated copies the lot across. It lands as a hitch
+ * 70 ms under a Hermes compiled ahead of time the way React Native ships it, on the same desktop,
+ * against about half that at five thousand. A phone is some multiple of that. It lands as a hitch
  * when the view mounts rather than as a frame rate, so the controller below cannot thin it away —
  * this is the number to look at first if the arrival ever starts feeling late.
  *
@@ -586,13 +504,9 @@ export const PARTICLE_COUNT = 10000;
  * How many fragments the watch's scene is built from.
  *
  * A fraction of the phone's {@link PARTICLE_COUNT}. Building the scene costs this many fragments,
- * sorted and serialised into the worklet runtime at mount, and that is not something the controller
- * can steer away from. It used to cost the draw loop this many as well, since the density share was
- * taken by skipping fragments inside the loop, so however low it went the loop still visited every
- * one; on a watch both were being paid in full, for a scene sized for a phone. The loop now stops
- * where the kept fragments end (see `densityRowsEnd`), so what is left to this is the mount cost, and
- * where the floor falls: `FEWEST_PARTICLES` is a share, so on a watch it is 125 fragments rather
- * than 250.
+ * built into the GPU's rows at mount, and that is not something the controller can steer away
+ * from. It also moves where the floor falls: `FEWEST_PARTICLES` is a share, so on a watch it is 125
+ * fragments rather than 250.
  *
  * It is a ceiling rather than a count: what is actually drawn starts far below this and only comes
  * up if the frame rate allows — see `watch/src/watch-density.ts`, which wires the controller in.
@@ -615,9 +529,6 @@ export const WATCH_PARTICLE_COUNT = 5000;
  * share for every share above that multiplier. Which means no thinning at all until the share
  * falls past it, and the drawing looks untouched the whole way down. It is its own irrational
  * rather than the phase's, so which fragments are drawn does not correlate with when they light.
- *
- * The scene's rows are sorted by what this makes of their ids — see {@link roundedInDensityOrder} — so the
- * fragments any share keeps are the first rows, and the loop stops where they end.
  */
 const DENSITY_FROM_ID = 733.1357;
 
@@ -638,19 +549,6 @@ export const FRAGMENT_FAINTEST = 0.1;
  * counts — and near enough that the mass, the clumping and the crowded left half stay put.
  */
 export const FRAGMENT_WANDER = 0.06;
-
-/**
- * How long, in seconds of a frame's time, the fragments' clocks can be floored with `| 0`: 2^29, about
- * seventeen years.
- *
- * `| 0` truncates to a 32-bit integer, which is the floor of a number only from 0 up to 2^31, where
- * `Math.floor` is a call into native code — and the body's loop floors two numbers for nearly every
- * fragment it visits. A fragment's clock runs at no more than FRAGMENT_DUTY / 0.2 = 3 cycles a second
- * (see pickFragmentRate) from a phase of at most 1, so every count of cycles stays inside that range
- * until this time. `appendBody` and `appendStream` check the frame's time against it once, and fall back
- * to `Math.floor` outside it, so a negative time or an absurdly late one draws exactly what it always did.
- */
-const TRUNCATED_FLOORS_UNTIL_SECONDS = 2 ** 29;
 
 /** The rim element that dominates takes this long to hand over to the next. */
 export const HANDOVER_SECONDS = 1.2;
@@ -1054,86 +952,6 @@ function roundToFiveDecimals(value: number) {
 }
 
 /**
- * The same rows, rounded (see {@link roundToFiveDecimals}) and reordered so that the fragments any
- * density share keeps come first.
- *
- * **At the floor, the rows it did not keep were most of the build.** The share
- * used to be taken inside the loop: every row was read, its id hashed, and all but the share thrown
- * away. On a phone that loop runs under Hermes, which has no JIT and runs a worklet's code as bytecode
- * compiled at runtime without optimisation. On a Hermes built the way React Native builds it, wrapped
- * the way the worklets runtime wraps it and timed on a desktop rather than a phone, the build took
- * 5.1-5.6 ms at the floor, about 4.1 ms of it turning away the 9,750 rows the share did not keep —
- * half of `BUILD_BUDGET_MS`, spent on particles nobody saw. Going by the harnesses it is one of the
- * two things that held the app at about a tenth of the particles the same phone's browser climbs to;
- * the other is the painting, in `hologram-view.tsx`. Neither was read off a phone.
- *
- * In the key's order the rows a share keeps are simply the first ones, so the loop finds where they
- * end with a binary search (`densityRowsEnd`) and stops there. On the same Hermes, in one paired
- * run: 5.1 → 1.1 ms at the floor and 7.3 → 3.0 ms at a thousand particles, which moves the point
- * where the build reaches its budget from about 1,350 particles to about 2,900 on that machine.
- * Where a phone settles is not known. At full density every row is kept
- * and nothing is saved, so this narrows the gap to a browser rather than closing it. What it left, the
- * cost of each row the loop does visit, was then cut to about a third by writing the loops out by hand
- * (see `appendBody`): in a later paired run of the same kind of harness, 0.63 → 0.32 ms at the floor and
- * 18.9 → 5.9 ms at full density, and the budget, which ran out at about four thousand particles there,
- * no longer runs out within the ten thousand. The same
- * fragments are drawn, in the same tiers and the same places — checked call for call against the loop
- * this replaced, over ten thousand frames and densities — and only the order they reach each path in
- * changes. A path's contours are one shape whatever order they come in; drawn on Skia's CPU
- * rasteriser they match to within a rounding step, a few antialiased pixels one to three levels apart
- * in a few frames of the vortex (the GPU was not compared).
- *
- * Ordered by counting the keys into slices rather than by a comparison sort, and rounded in the same
- * pass, because this runs on the JS thread every time the view mounts: the keys are spread evenly over
- * 0-1, so each of `count` slices holds about one row and the whole ordering is a couple of passes. The
- * key is taken from the *rounded* id, so it is bit for bit the key the loop tests, and rows that share
- * a key keep the order they were built in, so this is the same (key, row) order a stable sort gives.
- * Under Hermes it adds about 6 ms to a mount of ten thousand rows, where a comparison sort added 27.
- *
- * It calls {@link densityKey}, a worklet declared further down, which the worklets plugin turns into a
- * constant that is not hoisted. That is safe because this only runs when a view builds its scene, long
- * after the module has finished loading — it must never be called at module scope.
- */
-function roundedInDensityOrder(rows: number[], stride: number, idField: number) {
-  const count = rows.length / stride;
-  const keys = new Array<number>(count);
-  // Which of `count` equal slices of 0-1 a key falls in. No key reaches 1, but a product can round up.
-  const sliceOf = (key: number) => Math.min(count - 1, Math.floor(key * count));
-  // How many keys each slice holds, and then where each slice's run starts.
-  const sliceStarts = new Array<number>(count + 1).fill(0);
-  for (let row = 0; row < count; row++) {
-    const key = densityKey(roundToFiveDecimals(rows[row * stride + idField]));
-    keys[row] = key;
-    sliceStarts[sliceOf(key) + 1]++;
-  }
-  for (let slice = 0; slice < count; slice++) {
-    sliceStarts[slice + 1] += sliceStarts[slice];
-  }
-  const order = new Array<number>(count);
-  const nextInSlice = sliceStarts.slice(0, count);
-  for (let row = 0; row < count; row++) {
-    const key = keys[row];
-    const slice = sliceOf(key);
-    // Into its slice's run in key order. Rows arrive in their own order and only strictly greater keys
-    // are stepped past, so rows that share a key stay in the order they were built in.
-    let at = nextInSlice[slice]++;
-    while (at > sliceStarts[slice] && keys[order[at - 1]] > key) {
-      order[at] = order[at - 1];
-      at--;
-    }
-    order[at] = row;
-  }
-  const ordered = new Array<number>(rows.length);
-  for (let position = 0; position < count; position++) {
-    const from = order[position] * stride;
-    for (let field = 0; field < stride; field++) {
-      ordered[position * stride + field] = roundToFiveDecimals(rows[from + field]);
-    }
-  }
-  return ordered;
-}
-
-/**
  * Builds the hologram's random geometry once. Deterministic for a given seed; plain data only.
  *
  * `particleCount` is the most the body can ever have, which a phone then draws a share of — see
@@ -1146,8 +964,8 @@ export function createHologramScene(seed: number, particleCount: number = PARTIC
   const random = createRandom(seed);
   const script = buildScript(random);
   return {
-    body: roundedInDensityOrder(buildBody(random, particleCount), BODY_STRIDE, BODY_ID_FIELD),
-    stream: roundedInDensityOrder(buildStream(random), STREAM_STRIDE, STREAM_ID_FIELD),
+    body: buildBody(random, particleCount).map(roundToFiveDecimals),
+    stream: buildStream(random).map(roundToFiveDecimals),
     crescentPieces: buildCrescentPieces(random).map(roundToFiveDecimals),
     truss: buildTruss(random).map(roundToFiveDecimals),
     fray: buildFray(random).map(roundToFiveDecimals),
@@ -1172,6 +990,29 @@ export type HologramScene = ReturnType<typeof createHologramScene>;
  */
 export type HologramScript = Pick<HologramScene, 'epochs' | 'scriptPeriod'>;
 
+/**
+ * The part of a scene the picture is drawn from: everything but the body and the stream, whose
+ * fragments the GPU draws (`hologram/gpu`). A picture worklet captures this rather than the whole
+ * scene, so the hundred thousand numbers of the body are never copied into the worklet runtime.
+ */
+export type HologramPictureScene = Omit<HologramScene, 'body' | 'stream'>;
+
+/** {@link HologramPictureScene} of a scene, as a new object holding only those parts. */
+export function pictureSceneOf(scene: HologramScene): HologramPictureScene {
+  return {
+    crescentPieces: scene.crescentPieces,
+    truss: scene.truss,
+    fray: scene.fray,
+    streakArcs: scene.streakArcs,
+    limbStreaks: scene.limbStreaks,
+    ringTicks: scene.ringTicks,
+    epochs: scene.epochs,
+    scriptPeriod: scene.scriptPeriod,
+    comets: scene.comets,
+    textureSeed: scene.textureSeed,
+  };
+}
+
 // ---- resources: Skia objects built once per mounted canvas --------------------------------
 
 /**
@@ -1188,17 +1029,13 @@ export type HologramScript = Pick<HologramScene, 'epochs' | 'scriptPeriod'>;
  * 190 ns a command — 2 ms of the 27 ms it took to build a frame at full density — and nearly all the
  * rest was the drawing's own JavaScript, which Hermes runs as unoptimised bytecode with no JIT.
  *
- * Most of that JavaScript has since gone: the particle loops are written out by hand (see `appendBody`),
- * and a full-density frame that took about 19 ms on the harness that measured them takes about 6. They
- * hand over the very same commands, so whatever the crossings cost, they are now a far larger share of
- * what is left — about a third, if they still cost what they did.
  *
  * Verb numbers are Skia's own, as `PathVerb` gives them, written out rather than imported because
  * this runs in a worklet and an imported enum is one more object to carry across.
  *
- * Exported, with {@link makePathBuilder}, for `particle-loop.spec.ts` alone, which fills these from the
- * hand-written loops and from a frozen copy of the ones they replaced; nothing else outside this file
- * draws into one.
+ * Exported, with {@link makePathBuilder}, for `crescent-loop.spec.ts` alone, which fills these from the
+ * hand-written crescent loop and from a frozen copy of the one it replaced; nothing else outside this
+ * file draws into one.
  */
 export interface PathBuilder {
   /** The commands, and beyond `count` the ones last frame used — kept to be written over. */
@@ -1210,9 +1047,6 @@ const MOVE_VERB = 0;
 const LINE_VERB = 1;
 const CONIC_VERB = 3;
 const CLOSE_VERB = 5;
-
-/** The conic weight that makes a quarter circle. */
-const QUARTER_CIRCLE_WEIGHT = Math.SQRT1_2;
 
 export function makePathBuilder(): PathBuilder {
   return { commands: [], count: 0 };
@@ -1271,22 +1105,6 @@ function pathClose(builder: PathBuilder) {
   'worklet';
   const command = nextCommand(builder, 1);
   command[0] = CLOSE_VERB;
-}
-
-/**
- * A circle, as the four conics Skia's own `addCircle` would have used.
- *
- * Clockwise from the rightmost point, which is where Skia starts one, so it is the same shape
- * wound the same way — it has to be, because the drawing strokes these.
- */
-function pathAddCircle(builder: PathBuilder, x: number, y: number, radius: number) {
-  'worklet';
-  pathMoveTo(builder, x + radius, y);
-  pathConicTo(builder, x + radius, y + radius, x, y + radius, QUARTER_CIRCLE_WEIGHT);
-  pathConicTo(builder, x - radius, y + radius, x - radius, y, QUARTER_CIRCLE_WEIGHT);
-  pathConicTo(builder, x - radius, y - radius, x, y - radius, QUARTER_CIRCLE_WEIGHT);
-  pathConicTo(builder, x + radius, y - radius, x + radius, y, QUARTER_CIRCLE_WEIGHT);
-  pathClose(builder);
 }
 
 function pathReset(builder: PathBuilder) {
@@ -1545,7 +1363,7 @@ function amberHex(red: number, green: number, blue: number) {
 }
 
 /** Paints, gradient shaders, prebuilt paths and the reusable path builders. */
-export function createHologramResources(Skia: SkiaApiType, scene: HologramScene) {
+export function createHologramResources(Skia: SkiaApiType, scene: HologramPictureScene) {
   const makePaint = (color: string, style: PaintStyle, strokeCap: StrokeCap) => {
     const paint = Skia.Paint();
     paint.setAntiAlias(true);
@@ -1632,7 +1450,7 @@ export function createHologramResources(Skia: SkiaApiType, scene: HologramScene)
     ),
   );
 
-  // The body's strokes vary in brightness along their length (see sparklePixels).
+  // The whorl's strokes vary in brightness along their length (see sparklePixels).
   const sparkleImage = Skia.Image.MakeImage(
     {
       width: SPARKLE_TEXTURE_TEXELS,
@@ -1657,17 +1475,10 @@ export function createHologramResources(Skia: SkiaApiType, scene: HologramScene)
     return paint;
   };
 
-  // The particle halos, on a paint of their own because they are the one thing here drawn without
-  // antialiasing — see HALO_ANTIALIASED. Round-capped, which is what makes a halo round.
-  const particleHalo = makeStroke('#dc5c20', StrokeCap.Round);
-  particleHalo.setAntiAlias(HALO_ANTIALIASED);
-
   const makeBuilder = () => makePathBuilder();
   /** Stands in until the first frame builds the real thing; drawing it is a no-op. */
   const emptyPath = pathOf(Skia, makeBuilder());
   const pathBuilders = {
-    // dim, mid and bright, pinned and then the same three for the turning shell
-    body: [makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder()],
     lines: makeBuilder(),
     swoosh: makeBuilder(),
     coreKnot: makeBuilder(),
@@ -1686,7 +1497,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: HologramScene)
   };
   // one flat list, so the frame can reset them all first
   const allPathBuilders = [
-    ...pathBuilders.body,
     pathBuilders.lines,
     pathBuilders.swoosh,
     pathBuilders.coreKnot,
@@ -1714,12 +1524,7 @@ export function createHologramResources(Skia: SkiaApiType, scene: HologramScene)
     whorlCoreStroke: makeSparkleStroke('#ff8c38', StrokeCap.Round),
     bracketStroke: makeStroke('#e68727', StrokeCap.Round),
     loopStroke: makeStroke('#e6862f', StrokeCap.Butt),
-    bodyDimStroke: makeStroke('#cc6e2c', StrokeCap.Butt),
-    bodyMidStroke: makeSparkleStroke('#f87026', StrokeCap.Butt),
-    bodyBrightStroke: makeSparkleStroke('#ff7e28', StrokeCap.Butt),
-    bodyHotStroke: makeSparkleStroke('#ff8e3c', StrokeCap.Round),
     bodyGlowStroke: makeStroke('#dc6820', StrokeCap.Round),
-    particleHaloStroke: particleHalo,
     lineStroke: makeStroke('#ec9440', StrokeCap.Butt),
     coreRingStroke: makeStroke('#ffa440', StrokeCap.Round),
     coreGlowStroke: makeStroke('#ec8c2c', StrokeCap.Round),
@@ -1787,9 +1592,8 @@ function isDisposable(value: unknown): value is Disposable {
  * frees a dropped path when the collector finds its wrapper. React Native Skia's web API over
  * CanvasKit — what the headset draws with, and the phone's web build — never does: a path there
  * wraps a PathBuilder, a raw WebAssembly object no finalizer is registered for, and nothing in
- * the web API deletes it. Measured over CanvasKit, every frame left fourteen behind: about 4 kB
- * a frame at density 0, as the headset draws, and about 80 kB at density 1, as the phone does,
- * for as long as he is drawn and until CanvasKit's heap runs out.
+ * the web API deletes it. Measured over CanvasKit, every frame left fourteen behind, about 4 kB a
+ * frame, for as long as he is drawn and until CanvasKit's heap runs out.
  */
 export interface ReleasableHologramResources {
   resources: Resources;
@@ -1811,7 +1615,7 @@ export interface ReleasableHologramResources {
  */
 export function createReleasableHologramResources(
   Skia: SkiaApiType,
-  scene: HologramScene,
+  scene: HologramPictureScene,
 ): ReleasableHologramResources {
   const made: DetachedPath[] = [];
   const makeFromCmds: SkiaApiType['Path']['MakeFromCmds'] = (commands) => {
@@ -1888,30 +1692,6 @@ function fraction(value: number) {
 export function densityKey(id: number) {
   'worklet';
   return fraction(id * DENSITY_FROM_ID);
-}
-
-/**
- * Where the rows a density share keeps end, as an offset into the table.
- *
- * The rows are sorted by {@link densityKey} when the scene is built (see `roundedInDensityOrder`), so the
- * kept ones are a run from the start and a binary search finds its end: fourteen reads for the
- * phone's ten thousand, where the loop used to read and hash every row to find out. A share of 1
- * keeps every row, since no key reaches 1.
- */
-export function densityRowsEnd(rows: number[], stride: number, idField: number, density: number) {
-  'worklet';
-  // Every row before `keptUpTo` is kept and every row from `notKeptFrom` on is not.
-  let keptUpTo = 0;
-  let notKeptFrom = rows.length / stride;
-  while (keptUpTo < notKeptFrom) {
-    const middle = (keptUpTo + notKeptFrom) >> 1;
-    if (densityKey(rows[middle * stride + idField]) < density) {
-      keptUpTo = middle + 1;
-    } else {
-      notKeptFrom = middle;
-    }
-  }
-  return keptUpTo * stride;
 }
 
 /** A repeatable 0..1 hash of an integer. */
@@ -2077,7 +1857,6 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
   return {
     time,
     radius,
-    density: clamp01(frame.density),
     thinking,
     // Where the plane is, sweeping upward — y runs down the screen, so it starts positive. From
     // the clock alone, like everything else here, so it needs nothing remembered between frames.
@@ -2210,57 +1989,6 @@ function drawInnerShells(canvas: HologramCanvas, resources: Resources, state: Ho
 }
 
 /**
- * Appends one fragment's shape around (x, y) along the unit direction (unitX, unitY):
- * 0 dash, 1 L, 2 bracket, 3 T, 4 Z, 5 tiny ring, 6 cell outline.
- */
-function appendGlyph(
-  builder: PathBuilder,
-  glyph: number,
-  x: number,
-  y: number,
-  unitX: number,
-  unitY: number,
-  half: number,
-) {
-  'worklet';
-  const alongX = unitX * half;
-  const alongY = unitY * half;
-  if (glyph === 5) {
-    pathAddCircle(builder, x, y, half * 0.45);
-    return;
-  }
-  // the normal, shorter than the length: ticks and cell heights
-  const normalX = -alongY * 0.55;
-  const normalY = alongX * 0.55;
-  if (glyph === 6) {
-    pathMoveTo(builder, x - alongX - normalX, y - alongY - normalY);
-    pathLineTo(builder, x + alongX - normalX, y + alongY - normalY);
-    pathLineTo(builder, x + alongX + normalX, y + alongY + normalY);
-    pathLineTo(builder, x - alongX + normalX, y - alongY + normalY);
-    pathClose(builder);
-    return;
-  }
-  if (glyph === 2 || glyph === 4) {
-    pathMoveTo(builder, x - alongX + normalX, y - alongY + normalY);
-    pathLineTo(builder, x - alongX, y - alongY);
-    pathLineTo(builder, x + alongX, y + alongY);
-    pathLineTo(
-      builder,
-      x + alongX + (glyph === 2 ? normalX : -normalX),
-      y + alongY + (glyph === 2 ? normalY : -normalY),
-    );
-    return;
-  }
-  pathMoveTo(builder, x - alongX, y - alongY);
-  pathLineTo(builder, x + alongX, y + alongY);
-  if (glyph === 1) pathLineTo(builder, x + alongX + normalX, y + alongY + normalY);
-  else if (glyph === 3) {
-    pathMoveTo(builder, x, y);
-    pathLineTo(builder, x + normalX * 1.4, y + normalY * 1.4);
-  }
-}
-
-/**
  * Whether a fragment is part of the ball at all, 0..1: the script's slow fragment density thins
  * them out a little, in the order revealKey gives.
  */
@@ -2314,9 +2042,8 @@ export function fragmentTier(brightness: number, strength: number, id: number, h
  *
  * Writes `x`, `y`, `depth` and `edge` into `out` rather than returning them, because whatever
  * composes the body from it places a couple of thousand fragments a frame, and an object apiece
- * would be a frame's worth of rubbish to collect. The phone's own loop does this arithmetic inline
- * (see `appendBody`); this is the definition it is held to, and what the headset's reference
- * composes the body from.
+ * would be a frame's worth of rubbish to collect. It is the definition the GPU's body is held to,
+ * and what its CPU reference (`gpu/fragment-3d.ts`) composes the body from.
  */
 export function placeFragment(
   body: number[],
@@ -2354,15 +2081,14 @@ export function placeFragment(
  * into `into`: strength, glyph, which pair of builders it belongs to, which blink it is on, and its
  * brightness tier. An array rather than an object because whatever composes the body from it asks it
  * of thousands of fragments a frame, and it is the array {@link HologramFrameState.reading} keeps
- * for exactly that reason. The phone's own loop asks these questions inline (see `appendBody`); this
- * is the definition it is held to, and what the headset composes the body from.
+ * for exactly that reason. It is the definition the GPU's body is held to (`gpu/fragment-3d.ts`).
  */
 export function readFragment(body: number[], offset: number, state: HologramFrameState, into: number[]): number {
   'worklet';
   // Is it lit at all? This is the cheapest question to ask of them: everything below — unpacking
   // its class, where it sits in the reveal — is work the ones that fail would only throw away.
-  // Whether this phone can afford it at all is not asked here: the caller only visits the rows the
-  // density share keeps (see densityRowsEnd).
+  // Whether this device can afford it at all is not asked here: that is the density share's, which
+  // keeps the fragments whose `densityKey` is under it.
   const id = body[offset + BODY_ID_FIELD];
   const cycles = state.time * body[offset + 5] + fraction(id * FRAGMENT_PHASE_FROM_ID);
   const cycle = Math.floor(cycles);
@@ -2517,384 +2243,6 @@ export function latticeFragment(x: number, y: number, id: number, state: Hologra
 }
 
 /**
- * The fragment body, turning about the vertical axis, sorted into the dim, mid and bright builders.
- *
- * **Written out by hand, and the helpers above are what it is written from.** For each fragment it does
- * what readFragment, fragmentShown, fragmentStrength, placeFragment, swirlFragment, latticeFragment,
- * latticeTarget, scanned and fragmentTier do, and for a dash what appendGlyph and nextCommand do, in
- * the same order and with the same floating-point operations on the same operands, so every command it
- * writes is bit for bit the one the helpers would have written. The helpers stay as they were: the
- * GPU's body is composed from them (`gpu/fragment-3d.ts`), and `particle-loop.spec.ts`
- * holds this loop to a frozen copy of the one composed from them, with `Object.is` on every number of
- * every command, over a grid of times, voices, arrivals, densities and both scene sizes. A change to
- * what a fragment does belongs in its helper first and here second, and the spec fails until both agree.
- * Exported for that spec alone, as are appendStream, appendCrescent and the path builder; nothing else
- * draws with them.
- *
- * Why it is not simply the helpers called in a row: on a phone and a watch every worklet is made by
- * react-native-worklets as `eval(code).bind({ __closure })` and run by Hermes without a JIT, as bytecode
- * compiled without optimisation, so every call to one allocates an environment and unpacks its closure,
- * and every `const` declared in a loop's body is set back to undefined on every pass. A lit dash took
- * twenty of those calls — readFragment, fragmentShown, fragmentStrength, fraction three times, clamp01
- * four times, placeFragment, swirlFragment, latticeFragment, scanned, fragmentTier, appendGlyph,
- * pathMoveTo, pathLineTo and nextCommand twice — and eight more into `Math.floor` and `Math.min`, and at
- * full density the body and the stream were nine tenths of the time it took to build a picture.
- *
- * Measured on a desktop under the Hermes 0.12 interpreter, with every worklet evaluated and bound as
- * the worklets runtime does it — a proxy for a phone, not a phone — timed block by block against the
- * loops this replaced in the same process, five processes each: a whole picture at full density took
- * 18.9 ms to build and takes 5.9 (idle; 6.4, 6.8, 4.9 and 7.2 ms speaking, listening, thinking and
- * mid-vortex, each about a third of what it was), and at the floor, 0.63 ms takes 0.32. This loop
- * alone went from 17.8 ms a frame to 5.2. On that machine BUILD_BUDGET_MS used to run out at about four
- * thousand particles, and now does not within the ten thousand there are.
- *
- * What it does instead, beyond inlining:
- * - Everything a helper asks of the frame rather than of the fragment is asked once: the frame's state
- *   is read into locals, and whether the vortex is still bringing them out, whether someone is talking
- *   to him, and whether he is thinking are each one branch a frame, with the lattice's turn and breath
- *   worked out once while he listens. Each test is the helper's own, negated where the helper tests the
- *   other way, so a NaN goes down the same side.
- * - Floors are `| 0` wherever the number is known to lie from 0 up to 2^31: an id is 0-1 and a code is a
- *   small whole number, and the counts of cycles are, for as long as TRUNCATED_FLOORS_UNTIL_SECONDS
- *   says, which is checked once a frame.
- * - `Math.min(1, rising, falling)` is two comparisons, written so that a NaN comes through as it would.
- * - The wander's voice term is skipped while he is silent: `FRAGMENT_WANDER + 0 * inward` is exactly
- *   FRAGMENT_WANDER, since inward is a clamped, finite number.
- * - A dash, four fragments in five, writes its moveTo and lineTo straight into the builder, reusing last
- *   frame's arrays by nextCommand's rule; any other glyph still goes through appendGlyph.
- * - Every per-fragment temporary is declared before the loop rather than inside it, for the reason above.
- *   They are `let`s at the top of the function on purpose; tidying them into `const`s inside the loop
- *   puts that cost back.
- *
- * It relies on what the scene holds — an id from 0 to 1, a rate of at most 3 cycles a second, codes that
- * are small whole numbers — which `createHologramScene` is the only source of.
- */
-export function appendBody(builders: PathBuilder[], body: number[], state: HologramFrameState) {
-  'worklet';
-  const end = densityRowsEnd(body, BODY_STRIDE, BODY_ID_FIELD, state.density);
-  const floor = Math.floor;
-  const time = state.time;
-  const revealLimit = state.bodyShare * 1.12;
-  const mix = state.mix;
-  const doubleMix = 2 * mix;
-  const loosening = 1.3 * state.agitation;
-  const bodyCos = state.bodyCos;
-  const bodySin = state.bodySin;
-  const hotShare = state.hotShare;
-  const swirl = state.swirl;
-  const hearing = state.hearing;
-  const pull = hearing * LATTICE_PULL;
-  const thinking = state.thinking;
-  const scan = state.scan;
-  const thoughtDepth = thinking * (1 - SCAN_FLOOR);
-  const promoting = thinking > 0.5;
-  const gathered = 1 - LATTICE_STROKE_SHRINK * hearing;
-  const limbSquared = 0.94 * 0.94;
-  const truncates = time >= 0 && time < TRUNCATED_FLOORS_UNTIL_SECONDS;
-  const loosened = loosening !== 0;
-  const arriving = !(swirl >= 1);
-  const listening = !(pull <= 0.001);
-  const scanning = !(thinking <= 0);
-  // latticeTarget's turn and breath, which are the frame's rather than any fragment's
-  let latticeCos = 0;
-  let latticeSin = 0;
-  let spacing = 0;
-  let rowHeight = 0;
-  let halfSpacing = 0;
-  if (listening) {
-    const turn = time * LATTICE_TURN;
-    latticeCos = Math.cos(turn);
-    latticeSin = Math.sin(turn);
-    spacing = LATTICE_SPACING * (1 + LATTICE_BREATH * state.hearingLevel * Math.sin(time * LATTICE_PULSE));
-    rowHeight = spacing * 0.866;
-    halfSpacing = spacing / 2;
-  }
-
-  // Declared here and not in the loop: see the comment above. Grouped by the helper they stand in for.
-  // readFragment, fragmentShown and fragmentStrength
-  let id = 0;
-  let phase = 0;
-  let cycles = 0;
-  let cycle = 0;
-  let life = 0;
-  let shown = 0;
-  let packed = 0;
-  let glyph = 0;
-  let code = 0;
-  let turning = 0;
-  let pool = 0;
-  let progress = 0;
-  let rising = 0;
-  let falling = 0;
-  let envelope = 0;
-  let poolShare = 0;
-  let strength = 0;
-  let brightness = 0;
-  // the wander, and placeFragment
-  let unitX = 0;
-  let unitY = 0;
-  let length = 0;
-  let hop = 0;
-  let along = 0;
-  let restX = 0;
-  let restY = 0;
-  let inward = 0;
-  let wander = 0;
-  let acrossSeed = 0;
-  let across = 0;
-  let depthAtRest = 0;
-  let turnedX = 0;
-  let placedX = 0;
-  let placedY = 0;
-  let depth = 0;
-  let edge = 0;
-  let lit = 0;
-  // swirlFragment
-  let x = 0;
-  let y = 0;
-  let directionX = 0;
-  let directionY = 0;
-  let drawn = 0;
-  let reach = 0;
-  let order = 0;
-  let travelled = 0;
-  let left = 0;
-  let spin = 0;
-  let spinCos = 0;
-  let spinSin = 0;
-  let scale = 0;
-  let distance = 0;
-  let outwardX = 0;
-  let outwardY = 0;
-  let headingX = 0;
-  let headingY = 0;
-  let heading = 0;
-  let settled = 0;
-  let direction = 0;
-  let stretch = 0;
-  // latticeFragment and latticeTarget
-  let gridX = 0;
-  let gridY = 0;
-  let row = 0;
-  let shift = 0;
-  let column = 0;
-  let jitter = 0;
-  let snappedX = 0;
-  let snappedY = 0;
-  let targetX = 0;
-  let targetY = 0;
-  // scanned and fragmentTier
-  let nearness = 0;
-  let litHere = 0;
-  let promoted = false;
-  let margin = 0;
-  let tier = 0;
-  // appendGlyph's dash, and nextCommand
-  let half = 0;
-  let alongX = 0;
-  let alongY = 0;
-  let builder = builders[0];
-  let commands = builder.commands;
-  let count = 0;
-  let move: number[] | undefined;
-  let line: number[] | undefined;
-
-  for (let offset = 0; offset < end; offset += BODY_STRIDE) {
-    // readFragment. Is it lit at all? Two rows in five stop at the first test, so it asks for nothing
-    // but the id and the rate before it.
-    id = body[offset + BODY_ID_FIELD];
-    phase = id * FRAGMENT_PHASE_FROM_ID;
-    cycles = time * body[offset + 5] + (phase - (phase | 0));
-    cycle = truncates ? cycles | 0 : floor(cycles);
-    life = cycles - cycle;
-    if (life >= FRAGMENT_DUTY) continue;
-    // fragmentShown: clamp01, which turns a NaN into 0 and so into "not shown"
-    shown = (revealLimit - body[offset + 8]) * 9;
-    shown = shown > 0 ? (shown > 1 ? 1 : shown) : 0;
-    if (shown <= 0) continue;
-    // The code packs three things by addition — brightness 0-2, plus 3 if it belongs to the fast pool,
-    // plus 6 if it rides the counter-turning shell — and the glyph above them.
-    packed = body[offset + 7];
-    glyph = (packed / FRAGMENT_CODE_GLYPH_STEP) | 0;
-    code = packed - glyph * FRAGMENT_CODE_GLYPH_STEP;
-    turning = 3 * ((code / 6) | 0);
-    pool = ((code - turning * 2) / 3) | 0;
-    // fragmentStrength. Math.min(1, rising, falling): when one is NaN both are, and then falling is.
-    progress = life / FRAGMENT_DUTY;
-    rising = progress * 3;
-    falling = (1 - progress) * 3;
-    envelope = rising > 1 ? 1 : rising;
-    envelope = falling > envelope ? envelope : falling;
-    poolShare = pool === 0 ? (id - mix) * 12 + 1 : (doubleMix - id) * 12;
-    poolShare = poolShare > 0 ? (poolShare > 1 ? 1 : poolShare) : 0;
-    strength = shown * (envelope * poolShare);
-    if (strength < FRAGMENT_FAINTEST) continue;
-    brightness = code - 3 * pool - 2 * turning;
-
-    // Each time it re-lights, it does so a little along or across from where it was. While he talks
-    // the body loosens and a fragment re-lights further still, less so toward the limb: the silhouette
-    // must not move with his voice, and a fragment at 0.9R that strayed a tenth of a radius outward
-    // would take it with it. Compared as squares, so this costs no square root.
-    unitX = body[offset + 2];
-    unitY = body[offset + 3];
-    length = body[offset + 4];
-    hop = cycle * 0.618034 + id * 9.7;
-    hop = truncates ? hop - (hop | 0) : hop - floor(hop);
-    along = (hop - 0.5) * 1.4 * length;
-    restX = body[offset];
-    restY = body[offset + 1];
-    wander = FRAGMENT_WANDER;
-    if (loosened) {
-      inward = (0.76 - (restX * restX + restY * restY)) * 3.2;
-      inward = inward > 0 ? (inward > 1 ? 1 : inward) : 0;
-      wander = FRAGMENT_WANDER + loosening * inward;
-    }
-    acrossSeed = hop * 23.17;
-    across = (acrossSeed - (acrossSeed | 0) - 0.5) * wander;
-    // placeFragment: turned about the vertical axis first, so it wanders around where it sits on the
-    // turning ball, and nothing pops at the limb as it turns out of sight.
-    depthAtRest = body[offset + 9];
-    turnedX = restX * bodyCos + depthAtRest * bodySin;
-    placedY = restY + unitY * along + unitX * across;
-    placedX = turnedX + unitX * along - unitY * across;
-    depth = depthAtRest * bodyCos - restX * bodySin;
-    edge = (limbSquared - turnedX * turnedX - placedY * placedY) * 8;
-    edge = edge > 0 ? (edge > 1 ? 1 : edge) : 0;
-    lit = strength * edge;
-    if (lit < FRAGMENT_FAINTEST) continue;
-
-    // swirlFragment: just where it is, once the vortex is over.
-    x = placedX;
-    y = placedY;
-    directionX = unitX;
-    directionY = unitY;
-    drawn = 1;
-    if (arriving) {
-      reach = Math.sqrt(placedX * placedX + placedY * placedY);
-      order = id * 3.91;
-      order = 0.9 * reach + 0.1 * (order - (order | 0));
-      order = order > 0 ? (order > 1 ? 1 : order) : 0;
-      // smooth01, which lets a NaN through
-      travelled = (swirl - 0.6 * order) / 0.4;
-      travelled = travelled < 0 ? 0 : travelled > 1 ? 1 : travelled;
-      travelled = travelled * travelled * (3 - 2 * travelled);
-      left = 1 - travelled;
-      spin = VORTEX_TWIST * left * left;
-      spinCos = Math.cos(spin);
-      spinSin = Math.sin(spin);
-      scale = 0.04 + 0.96 * travelled;
-      x = (placedX * spinCos + placedY * spinSin) * scale;
-      y = (placedY * spinCos - placedX * spinSin) * scale;
-      distance = Math.sqrt(x * x + y * y) || 1;
-      outwardX = x / distance;
-      outwardY = y / distance;
-      headingX = 0.35 * outwardX - outwardY;
-      headingY = 0.35 * outwardY + outwardX;
-      heading = Math.sqrt(headingX * headingX + headingY * headingY);
-      settled = travelled * travelled;
-      directionX = (headingX / heading) * (1 - settled) + (unitX * spinCos + unitY * spinSin) * settled;
-      directionY = (headingY / heading) * (1 - settled) + (unitY * spinCos - unitX * spinSin) * settled;
-      direction = Math.sqrt(directionX * directionX + directionY * directionY) || 1;
-      directionX = directionX / direction;
-      directionY = directionY / direction;
-      stretch = distance * 2.5;
-      stretch = 1 + VORTEX_STRETCH * left * (stretch > 0 ? (stretch > 1 ? 1 : stretch) : 0);
-      drawn = (travelled - 0.04) * 6;
-      drawn = drawn < 0 ? 0 : drawn > 1 ? 1 : drawn;
-      drawn = drawn * drawn * (3 - 2 * drawn) * stretch;
-      if (drawn <= 0) continue;
-    }
-
-    // latticeFragment: snapped to the nearest point of the turning grid, every other row shifted by
-    // half a spacing, and moved that share of the way there.
-    if (listening) {
-      gridX = x * latticeCos + y * latticeSin;
-      gridY = y * latticeCos - x * latticeSin;
-      row = Math.round(gridY / rowHeight);
-      shift = row % 2 === 0 ? 0 : halfSpacing;
-      column = Math.round((gridX - shift) / spacing);
-      jitter = id * 7.7113;
-      jitter = (jitter - (jitter | 0) - 0.5) * 0.018;
-      snappedX = column * spacing + shift + jitter;
-      snappedY = row * rowHeight + jitter;
-      targetX = snappedX * latticeCos - snappedY * latticeSin;
-      targetY = snappedY * latticeCos + snappedX * latticeSin;
-      x = x + (targetX - x) * pull;
-      y = y + (targetY - y) * pull;
-    }
-
-    // scanned: while he thinks, only what the plane is passing stays lit (see SCAN_SECONDS), and what
-    // it is in the middle of is promoted. Its Math.abs is a comparison here; the -0 it can leave makes
-    // no difference once it is subtracted from 1.
-    litHere = lit;
-    promoted = false;
-    if (scanning) {
-      nearness = y - scan;
-      nearness = 1 - (nearness < 0 ? -nearness : nearness) / SCAN_HALF_WIDTH;
-      nearness = nearness > 0 ? (nearness > 1 ? 1 : nearness) : 0;
-      promoted = nearness > SCAN_BRIGHT_NEARNESS && promoting;
-      litHere = lit * (1 - thoughtDepth * (1 - nearness * nearness));
-      if (litHere < FRAGMENT_FAINTEST) continue;
-    }
-
-    // fragmentTier, on the near side of the ball only: the far side is dimmer, as the turning shell
-    // below the core already is. What the plane is in the middle of is lit to the brightest tier
-    // whatever it is, which is what makes the pass a line of attention rather than a moving shadow.
-    tier = 0;
-    if (depth >= 0) {
-      if (promoted) {
-        tier = 2;
-      } else if (brightness === 2) {
-        if (litHere <= 0.55) {
-          tier = 1;
-        } else {
-          margin = id * 13.7;
-          margin = hotShare - (margin - (margin | 0));
-          tier = margin > 0 || (margin > -0.12 && litHere > 0.86) ? 2 : 1;
-        }
-      } else if (brightness === 1 && litHere > 0.4) {
-        tier = 1;
-      }
-    }
-
-    // Its length is its whole fade: a fragment grows out of nothing and shrinks back into it, because a
-    // paint is set once for a whole tier and so cannot fade with one stroke in it. Arriving at a third
-    // of its length, as it used to, meant arriving at full brightness over a dozen pixels at once —
-    // with twice as many fragments that is a visible speckle at every frame, and it is what the spec's
-    // script-boundary check counts.
-    half = length * 0.5 * litHere * drawn * gathered;
-    builder = builders[tier + turning];
-    if (glyph !== 0) {
-      appendGlyph(builder, glyph, x, y, directionX, directionY, half);
-      continue;
-    }
-    // appendGlyph's dash, its two commands written in place: an array from last frame is reused when
-    // there is one of the right size, and a new one made where there is not, as nextCommand does.
-    alongX = directionX * half;
-    alongY = directionY * half;
-    commands = builder.commands;
-    count = builder.count;
-    move = commands[count];
-    if (move === undefined || move.length !== 3) {
-      move = new Array<number>(3);
-      commands[count] = move;
-    }
-    move[0] = MOVE_VERB;
-    move[1] = x - alongX;
-    move[2] = y - alongY;
-    line = commands[count + 1];
-    if (line === undefined || line.length !== 3) {
-      line = new Array<number>(3);
-      commands[count + 1] = line;
-    }
-    line[0] = LINE_VERB;
-    line[1] = x + alongX;
-    line[2] = y + alongY;
-    builder.count = count + 2;
-  }
-}
-
-/**
  * Whether a shell fragment is lit this frame at all, and how strongly.
  *
  * The same question {@link readFragment} asks of a body fragment and in the same order, against a
@@ -2916,255 +2264,8 @@ export function readShellFragment(stream: number[], offset: number, state: Holog
   return strength < FRAGMENT_FAINTEST ? 0 : strength;
 }
 
-/**
- * The lower hemisphere's turning shell: its front drifts right, its back (dim) drifts left.
- *
- * Written out by hand for the reason {@link appendBody} gives, held to the same frozen copy by
- * `particle-loop.spec.ts` and exported for it alone: what every row pays — readShellFragment, fragmentShown, fragmentStrength,
- * the limb's fade and fragmentTier — is inlined with the same operations in the same order. The shell
- * is 168 rows against the body's ten thousand, so what only some of its fragments pay is left to the
- * helpers themselves: the vortex while he arrives, the lattice while he listens, and every glyph,
- * through appendGlyph.
- */
-export function appendStream(builders: PathBuilder[], stream: number[], state: HologramFrameState) {
-  'worklet';
-  const end = densityRowsEnd(stream, STREAM_STRIDE, STREAM_ID_FIELD, state.density);
-  const floor = Math.floor;
-  const cosYaw = state.streamCos;
-  const sinYaw = state.streamSin;
-  const time = state.time;
-  const revealLimit = state.bodyShare * 1.12;
-  const mix = state.mix;
-  const doubleMix = 2 * mix;
-  const hotShare = state.hotShare;
-  const swirled = state.swirled;
-  const listened = state.listened;
-  const gathered = 1 - LATTICE_STROKE_SHRINK * state.hearing;
-  const truncates = time >= 0 && time < TRUNCATED_FLOORS_UNTIL_SECONDS;
-  const arriving = !(state.swirl >= 1);
-  const listening = !(state.hearing * LATTICE_PULL <= 0.001);
-
-  // Declared here and not in the loop, as in appendBody.
-  let id = 0;
-  let cycles = 0;
-  let life = 0;
-  let shown = 0;
-  let brightnessCode = 0;
-  let pool = 0;
-  let progress = 0;
-  let rising = 0;
-  let falling = 0;
-  let envelope = 0;
-  let poolShare = 0;
-  let strength = 0;
-  let restX = 0;
-  let restZ = 0;
-  let x = 0;
-  let y = 0;
-  let depth = 0;
-  let edge = 0;
-  let lit = 0;
-  let halfX = 0;
-  let brightness = 0;
-  let margin = 0;
-  let tier = 0;
-  let directionX = 0;
-  let directionY = 0;
-  let drawn = 0;
-
-  for (let offset = 0; offset < end; offset += STREAM_STRIDE) {
-    // readShellFragment: the id and the rate before anything else, as in the body.
-    id = stream[offset + STREAM_ID_FIELD];
-    cycles = time * stream[offset + 5] + stream[offset + 6];
-    life = truncates ? cycles - (cycles | 0) : cycles - floor(cycles);
-    if (life >= FRAGMENT_DUTY) continue;
-    shown = (revealLimit - stream[offset + 10]) * 9;
-    shown = shown > 0 ? (shown > 1 ? 1 : shown) : 0;
-    if (shown <= 0) continue;
-    brightnessCode = stream[offset + 8];
-    pool = brightnessCode >= 3 ? 1 : 0;
-    progress = life / FRAGMENT_DUTY;
-    rising = progress * 3;
-    falling = (1 - progress) * 3;
-    envelope = rising > 1 ? 1 : rising;
-    envelope = falling > envelope ? envelope : falling;
-    poolShare = pool === 0 ? (id - mix) * 12 + 1 : (doubleMix - id) * 12;
-    poolShare = poolShare > 0 ? (poolShare > 1 ? 1 : poolShare) : 0;
-    strength = shown * (envelope * poolShare);
-    if (strength < FRAGMENT_FAINTEST) continue;
-    restX = stream[offset];
-    restZ = stream[offset + 2];
-    x = restX * cosYaw + restZ * sinYaw;
-    depth = restZ * cosYaw - restX * sinYaw;
-    y = stream[offset + 1];
-    // fade out before the limb, so nothing pops where the shell turns out of view
-    edge = (0.86 - x * x - y * y) * 8;
-    edge = edge > 0 ? (edge > 1 ? 1 : edge) : 0;
-    lit = strength * edge;
-    if (lit < FRAGMENT_FAINTEST) continue;
-    // a latitude runs horizontally on screen, foreshortened as it turns toward the limb
-    halfX = stream[offset + 3] * cosYaw + stream[offset + 4] * sinYaw;
-    // fragmentTier, and the back of the shell is dim
-    brightness = brightnessCode - 3 * pool;
-    if (depth < 0) {
-      tier = 0;
-    } else if (brightness === 2) {
-      if (lit <= 0.55) {
-        tier = 1;
-      } else {
-        margin = id * 13.7;
-        margin = hotShare - (margin - (margin | 0));
-        tier = margin > 0 || (margin > -0.12 && lit > 0.86) ? 2 : 1;
-      }
-    } else {
-      tier = brightness === 1 && lit > 0.4 ? 1 : 0;
-    }
-    directionX = 1;
-    directionY = 0;
-    drawn = 1;
-    if (arriving) {
-      swirlFragment(x, y, 1, 0, id, state);
-      drawn = swirled[4];
-      if (drawn <= 0) continue;
-      x = swirled[0];
-      y = swirled[1];
-      directionX = swirled[2];
-      directionY = swirled[3];
-    }
-    // The shell snaps onto the lattice too, or it would go on streaming under it.
-    if (listening) {
-      latticeFragment(x, y, id, state);
-      x = listened[0];
-      y = listened[1];
-    }
-    appendGlyph(
-      builders[tier],
-      stream[offset + 9],
-      x,
-      y,
-      directionX,
-      directionY,
-      Math.abs(halfX) * lit * drawn * gathered,
-    );
-  }
-}
-
 /** A path handed out by a builder, which is what every draw call takes. */
 type DetachedPath = ReturnType<typeof pathOf>;
-
-/**
- * How many nested rings the halo is built from, and what each contributes: one, since the
- * experiment it was cut to one for.
- *
- * It was three. Two rings made a two-step ramp whose outer step read as a rim — glow circles round
- * the sparks, which the user saw — and three put the steps below what the eye picks out, with the
- * share chosen so they came to what two did at the centre (with Screen blending, 1 - (1 - share)^3).
- * Five were smoother still and cost too much. A sprite with the ramp already in it, through
- * `drawAtlas`, measured 4.5x *slower* than five rings, because marshalling a transform object per
- * particle across into Skia costs more than the drawing it saves; the same reason `drawPoints` lost
- * to plain paths earlier.
- *
- * Then the phone drew this at 8 to 11 frames a second and the same picture at 58 in its own browser, and a
- * build with a quarter of the fragments, a quarter of the shell and one ring ran at 57, so the halo
- * was cut to a single ring to find out whether the particles or the halo were the cost. The phone
- * never gave a clean answer — the app stayed slow at one ring — and a model of it did: the real
- * drawing in CanvasKit on WebGL, with the canvas set up as the app's is. **It was the halo, and not
- * for any reason a ring count could fix.** The halos are the one paint drawn without antialiasing
- * (HALO_ANTIALIASED), and Skia's GPU backend draws a non-antialiased stroke through its tessellator,
- * on the GPU, only when the canvas has a stencil and the context can draw instanced geometry. The
- * browser's canvas has a stencil; the app's has none, so going by React Native Skia's source every
- * halo on the phone was turned into an outline on the CPU every frame and triangulated there (or,
- * past about two thousand dashes in a path, masked). In the model, at 714 px (238 dp at 3x) and full
- * density: 12.6 MB of triangles and 230-250 ms of Skia's CPU a frame,
- * 80-86% of it the halos, against about 30 ms for the whole frame with a stencil. The app now draws
- * inside a layer that has one — see `DRAWN_IN_A_LAYER` in `hologram-view.tsx` — which in the model
- * costs what the browser's canvas does.
- *
- * So more rings should be affordable again, though what each adds has not been measured in a browser
- * or on the app. It stays at one because one is what the user has been looking at, and
- * bringing the ramp back is a change to how he looks rather than to how fast he is.
- */
-export const HALO_RINGS = 1;
-export const HALO_RING_SHARE = 0.52;
-
-function drawParticleHalo(
-  canvas: HologramCanvas,
-  resources: Resources,
-  path: DetachedPath,
-  reach: number,
-  baseStrength: number,
-  glowGain: number,
-) {
-  'worklet';
-  // The halo is the light between the strokes, so lifting it is what reads as the ball glowing
-  // rather than as its texture changing colour.
-  const strength = baseStrength * glowGain;
-  const paint = resources.particleHaloStroke;
-  paint.setAlphaf(strength * HALO_RING_SHARE);
-  // Widest first, each ring narrower by the same step, so what they add up to falls away from
-  // the stroke rather than ending at a rim.
-  for (let ring = 0; ring < HALO_RINGS; ring++) {
-    paint.setStrokeWidth((reach * (HALO_RINGS - ring)) / HALO_RINGS);
-    canvas.drawPath(path, paint);
-  }
-}
-
-/** The body's dim and mid strokes, pinned and turning (the bright ones are drawn later, over the core). */
-function drawBody(canvas: HologramCanvas, resources: Resources, scene: HologramScene, state: HologramFrameState) {
-  'worklet';
-  const builders = resources.pathBuilders.body;
-  if (state.bodyShare <= 0) return;
-  appendBody(builders, scene.body, state);
-  appendStream(builders, scene.stream, state);
-  for (let group = 0; group < 2; group++) {
-    if (group === 1) {
-      canvas.save();
-      canvas.rotate(state.shellTurn, CORE_X, CORE_Y);
-    }
-    // Every tier carries a halo of its own, the dim one included, where the drawing used to
-    // put one faint pass on the mid and bright tiers only. With the wash behind them down to
-    // half, these are what light the space between the strokes — and unlike the wash, they go
-    // out and come back on each fragment's own clock. The dim tier's halo reaches nearly as far
-    // as the mid tier's because it is the most numerous and the most spread out, so it is the
-    // one that lights the bare fill between the clumps; it is the faintest for the same reason.
-    const dimPath = pathOf(resources.skia, builders[group * 3]);
-    drawParticleHalo(canvas, resources, dimPath, 0.115, 0.3, state.glowGain);
-    resources.bodyDimStroke.setStrokeWidth(0.014);
-    resources.bodyDimStroke.setAlphaf(0.62);
-    canvas.drawPath(dimPath, resources.bodyDimStroke);
-    const midPath = pathOf(resources.skia, builders[group * 3 + 1]);
-    drawParticleHalo(canvas, resources, midPath, 0.12, 0.34, state.glowGain);
-    resources.bodyMidStroke.setStrokeWidth(0.0155);
-    resources.bodyMidStroke.setAlphaf(0.85);
-    canvas.drawPath(midPath, resources.bodyMidStroke);
-    if (group === 1) canvas.restore();
-  }
-}
-
-/** The bright fragments, with the widest of the amber halos. */
-function drawBodyHighlights(canvas: HologramCanvas, resources: Resources, state: HologramFrameState) {
-  'worklet';
-  const brightPath = pathOf(resources.skia, resources.pathBuilders.body[2]);
-  const turningBrightPath = pathOf(resources.skia, resources.pathBuilders.body[5]);
-  if (state.bodyShare > 0) {
-    for (let group = 0; group < 2; group++) {
-      const path = group === 0 ? brightPath : turningBrightPath;
-      if (group === 1) {
-        canvas.save();
-        canvas.rotate(state.shellTurn, CORE_X, CORE_Y);
-      }
-      drawParticleHalo(canvas, resources, path, 0.115, 0.38, state.glowGain);
-      resources.bodyBrightStroke.setStrokeWidth(0.0165);
-      resources.bodyBrightStroke.setAlphaf(1 - 0.25 * state.agitation);
-      canvas.drawPath(path, resources.bodyBrightStroke);
-      // a narrow hot core, the film's brightest strokes (#ffd26c, pulled a little toward orange)
-      resources.bodyHotStroke.setStrokeWidth(0.007);
-      resources.bodyHotStroke.setAlphaf(0.8 * (1 - 0.95 * state.agitation));
-      canvas.drawPath(path, resources.bodyHotStroke);
-      if (group === 1) canvas.restore();
-    }
-  }
-}
 
 // ---- lines: comets, spokes, the swoosh --------------------------------------------------
 
@@ -3233,7 +2334,12 @@ function appendSwoosh(builder: PathBuilder, seconds: number) {
 }
 
 /** Comets always; spokes or the swoosh when the script's epoch calls for them. */
-function drawLines(canvas: HologramCanvas, resources: Resources, scene: HologramScene, state: HologramFrameState) {
+function drawLines(
+  canvas: HologramCanvas,
+  resources: Resources,
+  scene: HologramPictureScene,
+  state: HologramFrameState,
+) {
   'worklet';
   const alpha = state.innerAlpha * state.coreAlpha;
   if (alpha <= 0) return;
@@ -3375,7 +2481,12 @@ function appendTruss(builders: Resources['pathBuilders'], truss: number[], weigh
  * The rolling rim layer: the ladder truss, the thin ring's ticks and, when the truss
  * leads, the fan of strands on the right.
  */
-function drawTruss(canvas: HologramCanvas, resources: Resources, scene: HologramScene, state: HologramFrameState) {
+function drawTruss(
+  canvas: HologramCanvas,
+  resources: Resources,
+  scene: HologramPictureScene,
+  state: HologramFrameState,
+) {
   'worklet';
   const script = state.script;
   const weight = script.trussWeight * state.rimAlpha;
@@ -3518,12 +2629,12 @@ function crescentStrandNumbers(strand: number, spread: number, out: number[]) {
  * piece that misses one misses every one after it. The drift's sine is taken only for a piece that is
  * drawn, and not at all while the strands are not drifting, since `radius + 0 * sine` is the radius.
  * Each builder still receives its arcs in the order it always did, strand by strand and piece by piece,
- * and `particle-loop.spec.ts`, which this is exported for, holds every command to a frozen copy of the
- * old loops.
+ * and `crescent-loop.spec.ts`, which this is exported for, holds every command to a frozen copy of the
+ * old loop.
  *
- * Its cost does not follow the density share, so at the floor it was a sixth of the picture. Timed
- * through its caller on the harness appendBody describes (on a millisecond clock, so roughly): 0.10 to
- * 0.14 ms a frame before, 0.08 to 0.09 after.
+ * Timed through its caller under the Hermes interpreter on a desktop, with every worklet evaluated and
+ * bound as react-native-worklets does it (on a millisecond clock, so roughly): 0.10 to 0.14 ms a frame
+ * before, 0.08 to 0.09 after.
  */
 export function appendCrescent(builders: PathBuilder[], pieces: number[], state: HologramFrameState) {
   'worklet';
@@ -3602,7 +2713,12 @@ export function appendCrescent(builders: PathBuilder[], pieces: number[], state:
  * tapered band; while he talks they spread to 0.94-1.19R, thin, break up and lose
  * their hot core.
  */
-function drawCrescent(canvas: HologramCanvas, resources: Resources, scene: HologramScene, state: HologramFrameState) {
+function drawCrescent(
+  canvas: HologramCanvas,
+  resources: Resources,
+  scene: HologramPictureScene,
+  state: HologramFrameState,
+) {
   'worklet';
   const weight = Math.max(state.script.crescentWeight, 0.65 * state.agitation) * state.rimAlpha;
   if (weight <= 0.01) return;
@@ -3665,7 +2781,12 @@ function drawThinRing(canvas: HologramCanvas, resources: Resources, state: Holog
  * and thin streak arcs at 1.2-1.27R. Each is a slot on its own clock; agitation only
  * decides which slots show, and a slot fades through its length, so nothing pops.
  */
-function drawFray(canvas: HologramCanvas, resources: Resources, scene: HologramScene, state: HologramFrameState) {
+function drawFray(
+  canvas: HologramCanvas,
+  resources: Resources,
+  scene: HologramPictureScene,
+  state: HologramFrameState,
+) {
   'worklet';
   const drive = state.frayDrive;
   if (drive <= 0.02) return;
@@ -3907,7 +3028,7 @@ export function drawHologram(
   canvas: HologramCanvas,
   size: number,
   frame: HologramFrame,
-  scene: HologramScene,
+  scene: HologramPictureScene,
   resources: Resources,
   fadeOutside = false,
 ) {
@@ -3923,20 +3044,16 @@ export function drawHologram(
   // While it arrives, the whole sphere is drawn into a layer and that layer is faded in — one
   // alpha over everything, rather than every layer carrying its own ramp. The layer costs an
   // offscreen buffer for as long as this lasts — the first fifth of the vortex (appearance under
-  // 0.2) and the whole of leaving — and no drawing afterwards, though Skia keeps its texture. On a
-  // phone it sits inside the layer the
-  // view draws everything into (DRAWN_IN_A_LAYER in hologram-view.tsx), so for those moments there
-  // are two. Not when the caller fades the picture itself, which is what `fadeOutside` says.
+  // 0.2) and the whole of leaving — and no drawing afterwards, though Skia keeps its texture. Not
+  // when the caller fades the picture itself, which is what `fadeOutside` says.
   const arriving = state.arrival < 1 && !fadeOutside;
   if (arriving) {
     resources.arrivalFade.setAlphaf(state.arrival);
     canvas.saveLayer(resources.arrivalFade);
   }
   drawInnerShells(canvas, resources, state);
-  drawBody(canvas, resources, scene, state);
   drawLines(canvas, resources, scene, state);
   drawCore(canvas, resources, state);
-  drawBodyHighlights(canvas, resources, state);
   drawThinRing(canvas, resources, state);
   drawTruss(canvas, resources, scene, state);
   drawCrescent(canvas, resources, scene, state);

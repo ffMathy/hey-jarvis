@@ -1,6 +1,6 @@
 import { loadPainter } from '../hologram3d';
 import { canEnterRoom, requestRoomSession } from '../xr/room-session';
-import type { HologramPreviewHook, PreviewBackground, PreviewMode, PreviewPhase } from './preview-hook';
+import type { HologramPreviewHook, PreviewBackground, PreviewPhase } from './preview-hook';
 import { PREVIEW_PHASES } from './preview-hook';
 import { createPreviewRoom } from './room';
 import { startSatellitesPanel } from './satellites-panel';
@@ -11,7 +11,7 @@ import { createStage, type StageView } from './stage';
  * and in a headset's room from the same page.
  *
  * It is how he can be looked at without a Quest, and what the browser tests photograph and
- * measure through `window.__hologramPreview`. `?flat` starts it on the phone's flat drawing.
+ * measure through `window.__hologramPreview`.
  */
 
 function required<Found extends Element>(selector: string, kind: new () => Found): Found {
@@ -50,10 +50,6 @@ function isPhase(value: string): value is PreviewPhase {
   return PREVIEW_PHASES.some((phase) => phase === value);
 }
 
-function isMode(value: string): value is PreviewMode {
-  return value === 'volumetric' || value === 'flat';
-}
-
 function isView(value: string): value is StageView {
   return value === 'front' || value === 'side' || value === 'orbit';
 }
@@ -67,17 +63,11 @@ async function start(): Promise<HologramPreviewHook> {
   const painter = await loadPainter(new URL('vendor/', document.baseURI));
   const stage = await createStage(canvas, painter);
   const room = createPreviewRoom(painter);
-  const initialMode: PreviewMode = new URLSearchParams(location.search).has('flat') ? 'flat' : 'volumetric';
 
   onButtons('phase', (value) => {
     if (!isPhase(value)) return;
     stage.setPhase(value);
     room.setPhase(value);
-  });
-  onButtons('mode', (value) => {
-    if (!isMode(value)) return;
-    stage.setMode(value);
-    room.setMode(value);
   });
   onButtons('background', (value) => setBackground(value === 'grey' ? 'grey' : 'black'));
   onButtons('view', (value) => {
@@ -112,8 +102,6 @@ async function start(): Promise<HologramPreviewHook> {
 
   const satellites = startSatellitesPanel(stage.satellites, painter);
 
-  stage.setMode(initialMode);
-  press('mode', initialMode);
   press('phase', stage.phase);
   press('view', 'front');
   setBackground('black');
@@ -136,7 +124,6 @@ async function start(): Promise<HologramPreviewHook> {
     async show(request) {
       setBackground(request.background);
       press('phase', request.phase);
-      press('mode', request.mode);
       return stage.still(request);
     },
     async checkPort(request) {

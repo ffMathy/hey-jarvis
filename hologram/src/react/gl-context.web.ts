@@ -40,18 +40,18 @@ const BROWSER_ONLY_PROPS = { webglContextAttributes: CONTEXT_ATTRIBUTES };
 const contexts = new Map<number, BodyGl>();
 let nextContextId = 1;
 
-export const GPU_BODY_SUPPORTED = typeof WebGL2RenderingContext !== 'undefined';
-
 function BrowserBodyGlView({ testID, style, onContextCreate }: BodyGlViewProps) {
   return createElement(GLView, { ...BROWSER_ONLY_PROPS, testID, style, pointerEvents: 'none', onContextCreate });
 }
 
-export const BodyGlView: BodyGlViewComponent = BrowserBodyGlView;
+/** None in a browser without WebGL 2, where he is drawn without his body. */
+export const BodyGlView: BodyGlViewComponent =
+  typeof WebGL2RenderingContext === 'undefined' ? undefined : BrowserBodyGlView;
 
 /**
- * expo-gl's browser GLView falls back to WebGL 1 without a word where WebGL 2 is refused. A
- * context lost is forgotten at once, so the next frame finds nothing and the body goes back to
- * Skia; the browser then restores it, and the GLView hands it over again.
+ * expo-gl's browser GLView falls back to WebGL 1 without a word where WebGL 2 is refused, which
+ * cannot draw the body. A context lost is forgotten at once, so the next frame finds nothing and
+ * the body is not drawn; the browser then restores it, and the GLView hands it over again.
  *
  * **Read as Display P3, as Skia's canvas is.** React Native Skia tags its web canvas's drawing
  * buffer `display-p3` while drawing the same sRGB paint numbers into it, so a browser that manages

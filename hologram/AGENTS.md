@@ -25,7 +25,7 @@ The split is the whole architecture of this package, and the rule below is why
 it exists. Reach for `hologram` when you want to know what Jarvis looks like,
 how loud someone is, or what it takes to reach his agent; `hologram/react` when
 you want him on a screen; `hologram/conversation` when you want him talking;
-`hologram/gpu` when you want his body drawn by a GPU rather than by Skia.
+`hologram/gpu` when you want his body, which only a GPU draws.
 
 **Why the ElevenLabs half is in here rather than in a package of its own.** It
 was briefly its own workspace package, and that was one package too many: the
@@ -39,9 +39,9 @@ that rule.
 
 | Entry | Imports | What it holds |
 | --- | --- | --- |
-| `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the frame clock every device steps him on (`frame-clock.ts`) and the numbers it runs by (`frame-timing.ts`), the phone's tilt to look around (`tilt.ts`), which renderer draws his body and where each starts the density loop (`body-layer.ts`), the voice tracker, the simulated voices, sample mode's moods, the voices each mood hands the sphere (`sample-drive.ts`) and its readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the conversation itself: the session every device holds it in (`jarvis-session.ts`, its shapes in `session-contract.ts`), what its failures say (`failure-text.ts`), which of his lines it writes down (`written-caption.ts`), the headset's half-duplex fallback (`half-duplex.ts`), what a request touches and what sir points at (`affected-entities.ts`: an entity's shape, its limits and its parser), which agents a request has at work (`agent-activity.ts`) and the satellites they are drawn as (`agent-work.ts`, `satellite-drawing.ts`), the line every device keeps to the Jarvis server during a conversation (`jarvis-server-link.ts`), and the pieces it is built from — whether a conversation is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) |
+| `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the frame clock every device steps him on (`frame-clock.ts`) and the numbers it runs by (`frame-timing.ts`), the phone's tilt to look around (`tilt.ts`), the voice tracker, the simulated voices, sample mode's moods, the voices each mood hands the sphere (`sample-drive.ts`) and its readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the conversation itself: the session every device holds it in (`jarvis-session.ts`, its shapes in `session-contract.ts`), what its failures say (`failure-text.ts`), which of his lines it writes down (`written-caption.ts`), the headset's half-duplex fallback (`half-duplex.ts`), what a request touches and what sir points at (`affected-entities.ts`: an entity's shape, its limits and its parser), which agents a request has at work (`agent-activity.ts`) and the satellites they are drawn as (`agent-work.ts`, `satellite-drawing.ts`), the line every device keeps to the Jarvis server during a conversation (`jarvis-server-link.ts`), and the pieces it is built from — whether a conversation is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) |
 | `hologram/gpu` | types, its own siblings and the main entry's modules — the context is handed in | the body's fragment arithmetic in GLSL and the CPU reference it is held to (`fragment-glsl.ts`, `fragment-3d.ts`), the rows every pass reads and their vertices (`body-rows.ts`, `row-vertices.ts`), the halo union, the strokes and the halos' light as shader sources (`halo-union.ts`, `body-strokes.ts`, `halo-light.ts`), the sparkle's bytes (`sparkle.ts`), the view-basis maths (`view-basis.ts`), and the raw renderer the phone and the watch draw it with (`gpu-body.ts`) through the camera a flat screen needs (`flat-camera.ts`), placed where the phone's tilt puts the eye (`tilted-view.ts`) |
-| `hologram/react` | React, Reanimated, Skia, and expo-gl once its native module is found | the Skia canvas, the GPU body's canvas over it and everything that decides which draws the body (`body-layer.tsx`, `gl-context.ts`), the tilt's sensor (`tilt-sensor.tsx`), and the frame callback that steps the frame clock |
+| `hologram/react` | React, Reanimated, Skia, and expo-gl once its native module is found | the Skia canvas, the GPU body's canvas over it and what sets the body up and finds its context each frame (`body-layer.tsx`, `gl-context.ts`), the tilt's sensor (`tilt-sensor.tsx`), and the frame callback that steps the frame clock |
 | `hologram/react/sample` | React, Reanimated — not Skia | sample mode's clock-made voice, mood toast and frame-rate readout, shared by the phone's sample screen and the watch's waiting screen |
 | `hologram/conversation` | React, `@elevenlabs/client`, `@livekit/react-native`'s audio session, hologram's own native greeting player (`expo-audio` in a browser) — not Skia | `useJarvisSession`, which hands the main entry's session the SDK, the greeting's player and the call's audio, and holds its snapshot for a screen |
 
@@ -110,8 +110,8 @@ calls, `placeFlatCamera`, `writeFragmentUniforms` and the view-basis maths — s
 an app can draw on whichever thread holds its context. `createGpuBody` is
 JS-thread code: it builds the rows, compiles the three programs and uploads about
 3 MB of vertices, once, and throws when the context refuses any of it (an ES 2
-context cannot compile the GLSL ES 3.00 shaders), which is the app's cue to keep
-the body in Skia. On a phone the body it returns then crosses to the UI thread,
+context cannot compile the GLSL ES 3.00 shaders), which is the app's cue to draw
+him without a body. On a phone the body it returns then crosses to the UI thread,
 and worklets copy nothing between runtimes but plain objects, arrays and typed
 arrays, while expo-gl makes every GL object an instance of a class of its own.
 So the body keeps a plain `{ id }` in place of each of expo-gl's, which is all
@@ -134,29 +134,14 @@ thread. It takes a `JarvisVoice` and asks it
 two questions — nothing in it knows where the audio came from, so the phone can
 hand it a WebRTC track and the watch its own microphone.
 
-Two things in the view are there for speed on a device and nowhere else. It
-times how long each picture takes to build, which is what the density loop in
-`density-control.ts` steers by. And on Android it records the whole picture,
-background included, inside one layer (`DRAWN_IN_A_LAYER`): React
-Native Skia gives its Android window no stencil buffer, and without one Skia
-triangulates the particle halos on the CPU every frame, where a layer Skia
-allocates itself can have a stencil and the halos go to the GPU as they do in a
-browser. That was found in a CanvasKit model of the two canvases rather than on
-a phone, and the constant's comment says what it assumes of the GPU. The
-drawing's half of the same work is that the scene's body and shell rows are
-kept in the order of the density share's key (`roundedInDensityOrder`), so the
-loop stops where the kept rows end (`densityRowsEnd`) instead of reading every
-row to throw most of them away — which under Hermes, with no JIT, was 4.1 of
-the 5.3 ms a picture took to build at the floor, on a desktop harness. And the
-loops that run once a fragment or crescent piece (`appendBody`, `appendStream`,
-`appendCrescent`) are written out by hand rather than composed from the per-fragment helpers,
-because on a device every call between worklets allocates: on the same kind of
-harness a full-density picture went from 18.9 to 5.9 ms to build, and one at the
-floor from 0.63 to 0.32. The helpers stay the definition — the headset is built
-from them — and `particle-loop.spec.ts` holds the loops to them bit for bit, so
-change a fragment in its helper first. That one file is allowed functions as
-complex as the body's loop in `biome.json`, since splitting the loop back up is
-the cost it exists to remove.
+The view times how long each frame's JavaScript takes — Skia's picture and the
+calls that issue the GPU's frame — which is what the density loop in
+`density-control.ts` steers by, with the frame rate as its backstop. The
+picture's one loop that runs once a piece, `appendCrescent`, is written out by
+hand rather than composed from helpers, because on a device every call between
+worklets allocates; `crescent-loop.spec.ts` holds it to a frozen copy of the loop
+it replaced, bit for bit, and `biome.json` lets that one file's functions be as
+complex as that loop is.
 
 `src/conversation/` is where the ElevenLabs SDK is called for real, and it is
 thinner still: `useJarvisSession` hands the main entry's session
@@ -361,8 +346,14 @@ chosen over drifting clusters, orbital rings, ripples and a galaxy's arms.
 
 **The arrival is a vortex.** Particles leave the core nearest first and spiral out a turn and a
 half before settling (`swirlFragment`); it moves only the particles being drawn, so the scene's
-count and the density share hold throughout. `.scripts/render-preview.ts` renders the arrival, the
-listening lattice and the greeting to WebM for looking at.
+count and the density share hold throughout.
+
+**The offline renders draw no body.** `.scripts/render-preview.ts` (the arrival, the listening
+lattice and the greeting, to WebM), `render-showcase.ts` (the README's clips and cover) and
+`render-play-assets.ts` (the Play listing and the apps' icons) draw with `drawHologram` under
+CanvasKit in Bun, which has no GPU, and `drawHologram` no longer draws his body. Until they draw the
+body on a GPU (in a headless browser, through `hologram/gpu`, as vr's preview does), what they render
+is everything but his body: do not regenerate the committed clips, stills or icons from them.
 
 **Sample mode is shared, and only sample mode has a readout.** Both devices have one — the phone's
 before there is an account, the watch's while it waits for the phone — so the moods, their order,
@@ -539,26 +530,26 @@ declared after every worklet it calls.
 ## A second renderer: the headset
 
 The headset draws the body in three dimensions on the GPU and the rest of him
-with CanvasKit, and it composes him from the per-fragment helpers rather than
-from copies of them. The GPU half — the fragment arithmetic and its CPU
-reference, the rows, and the halo union, strokes and halos' light — is
-`hologram/gpu`, which the headset draws through three.js and which a phone or a
-watch can draw through `drawGpuBody`. The view's body and shell loops are hand-written copies of
-those same helpers, for speed, and `particle-loop.spec.ts` holds them to the
-helpers bit for bit. So the main entry exports what that needs:
+with CanvasKit, as the phone and the watch do with Skia, and every device's body
+is composed from the per-fragment helpers. The GPU half — the fragment arithmetic
+and its CPU reference, the rows, and the halo union, strokes and halos' light —
+is `hologram/gpu`, which the headset draws through three.js and a phone or a
+watch through `drawGpuBody`. So the main entry exports what that needs:
 `analyseFrame` and its `HologramFrameState`, the per-fragment helpers
 (`readFragment`, `fragmentStrength`, `placeFragment`, `swirlFragment`,
-`latticeFragment`, `scanned`, `densityRowsEnd` and the rest), the body's and
-the stream's row layouts, and the constants they read; and the frame clock.
+`latticeFragment`, `scanned`, `densityKey` and the rest), the body's and the
+stream's row layouts, and the constants they read; and the frame clock. The
+picture itself is drawn from `pictureSceneOf(scene)`, the scene without the
+body's and the stream's rows, so a picture worklet never carries them.
 `analyseFrame` reads nothing of the scene but its script (`HologramScript`), so a
 frame callback that only analyses frames can capture that rather than the whole
 scene.
 
 **Fading him from outside the drawing.** The drawing fades him in and out
 through a layer of its own, at `arrivalOf(appearance, presence)` — the arrival
-`analyseFrame` works out, exported so nothing keeps a copy of it that drifts. A
-view that lays a body drawn on the GPU beside the Skia picture cannot fade the
-two separately: Screen-blending two faded layers is brighter where they overlap
+`analyseFrame` works out, exported so nothing keeps a copy of it that drifts.
+The phone's view, which lays the body drawn on the GPU beside the Skia picture,
+cannot fade the two separately: Screen-blending two faded layers is brighter where they overlap
 than fading the blend of them. So `drawHologram(…, fadeOutside)` skips that layer
 and the view fades the group of both by `arrivalOf` instead — the GPU body in
 it drawn with `fade: 1`, or it would come out at the arrival squared — which
@@ -589,7 +580,7 @@ Its conversation is the same session the phone and the watch hold theirs in
 directly: the headset hands it its browser parts — his track analysed on the
 app's `AudioContext`, the greeting's `<audio>` element, the orphaned audio a
 dropped call leaves on a page that lives for hours — through
-`createHeadsetSession` in `vr/src/conversation/`. A renderer drawing over CanvasKit — the headset's flat layer, and the phone's own web build —
+`createHeadsetSession` in `vr/src/conversation/`. A renderer drawing over CanvasKit — the headset's view-plane picture, and the phone's own web build —
 takes its resources from `createReleasableHologramResources` and calls `release()` once each
 frame has been flushed or recorded: CanvasKit's objects live in the WebAssembly heap, which nothing
 garbage-collects, and the drawing makes a few dozen paths a frame. On a device the JSI objects free
@@ -601,20 +592,31 @@ room from.
 ## His body on the GPU, on a phone and a watch
 
 The view draws his body — the thousands of fragments and their halos — on the
-GPU by default, with `hologram/gpu`'s renderer through expo-gl, and leaves the
-rest of him to Skia's picture, drawn at density nought. That is what turns him
-in three dimensions with the tilt (below), and it takes the body's strokes off
-the picture, which was most of what every frame cost. Skia's body is the
-fallback, unchanged.
+GPU, with `hologram/gpu`'s renderer through expo-gl, and leaves the rest of him
+to Skia's picture, which never draws a body. That is what turns him in three
+dimensions with the tilt (below). **There is no other body.** The 2D one Skia
+used to draw is gone, and nothing keeps it as a fallback or behind a switch.
 
-**Where it is tried.** `body` on the view, `'gpu'` unless a screen says
-`'skia'`, fixed when the view mounts (`gpuBodyWanted`): on Android 10 or later
-with expo-gl's native module in the build, or in a browser with WebGL 2. Below
-Android 10 React Native ignores `mixBlendMode`, which is how the two canvases are
-composed, so those phones keep Skia's body. The apps force Skia's body with
-`body="skia"`: the phone's web build on `?flat` (the headset's name for its flat
-mode), and both apps' native builds when bundled with
-`EXPO_PUBLIC_HOLOGRAM_BODY=skia`.
+**What each platform gets.**
+
+- **A phone or a watch**: the GPU body. Both apps require Android 10 or later
+  (`minSdkVersion` 29 on the phone, 30 on the watch), the first on which React
+  Native honours `mixBlendMode`, which is how the two canvases are composed.
+- **A browser with WebGL 2**: the GPU body, on a `<canvas>` of expo-gl's.
+- **No GL view at all** — a browser without `WebGL2RenderingContext`, or a
+  development client built before expo-gl's native module was in it
+  (`BodyGlView` undefined in `gl-context.ts`): no body. Nothing is pending, so
+  the rest of him arrives on the first frame, and the density loop runs as ever.
+- **A GL view that cannot draw him** — a WebGL 1 or OpenGL ES 2 context, a
+  `createGpuBody` that throws (logged with its reason), a GL view that throws
+  (an error boundary round it), or a warm-up frame `getError` says went wrong:
+  the GL view goes for the mount, he is drawn without a body, and nothing else
+  changes.
+- **A context lost mid-show** — expo-gl answering a call on it with `undefined`,
+  a browser's `webglcontextlost` dropping it from `gl-context.web.ts`'s
+  registry: the body is gone from the next frame, until expo-gl hands a new
+  context to `onContextCreate` (a browser's `webglcontextrestored`, a device's
+  new surface), which sets the body up afresh and draws it from the frame after.
 
 **One view tree, on a device and in a browser.** The outer view paints the
 background, and where the group is Screened onto it is isolated too: a view with
@@ -626,49 +628,31 @@ group the two canvases are composed in: isolated, rendered into a texture of its
 own at the drawn size on Android (`renderToHardwareTextureAndroid`), faded by
 the arrival (`arrivalOf`, written each frame), and on a background that is not
 black — the sheet's ink — Screened onto it. In it, Skia's canvas (test id
-`hologram-flat`, on a view round it, since Skia's web canvas takes no test id)
-is a `TextureView` whatever `opaque` says — for as long as the view is mounted,
-even once Skia has taken the body back, since a `SurfaceView` swapped in
-mid-show starts black with the cover already lifted — draws no background and
-calls `drawHologram` with `fadeOutside`; the GPU's canvas over it
-(`hologram-body`, `pointerEvents` none) is Screened onto it with `mixBlendMode:
-'screen'` by a view round it, and the GPU body is drawn with `fade: 1` and
-`alphaFromLight: 1`. That view shows the canvas only while the layer (below) is
-`gpu`: a context that has gone leaves its canvas behind, which a browser paints,
-the next time the page is laid out, as its own lost-context placeholder — a
-white square, all there was of him once Screened — and which a device may go on
-showing as the last frame it was handed. The satellites are in Skia's picture,
-so they arrive and leave with him there, where the flat drawing's own fade never
-reached them. Without the GPU's canvas Skia paints the background and fades him
-itself, as it always did, and only a view that never tried the GPU puts Skia's
-canvas on a `SurfaceView` when told it is `opaque`.
+`hologram-picture`, on a view round it, since Skia's web canvas takes no test
+id) draws no background and calls `drawHologram` with `fadeOutside`; the GPU's
+canvas over it (`hologram-body`, `pointerEvents` none) is Screened onto it with
+`mixBlendMode: 'screen'` by a view round it, and the GPU body is drawn with
+`fade: 1` and `alphaFromLight: 1`. That view shows the canvas only while the
+layer (below) is `drawn`: a context that has gone leaves its canvas behind,
+which a browser paints, the next time the page is laid out, as its own
+lost-context placeholder — a white square, all there was of him once Screened —
+and which a device may go on showing as the last frame it was handed. The
+satellites are in Skia's picture, so they arrive and leave with him.
 
-**Which renderer, frame by frame** (`body-layer.tsx`). A layer of `pending`,
-`gpu` or `skia` (`BodyLayer`, in `body-layer.ts`) lives in a shared value:
+**Whether there is a body, frame by frame** (`body-layer.tsx`). A layer of
+`pending`, `drawn` or `absent` (`BodyLayer`) lives in a shared value:
 
 - **Pending** on mounting and on every return to the foreground, while the GL
-  view is there: the frame callback holds his clock at the start of the
-  arrival, where nothing of him shows, until the context is ready — then the
-  body is the GPU's — or `GPU_READY_TIMEOUT_MS` (800) has passed, and he arrives
-  with Skia's. A GPU body that comes up later is used at the next arrival.
-- **Skia's for the mount, and the GL view gone**, when the context is WebGL 1 or
-  OpenGL ES 2, `createGpuBody` throws (logged with its reason), the GL view
-  throws (an error boundary round it), or `getError` says the warm-up frame
-  went wrong — asked once per context, on the JS thread before the handover,
-  since it waits for the GPU.
-- **Skia's from the next frame** when the context goes while he is on screen:
-  expo-gl answers a call on a context that has gone with `undefined`, and a
-  browser's `webglcontextlost` drops it from `gl-context.web.ts`'s registry. The
-  GPU has the body back at the next arrival if a context has come back by then.
-- **The density loop starts again** whenever the body changes renderer, from
-  `bodyStartingShare`: Skia's where it always has, from half of what it was last
-  seen holding or the floor, and the GPU's at `GPU_STARTING_SHARE` (half)
-  whatever was remembered. `createDensityControl` is a worklet for that.
-- **Only Skia's proven share is remembered** (`keepsProvenShare`): the view
-  writes `provenShare` only while Skia draws the body. The GPU's build time
-  always says there is room, so its loop climbs to whatever the frame rate
-  allows, often every particle, and a later fallback to Skia started from half
-  of that would build far more than Skia's body can through the arrival.
+  view is there. His arrival is his body spiralling out of the core, so the
+  frame callback holds his clock at the start of it, where nothing of him shows,
+  until the body is ready or `BODY_READY_TIMEOUT_MS` (800) has passed. The wait
+  is kept for that first frame, and bounded so nothing can hang on it.
+- **Drawn or absent** after that, decided every frame by whether a body and a
+  live context are there (`bodyThisFrame`): a body that comes up after the wait
+  is drawn from the frame it is ready, wherever the arrival has got to.
+- **The density loop** starts once a mount at `STARTING_SHARE` (half), and
+  nothing is remembered between mounts: the build time always says there is room
+  with the body on the GPU, so the frame-rate ceiling is what holds the share.
 
 **Set up on the JS thread, drawn on the UI thread, and never both.** expo-gl
 lets the JS runtime and the UI runtime share a context, and records the calls of
@@ -699,9 +683,6 @@ counted as build time. What is counted is the picture plus issuing the GPU's
 frame — well under a millisecond — so the build time always says there is room
 and the frame rate's ceiling is what holds the share down. A browser throttles
 its frames itself and needs none.
-
-The phone's and the watch's sample readouts end with `gpu` or `2d`
-(`describeFrameRate`), from the view's `bodyLayer`.
 
 What none of this has been seen doing on a device: expo-gl's worklet support on
 the UI runtime with this Reanimated, Android composing the two `TextureView`s
@@ -735,7 +716,7 @@ it allocates nothing, and the front is written into the state's own array.
   the eye back to the front, and the next usable reading is the new rest pose, so
   nothing jumps when readings come back.
 - **The eye is `PHONE_EYE_DISTANCE` of his resting radii away while readings
-  arrive**, and infinitely far — exactly the flat drawing's view — while none do,
+  arrive**, and infinitely far — a flat projection, straight on — while none do,
   eased between the two over `EYE_DISTANCE_FADE_SECONDS`. The watch and a desktop
   browser never step it, and stay infinitely far.
 - **It is handed out in sides of the drawing's square** (`PHONE_EYE_SQUARES`), the
@@ -767,24 +748,23 @@ judge.
 ## Tests
 
 `bunx turbo test --filter=hologram` — headless, offline, no device. The suite
-pins the picture itself: byte-identical frames for a given time and voice,
-containment inside the canvas, how much the sphere swells and brightens when
-spoken to, and that no state leaks between frames.
+pins Skia's picture of everything but his body: byte-identical frames for a
+given time and voice, containment inside the canvas, how the sphere moves when
+spoken to, and that no state leaks between frames. His body is pinned through
+its CPU reference (`gpu/fragment-3d.spec.ts`: where every fragment lands, the
+lattice's layers and knots, the thinking plane climbing), and the GPU's passes
+against a context that writes its calls down (`gpu/gpu-body.spec.ts`); whether
+the GPU's pixels agree is vr's browser tests' to say.
 
-`particle-loop.spec.ts` holds the hand-written particle loops to a frozen copy
-of the ones they replaced, composed from the helpers, in the pattern of
-`frame-clock.spec.ts`: every state the loops branch on, at densities from none
-to all, in the phone's scene and the watch's, at times from 0 to past where the
-clocks stop being floored by truncation (2^29 s), negative, NaN and infinite,
-built both ways into builders kept between frames, with `Object.is` on every
-number of every command. A change that moves one bit of one command fails there.
+`crescent-loop.spec.ts` holds the hand-written crescent loop to a frozen copy of
+the one it replaced, in the pattern of `frame-clock.spec.ts`: every state the
+loop branches on, in the phone's scene and the watch's, at times from 0 to far
+past an hour, negative, NaN and infinite, built both ways into builders kept
+between frames, with `Object.is` on every number of every command.
 
 What it cannot see is speed on a device. CanvasKit here rasterises on the CPU,
-under Bun's JavaScript engine with its JIT, and a phone or a watch does neither.
-It paints on the GPU, where which of Skia's path renderers takes a stroke
-depends on whether the canvas has a stencil — see `DRAWN_IN_A_LAYER` in
-`src/react/hologram-view.tsx`, which lives in the view and so is exercised by no
-test here — and it builds the picture under Hermes with no JIT, which on a
+under Bun's JavaScript engine with its JIT, and a phone or a watch does neither:
+it paints on the GPU, and builds the picture under Hermes with no JIT, which on a
 desktop harness cost about twelve times per particle what V8 with its JIT pays.
 A headless millisecond says which way the pixels went, not how fast Jarvis will
 be. Judge a change made for speed on a device, with sample mode's readout of the

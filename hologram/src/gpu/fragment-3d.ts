@@ -22,8 +22,9 @@ import {
  * from the helpers `hologram` exports, with the body standing in a room instead of on a screen.
  *
  * This is the reference the GPU port (`fragment-glsl.ts`) is a line-by-line transliteration of,
- * and the unit tests hold it to the phone: seen from the front it lands every fragment exactly
- * where `appendBody` and `appendStream` put it. The browser tests then hold the GPU to this.
+ * and the unit tests hold it to the helpers: seen from the front it lands every fragment exactly
+ * where the helpers, composed in the plane of the screen, put it. The browser tests then hold the
+ * GPU to this.
  *
  * The mapping:
  * - The body turns about the vertical in its own frame — x right, y up, z towards where the user
@@ -60,7 +61,7 @@ export interface PlacedFragment {
   centre: Vector3Tuple;
   /** Half its length, along it. */
   axis: Vector3Tuple;
-  /** The glyph's normal: across it, 0.55 of the half-length, as `appendGlyph` measures ticks. */
+  /** The glyph's normal: across it, 0.55 of the half-length, as the glyphs measure ticks (`GLYPH_GLSL`). */
   normal: Vector3Tuple;
   /** 0 dim, 1 mid, 2 bright. */
   tier: number;
@@ -209,7 +210,8 @@ function finish(fragment: Unfinished, state: HologramFrameState, basis: ViewBasi
 }
 
 /**
- * A body fragment this frame, or null when it is not drawn: `appendBody`, with `placeFragment`
+ * A body fragment this frame, or null when it is not drawn: `readFragment`, `placeFragment`,
+ * `swirlFragment`, `latticeFragment`, `scanned` and `fragmentTier` in turn, with `placeFragment`
  * turned into three dimensions.
  */
 export function placeBodyFragment(
@@ -284,9 +286,9 @@ export function placeBodyFragment(
 }
 
 /**
- * A stream fragment this frame, or null when it is not drawn: `appendStream`, with the fragment
- * a true tangent of its latitude, which seen from the front is the foreshortened stroke the phone
- * draws.
+ * A stream fragment this frame, or null when it is not drawn: `readShellFragment` and the
+ * helpers after it, with the fragment a true tangent of its latitude, which seen from the front is
+ * the foreshortened stroke of the flat projection.
  */
 export function placeStreamFragment(
   stream: number[],

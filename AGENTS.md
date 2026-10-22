@@ -85,6 +85,14 @@ dependabot`). Every bump is made by hand with `bun add` or `bun update`, and the
 7-day `minimumReleaseAge` applies to it, so new versions still sit out the window
 that malicious releases are typically caught and yanked in.
 
+The one exception is GitHub's Dependabot *security* updates, a repository setting
+that runs on every push to `main`. `.github/dependabot.yml` exists only so they run
+under the `bun` ecosystem — as `npm_and_yarn` they refused a repository with only a
+`bun.lock`, and every run failed. Its version updates are off
+(`open-pull-requests-limit: 0`) and its cooldown matches the 7-day window, so all
+it ever does is open a pull request for a vulnerable direct dependency, which is
+reviewed and merged like any other.
+
 ### Adding or updating a dependency
 
 ```bash
