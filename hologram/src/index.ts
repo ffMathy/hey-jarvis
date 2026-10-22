@@ -44,6 +44,7 @@ export * from './sample-mode';
 export * from './satellite-drawing';
 export * from './session-contract';
 export * from './simulated-voice';
+export * from './tilt';
 export * from './tool-activity';
 export * from './vad-score';
 export * from './voice-analysis';

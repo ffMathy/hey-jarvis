@@ -39,7 +39,7 @@ that rule.
 
 | Entry | Imports | What it holds |
 | --- | --- | --- |
-| `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the frame clock every device steps him on (`frame-clock.ts`) and the numbers it runs by (`frame-timing.ts`), the voice tracker, the simulated voices, sample mode's moods, the voices each mood hands the sphere (`sample-drive.ts`) and its readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the conversation itself: the session every device holds it in (`jarvis-session.ts`, its shapes in `session-contract.ts`), what its failures say (`failure-text.ts`), which of his lines it writes down (`written-caption.ts`), the headset's half-duplex fallback (`half-duplex.ts`), what a request touches and what sir points at (`affected-entities.ts`: an entity's shape, its limits and its parser), which agents a request has at work (`agent-activity.ts`) and the satellites they are drawn as (`agent-work.ts`, `satellite-drawing.ts`), the line every device keeps to the Jarvis server during a conversation (`jarvis-server-link.ts`), and the pieces it is built from — whether a conversation is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) |
+| `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the frame clock every device steps him on (`frame-clock.ts`) and the numbers it runs by (`frame-timing.ts`), the phone's tilt to look around (`tilt.ts`), the voice tracker, the simulated voices, sample mode's moods, the voices each mood hands the sphere (`sample-drive.ts`) and its readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the conversation itself: the session every device holds it in (`jarvis-session.ts`, its shapes in `session-contract.ts`), what its failures say (`failure-text.ts`), which of his lines it writes down (`written-caption.ts`), the headset's half-duplex fallback (`half-duplex.ts`), what a request touches and what sir points at (`affected-entities.ts`: an entity's shape, its limits and its parser), which agents a request has at work (`agent-activity.ts`) and the satellites they are drawn as (`agent-work.ts`, `satellite-drawing.ts`), the line every device keeps to the Jarvis server during a conversation (`jarvis-server-link.ts`), and the pieces it is built from — whether a conversation is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) |
 | `hologram/gpu` | types, its own siblings and the main entry's modules — the context is handed in | the body's fragment arithmetic in GLSL and the CPU reference it is held to (`fragment-glsl.ts`, `fragment-3d.ts`), the rows every pass reads and their vertices (`body-rows.ts`, `row-vertices.ts`), the halo union, the strokes and the halos' light as shader sources (`halo-union.ts`, `body-strokes.ts`, `halo-light.ts`), the sparkle's bytes (`sparkle.ts`), the view-basis maths (`view-basis.ts`), and the raw renderer the phone and the watch draw it with (`gpu-body.ts`) through the camera a flat screen needs (`flat-camera.ts`) |
 | `hologram/react` | React, Reanimated, Skia | the Skia canvas and the frame callback that steps the frame clock |
 | `hologram/react/sample` | React, Reanimated — not Skia | sample mode's clock-made voice, mood toast and frame-rate readout, shared by the phone's sample screen and the watch's waiting screen |
@@ -562,6 +562,39 @@ themselves and the view keeps the plain `createHologramResources`. `roomOfConver
 takes each app's own `Room` guard rather than importing `livekit-client`,
 because an `instanceof` is only true against the copy the app's SDK built the
 room from.
+
+## Tilt to look around, on the phone
+
+`tilt.ts` turns the phone's gravity — Reanimated's GRAVITY sensor, read every
+`TILT_SENSOR_INTERVAL_MS` — into where the eye is round him (`tiltFront`) and how
+far away it is (`tiltEyeDistance`), for a body drawn in three dimensions. It is
+built like the frame clock: one state made once (`createTiltState`), stepped once
+a frame inside `modify` with the reading as positional arguments
+(`advanceTilt`), and put back as new on coming to the foreground (`resetTilt`);
+it allocates nothing, and the front is written into the state's own array.
+
+- **A phone held still shows him straight on.** The rest pose follows gravity
+  over `TILT_REST_SECONDS`, so only a change of how it is held turns him, for a
+  moment.
+- **The turn from rest becomes a tip and a swing**, less a soft deadband, no
+  further than `TILT_LARGEST_DEGREES` round him, eased over `TILT_EASE_SECONDS`.
+  Gravity cannot see a turn about the vertical, so on an upright phone looking
+  sideways is the steering-wheel roll.
+- **Not while he listens.** The step takes the frame clock's `hearing` and scales
+  the tilt down by it: the listening lattice snaps in the plane facing the eye,
+  and about 7% of its lit fragments jump to another knot for every degree the
+  view turns.
+- **No reading, a reading that is not a number, or a phone on its side** sends
+  the eye back to the front, and the next usable reading is the new rest pose, so
+  nothing jumps when readings come back.
+- **The eye is `PHONE_EYE_DISTANCE` radii away while readings arrive**, and
+  infinitely far — exactly the flat drawing's view — while none do, eased between
+  the two over `EYE_DISTANCE_FADE_SECONDS`. The watch and a desktop browser never
+  step it, and stay infinitely far.
+
+`tilt.spec.ts` holds it to that on gestures stepped at 60 and 120 frames a second.
+How it feels — the sign of each gesture, the gain, the deadband — is a device's to
+judge.
 
 ## Tests
 
