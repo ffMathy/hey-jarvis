@@ -1053,7 +1053,8 @@ describe('fading him outside the drawing, for a view that lays the GPU body besi
     }
   });
 
-  it('works out the same arrival analyseFrame does, all the way through arriving, staying and leaving', () => {
+  it('is the arrival analyseFrame works out, all the way through arriving, staying and leaving', () => {
+    // A guard against analyseFrame working its arrival out again for itself, which could drift.
     const scene = createHologramScene(SEED);
     const frames = framesFromTheClock();
     const arrivals = frames.map((frame) => arrivalOf(frame.appearance, frame.presence));
@@ -1066,16 +1067,36 @@ describe('fading him outside the drawing, for a view that lays the GPU body besi
     expect(arrivals.some((arrival) => arrival > 0 && arrival < 1)).toBe(true);
   });
 
-  it('works out the same arrival analyseFrame does for a frame made by hand: out of range, not a number, infinite', () => {
-    const scene = createHologramScene(SEED);
-    for (const appearance of [-1, 0, 0.05, 0.2, 1, 7, Number.NaN, Number.POSITIVE_INFINITY]) {
+  it('is the arrival as it was before it was taken out of analyseFrame: out of range, not a number, infinite', () => {
+    for (const appearance of [-1, 0, 0.05, 0.1, 0.2, 1, 7, Number.NaN, Number.POSITIVE_INFINITY]) {
       for (const presence of [-1, 0, 0.3, 1, 2, Number.NaN, Number.NEGATIVE_INFINITY]) {
-        const frame = { ...silence(3), appearance, presence };
-        expect(Object.is(arrivalOf(appearance, presence), analyseFrame(frame, SIZE, scene).arrival)).toBe(true);
+        expect(Object.is(arrivalOf(appearance, presence), arrivalAsItWas(appearance, presence))).toBe(true);
       }
     }
   });
+
+  it('fades the whole of him in over the first fifth of the vortex, and out with his presence', () => {
+    expect(arrivalOf(0, 1)).toBe(0);
+    expect(arrivalOf(0.1, 1)).toBe(0.5);
+    expect(arrivalOf(0.2, 1)).toBe(1);
+    expect(arrivalOf(1, 0.3)).toBe(0.3);
+  });
 });
+
+/**
+ * The arrival as `analyseFrame` worked it out before `arrivalOf` was taken out of it, with the two
+ * helpers it read copied line for line, as the reference `arrivalOf` is held to. It is frozen on
+ * purpose: the phone and the watch must not fade him differently because the code moved.
+ */
+function arrivalAsItWas(appearance: number, presence: number) {
+  const clamp01 = (value: number) => (value > 0 ? (value > 1 ? 1 : value) : 0);
+  const smooth01 = (value: number) => {
+    const clamped = value < 0 ? 0 : value > 1 ? 1 : value;
+    return clamped * clamped * (3 - 2 * clamped);
+  };
+  const swirl = clamp01(appearance);
+  return smooth01(swirl / 0.2) * clamp01(presence);
+}
 
 /**
  * The frames the frame clock hands the drawing at 60 a second through two arrivals that stay and two

@@ -19,8 +19,9 @@ import { join } from 'node:path';
  * marked `type`, and anything in a comment or a string. An import not marked `type` is counted even
  * where only types are used from it, because whether a bundler drops it then is the bundler's
  * setting to decide, not this package's; the way to say it is a type is to mark it one. A sibling
- * here is in the main entry, so it may be imported freely; a path into `./react` or `./conversation`
- * is another entry, and may not.
+ * here is in the main entry, so it may be imported freely; `./react`, `./conversation` and `./gpu`
+ * are folders, other entries, and may not be, and nor may the `./index` barrel, which a sibling
+ * would import itself through.
  */
 
 const MAIN_ENTRY_DIR = import.meta.dir;
@@ -44,9 +45,16 @@ function mainEntryModules(): string[] {
   return readdirSync(MAIN_ENTRY_DIR).filter((name) => /\.tsx?$/.test(name) && !/\.(spec|test)\.tsx?$/.test(name));
 }
 
-/** Whether a value may come from `path`: a sibling in this folder, or Skia's enums. */
+/** How the main entry's modules are imported, but for its barrel: `./tilt` for `tilt.ts`. */
+const SIBLINGS = new Set(
+  mainEntryModules()
+    .map((name) => `./${name.replace(/\.tsx?$/, '')}`)
+    .filter((path) => path !== './index'),
+);
+
+/** Whether a value may come from `path`: a module directly in this folder, or Skia's enums. */
 function mayImportValueFrom(path: string): boolean {
-  return path === SKIA_ENUMS || /^\.\/[^/]+$/.test(path);
+  return path === SKIA_ENUMS || SIBLINGS.has(path);
 }
 
 describe('the main entry', () => {
@@ -61,6 +69,25 @@ describe('the main entry', () => {
     expect(modules).toContain('hologram-drawing.ts');
     expect(modules).toContain('index.ts');
     expect(forbidden).toEqual([]);
+  });
+
+  it('tells a module of its own from another entry, a barrel or anything outside', () => {
+    for (const path of ['./tilt', './hologram-drawing', SKIA_ENUMS]) {
+      expect({ path, allowed: mayImportValueFrom(path) }).toEqual({ path, allowed: true });
+    }
+    for (const path of [
+      './react',
+      './conversation',
+      './gpu',
+      './react/hologram-view',
+      './index',
+      '.',
+      '../x',
+      '@shopify/react-native-skia',
+      'hologram',
+    ]) {
+      expect({ path, allowed: mayImportValueFrom(path) }).toEqual({ path, allowed: false });
+    }
   });
 
   it("still has something to protect: the drawing takes Skia's enums as values and Skia itself as types", () => {

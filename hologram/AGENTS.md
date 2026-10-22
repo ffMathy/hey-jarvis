@@ -97,7 +97,10 @@ the calls it makes, which a browser's context and expo-gl's both fit; the GL
 enums are numbers in the module rather than read off the context. Its modules
 import the main entry's modules directly (`../hologram-drawing`,
 `../frame-timing`), never the `..` barrel, for the reason under "Worklets"
-below. `gpu.contract.spec.ts` holds it to both. Biome reads `gl.useProgram` as a
+below. `gpu.contract.spec.ts` holds it to both, parsing every module with Bun's
+transpiler as the main entry's contract does: a value from anything but a sibling
+or one module directly in `src/` fails it, and so do the `..` barrel and the
+other entries (`../react`, `../conversation`). Biome reads `gl.useProgram` as a
 React hook, so `biome.json` turns `useHookAtTopLevel` off for that folder alone,
 where nothing is React.
 
