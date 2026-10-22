@@ -414,9 +414,14 @@ easy to break:
   and not at all if he was hung up on. It used to be held back until he had finished on a phone,
   because dialling behind him clipped him there; what clipped him was LiveKit switching into call
   mode a second into the recording, and that switch is now made before he speaks (above), so the
-  conversation's start changes nothing he is heard through. Not yet heard on a device: a greeting
-  that turns thin or clipped as the conversation connects means something else switches as
-  WebRTC opens its microphone, and the fix is to switch that first too, not to dial later.
+  conversation's start changes nothing he is heard through. Something else did still switch as
+  WebRTC opened its microphone: on a phone's speaker the greeting started too loud, caught or cut
+  as the conversation connected, and finished at sir's call volume. A call is a call-mode output
+  *and* a call's input, and the hardware sets the call up — volume included — only once both are
+  open. So `JarvisGreeting`'s `play` first opens the microphone as a call does
+  (`CallMicrophone.kt`, `VOICE_COMMUNICATION`, everything it hears dropped) and lets it go when
+  the recording ends, is stopped, or the call's audio is let go. Switched first, not dialled
+  later, as before. Not yet heard on a device with the fix in.
 - **In a browser, only while the microphone is held.** A tab nobody has clicked since it loaded
   refuses to play a sound unless the page is using the microphone, so the phone app's web build
   holds the stream it asked permission with until the session says the greeting has started or

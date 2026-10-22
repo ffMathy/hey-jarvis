@@ -35,6 +35,9 @@ import java.util.concurrent.TimeUnit
  * A plain `MediaPlayer`, because a 27 KB recording played once per summoning needs nothing more. It
  * asks for no audio focus: the call's audio session, started before this plays, already holds it.
  *
+ * Before it plays it opens the microphone as a call does, so the call is fully set up before he
+ * speaks rather than as WebRTC's microphone opens partway through him — see `CallMicrophone`.
+ *
  * It also keeps what sir says after the greeting while the conversation is still connecting, and
  * plays it into the conversation once the agent is listening — see `HeldVoice`, which is the one
  * thing here that depends on LiveKit.
@@ -72,6 +75,9 @@ class JarvisGreetingModule : Module() {
   /** What sir says while the conversation connects, kept for it. */
   private val heldVoice = HeldVoice()
 
+  /** The call's microphone, open while the greeting plays. */
+  private val callMicrophone = CallMicrophone()
+
   /** The mode `enterCallMode` switched from, to go back to; null when it has not. Only touched on `modeSwitcher`. */
   private var modeBeforeCall: Int? = null
 
@@ -88,6 +94,7 @@ class JarvisGreetingModule : Module() {
     AsyncFunction("play") { source: String ->
       synchronized(lock) {
         val ready = playerFor(source)
+        callMicrophone.open(context)
         ready.seekTo(0)
         ready.start()
       }
@@ -148,6 +155,7 @@ class JarvisGreetingModule : Module() {
      */
     AsyncFunction("leaveCallMode") { promise: Promise ->
       val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+      callMicrophone.close()
       Handler(Looper.getMainLooper()).post {
         onModeSwitcher(promise) {
           modeBeforeCall?.let { switchMode(audioManager, it) }
@@ -182,6 +190,7 @@ class JarvisGreetingModule : Module() {
       synchronized(lock) {
         player?.takeIf { it.isPlaying }?.pause()
       }
+      callMicrophone.close()
     }
 
     /** Whether it is audibly playing right now. */
@@ -201,6 +210,7 @@ class JarvisGreetingModule : Module() {
 
     OnDestroy {
       heldVoice.drop()
+      callMicrophone.close()
       modeSwitcher.shutdown()
       synchronized(lock) {
         player?.release()
@@ -291,6 +301,8 @@ class JarvisGreetingModule : Module() {
           .build()
       )
       setDataSource(context, uriFor(source))
+      // Over: WebRTC's microphone holds the call open from here, if it is up yet.
+      setOnCompletionListener { callMicrophone.close() }
       prepare()
     }
     player = prepared
