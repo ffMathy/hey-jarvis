@@ -92,6 +92,13 @@ const SIDEWAYS_LIMIT = 0.3;
 const SHORTEST_READING = 1e-3;
 const DEGREES_TO_RADIANS = Math.PI / 180;
 
+/** A gravity reading, as Reanimated's GRAVITY sensor hands it over: in the device coordinates above. */
+export interface Gravity {
+  x: number;
+  y: number;
+  z: number;
+}
+
 /** Everything the tilt carries from one frame to the next. */
 export interface TiltState {
   /** Rest gravity, a unit vector in device coordinates; meaningless until `rested`. */
@@ -302,4 +309,14 @@ export function advanceTilt(
   easeEye(state, deltaSeconds, true);
   tiltFront(state);
   return state;
+}
+
+/**
+ * {@link advanceTilt} with the reading as the sensor hands it over, which is how the view steps it:
+ * the reading's axes are taken apart here, where the specs can see which goes where, rather than in
+ * the view, where a swapped pair would turn him the wrong way with nothing to say so.
+ */
+export function advanceTiltBy(state: TiltState, deltaSeconds: number, gravity: Gravity, hearing: number): TiltState {
+  'worklet';
+  return advanceTilt(state, deltaSeconds, gravity.x, gravity.y, gravity.z, hearing);
 }

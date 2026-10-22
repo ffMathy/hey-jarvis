@@ -9,10 +9,10 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { createFlatCamera, drawGpuBody, FRONT_VIEW, placeFlatCamera, type Vector3Like, viewBasisTowards } from '../gpu';
+import { createFlatCamera, drawGpuBody, placeFlatCamera, STRAIGHT_ON, tiltedView } from '../gpu';
 import {
   advanceFrameClock,
-  advanceTilt,
+  advanceTiltBy,
   analyseFrame,
   arrivalOf,
   type BodyLayer,
@@ -31,6 +31,7 @@ import {
   type FrameClockState,
   foldSpectrum,
   frameStepSeconds,
+  type Gravity,
   hearingFromPresence,
   hearingLevelFromVolume,
   hologramFrameOf,
@@ -45,7 +46,6 @@ import {
   SCENE_SEED,
   seedFromRemembered,
   steerDensity,
-  tiltEyeSquares,
   VOICE_BAND_COUNT,
 } from '../index';
 import type { JarvisVoice, UserVoice } from '../voice-contract';
@@ -53,7 +53,7 @@ import { AgentSatellitesContext } from './agent-satellites';
 import { gpuBodyWanted, useBodyLayer } from './body-layer';
 import { drawingBufferSide } from './gl-context';
 import { useIsForeground } from './is-foreground';
-import { type Gravity, NO_GRAVITY, TiltSensor } from './tilt-sensor';
+import { NO_GRAVITY, TiltSensor } from './tilt-sensor';
 
 export interface JarvisHologramProps {
   /** Width and height of the square it is drawn in, in points. */
@@ -380,9 +380,6 @@ const LONGEST_FRAME_WORTH_MEASURING = 0.2;
 /** The step assumed for a frame with no previous one to measure from. */
 const DEFAULT_FRAME_MS = 16;
 
-/** His centre, which the tilted eye looks at: the GPU body's frame is centred on him. */
-const CENTRE: Vector3Like = { x: 0, y: 0, z: 0 };
-
 /** A mean, or nought when there is nothing to take one of — which the density loop reads as "untimed". */
 function meanOf(total: number, count: number): number {
   'worklet';
@@ -649,19 +646,14 @@ function JarvisHologramView({
       return;
     }
     const startedAt = performance.now();
-    let basis = FRONT_VIEW;
-    let eyeSquares = Number.POSITIVE_INFINITY;
+    let view = STRAIGHT_ON;
     if (tilt) {
-      const pull = gravity.value;
+      const reading = gravity.value;
       tiltState.modify((state) => {
         'worklet';
-        return advanceTilt(state, deltaSeconds, pull.x, pull.y, pull.z, current.hearing);
+        return advanceTiltBy(state, deltaSeconds, reading, current.hearing);
       });
-      const seen = tiltState.value;
-      // His frame is the screen's at rest, so the eye's direction is the view's front as it stands.
-      const eye = { x: seen.front[0], y: seen.front[1], z: seen.front[2] };
-      basis = viewBasisTowards(CENTRE, eye, camera.value.basis);
-      eyeSquares = tiltEyeSquares(seen);
+      view = tiltedView(tiltState.value, camera.value.basis);
     }
     const share = density.value.density;
     const state = analyseFrame(hologramFrameOf(current, share), 1, script);
@@ -670,7 +662,7 @@ function JarvisHologramView({
     const screen = { width: side, height: side, squareX: side / 2, squareY: side / 2, squareSide: side };
     camera.modify((placed) => {
       'worklet';
-      return placeFlatCamera(placed, screen, state.radius, basis, eyeSquares);
+      return placeFlatCamera(placed, screen, state.radius, view.basis, view.eyeSquares);
     });
     // Unfaded: the group the canvas is in is faded by the arrival, as the picture is.
     drawGpuBody(drawing.gl, drawing.body, { state, density: share, fade: 1, alphaFromLight: 1, camera: camera.value });

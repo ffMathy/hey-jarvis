@@ -7,14 +7,7 @@ import {
   useAnimatedSensor,
   type Value3D,
 } from 'react-native-reanimated';
-import { TILT_SENSOR_INTERVAL_MS } from '../index';
-
-/** A gravity reading in Reanimated's device coordinates: see `tilt.ts`. */
-export interface Gravity {
-  x: number;
-  y: number;
-  z: number;
-}
+import { type Gravity, TILT_SENSOR_INTERVAL_MS } from '../index';
 
 /** No reading at all, which the tilt reads as a sensor that is missing or stopped. */
 export const NO_GRAVITY: Gravity = { x: 0, y: 0, z: 0 };
