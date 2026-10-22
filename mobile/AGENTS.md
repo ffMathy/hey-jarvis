@@ -206,7 +206,16 @@ The sheet still waits for `settled` before he is drawn.
 None of it has been seen on a phone yet: whether expo-gl's worklet support draws from the UI thread
 with this Reanimated, whether Android composes the two canvases in the same frame, what the GPU
 costs, and how the tilt feels — its direction, gain and dead band. The web build in Chromium is
-where it has been looked at.
+where it has been looked at (`hologram-body.spec.ts`, under "The browser tests").
+
+What can be read without a phone has been, from an Android bundle exported unminified and without
+bytecode (`bunx expo export -p android --no-bytecode --no-minify`): `drawGpuBody`,
+`placeFlatCamera`, `writeFragmentUniforms`, `advanceTilt`, `tiltFront` and the view's frame
+callback all come out as worklets — init data, a hash and a `__closure` — and walking every closure
+down from them finds only worklets, numbers (the GL enums among them), typed arrays and plain
+objects, shared values, and expo-gl's own `getWorkletContext`, never a function left uncompiled.
+`expo-modules-autolinking resolve --platform android` links `ExpoGL` (`expo.modules.gl.GLModule`,
+Expo's prebuilt library) in both apps. The watch's bundle compiles the same way.
 
 ### Why neither platform asks the SDK for the volume
 
@@ -741,7 +750,7 @@ The boundary is the ElevenLabs session, which needs a real API key and real quot
 
 **`hologram-body.spec.ts` checks his body on the GPU, on a stopped clock.** Playwright's fake clock (`page.clock`) is stopped on the tour, before sample mode opens, and every frame after that is one the spec steps, at ten frames a second. That is what makes two pictures comparable: on the real clock the density loop steers the share of particles by whatever frame rate the machine manages, and the GPU starts it at half where Skia starts at the floor, so the two would never draw the same particles at the same moment. Stepped at ten, both shed to the floor (250 sparks) and draw the same moment, the same way, every run. The spec covers:
 
-- **the GPU path**: a WebGL 2 context on the body's canvas, every frame after the arrival lit, centred where Skia's sphere is and the size of it — read from the canvas inside the frame, by wrapping expo-gl's `endFrameEXP`, since there is no drawing buffer to read afterwards — and none of its light outside the hologram's square on the page;
+- **the GPU path**: a WebGL 2 context on the body's canvas, every frame after the arrival lit, centred where Skia's sphere is and the size of it — read from the canvas inside the frame, by wrapping expo-gl's `endFrameEXP`, since there is no drawing buffer to read afterwards — none of its light outside the hologram's square on the page and nearly all of it inside the sphere there, and the page showing, pixel by pixel, Skia's picture and the body's Screened together (within 16 levels, measured at 8; laid on top instead, 58);
 - **`?flat`**: no GL canvas, Skia's canvas drawing him, the readout saying `2d`;
 - **no WebGL 2**: a browser with none at all, where the GPU is never tried, and one that refuses only the body's canvas, where expo-gl hands over WebGL 1 and the view gives the GL view up — both drawing him in Skia from the first frames, not after `GPU_READY_TIMEOUT_MS`. Only the body's canvas is refused there because CanvasKit itself cannot fall back where `WebGL2RenderingContext` exists but is refused, and throws `failed to create webgl context: err 0`;
 - **a context lost mid-show** (`WEBGL_lose_context`): Skia's body on screen within three frames, and still him once the page is laid out again, which is when a browser would paint the lost canvas as its white placeholder;

@@ -140,6 +140,11 @@ the black. The halo target is sized to the canvas, a texel to a pixel, rather th
 **To force Skia's body**, bundle with `EXPO_PUBLIC_HOLOGRAM_BODY=skia`, which `jarvis-hologram.tsx` reads
 at bundle time, as the phone's does.
 
+Read off the watch's Android bundle, exported unminified and without bytecode, the GPU body's
+UI-thread code compiles into worklets exactly as the phone's does, and autolinking links `ExpoGL` here
+too; the phone's notes ("His body on the GPU" in [`mobile/AGENTS.md`](../mobile/AGENTS.md)) say what
+was checked. None of it has run on a watch.
+
 ## What has been verified
 
 Everything below was verified against the Kotlin prototype this app replaced. The registration it tested is the same registration `app.config.ts` now writes — the same two actions on the app's one activity — but it has **not** been re-run against the Expo build, and the activity's name changed with it (`.MainActivity`, not `.wear.AssistActivity`). Treat the first list as strong evidence rather than as a current pass.
