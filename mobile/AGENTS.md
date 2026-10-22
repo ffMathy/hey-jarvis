@@ -739,6 +739,16 @@ The boundary is the ElevenLabs session, which needs a real API key and real quot
 
 **The hologram is two canvases where the browser has WebGL 2**: Skia's, under the test id `hologram-flat`, and the GPU body's, `hologram-body`. Chromium draws the GPU body on SwiftShader there, so sample mode's readout ends with `gpu`, and a locator for "the canvas" inside `hologram` would find two; look for the one by its id.
 
+**`hologram-body.spec.ts` checks his body on the GPU, on a stopped clock.** Playwright's fake clock (`page.clock`) is stopped on the tour, before sample mode opens, and every frame after that is one the spec steps, at ten frames a second. That is what makes two pictures comparable: on the real clock the density loop steers the share of particles by whatever frame rate the machine manages, and the GPU starts it at half where Skia starts at the floor, so the two would never draw the same particles at the same moment. Stepped at ten, both shed to the floor (250 sparks) and draw the same moment, the same way, every run. The spec covers:
+
+- **the GPU path**: a WebGL 2 context on the body's canvas, every frame after the arrival lit, centred where Skia's sphere is and the size of it — read from the canvas inside the frame, by wrapping expo-gl's `endFrameEXP`, since there is no drawing buffer to read afterwards — and none of its light outside the hologram's square on the page;
+- **`?flat`**: no GL canvas, Skia's canvas drawing him, the readout saying `2d`;
+- **no WebGL 2**: a browser with none at all, where the GPU is never tried, and one that refuses only the body's canvas, where expo-gl hands over WebGL 1 and the view gives the GL view up — both drawing him in Skia from the first frames, not after `GPU_READY_TIMEOUT_MS`. Only the body's canvas is refused there because CanvasKit itself cannot fall back where `WebGL2RenderingContext` exists but is refused, and throws `failed to create webgl context: err 0`;
+- **a context lost mid-show** (`WEBGL_lose_context`): Skia's body on screen within three frames, and still him once the page is laid out again, which is when a browser would paint the lost canvas as its white placeholder;
+- **parity**: the composed page with the body on the GPU against `?flat`, at the same stepped moment — mean luma within 3%, lit area within 5% and the light's centre within half a percent of the side, where they were measured within 0.4%, 1.4% and 0.1% — and each picture holding a body, against the same moment with the body's canvas hidden.
+
+A stepped clock surfaces an exception thrown in any timer or frame callback as a failure of `fastForward` itself, rather than as a page error. The hologram's own numbers are written into the spec rather than imported: its main entry takes Skia's enums from a module Node cannot load.
+
 Every test that needs a configured app walks the tour first, through the `walkToCredentials` helper: the app no longer opens on a form, so a spec that types into one without pressing Next is a spec that fails on a missing field rather than on what it was checking.
 
 Set `CHROMIUM_EXECUTABLE_PATH` to run against a Chromium that Playwright did not install itself — useful in a sandbox that ships a browser of a different build than the pinned `@playwright/test` expects. Leave it unset everywhere else.

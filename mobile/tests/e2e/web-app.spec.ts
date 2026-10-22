@@ -1,4 +1,5 @@
 import { expect, type Page, type Route, test } from '@playwright/test';
+import { blockExternalRequests } from './external-requests';
 
 /**
  * The app running in a real browser, driven end to end.
@@ -30,31 +31,6 @@ declare global {
 
 const API_KEY = 'sk_not-a-real-key';
 const AGENT_ID = 'agent_01jz0123456789';
-
-/**
- * Stops the page reaching anything but the app under test.
- *
- * Registered first, so any route a test adds afterwards — Playwright tries the
- * most recently added match first — answers before this one aborts. Without it a
- * session that got as far as a token would go on to dial ElevenLabs for real,
- * which is slow, flaky and, with a made-up key, pointless.
- *
- * WebSockets are closed separately, because `page.route` never sees them: the
- * conversation itself opens one to ElevenLabs once it has a token.
- */
-async function blockExternalRequests(page: Page): Promise<void> {
-  await page.route('**/*', async (route: Route) => {
-    const { hostname } = new URL(route.request().url());
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      await route.continue();
-      return;
-    }
-
-    await route.abort();
-  });
-
-  await page.routeWebSocket(/^wss?:\/\/(?!localhost[:/]|127\.0\.0\.1[:/])/, (webSocket) => webSocket.close());
-}
 
 /**
  * Answers a request to the token endpoint the way ElevenLabs would.
