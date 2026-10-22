@@ -11,7 +11,6 @@ export type { HologramDrive } from './frame-clock';
 export {
   createJarvisHologram3D,
   type HologramDiagnostics,
-  type HologramMode,
   type JarvisHologram3D,
   type JarvisHologramOptions,
 } from './jarvis-hologram-3d';

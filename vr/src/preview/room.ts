@@ -3,14 +3,7 @@ import { createJarvisHologram3D, DISTANCE_AHEAD_METRES, type JarvisHologram3D, t
 import { type CentreEye, centreEyeOf, pointAhead } from '../xr/viewer-pose';
 import { FOVEATION, RENDERER_PARAMETERS } from '../xr/xr-stage';
 import { createPhaseDrives } from './phase-drives';
-import {
-  PREVIEW_PHASES,
-  type PreviewMode,
-  type PreviewPhase,
-  type RoomPoint,
-  type RoomStatus,
-  type RoomTimings,
-} from './preview-hook';
+import { PREVIEW_PHASES, type PreviewPhase, type RoomPoint, type RoomStatus, type RoomTimings } from './preview-hook';
 
 /** How many frames' timings are kept for the readout and the browser tests. */
 const TIMINGS_KEPT = 240;
@@ -20,7 +13,6 @@ export interface PreviewRoom {
   status(): RoomStatus;
   /** What he does from now on; see `HologramPreviewHook.setRoomPhase` for `holdAtSeconds`. */
   setPhase(phase: PreviewPhase, holdAtSeconds?: number): void;
-  setMode(mode: PreviewMode): void;
   setAlphaFactor(share: number): void;
   /** Stands him in the room of `session`, 1.6 m ahead, until the session ends. */
   enter(session: XRSession): Promise<void>;
@@ -43,7 +35,6 @@ export function createPreviewRoom(painter: Painter): PreviewRoom {
   let phase: PreviewPhase = 'greeting';
   let secondsIntoPhase = 0;
   let holdAtSeconds = Number.POSITIVE_INFINITY;
-  let mode: PreviewMode = 'volumetric';
   let alphaFactor: number | null = null;
   let hologram: JarvisHologram3D | null = null;
   let head: RoomPoint | null = null;
@@ -74,7 +65,6 @@ export function createPreviewRoom(painter: Painter): PreviewRoom {
       // Every frame alike in the preview: the emulator's frame times say nothing about a headset's.
       densityBackstop: false,
     });
-    shown.mode = mode;
     if (alphaFactor !== null) shown.alphaFactor = alphaFactor;
     hologram = shown;
     const scene = new Scene();
@@ -142,10 +132,6 @@ export function createPreviewRoom(painter: Painter): PreviewRoom {
       };
     },
     setPhase,
-    setMode(next) {
-      mode = next;
-      if (hologram !== null) hologram.mode = next;
-    },
     setAlphaFactor(share) {
       alphaFactor = share;
       if (hologram !== null) hologram.alphaFactor = share;

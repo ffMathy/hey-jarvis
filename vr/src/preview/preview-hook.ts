@@ -12,21 +12,17 @@ export type PreviewPhase = (typeof PREVIEW_PHASES)[number];
 
 /**
  * Where the camera stands: `front` where he arrived facing, 1.6 m away; `side` the same distance
- * 45° round to his left; `parity` far off in front with a long lens, so perspective all but
- * vanishes and the picture can be compared with the phone's flat one.
+ * 45° round to his left.
  */
-export type PreviewView = 'front' | 'side' | 'parity';
+export type PreviewView = 'front' | 'side';
 
 /** What is behind him: black, as on the phone, or a mid grey standing in for a room in passthrough. */
 export type PreviewBackground = 'black' | 'grey';
-
-export type PreviewMode = 'volumetric' | 'flat';
 
 export interface StillRequest {
   phase: PreviewPhase;
   /** How far into the phase: into the arrival for `arriving` and `greeting`, after he has arrived otherwise. */
   seconds: number;
-  mode: PreviewMode;
   view: PreviewView;
   background: PreviewBackground;
   alphaFactor?: number;
@@ -36,10 +32,6 @@ export interface StillRequest {
 
 /** Luma, 0–255, of the light he gives, measured about his centre in radii of his drawn size. */
 export interface PictureStats {
-  /** Mean luma over 0–0.5R, 0.5–0.94R and 0.94–1.25R. */
-  annuli: [number, number, number];
-  /** The 95th percentile of luma inside 1.25R. */
-  percentile95: number;
   /** Mean luma over a grid of cells across ±1.9R, row by row from the top. */
   grid: number[];
   gridSize: number;

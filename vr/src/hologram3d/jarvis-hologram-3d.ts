@@ -35,14 +35,6 @@ import { createRowGeometry } from './row-geometry';
 import { createSparkleTexture } from './sparkle-texture';
 import { createViewPlaneQuad } from './view-plane-quad';
 
-/**
- * How he is drawn: `volumetric`, the body's strokes in true 3D with CanvasKit drawing only the
- * layers that live in the view plane; or `flat`, the phone's whole drawing on the view-plane quad
- * — the first picture this app drew, kept as the `?flat` debug switch and as the reference the
- * volumetric look is checked against.
- */
-export type HologramMode = 'volumetric' | 'flat';
-
 export interface HologramDiagnostics {
   /** Main-thread time `update` took last frame, CanvasKit included. */
   cpuMilliseconds: number;
@@ -83,7 +75,6 @@ export interface JarvisHologram3D {
   radius: number;
   /** How much of the room behind his light hides, as a share of how bright it is (see ALPHA_FROM_LIGHT). */
   alphaFactor: number;
-  mode: HologramMode;
   readonly diagnostics: HologramDiagnostics;
   /** The frame last drawn, or null before the first: for a debug readout and the browser tests. */
   readonly frame: HologramFrame | null;
@@ -122,7 +113,7 @@ function placement(scratch: PlacementScratch, centre: Vector3, basis: ViewBasis,
  * Jarvis in three dimensions, for a three.js scene in a headset or on a desktop canvas.
  *
  * Per frame on the CPU: the phone's frame clock, `analyseFrame`, and CanvasKit drawing the layers
- * that are flat — the whorl, the core, the rim, the chips — with the body left out (density 0). On
+ * that are flat — the whorl, the core, the rim, the chips — which leave the body out. On
  * the GPU: the halo union once, then per eye the view-plane quad (CanvasKit's picture Screened with
  * the halos) and the body's strokes where they really are. See vr/AGENTS.md.
  */
@@ -163,7 +154,6 @@ export async function createJarvisHologram3D(
   };
   let radius = HOLOGRAM_RADIUS_METRES;
   let alphaFactor = quad.mesh.material.uniforms.alphaFromLight.value;
-  let mode: HologramMode = 'volumetric';
   let front: Vector3Tuple | null = null;
   let view: ViewBasis | null = null;
   let lastFrame: HologramFrame | null = null;
@@ -185,10 +175,9 @@ export async function createJarvisHologram3D(
     mesh.matrixWorldNeedsUpdate = true;
   }
 
-  function drawPicture(frame: HologramFrame, volumetric: boolean) {
+  function drawPicture(frame: HologramFrame) {
     const started = performance.now();
-    // Without the body when it is drawn on the GPU: at density 0 the drawing skips it and nothing else.
-    quad.showPicture(flat.draw({ ...frame, density: volumetric ? 0 : frame.density }));
+    quad.showPicture(flat.draw(frame));
     diagnostics.canvasKitMilliseconds = performance.now() - started;
   }
 
@@ -231,14 +220,8 @@ export async function createJarvisHologram3D(
     placeLocally(quad.mesh, view, radius / SPHERE_FRACTION);
     // The phone fades him as one layer while he arrives and leaves; so does every part here.
     quad.setFade(state.arrival * fade, state.arrival);
-    const volumetric = mode === 'volumetric';
-    drawPicture(frame, volumetric);
-    if (volumetric) {
-      drawBody(state, view, bodyFrame(front), distance, fade);
-    } else {
-      quad.showHalo(null, 0);
-      strokes.mesh.visible = false;
-    }
+    drawPicture(frame);
+    drawBody(state, view, bodyFrame(front), distance, fade);
   }
 
   return {
@@ -285,12 +268,6 @@ export async function createJarvisHologram3D(
       alphaFactor = share;
       quad.mesh.material.uniforms.alphaFromLight.value = share;
       strokes.uniforms.alphaFromLight.value = share;
-    },
-    get mode() {
-      return mode;
-    },
-    set mode(next: HologramMode) {
-      mode = next;
     },
     diagnostics,
     get frame() {

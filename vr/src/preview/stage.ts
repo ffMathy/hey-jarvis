@@ -22,7 +22,6 @@ import type {
   GpuBodyCheckRequest,
   PortCheck,
   PortCheckRequest,
-  PreviewMode,
   PreviewPhase,
   PreviewView,
   StillRequest,
@@ -36,11 +35,6 @@ interface Steppable {
 
 /** The lens: narrower than a headset's, so he fills the preview the way he fills the view in a room. */
 const FIELD_OF_VIEW_DEGREES = 32;
-/**
- * Where the parity camera stands, and how much it frames: far enough that his depth changes the
- * size of what is drawn by under a percent, so the picture is the phone's flat projection.
- */
-const PARITY_DISTANCE_METRES = 40;
 /** The fixed step a still is stepped at: a Quest's lowest frame rate. */
 const STILL_STEP_SECONDS = 1 / 72;
 
@@ -53,7 +47,6 @@ export interface Stage {
   readonly satellites: RoomSatellites;
   readonly phase: PreviewPhase;
   setPhase(phase: PreviewPhase): void;
-  setMode(mode: PreviewMode): void;
   setAlphaFactor(share: number): void;
   setView(view: StageView): void;
   /** Stops the live loop, draws one still from a fresh arrival, and measures it. */
@@ -120,7 +113,6 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
   const drives = createPhaseDrives(() => secondsIntoPhase);
   let running = false;
   let lastTime: number | null = null;
-  let mode: PreviewMode = 'volumetric';
   let alphaFactor = ALPHA_FROM_LIGHT;
 
   function resize() {
@@ -132,14 +124,11 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
   }
 
   function frameFrom(view: PreviewView, eyeOffset: number) {
-    const parity = view === 'parity';
-    const distance = parity ? PARITY_DISTANCE_METRES : DISTANCE_AHEAD_METRES;
+    const distance = DISTANCE_AHEAD_METRES;
     const angle = view === 'side' ? Math.PI / 4 : 0;
-    camera.fov = parity
-      ? (2 * Math.atan((0.5 * hologram.radius) / SPHERE_FRACTION / distance) * 180) / Math.PI
-      : FIELD_OF_VIEW_DEGREES;
-    camera.near = parity ? distance / 2 : 0.05;
-    camera.far = parity ? distance * 2 : 100;
+    camera.fov = FIELD_OF_VIEW_DEGREES;
+    camera.near = 0.05;
+    camera.far = 100;
     camera.position.set(Math.sin(angle) * distance, 0, Math.cos(angle) * distance);
     camera.up.set(0, 1, 0);
     camera.lookAt(0, 0, 0);
@@ -223,7 +212,6 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
     running = false;
     hologram.dispose();
     hologram = await newHologram(renderer, painter);
-    hologram.mode = request.mode;
     hologram.alphaFactor = request.alphaFactor ?? ALPHA_FROM_LIGHT;
     scene.add(hologram.object);
     resize();
@@ -323,10 +311,6 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
       return phase;
     },
     setPhase: beginPhase,
-    setMode(next) {
-      mode = next;
-      hologram.mode = next;
-    },
     setAlphaFactor(share) {
       alphaFactor = share;
       hologram.alphaFactor = share;
@@ -351,7 +335,6 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
     },
     checkGpuBody: checkBody,
     resume() {
-      hologram.mode = mode;
       hologram.alphaFactor = alphaFactor;
       frameFrom('front', 0);
       beginPhase(phase);

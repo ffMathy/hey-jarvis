@@ -7,8 +7,8 @@ export interface PictureGeometry {
   radiusPixels: number;
 }
 
-/** The annuli the look is measured over, in radii: the core, the body, and the rim with what leaves it. */
-export const ANNULUS_EDGES = [0, 0.5, 0.94, 1.25] as const;
+/** How far out his disc is taken to reach, in radii: the rim and what leaves it. */
+const DISC_REACH = 1.25;
 
 /** Cells across the grid, and how far out it reaches, in radii. */
 export const GRID_SIZE = 24;
@@ -16,20 +16,6 @@ export const GRID_REACH = 1.9;
 
 function luma(pixels: Uint8Array, index: number) {
   return 0.2126 * pixels[index] + 0.7152 * pixels[index + 1] + 0.0722 * pixels[index + 2];
-}
-
-function percentile(values: number[], share: number) {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((first, second) => first - second);
-  return sorted[Math.min(sorted.length - 1, Math.floor(share * sorted.length))];
-}
-
-/** Which annulus a distance in radii falls in, or -1 beyond the last. */
-function annulusOf(reach: number) {
-  for (let annulus = 0; annulus < ANNULUS_EDGES.length - 1; annulus++) {
-    if (reach < ANNULUS_EDGES[annulus + 1]) return annulus;
-  }
-  return -1;
 }
 
 /** Which grid cell a point in radii falls in, or -1 outside the grid. */
@@ -57,13 +43,22 @@ class Means {
   }
 }
 
+/** How many of a picture's pixels are on his disc, and how many of those are lit. */
+interface DiscCount {
+  inside: number;
+  lit: number;
+}
+
+/** Counts a pixel `across` and `down` radii from his centre toward `disc`, if it is on it. */
+function countOnDisc(disc: DiscCount, value: number, across: number, down: number) {
+  if (Math.hypot(across, down) >= DISC_REACH) return;
+  disc.inside += 1;
+  if (value > 0) disc.lit += 1;
+}
+
 /**
- * How bright he is where: mean luma per annulus, the 95th percentile inside the rim, a coarse
- * grid, and how much of the disc is lit at all.
- *
- * What the browser tests hold the volumetric look to: the phone's flat drawing measured the same
- * way. A look that washed out into a flat orange coin — halos stacked instead of unioned — lifts
- * the body's annulus and the percentile far past the phone's, and that is what this catches.
+ * How bright he is where: a coarse grid of mean luma, which the browser tests tell the phases
+ * apart by, and how much of the disc is lit at all.
  *
  * `pixels` are RGBA rows of `width`, from the bottom row up when `bottomUp`, as WebGL reads them.
  */
@@ -74,31 +69,23 @@ export function pictureStats(
   geometry: PictureGeometry,
   bottomUp: boolean,
 ): PictureStats {
-  const annuli = new Means(ANNULUS_EDGES.length - 1);
   const grid = new Means(GRID_SIZE * GRID_SIZE);
-  const inside: number[] = [];
+  const disc: DiscCount = { inside: 0, lit: 0 };
   const { centreX, centreY, radiusPixels } = geometry;
   for (let row = 0; row < height; row++) {
     const down = ((bottomUp ? height - 1 - row : row) + 0.5 - centreY) / radiusPixels;
     for (let x = 0; x < width; x++) {
       const value = luma(pixels, (row * width + x) * 4);
       const across = (x + 0.5 - centreX) / radiusPixels;
-      const annulus = annulusOf(Math.hypot(across, down));
-      if (annulus >= 0) {
-        annuli.add(annulus, value);
-        inside.push(value);
-      }
+      countOnDisc(disc, value, across, down);
       const cell = cellOf(across, down);
       if (cell >= 0) grid.add(cell, value);
     }
   }
-  const [core, body, rim] = annuli.means();
   return {
-    annuli: [core, body, rim],
-    percentile95: percentile(inside, 0.95),
     grid: grid.means(),
     gridSize: GRID_SIZE,
-    litShare: inside.length > 0 ? inside.filter((value) => value > 0).length / inside.length : 0,
+    litShare: disc.inside > 0 ? disc.lit / disc.inside : 0,
     radiusPixels,
   };
 }

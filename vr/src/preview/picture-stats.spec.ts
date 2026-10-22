@@ -21,25 +21,20 @@ function rings(inner: number, body: number, rim: number): Uint8Array {
 const GEOMETRY = { centreX: CENTRE, centreY: CENTRE, radiusPixels: RADIUS };
 
 describe('the picture’s statistics', () => {
-  it('take the mean luma of each annulus about his centre', () => {
+  it('say how much of the disc, out to 1.25R, is lit at all', () => {
     const stats = pictureStats(rings(200, 100, 40), SIZE, SIZE, GEOMETRY, false);
-    expect(stats.annuli[0]).toBeCloseTo(200, 6);
-    expect(stats.annuli[1]).toBeCloseTo(100, 6);
-    expect(stats.annuli[2]).toBeCloseTo(40, 6);
     expect(stats.litShare).toBe(1);
     expect(stats.radiusPixels).toBe(RADIUS);
+    // Dark from half a radius out: the half radius is 0.5² / 1.25² of the disc's area, about a
+    // sixth, give or take the pixels on the edges.
+    expect(pictureStats(rings(200, 0, 0), SIZE, SIZE, GEOMETRY, false).litShare).toBeCloseTo(0.16, 1);
   });
 
   it('weigh red, green and blue as luma does', () => {
     const pixels = new Uint8Array(SIZE * SIZE * 4);
     for (let pixel = 0; pixel < SIZE * SIZE; pixel++) pixels.set([255, 0, 0, 255], pixel * 4);
-    expect(pictureStats(pixels, SIZE, SIZE, GEOMETRY, false).annuli[0]).toBeCloseTo(0.2126 * 255, 6);
-  });
-
-  it('find the 95th percentile of what is inside the rim', () => {
-    // Almost all of the disc is the body's 100; only the core's quarter-area is brighter.
-    expect(pictureStats(rings(200, 100, 100), SIZE, SIZE, GEOMETRY, false).percentile95).toBe(200);
-    expect(pictureStats(rings(100, 100, 100), SIZE, SIZE, GEOMETRY, false).percentile95).toBe(100);
+    const middle = (GRID_SIZE / 2) * GRID_SIZE + GRID_SIZE / 2;
+    expect(pictureStats(pixels, SIZE, SIZE, GEOMETRY, false).grid[middle]).toBeCloseTo(0.2126 * 255, 6);
   });
 
   it('read WebGL’s rows from the bottom up the right way round', () => {
