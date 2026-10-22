@@ -1,4 +1,4 @@
-import { WATCH_PACE } from 'hologram';
+import { type BodyLayer, WATCH_PACE } from 'hologram';
 import { useSharedValue } from 'react-native-reanimated';
 
 /**
@@ -31,8 +31,10 @@ export function useWatchDensity() {
   const buildMilliseconds = useSharedValue(0);
   const particleShare = useSharedValue(0);
   const provenShare = useSharedValue(0);
+  // Which renderer draws his body, for the readout to say: see `body-layer.ts` in the hologram.
+  const bodyLayer = useSharedValue<BodyLayer>('pending');
 
   // The watch's pace — sixteen milliseconds to build a picture, and thirty frames a second as the
   // backstop — handed to the drawing with the rest.
-  return { frameRate, buildMilliseconds, particleShare, provenShare, pace: WATCH_PACE };
+  return { frameRate, buildMilliseconds, particleShare, provenShare, bodyLayer, pace: WATCH_PACE };
 }
