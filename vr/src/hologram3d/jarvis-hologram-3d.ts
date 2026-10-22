@@ -21,6 +21,7 @@ import {
   writeFragmentUniforms,
 } from 'hologram/gpu';
 import { Group, Matrix4, type Object3D, Vector3, type WebGLRenderer } from 'three';
+import type { PoseLike } from '../xr/ray';
 import { createBodyStrokes } from './body-strokes';
 import { loadPainter, type Painter } from './canvaskit';
 import { createDensityBackstop } from './density-backstop';
@@ -28,7 +29,7 @@ import { HOLOGRAM_RADIUS_METRES } from './dimensions';
 import { createFlatHologram, DRAWING_SIZE_PIXELS, type DrawingSurfaceKind } from './flat-hologram';
 import { createFrameClock, type HologramDrive } from './frame-clock';
 import { createHaloUnion } from './halo-union';
-import { closeRangeFade, type PoseLike } from './head';
+import { closeRangeFade } from './head';
 import { setLayerFade } from './layer-blending';
 import { createRowGeometry } from './row-geometry';
 import { createSparkleTexture } from './sparkle-texture';

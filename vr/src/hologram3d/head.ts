@@ -1,17 +1,8 @@
-import type { Vector3Like } from 'hologram/gpu';
-
 /**
- * The head, as the room hands it to the hologram: its pose, and how near it may come to him.
+ * How near the head may come to him.
  *
  * Headset-only, so it is here rather than with the view-basis maths in `hologram/gpu`.
  */
-
-/** A pose in the session's reference space. */
-export interface PoseLike {
-  position: Vector3Like;
-  /** Unit quaternion, x y z w. */
-  orientation: { x: number; y: number; z: number; w: number };
-}
 
 /**
  * How much of him to show when the head is `distance` metres from his centre and he is `radius`
