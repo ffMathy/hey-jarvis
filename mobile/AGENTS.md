@@ -176,10 +176,37 @@ Browser, in sample mode        getUserMedia ─ AnalyserNode
        └─ hologram/src/voice-levels.ts perceivedLevel + foldSpectrum → 24 log-spaced bands (targets)
             └─ hologram/src/react/hologram-view.tsx  UI thread, every frame: easeLevel/easeBands toward the
                  targets, and advanceVoiceActivity on the *raw* reading → agitation and chip bursts
-                 └─ hologram/src/hologram-drawing.ts   drawHologram(canvas, size, frame, scene, resources) → Skia Picture
+                 ├─ hologram/src/hologram-drawing.ts   drawHologram(canvas, size, frame, scene, resources) → Skia Picture
+                 └─ hologram/src/gpu/gpu-body.ts       drawGpuBody(gl, body, frame) → expo-gl's canvas over it, Screened
 ```
 
 Every source hands the hologram the same two readings — a volume, and 1024 bytes of spectrum across 100–8000 Hz on Web Audio's decibel scale — so the drawing never knows which it is listening to. **Every source also computes them the same way**, with `hologram/src/voice-analysis.ts`: the volume is the RMS of the last 40 ms on both platforms, so `QUIETEST_SPEECH` means one thing everywhere and `speech-floor.web.ts` is the phone's number.
+
+### His body on the GPU, and tilting the phone to look round him
+
+His body — the thousands of fragments and their halos — is drawn on the GPU wherever the phone can:
+Android 10 (API 29) or later, with expo-gl in the build, through `hologram/gpu`, on a canvas
+Screened over Skia's picture of the rest of him. That is what lets him turn: **tilting the phone
+looks round him**, up to 25° from a rest pose that follows how it is held, so a phone held still
+shows him straight on, and he turns back to face you while you talk to him (`tilt.ts` in
+`hologram`). Both screens pass `tilt`, in the sheet and across the whole screen; sample mode's
+readout ends with `gpu` or `2d`.
+
+Below Android 10 the phone keeps Skia's body, since React Native cannot blend the two canvases
+there, and so does a phone whose GPU does not make the context within 800 ms or loses it; "His body
+on the GPU" in [`hologram/AGENTS.md`](../hologram/AGENTS.md) has every case. **To force Skia's body**,
+bundle with `EXPO_PUBLIC_HOLOGRAM_BODY=skia` (read in `jarvis-hologram.tsx`, at bundle time), or open
+the web build with `?flat`.
+
+In the sheet one thing changes: with the GPU body Skia's canvas is a `TextureView` whatever `opaque`
+says, because a `SurfaceView` sits under the window, where nothing can be blended onto it. The view
+behind the two canvases paints `SHEET_INK` instead, and the two are Screened onto it as one group.
+The sheet still waits for `settled` before he is drawn.
+
+None of it has been seen on a phone yet: whether expo-gl's worklet support draws from the UI thread
+with this Reanimated, whether Android composes the two canvases in the same frame, what the GPU
+costs, and how the tilt feels — its direction, gain and dead band. The web build in Chromium is
+where it has been looked at.
 
 ### Why neither platform asks the SDK for the volume
 
@@ -667,7 +694,7 @@ Versions are pinned exactly, and every one of them has to clear the repository's
 
 It deliberately does **not** pin `react`, `react-native`, `livekit-client` and the LiveKit packages to one copy each, which is the other half of that advice. Bun's store is keyed by version and dependency closure, so it can hold a package twice — 19 of them do here — but none of those five, and bundling with and without the resolver gives the same hash and the same module count. The comment in the file says what the symptom would be if a bump ever splits one of them, and asks you to measure before adding it back.
 
-The hologram adds three native packages, each at the version Expo 57 pins in `bundledNativeModules.json`: `@shopify/react-native-skia` 2.6.2, `react-native-reanimated` 4.5.1 and `react-native-worklets` 0.10.1. Two consequences that are easy to trip over:
+The hologram adds four native packages, each at the version Expo 57 pins in `bundledNativeModules.json`: `@shopify/react-native-skia` 2.6.2, `react-native-reanimated` 4.5.1, `react-native-worklets` 0.10.1 and `expo-gl` 57.0.2. expo-gl draws his body on the GPU; its Android half is Expo's prebuilt library, about 0.8 MB of arm64 code, and the view loads it only once `requireOptionalNativeModule('ExpoGL')` finds it, so a development client built before it was added keeps Skia's body rather than failing to load. Two consequences that are easy to trip over:
 
 - **`turbo initialize` has to have run.** Skia gets its prebuilt native libraries, and `canvaskit.wasm` for the web, from its own postinstall — which never runs here. Two scripts do those copies instead (nothing is downloaded), and `build:apk` and `e2e` depend on both: the workspace's `.scripts/install-skia.sh` puts the native libraries in place, and this package's `.scripts/initialize.sh` copies `canvaskit.wasm` into `public/`. Without them an Android build fails in CMake and the web hologram cannot load. The native half is a single root task (`//#install-skia`) rather than a step of each app because the phone and the watch resolve the *same* copy of `@shopify/react-native-skia` and it rewrites that copy's `libs/` in place — running it in both apps at once corrupted it, which is what broke the release `deploy` job twice; see the header of `.scripts/install-skia.sh`.
 - **`@babel/core` is pinned to 7.29.7 as a dev dependency.** Worklets' Babel plugin compiles each worklet by calling `@babel/core` itself, and declares it as a peer with any version. Left alone, bun satisfied that peer with the Babel 8 that `mastra`'s deployer brings into the workspace, and the release bundle failed with `Requires Babel "^7.0.0-0", but was loaded with "8.0.1"`. The pin gives this package the Babel its Expo preset uses; `mastra` keeps its own 8.
@@ -686,7 +713,7 @@ Three things do differ, and each is a pair of files Metro picks between rather t
 
 `platform-contracts.ts` holds the types both halves implement, so neither can drift — nothing else in the app imports both.
 
-The hologram is the fourth pair, and a different kind: Skia's web build is WebAssembly that has to be fetched before anything Skia-backed can even be imported. `jarvis-hologram.web.tsx` loads the view lazily through `WithSkiaWeb`, holding its space empty meanwhile, and CanvasKit is served from the site root — `turbo initialize` copies `canvaskit.wasm` into `public/`, which the web export publishes — so a browser never reaches for a CDN.
+The hologram is the fourth pair, and a different kind: Skia's web build is WebAssembly that has to be fetched before anything Skia-backed can even be imported. `jarvis-hologram.web.tsx` loads the view lazily through `WithSkiaWeb`, holding its space empty meanwhile, and CanvasKit is served from the site root — `turbo initialize` copies `canvaskit.wasm` into `public/`, which the web export publishes — so a browser never reaches for a CDN. His body is drawn with WebGL 2 where the browser has it, on a second canvas Screened over CanvasKit's with CSS `mix-blend-mode`, and `?flat` keeps it in CanvasKit.
 
 What does **not** work on web is the assistant role, and it never will: it is Android's. The assistant card says that outright instead of offering a setup step that leads nowhere.
 
@@ -709,6 +736,8 @@ Tests must not import React Native or any Expo native module — there is no run
 The boundary is the ElevenLabs session, which needs a real API key and real quota. Everything up to it is exercised for real: the first-run tour (its two steps in a browser, its links, Back, and the side trip to sample mode and back), settings validation, persistence across a reload, the hologram drawing and moving with CanvasKit loaded from the export's own `canvaskit.wasm`, and the token request to ElevenLabs — its `xi-api-key` header, agent ID and participant name, and that the key never appears in the URL — along with how a rejected key and an unknown agent are explained. The typed field is covered on both of its paths: that a refused microphone still opens a conversation — dialled by asking for a **signed URL** rather than a token — and that the field stops saying "Connecting…" once nothing is; and that a microphone that *works* gets the same field beside it, over a token and not a signed URL, since a typed line there is answered out loud and quietly turning it into a text-only session would be the one way to lose that. A `start` that never opened a session at all gets no field, which is the phone's refused microphone by another route. The greeting is covered by counting `HTMLMediaElement.play()` in the page — the player fetches the recording at mount whether or not it plays, so a request proves nothing: it plays once from the export's own assets beside the token request, plays without being refused in a tab nobody has clicked — with the microphone held for it let go afterwards — and does not play in the text-only session, whose `conversation_initiation_client_data` must carry no `first_message`. The override on a voice session travels over LiveKit's data channel, which these tests close, so it is pinned by `greeting-handover.spec.ts` in `hologram` instead. Both URLs are intercepted with `page.route`; every other non-localhost request is aborted, and non-local WebSockets are closed, so a test can never dial out. Playwright answers CORS preflights for routed requests itself, so whether ElevenLabs' real CORS policy admits the web build is **not** covered — the test checks instead that the request carries no header besides `xi-api-key`, which is all a preflight would have to allow.
 
 **The camera is covered end to end in the text-only session**, whose socket the suite plays ElevenLabs' side of (`listenAsTheAgent`) — its handshake gives the conversation the id `conv_1` — with the Jarvis server answered by `page.route`. Every conversation with a camera in it first saves a Jarvis server on the settings screen (`saveJarvisServer`) while the conversation the tour landed on is still connected, the way sir would, and carries on in the conversation that replaces it. With a server: the page tells the agent once that there is a camera button here, and shows it; a tap opens the file chooser, tells the agent the camera is open, `POST`s `{"conversationId": "conv_1"}` to `<server>/api/photos/slots`, `PUT`s the picked image as a JPEG to `<server><uploadPath>` with no `Authorization` header, and then takes sir's turn naming the photo, "(photo photo7)"; backing out of the chooser sends `user_activity` in the tap, while it is open, and then the note that the camera was closed, with no upload and no turn; a slot refused with a `403` in the server's envelope takes the turn saying the photo did not reach him, with the phone's reason; a picked file the browser cannot draw takes the turn saying it could not be read as a photo, never the note that the camera was closed; and a conversation that ends while the chooser is open — the settings saved, and a new conversation opened, before the photo is picked — still has the photo uploaded to the slot opened at the tap, while the new conversation hears neither a turn naming it nor the note that the camera closed. Without a server, or once it is cleared: no note and no button. The settings screen refuses an `http` address that is not `localhost`, a path and a user name, and saves nothing else on the screen with them; keeps a bare host as its `https` origin across a reload; and leaves an address it could not read alone when the rest of the screen is saved. What it cannot reach is the phone's camera app, the assistant's window stepping aside for it, and whether the server's real CORS admits the web build's origin, since Playwright answers routed preflights itself — see below.
+
+**The hologram is two canvases where the browser has WebGL 2**: Skia's, under the test id `hologram-flat`, and the GPU body's, `hologram-body`. Chromium draws the GPU body on SwiftShader there, so sample mode's readout ends with `gpu`, and a locator for "the canvas" inside `hologram` would find two; look for the one by its id.
 
 Every test that needs a configured app walks the tour first, through the `walkToCredentials` helper: the app no longer opens on a form, so a spec that types into one without pressing Next is a spec that fails on a missing field rather than on what it was checking.
 

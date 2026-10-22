@@ -616,10 +616,12 @@ export function ConversationScreen({
               particleShare={particleShare}
               provenShare={provenShare}
               startingShare={startingShare}
-              // Solid in the sheet, as sample mode's is: an opaque canvas is Skia's fast path, and
-              // it has to paint the sheet's own colour or it is a black square on the sheet.
+              // Solid in the sheet, as sample mode's is: an opaque canvas is Skia's fast path for its
+              // flat body, and the sheet's own colour has to be painted behind him either way or he
+              // is a black square on the sheet.
               opaque={canvas.opaque}
               background={canvas.background}
+              tilt
             />
           ) : null}
         </View>

@@ -1,4 +1,4 @@
-import { startFromRemembered } from 'hologram';
+import { type BodyLayer, startFromRemembered } from 'hologram';
 import { useEffect, useState } from 'react';
 import { useSharedValue } from 'react-native-reanimated';
 import { readProvenSparks, rememberProvenSparks } from './spark-memory';
@@ -28,6 +28,8 @@ export function useSparkDensity() {
   // rebuilt one and carry the count across the second.
   const particleShare = useSharedValue(0);
   const provenShare = useSharedValue(0);
+  // Which renderer draws his body, for the readout to say: see `body-layer.ts` in the hologram.
+  const bodyLayer = useSharedValue<BodyLayer>('pending');
   const [startingShare, setStartingShare] = useState<number | undefined>(undefined);
 
   // Half of what this phone was last seen holding, so the climb starts somewhere it is already
@@ -69,5 +71,5 @@ export function useSparkDensity() {
     return () => clearInterval(timer);
   }, [provenShare]);
 
-  return { frameRate, buildMilliseconds, particleShare, provenShare, startingShare };
+  return { frameRate, buildMilliseconds, particleShare, provenShare, bodyLayer, startingShare };
 }
