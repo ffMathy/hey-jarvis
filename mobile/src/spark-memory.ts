@@ -4,7 +4,13 @@ import { readStoredValue, writeStoredValue } from './key-value-store';
 const STORAGE_KEY = 'jarvis.sparks.proven';
 
 /**
- * The most of Jarvis this phone has ever been seen drawing at a full frame rate.
+ * The most of Jarvis this phone has ever been seen drawing at a full frame rate, with his body
+ * drawn by Skia.
+ *
+ * Skia's alone, because it is only ever read back to start Skia's body: the GPU's body starts at a
+ * share of its own, and what it holds says nothing about what Skia's can. The hologram writes it
+ * only while Skia draws the body (`keepsProvenShare`), so on a phone that draws on the GPU this is
+ * what a fallback to Skia — a context late or lost — starts from.
  *
  * Written down so that the next summoning does not have to start from nothing. The loop that
  * measures it starts sparse and climbs — see `density-control.ts` — which takes a couple of

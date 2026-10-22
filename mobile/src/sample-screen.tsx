@@ -71,7 +71,7 @@ export function SampleScreen({ inAssistantWindow = false, showing, onLeave }: Sa
   // and no `SurfaceView`, and he simply fills the middle of the window.
   const hologramSize = sampleHologramSize(width, height);
   const going = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const { frameRate, buildMilliseconds, particleShare, provenShare, startingShare } = useSparkDensity();
+  const { frameRate, buildMilliseconds, particleShare, provenShare, bodyLayer, startingShare } = useSparkDensity();
 
   /**
    * Starts the way out, and finishes it once Jarvis has gone.
@@ -186,8 +186,10 @@ export function SampleScreen({ inAssistantWindow = false, showing, onLeave }: Sa
             particleShare={particleShare}
             provenShare={provenShare}
             startingShare={startingShare}
+            bodyLayer={bodyLayer}
             opaque={SAMPLE_CANVAS.opaque}
             background={SAMPLE_CANVAS.background}
+            tilt
           />
         ) : null}
       </Pressable>
@@ -196,6 +198,7 @@ export function SampleScreen({ inAssistantWindow = false, showing, onLeave }: Sa
         frameRate={frameRate}
         buildMilliseconds={buildMilliseconds}
         particleShare={particleShare}
+        bodyLayer={bodyLayer}
         particles={PARTICLE_COUNT}
         style={styles.frameRate}
       />

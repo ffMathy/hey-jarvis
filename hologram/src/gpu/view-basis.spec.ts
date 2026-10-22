@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { FRONT_VIEW, type Vector3Tuple, type ViewBasis } from './fragment-3d';
-import { bodyFrame, closeRangeFade, frontTowards, inFrame, viewBasisTowards } from './view-basis';
+import { bodyFrame, frontTowards, inFrame, viewBasisTowards } from './view-basis';
 
 function dot(first: Vector3Tuple, second: Vector3Tuple) {
   return first[0] * second[0] + first[1] * second[1] + first[2] * second[2];
@@ -84,24 +84,5 @@ describe('the view plane', () => {
     expectRightHanded(inBody);
     expectVector(inBody.front, [-1, 0, 0]);
     expectVector(inFrame(view, bodyFrame([0, 0, 1])).front, [0, 0, 1]);
-  });
-});
-
-describe('the close-range fade', () => {
-  it('shows him in full from two and a half radii out and not at all inside one and a half', () => {
-    expect(closeRangeFade(1.6, 0.22)).toBe(1);
-    expect(closeRangeFade(2.5 * 0.22, 0.22)).toBeCloseTo(1, 12);
-    expect(closeRangeFade(1.5 * 0.22, 0.22)).toBe(0);
-    expect(closeRangeFade(0, 0.22)).toBe(0);
-  });
-
-  it('fades smoothly and only one way between', () => {
-    let previous = 0;
-    for (let share = 1.5; share <= 2.5; share += 0.05) {
-      const fade = closeRangeFade(share * 0.22, 0.22);
-      expect(fade).toBeGreaterThanOrEqual(previous);
-      previous = fade;
-    }
-    expect(closeRangeFade(2 * 0.22, 0.22)).toBeCloseTo(0.5, 9);
   });
 });

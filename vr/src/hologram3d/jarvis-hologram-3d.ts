@@ -6,29 +6,33 @@ import {
   SCENE_SEED,
   SPHERE_FRACTION,
 } from 'hologram';
+import {
+  bodyFrame,
+  buildHologramRows,
+  createFragmentUniforms,
+  frontTowards,
+  type HaloUnionPlacement,
+  haloUnionPlacement,
+  inFrame,
+  type Vector3Like,
+  type Vector3Tuple,
+  type ViewBasis,
+  viewBasisTowards,
+  writeFragmentUniforms,
+} from 'hologram/gpu';
 import { Group, Matrix4, type Object3D, Vector3, type WebGLRenderer } from 'three';
-import { buildHologramRows } from './body-rows';
+import type { PoseLike } from '../xr/ray';
 import { createBodyStrokes } from './body-strokes';
 import { loadPainter, type Painter } from './canvaskit';
 import { createDensityBackstop } from './density-backstop';
 import { HOLOGRAM_RADIUS_METRES } from './dimensions';
 import { createFlatHologram, DRAWING_SIZE_PIXELS, type DrawingSurfaceKind } from './flat-hologram';
-import type { Vector3Tuple, ViewBasis } from './fragment-3d';
-import { createFragmentUniforms, writeFragmentUniforms } from './fragment-glsl';
 import { createFrameClock, type HologramDrive } from './frame-clock';
-import { createHaloUnion, HALO_TEXELS } from './halo-union';
+import { createHaloUnion } from './halo-union';
+import { closeRangeFade } from './head';
 import { setLayerFade } from './layer-blending';
-import { createRowAttributes } from './row-geometry';
+import { createRowGeometry } from './row-geometry';
 import { createSparkleTexture } from './sparkle-texture';
-import {
-  bodyFrame,
-  closeRangeFade,
-  frontTowards,
-  inFrame,
-  type PoseLike,
-  type Vector3Like,
-  viewBasisTowards,
-} from './view-basis';
 import { createViewPlaneQuad } from './view-plane-quad';
 
 /**
@@ -56,14 +60,21 @@ export interface JarvisHologram3D {
   /**
    * Restarts the arrival vortex (time 0, fully present) and faces him to the viewer: every summon.
    * His front faces `towards` when it is given, and wherever the centre eye is on the next
-   * `update` otherwise.
+   * `update` otherwise. The second after it is not judged for dropped frames (`settle`).
    */
   arrive(towards?: Vector3Like): void;
   /**
-   * Once per XR frame, before `renderer.render`: moves his clock on, then draws what lives off the
-   * screen — CanvasKit's layers and the halo union — against this frame's centre eye.
+   * Tells the dropped-frame backstop that the next second's frames are not his to answer for: the
+   * room calls it for a new display rate, on any change of the session's visibility and on every
+   * frame while it is blurred (see `density-backstop.ts`).
    */
-  update(deltaSeconds: number, drive: HologramDrive, centreEye: PoseLike): void;
+  settle(): void;
+  /**
+   * Once per XR frame, before `renderer.render`: moves his clock on, then draws what lives off the
+   * screen — CanvasKit's layers and the halo union — against this frame's centre eye. `displayRate`
+   * is the display's own rate, when the headset says it: what the backstop judges a frame on time by.
+   */
+  update(deltaSeconds: number, drive: HologramDrive, centreEye: PoseLike, displayRate?: number): void;
   /** Moves the clock on without drawing anything: for a preview that jumps to a moment. */
   advance(deltaSeconds: number, drive: HologramDrive): void;
   /** 0–1: 0 once he has fully gone after `leaving`. */
@@ -122,11 +133,13 @@ export async function createJarvisHologram3D(
   const painter = await (options.painter ?? loadPainter(new URL('vendor/', options.assetBase)));
   const scene = createHologramScene(SCENE_SEED);
   const flat = createFlatHologram(painter, options.drawingSize ?? DRAWING_SIZE_PIXELS, scene);
-  const attributes = createRowAttributes(buildHologramRows(scene));
+  // One geometry for both passes that read the rows, so the GPU holds the rows once.
+  const rowGeometry = createRowGeometry(buildHologramRows(scene));
   const fragmentUniforms = createFragmentUniforms();
   const sparkle = createSparkleTexture(scene.textureSeed);
-  const strokes = createBodyStrokes(attributes, fragmentUniforms, sparkle);
-  const halo = createHaloUnion(attributes, fragmentUniforms);
+  const strokes = createBodyStrokes(rowGeometry, fragmentUniforms, sparkle);
+  const halo = createHaloUnion(rowGeometry, fragmentUniforms);
+  const haloPlacement: HaloUnionPlacement = { texelUnits: 0, radiusFraction: 0 };
   const quad = createViewPlaneQuad(1);
   const clock = createFrameClock();
   const backstop = options.densityBackstop === false ? null : createDensityBackstop();
@@ -188,8 +201,9 @@ export async function createJarvisHologram3D(
       diagnostics.density,
       distance / drawnRadius,
     );
-    halo.uniforms.radiusFraction.value = state.radius;
-    halo.uniforms.texelUnits.value = 1 / (state.radius * HALO_TEXELS);
+    const placement = haloUnionPlacement(state.radius, haloPlacement);
+    halo.uniforms.radiusFraction.value = placement.radiusFraction;
+    halo.uniforms.texelUnits.value = placement.texelUnits;
     halo.render(renderer);
     quad.showHalo(halo.texture, state.glowGain);
     strokes.uniforms.unitMetres.value = drawnRadius;
@@ -231,6 +245,9 @@ export async function createJarvisHologram3D(
     object,
     arrive(towards) {
       clock.arrive();
+      // A summon is the room's busiest second — first-use compiles, placement, the greeting and the
+      // call starting — and none of it is the body being too much for the GPU.
+      backstop?.settle();
       if (towards === undefined) {
         // Faced to wherever the viewer is when he is next drawn.
         front = null;
@@ -239,10 +256,13 @@ export async function createJarvisHologram3D(
         front = frontTowards(centre.setFromMatrixPosition(object.matrixWorld), towards);
       }
     },
-    update(deltaSeconds, drive, centreEye) {
+    settle() {
+      backstop?.settle();
+    },
+    update(deltaSeconds, drive, centreEye, displayRate) {
       const started = performance.now();
       clock.advance(deltaSeconds, drive);
-      if (backstop !== null) diagnostics.density = backstop.observe(deltaSeconds);
+      if (backstop !== null) diagnostics.density = backstop.observe(deltaSeconds, displayRate);
       draw(centreEye);
       diagnostics.cpuMilliseconds = performance.now() - started;
     },
@@ -281,6 +301,7 @@ export async function createJarvisHologram3D(
       quad.dispose();
       strokes.dispose();
       halo.dispose();
+      rowGeometry.dispose();
       sparkle.dispose();
       flat.dispose();
     },

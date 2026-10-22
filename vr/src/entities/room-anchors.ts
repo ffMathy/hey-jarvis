@@ -353,6 +353,36 @@ export function createRoomAnchors<Space, Transform>(
     return Promise.all(deletions).then((released) => released.flat());
   }
 
+  /** Asks the headset for the anchor behind `uuid`, a handle it lists, and follows `entry` through its answer. */
+  function requestRestore(
+    uuid: string,
+    entry: StoredAnchor<Space>,
+    restorer: (uuid: string) => Promise<PersistentAnchorLike<Space>>,
+  ) {
+    entry.state = 'restoring';
+    let request: Promise<PersistentAnchorLike<Space>>;
+    try {
+      request = restorer.call(session, uuid);
+    } catch {
+      entry.state = 'failed';
+      return;
+    }
+    request.then(
+      (anchor) => {
+        // Released while it was on its way: the handle is already given back.
+        if (stored.get(uuid) !== entry) {
+          anchor.delete();
+          return;
+        }
+        entry.anchor = anchor;
+        entry.state = 'unlocated';
+      },
+      () => {
+        entry.state = 'failed';
+      },
+    );
+  }
+
   function readPoses(frame: RoomAnchorFrame<Space, Transform>, space: Space) {
     for (const entry of stored.values()) {
       if (entry.anchor === undefined || (entry.state !== 'located' && entry.state !== 'unlocated')) continue;
@@ -436,28 +466,7 @@ export function createRoomAnchors<Space, Transform>(
           missing.push(uuid);
           continue;
         }
-        entry.state = 'restoring';
-        let request: Promise<PersistentAnchorLike<Space>>;
-        try {
-          request = restorer.call(session, uuid);
-        } catch {
-          entry.state = 'failed';
-          continue;
-        }
-        request.then(
-          (anchor) => {
-            // Released while it was on its way: the handle is already given back.
-            if (stored.get(uuid) !== entry) {
-              anchor.delete();
-              return;
-            }
-            entry.anchor = anchor;
-            entry.state = 'unlocated';
-          },
-          () => {
-            entry.state = 'failed';
-          },
-        );
+        requestRestore(uuid, entry, restorer);
       }
       return missing;
     },

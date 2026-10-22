@@ -27,6 +27,7 @@ watch/
     ├── app.tsx                   # two states: a conversation, or waiting for the phone
     ├── conversation-screen.tsx   # the sphere, and a live ElevenLabs session behind it
     ├── waiting-for-the-phone.tsx # sample mode while it waits, and one line saying what is missing
+    ├── jarvis-hologram.tsx       # the hologram, with the switch that keeps his body in Skia
     ├── phone-settings.ts         # the credentials, and the asking that gets them
     ├── microphone-permission.ts  # PermissionsAndroid
     ├── watch-density.ts          # the watch's pace, and letting the drawing find its own count (the ceiling is `WATCH_PARTICLE_COUNT`, in `hologram`)
@@ -123,6 +124,27 @@ Two things differ from the phone, both deliberate:
 
 `@livekit/react-native-expo-plugin` is configured with `audioType: 'communication'`, which is not a nicety: without it the native audio session is set up for media playback, the microphone routes to the speaker, and Jarvis hears himself back. On a watch the speaker and the microphone are centimetres apart, so that is not a subtle failure.
 
+## His body on the GPU
+
+The watch draws his body on the GPU, as the phone does: `hologram/gpu`'s renderer through expo-gl, on a
+canvas Screened over Skia's picture of the rest of him (see "His body on the GPU" in
+[`hologram/AGENTS.md`](../hologram/AGENTS.md)). It needs Android 10, which every watch this app installs
+on has (its `minSdk` is 30), and a GPU that gives OpenGL ES 3; one that gives ES 2, or does not make the
+context within 800 ms, keeps Skia's body. Unlike the phone it shows him **straight on**: it passes no
+`tilt`, so the eye is infinitely far and the body looks as the flat drawing does. The waiting screen's
+readout ends with `gpu` or `2d`.
+
+With the GPU body Skia's canvas is a `TextureView` whatever `opaque` says, for as long as the view is
+mounted, and the view behind it paints the black. The halo target is sized to the canvas, a texel to a pixel, rather than the headset's 512 a side.
+
+**To force Skia's body**, bundle with `EXPO_PUBLIC_HOLOGRAM_BODY=skia`, which `jarvis-hologram.tsx` reads
+at bundle time, as the phone's does.
+
+Read off the watch's Android bundle, exported unminified and without bytecode, the GPU body's
+UI-thread code compiles into worklets exactly as the phone's does, and autolinking links `ExpoGL` here
+too; the phone's notes ("His body on the GPU" in [`mobile/AGENTS.md`](../mobile/AGENTS.md)) say what
+was checked. None of it has run on a watch.
+
 ## What has been verified
 
 Everything below was verified against the Kotlin prototype this app replaced. The registration it tested is the same registration `app.config.ts` now writes — the same two actions on the app's one activity — but it has **not** been re-run against the Expo build, and the activity's name changed with it (`.MainActivity`, not `.wear.AssistActivity`). Treat the first list as strong evidence rather than as a current pass.
@@ -140,6 +162,7 @@ Not yet verified, and only a real watch can say:
 - **With Gemini installed.** The emulator images ship no assistant, so the picker listed only Jarvis. A Pixel Watch lists Gemini too; choosing Jarvis should replace it, but that has not been seen.
 - **The physical button.** The emulator's long press arrived as two `ASSIST` starts a moment apart, where the key event arrived as one. It may be how the emulator injects a long press; the real app has to treat a repeat as the same summoning either way, as the phone app's `createAssistLaunchClaim` already does.
 - **The handover, and the conversation.** Both are new and neither has run on hardware. They typecheck, the four spellings of the two message paths are checked against each other by a test, and CI compiles the Kotlin on every push — and none of that is the same as two devices in the same room. What a real pair would settle, in order: whether the phone's `CapabilityClient` lookup finds the watch when the watch app has never been opened; whether Play Services starts `JarvisPhoneListenerService` for a message on that path with the app force-stopped; whether `EncryptedSharedPreferences` survives a watch reboot; and whether a Wear OS microphone gives WebRTC enough to hold a conversation with, which is the one question none of the code can answer.
+- **Whether the GPU body draws on a watch at all.** Whether its GPU gives OpenGL ES 3 — the first Pixel Watch's Mali-T720 may not, and would keep Skia's body — whether expo-gl's worklet support draws from the UI thread there, and whether two `TextureView`s and the GPU's passes cost the watch more than the CPU it saves. The waiting screen's readout says which body is drawn, and how fast.
 - **Whether the sphere gets its stencil.** The watch draws with the same React Native Skia as the phone, so its window has no stencil buffer either, and it gets the same layer the phone does (`DRAWN_IN_A_LAYER` in `hologram/src/react/hologram-view.tsx`), which lets Skia draw the particle halos on the GPU instead of triangulating them on the CPU every frame. That only works where the GL context can draw instanced geometry and the GPU is not one Skia switches its tessellator off for — [the phone's notes](../mobile/AGENTS.md) list those — and neither has been read off a watch. The waiting screen's readout is where it would show.
 
 ## Getting it onto a watch

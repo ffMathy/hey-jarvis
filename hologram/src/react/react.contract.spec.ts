@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 /**
  * The line between what a browser may import at startup and what it may not.
@@ -17,6 +17,13 @@ import { join } from 'node:path';
  *
  * So the rule is a rule, and this is what holds it: `lifecycle.ts` and `sample.ts`, and everything
  * they import, are Skia-free — and so is the `hologram/conversation` entry, for the same reason.
+ *
+ * They keep clear of expo-gl too. Only the view draws with it, and on a device loading it asks for its
+ * native module as it loads and throws in a build without one: the view requires it only once it has
+ * found the module (`gl-context.ts`), and a screen that reached it eagerly would skip that check.
+ *
+ * What counts as an import is what Bun's own transpiler keeps of a module: an import, a re-export or a
+ * `require` that is not erased as types only.
  */
 
 const REACT_DIR = import.meta.dir;
@@ -45,39 +52,57 @@ function reachableFrom(directory: string, file: string, seen = new Set<string>()
   return seen;
 }
 
-/** Whether a module names Skia in an import that survives into the bundle. */
-function importsSkia(path: string): boolean {
-  const source = readFileSync(path, 'utf8');
-  return /^import (?!type )[^;]*from '@shopify\/react-native-skia'/m.test(source);
+const SKIA = '@shopify/react-native-skia';
+const EXPO_GL = 'expo-gl';
+
+const transpiler = new Bun.Transpiler({ loader: 'tsx' });
+
+/** Whether a module loads `name`, or a module inside it, in an import that survives into the bundle. */
+function loads(path: string, name: string): boolean {
+  return transpiler
+    .scanImports(readFileSync(path, 'utf8'))
+    .some((entry) => entry.path === name || entry.path.startsWith(`${name}/`));
+}
+
+/** Whether a module loads Skia or expo-gl, neither of which a screen may reach before the view. */
+function loadsSkiaOrGl(path: string): boolean {
+  return loads(path, SKIA) || loads(path, EXPO_GL);
 }
 
 describe('what a browser may import before CanvasKit has loaded', () => {
-  it('keeps the lifecycle entry, and everything it reaches, clear of Skia', () => {
+  it('keeps the lifecycle entry, and everything it reaches, clear of Skia and expo-gl', () => {
     const reachable = [...reachableFrom(REACT_DIR, 'lifecycle.ts')];
 
     expect(reachable.length).toBeGreaterThan(1);
-    expect(reachable.filter(importsSkia)).toEqual([]);
+    expect(reachable.filter(loadsSkiaOrGl)).toEqual([]);
   });
 
-  it('keeps the sample entry, and everything it reaches, clear of Skia', () => {
+  it('keeps the sample entry, and everything it reaches, clear of Skia and expo-gl', () => {
     const reachable = [...reachableFrom(REACT_DIR, 'sample.ts')];
 
     expect(reachable.length).toBeGreaterThan(1);
-    expect(reachable.filter(importsSkia)).toEqual([]);
+    expect(reachable.filter(loadsSkiaOrGl)).toEqual([]);
   });
 
-  it('keeps the conversation entry, and everything it reaches, clear of Skia', () => {
+  it('keeps the conversation entry, and everything it reaches, clear of Skia and expo-gl', () => {
     // A screen holds the conversation — and plays the greeting it opens with — before CanvasKit has
     // loaded in a browser, which is the whole reason this entry is not part of `hologram/react`.
     const reachable = [...reachableFrom(CONVERSATION_DIR, 'index.ts')];
 
     expect(reachable.length).toBeGreaterThan(1);
-    expect(reachable.filter(importsSkia)).toEqual([]);
+    expect(reachable.filter(loadsSkiaOrGl)).toEqual([]);
   });
 
-  it('still has something to protect: the view itself does import Skia', () => {
-    // If this ever stops being true the test above has become a tautology, and the real rule —
+  it('still has something to protect: the view itself does import Skia, and reaches expo-gl', () => {
+    // If this ever stops being true the tests above have become tautologies, and the real rule —
     // that the view is only ever reached lazily on web — would be going unchecked.
-    expect(importsSkia(join(REACT_DIR, 'hologram-view.tsx'))).toBe(true);
+    expect(loads(join(REACT_DIR, 'hologram-view.tsx'), SKIA)).toBe(true);
+    const reachable = [...reachableFrom(REACT_DIR, 'hologram-view.tsx')];
+    expect(reachable.filter((path) => loads(path, EXPO_GL)).map((path) => basename(path))).toEqual(['gl-context.ts']);
+  });
+
+  it('counts a require as a load, and an import of types only as none', () => {
+    expect(transpiler.scanImports("const gl = require('expo-gl');").map((entry) => entry.path)).toEqual([EXPO_GL]);
+    expect(transpiler.scanImports("import type { GLView } from 'expo-gl';\nexport {};")).toEqual([]);
   });
 });

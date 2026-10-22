@@ -13,8 +13,9 @@ import {
   SCAN_HALF_WIDTH,
   VORTEX_STRETCH,
   VORTEX_TWIST,
-} from 'hologram';
+} from '../hologram-drawing';
 import { LATTICE_LAYER_SHARE, latticeSpacing, type ViewBasis } from './fragment-3d';
+import { glslFloat } from './glsl';
 
 /**
  * The per-fragment arithmetic on the GPU: `fragment-3d.ts`, line for line, in GLSL.
@@ -31,24 +32,13 @@ import { LATTICE_LAYER_SHARE, latticeSpacing, type ViewBasis } from './fragment-
  * the literals that remain are the ones the phone writes inline, and each says where.
  */
 
-/** A number as a GLSL float literal: always with a decimal point, which GLSL insists on. */
-export function glslFloat(value: number): string {
-  const text = String(value);
-  return /[.e]/.test(text) ? text : `${text}.0`;
-}
-
 /**
- * A hex colour as a GLSL vec3 of its raw, encoded bytes — Skia blends the encoded values, with no
- * linearising, so the shaders do too.
+ * The uniforms the fragment arithmetic reads: plain data, each number or vector in a `{ value }`
+ * box, which is the shape three.js binds by name and the shape the raw renderer (`gpu-body.ts`)
+ * reads, so both share one object per frame rather than copying it.
  */
-export function glslColour(hex: number): string {
-  const channel = (shift: number) => glslFloat(((hex >> shift) & 0xff) / 255);
-  return `vec3(${channel(16)}, ${channel(8)}, ${channel(0)})`;
-}
-
-/** The uniforms the fragment arithmetic reads, as three.js wants them. */
 export interface FragmentUniforms {
-  [name: string]: { value: unknown };
+  [name: string]: { value: number | readonly number[] };
   time: { value: number };
   bodyShare: { value: number };
   mixShare: { value: number };
@@ -110,6 +100,7 @@ export function writeFragmentUniforms(
   density: number,
   eyeDistance: number,
 ) {
+  'worklet';
   uniforms.time.value = state.time;
   uniforms.bodyShare.value = state.bodyShare;
   uniforms.mixShare.value = state.mix;

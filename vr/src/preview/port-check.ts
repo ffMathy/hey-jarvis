@@ -7,10 +7,21 @@ import {
   STREAM_STRIDE,
 } from 'hologram';
 import {
-  BufferAttribute,
+  buildHologramRows,
+  createFragmentUniforms,
+  FRAGMENT_GLSL,
+  type PlacedFragment,
+  placeBodyFragment,
+  placeStreamFragment,
+  ROW_ATTRIBUTES,
+  type Vector3Tuple,
+  type ViewBasis,
+  writeFragmentUniforms,
+} from 'hologram/gpu';
+import {
+  BufferGeometry,
   FloatType,
   GLSL3,
-  InstancedBufferGeometry,
   NearestFilter,
   OrthographicCamera,
   Points,
@@ -20,16 +31,7 @@ import {
   type WebGLRenderer,
   WebGLRenderTarget,
 } from 'three';
-import { buildHologramRows } from '../hologram3d/body-rows';
-import {
-  type PlacedFragment,
-  placeBodyFragment,
-  placeStreamFragment,
-  type Vector3Tuple,
-  type ViewBasis,
-} from '../hologram3d/fragment-3d';
-import { createFragmentUniforms, FRAGMENT_GLSL, writeFragmentUniforms } from '../hologram3d/fragment-glsl';
-import { createRowAttributes } from '../hologram3d/row-geometry';
+import { createRowGeometry } from '../hologram3d/row-geometry';
 import type { PortCheck } from './preview-hook';
 
 /** Texels across the readback: every row gets one. */
@@ -43,8 +45,6 @@ uniform float channel;
 uniform float readbackWidth;
 uniform float readbackHeight;
 
-in float position;
-
 ${FRAGMENT_GLSL}
 
 flat out vec4 reading;
@@ -56,9 +56,10 @@ void main() {
   } else {
     reading = vec4(fragment.axis, fragment.visible ? fragment.glyph : -1.0);
   }
-  float row = float(gl_InstanceID);
-  // One texel per row. The single vertex's position is there for three to count, and read so it is kept.
-  vec2 texel = vec2(mod(row, readbackWidth), floor(row / readbackWidth)) + 0.5 + 0.0 * position;
+  // One texel per row, which all four of its corners land on with the same reading: each carries
+  // the whole row.
+  float row = float(gl_VertexID / 4);
+  vec2 texel = vec2(mod(row, readbackWidth), floor(row / readbackWidth)) + 0.5;
   gl_Position = vec4(texel / vec2(readbackWidth, readbackHeight) * 2.0 - 1.0, 0.0, 1.0);
   gl_PointSize = 1.0;
 }
@@ -96,9 +97,10 @@ function referenceRows(
 }
 
 /**
- * Holds the GPU port to the CPU reference: runs `fragment-glsl.ts` for every row, reads what it
- * placed back out of a float target, and compares it with what `fragment-3d.ts` places for the same
- * frame and view. The browser tests call it through the preview's hook; nothing in the app does.
+ * Holds the GPU port to the CPU reference: runs `hologram/gpu`'s `fragment-glsl.ts` for every row,
+ * reads what it placed back out of a float target, and compares it with what its `fragment-3d.ts`
+ * places for the same frame and view. The browser tests call it through the preview's hook;
+ * nothing in the app does.
  */
 export function checkPort(
   renderer: WebGLRenderer,
@@ -133,13 +135,11 @@ export function checkPort(
     depthTest: false,
     depthWrite: false,
   });
-  const geometry = new InstancedBufferGeometry();
-  geometry.setAttribute('position', new BufferAttribute(new Float32Array([0]), 1));
-  const attributes = createRowAttributes(rows);
-  for (const name of ['rest', 'shape', 'hashes', 'identity', 'thinning'] as const) {
-    geometry.setAttribute(name, attributes[name]);
-  }
-  geometry.instanceCount = rows.count;
+  // The very attributes the strokes and the halo union read, every corner of every row a point.
+  const rowGeometry = createRowGeometry(rows);
+  const geometry = new BufferGeometry();
+  for (const [name] of ROW_ATTRIBUTES) geometry.setAttribute(name, rowGeometry.getAttribute(name));
+  geometry.setDrawRange(0, rows.count * 4);
   const points = new Points(geometry, material);
   points.frustumCulled = false;
   const readbackScene = new Scene();
@@ -160,6 +160,7 @@ export function checkPort(
   renderer.setRenderTarget(previous);
   target.dispose();
   material.dispose();
+  // Lets go of the attributes' buffers; the row geometry they came from was never drawn itself.
   geometry.dispose();
   return compare(placed, readings[0], readings[1]);
 }

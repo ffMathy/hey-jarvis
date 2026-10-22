@@ -227,13 +227,41 @@ export interface TokenRequest {
   apiKey: string | undefined;
 }
 
-/** How the test answers the token endpoint: a status and a body, or never at all. */
-export type TokenAnswer = { status: number; body: unknown } | 'never';
+/**
+ * How the test answers the token endpoint: a status and a body, or never at all. `untilGreeting`
+ * holds the answer until he has started greeting, which needs {@link countGreetings}.
+ */
+export type TokenAnswer = { status: number; body: unknown; untilGreeting?: boolean } | 'never';
+
+/**
+ * Waits until the page has started the greeting audibly, as {@link countGreetings} counts it. Says
+ * whether it did: a page closed first never will.
+ */
+async function untilGreeting(page: Page): Promise<boolean> {
+  try {
+    await page.waitForFunction(() => (window.__greeting?.plays ?? 0) > 0, undefined, {
+      polling: 100,
+      timeout: 120000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Answers ElevenLabs' token endpoint with `answer`, and records each request. Everything else that
  * leaves the machine is still aborted by the fixture, LiveKit's socket included, so a session that
  * gets a token still fails to connect.
+ *
+ * **An answer that fails the summoning races the greeting unless it is held.** The session asks for
+ * the token the moment he is summoned and plays the greeting only once he has arrived, on the wall
+ * clock (`greetAfterArrivalMs` in hologram's `jarvis-session.ts`), and a token refused before then
+ * ends the summoning with no greeting at all — the session's rule, pinned in its own specs. Answered
+ * at once, which came first was decided by how busy the machine was: while SwiftShader took half a
+ * second over each of his frames, the answer reached the page after the greeting had started; once
+ * his rows were drawn as one plain list, it came first on a CI runner, and he never greeted.
+ * `untilGreeting` puts the answer after the greeting on every machine.
  */
 export async function answerTokens(page: Page, answer: TokenAnswer): Promise<TokenRequest[]> {
   const requests: TokenRequest[] = [];
@@ -242,6 +270,7 @@ export async function answerTokens(page: Page, answer: TokenAnswer): Promise<Tok
     requests.push({ url: new URL(request.url()), apiKey: request.headers()['xi-api-key'] });
     // Left unanswered, the request stays pending for as long as the page is open.
     if (answer === 'never') return;
+    if (answer.untilGreeting && !(await untilGreeting(page))) return;
     await route.fulfill({ status: answer.status, contentType: 'application/json', body: JSON.stringify(answer.body) });
   });
   return requests;

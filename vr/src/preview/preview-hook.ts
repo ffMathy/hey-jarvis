@@ -91,6 +91,33 @@ export interface PortCheckRequest {
   eyeDistance: number;
 }
 
+/** What drawing the body with `hologram/gpu`'s raw renderer found, against three.js drawing the same moment. */
+export interface GpuBodyCheck {
+  /** The drawing buffer both were drawn into, in pixels. */
+  width: number;
+  height: number;
+  /** Pixels three.js lit. */
+  litPixels: number;
+  /** Bytes, of R, G, B and A, and pixels in which the raw renderer's picture differs from three's. */
+  differingBytes: number;
+  differingPixels: number;
+  /** The largest difference in any one byte, 0–255. */
+  largestDifference: number;
+}
+
+/** A moment and a view to draw the body at both ways. */
+export interface GpuBodyCheckRequest {
+  phase: PreviewPhase;
+  seconds: number;
+  /** Radians round him to the viewer's right, and up above his middle. */
+  angle: number;
+  elevation: number;
+  /** How far the eye is from his centre, in metres. */
+  distance: number;
+  /** How much the camera sees from top to bottom, in degrees. */
+  fieldOfView: number;
+}
+
 /** Frame times in the room, as the preview's XR loop saw them. */
 export interface RoomTimings {
   frames: number;
@@ -131,6 +158,8 @@ export interface HologramPreviewHook {
   stereo(request: StillRequest, separation: number): Promise<string>;
   /** Runs the GPU's fragment arithmetic against the CPU reference at one moment and view. */
   checkPort(request: PortCheckRequest): Promise<PortCheck>;
+  /** Draws the body at one moment and view with three.js and with the phone's raw renderer, and compares them. */
+  checkGpuBody(request: GpuBodyCheckRequest): Promise<GpuBodyCheck>;
   /**
    * In the room: what he is doing there. With `holdAtSeconds`, the voices driving him stop at that
    * moment of the phase and stay there — he goes on moving — so a picture can be taken of it on an

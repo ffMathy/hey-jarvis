@@ -47,7 +47,7 @@ export const MINIMUM_CHUNKS_PER_SECOND = 10;
  */
 export const START_GRACE_MILLISECONDS = 3000;
 
-/** No chunk for this long means the audio stopped (the critique's "frames stop for more than 1 s"). */
+/** No chunk for this long means the audio stopped: frames that stop for more than 1 s. */
 export const STALL_MILLISECONDS = 1000;
 
 /** The worker reports four times a second; this long without a report means it is gone or stuck. */

@@ -136,7 +136,8 @@ src/satellites/            seeing him work: where each satellite is round him (t
 src/wake/                  "Hey Jarvis": the microphone, the worklet, the onnxruntime-web worker, the watchdog
 src/room/                  where he stands: room snapshots, the occupancy grid, placement and its worker
 src/conversation/          hologram's session with the headset's parts: the greeting, his track, his voice from where he stands, orphaned audio
-src/hologram3d/            Jarvis in 3D: the frame clock, the body's strokes, the halo union, CanvasKit
+src/hologram3d/            Jarvis in 3D: the frame clock, the body's strokes and the halo union as three.js
+                           draws hologram/gpu's passes, CanvasKit
 src/preview/               the preview page
 public/models/             the openWakeWord models and their LICENCE.txt (committed)
 public/vendor/             canvaskit.wasm and onnxruntime-web's wasm (gitignored; see initialize)
@@ -881,9 +882,10 @@ a server; they answer when it stops. `window.__jarvis.satellites` lists each one
 add `object` to the scene, set its position (the anchor), call `arrive()` on every
 summon and `update(delta, drive, centreEye)` once per XR frame before
 `renderer.render`, with the centre eye read from `frame.getViewerPose` at the start
-of the frame (three's XR camera lags one). `?flat` (`mode = 'flat'`) draws the
-phone's whole picture on one quad instead: the first thing this app ever drew, kept
-as the reference the 3D look is checked against.
+of the frame (three's XR camera lags one), and `settle()` when the next second's
+frames will hitch for reasons not his (see the backstop below). `?flat`
+(`mode = 'flat'`) draws the phone's whole picture on one quad instead: the first
+thing this app ever drew, kept as the reference the 3D look is checked against.
 
 Per frame, on the CPU:
 
@@ -902,7 +904,10 @@ Per frame, on the CPU:
    there is a real GPU and its CPU rasteriser otherwise: on SwiftShader the GPU
    backend took about a second a frame and the CPU one under a tenth of that.
 
-On the GPU:
+On the GPU, in passes whose shaders, rows and arithmetic are `hologram/gpu`'s —
+shared with the phone and the watch, which draw them with no three.js (see
+`../hologram/AGENTS.md`) — and which the files here wrap in three.js's
+materials, targets and meshes:
 
 3. **The halo union** (`halo-union.ts`), once a frame, before either eye: every lit
    fragment's halo as a capsule, MAX-blended into a 1024×512 byte target (R/G/B =
@@ -911,23 +916,44 @@ On the GPU:
    by one, the halos were a flat orange coin; the phone strokes each tier's halos
    as one path, so they are a union.
 4. **Per eye, the view-plane quad** (`view-plane-quad.ts`): CanvasKit's picture
-   Screened with the halos' light, facing the centre eye.
-5. **Per eye, the body's strokes** (`body-strokes.ts`): one instanced draw of
-   view-facing glyph quads (dash, L, bracket, T, Z, ring, cell as distance fields,
+   Screened with the halos' light, facing the centre eye. It is the whole square,
+   corners and all: the halos are where the centre eye sees each fragment, so
+   perspective carries them past the 1.86R the phone's drawing stays inside
+   (1.92R at 1.6 m while he talks, the corners at 0.4 m), and a quad cut to a
+   fixed circle would clip them.
+5. **Per eye, the body's strokes** (`body-strokes.ts`): one draw of view-facing
+   glyph quads (dash, L, bracket, T, Z, ring, cell as distance fields,
    antialiased, never under 1.2 px) where each fragment really is, with the
    drawing's tier paints and sparkle.
 
-Where each fragment is comes from `fragment-3d.ts`: the phone's per-fragment
-helpers from `hologram`, with the body turning about the vertical in its own frame
-(its front faces where the user stood when he arrived) and everything the phone
-does on screen — the wander, the vortex, the lattice, the inner layer's turn, a
-glyph's direction — done in the plane through his centre that faces the centre
-eye. Depth is kept: the vortex scales it, the lattice snaps it into layers where
-the centre eye sees them line up, the thinking plane is level with the floor.
-`fragment-glsl.ts` is that file, line for line, in GLSL; each draw evaluates it in
-its vertex shader (three 0.186 has no transform feedback, and a float state pass
-needs an extension a Quest may not have). The unit tests hold `fragment-3d.ts` to
-the phone; `hologram-port.spec.ts` holds the GLSL to `fragment-3d.ts`.
+The halo union and the strokes draw one shared geometry (`row-geometry.ts`, over
+`hologram/gpu`'s `buildRowVertices`): a plain indexed list of every row's quad,
+four vertices and two triangles a row, each vertex carrying its whole row. It
+used to be 10,168 instances of a four-vertex quad, which is what Arm's and
+Qualcomm's guidance warns against (an instance that small leaves most of each
+vertex wave idle); on SwiftShader
+the plain list made the halo union about four times as fast and each eye's
+strokes about three, and it draws the same triangles in the same order, so the
+preview's stills came out the same to the byte. The price is memory: each row is
+held four times, 3 MB rather than 0.7.
+
+Where each fragment is comes from `hologram/gpu`'s `fragment-3d.ts`: the phone's
+per-fragment helpers from `hologram`, with the body turning about the vertical in
+its own frame (its front faces where the user stood when he arrived) and
+everything the phone does on screen — the wander, the vortex, the lattice, the
+inner layer's turn, a glyph's direction — done in the plane through his centre
+that faces the centre eye. Depth is kept: the vortex scales it, the lattice snaps
+it into layers where the centre eye sees them line up, the thinking plane is
+level with the floor. Its `fragment-glsl.ts` is that file, line for line, in
+GLSL; each draw evaluates it in its vertex shader (three 0.186 has no transform
+feedback, and a float state pass needs an extension a Quest may not have). The
+unit tests hold `fragment-3d.ts` to the phone; `hologram-port.spec.ts` holds the
+GLSL to `fragment-3d.ts`; and `hologram-gpu-body.spec.ts` holds the raw renderer
+the phone and the watch draw the body with (`drawGpuBody`) to these passes, byte
+for byte: the preview draws a moment with three.js, CanvasKit's picture blacked
+out, then with `drawGpuBody` on a context of its own from the matrices and
+uniforms three drew the strokes with (`src/preview/gpu-body-check.ts`), near and
+far, from the front, the side, above and below.
 
 The renderer takes four samples a pixel (`xr/xr-stage.ts`), for the room's plain
 triangles; fragments are still shaded once a pixel, so none of these passes looks
@@ -942,10 +968,31 @@ be pure added light, which washes out in a bright room, and max(rgb) is Screen
 against the room. It is to be tuned on a headset. Every part is drawn unfaded and
 the fade is the blend's constant colour, so arriving, leaving and the close-range
 guard fade him as one layer, exactly as the phone's saveLayer does. He fades out
-when the head comes within 2.5R, and is gone inside 1.5R. Density is 1, with a
-backstop that halves it for good if three frames in thirty are late
-(`density-backstop.ts`). R is 0.22 m at rest (`dimensions.ts`); placement may
-squeeze him to 0.13 m.
+when the head comes within 2.5R, and is gone inside 1.5R (`head.ts`). R is 0.22 m at rest
+(`dimensions.ts`); placement may squeeze him to 0.13 m.
+
+Density is 1, with a backstop (`density-backstop.ts`) that halves it when frames
+drop: three in thirty more than three quarters again longer than a frame on time,
+beside a window with at least two — a lone bad window is a hitch, and the pair is
+what a GPU just behind its budget makes, dropping one frame in twelve on a steady
+beat. A frame on time is the display's own period, from `XRSession.frameRate` (the
+XR stage hands it on with every frame), since a fall from 90 Hz to a clean 45 makes
+every frame of a window as long as every other, and a window judged against its
+own fastest frame sees nothing late; without the rate it is a quarter of the way up
+the shortest intervals seen since the last settle. A film (`?film`) has no backstop:
+its faked clock is not the display's. It
+used to halve on one window and for good, which every summon's hitches could set
+off: nothing compiles his shaders before his first frame, CanvasKit compiles its
+programs as it meets each path, and the display switches from 72 Hz to 90 as
+placement, the greeting and the call all start. So the second after `arrive()`, a
+new display rate, a change of visibility, and every blurred frame, is not judged at
+all (`settle`, called by the room). And the share comes back: after ten seconds
+without a drop it doubles, on trial for as long as it was waited for; frames
+dropping during the trial halve it again and double the next wait, up to 160 s, so
+a headset that cannot hold the count pays one hitch per probe — 10, 20, 40 and 80 s
+apart in each room, then every 160 s — rather than a climb-lag-shed cycle, and one
+that was busy for a moment gets the particles back a doubling at a time. Never
+below an eighth.
 
 Known deviations from the phone: strokes of one tier that cross add up rather than
 forming a union, so the arrival's first half-second and the listening knots are a
@@ -1121,7 +1168,10 @@ the models first.
   picture into three's context every frame stalls at 72/90 Hz; the halo and stroke
   passes' cost at 0.8, 1.6 and 2.6 m; the alpha factor in a bright and a dim room;
   whether 1.2-pixel hot cores shimmer; whether the projection layer composites as
-  the spec says; stereo comfort; whether `updateTargetFrameRate` behaves.
+  the spec says; stereo comfort; whether `updateTargetFrameRate` behaves; whether
+  the density backstop's second of grace covers a summon and its ten seconds and
+  two windows are the right numbers — the HUD's `density` shows it halve and come
+  back.
 - **Smooth edges and text.** What four samples a pixel cost in Quest Browser
   (the HUD's frame time, against a build with `antialias: false`), and whether its
   projection layer takes the render-to-texture path: the HUD's `gl` line has to
@@ -1244,9 +1294,10 @@ the models first.
   tests'; `element-volume-probe.ts` checks the rule for the SDK's elements on real
   elements playing real streams.
 - **Slow frames, and the budgets the specs hold.** SwiftShader draws the room at
-  about eight frames a second while he is away and about one and a half while he
-  is there, half that on a loaded machine (a CI runner is no faster), and his clock
-  moves at most a tenth of a second a frame. Two of the app's budgets run on the
+  about eight frames a second while he is away and about five while he is there
+  (two, before his rows were one plain list rather than instances), half that on a
+  loaded machine (a CI runner is no faster), and his clock moves at most a tenth
+  of a second a frame. Two of the app's budgets run on the
   wall clock instead: the twenty seconds a summoning waits for its conversation,
   and the six seconds at least that an error panel is up. The specs that keep him
   greeting on a token that never comes, and the ones that photograph a panel (a

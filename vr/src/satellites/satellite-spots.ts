@@ -1,5 +1,5 @@
 import { type AgentWorkState, orbitPoint, type SatelliteOrbit, satelliteOrbits } from 'hologram';
-import type { Vector3Like } from '../hologram3d/view-basis';
+import type { Vector3Like } from 'hologram/gpu';
 
 /**
  * Where the satellites are in the room: `hologram`'s orbits (`agent-work.ts`, the lifecycle every

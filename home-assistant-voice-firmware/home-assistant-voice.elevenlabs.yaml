@@ -29,7 +29,9 @@ esphome:
   name: hass-elevenlabs
   friendly_name: Home Assistant Voice ElevenLabs
   name_add_mac_suffix: true
-  min_version: 2026.7.0
+  # 2026.10.0 keeps audio files in flash, so their ids are const; play_sound relies
+  # on that (see its sound_file parameter), and nothing older can build it.
+  min_version: 2026.10.0
   compile_process_limit: 1
   on_boot:
     - priority: 375
@@ -713,7 +715,11 @@ script:
   - id: play_sound
     parameters:
       priority: bool
-      sound_file: "audio::AudioFile*"
+      # A `const audio::AudioFile *`. Since ESPHome 2026.10.0 (esphome/esphome#20072)
+      # every audio file lives in flash and its id is a pointer to const, which is
+      # also what play_file takes. A parameter type may not contain a space, so the
+      # const is spelled with type traits rather than written out.
+      sound_file: "std::add_pointer_t<std::add_const_t<audio::AudioFile>>"
     then:
       - lambda: |-
           if (priority) {

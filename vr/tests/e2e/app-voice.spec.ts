@@ -254,7 +254,10 @@ test('with "His voice from where he stands" off, he greets from the headset and 
   await expect(setting).toBeChecked();
   await setting.uncheck();
   expect(await page.evaluate((key) => window.localStorage.getItem(key), VOICE_SETTING_KEY)).toBe('off');
-  // Kept across a reload, as the page's other settings are.
+  // Kept across a reload, as the page's other settings are. Reloaded only once getting ready is
+  // done: a reload in the middle of it aborts the wasm the page is still compiling, which
+  // Emscripten reports as a console error, and on a busy machine that is where the reload landed.
+  await expect(page.getByRole('button', { name: 'Enter your room' })).toBeEnabled({ timeout: 90000 });
   await page.reload();
   await page.evaluate(() => window.__xrHarness?.ready);
   await expect(page.getByLabel('His voice from where he stands')).not.toBeChecked();

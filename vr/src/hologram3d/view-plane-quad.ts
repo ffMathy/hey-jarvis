@@ -1,6 +1,5 @@
+import { HALO_LIGHT_GLSL, haloShares } from 'hologram/gpu';
 import { GLSL3, LinearFilter, Mesh, PlaneGeometry, RawShaderMaterial, Texture, Vector3 } from 'three';
-import { glslColour } from './fragment-glsl';
-import { HALO_PAINTS } from './halo-union';
 import { LAYER_BLENDING, setLayerFade } from './layer-blending';
 
 /**
@@ -41,9 +40,6 @@ const FRAGMENT_SHADER = /* glsl */ `
 precision highp float;
 
 uniform sampler2D picture;
-uniform sampler2D halo;
-// The halo tiers' strengths (dim, mid, bright) times the voice's glow; all 0 with no halo pass.
-uniform vec3 haloShares;
 // How far CanvasKit has already faded the picture (the phone's arrival layer), undone here so
 // the whole quad is faded once, by the blend (see layer-blending.ts).
 uniform float pictureFade;
@@ -54,23 +50,13 @@ in vec2 haloCoordinate;
 
 out vec4 colour;
 
-const vec3 HALO = ${glslColour(HALO_PAINTS.colour)};
-
-// What is left of the light behind once one tier's halo is Screened over it.
-vec3 through(float covered, float share) {
-  return vec3(1.0) - HALO * (share * covered);
-}
+${HALO_LIGHT_GLSL}
 
 void main() {
   // Raw encoded sRGB, exactly as Skia wrote it: the projection layer is treated as sRGB and
   // premultiplied, so blending these values matches what the phone's Screen blend does.
   vec3 light = min(vec3(1.0), texture(picture, pictureCoordinate).rgb / pictureFade);
-  // The halo union's two groups, each tier Screened over the rest as the phone's paths are.
-  vec3 pinned = texture(halo, vec2(haloCoordinate.x * 0.5, haloCoordinate.y)).rgb;
-  vec3 turning = texture(halo, vec2(0.5 + haloCoordinate.x * 0.5, haloCoordinate.y)).rgb;
-  vec3 left = through(pinned.r, haloShares.x) * through(pinned.g, haloShares.y) * through(pinned.b, haloShares.z)
-    * through(turning.r, haloShares.x) * through(turning.g, haloShares.y) * through(turning.b, haloShares.z);
-  vec3 glow = vec3(1.0) - left;
+  vec3 glow = haloGlow(haloCoordinate);
   light = light + glow - light * glow;
   colour = vec4(light, alphaFromLight * max(light.r, max(light.g, light.b)));
 }
@@ -128,10 +114,18 @@ export function createViewPlaneQuad(side: number): ViewPlaneQuad {
   });
   setLayerFade(material, 1);
 
+  // The whole square, although the phone's drawing lights nothing past about 1.86R of his centre
+  // and the square reaches 1.85R along its middles and 2.6R into its corners. The halos are
+  // Screened in here too, drawn where the centre eye sees each fragment, and perspective carries
+  // the near ones further: while he talked they reached 1.92R at 1.6 m, 2.15R at 0.6 m and the
+  // corners at 0.4 m, so a quad cut to a fixed circle would clip them. Cutting the corners without
+  // changing a pixel would take a polygon resized every frame for how near the eye is, for about an
+  // eighth of this quad's fill at 1.6 m and next to nothing inside half a metre.
   const mesh = new Mesh(new PlaneGeometry(side, side), material);
   // Nothing to show until the first picture has been drawn.
   mesh.visible = false;
   let current: ImageBitmap | null = null;
+  const shares: [number, number, number] = [0, 0, 0];
 
   return {
     mesh,
@@ -146,12 +140,7 @@ export function createViewPlaneQuad(side: number): ViewPlaneQuad {
     showHalo(coverage, glowGain) {
       const { uniforms } = material;
       uniforms.halo.value = coverage;
-      const shares = coverage === null ? 0 : glowGain;
-      uniforms.haloShares.value.set(
-        HALO_PAINTS.dim.strength * shares,
-        HALO_PAINTS.mid.strength * shares,
-        HALO_PAINTS.bright.strength * shares,
-      );
+      uniforms.haloShares.value.fromArray(haloShares(coverage === null ? 0 : glowGain, shares));
     },
     setFade(fade, pictureFade) {
       setLayerFade(material, fade);

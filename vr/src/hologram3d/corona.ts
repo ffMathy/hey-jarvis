@@ -1,5 +1,13 @@
 import { PULSE_SECONDS, ROLL_DEGREES_PER_SECOND, SCAN_HALF_WIDTH, SCAN_SECONDS } from 'hologram';
 import {
+  glslColour,
+  glslFloat,
+  HALO_PAINTS,
+  STROKE_PAINTS,
+  THINNEST_STROKE_PIXELS,
+  type Vector3Like,
+} from 'hologram/gpu';
+import {
   AddEquation,
   BufferAttribute,
   CustomBlending,
@@ -14,10 +22,6 @@ import {
   RawShaderMaterial,
   Vector3,
 } from 'three';
-import { STROKE_PAINTS, THINNEST_STROKE_PIXELS } from './body-strokes';
-import { glslColour, glslFloat } from './fragment-glsl';
-import { HALO_PAINTS } from './halo-union';
-import type { Vector3Like } from './view-basis';
 import { ALPHA_FROM_LIGHT } from './view-plane-quad';
 
 /**
@@ -126,7 +130,7 @@ void main() {
   up = length(up) > 1e-3 ? normalize(up) : normalize(cross(front, vec3(1.0, 0.0, 0.0)));
   vec3 right = cross(up, front);
   float radius = max(RADIUS, distance * MIN_TANGENT);
-  // Out from 2.5 radii, gone inside 1.5, as he is (closeRangeFade in view-basis.ts).
+  // Out from 2.5 radii, gone inside 1.5, as he is (closeRangeFade in head.ts).
   float near = clamp(distance / radius - 1.5, 0.0, 1.0);
   fade = level * near * near * (3.0 - 2.0 * near);
   local = corner * QUAD_REACH;

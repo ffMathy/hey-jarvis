@@ -22,6 +22,7 @@
     "@shopify/react-native-skia": "2.6.2",
     "expo": "57.0.20",
     "expo-audio": "57.0.5",
+    "expo-gl": "57.0.2",
     "expo-status-bar": "57.0.1",
     "hologram": "workspace:*",
     "livekit-client": "2.22.2",

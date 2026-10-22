@@ -107,7 +107,12 @@ test('a select summons him; a key ElevenLabs rejects is said on a panel, and the
   page,
 }, testInfo) => {
   const problems = collectProblems(page);
-  const requests = await answerTokens(page, { status: 401, body: { detail: { status: 'invalid_api_key' } } });
+  // Refused once he is greeting, so that one summon is one greeting on any machine: see `answerTokens`.
+  const requests = await answerTokens(page, {
+    status: 401,
+    body: { detail: { status: 'invalid_api_key' } },
+    untilGreeting: true,
+  });
   await countGreetings(page);
   await withSavedSettings(page);
   // Held until it is dismissed, so that its picture is of the panel however long it takes.

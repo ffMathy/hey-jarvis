@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { MATERIALISE_SECONDS, SCENE_SEED } from '../frame-timing';
 import {
   analyseFrame,
   BODY_ID_FIELD,
@@ -12,16 +13,14 @@ import {
   LATTICE_STROKE_SHRINK,
   latticeFragment,
   latticeTarget,
-  MATERIALISE_SECONDS,
   placeFragment,
   readFragment,
   readShellFragment,
-  SCENE_SEED,
   STREAM_STRIDE,
   scanned,
   swirlFragment,
-  VOICE_BAND_COUNT,
-} from 'hologram';
+} from '../hologram-drawing';
+import { VOICE_BAND_COUNT } from '../voice-levels';
 import {
   FRONT_VIEW,
   type PlacedFragment,
@@ -79,7 +78,11 @@ interface PhoneFragment {
   group: number;
 }
 
-/** `appendBody`'s loop body, composed from the helpers it calls, for one row. */
+/**
+ * `appendBody`'s loop body as composed from the helpers, for one row. The phone's loop writes that
+ * arithmetic out by hand, and `hologram/src/particle-loop.spec.ts` holds it to this composition bit
+ * for bit — so this stays composed from the helpers, which is what makes it a reference.
+ */
 function phoneBody(offset: number, state: HologramFrameState): PhoneFragment | null {
   const body = scene.body;
   const reading = state.reading;

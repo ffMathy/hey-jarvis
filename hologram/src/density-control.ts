@@ -447,6 +447,11 @@ export interface DensityControl {
   buildBudgetMs: number;
 }
 
+function clamp(value: number, lowest: number, highest: number): number {
+  'worklet';
+  return value < lowest ? lowest : value > highest ? highest : value;
+}
+
 /**
  * Where it starts: at the floor, climbing — unless it is being handed half of what it proved.
  *
@@ -467,11 +472,15 @@ export interface DensityControl {
  *
  * `RISING_PER_SECOND` paces that climb: from the floor to everything is about six seconds on a
  * phone that can take it, and from half of a remembered count a few.
+ *
+ * A worklet, though it runs once per mount on the JS thread: a view whose body moves between the
+ * GPU and Skia starts the loop again from the frame callback, on the UI thread (`body-layer.ts`).
  */
 export function createDensityControl(
   startingDensity: number = FEWEST_PARTICLES,
   pace: DensityPace = PHONE_PACE,
 ): DensityControl {
+  'worklet';
   const density = startingDensity <= 0 ? FEWEST_PARTICLES : clamp(startingDensity, FEWEST_PARTICLES, 1);
   return {
     density,
@@ -503,11 +512,6 @@ export function createDensityControl(
  */
 export function startFromRemembered(proven: number): number {
   return proven <= 0 ? FEWEST_PARTICLES : clamp(proven * REMEMBERED_SHARE, FEWEST_PARTICLES, 1);
-}
-
-function clamp(value: number, lowest: number, highest: number): number {
-  'worklet';
-  return value < lowest ? lowest : value > highest ? highest : value;
 }
 
 /**

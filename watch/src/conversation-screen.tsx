@@ -1,12 +1,12 @@
 import { type ElevenLabsSettings, isLive, WATCH_PARTICIPANT_NAME, WATCH_PARTICLE_COUNT } from 'hologram';
 import { useJarvisSession } from 'hologram/conversation';
-import { JarvisHologram } from 'hologram/react';
 import { useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { type FastNetwork, holdFastNetwork, releaseFastNetwork } from '../modules/jarvis-network';
 import { askThePhoneToAnswer } from '../modules/jarvis-phone';
 import { capCallVolume } from '../modules/jarvis-volume';
+import { JarvisHologram } from './jarvis-hologram';
 import { requestMicrophoneAccess } from './microphone-permission';
 import { useWatchDensity } from './watch-density';
 import { useWatchHologramSize } from './watch-screen';

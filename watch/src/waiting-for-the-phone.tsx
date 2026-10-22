@@ -6,10 +6,10 @@ import {
   type SampleMode,
   WATCH_PARTICLE_COUNT,
 } from 'hologram';
-import { JarvisHologram } from 'hologram/react';
 import { FrameRate, ModeToast, useSimulatedUser, useSimulatedVoice } from 'hologram/react/sample';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { JarvisHologram } from './jarvis-hologram';
 import { useWatchDensity } from './watch-density';
 import { useWatchHologramSize } from './watch-screen';
 
@@ -45,7 +45,7 @@ export function WaitingForThePhone({ isPhoneInRange }: WaitingForThePhoneProps) 
   const user = useSimulatedUser(hearsSomeone(mode));
   // Handing these over is what turns the density loop on at all — the drawing skips it
   // entirely when there is nowhere to write the frame rate. See `watch-density.ts`.
-  const { frameRate, buildMilliseconds, particleShare, provenShare, pace } = useWatchDensity();
+  const { frameRate, buildMilliseconds, particleShare, provenShare, bodyLayer, pace } = useWatchDensity();
 
   return (
     <View style={styles.screen}>
@@ -68,6 +68,7 @@ export function WaitingForThePhone({ isPhoneInRange }: WaitingForThePhoneProps) 
           buildMilliseconds={buildMilliseconds}
           particleShare={particleShare}
           provenShare={provenShare}
+          bodyLayer={bodyLayer}
           pace={pace}
           opaque
           background="#000000"
@@ -78,6 +79,7 @@ export function WaitingForThePhone({ isPhoneInRange }: WaitingForThePhoneProps) 
         frameRate={frameRate}
         buildMilliseconds={buildMilliseconds}
         particleShare={particleShare}
+        bodyLayer={bodyLayer}
         particles={WATCH_PARTICLE_COUNT}
         withBuildTime={false}
         style={styles.frameRate}

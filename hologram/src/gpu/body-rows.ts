@@ -7,11 +7,12 @@ import {
   type HologramScene,
   STREAM_ID_FIELD,
   STREAM_STRIDE,
-} from 'hologram';
+} from '../hologram-drawing';
 
 /**
- * The body's and the stream's fragments as the GPU reads them: one instance per fragment, four
- * numbers to an attribute.
+ * The body's and the stream's fragments as the GPU reads them: one row per fragment, four numbers
+ * to an attribute, which `buildRowVertices` (`row-vertices.ts`) gives every corner of the
+ * fragment's quad.
  *
  * The scene is the phone's own (`createHologramScene(SCENE_SEED)`), so the headset's Jarvis is made
  * of the same ten thousand fragments in the same places. Every per-fragment number that is a hash
@@ -20,8 +21,8 @@ import {
  * only be a millionth out, but that is a millionth that can move a fragment across the edge of
  * its blink or its tier, and the work is the same ten thousand multiplications every frame.
  *
- * Both tables go in one buffer, the body's rows first, so both are drawn with one instanced draw;
- * `rest.w` says which table a row came from.
+ * Both tables go in one buffer, the body's rows first, so both are drawn with one draw; `rest.w`
+ * says which table a row came from.
  */
 export interface HologramRows {
   /** Rows in all: the body's, then the stream's. */
@@ -65,7 +66,7 @@ const VORTEX_ORDER_FROM_ID = 3.91;
 const LATTICE_JITTER_FROM_ID = 7.7113;
 const RELIGHT_FROM_ID = 9.7;
 
-/** Lays the scene's body and stream out as instance attributes. */
+/** Lays the scene's body and stream out as rows. */
 export function buildHologramRows(scene: HologramScene): HologramRows {
   const bodyCount = scene.body.length / BODY_STRIDE;
   const streamCount = scene.stream.length / STREAM_STRIDE;

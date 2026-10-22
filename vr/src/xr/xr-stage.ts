@@ -88,6 +88,8 @@ export interface XrFrameTick {
   time: number;
   /** Seconds since the previous frame, 0 on the first, at most {@link LONGEST_FRAME_SECONDS}. */
   deltaSeconds: number;
+  /** The display's own rate in hertz, when the headset says what it is (`XRSession.frameRate`). */
+  displayRate: number | undefined;
   /** How many times the reference space has been reset. */
   epoch: number;
 }
@@ -108,8 +110,12 @@ export interface XrStage {
   onFrame(listener: (tick: XrFrameTick) => void): () => void;
   onVisibility(listener: (state: XRVisibilityState) => void): () => void;
   onReset(listener: (epoch: number) => void): () => void;
-  /** Asks for the lowest rate, or the highest up to 90; does nothing when that is already what was asked. */
-  setFrameRate(target: FrameRateTarget): void;
+  /**
+   * Asks for the lowest rate, or the highest up to 90; does nothing when that is already what was
+   * asked. Settles once the headset has switched, or at once when there was nothing to ask for or it
+   * refused.
+   */
+  setFrameRate(target: FrameRateTarget): Promise<void>;
   /** Ends the session, if it has not ended already. */
   end(): void;
   /** Stops the loop and releases the renderer. Call once the session has ended. */
@@ -188,7 +194,8 @@ export async function createXrStage(session: XRSession, options: XrStageOptions 
         previousTime === undefined ? 0 : Math.min(LONGEST_FRAME_SECONDS, Math.max(0, (time - previousTime) / 1000));
       previousTime = time;
       const centreEye = centreEyeOfPose(viewerPose);
-      notify(frameListeners, { frame, referenceSpace, viewerPose, centreEye, time, deltaSeconds, epoch });
+      const displayRate = session.frameRate;
+      notify(frameListeners, { frame, referenceSpace, viewerPose, centreEye, time, deltaSeconds, displayRate, epoch });
     }
     renderer.render(scene, camera);
   });
@@ -227,10 +234,10 @@ export async function createXrStage(session: XRSession, options: XrStageOptions 
       const rate = chooseFrameRate(session.supportedFrameRates, target);
       // Older runtimes, and the emulator, may not have the method at all despite what the types say.
       if (rate === undefined || rate === requestedFrameRate || typeof session.updateTargetFrameRate !== 'function') {
-        return;
+        return Promise.resolve();
       }
       requestedFrameRate = rate;
-      session.updateTargetFrameRate(rate).catch(() => {
+      return session.updateTargetFrameRate(rate).catch(() => {
         // Refused (the session ended, or the rate is not allowed now): the next change asks again.
         requestedFrameRate = undefined;
       });

@@ -159,6 +159,32 @@ describe('restoring', () => {
     expect(anchors.status(0).anchors[A]).toBe('failed');
   });
 
+  it('says so when the headset throws rather than answering', () => {
+    const session: PersistentAnchorSession<string> = {
+      persistentAnchors: [A],
+      restorePersistentAnchor: () => {
+        throw new Error('NotSupportedError');
+      },
+    };
+    const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
+    expect(anchors.restore([A], 0)).toEqual([]);
+    expect(anchors.status(0).anchors).toEqual({ [A]: 'failed' });
+  });
+
+  it('asks for each handle once, however often it is told to restore it', async () => {
+    const session = new FakeSession([A]);
+    const anchors = createRoomAnchors<string, Vector3Like>(session, (position) => ({ ...position }));
+    expect(anchors.restore([A, B], 0)).toEqual([B]);
+    session.restoring.get(A)?.resolve(new FakeAnchor('space-a'));
+    await settle();
+    session.restoring.clear();
+    expect(anchors.restore([A, B], 5)).toEqual([]);
+    expect(session.restoring.size).toBe(0);
+    expect(anchors.status(5).anchors).toEqual({ [A]: 'unlocated', [B]: 'missing' });
+    // Still counted from when it was first asked for.
+    expect(anchors.status(NOT_FOUND_AFTER_SECONDS).notFound).toEqual([A]);
+  });
+
   it('forgets nothing on a session with no persistent anchors, which may only lack the feature', () => {
     const anchors = createRoomAnchors<string, Vector3Like>({}, (position) => ({ ...position }));
     expect(anchors.restore([A], 0)).toEqual([]);
