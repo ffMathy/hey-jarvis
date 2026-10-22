@@ -747,9 +747,13 @@ it allocates nothing, and the front is written into the state's own array.
 The view steps it only while the GPU draws the body and its `tilt` prop is set,
 from `TiltSensor` (`tilt-sensor.tsx`): Reanimated's GRAVITY sensor at
 `TILT_SENSOR_INTERVAL_MS`, mounted only while the app is in front and the GPU
-body's view is there, since nothing else unregisters it. Its front, taken as the
-eye's direction in the screen's own frame, gives the view basis
-(`viewBasisTowards`), and `tiltEyeSquares` goes straight to `placeFlatCamera`.
+body's view is there, since nothing else unregisters it. Unmounting clears
+Reanimated's own copy of the last reading as well, which it keeps for the life
+of the app and would otherwise hand the next arrival as its rest pose: he would
+arrive turned by however far the phone moved while he was away, and drift back
+over seconds. The tilt's front, taken as the eye's direction in the screen's own
+frame, gives the view basis (`viewBasisTowards`), and `tiltEyeSquares` goes
+straight to `placeFlatCamera`.
 
 `tilt.spec.ts` holds it to that on gestures stepped at 60 and 120 frames a second.
 How it feels — the sign of each gesture, the gain, the deadband — is a device's to
