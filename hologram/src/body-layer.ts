@@ -47,18 +47,30 @@ export const GPU_READY_TIMEOUT_MS = 800;
 export const GPU_STARTING_SHARE = 0.5;
 
 /**
- * What share the density loop starts at for a body drawn by `renderer`, given the share
- * remembered from last time (`startFromRemembered` of it, or undefined for none).
+ * What share the density loop starts at for a body drawn by `renderer`, given the share Skia's body
+ * was remembered holding last time (`startFromRemembered` of it, or undefined for none).
  *
- * Skia's body starts where it always has, from the remembered share or the floor. The GPU's
- * starts at least at GPU_STARTING_SHARE, and higher where the remembered share is. A view starts
- * the loop again from here whenever the body changes renderer, since a share one could hold says
- * nothing about the other.
+ * Skia's body starts where it always has, from the remembered share or the floor. The GPU's starts
+ * at GPU_STARTING_SHARE whatever was remembered: what Skia's body held says nothing about the GPU,
+ * and half of anything held is no more than that anyway. A view starts the loop again from here
+ * whenever the body changes renderer, since a share one could hold says nothing about the other.
  */
 export function bodyStartingShare(renderer: BodyRenderer, remembered: number | undefined): number | undefined {
   'worklet';
-  if (renderer === 'skia') {
-    return remembered;
-  }
-  return remembered === undefined || remembered < GPU_STARTING_SHARE ? GPU_STARTING_SHARE : remembered;
+  return renderer === 'skia' ? remembered : GPU_STARTING_SHARE;
+}
+
+/**
+ * Whether the share proven while the body is in `layer` is the one to remember for next time:
+ * only Skia's.
+ *
+ * What is remembered only ever starts Skia's body (`bodyStartingShare`), and the GPU's says nothing
+ * about it: with the body on the GPU the build time always says there is room, so the loop climbs
+ * until the frame rate stops it, often at every particle. Remembered, that would start a later
+ * fallback to Skia — a context late or lost — at half of all of him, far above what Skia's body can
+ * build, through the very arrival the remembered share is there to make smooth.
+ */
+export function keepsProvenShare(layer: BodyLayer): boolean {
+  'worklet';
+  return layer === 'skia';
 }

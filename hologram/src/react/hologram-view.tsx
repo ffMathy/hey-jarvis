@@ -34,6 +34,7 @@ import {
   hearingFromPresence,
   hearingLevelFromVolume,
   hologramFrameOf,
+  keepsProvenShare,
   MATERIALISE_SECONDS,
   PARTICLE_COUNT,
   perceivedLevel,
@@ -110,10 +111,15 @@ export interface JarvisHologramProps {
    *
    * Different from {@link particleShare}, which is what is being drawn now and falls whenever
    * something else on the phone gets busy. This only rises, and it is the one worth writing down.
+   *
+   * Only while Skia draws his body: what is written down only ever starts Skia's body again (see
+   * {@link startingShare}), and a share the GPU's body held says nothing about it. While the GPU
+   * draws the body nothing is written here.
    */
   provenShare?: SharedValue<number>;
   /**
-   * What share to begin at, from whatever was written down last time — half of it.
+   * What share to begin Skia's body at, from whatever was written down last time — half of it. The
+   * GPU's body begins at a share of its own: see `bodyStartingShare`.
    *
    * Left out, the loop starts at the floor and climbs, which is what a phone that has never been
    * measured does and what every phone does after an update that moves the drawing's cost. Given,
@@ -713,7 +719,8 @@ function JarvisHologramView({
     if (particleShare !== undefined) {
       particleShare.value = density.value.density;
     }
-    if (provenShare !== undefined) {
+    // Only Skia's, the one body it is read back to start: see `keepsProvenShare`.
+    if (provenShare !== undefined && keepsProvenShare(layer.value)) {
       provenShare.value = density.value.proven;
     }
     if (bodyLayer !== undefined) {

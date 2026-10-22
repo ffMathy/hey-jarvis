@@ -32,8 +32,9 @@ export function useSparkDensity() {
   const bodyLayer = useSharedValue<BodyLayer>('pending');
   const [startingShare, setStartingShare] = useState<number | undefined>(undefined);
 
-  // Half of what this phone was last seen holding, so the climb starts somewhere it is already
-  // known to be safe rather than at the floor — and, just as importantly, never above it.
+  // Half of what Skia's body was last seen holding on this phone, so the climb starts somewhere it
+  // is already known to be safe rather than at the floor — and, just as importantly, never above
+  // it. The GPU's body starts at a share of its own: see `bodyStartingShare` in the hologram.
   useEffect(() => {
     let wanted = true;
     void readProvenSparks().then((proven) => {

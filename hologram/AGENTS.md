@@ -661,8 +661,14 @@ canvas on a `SurfaceView` when told it is `opaque`.
   browser's `webglcontextlost` drops it from `gl-context.web.ts`'s registry. The
   GPU has the body back at the next arrival if a context has come back by then.
 - **The density loop starts again** whenever the body changes renderer, from
-  `bodyStartingShare`: Skia's where it always has, the GPU's at no less than
-  `GPU_STARTING_SHARE` (half). `createDensityControl` is a worklet for that.
+  `bodyStartingShare`: Skia's where it always has, from half of what it was last
+  seen holding or the floor, and the GPU's at `GPU_STARTING_SHARE` (half)
+  whatever was remembered. `createDensityControl` is a worklet for that.
+- **Only Skia's proven share is remembered** (`keepsProvenShare`): the view
+  writes `provenShare` only while Skia draws the body. The GPU's build time
+  always says there is room, so its loop climbs to whatever the frame rate
+  allows, often every particle, and a later fallback to Skia started from half
+  of that would build far more than Skia's body can through the arrival.
 
 **Set up on the JS thread, drawn on the UI thread, and never both.** expo-gl
 lets the JS runtime and the UI runtime share a context, and records the calls of

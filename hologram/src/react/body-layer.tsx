@@ -60,7 +60,8 @@ import type { BodyGl } from './gl-contract';
  * arrival if a context has come back by then. The body never changes renderer mid-show otherwise.
  *
  * **Each change of renderer starts the density loop again** from that renderer's starting share
- * (`bodyStartingShare`): a share the one could hold says nothing about the other.
+ * (`bodyStartingShare`): a share the one could hold says nothing about the other. For the same
+ * reason only the share Skia's body proves is remembered for next time (`keepsProvenShare`).
  */
 
 /** No context lost. Context ids are positive. */

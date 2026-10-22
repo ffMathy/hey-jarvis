@@ -112,7 +112,7 @@ mobile/
     │                              #   (both are two lines over `hologram/react`)
     ├── hologram-size.ts          # how big it is drawn on this screen
     ├── spark-density.ts          # how many particles this phone can manage …
-    ├── spark-memory.ts           # … and remembering what it managed last time
+    ├── spark-memory.ts           # … and remembering what Skia's body managed last time
     ├── jarvis-voice.ts           # following Jarvis's track for the session on Android: tapped and analysed …
     ├── jarvis-voice.web.ts       # … and in a browser, the same track through Web Audio
     ├── agent-audio-track.ts      # this app's Room check, and Android's native ids for Jarvis's track
