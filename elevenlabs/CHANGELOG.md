@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.7.3...elevenlabs-v2.8.0) (2026-10-22)
+
+
+### Features
+
+* **elevenlabs:** run jarvis on eleven realtime v1 max ([#982](https://github.com/ffMathy/hey-jarvis/issues/982)) ([f71319e](https://github.com/ffMathy/hey-jarvis/commit/f71319ed4b9bd05c76460836a0da5ef5138fe80d))
+
 ## [2.7.3](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.7.2...elevenlabs-v2.7.3) (2026-10-11)
 
 

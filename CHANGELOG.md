@@ -1,5 +1,22 @@
 # Changelog
 
+## [4.27.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.26.0...root-v4.27.0) (2026-10-22)
+
+
+### Features
+
+* **elevenlabs:** run jarvis on eleven realtime v1 max ([#982](https://github.com/ffMathy/hey-jarvis/issues/982)) ([f71319e](https://github.com/ffMathy/hey-jarvis/commit/f71319ed4b9bd05c76460836a0da5ef5138fe80d))
+
+
+### Bug Fixes
+
+* **hologram:** open the call's microphone before the greeting plays ([#981](https://github.com/ffMathy/hey-jarvis/issues/981)) ([660a4a3](https://github.com/ffMathy/hey-jarvis/commit/660a4a33962e9416e8fcacf9a2cade3b5acbe135))
+
+
+### Code Refactoring
+
+* **hologram:** draw his body only on the GPU, and fix main's CI ([#980](https://github.com/ffMathy/hey-jarvis/issues/980)) ([6e89ea4](https://github.com/ffMathy/hey-jarvis/commit/6e89ea47be255a1b0395d4fc7687da4643109c14))
+
 ## [4.26.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.25.0...root-v4.26.0) (2026-10-22)
 
 
