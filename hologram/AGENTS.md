@@ -645,8 +645,9 @@ background and fades him itself.
   with Skia's. A GPU body that comes up later is used at the next arrival.
 - **Skia's for the mount, and the GL view gone**, when the context is WebGL 1 or
   OpenGL ES 2, `createGpuBody` throws (logged with its reason), the GL view
-  throws (an error boundary round it), or `getError` says the first frame on a
-  context went wrong — asked once, since it waits for the GPU.
+  throws (an error boundary round it), or `getError` says the warm-up frame
+  went wrong — asked once per context, on the JS thread before the handover,
+  since it waits for the GPU.
 - **Skia's from the next frame** when the context goes while he is on screen:
   expo-gl answers a call on a context that has gone with `undefined`, and a
   browser's `webglcontextlost` drops it from `gl-context.web.ts`'s registry. The
@@ -661,7 +662,9 @@ both into one batch with no lock, so a GL call from each at once is a native
 crash rather than an exception. `onContextCreate` runs on the JS thread: it
 checks for WebGL 2, calls `createGpuBody` — its compile and link checks wait for
 the GPU, which is fine there — draws one frame at density nought so the driver
-finishes compiling while he is still pending, and calls `endFrameEXP`. Then it
+finishes compiling while he is still pending, calls `endFrameEXP`, and waits for
+that frame with `getError`, so the UI thread's first `flushEXP` finds it done
+rather than holding up Android's main thread for it. Then it
 hands the body, plain data with `{ id }` handles, to the UI thread through a
 shared value with the context's id, and never calls GL again; nothing is deleted
 by hand, the objects go with the context. The frame callback finds the context

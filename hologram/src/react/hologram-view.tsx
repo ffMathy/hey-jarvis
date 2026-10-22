@@ -555,7 +555,7 @@ function JarvisHologramView({
   // the mount, so the loop is started for one renderer and started again only if the body moves.
   const [wanted] = useState(() => gpuBodyWanted(body));
   const density = useSharedValue(createDensityControl(bodyStartingShare(wanted ? 'gpu' : 'skia', startingShare), pace));
-  const { glMounted, layer, glView, startOnGpu, gpuForFrame, presentGpuFrame } = useBodyLayer({
+  const { glMounted, layer, glView, startOnGpu, gpuForFrame } = useBodyLayer({
     wanted,
     scene,
     isForeground,
@@ -660,7 +660,7 @@ function JarvisHologramView({
     });
     // Unfaded: the group the canvas is in is faded by the arrival, as the picture is.
     drawGpuBody(drawing.gl, drawing.body, { state, density: share, fade: 1, alphaFromLight: 1, camera: camera.value });
-    presentGpuFrame(drawing);
+    drawing.gl.endFrameEXP();
     issuing.value = performance.now() - startedAt;
   };
 
