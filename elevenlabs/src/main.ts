@@ -50,9 +50,7 @@ export function toConversationConfigBody(conversationConfig: ConversationalConfi
     allowUnrecognizedEnumValues: true,
     unrecognizedObjectKeys: 'strip',
   });
-  return 'realtime_model' in conversationConfig
-    ? { ...body, realtime_model: conversationConfig.realtime_model }
-    : body;
+  return 'realtime_model' in conversationConfig ? { ...body, realtime_model: conversationConfig.realtime_model } : body;
 }
 
 /**
