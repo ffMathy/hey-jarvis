@@ -3,12 +3,12 @@ import {
   advanceTilt,
   createTiltState,
   EYE_DISTANCE_FADE_SECONDS,
-  PHONE_EYE_DISTANCE,
+  PHONE_EYE_SQUARES,
   resetTilt,
   TILT_DEADBAND_DEGREES,
   TILT_LARGEST_DEGREES,
   type TiltState,
-  tiltEyeDistance,
+  tiltEyeSquares,
   tiltFront,
 } from './tilt';
 
@@ -51,7 +51,8 @@ interface Step {
   yaw: number;
   /** Degrees. */
   pitch: number;
-  eyeDistance: number;
+  /** In square sides. */
+  eyeSquares: number;
 }
 
 /**
@@ -71,7 +72,7 @@ function run(
   for (let time = start + step; time <= start + seconds + 1e-9; time += step) {
     const [x, y, z] = at(time);
     advanceTilt(state, step, x, y, z, hearing);
-    path.push({ time, yaw: state.yaw / DEGREES, pitch: state.pitch / DEGREES, eyeDistance: tiltEyeDistance(state) });
+    path.push({ time, yaw: state.yaw / DEGREES, pitch: state.pitch / DEGREES, eyeSquares: tiltEyeSquares(state) });
   }
   return path;
 }
@@ -267,38 +268,38 @@ describe('a phone on its side, or no sensor', () => {
 describe('how far away the eye is', () => {
   it('is infinitely far, as the flat drawing is seen, until a reading arrives', () => {
     const state = createTiltState();
-    expect(tiltEyeDistance(state)).toBe(Number.POSITIVE_INFINITY);
+    expect(tiltEyeSquares(state)).toBe(Number.POSITIVE_INFINITY);
     run(state, 1, 60, () => [0, 0, 0]);
-    expect(tiltEyeDistance(state)).toBe(Number.POSITIVE_INFINITY);
+    expect(tiltEyeSquares(state)).toBe(Number.POSITIVE_INFINITY);
   });
 
   it('comes in to the phone distance over the fade once readings arrive, evenly in its inverse', () => {
     const state = createTiltState();
     const path = run(state, EYE_DISTANCE_FADE_SECONDS + 0.05, 60, () => tippedAway(30));
-    expect(path.at(-1)?.eyeDistance).toBe(PHONE_EYE_DISTANCE);
+    expect(path.at(-1)?.eyeSquares).toBe(PHONE_EYE_SQUARES);
     // From where it was before the first reading, infinitely far.
-    const inverses = [0, ...path.map((step) => 1 / step.eyeDistance)];
+    const inverses = [0, ...path.map((step) => 1 / step.eyeSquares)];
     for (let index = 1; index < inverses.length; index++) {
       const step = (inverses[index] ?? 0) - (inverses[index - 1] ?? 0);
       expect(step).toBeGreaterThanOrEqual(0);
       // No frame takes more than a tenth of the way: it is a fade, not a step.
-      expect(step).toBeLessThan(0.1 / PHONE_EYE_DISTANCE);
+      expect(step).toBeLessThan(0.1 / PHONE_EYE_SQUARES);
     }
   });
 
   it('goes back out to infinitely far once readings stop, and stays near while the phone lies on its side', () => {
     const state = createTiltState();
     run(state, 1, 60, () => onItsSide(0));
-    expect(tiltEyeDistance(state)).toBe(PHONE_EYE_DISTANCE);
+    expect(tiltEyeSquares(state)).toBe(PHONE_EYE_SQUARES);
     run(state, EYE_DISTANCE_FADE_SECONDS + 0.05, 60, () => [0, 0, 0], 1);
-    expect(tiltEyeDistance(state)).toBe(Number.POSITIVE_INFINITY);
+    expect(tiltEyeSquares(state)).toBe(Number.POSITIVE_INFINITY);
   });
 
   it('starts from infinitely far again after a reset', () => {
     const state = createTiltState();
     run(state, 1, 60, () => tippedAway(30));
     resetTilt(state);
-    expect(tiltEyeDistance(state)).toBe(Number.POSITIVE_INFINITY);
+    expect(tiltEyeSquares(state)).toBe(Number.POSITIVE_INFINITY);
   });
 });
 
@@ -306,7 +307,8 @@ describe('stepping it every frame', () => {
   it('works in place on the one state and its one front, so a frame allocates nothing of its own', () => {
     const state = createTiltState();
     const front = state.front;
-    for (const gravity of [tippedAway(10), tippedAway(30), [0, 0, 0] as Gravity, onItsSide(0)]) {
+    const readings: Gravity[] = [tippedAway(10), tippedAway(30), [0, 0, 0], onItsSide(0)];
+    for (const gravity of readings) {
       expect(advanceTilt(state, 1 / 60, gravity[0], gravity[1], gravity[2], 0)).toBe(state);
       expect(tiltFront(state)).toBe(front);
     }

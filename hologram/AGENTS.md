@@ -107,8 +107,15 @@ an app can draw on whichever thread holds its context. `createGpuBody` is
 JS-thread code: it builds the rows, compiles the three programs and uploads about
 3 MB of vertices, once, and throws when the context refuses any of it (an ES 2
 context cannot compile the GLSL ES 3.00 shaders), which is the app's cue to keep
-the body in Skia. The renderer leaves GL state as it set it, so it needs a
-context of its own. It draws what the headset draws, pass for pass and in
+the body in Skia. On a phone the body it returns then crosses to the UI thread,
+and worklets copy nothing between runtimes but plain objects, arrays and typed
+arrays, while expo-gl makes every GL object an instance of a class of its own.
+So the body keeps a plain `{ id }` in place of each of expo-gl's, which is all
+expo-gl reads of one, and a browser's as they are; `gpu-body.spec.ts` holds it
+to that with a context that makes them the way expo-gl does. Nothing deletes
+what it made: it goes with the context, and a GL call from the JS thread while
+the UI thread draws could race it. The renderer leaves GL state as it set it, so
+it needs a context of its own. It draws what the headset draws, pass for pass and in
 three's order — the halo union into its own target, then the strokes, then the
 halos' light, Screened and faded as one layer — and whether the pixels agree is
 a browser's to say: vr's `hologram-gpu-body.spec.ts` draws the same moments both
@@ -548,8 +555,9 @@ through a layer of its own, at `arrivalOf(appearance, presence)` — the arrival
 view that lays a body drawn on the GPU beside the Skia picture cannot fade the
 two separately: Screen-blending two faded layers is brighter where they overlap
 than fading the blend of them. So `drawHologram(…, fadeOutside)` skips that layer
-and the view fades the group of both by `arrivalOf` instead, which over black or
-over nothing comes out within a few levels of the layer's own fade
+and the view fades the group of both by `arrivalOf` instead — the GPU body in
+it drawn with `fade: 1`, or it would come out at the arrival squared — which
+over black or over nothing comes out within a few levels of the layer's own fade
 (`hologram-drawing.spec.ts` holds it to four). At rest there is no layer, and the
 two draw the same bytes. The drawing never paints a background — the view does,
 with `drawColor` inside its own layer — so leaving one out is the view's to do.
@@ -589,7 +597,7 @@ room from.
 
 `tilt.ts` turns the phone's gravity — Reanimated's GRAVITY sensor, read every
 `TILT_SENSOR_INTERVAL_MS` — into where the eye is round him (`tiltFront`) and how
-far away it is (`tiltEyeDistance`), for a body drawn in three dimensions. It is
+far away it is (`tiltEyeSquares`), for a body drawn in three dimensions. It is
 built like the frame clock: one state made once (`createTiltState`), stepped once
 a frame inside `modify` with the reading as positional arguments
 (`advanceTilt`), and put back as new on coming to the foreground (`resetTilt`);
@@ -609,10 +617,15 @@ it allocates nothing, and the front is written into the state's own array.
 - **No reading, a reading that is not a number, or a phone on its side** sends
   the eye back to the front, and the next usable reading is the new rest pose, so
   nothing jumps when readings come back.
-- **The eye is `PHONE_EYE_DISTANCE` radii away while readings arrive**, and
-  infinitely far — exactly the flat drawing's view — while none do, eased between
-  the two over `EYE_DISTANCE_FADE_SECONDS`. The watch and a desktop browser never
-  step it, and stay infinitely far.
+- **The eye is `PHONE_EYE_DISTANCE` of his resting radii away while readings
+  arrive**, and infinitely far — exactly the flat drawing's view — while none do,
+  eased between the two over `EYE_DISTANCE_FADE_SECONDS`. The watch and a desktop
+  browser never step it, and stay infinitely far.
+- **It is handed out in sides of the drawing's square** (`PHONE_EYE_SQUARES`), the
+  unit `placeFlatCamera` takes it in, so that as he swells with his voice he grows
+  towards the eye rather than the eye backing off with him. The camera draws an eye
+  `ORTHOGRAPHIC_EYE_DISTANCE` radii off or further flat: float32 depth cannot hold
+  one that far, and the fade back out ends on a remainder that puts it there.
 
 `tilt.spec.ts` holds it to that on gestures stepped at 60 and 120 frames a second.
 How it feels — the sign of each gesture, the gain, the deadband — is a device's to

@@ -36,8 +36,10 @@ import { sceneSparklePixels } from './sparkle';
  * Everything here takes the context as an argument, typed as the calls it makes (`HologramGl`), as
  * the drawing takes Skia: a browser's `WebGL2RenderingContext` and expo-gl's
  * `ExpoWebGLRenderingContext` (which extends it) both fit, and the GL enums are numbers here rather
- * than read off the context. `drawGpuBody` is a worklet over plain data, so it can run wherever the
- * context lives: the UI thread with expo-gl's worklet support, or the JS thread.
+ * than read off the context. `createGpuBody` runs on the JS thread and `drawGpuBody` is a worklet, so
+ * on a phone the body crosses from the one runtime to the other: it is plain data so that it can
+ * (see `GpuBody`), and the drawing then runs wherever the context lives, the UI thread with expo-gl's
+ * worklet support or the JS thread.
  */
 
 /** The WebGL 2 calls the raw renderer makes, and nothing else: widen this to make another. */
@@ -63,12 +65,8 @@ export type HologramGl = Pick<
   | 'createShader'
   | 'createTexture'
   | 'createVertexArray'
-  | 'deleteBuffer'
-  | 'deleteFramebuffer'
   | 'deleteProgram'
   | 'deleteShader'
-  | 'deleteTexture'
-  | 'deleteVertexArray'
   | 'disable'
   | 'drawElements'
   | 'enable'
@@ -167,7 +165,14 @@ export interface GpuBodyFrame {
   state: HologramFrameState;
   /** The share of the rows to draw (`densityKey` order), 0–1: the GPU's own, not the frame's. */
   density: number;
-  /** How much of him shows, 0–1: `state.arrival` on a phone, as the drawing's arrival layer fades him. */
+  /**
+   * How much of him shows, 0–1, as the blend's constant colour. 1 on a phone or a watch: the view
+   * fades this canvas and Skia's picture together by `arrivalOf` (see `drawHologram`'s
+   * `fadeOutside`), and a body faded here as well would show at the arrival squared beside a picture
+   * at the arrival. Less than 1 only where nothing outside fades the body: the headset fades its
+   * passes by the same constant (arrival × closeRangeFade), and vr's `gpu-body-check.ts` hands that
+   * value in.
+   */
   fade: number;
   /** What alpha the light writes, as a share of its brightest channel (see `gpu-body.ts`'s header). */
   alphaFromLight: number;
@@ -180,7 +185,16 @@ interface LinkedProgram {
   uniforms: Record<string, WebGLUniformLocation | null>;
 }
 
-/** What `createGpuBody` makes: plain data, so a worklet can carry it. */
+/**
+ * What `createGpuBody` makes, as plain data, so that a worklet can carry it from the JS thread to the
+ * UI thread.
+ *
+ * On a phone or a watch, expo-gl makes every GL object as an instance of a class of its own
+ * (`WebGLProgram` and the rest, each with an `id`), and the worklets runtime copies nothing between
+ * runtimes but plain objects, arrays and typed arrays: it throws on the rest. expo-gl reads nothing
+ * of a GL object but its `id`, so the body keeps a plain `{ id }` in place of each. A browser's GL
+ * objects have no `id` and are kept as they are; nothing copies them there.
+ */
 export interface GpuBody {
   /** Texels across each half of the halo target. */
   haloTexels: number;
@@ -198,7 +212,6 @@ export interface GpuBody {
   haloUnionArray: WebGLVertexArrayObject;
   strokeArray: WebGLVertexArrayObject;
   squareArray: WebGLVertexArrayObject;
-  buffers: WebGLBuffer[];
   sparkle: WebGLTexture;
   haloTexture: WebGLTexture;
   haloFramebuffer: WebGLFramebuffer;
@@ -227,6 +240,14 @@ const HALO_LIGHT_UNIFORMS = [
   'haloShares',
   'alphaFromLight',
 ];
+
+/**
+ * A GL object as the body keeps it: a plain `{ id }` for one expo-gl made, which is all expo-gl reads
+ * of it, and the object itself for a browser's, which has no `id` (see `GpuBody`).
+ */
+function carried<Handle extends object>(handle: Handle): Handle | { id: number } {
+  return 'id' in handle && typeof handle.id === 'number' ? { id: handle.id } : handle;
+}
 
 function compile(gl: HologramGl, type: number, source: string): WebGLShader {
   const shader = gl.createShader(type);
@@ -258,16 +279,18 @@ function link(gl: HologramGl, vertexSource: string, fragmentSource: string, unif
     throw new Error(`The GPU body's program did not link: ${log}`);
   }
   const uniforms: Record<string, WebGLUniformLocation | null> = {};
-  for (const name of uniformNames) uniforms[name] = gl.getUniformLocation(program, name);
-  return { program, uniforms };
+  for (const name of uniformNames) {
+    const location = gl.getUniformLocation(program, name);
+    uniforms[name] = location === null ? null : carried(location);
+  }
+  return { program: carried(program), uniforms };
 }
 
-function arrayBuffer(gl: HologramGl, buffers: WebGLBuffer[], target: number, data: ArrayBufferView): WebGLBuffer {
+function arrayBuffer(gl: HologramGl, target: number, data: ArrayBufferView): WebGLBuffer {
   const buffer = gl.createBuffer();
   if (buffer === null) throw new Error('The GPU body could not make a buffer.');
   gl.bindBuffer(target, buffer);
   gl.bufferData(target, data, STATIC_DRAW);
-  buffers.push(buffer);
   return buffer;
 }
 
@@ -323,23 +346,22 @@ export function createGpuBody(gl: HologramGl, scene: HologramScene, options: Gpu
   const haloTexels = options.haloTexels ?? HALO_TEXELS;
   const rows = buildHologramRows(scene);
   const vertices = buildRowVertices(rows);
-  const buffers: WebGLBuffer[] = [];
   const haloUnion = link(gl, HALO_UNION_VERTEX_SHADER, HALO_UNION_FRAGMENT_SHADER, HALO_UNION_UNIFORMS);
   const strokes = link(gl, STROKE_VERTEX_SHADER, STROKE_FRAGMENT_SHADER, STROKE_UNIFORMS);
   const haloLight = link(gl, HALO_LIGHT_VERTEX_SHADER, HALO_LIGHT_FRAGMENT_SHADER, HALO_LIGHT_UNIFORMS);
 
   const rowAttributes: [string, WebGLBuffer, number][] = vertices.attributes.map(({ name, size, values }) => [
     name,
-    arrayBuffer(gl, buffers, ARRAY_BUFFER, values),
+    arrayBuffer(gl, ARRAY_BUFFER, values),
     size,
   ]);
-  rowAttributes.push(['corner', arrayBuffer(gl, buffers, ARRAY_BUFFER, vertices.corner), 2]);
-  const rowIndex = arrayBuffer(gl, buffers, ELEMENT_ARRAY_BUFFER, vertices.index);
+  rowAttributes.push(['corner', arrayBuffer(gl, ARRAY_BUFFER, vertices.corner), 2]);
+  const rowIndex = arrayBuffer(gl, ELEMENT_ARRAY_BUFFER, vertices.index);
   // One vertex array per program over the same buffers: the linker numbers each program's attributes.
   const haloUnionArray = vertexArray(gl, haloUnion.program, rowAttributes, rowIndex);
   const strokeArray = vertexArray(gl, strokes.program, rowAttributes, rowIndex);
-  const squareCorners = arrayBuffer(gl, buffers, ARRAY_BUFFER, SQUARE_CORNERS);
-  const squareIndex = arrayBuffer(gl, buffers, ELEMENT_ARRAY_BUFFER, SQUARE_TRIANGLES);
+  const squareCorners = arrayBuffer(gl, ARRAY_BUFFER, SQUARE_CORNERS);
+  const squareIndex = arrayBuffer(gl, ELEMENT_ARRAY_BUFFER, SQUARE_TRIANGLES);
   const squareArray = vertexArray(gl, haloLight.program, [['corner', squareCorners, 2]], squareIndex);
 
   // Repeated both ways, linear, no mipmaps: the drawing's image shader (see sparkle.ts).
@@ -378,13 +400,12 @@ export function createGpuBody(gl: HologramGl, scene: HologramScene, options: Gpu
     haloUnion,
     strokes,
     haloLight,
-    haloUnionArray,
-    strokeArray,
-    squareArray,
-    buffers,
-    sparkle,
-    haloTexture,
-    haloFramebuffer,
+    haloUnionArray: carried(haloUnionArray),
+    strokeArray: carried(strokeArray),
+    squareArray: carried(squareArray),
+    sparkle: carried(sparkle),
+    haloTexture: carried(haloTexture),
+    haloFramebuffer: carried(haloFramebuffer),
   };
 }
 
@@ -482,7 +503,6 @@ export function drawGpuBody(gl: HologramGl, body: GpuBody, frame: GpuBodyFrame) 
   gl.disable(SCISSOR_TEST);
   gl.disable(DITHER);
   gl.bindFramebuffer(FRAMEBUFFER, null);
-  gl.viewport(0, 0, camera.width, camera.height);
   gl.clearColor(0, 0, 0, 0);
   gl.clear(COLOR_BUFFER_BIT);
   if (frame.fade > 0 && state.arrival > 0) {
@@ -500,18 +520,4 @@ export function drawGpuBody(gl: HologramGl, body: GpuBody, frame: GpuBodyFrame) 
     gl.bindTexture(TEXTURE_2D, null);
     gl.disable(BLEND);
   }
-}
-
-/** Lets go of everything `createGpuBody` made. */
-export function disposeGpuBody(gl: HologramGl, body: GpuBody) {
-  for (const buffer of body.buffers) gl.deleteBuffer(buffer);
-  gl.deleteVertexArray(body.haloUnionArray);
-  gl.deleteVertexArray(body.strokeArray);
-  gl.deleteVertexArray(body.squareArray);
-  gl.deleteProgram(body.haloUnion.program);
-  gl.deleteProgram(body.strokes.program);
-  gl.deleteProgram(body.haloLight.program);
-  gl.deleteTexture(body.sparkle);
-  gl.deleteTexture(body.haloTexture);
-  gl.deleteFramebuffer(body.haloFramebuffer);
 }

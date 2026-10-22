@@ -16,19 +16,44 @@ import { HALO_TEXELS } from './halo-union';
 
 type Call = [string, ...unknown[]];
 
-/** A context that hands out a fresh object for every create, says yes to every status, and writes every call into `calls`. */
-function recordingGl(calls: Call[]): HologramGl {
+/** A GL object as a browser makes one: an instance of a class of its own, with nothing on it to read. */
+class BrowserObject {}
+
+/** A uniform's location as a browser makes one, named here so a test can tell which uniform a call sets. */
+class BrowserLocation {
+  constructor(readonly name: string) {}
+}
+
+/** A GL object as expo-gl makes one on a device: an instance of a class of its own, with the id expo-gl reads it by. */
+class ExpoObject {
+  constructor(readonly id: number) {}
+}
+
+/** How a context makes its GL objects and its uniforms' locations. */
+interface GlObjects {
+  made(): object;
+  location(name: string): object;
+}
+
+const BROWSER_OBJECTS: GlObjects = { made: () => new BrowserObject(), location: (name) => new BrowserLocation(name) };
+
+function expoObjects(): GlObjects {
   let made = 0;
+  return { made: () => new ExpoObject(++made), location: () => new ExpoObject(++made) };
+}
+
+/** A context that hands out a fresh object for every create, says yes to every status, and writes every call into `calls`. */
+function recordingGl(calls: Call[], objects = BROWSER_OBJECTS): HologramGl {
   const answers: Record<string, (...args: unknown[]) => unknown> = {
-    createShader: () => ({ made: ++made }),
-    createProgram: () => ({ made: ++made }),
-    createBuffer: () => ({ made: ++made }),
-    createTexture: () => ({ made: ++made }),
-    createFramebuffer: () => ({ made: ++made }),
-    createVertexArray: () => ({ made: ++made }),
+    createShader: objects.made,
+    createProgram: objects.made,
+    createBuffer: objects.made,
+    createTexture: objects.made,
+    createFramebuffer: objects.made,
+    createVertexArray: objects.made,
     getShaderParameter: () => true,
     getProgramParameter: () => true,
-    getUniformLocation: (_program, name) => ({ name }),
+    getUniformLocation: (_program, name) => objects.location(String(name)),
     getAttribLocation: (_program, name) => (name === 'corner' ? 0 : 1),
     checkFramebufferStatus: () => 0x8cd5,
   };
@@ -67,7 +92,18 @@ function frameAt(overrides: Partial<HologramFrame>): HologramFrame {
   };
 }
 
-function drawn(calls: Call[], overrides: Partial<HologramFrame>, fade?: number) {
+/**
+ * Where in `value` there is something the worklets runtime would refuse to copy from the JS thread to
+ * the UI thread: anything but a primitive, a plain object, an array or a typed array.
+ */
+function uncopyable(value: unknown, path: string): string[] {
+  if (typeof value !== 'object' || value === null || ArrayBuffer.isView(value)) return [];
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== Array.prototype) return [path];
+  return Object.entries(value).flatMap(([key, inner]: [string, unknown]) => uncopyable(inner, `${path}.${key}`));
+}
+
+function drawn(calls: Call[], overrides: Partial<HologramFrame>, fade: number) {
   const gl = recordingGl(calls);
   const body = createGpuBody(gl, scene);
   calls.length = 0;
@@ -79,7 +115,7 @@ function drawn(calls: Call[], overrides: Partial<HologramFrame>, fade?: number) 
     FRONT_VIEW,
     Number.POSITIVE_INFINITY,
   );
-  drawGpuBody(gl, body, { state, density: 1, fade: fade ?? state.arrival, alphaFromLight: 1, camera });
+  drawGpuBody(gl, body, { state, density: 1, fade, alphaFromLight: 1, camera });
   return body;
 }
 
@@ -95,6 +131,19 @@ describe('the raw renderer', () => {
     expect(body.indexType).toBe(0x1403);
     const target = calls.find(([name, , , , width]) => name === 'texImage2D' && width === HALO_TEXELS * 2);
     expect(target?.[3]).toBe(0x8058);
+    // A browser's GL objects are kept as the context made them.
+    expect(body.haloFramebuffer).toBeInstanceOf(BrowserObject);
+  });
+
+  it('keeps the GL objects expo-gl makes as the plain ids it reads them by, so a worklet can carry the body', () => {
+    const calls: Call[] = [];
+    const body = createGpuBody(recordingGl(calls, expoObjects()), scene);
+    expect(uncopyable(body, 'body')).toEqual([]);
+    // Still naming what the context made: the framebuffer the halo target was attached to.
+    const framebuffer = calls.find(([name, , bound]) => name === 'bindFramebuffer' && bound !== null)?.[2];
+    expect(framebuffer).toBeInstanceOf(ExpoObject);
+    expect(body.haloFramebuffer).toEqual({ id: framebuffer instanceof ExpoObject ? framebuffer.id : Number.NaN });
+    expect(body.strokes.uniforms.viewportHeight).toEqual({ id: expect.any(Number) });
   });
 
   it('only clears while he is faded out', () => {
@@ -106,7 +155,9 @@ describe('the raw renderer', () => {
 
   it('draws the halo union into its target by MAX, then the strokes and the halos’ light Screened and faded', () => {
     const calls: Call[] = [];
-    const body = drawn(calls, { appearance: 0.1 });
+    // Halfway arrived, wholly lit: a phone's view fades the body from outside, by the arrival.
+    expect(analyseFrame(frameAt({ appearance: 0.1 }), 1, scene).arrival).toBe(0.5);
+    const body = drawn(calls, { appearance: 0.1 }, 1);
     const names = calls.map(([name]) => name);
     const draws = calls.filter(([name]) => name === 'drawElements');
     expect(draws.map(([, , count]) => count)).toEqual([body.indexCount, body.indexCount, 6]);
@@ -129,10 +180,16 @@ describe('the raw renderer', () => {
         .filter(([name]) => name === 'blendEquationSeparate')
         .at(-1),
     ).toEqual(['blendEquationSeparate', 0x8008, 0x8008]);
-    // Then onto the canvas: Screen, faded by the blend's constant colour.
+    // Then onto the canvas, all of it: Screen, faded by the blend's constant colour.
     const secondDraw = names.indexOf('drawElements', firstDraw + 1);
     const between = calls.slice(firstDraw, secondDraw);
     expect(between.filter(([name]) => name === 'bindFramebuffer').at(-1)?.[2]).toBe(null);
+    expect(between.filter(([name]) => name === 'viewport').at(-1)).toEqual(['viewport', 0, 0, 600, 900]);
+    const viewportHeight = calls.find(
+      ([name, location]) =>
+        name === 'uniform1f' && location instanceof BrowserLocation && location.name === 'viewportHeight',
+    );
+    expect(viewportHeight?.[2]).toBe(900);
     expect(between.find(([name]) => name === 'blendFuncSeparate')).toEqual([
       'blendFuncSeparate',
       0x8001,
@@ -140,12 +197,16 @@ describe('the raw renderer', () => {
       0x8003,
       0x0303,
     ]);
-    const fade = analyseFrame(frameAt({ appearance: 0.1 }), 1, scene).arrival;
-    expect(fade).toBeGreaterThan(0);
-    expect(fade).toBeLessThan(1);
-    expect(between.find(([name]) => name === 'blendColor')).toEqual(['blendColor', fade, fade, fade, fade]);
+    expect(between.find(([name]) => name === 'blendColor')).toEqual(['blendColor', 1, 1, 1, 1]);
     expect(between.filter(([name]) => name === 'useProgram').at(-1)?.[1]).toBe(body.strokes.program);
     const lastUse = calls.filter(([name]) => name === 'useProgram').at(-1);
     expect(lastUse?.[1]).toBe(body.haloLight.program);
+  });
+
+  it('fades by the fade it is handed, not by the arrival, where nothing outside fades it', () => {
+    const calls: Call[] = [];
+    drawn(calls, { appearance: 0.1 }, 0.3);
+    expect(calls.filter(([name]) => name === 'drawElements')).toHaveLength(3);
+    expect(calls.find(([name]) => name === 'blendColor')).toEqual(['blendColor', 0.3, 0.3, 0.3, 0.3]);
   });
 });

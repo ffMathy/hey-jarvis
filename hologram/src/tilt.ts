@@ -1,3 +1,5 @@
+import { SPHERE_FRACTION } from './hologram-drawing';
+
 /**
  * Tilt to look around: the phone's gravity, as Reanimated's GRAVITY sensor reports it, turned into
  * where the eye is round him, and how far away it is.
@@ -31,7 +33,9 @@
  *   and he turns to face whoever is talking.
  * - **Eased** over {@link TILT_EASE_SECONDS}, so the sensor's steps never reach the screen.
  * - **Seen from {@link PHONE_EYE_DISTANCE} while readings arrive**, and from infinitely far
- *   otherwise, which is exactly what the flat drawing shows.
+ *   otherwise, which is exactly what the flat drawing shows. The distance is handed out in sides of
+ *   the drawing's square ({@link tiltEyeSquares}), the unit `placeFlatCamera` takes it in, so that
+ *   as he swells with his voice he grows towards the eye rather than the eye backing off with him.
  */
 
 /** The furthest round him the eye goes, in degrees. */
@@ -61,7 +65,8 @@ export const TILT_GAIN = 1;
  */
 export const TILT_SENSOR_INTERVAL_MS = 33;
 /**
- * How far away the eye is on a phone while its sensor is reading, in drawn radii.
+ * How far away the eye is on a phone while its sensor is reading, in his resting radii: the radius
+ * he is drawn at when he is wholly here and silent, which the figures below are measured at.
  *
  * Near enough for him to have a front and a back as the view turns — at this distance the front of
  * him is drawn 13% larger than the back — and far enough that, straight on, he looks like the flat
@@ -69,6 +74,8 @@ export const TILT_SENSOR_INTERVAL_MS = 33;
  * and 3% at eighteen. The front of him never reaches past the rim at any of them.
  */
 export const PHONE_EYE_DISTANCE = 8;
+/** {@link PHONE_EYE_DISTANCE} in sides of the drawing's square, which his resting radius is SPHERE_FRACTION of. */
+export const PHONE_EYE_SQUARES = PHONE_EYE_DISTANCE * SPHERE_FRACTION;
 /**
  * How long the eye takes to come in from infinitely far to {@link PHONE_EYE_DISTANCE} once readings
  * arrive, and to go back out once they stop, in seconds. Eased through the inverse of the distance,
@@ -136,15 +143,15 @@ export function tiltFront(state: TiltState): number[] {
 }
 
 /**
- * How far away the eye is now, in drawn radii: {@link PHONE_EYE_DISTANCE} while readings arrive,
- * `Infinity` — the flat drawing's view — while none do, and in between on the way from one to the
- * other.
+ * How far away the eye is now, in sides of the drawing's square — what `placeFlatCamera` takes as
+ * its `eyeSquares`: {@link PHONE_EYE_SQUARES} while readings arrive, `Infinity` — the flat drawing's
+ * view — while none do, and in between on the way from one to the other.
  */
-export function tiltEyeDistance(state: TiltState): number {
+export function tiltEyeSquares(state: TiltState): number {
   'worklet';
   const share = state.perspective;
-  const inverse = (share * share * (3 - 2 * share)) / PHONE_EYE_DISTANCE;
-  return inverse > 0 ? 1 / inverse : Number.POSITIVE_INFINITY;
+  const eased = share * share * (3 - 2 * share);
+  return eased > 0 ? PHONE_EYE_SQUARES / eased : Number.POSITIVE_INFINITY;
 }
 
 /**

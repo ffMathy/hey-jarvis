@@ -1,4 +1,5 @@
 import { FRONT_VIEW, type ViewBasis } from './fragment-3d';
+import { ORTHOGRAPHIC_EYE_DISTANCE } from './fragment-glsl';
 import type { GpuBodyCamera } from './gpu-body';
 
 /**
@@ -50,7 +51,9 @@ export function createFlatCamera(): GpuBodyCamera {
  * Fills `camera` for this frame. `radiusShare` is his radius as a share of the square
  * (`analyseFrame(frame, 1, scene).radius`), `basis` the view plane in the body's frame
  * (`inFrame(viewBasisTowards(...), bodyFrame(front))`, or FRONT_VIEW straight on), and `eyeSquares`
- * how far the eye is in square sides — Infinity draws him with the phone's flat projection.
+ * how far the eye is in square sides — on a phone the tilt's `tiltEyeSquares`, already in them.
+ * Infinity draws him with the phone's flat projection, and so does an eye ORTHOGRAPHIC_EYE_DISTANCE
+ * of his radii away or further.
  */
 export function placeFlatCamera(
   camera: GpuBodyCamera,
@@ -61,8 +64,12 @@ export function placeFlatCamera(
 ): GpuBodyCamera {
   'worklet';
   const { right, up, front } = basis;
-  const perspective = Number.isFinite(eyeSquares);
-  const eye = perspective ? eyeSquares / radiusShare : Number.POSITIVE_INFINITY;
+  const eyeAway = eyeSquares / radiusShare;
+  // Further off than this, the depth range cancels away to nothing in float32 and he is clipped,
+  // while the eye is as good as infinitely far anyway; the tilt's eye passes through here on every
+  // fade back out. Written so that a NaN, or an eye behind him, lands on the flat projection too.
+  const perspective = eyeAway > 0 && eyeAway < ORTHOGRAPHIC_EYE_DISTANCE;
+  const eye = perspective ? eyeAway : Number.POSITIVE_INFINITY;
   const standoff = perspective ? eye : ORTHOGRAPHIC_STANDOFF;
   // The body's frame to the eye's: x along right, y along up, the eye down -z at `standoff`.
   const view = camera.modelView;
