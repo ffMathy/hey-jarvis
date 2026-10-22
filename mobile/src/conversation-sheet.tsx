@@ -4,8 +4,8 @@ import { dismissAssistantWindow } from '../modules/jarvis-assistant';
 import { useWholeScreenHologramSize } from './hologram-size';
 import { SAMPLE_CANVAS, SampleSheet, sampleHologramSize } from './sample-sheet';
 
-/** How the canvas is set up across the whole screen: see-through, as it always was there. */
-const WHOLE_SCREEN_CANVAS: { opaque?: boolean; background?: string } = {};
+/** What he is drawn on across the whole screen: nothing, see-through, as it always was there. */
+const WHOLE_SCREEN_CANVAS: { background?: string } = {};
 
 interface ConversationSheetOptions {
   /** Whether the conversation is drawn in the bottom sheet at all. See `ConversationScreen`. */
@@ -37,10 +37,10 @@ interface ConversationSheetOptions {
  *
  * Three things follow from being in it, and all of them are here:
  *
- * - **The square and the canvas are sample mode's**, for sample mode's reason: an opaque canvas is
- *   a `SurfaceView` that no parent can clip, so its size is what holds it inside the sheet.
- * - **Nothing is drawn until the sheet has stopped moving** (`settled`), because a `SurfaceView`
- *   does not move with the view tree.
+ * - **The square and the background are sample mode's**, so he sits inside the sheet and on its
+ *   colour.
+ * - **Nothing is drawn until the sheet has stopped moving** (`settled`), so his arrival is not
+ *   spent sliding.
  * - **Tapping beside it, or back, hangs up.** The sheet then goes the way it does when the agent
  *   hangs up: straight down, with him on it.
  *

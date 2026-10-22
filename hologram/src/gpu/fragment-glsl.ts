@@ -432,8 +432,11 @@ Fragment readFragment() {
 
 /**
  * The glyphs as distance fields, for a fragment shader: 0 dash, 1 L, 2 bracket, 3 T, 4 Z, 5 ring,
- * 6 cell, exactly as `appendGlyph` builds their paths — `h` is the half-length, `n` the normal's
- * length, and the point is in the glyph's own frame, x along it and y along its normal.
+ * 6 cell — `h` is the half-length, `n` the normal's length (0.55 of it), and the point is in the
+ * glyph's own frame, x along it and y along its normal. A dash is one stroke along it; an L adds
+ * one along the normal at its far end; a bracket and a Z add one at each end, the same way round
+ * and opposite ways; a T one from its middle, 1.4 normals long; a ring is a circle 0.45 of the
+ * half-length across; and a cell is the rectangle the normal spans.
  */
 export const GLYPH_GLSL = /* glsl */ `
 float segmentDistance(vec2 point, vec2 from, vec2 to) {

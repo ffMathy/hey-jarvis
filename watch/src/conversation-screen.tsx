@@ -1,12 +1,12 @@
 import { type ElevenLabsSettings, isLive, WATCH_PARTICIPANT_NAME, WATCH_PARTICLE_COUNT } from 'hologram';
 import { useJarvisSession } from 'hologram/conversation';
+import { JarvisHologram } from 'hologram/react';
 import { useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { type FastNetwork, holdFastNetwork, releaseFastNetwork } from '../modules/jarvis-network';
 import { askThePhoneToAnswer } from '../modules/jarvis-phone';
 import { capCallVolume } from '../modules/jarvis-volume';
-import { JarvisHologram } from './jarvis-hologram';
 import { requestMicrophoneAccess } from './microphone-permission';
 import { useWatchDensity } from './watch-density';
 import { useWatchHologramSize } from './watch-screen';
@@ -123,7 +123,7 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
   const size = useWatchHologramSize();
   // Handing these over is what turns the density loop on at all — the drawing skips it
   // entirely when there is nowhere to write the frame rate. See `watch-density.ts`.
-  const { frameRate, buildMilliseconds, particleShare, provenShare, pace } = useWatchDensity();
+  const { frameRate, buildMilliseconds, particleShare, pace } = useWatchDensity();
 
   const start = useCallback(async () => {
     setProblem(undefined);
@@ -199,9 +199,7 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
           frameRate={frameRate}
           buildMilliseconds={buildMilliseconds}
           particleShare={particleShare}
-          provenShare={provenShare}
           pace={pace}
-          opaque
           background="#000000"
         />
       </View>

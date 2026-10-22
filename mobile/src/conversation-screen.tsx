@@ -311,7 +311,7 @@ export function ConversationScreen({
   });
   const textMode = conversation.typing;
   const liveVoice = useJarvisVoice(conversation.voice);
-  const { frameRate, buildMilliseconds, particleShare, provenShare, startingShare } = useSparkDensity();
+  const { frameRate, buildMilliseconds, particleShare } = useSparkDensity();
   // Onto the AirPods, if there are any. Only once the call is up, because the list of routes is
   // empty until LiveKit has started the audio session. See `preferred-microphone.ts`.
   usePreferredHeadset(status === 'connected');
@@ -614,12 +614,7 @@ export function ConversationScreen({
               frameRate={frameRate}
               buildMilliseconds={buildMilliseconds}
               particleShare={particleShare}
-              provenShare={provenShare}
-              startingShare={startingShare}
-              // Solid in the sheet, as sample mode's is: an opaque canvas is Skia's fast path for its
-              // flat body, and the sheet's own colour has to be painted behind him either way or he
-              // is a black square on the sheet.
-              opaque={canvas.opaque}
+              // On the sheet's own colour in the sheet, as sample mode's is.
               background={canvas.background}
               tilt
             />

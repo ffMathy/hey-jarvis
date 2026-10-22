@@ -1,5 +1,4 @@
 import { WithSkiaWeb } from '@shopify/react-native-skia/lib/module/web';
-import type { BodyRenderer } from 'hologram';
 import type { JarvisHologramProps } from 'hologram/react';
 import { Component, type ReactNode } from 'react';
 import { View } from 'react-native';
@@ -52,15 +51,6 @@ class HologramUnavailable extends Component<HologramUnavailableProps, { failed: 
  * the app is served from a root.
  */
 const BASE_URL = process.env.EXPO_BASE_URL ?? '';
-
-/**
- * Which renderer draws his body: the GPU wherever the browser has WebGL 2 (`body` on the view),
- * unless the page was opened with `?flat`, which keeps him in Skia's flat drawing — the headset's
- * name for its own flat mode, and for the same use, comparing the two.
- */
-const BODY: BodyRenderer =
-  typeof location !== 'undefined' && new URLSearchParams(location.search).has('flat') ? 'skia' : 'gpu';
-
 export function JarvisHologram(props: JarvisHologramProps) {
   return (
     <HologramUnavailable size={props.size}>
@@ -68,7 +58,7 @@ export function JarvisHologram(props: JarvisHologramProps) {
         opts={{ locateFile: (file: string) => `${BASE_URL}/${file}` }}
         getComponent={() => import('hologram/react/hologram-view')}
         fallback={<View style={{ width: props.size, height: props.size }} />}
-        componentProps={{ body: BODY, ...props }}
+        componentProps={props}
       />
     </HologramUnavailable>
   );

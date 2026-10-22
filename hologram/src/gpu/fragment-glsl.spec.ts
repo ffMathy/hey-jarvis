@@ -1,14 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { SCENE_SEED } from '../frame-timing';
-import {
-  analyseFrame,
-  createHologramScene,
-  HALO_RING_SHARE,
-  type HologramFrame,
-  LATTICE_PULL,
-} from '../hologram-drawing';
+import { analyseFrame, createHologramScene, type HologramFrame, LATTICE_PULL } from '../hologram-drawing';
 import { VOICE_BAND_COUNT } from '../voice-levels';
-import { STROKE_PAINTS } from './body-strokes';
 import { FRONT_VIEW } from './fragment-3d';
 import {
   createFragmentUniforms,
@@ -17,7 +10,6 @@ import {
   writeFragmentUniforms,
 } from './fragment-glsl';
 import { glslColour, glslFloat } from './glsl';
-import { HALO_PAINTS } from './halo-union';
 
 const scene = createHologramScene(SCENE_SEED);
 
@@ -79,21 +71,5 @@ describe('the fragment uniforms', () => {
     writeFragmentUniforms(uniforms, analyseFrame(frameAt({}), 1, scene), FRONT_VIEW, 1, Number.POSITIVE_INFINITY);
     expect(uniforms.eyeDistance.value).toBe(ORTHOGRAPHIC_EYE_DISTANCE);
     expect(Math.fround(ORTHOGRAPHIC_EYE_DISTANCE)).toBe(ORTHOGRAPHIC_EYE_DISTANCE);
-  });
-});
-
-describe('the paints', () => {
-  it('stroke the body as the drawing paints its tiers', () => {
-    expect(STROKE_PAINTS.dim).toEqual({ colour: 0xcc6e2c, width: 0.014, alpha: 0.62 });
-    expect(STROKE_PAINTS.mid.colour).toBe(0xf87026);
-    expect(STROKE_PAINTS.bright.colour).toBe(0xff7e28);
-    expect(STROKE_PAINTS.hot).toEqual({ colour: 0xff8e3c, width: 0.007, alpha: 0.8 });
-  });
-
-  it('strengthen each tier’s halo as drawParticleHalo does', () => {
-    expect(HALO_PAINTS.dim.strength).toBeCloseTo(0.3 * HALO_RING_SHARE, 12);
-    expect(HALO_PAINTS.mid.strength).toBeCloseTo(0.34 * HALO_RING_SHARE, 12);
-    expect(HALO_PAINTS.bright.strength).toBeCloseTo(0.38 * HALO_RING_SHARE, 12);
-    expect(HALO_PAINTS.colour).toBe(0xdc5c20);
   });
 });

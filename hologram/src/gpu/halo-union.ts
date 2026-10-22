@@ -1,4 +1,3 @@
-import { HALO_RING_SHARE } from '../hologram-drawing';
 import { FRAGMENT_GLSL, GLYPH_GLSL } from './fragment-glsl';
 import { glslFloat } from './glsl';
 
@@ -18,14 +17,13 @@ import { glslFloat } from './glsl';
  * those as separate paths, whose halos Screen over each other rather than union.
  */
 
-/** Texels across each half of the target: the same as the flat drawing's, so the halos are as sharp. */
+/** Texels across each half of the target: the same as Skia's picture on the headset, so the halos are as sharp. */
 export const HALO_TEXELS = 512;
 
-/**
- * How wide each tier's halo is, in the drawing's unit, and how strong, before the voice's glow:
- * `drawBody` and `drawBodyHighlights` in `hologram/src/hologram-drawing.ts` pass these to
- * `drawParticleHalo`, which multiplies the strength by HALO_RING_SHARE.
- */
+/** What one ring of a halo contributes: each tier's strength below is scaled by it. */
+const HALO_RING_SHARE = 0.52;
+
+/** How wide each tier's halo is, in the drawing's unit, and how strong, before the voice's glow. */
 export const HALO_PAINTS = {
   colour: 0xdc5c20,
   dim: { width: 0.115, strength: 0.3 * HALO_RING_SHARE },

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { type StyleProp, StyleSheet, Text, type TextStyle } from 'react-native';
 import type { SharedValue } from 'react-native-reanimated';
-import type { BodyLayer } from '../body-layer';
 import { describeFrameRate, type FrameRateReading } from '../sample-mode';
 
 /** How often the number on screen is re-read. Twice a second: fast enough to watch, slow enough to read. */
@@ -24,16 +23,12 @@ const READ_INTERVAL_MS = 500;
  * The spark count is not a setting. The hologram steers it to hold the frame rate — see
  * `density-control.ts` — so watching it settle is watching the device being measured.
  *
- * It ends by saying which renderer draws his body, `gpu` or `2d`, once the hologram has decided: what
- * the build time and the sparks mean turns on it. See `body-layer.ts`.
- *
  * Where it sits and what colour it is are the app's to say, through `style`.
  */
 export function FrameRate({
   frameRate,
   buildMilliseconds,
   particleShare,
-  bodyLayer,
   particles,
   withBuildTime = true,
   style,
@@ -41,8 +36,6 @@ export function FrameRate({
   frameRate: SharedValue<number>;
   buildMilliseconds: SharedValue<number>;
   particleShare: SharedValue<number>;
-  /** Which renderer draws his body, as the hologram's `bodyLayer` writes it. Left out, the readout does not say. */
-  bodyLayer?: SharedValue<BodyLayer>;
   /** How many there are when none are held back, so the share can be said as a count. */
   particles: number;
   /** Whether to say how long building a picture takes. A watch face has no room for it. */
@@ -53,17 +46,11 @@ export function FrameRate({
 
   useEffect(() => {
     const timer = setInterval(
-      () =>
-        setShown({
-          rate: frameRate.value,
-          buildMilliseconds: buildMilliseconds.value,
-          share: particleShare.value,
-          body: bodyLayer?.value,
-        }),
+      () => setShown({ rate: frameRate.value, buildMilliseconds: buildMilliseconds.value, share: particleShare.value }),
       READ_INTERVAL_MS,
     );
     return () => clearInterval(timer);
-  }, [frameRate, buildMilliseconds, particleShare, bodyLayer]);
+  }, [frameRate, buildMilliseconds, particleShare]);
 
   return (
     <Text accessibilityElementsHidden pointerEvents="none" style={[styles.readout, style]} testID="frame-rate">

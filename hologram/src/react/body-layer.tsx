@@ -1,6 +1,6 @@
 import { Component, type ReactNode, useCallback, useEffect, useState } from 'react';
 import { StyleSheet } from 'react-native';
-import Animated, { runOnUI, type SharedValue, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Animated, { runOnUI, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import {
   createFlatCamera,
   createGpuBody,
@@ -12,31 +12,18 @@ import {
 } from '../gpu';
 import {
   analyseFrame,
-  type BodyLayer,
-  type BodyRenderer,
-  bodyStartingShare,
-  createDensityControl,
   createFrameClockState,
-  type DensityControl,
-  type DensityPace,
-  GPU_READY_TIMEOUT_MS,
   type HologramScene,
   type HologramScript,
   hologramFrameOf,
   MATERIALISE_SECONDS,
 } from '../index';
-import {
-  adoptGlContext,
-  BodyGlView,
-  finishPreviousFrame,
-  GPU_BODY_SUPPORTED,
-  glContextOnDrawingThread,
-} from './gl-context';
+import { adoptGlContext, BodyGlView, finishPreviousFrame, glContextOnDrawingThread } from './gl-context';
 import type { BodyGl } from './gl-contract';
 
 /**
- * Which renderer draws Jarvis's body, and the GL context the GPU's is drawn with: everything about
- * the GPU body that is not the drawing itself.
+ * Jarvis's body on the GPU, through expo-gl: the GL view, the context it is drawn with, and
+ * whether there is a body to draw this frame.
  *
  * **Set up on the JS thread, drawn on the UI thread.** `createGpuBody` compiles three programs and
  * uploads about 3 MB of rows, with queries that block until the GPU answers, so it runs once per
@@ -46,23 +33,37 @@ import type { BodyGl } from './gl-contract';
  * that id and draws, beside the picture it steps on the same clock. From the handover on, the JS
  * thread never calls GL again: see `gl-context.ts`.
  *
- * **Pending, then the GPU or Skia, and never a flash.** A view asked for the GPU body starts
- * pending, and the frame callback holds his clock at the start of the arrival — where he has not
- * yet appeared — until the context is ready or GPU_READY_TIMEOUT_MS has passed. Then it lets the
- * clock go with whichever renderer is ready. Again on every return to the foreground, since a
- * device may make the view a new surface, and a new context with it, while the app is away.
+ * **Pending on every arrival, for a bounded while.** His arrival is his body spiralling out of the
+ * core, so the frame callback holds his clock at the start of it — where nothing of him shows yet —
+ * until the body is ready to draw or BODY_READY_TIMEOUT_MS has passed, and then lets it go. Again on
+ * every return to the foreground, since a device may make the view a new surface, and a new context
+ * with it, while the app is away.
  *
- * **Skia takes the body over, rather than the hologram failing.** A context that is WebGL 1, a
- * program that will not compile, a view that throws, or a warm-up frame the GPU reports an error for
- * puts the body in Skia for as long as the view is mounted, and takes the GL view away. A context
- * lost while he is on screen — expo-gl's calls on it answering `undefined`, a browser's
- * `webglcontextlost` — puts it in Skia from the next frame, and the GPU has it back at the next
- * arrival if a context has come back by then. The body never changes renderer mid-show otherwise.
- *
- * **Each change of renderer starts the density loop again** from that renderer's starting share
- * (`bodyStartingShare`): a share the one could hold says nothing about the other. For the same
- * reason only the share Skia's body proves is remembered for next time (`keepsProvenShare`).
+ * **Where the GPU cannot draw him, there is no body, and nothing else changes.** No GL view at all
+ * (expo-gl's native module missing from the build, a browser without WebGL 2), a context that is
+ * WebGL 1 or OpenGL ES 2, a program that will not compile, a GL view that throws or a warm-up frame
+ * the GPU reports an error for: the GL view goes, nothing is pending, and Skia's picture of the rest
+ * of him arrives on time. A context lost while he is on screen — expo-gl's calls on it answering
+ * `undefined`, a browser's `webglcontextlost` — takes the body away from the next frame, and it is
+ * drawn again from the first frame after expo-gl hands a new context over and it has been set up.
  */
+
+/**
+ * Whether his body is drawn this frame: `pending` while the view waits for it at the start of an
+ * arrival, then `drawn` or `absent`, frame by frame.
+ */
+export type BodyLayer = 'pending' | 'drawn' | 'absent';
+
+/**
+ * How long a view holds his arrival for the body, in milliseconds, from the moment it mounts or
+ * comes back to the foreground.
+ *
+ * The wait is his arrival held back, so it has to be short: a context and three programs compiled
+ * on the JS thread are expected well inside it, and a device that takes longer is one that would
+ * have stuttered through the arrival anyway. A body that comes up later is drawn from the frame it
+ * is ready, wherever the arrival has got to by then.
+ */
+export const BODY_READY_TIMEOUT_MS = 800;
 
 /** No context lost. Context ids are positive. */
 const NO_CONTEXT = 0;
@@ -74,17 +75,12 @@ interface HandedBody {
 }
 
 /** What a GPU frame draws with. */
-interface GpuBodyDrawing {
+export interface GpuBodyDrawing {
   gl: BodyGl;
   body: GpuBody;
 }
 
-/** Whether a view asked for `asked` draws the body on the GPU at all, which is fixed for as long as it is mounted. */
-export function gpuBodyWanted(asked: BodyRenderer): boolean {
-  return asked === 'gpu' && GPU_BODY_SUPPORTED && BodyGlView !== undefined;
-}
-
-/** Texels across each half of the halo target: one per pixel of the canvas, as Skia draws them, and never more than the headset's. */
+/** Texels across each half of the halo target: one per pixel of the canvas, and never more than the headset's. */
 function haloTexelsFor(gl: BodyGl): number {
   const side = Math.round(gl.drawingBufferWidth);
   return side > 0 && side < HALO_TEXELS ? side : HALO_TEXELS;
@@ -115,7 +111,7 @@ interface GlViewBoundaryProps {
 
 /**
  * Keeps a GL view that throws from taking the hologram with it: expo-gl's browser view throws
- * while rendering where there is no WebGL at all. Skia's body then carries on alone.
+ * while rendering where there is no WebGL at all. The rest of him carries on without his body.
  */
 class GlViewBoundary extends Component<GlViewBoundaryProps, { failed: boolean }> {
   state = { failed: false };
@@ -134,56 +130,33 @@ class GlViewBoundary extends Component<GlViewBoundaryProps, { failed: boolean }>
 }
 
 interface BodyLayerOptions {
-  /** Whether this view tries the GPU at all: `gpuBodyWanted`, fixed for the mount. */
-  wanted: boolean;
   scene: HologramScene;
   isForeground: boolean;
-  /** The view's density loop, started again whenever the body changes renderer. */
-  density: SharedValue<DensityControl>;
-  /** The share remembered from last time, as the view was handed it. */
-  startingShare: number | undefined;
-  pace: DensityPace | undefined;
 }
 
-export function useBodyLayer({ wanted, scene, isForeground, density, startingShare, pace }: BodyLayerOptions) {
+export function useBodyLayer({ scene, isForeground }: BodyLayerOptions) {
   // Whether the GL view is in the tree. It only ever goes away, and only when the GPU cannot draw
   // the body at all, so the view tree changes at most once a mount.
-  const [glMounted, setGlMounted] = useState(wanted);
-  const layer = useSharedValue<BodyLayer>(wanted ? 'pending' : 'skia');
-  // Which renderer the density loop was last started for.
-  const steeredFor = useSharedValue<BodyRenderer>(wanted ? 'gpu' : 'skia');
+  const [glMounted, setGlMounted] = useState(BodyGlView !== undefined);
+  const layer = useSharedValue<BodyLayer>(glMounted ? 'pending' : 'absent');
   const handed = useSharedValue<HandedBody | null>(null);
   // The context last found gone, so it is not tried again.
   const lostContext = useSharedValue(NO_CONTEXT);
-  // A shared value rather than the prop, so the worklets below keep one identity for the mount: the
-  // remembered share arrives a moment after the first render.
-  const remembered = useSharedValue(startingShare);
-  useEffect(() => {
-    remembered.value = startingShare;
-  }, [startingShare, remembered]);
 
-  const drawBodyWith = useCallback(
-    (renderer: BodyRenderer) => {
-      'worklet';
-      layer.value = renderer;
-      if (steeredFor.value !== renderer) {
-        steeredFor.value = renderer;
-        density.value = createDensityControl(bodyStartingShare(renderer, remembered.value), pace);
-      }
-    },
-    [layer, steeredFor, density, remembered, pace],
-  );
-
-  // For good: the GL view goes, and Skia draws the body until the view is mounted again.
+  // For the mount: the GL view goes, and he is drawn without his body until the view is mounted again.
   const giveUp = useCallback(() => {
     setGlMounted(false);
-    runOnUI(drawBodyWith)('skia');
-  }, [drawBodyWith]);
+    runOnUI(() => {
+      'worklet';
+      layer.value = 'absent';
+    })();
+  }, [layer]);
 
   const onContextCreate = useCallback(
     (gl: BodyGl) => {
       const contextId = adoptGlContext(gl);
       if (contextId === undefined) {
+        console.warn('Jarvis is drawn without his body: the GPU gave a context that cannot draw it.');
         giveUp();
         return;
       }
@@ -199,7 +172,7 @@ export function useBodyLayer({ wanted, scene, isForeground, density, startingSha
         }
       } catch (refusal) {
         // A shader's info log, where it was one; said once, since a device that refuses will refuse again.
-        console.warn('Jarvis is drawn by Skia alone: the GPU could not draw his body.', refusal);
+        console.warn('Jarvis is drawn without his body: the GPU could not draw it.', refusal);
         giveUp();
         return;
       }
@@ -208,7 +181,7 @@ export function useBodyLayer({ wanted, scene, isForeground, density, startingSha
     [scene, giveUp, handed],
   );
 
-  // Pending again on every arrival the GL view is there for, and Skia's if the GPU is not ready in time.
+  // Pending again on every arrival the GL view is there for, for at most BODY_READY_TIMEOUT_MS.
   useEffect(() => {
     if (!isForeground || !glMounted) {
       return;
@@ -219,57 +192,58 @@ export function useBodyLayer({ wanted, scene, isForeground, density, startingSha
         runOnUI(() => {
           'worklet';
           if (layer.value === 'pending') {
-            drawBodyWith('skia');
+            layer.value = 'absent';
           }
         })(),
-      GPU_READY_TIMEOUT_MS,
+      BODY_READY_TIMEOUT_MS,
     );
     return () => clearTimeout(timer);
-  }, [isForeground, glMounted, layer, drawBodyWith]);
+  }, [isForeground, glMounted, layer]);
 
   /**
-   * A worklet, for a frame while pending: whether the GPU body is ready, in which case the body is
-   * the GPU's from this frame on. A context found gone is remembered, and waited past.
+   * A worklet: the context and the body to draw this frame with, once the previous frame is done
+   * with — or nothing, where there is no body ready or its context has gone. A context found gone
+   * is remembered, and waited past until another is handed over.
    */
-  const startOnGpu = (): boolean => {
+  const bodyForFrame = (): GpuBodyDrawing | undefined => {
     'worklet';
     const ready = handed.value;
     if (ready === null || ready.contextId === lostContext.value) {
-      return false;
+      return undefined;
     }
     const gl = glContextOnDrawingThread(ready.contextId);
     if (gl === undefined || !finishPreviousFrame(gl)) {
       lostContext.value = ready.contextId;
-      return false;
-    }
-    drawBodyWith('gpu');
-    return true;
-  };
-
-  /**
-   * A worklet, at the start of a frame the GPU draws: the context and the body, once the previous
-   * frame is done with — or nothing, with the body Skia's from this frame on, if the context has gone.
-   */
-  const gpuForFrame = (): GpuBodyDrawing | undefined => {
-    'worklet';
-    const ready = handed.value;
-    const gl = ready === null ? undefined : glContextOnDrawingThread(ready.contextId);
-    if (ready === null || gl === undefined || !finishPreviousFrame(gl)) {
-      if (ready !== null) {
-        lostContext.value = ready.contextId;
-      }
-      drawBodyWith('skia');
       return undefined;
     }
     return { gl, body: ready.body };
   };
 
-  // Shown only while the GPU draws the body. A context that has gone leaves its canvas behind, and
-  // a browser paints that canvas, the next time the page is laid out, as a placeholder of its own —
-  // a white square, which Screened over him is all there is to see — while a device's view can go
-  // on showing the last frame it was handed, a body frozen over Skia's moving one. Pending, there
-  // is nothing of him to show yet either way.
-  const shown = useAnimatedStyle(() => ({ opacity: layer.value === 'gpu' ? 1 : 0 }));
+  /**
+   * A worklet, for a frame of his clock: the body to draw, if there is one, with the layer set to
+   * say so. Pending ends here as soon as the body is ready.
+   */
+  const bodyThisFrame = (): GpuBodyDrawing | undefined => {
+    'worklet';
+    const drawing = bodyForFrame();
+    const next: BodyLayer = drawing === undefined ? 'absent' : 'drawn';
+    if (layer.value !== next) {
+      layer.value = next;
+    }
+    return drawing;
+  };
+
+  /** A worklet, for a frame while pending: whether the body is ready, which lets his clock go. */
+  const bodyReady = (): boolean => {
+    'worklet';
+    return bodyForFrame() !== undefined;
+  };
+
+  // Shown only while there is a body drawn into it. A context that has gone leaves its canvas
+  // behind, and a browser paints that canvas, the next time the page is laid out, as a placeholder
+  // of its own — a white square, which Screened over him is all there is to see — while a device's
+  // view can go on showing the last frame it was handed, a body frozen over the rest of him moving.
+  const shown = useAnimatedStyle(() => ({ opacity: layer.value === 'drawn' ? 1 : 0 }));
 
   const glView =
     glMounted && BodyGlView !== undefined ? (
@@ -280,7 +254,7 @@ export function useBodyLayer({ wanted, scene, isForeground, density, startingSha
       </GlViewBoundary>
     ) : null;
 
-  return { glMounted, layer, glView, startOnGpu, gpuForFrame };
+  return { layer, glView, glMounted, bodyThisFrame, bodyReady };
 }
 
 const styles = StyleSheet.create({

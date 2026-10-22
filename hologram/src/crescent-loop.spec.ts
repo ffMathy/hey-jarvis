@@ -2,59 +2,33 @@ import { describe, expect, it } from 'bun:test';
 import { SCENE_SEED } from './frame-timing';
 import {
   analyseFrame,
-  appendBody,
   appendCrescent,
-  appendStream,
-  BODY_ID_FIELD,
-  BODY_STRIDE,
   createHologramScene,
-  densityRowsEnd,
-  FRAGMENT_FAINTEST,
-  FRAGMENT_WANDER,
-  fragmentTier,
   type HologramFrame,
   type HologramFrameState,
   type HologramScene,
-  LATTICE_STROKE_SHRINK,
-  latticeFragment,
   makePathBuilder,
   PARTICLE_COUNT,
   type PathBuilder,
-  placeFragment,
-  readFragment,
-  readShellFragment,
-  STREAM_ID_FIELD,
-  STREAM_STRIDE,
-  scanned,
-  swirlFragment,
   WATCH_PARTICLE_COUNT,
 } from './hologram-drawing';
 import { VOICE_BAND_COUNT } from './voice-levels';
 
 // ---- the reference --------------------------------------------------------------------------------
 //
-// The body's, the shell's and the crescent's loops as they were before they were written out by hand,
-// copied line for line from `hologram-drawing.ts` ('worklet' directives aside), together with the
-// private pieces they called: the path writer, appendGlyph, appendArc and the small arithmetic helpers.
-// The body and the shell are composed from the exported per-fragment helpers, exactly as they were, so
-// the helpers stay the definition of what a fragment does and the loops are held to them.
+// The crescent's loop as it was before it was written out by hand, copied line for line from
+// `hologram-drawing.ts` ('worklet' directives aside), together with the private pieces it called: the
+// path writer, appendArc and the small arithmetic helpers.
 //
-// They are frozen on purpose. The phone's picture must not change because its loops were made faster,
-// so a change to what a fragment does has to be made to its helper, which this copy follows, and to the
-// hand-written loop, which this spec then holds to it.
+// It is frozen on purpose. The picture must not change because its loop was made faster, so a change
+// to what the crescent does has to be made here and in the hand-written loop, which this spec then
+// holds to it.
 
 const MOVE_VERB = 0;
-const LINE_VERB = 1;
 const CONIC_VERB = 3;
-const CLOSE_VERB = 5;
-const QUARTER_CIRCLE_WEIGHT = Math.SQRT1_2;
 const DEGREES_TO_RADIANS = 0.017453292519943295;
 const CRESCENT_PIECE_STRIDE = 3;
 const CRESCENT_PIECES_PER_STRAND = 14;
-
-function clamp01(value: number) {
-  return value > 0 ? (value > 1 ? 1 : value) : 0;
-}
 
 function fraction(value: number) {
   return value - Math.floor(value);
@@ -91,13 +65,6 @@ function pathMoveTo(builder: PathBuilder, x: number, y: number) {
   command[2] = y;
 }
 
-function pathLineTo(builder: PathBuilder, x: number, y: number) {
-  const command = nextCommand(builder, 3);
-  command[0] = LINE_VERB;
-  command[1] = x;
-  command[2] = y;
-}
-
 function pathConicTo(builder: PathBuilder, x1: number, y1: number, x2: number, y2: number, weight: number) {
   const command = nextCommand(builder, 6);
   command[0] = CONIC_VERB;
@@ -106,20 +73,6 @@ function pathConicTo(builder: PathBuilder, x1: number, y1: number, x2: number, y
   command[3] = x2;
   command[4] = y2;
   command[5] = weight;
-}
-
-function pathClose(builder: PathBuilder) {
-  const command = nextCommand(builder, 1);
-  command[0] = CLOSE_VERB;
-}
-
-function pathAddCircle(builder: PathBuilder, x: number, y: number, radius: number) {
-  pathMoveTo(builder, x + radius, y);
-  pathConicTo(builder, x + radius, y + radius, x, y + radius, QUARTER_CIRCLE_WEIGHT);
-  pathConicTo(builder, x - radius, y + radius, x - radius, y, QUARTER_CIRCLE_WEIGHT);
-  pathConicTo(builder, x - radius, y - radius, x, y - radius, QUARTER_CIRCLE_WEIGHT);
-  pathConicTo(builder, x + radius, y - radius, x + radius, y, QUARTER_CIRCLE_WEIGHT);
-  pathClose(builder);
 }
 
 function appendArc(
@@ -144,149 +97,6 @@ function appendArc(
       centreX + Math.cos(pieceStart + step) * radius,
       centreY + Math.sin(pieceStart + step) * radius,
       weight,
-    );
-  }
-}
-
-function appendGlyph(
-  builder: PathBuilder,
-  glyph: number,
-  x: number,
-  y: number,
-  unitX: number,
-  unitY: number,
-  half: number,
-) {
-  const alongX = unitX * half;
-  const alongY = unitY * half;
-  if (glyph === 5) {
-    pathAddCircle(builder, x, y, half * 0.45);
-    return;
-  }
-  // the normal, shorter than the length: ticks and cell heights
-  const normalX = -alongY * 0.55;
-  const normalY = alongX * 0.55;
-  if (glyph === 6) {
-    pathMoveTo(builder, x - alongX - normalX, y - alongY - normalY);
-    pathLineTo(builder, x + alongX - normalX, y + alongY - normalY);
-    pathLineTo(builder, x + alongX + normalX, y + alongY + normalY);
-    pathLineTo(builder, x - alongX + normalX, y - alongY + normalY);
-    pathClose(builder);
-    return;
-  }
-  if (glyph === 2 || glyph === 4) {
-    pathMoveTo(builder, x - alongX + normalX, y - alongY + normalY);
-    pathLineTo(builder, x - alongX, y - alongY);
-    pathLineTo(builder, x + alongX, y + alongY);
-    pathLineTo(
-      builder,
-      x + alongX + (glyph === 2 ? normalX : -normalX),
-      y + alongY + (glyph === 2 ? normalY : -normalY),
-    );
-    return;
-  }
-  pathMoveTo(builder, x - alongX, y - alongY);
-  pathLineTo(builder, x + alongX, y + alongY);
-  if (glyph === 1) pathLineTo(builder, x + alongX + normalX, y + alongY + normalY);
-  else if (glyph === 3) {
-    pathMoveTo(builder, x, y);
-    pathLineTo(builder, x + normalX * 1.4, y + normalY * 1.4);
-  }
-}
-
-/** The fragment body, turning about the vertical axis, sorted into the dim, mid and bright builders. */
-function referenceAppendBody(builders: PathBuilder[], body: number[], state: HologramFrameState) {
-  const placed = state.scratch;
-  const reading = state.reading;
-  const end = densityRowsEnd(body, BODY_STRIDE, BODY_ID_FIELD, state.density);
-  for (let offset = 0; offset < end; offset += BODY_STRIDE) {
-    const strength = readFragment(body, offset, state, reading);
-    if (strength <= 0) continue;
-    const id = body[offset + BODY_ID_FIELD];
-    const unitX = body[offset + 2];
-    const unitY = body[offset + 3];
-    const length = body[offset + 4];
-    // each time it re-lights, it does so a little along or across from where it was
-    const hop = fraction(reading[3] * 0.618034 + id * 9.7);
-    const along = (hop - 0.5) * 1.4 * length;
-    // while he talks the body loosens: a fragment re-lights further still from where it was.
-    // The loosening fades out toward the limb: the silhouette must not move with his voice, and a
-    // fragment at 0.9R that strayed a tenth of a radius outward would take it with it. Compared as
-    // squares, so this costs no square root.
-    const fromCentre = body[offset] * body[offset] + body[offset + 1] * body[offset + 1];
-    const inward = clamp01((0.76 - fromCentre) * 3.2);
-    const across = (fraction(hop * 23.17) - 0.5) * (FRAGMENT_WANDER + 1.3 * state.agitation * inward);
-    placeFragment(body, offset, along, across, state, placed);
-    const lit = strength * placed[3];
-    if (lit < FRAGMENT_FAINTEST) continue;
-    swirlFragment(placed[0], placed[1], unitX, unitY, id, state);
-    const swirled = state.swirled;
-    const drawn = swirled[4];
-    if (drawn <= 0) continue;
-    latticeFragment(swirled[0], swirled[1], id, state);
-    const x = state.listened[0];
-    const y = state.listened[1];
-    // While he thinks, only what the plane is passing stays lit; see SCAN_SECONDS.
-    const litHere = lit * scanned(y, state);
-    if (litHere < FRAGMENT_FAINTEST) continue;
-    const facing = placed[2] >= 0;
-    // the far side of the ball is dimmer, as the turning shell below the core already is
-    const plain = facing ? fragmentTier(reading[4], litHere, id, state.hotShare) : 0;
-    // ...and what the plane is in the middle of is lit to the brightest tier whatever it is, which
-    // is what makes the pass a line of attention rather than a moving shadow.
-    const tier = state.scanBright[0] > 0 && facing ? 2 : plain;
-    // Its length is its whole fade: a fragment grows out of nothing and shrinks back into it,
-    // because a paint is set once for a whole tier and so cannot fade with one stroke in it.
-    // Arriving at a third of its length, as it used to, meant arriving at full brightness over
-    // a dozen pixels at once — with twice as many fragments that is a visible speckle at every
-    // frame, and it is what the spec's script-boundary check counts.
-    const gathered = 1 - LATTICE_STROKE_SHRINK * state.hearing;
-    appendGlyph(
-      builders[tier + reading[2]],
-      reading[1],
-      x,
-      y,
-      swirled[2],
-      swirled[3],
-      length * 0.5 * litHere * drawn * gathered,
-    );
-  }
-}
-
-/** The lower hemisphere's turning shell: its front drifts right, its back (dim) drifts left. */
-function referenceAppendStream(builders: PathBuilder[], stream: number[], state: HologramFrameState) {
-  const cosYaw = state.streamCos;
-  const sinYaw = state.streamSin;
-  const end = densityRowsEnd(stream, STREAM_STRIDE, STREAM_ID_FIELD, state.density);
-  for (let offset = 0; offset < end; offset += STREAM_STRIDE) {
-    const strength = readShellFragment(stream, offset, state);
-    if (strength <= 0) continue;
-    const restX = stream[offset];
-    const restZ = stream[offset + 2];
-    const x = restX * cosYaw + restZ * sinYaw;
-    const depth = restZ * cosYaw - restX * sinYaw;
-    const y = stream[offset + 1];
-    // fade out before the limb, so nothing pops where the shell turns out of view
-    const edge = clamp01((0.86 - x * x - y * y) * 8);
-    const lit = strength * edge;
-    if (lit < FRAGMENT_FAINTEST) continue;
-    // a latitude runs horizontally on screen, foreshortened as it turns toward the limb
-    const halfX = stream[offset + 3] * cosYaw + stream[offset + 4] * sinYaw;
-    const plain = stream[offset + 8] - 3 * state.reading[0];
-    const tier = depth < 0 ? 0 : fragmentTier(plain, lit, stream[offset + STREAM_ID_FIELD], state.hotShare);
-    swirlFragment(x, y, 1, 0, stream[offset + STREAM_ID_FIELD], state);
-    const swirled = state.swirled;
-    if (swirled[4] <= 0) continue;
-    // The shell snaps onto the lattice too, or it would go on streaming under it.
-    latticeFragment(swirled[0], swirled[1], stream[offset + STREAM_ID_FIELD], state);
-    appendGlyph(
-      builders[tier],
-      stream[offset + 9],
-      state.listened[0],
-      state.listened[1],
-      swirled[2],
-      swirled[3],
-      Math.abs(halfX) * lit * swirled[4] * (1 - LATTICE_STROKE_SHRINK * state.hearing),
     );
   }
 }
@@ -402,12 +212,14 @@ function referenceAppendCrescent(builders: PathBuilder[], pieces: number[], stat
   }
 }
 
+/** Fewer commands than this over the grid, and it no longer reaches the crescent's strands. */
+const COMMANDS_AT_LEAST = 10_000;
+
 // ---- the grid ---------------------------------------------------------------------------------------
 
 /**
- * The times every look is drawn at: the start, fractions, an hour in, the last moments the clocks are
- * floored by truncating and the first ones past it (2^29 s), times far past that, negative times, which
- * no view hands over but the helpers take, and the times that are not numbers at all.
+ * The times every look is drawn at: the start, fractions, an hour in, times far past that, negative
+ * times, which no view hands over but the drawing takes, and the times that are not numbers at all.
  */
 const TIMES = [
   0,
@@ -425,7 +237,7 @@ const TIMES = [
   Number.POSITIVE_INFINITY,
 ];
 
-/** Every state the loops branch on, alone and together. */
+/** Every state the loop branches on, alone and together. */
 const LOOKS: Partial<HologramFrame>[] = [
   {},
   { agitation: 0.3, level: 0.4 },
@@ -448,9 +260,7 @@ const LOOKS: Partial<HologramFrame>[] = [
   { hearing: 0.7, hearingLevel: 0.4, thinking: 0.6, appearance: 0.7, agitation: 0.6 },
 ];
 
-const DENSITIES = [0, 0.025, 0.4, 1];
-
-function frameAt(time: number, density: number, look: Partial<HologramFrame>): HologramFrame {
+function frameAt(time: number, look: Partial<HologramFrame>): HologramFrame {
   return {
     time,
     level: 0,
@@ -461,7 +271,7 @@ function frameAt(time: number, density: number, look: Partial<HologramFrame>): H
     burstStrength: 0,
     burstCount: 0,
     appearance: 1,
-    density,
+    density: 1,
     presence: 1,
     thinking: 0,
     hearing: 0,
@@ -503,39 +313,30 @@ interface Coverage {
   commands: number;
   verbs: Set<number>;
   notANumber: number;
-  /** Command arrays the hand-written body wrote into that were last frame's, and ones it had to make. */
+  /** Command arrays the hand-written loop wrote into that were last frame's, and ones it had to make. */
   reused: number;
   made: number;
 }
 
-/** One way of building the body's and the crescent's paths, with the builders it keeps between frames. */
-interface ParticleLoops {
-  appendBody: typeof appendBody;
-  appendStream: typeof appendStream;
+/** One way of building the crescent's paths, with the builders it keeps between frames. */
+interface CrescentLoop {
   appendCrescent: typeof appendCrescent;
-  body: PathBuilder[];
   crescent: PathBuilder[];
 }
 
-function particleLoops(loops: Pick<ParticleLoops, 'appendBody' | 'appendStream' | 'appendCrescent'>): ParticleLoops {
-  return {
-    ...loops,
-    body: Array.from({ length: 6 }, makePathBuilder),
-    crescent: Array.from({ length: 4 }, makePathBuilder),
-  };
+function crescentLoop(append: typeof appendCrescent): CrescentLoop {
+  return { appendCrescent: append, crescent: Array.from({ length: 4 }, makePathBuilder) };
 }
 
 /**
- * One frame's body, shell and crescent, built as drawBody and drawCrescent build them — into builders
- * that pathOf has emptied and that still hold last frame's arrays to be written over — and copied out.
+ * One frame's crescent, built as drawCrescent builds it — into builders that pathOf has emptied and
+ * that still hold last frame's arrays to be written over — and copied out.
  */
-function build(loops: ParticleLoops, frame: HologramFrame, scene: HologramScene) {
-  for (const builder of [...loops.body, ...loops.crescent]) builder.count = 0;
+function build(loop: CrescentLoop, frame: HologramFrame, scene: HologramScene) {
+  for (const builder of loop.crescent) builder.count = 0;
   const state = analyseFrame(frame, 512, scene);
-  loops.appendBody(loops.body, scene.body, state);
-  loops.appendStream(loops.body, scene.stream, state);
-  loops.appendCrescent(loops.crescent, scene.crescentPieces, state);
-  return [...copied(loops.body), ...copied(loops.crescent)];
+  loop.appendCrescent(loop.crescent, scene.crescentPieces, state);
+  return copied(loop.crescent);
 }
 
 function noteCoverage(coverage: Coverage, built: number[][][], written: PathBuilder[], before: number[][][]) {
@@ -555,52 +356,42 @@ function noteCoverage(coverage: Coverage, built: number[][][], written: PathBuil
   });
 }
 
-/** Every look at every time and density. */
-const GRID = TIMES.flatMap((time) => LOOKS.flatMap((look) => DENSITIES.map((density) => frameAt(time, density, look))));
+/** Every look at every time. */
+const GRID = TIMES.flatMap((time) => LOOKS.map((look) => frameAt(time, look)));
 
 /** Builds every frame of the grid both ways, one after another into the same builders, and compares. */
 function compareOver(scene: HologramScene, coverage: Coverage) {
-  const reference = particleLoops({
-    appendBody: referenceAppendBody,
-    appendStream: referenceAppendStream,
-    appendCrescent: referenceAppendCrescent,
-  });
-  const written = particleLoops({ appendBody, appendStream, appendCrescent });
+  const reference = crescentLoop(referenceAppendCrescent);
+  const written = crescentLoop(appendCrescent);
   for (const frame of GRID) {
-    const before = written.body.map((builder) => builder.commands.slice());
+    const before = written.crescent.map((builder) => builder.commands.slice());
     const expected = build(reference, frame, scene);
     // The frame rides along so that a failure says which one it was.
     expect({ frame, difference: firstDifference(expected, build(written, frame, scene)) }).toEqual({
       frame,
       difference: null,
     });
-    noteCoverage(coverage, expected, written.body, before);
+    noteCoverage(coverage, expected, written.crescent, before);
   }
 }
 
-describe('the hand-written particle loops, against the loops composed from the helpers', () => {
+describe('the hand-written crescent loop, against the loop it replaced', () => {
   const scenes = [
     { name: "the phone's scene", particleCount: PARTICLE_COUNT },
     { name: "the watch's scene", particleCount: WATCH_PARTICLE_COUNT },
   ];
 
   for (const { name, particleCount } of scenes) {
-    it(`write every command bit for bit as they did, in ${name}`, () => {
+    it(`writes every command bit for bit as it did, in ${name}`, () => {
       const coverage: Coverage = { frames: 0, commands: 0, verbs: new Set(), notANumber: 0, reused: 0, made: 0 };
       compareOver(createHologramScene(SCENE_SEED, particleCount), coverage);
 
       // The grid has to have reached everything it is there to reach, or its agreement means little:
-      // a million commands and more in either scene, every verb the loops write — moveTo and lineTo from
-      // the glyphs, conics from the rings and the crescent, closes from the cells — the NaNs a time that
-      // is not a number leaves in the crescent, and both of nextCommand's ways to a command's array.
+      // every verb the crescent writes — a moveTo and conics for each arc — the NaNs a time that is not
+      // a number leaves in it, and both of nextCommand's ways to a command's array.
       expect(coverage.frames).toBe(GRID.length);
-      expect(coverage.commands).toBeGreaterThan(1_000_000);
-      expect([...coverage.verbs].sort((first, second) => first - second)).toEqual([
-        MOVE_VERB,
-        LINE_VERB,
-        CONIC_VERB,
-        CLOSE_VERB,
-      ]);
+      expect(coverage.commands).toBeGreaterThan(COMMANDS_AT_LEAST);
+      expect([...coverage.verbs].sort((first, second) => first - second)).toEqual([MOVE_VERB, CONIC_VERB]);
       expect(coverage.notANumber).toBeGreaterThan(0);
       expect(coverage.reused).toBeGreaterThan(coverage.made);
       expect(coverage.made).toBeGreaterThan(0);

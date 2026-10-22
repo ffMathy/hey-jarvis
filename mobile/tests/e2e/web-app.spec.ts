@@ -116,12 +116,12 @@ async function configureElevenLabs(page: Page): Promise<void> {
  * the one before. Twice, because the first change could be the first draw landing
  * on an empty canvas; a picture drawn once and never again fails the second.
  *
- * The look is the whole of him: Skia's canvas (`hologram-flat`) and, where the
+ * The look is the whole of him: Skia's canvas (`hologram-picture`) and, where the
  * browser has WebGL 2, the GPU body's laid over it (`hologram-body`).
  */
 async function expectHologramToKeepMoving(page: Page): Promise<void> {
   const hologram = page.getByTestId('hologram');
-  await expect(page.getByTestId('hologram-flat')).toBeVisible();
+  await expect(page.getByTestId('hologram-picture')).toBeVisible();
 
   for (let change = 0; change < 2; change++) {
     const previousLook = await hologram.screenshot();
@@ -280,7 +280,7 @@ test('draws the hologram and keeps it moving, from a CanvasKit the site serves i
   // Nothing Skia-backed renders until CanvasKit has loaded, so Skia's canvas at all
   // means the WebAssembly arrived. Every other host is aborted, so it can only
   // have come from the export's own `public/` — which `turbo initialize` fills.
-  await expect(page.getByTestId('hologram-flat')).toBeVisible();
+  await expect(page.getByTestId('hologram-picture')).toBeVisible();
   expect(canvasKitResponses).toEqual([{ hostname: 'localhost', status: 200 }]);
 
   // It turns on its own, with no conversation open.
@@ -343,7 +343,7 @@ test('keeps the conversation screen working when CanvasKit cannot load', async (
   // Jarvis — is checked after it, not before it had the chance to break.
   await expect(page.getByTestId('hologram-unavailable')).toBeVisible();
   await expect(page.getByTestId('hologram').locator('canvas')).toHaveCount(0);
-  await expect(page.getByTestId('hologram-flat')).toHaveCount(0);
+  await expect(page.getByTestId('hologram-picture')).toHaveCount(0);
   // And the screen is still the conversation rather than having fallen back to setup: the drawing
   // failing must not take the thing it decorates with it.
   await expect(page.getByTestId('api-key')).toHaveCount(0);

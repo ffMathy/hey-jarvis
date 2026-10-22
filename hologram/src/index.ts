@@ -21,7 +21,6 @@ export * from './affected-entities';
 export * from './agent-activity';
 export * from './agent-audio-track';
 export * from './agent-work';
-export * from './body-layer';
 export * from './conversation-life';
 export * from './conversation-token';
 export * from './density-control';

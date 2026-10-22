@@ -66,12 +66,11 @@ export function SampleScreen({ inAssistantWindow = false, showing, onLeave }: Sa
   const { width, height } = useWindowDimensions();
   // How big the square is, and whether there is a sheet around it at all, are the same decision —
   // so both live in `sample-sheet.tsx` rather than being worked out again here. On a phone it is
-  // the sheet's shorter side inset from its edge, which an opaque canvas has to be because a
-  // `SurfaceView` is its own hardware layer that no parent can clip. On the web there is no sheet
-  // and no `SurfaceView`, and he simply fills the middle of the window.
+  // the sheet's shorter side inset from its edge. On the web there is no sheet, and he simply fills
+  // the middle of the window.
   const hologramSize = sampleHologramSize(width, height);
   const going = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const { frameRate, buildMilliseconds, particleShare, provenShare, bodyLayer, startingShare } = useSparkDensity();
+  const { frameRate, buildMilliseconds, particleShare } = useSparkDensity();
 
   /**
    * Starts the way out, and finishes it once Jarvis has gone.
@@ -184,10 +183,6 @@ export function SampleScreen({ inAssistantWindow = false, showing, onLeave }: Sa
             frameRate={frameRate}
             buildMilliseconds={buildMilliseconds}
             particleShare={particleShare}
-            provenShare={provenShare}
-            startingShare={startingShare}
-            bodyLayer={bodyLayer}
-            opaque={SAMPLE_CANVAS.opaque}
             background={SAMPLE_CANVAS.background}
             tilt
           />
@@ -198,7 +193,6 @@ export function SampleScreen({ inAssistantWindow = false, showing, onLeave }: Sa
         frameRate={frameRate}
         buildMilliseconds={buildMilliseconds}
         particleShare={particleShare}
-        bodyLayer={bodyLayer}
         particles={PARTICLE_COUNT}
         style={styles.frameRate}
       />
