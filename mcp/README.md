@@ -39,7 +39,7 @@ The project is organized by business domain. Each vertical contains its own agen
 | `shopping` | Bilka grocery shopping (Danish) |
 | `synapse` | IoT state change reactor |
 | `todo-list` | Google Tasks management |
-| `vision` | Photos sent from the phone's camera button, kept in memory for half an hour and read by a vision model, and the check that a phone asking for a photo slot is in a live conversation with Jarvis |
+| `vision` | Photos sent from the phone's camera button, kept in memory for a day and read by a vision model, and the check that a phone asking for a photo slot is in a live conversation with Jarvis |
 | `weather` | OpenWeatherMap forecasting |
 | `web-research` | Google Search with citations |
 

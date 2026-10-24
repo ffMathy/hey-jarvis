@@ -203,8 +203,11 @@ way round it. Two of them are already written:
   is the user's own — never to us. The tap sends that server the id of the ElevenLabs conversation
   in progress, which the server checks with ElevenLabs before it opens a slot for the photo; the
   photo then goes to that slot with no key or other credential, and the server holds it in memory
-  for at most 30 minutes. The app sends ElevenLabs nothing new but the short text notes it adds to the
-  conversation ("I've sent you a photo", and the like) — never the photo; what the user's own server
+  for at most 24 hours. Summoned with the assistant gesture, the app sends that same server, the
+  same way, the screenshot Android hands every assistant app of the screen it opened over — only
+  with a server address set, and only while the phone's "Use screenshot" setting is on. The app
+  sends ElevenLabs nothing new but the short text notes it adds to the conversation ("I've sent you
+  a photo", and the like) — never the photo or the screenshot; what the user's own server
   then says the photo shows reaches ElevenLabs as that server's other answers do, as the policy's §4
   describes, under the user's configuration rather than from the app. If Play's reviewers read
   either as collection by the app, the answer that stays true is **Audio** and **Photos** collected

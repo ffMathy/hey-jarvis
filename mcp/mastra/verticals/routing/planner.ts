@@ -202,7 +202,7 @@ Sometimes work started earlier — an agent on an earlier request, or a coding s
 - If the request answers none of them, or none are listed, leave \`answers\` empty. Never answer a question on the user's behalf, and never treat a new request as an answer just because a question is waiting
 
 # Photos
-The user can send Jarvis a photo with the camera button on his phone. Photos he has sent that nobody has looked at yet are listed after the request, each by its id and how long ago he sent it — including one he has only just sent. A photo the request names by its tag that has been looked at or dismissed already is listed too, under a heading of its own: most often it is the one Jarvis has just described to him and asked about. Jarvis may have asked him what he would like done with one, so the request can be his reply ("Answer to 'what would you like done with the photo?': add everything on it to the shopping list").
+The user can send Jarvis a photo with the camera button on his phone. Photos he has sent that nobody has looked at yet are listed after the request, each by its id and how long ago he sent it — including one he has only just sent. A photo the request names by its tag that is no longer waiting — looked at, dismissed, or sent more than half an hour ago — is listed too, under a heading of its own: most often it is the one Jarvis has just described to him and asked about. Jarvis may have asked him what he would like done with one, so the request can be his reply ("Answer to 'what would you like done with the photo?': add everything on it to the shopping list").
 
 - If the request says what to do with one of them, or asks about a photo he sent, plan it as ordinary tasks: the \`vision\` agent looks at the photo, and its prompt names the photo the way a request does — "(photo photo3)" — beside what to find out from it. Any task that acts on what the photo shows needs that task. Leave \`photosToAskAbout\` empty: he has said what he wants
 - If the request is a photo he sent without saying what he wants — "He sent a photo without saying what he wants: look at it and say what it shows (photo photo3)" — plan one \`vision\` task that looks at it and says what it shows and what could be done with it: the items and amounts on it, dates, names, numbers or any text worth acting on. Put its id in \`photosToAskAbout\`, and Jarvis will ask him what he would like done with it once he has said what it shows. Plan nothing else for it: what to do with it is his to say
@@ -320,7 +320,7 @@ export function plannerPrompt(
   const namedTaken = namedPhotos.filter((photo) => photo.kind !== 'screenshot');
   if (namedTaken.length > 0) {
     sections.push(
-      `Photos the request names, which have been looked at or dismissed already:\n${photoList(namedTaken, now)}`,
+      `Photos the request names, which are no longer waiting to be looked at:\n${photoList(namedTaken, now)}`,
     );
   }
   if (namedScreenshots.length > 0) {
@@ -347,8 +347,9 @@ const PHOTO_TAG = /\(photo (\w+)\)/gi;
 
 /**
  * The photos a request names by their tag that are still kept but no longer waiting, oldest first:
- * looked at — most often by the very look Jarvis has just described to sir and asked him about — or
- * dismissed.
+ * looked at — most often by the very look Jarvis has just described to sir and asked him about —
+ * dismissed, or sent long enough ago to have stopped waiting (`PHOTO_WAITS_FOR_MS`) while still kept
+ * for the rest of its day.
  *
  * Such a photo is not among the waiting ones, yet the request is about it. "Answer to 'what would you
  * like done with it?': nothing (photo photo3)" is the reply to the question a look at photo3 ended

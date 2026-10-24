@@ -7,7 +7,7 @@ import { findPhoto, howLongAgo, markPhotoLookedAt } from './photos.js';
 
 /** What {@link lookAtPhoto} answers when there is nothing to look at. */
 export const NO_PHOTO_TO_LOOK_AT =
-  'There is no such photo to look at: photos are kept for half an hour, and a question that names none only means one shown in the last few minutes. Sir can send one with the camera button on his phone.';
+  'There is no such photo to look at: photos are kept for a day, and a question that names none only means one shown in the last few minutes. Sir can send one with the camera button on his phone.';
 
 /**
  * The photo reader, as registered on this Mastra instance — or a fresh one, where there is none.

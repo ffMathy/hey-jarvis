@@ -237,7 +237,7 @@ describe('a photo the request names that has been looked at already', () => {
   const NOW = 10_000_000;
   const PHOTO = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
   const NOTHING = "Answer to 'what would you like done with it?': nothing, never mind (photo photo1)";
-  const HEADING = 'Photos the request names, which have been looked at or dismissed already:';
+  const HEADING = 'Photos the request names, which are no longer waiting to be looked at:';
 
   /** Photo1, looked at a moment after it arrived, as the look Jarvis described leaves it. */
   function lookedAtPhoto(): void {
@@ -306,7 +306,7 @@ describe('a photo the request names that has been looked at already', () => {
   it('is explained to the planner: his wanting nothing done with it dismisses it too', () => {
     const instructions = plannerInstructions([]);
 
-    expect(instructions).toContain('A photo the request names by its tag that has been looked at or dismissed');
+    expect(instructions).toContain('A photo the request names by its tag that is no longer waiting — looked at, dismissed, or sent more than half an hour ago');
     expect(instructions).toContain(
       'That includes his reply about the photo the request names when he was just asked what to do with it — "Answer to \'what would you like done with it?\': nothing (photo photo3)"',
     );

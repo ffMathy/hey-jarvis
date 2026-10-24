@@ -60,10 +60,10 @@ function questionAbout(photoId: string, keptAt: number, now: number): string {
  *
  * Only those that have waited past {@link PHOTO_WAITING_GRACE_MS}, and not those brought up within
  * {@link QUESTION_REMINDER_INTERVAL_MS} — the same interval an open question is left alone for, so a
- * conversation hears about a photo once rather than after every request. A photo is kept for as long
- * as that interval (`KEEP_PHOTO_MS`), so in practice it is brought up once. If sir says he wants
- * nothing done with it, it stops waiting there and then; if he never answers, it is let go of with
- * the rest of the store.
+ * conversation hears about a photo once rather than after every request. A photo waits for no longer
+ * than that interval (`PHOTO_WAITS_FOR_MS`), so in practice it is brought up once — though it is kept
+ * for a day (`KEEP_PHOTO_MS`), and found by its id the whole of it. If sir says he wants nothing done
+ * with it, it stops waiting there and then; if he never answers, it stops waiting on its own.
  */
 export function takePhotosToBringUp(now = Date.now()): PhotoToBringUp[] {
   const waiting = photosWaiting(now);

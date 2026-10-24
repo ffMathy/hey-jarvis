@@ -18,8 +18,8 @@ export type ScreenshotSendingConversation = Pick<
  * connected, it goes to sir's Jarvis server, kept there as a screenshot beside his photos, and the
  * agent is told — in a note that takes no turn — what it was filed as (`screenshot-sending.ts`). Nothing
  * looks at it until sir asks about something on his screen: "what does this say?" is routed with it
- * named, as a question about a photo is, and otherwise it is let go of with the next summoning's, or
- * after half an hour.
+ * named, as a question about a photo is, and otherwise the server lets go of it after a day, or sooner
+ * once enough later summonings have sent theirs.
  *
  * **Only in the assistant's window, and only with a server.** The app opened from the launcher, the
  * watch and the browser were not summoned over anything; and without an address there is nowhere to
