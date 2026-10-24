@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.9.0...elevenlabs-v2.9.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **elevenlabs:** stop copying the environment into op run's env file ([#992](https://github.com/ffMathy/hey-jarvis/issues/992)) ([e4720af](https://github.com/ffMathy/hey-jarvis/commit/e4720af6ab514511e0cc76516e5908cde0c865a9))
+
 ## [2.9.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.8.0...elevenlabs-v2.9.0) (2026-10-24)
 
 
