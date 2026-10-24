@@ -876,6 +876,13 @@ describe('a request whose tools touch things', () => {
     expect(startedQueries).toContain('Turn that on (pointing at "Kitchen ceiling", id light.kitchen_ceiling)');
     expect(inputSchema.shape.userQuery.description).not.toContain('pointing');
   });
+
+  it('tells the voice model that the house is behind it, so a curtain is routed rather than refused', () => {
+    // The description is all the voice model reads of the tool; one that named only "specialized
+    // agents" had it tell sir it controlled digital systems alone and leave the curtains shut.
+    expect(routePromptWorkflow.description).toContain('curtains');
+    expect(routePromptWorkflow.description).toContain('never decide');
+  });
 });
 
 /**
