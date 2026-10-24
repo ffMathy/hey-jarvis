@@ -19,6 +19,11 @@ import {
   type PhotoKind,
   type PhotoMediaType,
 } from '../vision/index.js';
+import {
+  EVALUATION_WEBHOOK_ROUTE,
+  type EvaluationWebhookDependencies,
+  registerEvaluationWebhookApi,
+} from './evaluation-webhook.js';
 
 /**
  * Standard API response structure for workflow endpoints.
@@ -179,6 +184,9 @@ export const MCP_PATH = '/api/mcp';
  * stranger sends is read (`claimSlotBeforeReading`), and a slot request reads its own body, a
  * kilobyte at most (`readSlotRequest`).
  *
+ * The ElevenLabs post-call webhook reads its own body too, as the bytes it was signed over (see
+ * `evaluation-webhook.ts`); parsed as JSON first, it could not be verified.
+ *
  * **Compared in lower case**, because Express matches routes without regard to case:
  * `/API/PHOTOS/SLOTS` reaches the slot endpoint all the same, and a skip that missed it would let
  * the server's parser read a hundred kilobytes first — after which the route's own parser, finding
@@ -189,7 +197,8 @@ export function readsItsOwnBody(path: string): boolean {
   return (
     lowerCasePath === MCP_PATH ||
     lowerCasePath.startsWith(`${MCP_PATH}/`) ||
-    lowerCasePath.startsWith(`${PHOTO_UPLOAD_PATH}/`)
+    lowerCasePath.startsWith(`${PHOTO_UPLOAD_PATH}/`) ||
+    lowerCasePath.replace(/\/+$/, '') === EVALUATION_WEBHOOK_ROUTE
   );
 }
 
@@ -525,13 +534,16 @@ export interface RegisteredApiRoute {
 export interface ApiRouteDependencies {
   /** Asks whether the conversation a photo slot is for is live on Jarvis's agent. */
   isLiveJarvisConversation?: LiveConversationCheck;
+  /** What the post-call webhook starts a fix with, and the clock it checks signatures against. */
+  evaluationWebhook?: EvaluationWebhookDependencies;
 }
 
 /**
  * Registers all API routes on the provided Express router.
  * The workflow routes are intended to be called from Home Assistant via REST calls; the photo
  * routes by sir's phone — the slot request with the id of the conversation it is in, and the upload
- * with the path that request answered with.
+ * with the path that request answered with; the post-call webhook by ElevenLabs, once a conversation
+ * has ended.
  *
  * @param router - The Express router to register routes on
  * @param dependencies - Stand-ins for what the routes ask outside this process, for specs
@@ -556,6 +568,12 @@ export function registerApiRoutes(router: Router, dependencies: ApiRouteDependen
     path: registerPhotoSlotApi(router, dependencies.isLiveJarvisConversation),
   });
   registeredRoutes.push({ method: 'PUT', path: registerPhotoUploadApi(router) });
+
+  // Conversations ElevenLabs scored as failed: a Claude Code session is started to fix each
+  registeredRoutes.push({
+    method: 'POST',
+    path: registerEvaluationWebhookApi(router, dependencies.evaluationWebhook),
+  });
 
   // Add more workflow APIs here as needed:
   // registeredRoutes.push({ method: 'POST', path: registerWorkflowApi(router, { path: '/api/weather', workflow: weatherWorkflow }) });

@@ -14,6 +14,7 @@ import {
   photosWaiting,
   UPLOAD_SLOT_MS,
 } from '../vision/index.js';
+import { EVALUATION_WEBHOOK_ROUTE } from './evaluation-webhook.js';
 import {
   createWorkflowApiHandler,
   extractWorkflowError,
@@ -413,11 +414,12 @@ describe('registerWorkflowApi', () => {
 });
 
 describe('registerApiRoutes', () => {
-  it('registers exactly the shopping list endpoint, the photo slots and the photo upload', () => {
+  it('registers exactly the shopping list endpoint, the photo slots, the photo upload and the post-call webhook', () => {
     expect(registeredApiRoutes).toEqual([
       { method: 'POST', path: '/api/shopping-list' },
       { method: 'POST', path: PHOTO_SLOTS_ROUTE },
       { method: 'PUT', path: PHOTO_UPLOAD_ROUTE },
+      { method: 'POST', path: EVALUATION_WEBHOOK_ROUTE },
     ]);
   });
 

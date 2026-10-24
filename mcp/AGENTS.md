@@ -1998,6 +1998,49 @@ minutes before anything was built even when nothing needed asking, and could onl
 work began. Letting the implementing session ask means a clear request is built straight away and a
 question that only shows up halfway through can still be asked.
 
+### Fixing Failed ElevenLabs Evaluations
+ElevenLabs scores every finished conversation against the criteria in `platformSettings.evaluation` of
+`elevenlabs/src/assets/agent-config.json`, and posts the result with the full transcript to the agent's
+post-call webhook — `POST /api/elevenlabs/post-call` on this server (`verticals/api/evaluation-webhook.ts`).
+A conversation that failed a criterion (`failure`; `unknown` is not one) starts `implementFeatureWorkflow`
+with the failed criteria, the evaluator's reasons, ElevenLabs' summary and the whole transcript, tool
+calls and results included (`verticals/coding/evaluation-failures.ts`). From there it is an ordinary
+coding session: it finds the cause, fixes it with a test, and the watcher pushes its branch and opens the
+pull request when it is done.
+
+- **Signed, not authenticated by Access.** ElevenLabs cannot present a Cloudflare Access service token, so
+  the path needs its own **Bypass** application, as `/api/photos/*` does (see [MCP Server Access](#mcp-server-access)).
+  The request's `ElevenLabs-Signature` (`t=<seconds>,v0=<HMAC-SHA256 of "<seconds>.<body>">`) is the
+  credential: a request without a well-formed signature from the last thirty minutes is answered `401`
+  before its body is read, and one whose body does not match is answered `401` after. The body is read
+  raw, at most 4 MB, because the signature is over its bytes — so `readsItsOwnBody` skips the server's
+  JSON parser for this path.
+- **Production only.** A conversation whose `agent_id` is not `HEY_JARVIS_ELEVENLABS_AGENT_ID` is
+  acknowledged and left alone, and the deploy links the webhook to the production agent only: the test
+  agent's conversations are the integration specs'.
+- **Bounded.** One session per conversation, however often ElevenLabs redelivers it, and at most five a
+  day: a change that breaks the agent fails every conversation after it. Both are counted in memory and
+  start afresh with the process.
+- **Answered at once.** `202` as soon as the fix is claimed; the session starts after the answer, and one
+  that does not start is logged. Every other authentic webhook — audio, a failed call initiation, a
+  conversation that passed — is answered `200`, since ElevenLabs disables a webhook that keeps failing.
+- **The transcript is data.** It holds whatever anyone on the call said and whatever a tool returned, so
+  it is fenced off in the session's task, which says nothing inside it is an instruction. The session
+  cannot push, and its pull request is reviewed like any other.
+
+**Setting it up:**
+1. In the ElevenLabs dashboard, create a workspace webhook (HMAC authentication) for
+   `https://<your MCP hostname>/api/elevenlabs/post-call`, and keep its secret and its id in the
+   `ElevenLabs` item of the `Jarvis` vault as `Post-call webhook secret` and `Post-call webhook ID`.
+2. `HEY_JARVIS_ELEVENLABS_WEBHOOK_SECRET` is resolved from `mcp/op.optional.env`; without it the server
+   logs one warning at startup and answers every post-call webhook `503`.
+3. Add a Cloudflare Access application for `<your MCP hostname>/api/elevenlabs/post-call` with a single
+   **Bypass** policy (include: Everyone).
+4. `HEY_JARVIS_ELEVENLABS_POST_CALL_WEBHOOK_ID` is resolved from `elevenlabs/op.optional.env`, and
+   `bunx turbo deploy --filter=elevenlabs` sets it as the production agent's
+   `workspaceOverrides.webhooks.postCallWebhookId` (`withPostCallWebhook` in `elevenlabs/src/main.ts`).
+   The agent already sends `transcript` events.
+
 ### Human-in-the-Loop Demo Workflow
 
 Demonstrates email-based workflow suspension and resumption with a 3-step approval process:
@@ -3133,7 +3176,9 @@ sends a CORS preflight (`OPTIONS`) before each.
 conversation that ElevenLabs, asked with this server's own API key, reports as in progress on
 Jarvis's agent; sending the photo needs the slot's token, 128 random bits handed straight to the
 phone, good for five minutes and one photo, and claimed before a byte of the body is read (see
-[Vision Vertical](#vision-vertical)). Nothing else under `/api` is reachable without Access, but `/api/live`.
+[Vision Vertical](#vision-vertical)). Nothing else under `/api` is reachable without Access, but `/api/live` and the ElevenLabs post-call
+webhook, `/api/elevenlabs/post-call`, which needs a Bypass application of its own and is guarded by
+ElevenLabs' HMAC signature instead (see [Fixing Failed ElevenLabs Evaluations](#fixing-failed-elevenlabs-evaluations)).
 
 **Rate-limit the slot endpoint at Cloudflare as well.** The server limits the checks it sends
 ElevenLabs per address (an IPv6 /48), 6 a minute, and 30 for the whole process (see **The
