@@ -98,6 +98,37 @@ export function toTestAgentClientEvents(clientEvents: readonly ClientEvent[] | u
   return listed.includes(ClientEvent.McpToolCall) ? [...listed] : [...listed, ClientEvent.McpToolCall];
 }
 
+/**
+ * Points the agent's post-call webhook at the workspace webhook named by `webhookId`, so that every
+ * finished conversation — its transcript and how it scored on `platformSettings.evaluation` — is
+ * sent to the MCP server, which starts a Claude Code session on any that failed (see "Fixing failed
+ * evaluations" in `AGENTS.md`).
+ *
+ * The id is the workspace's, not the repository's: the webhook is created once in the ElevenLabs
+ * dashboard, with the MCP server's URL and the secret it checks signatures with. Without an id the
+ * config is left as it is, and the deploy — a PATCH — keeps whatever webhook the agent already has.
+ */
+export function withPostCallWebhook(
+  config: Partial<GetAgentResponseModel>,
+  webhookId: string | undefined,
+): Partial<GetAgentResponseModel> {
+  if (!webhookId) {
+    return config;
+  }
+
+  const workspaceOverrides = config.platformSettings?.workspaceOverrides;
+  return {
+    ...config,
+    platformSettings: {
+      ...config.platformSettings,
+      workspaceOverrides: {
+        ...workspaceOverrides,
+        webhooks: { ...workspaceOverrides?.webhooks, postCallWebhookId: webhookId },
+      },
+    },
+  };
+}
+
 class ElevenLabsAgentManager {
   private client: ElevenLabsClient;
 
@@ -310,10 +341,16 @@ class ElevenLabsAgentManager {
       this.applyTestAgentOverrides(config);
     }
 
+    // Only production's conversations are sent to be fixed: the test agent's are the integration
+    // specs', which fail on purpose as often as not.
+    const deployedConfig = isTestAgent
+      ? config
+      : withPostCallWebhook(config, process.env.HEY_JARVIS_ELEVENLABS_POST_CALL_WEBHOOK_ID?.trim());
+
     const agentType = isTestAgent ? 'test agent' : 'agent';
     console.log(`🚀 Deploying configuration to ${agentType} ${agentId}...`);
 
-    const { procedures, conversationConfig, ...agentConfig } = config;
+    const { procedures, conversationConfig, ...agentConfig } = deployedConfig;
     const request =
       procedures === undefined ? agentConfig : { ...agentConfig, procedures: toProcedureVersionRefs(procedures) };
 

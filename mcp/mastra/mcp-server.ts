@@ -15,6 +15,7 @@ import {
   registerArtifactRoutes,
   registerShoppingTriggers,
   startHomeAssistantEventMonitor,
+  whyEvaluationFixesAreOff,
   whyPhotoSlotsAreOff,
   withoutUploadToken,
 } from './verticals/index.js';
@@ -146,6 +147,12 @@ export async function startMcpServer() {
   const photoUploadsOffBecause = whyPhotoSlotsAreOff();
   if (photoUploadsOffBecause) {
     console.warn(`⚠️ ${photoUploadsOffBecause}`);
+  }
+
+  // The post-call webhook is verified with a secret from mcp/op.optional.env, so say once when it is missing
+  const evaluationFixesOffBecause = whyEvaluationFixesAreOff();
+  if (evaluationFixesOffBecause) {
+    console.warn(`⚠️ ${evaluationFixesOffBecause}`);
   }
 
   // Log token usage summary on startup

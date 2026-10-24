@@ -1,6 +1,11 @@
 // API vertical exports
 
 export {
+  EVALUATION_WEBHOOK_ROUTE,
+  type EvaluationWebhookDependencies,
+  whyEvaluationFixesAreOff,
+} from './evaluation-webhook.js';
+export {
   attachLiveSocket,
   LIVE_SOCKET_CLOSE_CODES,
   LIVE_SOCKET_PATH,
