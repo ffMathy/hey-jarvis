@@ -28,6 +28,7 @@ import { QUIETEST_SPEECH_HERE } from './speech-floor';
 import { theme } from './theme';
 import { TypedMessageField } from './typed-message-field';
 import { usePhotoSending } from './use-photo-sending';
+import { useScreenshotSending } from './use-screenshot-sending';
 import { WrittenReplyLine } from './written-reply-line';
 
 interface ConversationScreenProps {
@@ -309,6 +310,8 @@ export function ConversationScreen({
     serverAddress,
     conversation,
   });
+  /** What was on the screen he was summoned over, for him to look at if sir asks. See `use-screenshot-sending.ts`. */
+  useScreenshotSending({ inAssistantWindow, serverAddress, conversation });
   const textMode = conversation.typing;
   const liveVoice = useJarvisVoice(conversation.voice);
   const { frameRate, buildMilliseconds, particleShare } = useSparkDensity();

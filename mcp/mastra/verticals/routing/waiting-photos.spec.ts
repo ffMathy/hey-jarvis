@@ -28,6 +28,7 @@ import {
   KEEP_PHOTO_MS,
   keepPhoto,
   markPhotoLookedAt,
+  PHOTO_WAITS_FOR_MS,
   photosWaiting,
 } from '../vision/photos.js';
 import { visionTools } from '../vision/tools.js';
@@ -103,14 +104,18 @@ describe('a photo nobody has looked at yet', () => {
     expect(takePhotosToBringUp(firstAskedAt + QUESTION_REMINDER_INTERVAL_MS - 1)).toEqual([]);
   });
 
-  it('is brought up once, in practice: it is let go of before the reminder would come round again', () => {
+  it('is brought up once, in practice: it stops waiting before the reminder would come round again', () => {
     keepPhoto(PHOTO, 'image/jpeg', SENT_AT);
     const firstAskedAt = SENT_AT + PHOTO_WAITING_GRACE_MS;
     takePhotosToBringUp(firstAskedAt);
+    const reminderDueAt = firstAskedAt + QUESTION_REMINDER_INTERVAL_MS;
 
-    expect(firstAskedAt + QUESTION_REMINDER_INTERVAL_MS - SENT_AT).toBeGreaterThanOrEqual(KEEP_PHOTO_MS);
-    expect(photosWaiting(firstAskedAt + QUESTION_REMINDER_INTERVAL_MS)).toEqual([]);
-    expect(takePhotosToBringUp(firstAskedAt + QUESTION_REMINDER_INTERVAL_MS)).toEqual([]);
+    expect(reminderDueAt - SENT_AT).toBeGreaterThanOrEqual(PHOTO_WAITS_FOR_MS);
+    expect(photosWaiting(reminderDueAt)).toEqual([]);
+    expect(takePhotosToBringUp(reminderDueAt)).toEqual([]);
+    // Still kept, for the rest of its day, and found by its id.
+    expect(findPhoto('photo1', reminderDueAt)?.photoId).toBe('photo1');
+    expect(reminderDueAt - SENT_AT).toBeLessThan(KEEP_PHOTO_MS);
   });
 
   it('is never brought up again once it has been looked at', () => {
@@ -677,7 +682,7 @@ describe('a photo sent with nothing said, as the phone reports it', () => {
     const reply = await say("Answer to 'what would you like done with it?': nothing, never mind (photo photo1)");
 
     expect(plannerCalls[plannerCalls.length - 1]?.transcript).toContain(
-      'Photos the request names, which have been looked at or dismissed already:\n- photo1, sent just now',
+      'Photos the request names, which are no longer waiting to be looked at:\n- photo1, sent just now',
     );
     expect(reply.instructions).toStartWith('All tasks have completed');
     expect(reply.instructions).not.toContain('none of the specialized agents');

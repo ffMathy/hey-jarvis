@@ -21,14 +21,14 @@ import { randomBytes } from 'node:crypto';
  * for a slot that does not exist is turned away with nothing read, and a slot is read from once.
  *
  * **Everything is bounded**, because the Pi this runs on has two gigabytes for two processes: at
- * most {@link MAX_OPEN_SLOTS} slots and {@link MAX_KEPT_PHOTOS} photos of at most
- * {@link MAX_PHOTO_BYTES}, the oldest let go first, and nothing kept past {@link KEEP_PHOTO_MS}.
- * Slots are pruned whenever the store is touched, as the other short-lived state in this server is,
- * and the oldest photo is let go of the moment a new one needs its room. A photo's own half hour is
- * kept **on a timer**
+ * most {@link MAX_OPEN_SLOTS} slots, {@link MAX_KEPT_PHOTOS} photos and {@link MAX_KEPT_SCREENSHOTS}
+ * screenshots of at most {@link MAX_PHOTO_BYTES}, the oldest let go first, and nothing kept past
+ * {@link KEEP_PHOTO_MS}. Slots are pruned whenever the store is touched, as the other short-lived
+ * state in this server is, and the oldest photo is let go of the moment a new one needs its room. A
+ * photo's own day is kept **on a timer**
  * ({@link letGoOfPhotoOnTime}), because it is a promise — the privacy policy makes it — about how
- * long sir's photo is held at all: pruned only when touched, a letter shown at ten in the evening,
- * with nobody talking to Jarvis again until morning, would sit in this process's memory all night.
+ * long sir's photo is held at all: pruned only when touched, a letter shown one evening, with nobody
+ * talking to Jarvis again for a weekend, would sit in this process's memory until then.
  *
  * **A photo nobody has looked at yet is waiting** ({@link photosWaiting}). The conversation that
  * sent one is told about it by the phone and looks at it straight away, whether sir said what it is
@@ -36,7 +36,17 @@ import { randomBytes } from 'node:crypto';
  * fail, so a photo is not tied to the conversation it arrived in. Routing shows every waiting photo
  * to the planner, and brings one up in a later reply to ask what he would like done with it
  * (`routing/waiting-photos.ts`); `lookAtPhoto` is what stops it waiting ({@link markPhotoLookedAt}),
- * and so does sir saying he wants nothing done with it ({@link dismissPhoto}).
+ * and so does sir saying he wants nothing done with it ({@link dismissPhoto}), and so does
+ * {@link PHOTO_WAITS_FOR_MS} passing: it is still kept for the rest of its day, and found by its id,
+ * but no longer brought up.
+ *
+ * **A screenshot is kept beside the photos, and never waits on anyone.** Every time sir summons
+ * Jarvis from his phone, the phone sends what was on its screen at that moment (`kind: 'screenshot'`
+ * in the slot request; see "What was on the screen" in `mobile/AGENTS.md`), so that "what does this
+ * say?" has something to be about. Nobody asked Jarvis to look at it, so it is never waiting
+ * ({@link photosWaiting}) and never brought up, it never stands in for a question that names no photo
+ * ({@link findPhoto}), and screenshots are counted apart from photos ({@link keepPhoto}): a summoning a
+ * minute is not allowed to push sir's receipt out of the store.
  */
 
 /**
@@ -47,8 +57,25 @@ import { randomBytes } from 'node:crypto';
  */
 export const UPLOAD_SLOT_MS = 5 * 60_000;
 
-/** How long a photo is kept, so a follow-up question about it still finds it. */
-export const KEEP_PHOTO_MS = 30 * 60_000;
+/**
+ * How long a photo or a screenshot is kept: a day, so a question about it later the same day — "what
+ * was the total on that receipt?" — still finds it. The same day the pages the visualize vertical
+ * builds are hosted for (`ARTIFACT_LIFETIME_MILLISECONDS` in `visualize/artifact-hosting.ts`), and the
+ * figure the privacy policy (`docs/privacy-policy.md`, §4) promises.
+ */
+export const KEEP_PHOTO_MS = 24 * 60 * 60_000;
+
+/**
+ * How long a photo nobody has looked at is *waiting* ({@link photosWaiting}), and so brought up in a
+ * reply to ask what sir would like done with it.
+ *
+ * Shorter than it is kept, on purpose. Bringing a photo up is a reminder, and is left alone for
+ * `QUESTION_REMINDER_INTERVAL_MS` between times (`routing/questions.ts`); a photo that waited the
+ * whole of its day would be asked about every half hour of it. Waiting no longer than that interval,
+ * it is brought up once. Past it, a photo is kept and found by its id as before — only no longer
+ * raised by Jarvis on his own.
+ */
+export const PHOTO_WAITS_FOR_MS = 30 * 60_000;
 
 /**
  * How recent the latest photo has to be to stand in for a question that names none.
@@ -62,6 +89,13 @@ export const LATEST_PHOTO_STANDS_IN_MS = 3 * 60_000;
 /** The most photos kept at once. A household shows Jarvis one thing at a time. */
 export const MAX_KEPT_PHOTOS = 5;
 
+/**
+ * The most screenshots kept at once, apart from {@link MAX_KEPT_PHOTOS}: one arrives on every
+ * summoning, so a day of them is bounded by count before it is by {@link KEEP_PHOTO_MS}. Each is a
+ * few hundred kilobytes.
+ */
+export const MAX_KEPT_SCREENSHOTS = 10;
+
 /** The most slots open at once, so minting them cannot be used to fill memory either. */
 export const MAX_OPEN_SLOTS = 20;
 
@@ -74,6 +108,14 @@ export const MAX_OPEN_SLOTS = 20;
  */
 export const MAX_PHOTO_BYTES = 3 * 1024 * 1024;
 
+/**
+ * What a photo is: one sir took to show Jarvis, or what was on his phone's screen when he summoned
+ * him, which nobody has asked about yet.
+ */
+export const PHOTO_KINDS = ['photo', 'screenshot'] as const;
+
+export type PhotoKind = (typeof PHOTO_KINDS)[number];
+
 /** The kinds of image a photo may be. The phone only ever sends JPEG. */
 export const PHOTO_MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 
@@ -83,6 +125,8 @@ export type PhotoMediaType = (typeof PHOTO_MEDIA_TYPES)[number];
 export interface KeptPhoto {
   /** What the agents call it: `photo1`, `photo2`… Short, because a planner has to repeat it. */
   photoId: string;
+  /** Whether sir took it to show Jarvis, or it is his screen as it was when he summoned him. */
+  kind: PhotoKind;
   data: Buffer;
   mediaType: PhotoMediaType;
   /** When it arrived, in milliseconds. */
@@ -102,10 +146,12 @@ export interface WaitingPhoto {
   photoId: string;
   /** When it arrived, in milliseconds. */
   keptAt: number;
+  /** A photo, unless it says it is a screenshot. Only one a request names can be. */
+  kind?: PhotoKind;
 }
 
-/** Open slots by token, with the moment each stops taking a photo. */
-const openSlots = new Map<string, number>();
+/** Open slots by token, with the moment each stops taking a photo and the kind of photo it takes. */
+const openSlots = new Map<string, { expiresAt: number; kind: PhotoKind }>();
 
 /** Kept photos by id, oldest first — a `Map` iterates in the order entries went in. */
 const keptPhotos = new Map<string, KeptPhoto>();
@@ -118,7 +164,7 @@ const releaseTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 /** Lets go of whatever has outlived its time. */
 function prune(now: number): void {
-  for (const [uploadToken, expiresAt] of openSlots) {
+  for (const [uploadToken, { expiresAt }] of openSlots) {
     if (expiresAt <= now) {
       openSlots.delete(uploadToken);
     }
@@ -140,27 +186,33 @@ function makeRoom<Value>(entries: Map<string, Value>, limit: number): void {
   }
 }
 
-/** Opens a slot for one photo, and says what to call it and until when it is open. */
-export function openUploadSlot(now = Date.now()): { uploadToken: string; expiresAt: number } {
+/** Opens a slot for one photo of this kind, and says what to call it and until when it is open. */
+export function openUploadSlot(
+  now = Date.now(),
+  kind: PhotoKind = 'photo',
+): { uploadToken: string; expiresAt: number } {
   prune(now);
   makeRoom(openSlots, MAX_OPEN_SLOTS);
 
   // 128 bits, URL-safe: 22 characters nobody can guess, and all that lets a photo in.
   const uploadToken = randomBytes(16).toString('base64url');
   const expiresAt = now + UPLOAD_SLOT_MS;
-  openSlots.set(uploadToken, expiresAt);
+  openSlots.set(uploadToken, { expiresAt, kind });
   return { uploadToken, expiresAt };
 }
 
 /**
- * Takes the slot for the body about to be read, if there is a live one by this name.
+ * Takes the slot for the body about to be read, if there is a live one by this name, and says what
+ * kind of photo it was opened for — or `undefined` when there is no such slot.
  *
  * Called before a single byte of the upload is read. It is gone once claimed, so a slot is read
  * from once whether or not what arrives turns out to be a photo.
  */
-export function claimUploadSlot(uploadToken: string, now = Date.now()): boolean {
+export function claimUploadSlot(uploadToken: string, now = Date.now()): PhotoKind | undefined {
   prune(now);
-  return openSlots.delete(uploadToken);
+  const slot = openSlots.get(uploadToken);
+  openSlots.delete(uploadToken);
+  return slot?.kind;
 }
 
 /**
@@ -179,14 +231,36 @@ function letGoOfPhotoOnTime(photoId: string): void {
   keptPhotos.delete(photoId);
 }
 
-/** Keeps a photo that came in through a claimed slot, and says what it is called now. */
-export function keepPhoto(data: Buffer, mediaType: PhotoMediaType, now = Date.now()): KeptPhoto {
+/** Lets go of a kept photo now, and of the timer that would have let go of it later. */
+function letGoOfPhoto(photoId: string): void {
+  clearTimeout(releaseTimers.get(photoId));
+  letGoOfPhotoOnTime(photoId);
+}
+
+/**
+ * Keeps a photo that came in through a claimed slot, and says what it is called now.
+ *
+ * **Screenshots are counted apart from photos**: at most {@link MAX_KEPT_SCREENSHOTS} of them, beside
+ * sir's {@link MAX_KEPT_PHOTOS} photos rather than instead of them, since the phone sends one on every
+ * summoning.
+ */
+export function keepPhoto(
+  data: Buffer,
+  mediaType: PhotoMediaType,
+  now = Date.now(),
+  kind: PhotoKind = 'photo',
+): KeptPhoto {
   prune(now);
-  makeRoom(keptPhotos, MAX_KEPT_PHOTOS);
+  const sameKind = [...keptPhotos.values()].filter((kept) => kept.kind === kind);
+  const room = kind === 'screenshot' ? MAX_KEPT_SCREENSHOTS : MAX_KEPT_PHOTOS;
+  for (const oldest of sameKind.slice(0, Math.max(0, sameKind.length - room + 1))) {
+    letGoOfPhoto(oldest.photoId);
+  }
 
   photosKept += 1;
   const photo: KeptPhoto = {
     photoId: `photo${photosKept}`,
+    kind,
     data,
     mediaType,
     keptAt: now,
@@ -218,7 +292,9 @@ function canonicalPhotoId(photoId: string): string {
  *
  * **The latest stands in only for a question that named none, and only for a while**
  * ({@link LATEST_PHOTO_STANDS_IN_MS}): a planner that dropped the id from a follow-up still means the
- * photo just shown, and anything older is more likely a different question altogether.
+ * photo just shown, and anything older is more likely a different question altogether. Only a photo
+ * sir took stands in, never a screenshot: one arrives on every summoning, so "the latest" would
+ * otherwise be his screen rather than the receipt he showed a minute ago.
  */
 export function findPhoto(photoId: string | undefined, now = Date.now()): KeptPhoto | undefined {
   prune(now);
@@ -226,7 +302,7 @@ export function findPhoto(photoId: string | undefined, now = Date.now()): KeptPh
   if (wanted) {
     return keptPhotos.get(wanted);
   }
-  const photos = [...keptPhotos.values()];
+  const photos = [...keptPhotos.values()].filter((photo) => photo.kind === 'photo');
   const latest = photos[photos.length - 1];
   return latest && now - latest.keptAt < LATEST_PHOTO_STANDS_IN_MS ? latest : undefined;
 }
@@ -284,12 +360,19 @@ export function dismissPhoto(photoId: string, now = Date.now()): void {
  * with, oldest first.
  *
  * Only while they are kept: a photo let go of is not waiting on anyone, since nothing could look at
- * it any more.
+ * it any more — and only for {@link PHOTO_WAITS_FOR_MS} of that. Never a screenshot, which sir did
+ * not send to be looked at.
  */
 export function photosWaiting(now = Date.now()): WaitingPhoto[] {
   prune(now);
   return [...keptPhotos.values()]
-    .filter((photo) => photo.lookedAt === undefined && photo.dismissedAt === undefined)
+    .filter(
+      (photo) =>
+        photo.kind === 'photo' &&
+        photo.lookedAt === undefined &&
+        photo.dismissedAt === undefined &&
+        now - photo.keptAt < PHOTO_WAITS_FOR_MS,
+    )
     .map(({ photoId, keptAt }) => ({ photoId, keptAt }));
 }
 

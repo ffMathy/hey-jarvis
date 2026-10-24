@@ -971,7 +971,7 @@ test('sends a photo to the Jarvis server when the camera button is tapped, and t
   expect(slotRequests[0]?.method).toBe('POST');
   expect(slotRequests[0]?.contentType).toBe('application/json');
   expect(slotRequests[0]?.authorization).toBeUndefined();
-  expect(JSON.parse(String(slotRequests[0]?.body))).toEqual({ conversationId: 'conv_1' });
+  expect(JSON.parse(String(slotRequests[0]?.body))).toEqual({ conversationId: 'conv_1', kind: 'photo' });
 
   // The photo goes once, as a JPEG, to the slot's path on that same server — with no key of any kind.
   await expect.poll(() => uploads.length).toBe(1);

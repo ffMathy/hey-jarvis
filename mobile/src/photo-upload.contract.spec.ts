@@ -51,6 +51,12 @@ describe('the requests the phone makes, and the routes that answer them', () => 
     expect(slot).toEqual({ uploadPath: `/api/photos/${minted}` });
   });
 
+  it('names the kinds of photo a slot can be for as the server does', () => {
+    expect(readServerSource('vision', 'photos.ts')).toContain(
+      "export const PHOTO_KINDS = ['photo', 'screenshot'] as const;",
+    );
+  });
+
   it('is answered by the slot route with the path the phone reads', () => {
     // The phone reads `data.uploadPath` from the server's envelope, and nothing else from it.
     expect(readRoute('PHOTO_UPLOAD_PATH')).toBe('/api/photos');

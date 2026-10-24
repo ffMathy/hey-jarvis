@@ -66,6 +66,21 @@ describe('looking at a photo', () => {
     expect(answer).toBe('Photo photo1, taken just now, shows: «The total is 243.50 DKK.»');
   });
 
+  it('says a screenshot is sir’s screen from when he summoned Jarvis, not a photo he took', async () => {
+    const { mastra } = await readerAnswering('A text message from Anna asking about dinner.');
+    keepPhoto(Buffer.from([0xff, 0xd8]), 'image/jpeg', Date.now(), 'screenshot');
+
+    const { answer } = await executeTool(
+      lookAtPhoto,
+      { photoId: 'photo1', question: 'What does the message say?' },
+      { mastra },
+    );
+
+    expect(answer).toBe(
+      "Screenshot photo1, of sir's phone screen as it was when he summoned Jarvis just now, shows: «A text message from Anna asking about dinner.»",
+    );
+  });
+
   it('says there is nothing to look at, without asking the reader, when no photo is kept', async () => {
     const { mastra, calls } = await readerAnswering('Anything.');
 

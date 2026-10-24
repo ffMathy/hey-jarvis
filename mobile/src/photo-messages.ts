@@ -1,6 +1,6 @@
 /**
- * What the phone tells Jarvis about the camera: the words it puts into the conversation, and nothing
- * else.
+ * What the phone tells Jarvis about the camera, and about the screenshot it takes when he is
+ * summoned: the words it puts into the conversation, and nothing else.
  *
  * **Jarvis cannot see, and neither can the agent he speaks through.** What can is a model behind
  * `routePromptWorkflow` on sir's own Jarvis server, so a photo goes *there*, straight from the phone
@@ -89,6 +89,19 @@ export const PHOTO_PROBLEMS = {
 
 /** One of {@link PHOTO_PROBLEMS}, by name. */
 export type PhotoProblem = keyof typeof PHOTO_PROBLEMS;
+
+/**
+ * What was on sir's phone screen when he summoned Jarvis is with the Jarvis server, filed as
+ * `photoId`.
+ *
+ * A note, not a turn: sir did not send it, and has asked nothing about it. The phone sends one on
+ * every summoning from the assistant gesture (`use-screenshot-sending.ts`), so that "what does this
+ * say?" has something to be about — and the prompt has the agent route a question about his screen
+ * with it named, the way a photo is, and otherwise say nothing of it.
+ */
+export function screenshotTaken(photoId: string): string {
+  return `When sir summoned you, his phone took a screenshot of what was on its screen (photo ${photoId}).`;
+}
 
 /**
  * The photo sir took did not get to the Jarvis server, and why.

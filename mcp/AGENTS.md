@@ -458,6 +458,16 @@ the check that lets a phone send one, where the photo is kept, and how an agent 
      `photosToAskAbout`; the closing report then has Jarvis say what it shows, ask what sir would like
      done with it, and wait for the answer (see **Questions for the user** under [Routing](#routing)).
 
+**A screenshot of sir's screen is kept beside the photos, and never waits.** On every summoning from
+the assistant gesture, the phone sends what was on its screen (`"kind": "screenshot"` in the slot
+request, `PHOTO_KINDS` in `vision/photos.ts`; see "What was on the screen" in `mobile/AGENTS.md`) and
+tells the voice agent its id in a note that takes no turn. It is looked at like a photo when sir asks
+about his screen, but nobody sent it to be looked at: it is never in `photosWaiting`, never brought up,
+never the latest photo standing in for a question that names none, and at most
+`MAX_KEPT_SCREENSHOTS` are kept — counted apart from `MAX_KEPT_PHOTOS`, so a summoning a minute
+cannot push his receipt out. The planner
+lists one the request names under a heading of its own, and `lookAtPhoto` calls it a screenshot.
+
 **A photo nobody has looked at is not lost with the conversation.** The conversation that sent a
 photo looks at it straight away, but that conversation can end before the phone gets to tell it —
 the phone's message goes into that conversation or nowhere — and the look can fail. Until
@@ -483,8 +493,9 @@ up from there (`routing/waiting-photos.ts` — routing depends on vision, never 
   id: `Sir sent you a photo 4 minutes ago (photo3) that nobody has looked at yet: ask him what he
   would like done with it.` Only once it has waited a minute unlooked-at (`PHOTO_WAITING_GRACE_MS`),
   because the conversation that sent it routes a look at it within seconds, and then left alone for
-  `QUESTION_REMINDER_INTERVAL_MS` like a question. A photo is kept for just as long, so in practice
-  it is brought up once. The grace is not tied to a conversation, which nothing here knows: a photo
+  `QUESTION_REMINDER_INTERVAL_MS` like a question. A photo waits for no longer than that
+  (`PHOTO_WAITS_FOR_MS`, half an hour), so in practice it is brought up once — though it is kept, and
+  found by its id, for a day (`KEEP_PHOTO_MS`). The grace is not tied to a conversation, which nothing here knows: a photo
   whose first look failed can be brought up again in the conversation that sent it, as any question
   he moved on from would be. See **Questions for the user** under [Routing](#routing).
 - **Only a reading counts.** A reader that failed has told sir nothing about his photo, so it stays

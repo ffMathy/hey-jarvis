@@ -84,6 +84,9 @@ function photoUploadWaitMs(photo: Blob): number {
  */
 const UPLOAD_PATH = /^\/api\/photos\/[A-Za-z0-9_-]{22}$/;
 
+/** What a slot is opened for. The server's `PHOTO_KINDS`, which `photo-upload.contract.spec.ts` holds this to. */
+export type PhotoKind = 'photo' | 'screenshot';
+
 /** What went wrong, for the agent to say (`problem`) and for the phone's log (`description`). */
 export interface PhotoFailure {
   problem: PhotoProblem;
@@ -231,12 +234,18 @@ async function readRefusal(response: Response, request: 'slot' | 'upload'): Prom
 export async function openPhotoSlot({
   serverAddress,
   conversationId,
+  kind = 'photo',
   fetchImplementation = fetch,
 }: {
   /** The server's origin, as `parseJarvisServerAddress` gives it. */
   serverAddress: string;
   /** The ElevenLabs id of the conversation under way, `conv_…`. */
   conversationId: string;
+  /**
+   * A photo sir took, or the screenshot of his screen taken when he summoned Jarvis — which the server
+   * keeps apart, never bringing it up as a photo nobody has looked at. `PHOTO_KINDS` on the server.
+   */
+  kind?: PhotoKind;
   fetchImplementation?: SendRequest;
 }): Promise<PhotoSlot> {
   return givenUpOnAfter(PHOTO_SLOT_WAIT_MS, async (signal): Promise<PhotoSlot> => {
@@ -245,7 +254,7 @@ export async function openPhotoSlot({
       response = await fetchImplementation(`${serverAddress}${PHOTO_SLOTS_PATH}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversationId }),
+        body: JSON.stringify({ conversationId, kind }),
         signal,
       });
     } catch {

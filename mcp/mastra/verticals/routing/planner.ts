@@ -202,7 +202,7 @@ Sometimes work started earlier — an agent on an earlier request, or a coding s
 - If the request answers none of them, or none are listed, leave \`answers\` empty. Never answer a question on the user's behalf, and never treat a new request as an answer just because a question is waiting
 
 # Photos
-The user can send Jarvis a photo with the camera button on his phone. Photos he has sent that nobody has looked at yet are listed after the request, each by its id and how long ago he sent it — including one he has only just sent. A photo the request names by its tag that has been looked at or dismissed already is listed too, under a heading of its own: most often it is the one Jarvis has just described to him and asked about. Jarvis may have asked him what he would like done with one, so the request can be his reply ("Answer to 'what would you like done with the photo?': add everything on it to the shopping list").
+The user can send Jarvis a photo with the camera button on his phone. Photos he has sent that nobody has looked at yet are listed after the request, each by its id and how long ago he sent it — including one he has only just sent. A photo the request names by its tag that is no longer waiting — looked at, dismissed, or sent more than half an hour ago — is listed too, under a heading of its own: most often it is the one Jarvis has just described to him and asked about. Jarvis may have asked him what he would like done with one, so the request can be his reply ("Answer to 'what would you like done with the photo?': add everything on it to the shopping list").
 
 - If the request says what to do with one of them, or asks about a photo he sent, plan it as ordinary tasks: the \`vision\` agent looks at the photo, and its prompt names the photo the way a request does — "(photo photo3)" — beside what to find out from it. Any task that acts on what the photo shows needs that task. Leave \`photosToAskAbout\` empty: he has said what he wants
 - If the request is a photo he sent without saying what he wants — "He sent a photo without saying what he wants: look at it and say what it shows (photo photo3)" — plan one \`vision\` task that looks at it and says what it shows and what could be done with it: the items and amounts on it, dates, names, numbers or any text worth acting on. Put its id in \`photosToAskAbout\`, and Jarvis will ask him what he would like done with it once he has said what it shows. Plan nothing else for it: what to do with it is his to say
@@ -211,6 +211,7 @@ The user can send Jarvis a photo with the camera button on his phone. Photos he 
 - A photo is never a waiting question: never put one in \`answers\`, even when the request replies to being asked about it
 - If he wants nothing done with one — "nothing", "never mind", "I was only testing" — put its id in \`dismissedPhotoIds\` and write no task for it: it stops waiting, and he is not asked about it again. That includes his reply about the photo the request names when he was just asked what to do with it — "Answer to 'what would you like done with it?': nothing (photo photo3)" — under whichever heading it is listed. Only for a photo he said so about; otherwise leave \`dismissedPhotoIds\` empty
 - A request about something else leaves them alone: write no task for a photo the request does not mention
+- A screenshot is what was on his phone's screen when he summoned Jarvis, taken by the phone on its own. It is listed under a heading of its own when the request names it, and only then. A question about what is on his screen — "What does the text on his screen say? (photo photo7)" — is planned like a question about any photo: a \`vision\` task that names it by its tag. Never put a screenshot in \`photosToAskAbout\` or \`dismissedPhotoIds\`: he did not send it, and nobody waits on it
 
 # How the answer should sound
 Set \`responseStyle\` to how Jarvis should answer once the plan has run. Ask where the value of the request lands:
@@ -315,9 +316,18 @@ export function plannerPrompt(
   if (waitingPhotos.length > 0) {
     sections.push(`Photos the user has sent that nobody has looked at yet:\n${photoList(waitingPhotos, now)}`);
   }
-  if (namedPhotos.length > 0) {
+  const namedScreenshots = namedPhotos.filter((photo) => photo.kind === 'screenshot');
+  const namedTaken = namedPhotos.filter((photo) => photo.kind !== 'screenshot');
+  if (namedTaken.length > 0) {
     sections.push(
-      `Photos the request names, which have been looked at or dismissed already:\n${photoList(namedPhotos, now)}`,
+      `Photos the request names, which are no longer waiting to be looked at:\n${photoList(namedTaken, now)}`,
+    );
+  }
+  if (namedScreenshots.length > 0) {
+    sections.push(
+      `Screenshots the request names, of his phone's screen when he summoned Jarvis:\n${namedScreenshots
+        .map((photo) => `- ${photo.photoId}, taken ${howLongAgo(now - photo.keptAt)}`)
+        .join('\n')}`,
     );
   }
 
@@ -337,13 +347,17 @@ const PHOTO_TAG = /\(photo (\w+)\)/gi;
 
 /**
  * The photos a request names by their tag that are still kept but no longer waiting, oldest first:
- * looked at — most often by the very look Jarvis has just described to sir and asked him about — or
- * dismissed.
+ * looked at — most often by the very look Jarvis has just described to sir and asked him about —
+ * dismissed, or sent long enough ago to have stopped waiting (`PHOTO_WAITS_FOR_MS`) while still kept
+ * for the rest of its day.
  *
  * Such a photo is not among the waiting ones, yet the request is about it. "Answer to 'what would you
  * like done with it?': nothing (photo photo3)" is the reply to the question a look at photo3 ended
  * on, and with photo3 no longer waiting the planner was shown nothing to dismiss — so the reply that
  * asked for nothing was reported to sir as a request no agent could handle.
+ *
+ * A screenshot of sir's screen is never waiting, so one the request names is always listed here, and
+ * said to be one (`kind`), since it has neither been looked at nor dismissed.
  *
  * Only a photo the tag names by its id. An id with no letter or digit in it is no id to the store,
  * which would stand the latest photo in for it (see `findPhoto`), and a photo the request does not
@@ -355,7 +369,7 @@ function photosTheRequestNames(userQuery: string, waitingPhotos: readonly Waitin
   for (const [, taggedId] of userQuery.matchAll(PHOTO_TAG)) {
     const photo = /[a-z0-9]/i.test(taggedId) ? findPhoto(taggedId) : undefined;
     if (photo && !waitingIds.has(photo.photoId)) {
-      named.set(photo.photoId, { photoId: photo.photoId, keptAt: photo.keptAt });
+      named.set(photo.photoId, { photoId: photo.photoId, keptAt: photo.keptAt, kind: photo.kind });
     }
   }
   return [...named.values()].sort((earlier, later) => earlier.keptAt - later.keptAt);

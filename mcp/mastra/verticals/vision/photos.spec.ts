@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   claimUploadSlot,
   dismissPhoto,
@@ -9,9 +11,11 @@ import {
   keepPhoto,
   LATEST_PHOTO_STANDS_IN_MS,
   MAX_KEPT_PHOTOS,
+  MAX_KEPT_SCREENSHOTS,
   MAX_OPEN_SLOTS,
   markPhotoLookedAt,
   openUploadSlot,
+  PHOTO_WAITS_FOR_MS,
   photosWaiting,
   UPLOAD_SLOT_MS,
   unmarkPhotoLookedAt,
@@ -44,18 +48,18 @@ describe('a slot for one photo', () => {
     const { uploadToken, expiresAt } = openUploadSlot(0);
 
     expect(expiresAt).toBe(UPLOAD_SLOT_MS);
-    expect(claimUploadSlot(uploadToken, UPLOAD_SLOT_MS - 1)).toBe(true);
-    expect(claimUploadSlot(uploadToken, UPLOAD_SLOT_MS - 1)).toBe(false);
+    expect(claimUploadSlot(uploadToken, UPLOAD_SLOT_MS - 1)).toBe('photo');
+    expect(claimUploadSlot(uploadToken, UPLOAD_SLOT_MS - 1)).toBeUndefined();
   });
 
   it('closes when its time is up', () => {
     const { uploadToken } = openUploadSlot(0);
 
-    expect(claimUploadSlot(uploadToken, UPLOAD_SLOT_MS)).toBe(false);
+    expect(claimUploadSlot(uploadToken, UPLOAD_SLOT_MS)).toBeUndefined();
   });
 
   it('cannot be claimed by a name that was never given out', () => {
-    expect(claimUploadSlot('Q2hhbmdlIG1lIHBsZWFzZQ', 0)).toBe(false);
+    expect(claimUploadSlot('Q2hhbmdlIG1lIHBsZWFzZQ', 0)).toBeUndefined();
   });
 
   it('never lets so many be open that minting them could fill memory', () => {
@@ -66,8 +70,67 @@ describe('a slot for one photo', () => {
     const newest = openUploadSlot(0).uploadToken;
 
     // The oldest made way for the newest.
-    expect(claimUploadSlot(first, 0)).toBe(false);
-    expect(claimUploadSlot(newest, 0)).toBe(true);
+    expect(claimUploadSlot(first, 0)).toBeUndefined();
+    expect(claimUploadSlot(newest, 0)).toBe('photo');
+  });
+
+  it('says, when claimed, what kind of photo it was opened for', () => {
+    const { uploadToken } = openUploadSlot(0, 'screenshot');
+
+    expect(claimUploadSlot(uploadToken, 0)).toBe('screenshot');
+  });
+});
+
+describe('a screenshot of sir’s screen', () => {
+  it('is found by its id, like any photo', () => {
+    const screenshot = keepPhoto(PHOTO, 'image/jpeg', 0, 'screenshot');
+
+    expect(findPhoto(screenshot.photoId, 0)).toBe(screenshot);
+    expect(screenshot.kind).toBe('screenshot');
+  });
+
+  it('never waits on anyone, since nobody asked for it to be looked at', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0, 'screenshot');
+    keepPhoto(PHOTO, 'image/jpeg', 0);
+
+    expect(photosWaiting(0)).toEqual([{ photoId: 'photo2', keptAt: 0 }]);
+  });
+
+  it('never stands in for a question that named no photo', () => {
+    const taken = keepPhoto(PHOTO, 'image/jpeg', 0);
+    keepPhoto(PHOTO, 'image/jpeg', 0, 'screenshot');
+
+    expect(findPhoto(undefined, 0)).toBe(taken);
+  });
+
+  it('is never a stand-in even when it is all there is', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0, 'screenshot');
+
+    expect(findPhoto(undefined, 0)).toBeUndefined();
+  });
+
+  it('is counted apart from sir’s photos, the oldest screenshot going first, and pushes none of them out', () => {
+    for (let photo = 0; photo < MAX_KEPT_PHOTOS; photo += 1) {
+      keepPhoto(PHOTO, 'image/jpeg', 0);
+    }
+    const screenshots = Array.from({ length: MAX_KEPT_SCREENSHOTS + 1 }, () =>
+      keepPhoto(PHOTO, 'image/jpeg', 0, 'screenshot'),
+    );
+
+    expect(findPhoto(screenshots[0]?.photoId, 0)).toBeUndefined();
+    for (const kept of screenshots.slice(1)) {
+      expect(findPhoto(kept.photoId, 0)).toBe(kept);
+    }
+    for (let photo = 1; photo <= MAX_KEPT_PHOTOS; photo += 1) {
+      expect(findPhoto(`photo${photo}`, 0)?.kind).toBe('photo');
+    }
+  });
+
+  it('is kept for a day, like a photo', () => {
+    const screenshot = keepPhoto(PHOTO, 'image/jpeg', 0, 'screenshot');
+
+    expect(findPhoto(screenshot.photoId, KEEP_PHOTO_MS - 1)).toBe(screenshot);
+    expect(findPhoto(screenshot.photoId, KEEP_PHOTO_MS)).toBeUndefined();
   });
 });
 
@@ -109,6 +172,13 @@ describe('the photos kept', () => {
     expect(findPhoto('photo2', LATEST_PHOTO_STANDS_IN_MS)).toBe(latest);
   });
 
+  it('are kept for the day the privacy policy promises, and no longer', () => {
+    const policy = readFileSync(join(import.meta.dir, '..', '..', '..', '..', 'docs', 'privacy-policy.md'), 'utf8');
+
+    expect(KEEP_PHOTO_MS).toBe(24 * 60 * 60_000);
+    expect(policy).toContain('for at most 24 hours');
+  });
+
   it('are let go of once they have been kept long enough', () => {
     keepPhoto(PHOTO, 'image/jpeg', 0);
 
@@ -134,13 +204,13 @@ describe('the photos kept', () => {
 });
 
 /**
- * The half hour kept on a timer, not only whenever the store is next touched.
+ * The day kept on a timer, not only whenever the store is next touched.
  *
- * On Bun's fake timers, so that half an hour passes at once. Every look here asks at the moment the
+ * On Bun's fake timers, so that a day passes at once. Every look here asks at the moment the
  * photo was kept, when a prune would let go of nothing: a photo that is gone is gone because its
  * timer let go of it.
  */
-describe('a photo whose half hour is up', () => {
+describe('a photo whose day is up', () => {
   beforeEach(() => {
     jest.useFakeTimers();
   });
@@ -191,7 +261,7 @@ describe('a photo whose half hour is up', () => {
     jest.advanceTimersByTime(KEEP_PHOTO_MS / 2);
     const fresh = keepPhoto(PHOTO, 'image/jpeg', 0);
 
-    // When the forgotten photo1's half hour would have been up.
+    // When the forgotten photo1's day would have been up.
     jest.advanceTimersByTime(KEEP_PHOTO_MS / 2);
     expect(findPhoto('photo1', 0)).toBe(fresh);
 
@@ -269,10 +339,20 @@ describe('a photo nobody has looked at yet', () => {
   });
 
   it('stops waiting once it is let go of, since nothing could look at it any more', () => {
+    for (let photo = 0; photo <= MAX_KEPT_PHOTOS; photo += 1) {
+      keepPhoto(PHOTO, 'image/jpeg', 0);
+    }
+
+    expect(photosWaiting(0).map((photo) => photo.photoId)).not.toContain('photo1');
+  });
+
+  it('stops waiting once it has waited its while, and is still kept for the rest of its day', () => {
     keepPhoto(PHOTO, 'image/jpeg', 0);
     keepPhoto(PHOTO, 'image/jpeg', 60_000);
 
-    expect(photosWaiting(KEEP_PHOTO_MS)).toEqual([{ photoId: 'photo2', keptAt: 60_000 }]);
+    expect(photosWaiting(PHOTO_WAITS_FOR_MS)).toEqual([{ photoId: 'photo2', keptAt: 60_000 }]);
+    expect(findPhoto('photo1', PHOTO_WAITS_FOR_MS)?.photoId).toBe('photo1');
+    expect(findPhoto('photo1', KEEP_PHOTO_MS - 1)?.photoId).toBe('photo1');
   });
 
   it('is forgotten with every other photo, and a new one waits afresh under the first id', () => {

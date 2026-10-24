@@ -1,7 +1,7 @@
 # Privacy Policy for Jarvis
 
 **Effective date: 17 September 2026**
-**Last updated: 30 September 2026**
+**Last updated: 24 October 2026**
 
 This Privacy Policy describes how the Jarvis application ("Jarvis", "the App") handles information.
 It applies to the Android application, the Wear OS application and the web version, all published
@@ -39,7 +39,8 @@ means:
 - device identifiers, advertising identifiers, or IP addresses;
 - location data of any kind, whether precise or approximate;
 - contacts, calendar entries, photographs, files, or messages. A photograph you choose to show your
-  assistant is sent to a server of your own, never to us — see [§4](#4-third-party-services);
+  assistant, and the screenshot taken when you summon it, are sent to a server of your own, never to
+  us — see [§4](#4-third-party-services);
 - usage analytics, telemetry, crash reports, diagnostics, or performance data;
 - cookies or similar tracking technologies used for tracking purposes.
 
@@ -61,6 +62,7 @@ never transmitted to us.**
 | Your Jarvis server's address, if you enter one | To know where to send a photograph after you tap the camera button. It is an address, not a password or key. Without one the App shows no camera button | Android: the operating system's encrypted keystore, beside the API key. Web: your browser's `localStorage`. It is never sent to the Wear OS application |
 | A remembered particle count | A display setting, so the animation opens at a quality your device has already sustained | As above |
 | The last photograph you showed your assistant | To send it (see [§4](#4-third-party-services)) | Android: the App's private cache, which no other app can read and which is never backed up, until the next photograph replaces it. Web: in memory only, until it is sent |
+| The screenshot taken the last time you summoned your assistant | To send it (see [§4](#4-third-party-services)) | Android only: the App's private cache, as above, until the next summoning replaces it |
 
 You may erase all of it at any time by uninstalling the App, or, in the web version, by clearing site
 data for the page in your browser. The Developer has no copy of it and no means of obtaining one.
@@ -72,8 +74,9 @@ data for the page in your browser. The Developer has no copy of it and no means 
 The App is a client for **ElevenLabs**, a third-party conversational voice service. It is not usable
 until you supply your own ElevenLabs API key. The only other remote service it connects to is your
 own **Jarvis server**, at the address you enter in the App's settings — only if you have entered
-one, and only when you tap the camera button to show your assistant a photograph (below). Without
-that address the App shows no camera button and connects to nothing but ElevenLabs.
+one, and only to show your assistant a photograph you take with the camera button, or the screen
+you summoned it over (below). Without that address the App shows no camera button, sends no
+screenshot, and connects to nothing but ElevenLabs.
 
 When, and only when, you hold a conversation:
 
@@ -85,15 +88,21 @@ When, and only when, you hold a conversation:
   that this device has a camera button, that you have opened or closed the camera, and that a
   photograph has been sent — with the short name your Jarvis server gave it, such as "photo3" — or
   could not be sent, and why. The photograph itself is never sent to ElevenLabs;
-- when you tap the camera button, the identifier of the ElevenLabs conversation you are holding is
-  sent to your Jarvis server, so that the server can confirm with ElevenLabs that the conversation is
-  live before it agrees to accept a photograph. That identifier names the one conversation, not you
-  or your device, and is sent only to your Jarvis server, and only when you tap the camera button;
+- if you have entered a Jarvis server's address and summon your assistant on Android with the
+  assistant gesture, the screenshot of your screen that Android hands the assistant at that moment
+  (see [§5](#5-permissions)) is uploaded to that Jarvis server the same way, once the conversation
+  has connected, and a short note with the name the server gave it, such as "photo7", is added to the
+  conversation. The screenshot itself is never sent to ElevenLabs. Your assistant looks at it only if
+  you ask about something on your screen;
+- when you tap the camera button, or a screenshot is sent, the identifier of the ElevenLabs
+  conversation you are holding is sent to your Jarvis server, so that the server can confirm with
+  ElevenLabs that the conversation is live before it agrees to accept the image. That identifier
+  names the one conversation, not you or your device, and is sent only to your Jarvis server;
 - a photograph you take after tapping the camera button is then uploaded to that same Jarvis server,
   and to nowhere else. The upload carries no key, password or other credential: the server accepts
-  it only at a single-use address it has just handed the App for that one photograph. The App never
-  uploads a photograph you did not just take — or, in the web version, pick — for this purpose, and
-  cannot browse your photo library by itself.
+  it only at a single-use address it has just handed the App for that one photograph. Apart from the
+  screenshot above, the App never uploads an image you did not just take — or, in the web version,
+  pick — for this purpose, and cannot browse your photo library by itself.
 
 **Those transmissions are to ElevenLabs and to your own server, not to us.** We neither receive,
 intercept, log nor retain any of them. What ElevenLabs does with what it receives is governed by its
@@ -101,8 +110,8 @@ own agreement with you and its own privacy policy, at <https://elevenlabs.io/pri
 party to that relationship and we encourage you to read it.
 
 Your Jarvis server is one you run yourself: the Developer operates none and has no access to yours.
-As published alongside the App's source code, it keeps a photograph in its memory only — it never
-writes one to disk — and for at most 30 minutes, and confirms that a conversation is live by asking
+As published alongside the App's source code, it keeps a photograph or screenshot in its memory only
+— it never writes one to disk — and for at most 24 hours, and confirms that a conversation is live by asking
 ElevenLabs about it with the ElevenLabs credentials you gave that server. What it does with a
 photograph in that time, such as showing it to the AI model it is configured to use, happens under
 your configuration and your credentials; the App is not a participant in it and the Developer has
@@ -124,6 +133,11 @@ The App requests the following permissions, and uses each only for the stated pu
   camera app to take one photograph, which needs no permission of the App's own; the App cannot
   open the camera by itself, and never sees anything but the one photograph you took. In the web
   version, the browser's own file or camera picker is used in the same way.
+- **No screen-capture permission.** When you summon your assistant with Android's assistant gesture,
+  Android itself hands the assistant app a screenshot of the screen it opened over, as it does for
+  any assistant app; the App cannot capture your screen at any other time. Android does so only
+  while "Use screenshot" is on in your device's digital assistant settings, where you can turn it
+  off, and never for an app that marks its window as secure, such as many banking apps.
 - **Microphone (`RECORD_AUDIO`)** — to hear you during a conversation. Audio is streamed to
   ElevenLabs while a conversation is open and is not recorded to storage, retained by the App, or
   sent anywhere else. The App does not listen when a conversation is not open. If you decline this
@@ -193,6 +207,6 @@ Questions about this Privacy Policy may be sent to:
 The declarations made in the Google Play Data Safety section for this App are consistent with this
 policy: no data is collected, and no data is shared with the Developer. Audio and text transmitted to
 ElevenLabs during a conversation are handled by ElevenLabs as a service you have chosen and
-authenticated to with your own key; a photograph you show your assistant, and the identifier of the
-conversation you show it in, are handled by the Jarvis server of your own whose address you entered
-in the App.
+authenticated to with your own key; a photograph you show your assistant, the screenshot taken when
+you summon it, and the identifier of the conversation either is for, are handled by the Jarvis server
+of your own whose address you entered in the App.
