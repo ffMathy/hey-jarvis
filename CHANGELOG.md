@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.27.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.27.0...root-v4.27.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **mcp:** report why a delegation failed instead of "null" ([#984](https://github.com/ffMathy/hey-jarvis/issues/984)) ([500f7e8](https://github.com/ffMathy/hey-jarvis/commit/500f7e837e9fdb153c03ba3774b7ca6d3fff7556))
+
 ## [4.27.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.26.0...root-v4.27.0) (2026-10-22)
 
 
