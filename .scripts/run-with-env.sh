@@ -60,20 +60,13 @@ if [ -z "${OP_SERVICE_ACCOUNT_TOKEN:-}" ] && ! op account get &> /dev/null; then
     exit 1
 fi
 
-# Create a temporary env file that includes current environment + op.env
+# `op run` passes the current environment through to the command on its own, so the env file holds
+# only the references. Copying the environment in as well broke it: `op` parses the file as dotenv,
+# and one unquoted value with a quote or a space in it stopped the whole run.
 temp_env_file=$(mktemp)
 trap "rm -f '$temp_env_file'" EXIT
 
-# Export current environment variables (filter out functions and problematic vars)
-while IFS='=' read -r name value; do
-    # Only include simple variables
-    if [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
-        echo "$name=$value" >> "$temp_env_file"
-    fi
-done < <(env)
-
-# Append the original env file (allows 1Password references to override)
-cat "$env_file" >> "$temp_env_file"
+cat "$env_file" > "$temp_env_file"
 
 # Append the optional references that resolve, so a missing one cannot stop `op run`
 bash "$(dirname "${BASH_SOURCE[0]}")/append-optional-env.sh" "$optional_env_file" "$temp_env_file"
