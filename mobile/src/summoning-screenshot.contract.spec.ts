@@ -24,7 +24,9 @@ function readSource(relativePath: string): string {
 
 /** A constant as `SummoningScreenshot` declares it. */
 function readScreenshotConstant(name: string): number {
-  const match = new RegExp(`${name}\\s*=\\s*([\\d_]+)L?\\s*$`, 'm').exec(readSource(`${KOTLIN}/SummoningScreenshot.kt`));
+  const match = new RegExp(`${name}\\s*=\\s*([\\d_]+)L?\\s*$`, 'm').exec(
+    readSource(`${KOTLIN}/SummoningScreenshot.kt`),
+  );
 
   expect(match, `SummoningScreenshot.kt should declare ${name}`).not.toBeNull();
   return Number(match?.[1]?.replaceAll('_', ''));
@@ -61,7 +63,9 @@ describe('the screenshot the system takes when sir summons Jarvis', () => {
   });
 
   it('passes through a directory of its own, which the photo activity does not clear', () => {
-    const screenshots = /File\(context\.cacheDir, "([^"]+)"\)/.exec(readSource(`${KOTLIN}/SummoningScreenshot.kt`))?.[1];
+    const screenshots = /File\(context\.cacheDir, "([^"]+)"\)/.exec(
+      readSource(`${KOTLIN}/SummoningScreenshot.kt`),
+    )?.[1];
     const photos = /File\(context\.cacheDir, "([^"]+)"\)/.exec(readSource(`${KOTLIN}/JarvisPhotoActivity.kt`))?.[1];
 
     expect(screenshots).toBeDefined();
