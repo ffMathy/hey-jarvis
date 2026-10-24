@@ -49,6 +49,10 @@ Required (via 1Password):
 - `HEY_JARVIS_ELEVENLABS_VOICE_ID` - ElevenLabs voice ID
 - `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` - Google Gemini API for test evaluations
 
+Optional (via `op.optional.env`):
+- `HEY_JARVIS_ELEVENLABS_POST_CALL_WEBHOOK_ID` - the workspace webhook `deploy` links the production
+  agent's post-call webhook to. See **Fixing failed evaluations** below
+
 ## Testing Guidelines
 
 ### Where a test belongs
@@ -418,6 +422,19 @@ server and the devices over its `/api/live` WebSocket instead (see `mcp/AGENTS.m
 The agent once took part in both, through a client tool it called with the entities and through
 contextual updates naming what sir pointed at. Both are gone, and `tests/specs/agent-config.spec.ts`
 fails if a client tool, or `client_tool_call` in `clientEvents`, comes back.
+
+## Fixing failed evaluations
+
+ElevenLabs scores every conversation against `platformSettings.evaluation.criteria` in
+`src/assets/agent-config.json`, and the production agent's post-call webhook sends the transcript and
+those results to the MCP server. A conversation that failed a criterion has a Claude Code session started
+on it, which finds the cause, fixes it and opens a pull request — see "Fixing Failed ElevenLabs
+Evaluations" in `mcp/AGENTS.md`. So a criterion here is also a standing request for a fix whenever it
+fails: word it as something the agent can be changed to pass.
+
+`deploy` links the webhook only when `HEY_JARVIS_ELEVENLABS_POST_CALL_WEBHOOK_ID` is set, and never on the
+test agent, whose conversations are the integration specs'. `tests/specs/post-call-webhook.spec.ts`
+checks the link, and that the agent still sends `transcript` events and has a criterion to report on.
 
 ## Contributing
 - **Update agent-prompt.md** for behavior changes
