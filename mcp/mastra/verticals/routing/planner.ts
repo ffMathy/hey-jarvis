@@ -429,12 +429,10 @@ async function planWithPlanner(
   openQuestions: OpenQuestion[],
   waitingPhotos: readonly WaitingPhoto[],
   namedPhotos: readonly WaitingPhoto[],
-  abortSignal: AbortSignal,
 ): Promise<RoutingDecision> {
   const response = await planner.generate(plannerPrompt(userQuery, openQuestions, waitingPhotos, namedPhotos), {
     structuredOutput: { schema: planSchema },
     toolChoice: 'none',
-    abortSignal,
   });
 
   const plan = response.object;
@@ -522,17 +520,17 @@ export async function decisionFromClassification(
 /**
  * Decides what a request needs: the chains it runs as, and any answers it gave.
  *
- * The planner and the routing classifier (see `classifier.ts`) are asked at the same time. If the
- * classifier settles the request on its own -- one agent takes it whole, it only answers a waiting
- * question, it is only a goodbye, or it only cancels the running request -- that is the decision
- * and the planner is cancelled. Otherwise the planner's plan is used, and the request waited no
- * longer than it would have without a classifier at all. A classifier that fails is logged and
- * ignored, for the same reason. Without a TypeSafe key there is no classifier, and this is the
- * planner alone.
+ * **Jev first, the planner only when Jev gives up.** The routing classifier (see `classifier.ts`)
+ * is asked before anything else. If it settles the request on its own -- one agent takes it whole,
+ * it only answers a waiting question, it is only a goodbye, or it only cancels the running request
+ * -- that is the decision, and no language model is called to make it. Only when it is unsure, or
+ * fails, is the planner asked. The two used to start together, so every request Jev settled still
+ * sent the planner a call that was then thrown away. Jev answers in one short call, so waiting for it first costs the
+ * planner's requests little. Without a TypeSafe key there is no classifier, and this is the planner
+ * alone.
  *
- * With a request still running, how the new one relates to it is wanted even when the planner
- * answers first, so the classifier is then waited for -- it is the faster of the two, so that
- * seldom costs anything.
+ * With a request still running, how the new one relates to it is the classifier's to say even when
+ * the planner writes the plan, so its answer is carried onto the planner's decision.
  *
  * **Photos are the planner's alone.** The classifier is never shown them, so while one is waiting,
  * or when the request names one, a fast route would hand an agent sir's words with no photo to go
@@ -540,8 +538,8 @@ export async function decisionFromClassification(
  * Then only a goodbye is the classifier's to settle: it runs nothing, and a waiting photo stays
  * waiting for the next conversation.
  *
- * A photo the request names that is no longer waiting is looked up here, before either starts, so the
- * planner is shown it too (see `photosTheRequestNames`).
+ * A photo the request names that is no longer waiting is looked up here, before either is asked, so
+ * the planner is shown it too (see `photosTheRequestNames`).
  */
 export async function planDelegations(
   planner: Agent,
@@ -551,10 +549,9 @@ export async function planDelegations(
   runningRequest: string | undefined = undefined,
   classifier = getRoutingClassifier(),
 ): Promise<RoutingDecision> {
-  const abortPlanner = new AbortController();
   const namedPhotos = photosTheRequestNames(userQuery, waitingPhotos);
   if (!classifier) {
-    return planWithPlanner(planner, userQuery, openQuestions, waitingPhotos, namedPhotos, abortPlanner.signal);
+    return planWithPlanner(planner, userQuery, openQuestions, waitingPhotos, namedPhotos);
   }
   // A photo he says is on its way — "I'll send you a receipt, add it to the list" — does not count:
   // it names no photo, and usually none is waiting, so the classifier may route the rest of such a
@@ -564,44 +561,35 @@ export async function planDelegations(
   // backstop, not the path.
   const photosInPlay = waitingPhotos.length > 0 || NAMES_A_PHOTO.test(userQuery);
 
-  // Before either starts, so nothing is awaited between starting the planner and handling it.
-  // The verticals' own questions come from caches that never wait long, so neither does this.
+  // The verticals' own questions come from caches that never wait long.
   const { lookups, commands, sources: declaredSources } = getDirectAnswerCatalog();
   const [agents, sources] = await Promise.all([getRoutableAgents(), prepareSources(declaredSources)]);
-  const planned = planWithPlanner(planner, userQuery, openQuestions, waitingPhotos, namedPhotos, abortPlanner.signal);
-  const abortClassifier = new AbortController();
-  const classified = classifyRequest(
-    classifier,
-    userQuery,
-    { agents, openQuestions, lookups, commands, sources, runningRequest },
-    abortClassifier.signal,
-  ).catch((error: unknown) => {
-    if (!abortClassifier.signal.aborted) {
-      logger.warn('Routing classifier failed; using the planner', { error });
-    }
+  const classification = await classifyRequest(classifier, userQuery, {
+    agents,
+    openQuestions,
+    lookups,
+    commands,
+    sources,
+    runningRequest,
+  }).catch((error: unknown) => {
+    logger.warn('Routing classifier failed; using the planner', { error });
     return undefined;
   });
 
-  try {
-    const decision = await preferFastPlan(
-      planned,
-      classified.then((classification) =>
-        classification && (!photosInPlay || classification.endsCall)
-          ? decisionFromClassification(classification, userQuery)
-          : undefined,
-      ),
-    );
-    if (runningRequest === undefined || decision.relationToRunningRequest) {
-      return decision;
-    }
-
-    const relationToRunningRequest = (await classified)?.relationToRunningRequest;
-    return relationToRunningRequest ? { ...decision, relationToRunningRequest } : decision;
-  } finally {
-    // Whichever lost is working for nothing. Aborting the winner is a no-op.
-    abortPlanner.abort();
-    abortClassifier.abort();
+  const fastDecision =
+    classification && (!photosInPlay || classification.endsCall)
+      ? await decisionFromClassification(classification, userQuery)
+      : undefined;
+  if (fastDecision) {
+    return fastDecision;
   }
+
+  logger.info('Routing classifier gave up; asking the planner', { classified: classification !== undefined });
+  const decision = await planWithPlanner(planner, userQuery, openQuestions, waitingPhotos, namedPhotos);
+  const relationToRunningRequest = runningRequest === undefined ? undefined : classification?.relationToRunningRequest;
+  return relationToRunningRequest && !decision.relationToRunningRequest
+    ? { ...decision, relationToRunningRequest }
+    : decision;
 }
 
 /**
@@ -623,18 +611,3 @@ async function prepareSources(sources: readonly DirectAnswerSource[]): Promise<P
   return prepared.filter((source) => source !== undefined);
 }
 
-/**
- * The fast plan if there is one, and the planner's otherwise -- whichever can be known first.
- *
- * A fast plan wins as soon as it exists, even over a planner that has already failed. A planner
- * that answers first wins outright, since there is nothing left to be faster than. A planner
- * failure is final only once the classifier has declined too.
- */
-export async function preferFastPlan(
-  planned: Promise<RoutingDecision>,
-  fastPlan: Promise<RoutingDecision | undefined>,
-): Promise<RoutingDecision> {
-  const fastPlanOrPlanned = fastPlan.then((plan) => plan ?? planned);
-  const plannedUnlessFailed = planned.catch(() => fastPlanOrPlanned);
-  return Promise.race([plannedUnlessFailed, fastPlanOrPlanned]);
-}

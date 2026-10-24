@@ -26,7 +26,6 @@ import {
   plannerInstructions,
   plannerPrompt,
   planSchema,
-  preferFastPlan,
   RESPONSE_STYLES,
   type RoutingDecision,
 } from './planner.js';
@@ -557,9 +556,8 @@ describe('a photo he says he is about to send', () => {
  * The routing classifier is never shown the photos, so a request about one is the planner's to
  * decide: a fast route would hand an agent sir's words with no photo to go with them.
  *
- * The planner here fails, which makes the race decided: a fast plan wins even over a planner that
- * has failed (see `preferFastPlan`), so a failure that stands means the classifier's route was
- * never taken.
+ * The planner here fails, so a failure that stands means the classifier's route was never taken:
+ * when the classifier settles a request, the planner is never asked.
  */
 describe('a photo, with the routing classifier sure of a fast route', () => {
   const WAITING = [{ photoId: 'photo3', keptAt: Date.now() - 2_000 }];
@@ -685,39 +683,58 @@ describe('a photo, with the routing classifier sure of a fast route', () => {
     expect(decision.endsCall).toBe(true);
     expect(decision.dismissedPhotoIds).toBeUndefined();
   });
-});
 
-describe('preferFastPlan', () => {
-  const fromPlanner: RoutingDecision = { chains: [], answers: [], responseStyle: 'briefing' };
-  const fromClassifier: RoutingDecision = { chains: [], answers: [], responseStyle: 'command' };
+  /*
+   * Jev first, the planner only when it gives up. The planner used to be started beside the
+   * classifier, so a request Jev settled still cost a planner call, and with the planner's provider
+   * out of credits every request Jev could not settle failed while it was still deciding.
+   */
 
-  /** A promise that never settles, standing in for a call still in flight. */
-  function pending<T>(): Promise<T> {
-    return new Promise<T>(() => {});
-  }
+  it('never asks the planner when the classifier settles the request', async () => {
+    const { classifier } = await classifierSureOf('weather');
+    const { planner, calls } = await plannerHearing({ ...NOTHING_PLANNED, responseStyle: 'briefing' });
 
-  it('takes the fast plan without waiting for the planner', async () => {
-    expect(await preferFastPlan(pending(), Promise.resolve(fromClassifier))).toBe(fromClassifier);
+    await planDelegations(planner, 'What is the weather like?', [], [], undefined, classifier);
+
+    expect(calls).toHaveLength(0);
   });
 
-  it('waits for the planner when the classifier declines', async () => {
-    expect(await preferFastPlan(Promise.resolve(fromPlanner), Promise.resolve(undefined))).toBe(fromPlanner);
+  it('asks the planner only once the classifier has given up', async () => {
+    const { classifier, evaluations } = await classifierSureOf('several');
+    const { planner, calls } = await plannerHearing({ ...NOTHING_PLANNED, responseStyle: 'briefing' });
+    let evaluationsWhenPlanned: number | undefined;
+    const generate = planner.generate.bind(planner);
+    planner.generate = ((...args: Parameters<typeof planner.generate>) => {
+      evaluationsWhenPlanned = evaluations();
+      return generate(...args);
+    }) as typeof planner.generate;
+
+    const decision = await planDelegations(planner, 'Weather and email, please.', [], [], undefined, classifier);
+
+    expect(evaluationsWhenPlanned).toBe(1);
+    expect(calls).toHaveLength(1);
+    expect(decision.responseStyle).toBe('briefing');
   });
 
-  it('takes a planner that answers first without waiting for the classifier', async () => {
-    expect(await preferFastPlan(Promise.resolve(fromPlanner), pending())).toBe(fromPlanner);
-  });
+  it('asks the planner when the classifier fails', async () => {
+    const classifier = new Classifier({
+      id: 'routingClassifier',
+      model: {
+        specificationVersion: 'v4',
+        provider: 'fake',
+        modelId: 'jev-fake',
+        supportedQuestionTypes: ['choice', 'boolean'],
+        doEvaluate: async () => {
+          throw new Error('Jev is down');
+        },
+      },
+    });
+    const { planner, calls } = await plannerHearing({ ...NOTHING_PLANNED, responseStyle: 'conversation' });
 
-  it('survives a failed planner when the classifier is sure', async () => {
-    expect(await preferFastPlan(Promise.reject(new Error('planner down')), Promise.resolve(fromClassifier))).toBe(
-      fromClassifier,
-    );
-  });
+    const decision = await planDelegations(planner, 'Hello there.', [], [], undefined, classifier);
 
-  it('fails with the planner when the classifier declines too', async () => {
-    await expect(preferFastPlan(Promise.reject(new Error('planner down')), Promise.resolve(undefined))).rejects.toThrow(
-      'planner down',
-    );
+    expect(calls).toHaveLength(1);
+    expect(decision.responseStyle).toBe('conversation');
   });
 });
 
