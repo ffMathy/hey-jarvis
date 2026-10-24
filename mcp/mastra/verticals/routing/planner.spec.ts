@@ -306,7 +306,9 @@ describe('a photo the request names that has been looked at already', () => {
   it('is explained to the planner: his wanting nothing done with it dismisses it too', () => {
     const instructions = plannerInstructions([]);
 
-    expect(instructions).toContain('A photo the request names by its tag that is no longer waiting — looked at, dismissed, or sent more than half an hour ago');
+    expect(instructions).toContain(
+      'A photo the request names by its tag that is no longer waiting — looked at, dismissed, or sent more than half an hour ago',
+    );
     expect(instructions).toContain(
       'That includes his reply about the photo the request names when he was just asked what to do with it — "Answer to \'what would you like done with it?\': nothing (photo photo3)"',
     );
