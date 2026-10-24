@@ -816,7 +816,14 @@ const routePromptStep = createStep({
 
 export const routePromptWorkflow = createWorkflow({
   id: 'routePromptWorkflow',
-  description: 'Workflow to route a user prompt to the appropriate specialized agents',
+  // This description is what the voice model reads when it decides whether a request is one to route.
+  // "Route a user prompt to the appropriate specialized agents" said nothing of what those agents
+  // reach, and the Realtime model filled the gap with its own idea of a voice assistant: asked to
+  // open the curtains, it told sir three times that it controlled only digital systems.
+  description:
+    'Carry out anything the user asks for: specialized agents behind this tool reach their calendar, email, weather, ' +
+    'shopping and todo lists, and the physical home — lights, curtains, blinds, heating, locks and every other ' +
+    'device. Call it for every request; never decide on its behalf that one is impossible.',
   inputSchema: inputSchema,
   outputSchema: routeAcknowledgementSchema,
 })
