@@ -41,8 +41,13 @@ const LOCATION_STEP = 'plan-under-test-chain-1-0-internetOfThings';
 const WEATHER_STEP = 'plan-under-test-chain-1-1-weather';
 
 /** A step result, the way a run emits one. */
-function stepResult(id: string, output: unknown, status = 'success') {
-  return { type: 'workflow-step-result', payload: { id, status, output } };
+function stepResult(id: string, output: unknown) {
+  return { type: 'workflow-step-result', payload: { id, status: 'success', output } };
+}
+
+/** A failed step's result, the way a run emits one: with an `error` and no `output` at all. */
+function failedStepResult(id: string, message = 'model exploded') {
+  return { type: 'workflow-step-result', payload: { id, status: 'failed', error: { name: 'Error', message } } };
 }
 
 /** The resume schema Mastra reports for a step that resumes with `{ userAnswer }`. */
@@ -103,9 +108,22 @@ describe('reading a chunk off a plan run', () => {
   });
 
   it('marks a step that did not succeed as a failed delegation', () => {
-    const events = asRoutingEvents(stepResult(CALENDAR_STEP, { error: 'no' }, 'failed'), PLAN);
+    const events = asRoutingEvents(failedStepResult(CALENDAR_STEP), PLAN);
 
     expect(events).toMatchObject([{ type: 'delegation_end', isError: true }]);
+  });
+
+  /**
+   * The regression that had a failed lights request answer "null": a failed step has no
+   * `output`, so reading it reported the failure as an answer of nothing, with the reason lost.
+   */
+  it('reports what a failed step said went wrong, not its missing output', () => {
+    expect(asRoutingEvents(failedStepResult(CALENDAR_STEP), PLAN)).toMatchObject([
+      { delegationId: CALENDAR_STEP, result: 'failed: model exploded', isError: true },
+    ]);
+    expect(asRoutingEvents(failedStepResult('chain-1', 'quota exceeded'), PLAN)).toMatchObject([
+      { delegationId: WEATHER_STEP, result: 'failed: quota exceeded', isError: true },
+    ]);
   });
 
   it('attributes a chain’s own result to the delegation that produced it', () => {
@@ -131,7 +149,7 @@ describe('reading a chunk off a plan run', () => {
   });
 
   it('leaves the earlier steps of a failed chain alone, since it cannot say which one failed', () => {
-    const events = asRoutingEvents(stepResult('chain-1', { error: 'no' }, 'failed'), PLAN);
+    const events = asRoutingEvents(failedStepResult('chain-1'), PLAN);
 
     expect(events).toMatchObject([{ delegationId: WEATHER_STEP, isError: true }]);
   });

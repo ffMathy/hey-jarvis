@@ -748,9 +748,12 @@ export function asRoutingEvents(chunk: unknown, plan: RoutingPlan): RoutingEvent
   }
 
   const isError = parsed.payload.status !== 'success';
+  // A step that failed has no `output`: Mastra puts what went wrong in `error` instead. Reading
+  // `output` regardless is what had every failed delegation reported as having answered "null".
+  const result = isError ? stepFailure(parsed.payload.error) : parsed.payload.output;
 
   if (plan.agentByStepId.has(stepId)) {
-    return [{ type: 'delegation_end', delegationId: stepId, result: parsed.payload.output, isError }];
+    return [{ type: 'delegation_end', delegationId: stepId, result, isError }];
   }
 
   const delegationIds = plan.delegationIdsByChainStepId.get(stepId);
@@ -762,7 +765,7 @@ export function asRoutingEvents(chunk: unknown, plan: RoutingPlan): RoutingEvent
   const chainResult: RoutingEvent = {
     type: 'delegation_end',
     delegationId: lastDelegationId,
-    result: parsed.payload.output,
+    result,
     isError,
   };
 
@@ -786,6 +789,17 @@ export function asRoutingEvents(chunk: unknown, plan: RoutingPlan): RoutingEvent
   }));
 
   return [...earlier, chainResult];
+}
+
+/** What a failed step's `error` says, as the delegation's result. */
+function stepFailure(error: unknown): string {
+  const message =
+    error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : undefined;
+  return message ? `failed: ${message}` : 'failed without saying why';
 }
 
 /**
