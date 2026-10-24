@@ -1,5 +1,18 @@
 # Changelog
 
+## [4.28.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.27.1...root-v4.28.0) (2026-10-24)
+
+
+### Features
+
+* **coding:** fix failed elevenlabs evaluations with a coding session ([#988](https://github.com/ffMathy/hey-jarvis/issues/988)) ([243c769](https://github.com/ffMathy/hey-jarvis/commit/243c76944da16a1e6182de731541bf1729990628))
+* **mobile:** let jarvis see the screen he was summoned over ([#986](https://github.com/ffMathy/hey-jarvis/issues/986)) ([515d0a8](https://github.com/ffMathy/hey-jarvis/commit/515d0a89b9739b004898e142c9115d88a9a18fc9))
+
+
+### Bug Fixes
+
+* **elevenlabs:** route home control instead of refusing it ([#987](https://github.com/ffMathy/hey-jarvis/issues/987)) ([941a242](https://github.com/ffMathy/hey-jarvis/commit/941a2421efea7152af212922562da6a2c88dfcef))
+
 ## [4.27.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.27.0...root-v4.27.1) (2026-10-24)
 
 
