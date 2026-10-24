@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.28.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.28.0...root-v4.28.1) (2026-10-24)
+
+
+### Performance Improvements
+
+* **mcp:** ask jev before the routing planner, never beside it ([#990](https://github.com/ffMathy/hey-jarvis/issues/990)) ([eb43c89](https://github.com/ffMathy/hey-jarvis/commit/eb43c8954ff1ddf7b664c0a14d8a37bf01b74589))
+
 ## [4.28.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.27.1...root-v4.28.0) (2026-10-24)
 
 
