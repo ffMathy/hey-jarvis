@@ -1087,14 +1087,14 @@ The common shapes — a location before a weather lookup, a recipe before a remi
 and pay nothing for it.
 
 **Most requests skip the planner.** A Jev classifier (`routing/classifier.ts`, on TypeSafe AI's
-evaluation model through Mastra's `Classifier`) is asked at the same time as the planner: which
+evaluation model through Mastra's `Classifier`) is asked first, before any language model: which
 single agent can carry out the whole request as it was said — or `several`, or `none` — and how
 the answer should sound. When it is at least `FAST_PATH_CONFIDENCE` sure of one agent, the planner
-is cancelled and that agent gets the user's own words as its prompt. Anything else is left to the
-planner: several agents, one that needs another's answer first, a request that might answer a
-waiting question, or a classifier that is not sure. The planner's result is used whenever it
-lands first, and a failing classifier is logged and ignored, so the classifier can only make a
-request faster, never slower. Without `HEY_JARVIS_TYPESAFE_AI_API_KEY` there is no classifier and
+is never called and that agent gets the user's own words as its prompt. Only when Jev gives up is
+the planner asked: several agents, one that needs another's answer first, a request that might
+answer a waiting question, a classifier that is not sure, or one that fails (logged, never fatal).
+The two used to start together, so every request Jev settled still sent the planner a call that was
+then thrown away. Without `HEY_JARVIS_TYPESAFE_AI_API_KEY` there is no classifier and
 every request is planned as before. The response-style wording lives in `response-styles.ts`, so
 the planner and the classifier describe the four styles identically.
 

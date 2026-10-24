@@ -19,8 +19,8 @@ import { RESPONSE_STYLE_DESCRIPTIONS, type ResponseStyle } from './response-styl
  * exactly what an evaluation model (Jev, see `utils/providers/typesafe-provider.ts`) answers -- in
  * one short call that returns a probability per agent instead of a generated plan.
  *
- * So both run at once. When the classifier is sure that a single agent can carry the whole request
- * as it was said, the planner is cancelled and the request goes to that agent with the user's own
+ * So the classifier is asked first. When it is sure that a single agent can carry the whole request
+ * as it was said, the planner is never called and the request goes to that agent with the user's own
  * words as its prompt. The same call settles the other decisions routing used to leave to the
  * planner or to a rule of thumb: whether the request is only the answer to a question the user was
  * asked, whether it is only a goodbye, and whether it replaces, cancels or adds to a request still
@@ -401,14 +401,12 @@ export async function classifyRequest(
   classifier: Classifier,
   userQuery: string,
   context: RoutingContext,
-  abortSignal?: AbortSignal,
 ): Promise<RequestClassification> {
   const { answers } = await classifier.evaluate({
     state: userQuery,
     questions: { ...sourceQuestions(context), ...routingQuestions(context) },
-    abortSignal,
-    // A failed call falls back to the planner, which is already running. Retrying would only
-    // hold back a request arriving while another runs, which waits for this answer.
+    // A failed call falls back to the planner, which is only asked once this has answered. Retrying
+    // would hold every request back by a second round trip before the planner could start.
     maxRetries: 0,
   });
 
