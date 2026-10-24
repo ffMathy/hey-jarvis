@@ -229,7 +229,7 @@ describe('EvaluationFixLedger', () => {
     );
 
     expect(claims.filter((claim) => claim === 'started')).toHaveLength(MAX_FIX_SESSIONS_PER_WINDOW);
-    expect(claims.at(-1)).toBe('limited');
+    expect(claims[claims.length - 1]).toBe('limited');
     expect(ledger.claim('conv_next_day', NOW + 24 * 60 * 60 * 1000)).toBe('started');
   });
 });
