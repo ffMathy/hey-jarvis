@@ -18,6 +18,8 @@ interface JarvisAssistantNativeModule {
   /** A photo's `file://` URI, {@link NOT_READABLE}, or `null` for no photo. */
   takePhoto(inAssistantWindow: boolean): Promise<string | null>;
   returnFromTheCamera(showWindowAgain: boolean): Promise<boolean>;
+  /** The summoning's screenshot as a `file://` URI, or `null` for none. */
+  screenshotOfThisSummoning(): Promise<string | null>;
   addListener(event: typeof WINDOW_PUT_AWAY, listener: () => void): { remove: () => void };
 }
 
@@ -141,6 +143,19 @@ export async function takePhotoWithTheCameraApp({
  */
 export function returnFromTheCamera({ showWindowAgain }: { showWindowAgain: boolean }): void {
   void nativeModule?.returnFromTheCamera(showWindowAgain);
+}
+
+/**
+ * What was on the screen when sir summoned Jarvis: the screenshot the system handed the assistant's
+ * window, as a `file://` URI to a small JPEG — or `undefined` when there is none. None is a summoning
+ * from the watch, the phone set not to share its screen with the assistant ("Use screenshot" off), an
+ * app that keeps its window out of screenshots, or a build with no native module to ask.
+ *
+ * Waits a few seconds at most for one still on its way. Only the tree drawn in the window should ask:
+ * a conversation opened in the app's own activity was not summoned over anything.
+ */
+export async function screenshotOfThisSummoning(): Promise<string | undefined> {
+  return (await nativeModule?.screenshotOfThisSummoning()) ?? undefined;
 }
 
 /**

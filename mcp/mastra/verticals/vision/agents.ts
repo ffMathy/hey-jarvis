@@ -39,7 +39,7 @@ export async function getVisionAgent(): Promise<Agent> {
 Answers questions about a photo sir has just taken with his phone's camera to show Jarvis: reading a receipt's total or its items, a label, a letter, a document or a screen, or saying what something is.
 
 # When to use
-- The request carries a photo tag such as "(photo photo3)" — always route that here, follow-up questions about the same photo included
+- The request carries a photo tag such as "(photo photo3)" — always route that here, follow-up questions about the same photo included. The tag may name a screenshot of what was on sir's phone screen when he summoned Jarvis: "what does this say?" or "who is this?" about his screen is routed here the same way
 - The request mentions a photo, picture or something sir is showing
 - Sir sent a photo without saying what he wants: ask this agent what it shows and what in it could be acted on
 - Copy the photo id into the prompt exactly as the request gives it, with the question — this agent cannot see the request

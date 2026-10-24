@@ -44,18 +44,18 @@ describe('a slot for one photo', () => {
     const { uploadToken, expiresAt } = openUploadSlot(0);
 
     expect(expiresAt).toBe(UPLOAD_SLOT_MS);
-    expect(claimUploadSlot(uploadToken, UPLOAD_SLOT_MS - 1)).toBe(true);
-    expect(claimUploadSlot(uploadToken, UPLOAD_SLOT_MS - 1)).toBe(false);
+    expect(claimUploadSlot(uploadToken, UPLOAD_SLOT_MS - 1)).toBe('photo');
+    expect(claimUploadSlot(uploadToken, UPLOAD_SLOT_MS - 1)).toBeUndefined();
   });
 
   it('closes when its time is up', () => {
     const { uploadToken } = openUploadSlot(0);
 
-    expect(claimUploadSlot(uploadToken, UPLOAD_SLOT_MS)).toBe(false);
+    expect(claimUploadSlot(uploadToken, UPLOAD_SLOT_MS)).toBeUndefined();
   });
 
   it('cannot be claimed by a name that was never given out', () => {
-    expect(claimUploadSlot('Q2hhbmdlIG1lIHBsZWFzZQ', 0)).toBe(false);
+    expect(claimUploadSlot('Q2hhbmdlIG1lIHBsZWFzZQ', 0)).toBeUndefined();
   });
 
   it('never lets so many be open that minting them could fill memory', () => {
@@ -66,8 +66,57 @@ describe('a slot for one photo', () => {
     const newest = openUploadSlot(0).uploadToken;
 
     // The oldest made way for the newest.
-    expect(claimUploadSlot(first, 0)).toBe(false);
-    expect(claimUploadSlot(newest, 0)).toBe(true);
+    expect(claimUploadSlot(first, 0)).toBeUndefined();
+    expect(claimUploadSlot(newest, 0)).toBe('photo');
+  });
+
+  it('says, when claimed, what kind of photo it was opened for', () => {
+    const { uploadToken } = openUploadSlot(0, 'screenshot');
+
+    expect(claimUploadSlot(uploadToken, 0)).toBe('screenshot');
+  });
+});
+
+describe('a screenshot of sir’s screen', () => {
+  it('is found by its id, like any photo', () => {
+    const screenshot = keepPhoto(PHOTO, 'image/jpeg', 0, 'screenshot');
+
+    expect(findPhoto(screenshot.photoId, 0)).toBe(screenshot);
+    expect(screenshot.kind).toBe('screenshot');
+  });
+
+  it('never waits on anyone, since nobody asked for it to be looked at', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0, 'screenshot');
+    keepPhoto(PHOTO, 'image/jpeg', 0);
+
+    expect(photosWaiting(0)).toEqual([{ photoId: 'photo2', keptAt: 0 }]);
+  });
+
+  it('never stands in for a question that named no photo', () => {
+    const taken = keepPhoto(PHOTO, 'image/jpeg', 0);
+    keepPhoto(PHOTO, 'image/jpeg', 0, 'screenshot');
+
+    expect(findPhoto(undefined, 0)).toBe(taken);
+  });
+
+  it('is never a stand-in even when it is all there is', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0, 'screenshot');
+
+    expect(findPhoto(undefined, 0)).toBeUndefined();
+  });
+
+  it('replaces the one before it, and pushes none of sir’s photos out', () => {
+    for (let photo = 0; photo < MAX_KEPT_PHOTOS; photo += 1) {
+      keepPhoto(PHOTO, 'image/jpeg', 0);
+    }
+    const first = keepPhoto(PHOTO, 'image/jpeg', 0, 'screenshot');
+    const second = keepPhoto(PHOTO, 'image/jpeg', 0, 'screenshot');
+
+    expect(findPhoto(first.photoId, 0)).toBeUndefined();
+    expect(findPhoto(second.photoId, 0)).toBe(second);
+    for (let photo = 1; photo <= MAX_KEPT_PHOTOS; photo += 1) {
+      expect(findPhoto(`photo${photo}`, 0)?.kind).toBe('photo');
+    }
   });
 });
 

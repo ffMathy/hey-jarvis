@@ -211,6 +211,7 @@ The user can send Jarvis a photo with the camera button on his phone. Photos he 
 - A photo is never a waiting question: never put one in \`answers\`, even when the request replies to being asked about it
 - If he wants nothing done with one — "nothing", "never mind", "I was only testing" — put its id in \`dismissedPhotoIds\` and write no task for it: it stops waiting, and he is not asked about it again. That includes his reply about the photo the request names when he was just asked what to do with it — "Answer to 'what would you like done with it?': nothing (photo photo3)" — under whichever heading it is listed. Only for a photo he said so about; otherwise leave \`dismissedPhotoIds\` empty
 - A request about something else leaves them alone: write no task for a photo the request does not mention
+- A screenshot is what was on his phone's screen when he summoned Jarvis, taken by the phone on its own. It is listed under a heading of its own when the request names it, and only then. A question about what is on his screen — "What does the text on his screen say? (photo photo7)" — is planned like a question about any photo: a \`vision\` task that names it by its tag. Never put a screenshot in \`photosToAskAbout\` or \`dismissedPhotoIds\`: he did not send it, and nobody waits on it
 
 # How the answer should sound
 Set \`responseStyle\` to how Jarvis should answer once the plan has run. Ask where the value of the request lands:
@@ -315,9 +316,18 @@ export function plannerPrompt(
   if (waitingPhotos.length > 0) {
     sections.push(`Photos the user has sent that nobody has looked at yet:\n${photoList(waitingPhotos, now)}`);
   }
-  if (namedPhotos.length > 0) {
+  const namedScreenshots = namedPhotos.filter((photo) => photo.kind === 'screenshot');
+  const namedTaken = namedPhotos.filter((photo) => photo.kind !== 'screenshot');
+  if (namedTaken.length > 0) {
     sections.push(
-      `Photos the request names, which have been looked at or dismissed already:\n${photoList(namedPhotos, now)}`,
+      `Photos the request names, which have been looked at or dismissed already:\n${photoList(namedTaken, now)}`,
+    );
+  }
+  if (namedScreenshots.length > 0) {
+    sections.push(
+      `Screenshots the request names, of his phone's screen when he summoned Jarvis:\n${namedScreenshots
+        .map((photo) => `- ${photo.photoId}, taken ${howLongAgo(now - photo.keptAt)}`)
+        .join('\n')}`,
     );
   }
 
@@ -345,6 +355,9 @@ const PHOTO_TAG = /\(photo (\w+)\)/gi;
  * on, and with photo3 no longer waiting the planner was shown nothing to dismiss — so the reply that
  * asked for nothing was reported to sir as a request no agent could handle.
  *
+ * A screenshot of sir's screen is never waiting, so one the request names is always listed here, and
+ * said to be one (`kind`), since it has neither been looked at nor dismissed.
+ *
  * Only a photo the tag names by its id. An id with no letter or digit in it is no id to the store,
  * which would stand the latest photo in for it (see `findPhoto`), and a photo the request does not
  * name is not one it can be about.
@@ -355,7 +368,7 @@ function photosTheRequestNames(userQuery: string, waitingPhotos: readonly Waitin
   for (const [, taggedId] of userQuery.matchAll(PHOTO_TAG)) {
     const photo = /[a-z0-9]/i.test(taggedId) ? findPhoto(taggedId) : undefined;
     if (photo && !waitingIds.has(photo.photoId)) {
-      named.set(photo.photoId, { photoId: photo.photoId, keptAt: photo.keptAt });
+      named.set(photo.photoId, { photoId: photo.photoId, keptAt: photo.keptAt, kind: photo.kind });
     }
   }
   return [...named.values()].sort((earlier, later) => earlier.keptAt - later.keptAt);

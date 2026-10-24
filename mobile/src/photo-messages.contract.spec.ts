@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CAMERA_BUTTON_HERE, CAMERA_CLOSED, CAMERA_OPENED, photoNotSent, photoSent } from './photo-messages';
+import {
+  CAMERA_BUTTON_HERE,
+  CAMERA_CLOSED,
+  CAMERA_OPENED,
+  photoNotSent,
+  photoSent,
+  screenshotTaken,
+} from './photo-messages';
 
 /**
  * The photo messages held to the two things in other packages that read them.
@@ -54,6 +61,15 @@ describe('the messages, and the prompt that says what to do with them', () => {
   it('knows a camera put away without a photo by the note that says so', () => {
     expect(CAMERA_CLOSED).toContain('closed the camera');
     expect(prompt).toContain('closed the camera');
+  });
+
+  it('knows the screenshot taken at a summoning by the note that says so, and names it as a photo', () => {
+    // The prompt quotes the note from where it names the screenshot, so the agent routes a question
+    // about sir's screen with the same tag the routing looks for.
+    const quoted = 'took a screenshot of what was on its screen (photo photo7)';
+    expect(screenshotTaken('photo7')).toContain(quoted);
+    expect(prompt).toContain(quoted);
+    expect(prompt).toContain('(photo photo7)".');
   });
 
   it('knows a photo that did not arrive by the message that says so', () => {

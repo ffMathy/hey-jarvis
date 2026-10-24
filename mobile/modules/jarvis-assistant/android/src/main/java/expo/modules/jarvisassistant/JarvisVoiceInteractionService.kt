@@ -43,13 +43,18 @@ class JarvisVoiceInteractionService : VoiceInteractionService() {
     @Volatile private var active: WeakReference<JarvisVoiceInteractionService>? = null
 
     /**
-     * Opens the assistant's window exactly as the phone's own gesture would. Main thread only.
-     * False when Jarvis is not the assistant, or the system refused.
+     * Opens the assistant's window exactly as the phone's own gesture would, though with no
+     * screenshot: nothing is asked of the system but the window. Main thread only. False when Jarvis
+     * is not the assistant, or the system refused.
+     *
+     * `backFromTheCamera` says it is the window coming back after a photo, which is the same summoning
+     * as before rather than a new one (see `JarvisVoiceInteractionSession.onShow`).
      */
-    internal fun summon(): Boolean {
+    internal fun summon(backFromTheCamera: Boolean = false): Boolean {
       val service = active?.get() ?: return false
+      val args = Bundle().apply { putBoolean(JarvisVoiceInteractionSession.BACK_FROM_THE_CAMERA, backFromTheCamera) }
       return try {
-        service.showSession(Bundle(), 0)
+        service.showSession(args, 0)
         true
       } catch (error: RuntimeException) {
         Log.w(TAG, "Could not open the assistant's window for the watch.", error)

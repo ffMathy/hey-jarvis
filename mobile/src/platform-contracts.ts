@@ -5,8 +5,9 @@
  * each is a pair of files Metro picks between by platform: `key-value-store.ts`
  * against `key-value-store.web.ts`, `microphone-permission.ts` against
  * `microphone-permission.web.ts`, the voice the hologram listens to —
- * `jarvis-voice.ts`, with a `.web.ts` beside it — and the camera, `take-photo.ts`
- * against `take-photo.web.ts`.
+ * `jarvis-voice.ts`, with a `.web.ts` beside it — the camera, `take-photo.ts`
+ * against `take-photo.web.ts`, and the screen Jarvis was summoned over,
+ * `summoning-screenshot.ts` against `summoning-screenshot.web.ts`.
  *
  * The contracts live here rather than in either implementation so that neither
  * half can drift: nothing else in the app would notice if the web one grew an
@@ -99,3 +100,12 @@ export type TakePhoto = (options: {
    */
   stillTalking: () => boolean;
 }) => Promise<CameraAnswer>;
+
+/**
+ * What was on sir's screen when he summoned Jarvis, as a JPEG ready to send — or `undefined` when there
+ * is none to send.
+ *
+ * Only a phone summoned by its assistant gesture has one: the system hands the assistant's window a
+ * screenshot of the screen it came up over. A browser is never summoned over anything.
+ */
+export type ReadSummoningScreenshot = () => Promise<Blob | undefined>;

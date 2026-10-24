@@ -276,6 +276,33 @@ describe('a photo the request names that has been looked at already', () => {
     );
   });
 
+  it('is listed under a heading of its own when it is a screenshot of his screen', () => {
+    const question = 'What does the text on his screen say? (photo photo3)';
+
+    expect(
+      plannerPrompt(
+        question,
+        [],
+        [],
+        [
+          { photoId: 'photo1', keptAt: NOW - 2 * 60_000 },
+          { photoId: 'photo3', keptAt: NOW - 30_000, kind: 'screenshot' },
+        ],
+        NOW,
+      ),
+    ).toBe(
+      `The request:\n${question}\n\n${HEADING}\n- photo1, sent 2 minutes ago\n\n` +
+        "Screenshots the request names, of his phone's screen when he summoned Jarvis:\n- photo3, taken just now",
+    );
+  });
+
+  it('is explained to the planner as a screenshot: looked at when asked about, never asked or dismissed', () => {
+    const instructions = plannerInstructions([]);
+
+    expect(instructions).toContain("A screenshot is what was on his phone's screen when he summoned Jarvis");
+    expect(instructions).toContain('(photo photo7)');
+  });
+
   it('is explained to the planner: his wanting nothing done with it dismisses it too', () => {
     const instructions = plannerInstructions([]);
 

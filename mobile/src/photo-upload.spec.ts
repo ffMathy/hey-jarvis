@@ -78,7 +78,23 @@ describe('asking the Jarvis server for somewhere to send a photo', () => {
     expect(server.requests[0]?.url).toBe('https://jarvis.example.com/api/photos/slots');
     expect(server.requests[0]?.init.method).toBe('POST');
     expect(server.requests[0]?.init.headers).toEqual({ 'Content-Type': 'application/json' });
-    expect(JSON.parse(String(server.requests[0]?.init.body))).toEqual({ conversationId: CONVERSATION_ID });
+    expect(JSON.parse(String(server.requests[0]?.init.body))).toEqual({ conversationId: CONVERSATION_ID, kind: 'photo' });
+  });
+
+  it('says when the slot is for the screenshot taken at a summoning rather than a photo sir took', async () => {
+    const server = createServer(() => serverAnswer(SLOT_OPENED));
+
+    await openPhotoSlot({
+      serverAddress: SERVER,
+      conversationId: CONVERSATION_ID,
+      kind: 'screenshot',
+      fetchImplementation: server.send,
+    });
+
+    expect(JSON.parse(String(server.requests[0]?.init.body))).toEqual({
+      conversationId: CONVERSATION_ID,
+      kind: 'screenshot',
+    });
   });
 
   it('hands back the path the server opened the slot at', async () => {

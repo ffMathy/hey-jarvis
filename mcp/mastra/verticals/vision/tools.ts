@@ -47,7 +47,7 @@ async function resolvePhotoReader(mastra: ToolMastra | undefined): Promise<Agent
 export const lookAtPhoto = createTool({
   id: 'lookAtPhoto',
   description:
-    "Looks at a photo sir took with his phone's camera and answers a question about it: reading a receipt's total, a label, a document or a screen, or saying what something is.",
+    "Looks at a photo sir took with his phone's camera, or the screenshot of his phone's screen taken when he summoned Jarvis, and answers a question about it: reading a receipt's total, a label, a document or a screen, or saying what something is.",
   inputSchema: z.object({
     photoId: z
       .string()
@@ -89,10 +89,14 @@ export const lookAtPhoto = createTool({
     }
     markPhotoLookedAt(photo.photoId);
 
-    // Its age too, so the agent reading this can tell a photo just taken from one shown earlier.
-    return {
-      answer: `Photo ${photo.photoId}, taken ${howLongAgo(Date.now() - photo.keptAt)}, shows: «${reading.text.trim()}»`,
-    };
+    // Its age too, so the agent reading this can tell a photo just taken from one shown earlier — and
+    // what it is, since a screenshot is sir's screen rather than something he pointed a camera at.
+    const taken = howLongAgo(Date.now() - photo.keptAt);
+    const what =
+      photo.kind === 'screenshot'
+        ? `Screenshot ${photo.photoId}, of sir's phone screen as it was when he summoned Jarvis ${taken},`
+        : `Photo ${photo.photoId}, taken ${taken},`;
+    return { answer: `${what} shows: «${reading.text.trim()}»` };
   },
 });
 

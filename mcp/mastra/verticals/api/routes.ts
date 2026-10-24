@@ -14,7 +14,9 @@ import {
   type LiveConversationCheck,
   MAX_PHOTO_BYTES,
   openUploadSlot,
+  PHOTO_KINDS,
   PHOTO_MEDIA_TYPES,
+  type PhotoKind,
   type PhotoMediaType,
 } from '../vision/index.js';
 
@@ -243,8 +245,11 @@ function answerPreflight(_request: Request, response: Response): void {
   response.sendStatus(204);
 }
 
-/** What the phone sends to ask for a slot. */
-const slotRequestSchema = z.object({ conversationId: z.string() });
+/**
+ * What the phone sends to ask for a slot: the conversation it is for, and whether it is for a photo
+ * sir took or for what was on his screen when he summoned Jarvis — a photo, when it does not say.
+ */
+const slotRequestSchema = z.object({ conversationId: z.string(), kind: z.enum(PHOTO_KINDS).default('photo') });
 
 /** How many of an IPv6 address's leading groups name the network it is in: its /48. */
 const IPV6_NETWORK_GROUPS = 3;
@@ -371,8 +376,9 @@ function openSlotForLiveConversation(
           return;
         }
 
-        const { uploadToken, expiresAt } = openUploadSlot();
-        logger.info('[API] Photo slot opened', { expiresAt: new Date(expiresAt).toISOString() });
+        const { kind } = slotRequest.data;
+        const { uploadToken, expiresAt } = openUploadSlot(Date.now(), kind);
+        logger.info('[API] Photo slot opened', { kind, expiresAt: new Date(expiresAt).toISOString() });
         response.status(201).json({
           success: true,
           message: 'Photo slot opened',
@@ -409,7 +415,8 @@ function claimSlotBeforeReading(request: Request, response: Response, next: Next
   }
 
   const { uploadToken } = request.params;
-  if (typeof uploadToken !== 'string' || !claimUploadSlot(uploadToken)) {
+  const kind = typeof uploadToken === 'string' ? claimUploadSlot(uploadToken) : undefined;
+  if (kind === undefined) {
     response.status(404).json({
       success: false,
       message: 'This upload link has expired or has been used already.',
@@ -417,6 +424,7 @@ function claimSlotBeforeReading(request: Request, response: Response, next: Next
     return;
   }
 
+  response.locals.photoKind = kind;
   next();
 }
 
@@ -435,8 +443,10 @@ function keepUploadedPhoto(request: Request, response: Response): void {
     return;
   }
 
-  const photo = keepPhoto(body, mediaType);
-  logger.info('[API] Photo received', { photoId: photo.photoId, bytes: body.length, mediaType });
+  // Set by `claimSlotBeforeReading`, which every upload passes first.
+  const kind: PhotoKind = response.locals.photoKind === 'screenshot' ? 'screenshot' : 'photo';
+  const photo = keepPhoto(body, mediaType, Date.now(), kind);
+  logger.info('[API] Photo received', { photoId: photo.photoId, kind, bytes: body.length, mediaType });
   response.status(201).json({
     success: true,
     message: 'Photo received',

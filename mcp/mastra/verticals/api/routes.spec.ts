@@ -11,6 +11,7 @@ import {
   MAX_OPEN_SLOTS,
   MAX_PHOTO_BYTES,
   openUploadSlot,
+  photosWaiting,
   UPLOAD_SLOT_MS,
 } from '../vision/index.js';
 import {
@@ -575,6 +576,24 @@ describe('a photo slot', () => {
     expect(findPhoto('photo1')?.data).toEqual(Buffer.from(JPEG));
   });
 
+  it('is opened for a screenshot of the screen when the phone says so, and keeps it as one', async () => {
+    const response = await postSlotRequest(JSON.stringify({ conversationId: CONVERSATION_ID, kind: 'screenshot' }));
+
+    expect(response.status).toBe(201);
+    const slot = openedSlotSchema.parse((await readBody(response)).data);
+    expect((await putPhoto(slot.uploadToken)).status).toBe(201);
+    expect(findPhoto('photo1')?.kind).toBe('screenshot');
+    // Nobody asked for it to be looked at, so it never waits on anyone.
+    expect(photosWaiting()).toEqual([]);
+  });
+
+  it('is for a photo sir took when the phone does not say what it is for', async () => {
+    const slot = openedSlotSchema.parse((await readBody(await askForSlot())).data);
+
+    expect((await putPhoto(slot.uploadToken)).status).toBe(201);
+    expect(findPhoto('photo1')?.kind).toBe('photo');
+  });
+
   it('says until when it is open', async () => {
     const before = Date.now();
     const slot = openedSlotSchema.parse((await readBody(await askForSlot())).data);
@@ -620,7 +639,7 @@ describe('a photo slot', () => {
         expect(response.status).toBe(status);
         // The same envelope as every other answer here, and nothing in it but the reason.
         expect(await readBody(response)).toEqual({ success: false, message });
-        expect(claimUploadSlot(alreadyOpen[0] ?? '')).toBe(true);
+        expect(claimUploadSlot(alreadyOpen[0] ?? '')).toBe('photo');
       });
     }
 

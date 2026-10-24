@@ -1,6 +1,7 @@
 package expo.modules.jarvisassistant
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
@@ -114,6 +115,11 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
   override fun onShow(args: Bundle?, showFlags: Int) {
     super.onShow(args, showFlags)
 
+    // The window coming back after the camera is the same summoning, and keeps its screenshot.
+    if (args?.getBoolean(BACK_FROM_THE_CAMERA) != true) {
+      SummoningScreenshot.summoned(context, showFlags and SHOW_WITH_SCREENSHOT != 0)
+    }
+
     current = WeakReference(this)
     keptRunning = null
     handler.removeCallbacks(letReactNativeRest)
@@ -170,6 +176,14 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
       current = null
     }
     super.onHide()
+  }
+
+  /**
+   * What was on the screen when sir summoned Jarvis, handed over by the system a moment after the
+   * window is shown. Kept for the conversation to send on; see `SummoningScreenshot`.
+   */
+  override fun onHandleScreenshot(screenshot: Bitmap?) {
+    SummoningScreenshot.arrived(context, screenshot)
   }
 
   override fun onDestroy() {
@@ -328,6 +342,9 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
      */
     private const val SHOWING_PROP = "showing"
 
+    /** Set in the showing's arguments when the window comes back after the camera. See {@link onShow}. */
+    internal const val BACK_FROM_THE_CAMERA = "backFromTheCamera"
+
     /**
      * The session on screen, for the app to close from JavaScript.
      *
@@ -383,7 +400,7 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
     internal fun returnFromTheCamera(showWindowAgain: Boolean): Boolean {
       val kept = keptRunning?.get()
       keptRunning = null
-      if (showWindowAgain && JarvisVoiceInteractionService.summon()) {
+      if (showWindowAgain && JarvisVoiceInteractionService.summon(backFromTheCamera = true)) {
         return true
       }
       kept?.pauseReactNative()

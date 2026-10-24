@@ -48,7 +48,9 @@ private const val WINDOW_PUT_AWAY = "onAssistantWindowPutAway"
  * only route, so Settings is the only route offered.
  *
  * It also takes a photo for Jarvis, because the camera has to be reached from the assistant's
- * window as well as the app, and only this module knows that window. See `JarvisPhotoActivity`.
+ * window as well as the app, and only this module knows that window. See `JarvisPhotoActivity`. And it
+ * hands over the screenshot the system took when he was summoned, which only the window's session is
+ * given. See `SummoningScreenshot`.
  */
 class JarvisAssistantModule : Module() {
   override fun definition() = ModuleDefinition {
@@ -76,6 +78,10 @@ class JarvisAssistantModule : Module() {
 
     AsyncFunction("takePhoto") { inAssistantWindow: Boolean, promise: Promise ->
       takePhoto(context(), appContext.currentActivity, inAssistantWindow) { photo -> promise.resolve(photo) }
+    }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("screenshotOfThisSummoning") { promise: Promise ->
+      SummoningScreenshot.whenReady { screenshot -> promise.resolve(screenshot) }
     }.runOnQueue(Queues.MAIN)
 
     AsyncFunction("returnFromTheCamera") { showWindowAgain: Boolean ->

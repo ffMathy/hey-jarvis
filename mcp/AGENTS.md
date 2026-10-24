@@ -458,6 +458,15 @@ the check that lets a phone send one, where the photo is kept, and how an agent 
      `photosToAskAbout`; the closing report then has Jarvis say what it shows, ask what sir would like
      done with it, and wait for the answer (see **Questions for the user** under [Routing](#routing)).
 
+**A screenshot of sir's screen is kept beside the photos, and never waits.** On every summoning from
+the assistant gesture, the phone sends what was on its screen (`"kind": "screenshot"` in the slot
+request, `PHOTO_KINDS` in `vision/photos.ts`; see "What was on the screen" in `mobile/AGENTS.md`) and
+tells the voice agent its id in a note that takes no turn. It is looked at like a photo when sir asks
+about his screen, but nobody sent it to be looked at: it is never in `photosWaiting`, never brought up,
+never the latest photo standing in for a question that names none, and only the newest is kept — not
+counted against `MAX_KEPT_PHOTOS`, so a summoning a minute cannot push his receipt out. The planner
+lists one the request names under a heading of its own, and `lookAtPhoto` calls it a screenshot.
+
 **A photo nobody has looked at is not lost with the conversation.** The conversation that sent a
 photo looks at it straight away, but that conversation can end before the phone gets to tell it —
 the phone's message goes into that conversation or nowhere — and the look can fail. Until
