@@ -27,7 +27,6 @@ import {
   plannerPrompt,
   planSchema,
   RESPONSE_STYLES,
-  type RoutingDecision,
 } from './planner.js';
 import type { OpenQuestion } from './questions.js';
 
@@ -692,11 +691,19 @@ describe('a photo, with the routing classifier sure of a fast route', () => {
 
   it('never asks the planner when the classifier settles the request', async () => {
     const { classifier } = await classifierSureOf('weather');
-    const { planner, calls } = await plannerHearing({ ...NOTHING_PLANNED, responseStyle: 'briefing' });
+    const { planner } = await plannerHearing({ ...NOTHING_PLANNED, responseStyle: 'briefing' });
+    // Counted where the planner is asked, not where its model is: a planner started and then
+    // cancelled may never reach its model, but it was asked all the same.
+    let plannerAsked = 0;
+    const generate = planner.generate.bind(planner);
+    planner.generate = ((...args: Parameters<typeof planner.generate>) => {
+      plannerAsked += 1;
+      return generate(...args);
+    }) as typeof planner.generate;
 
     await planDelegations(planner, 'What is the weather like?', [], [], undefined, classifier);
 
-    expect(calls).toHaveLength(0);
+    expect(plannerAsked).toBe(0);
   });
 
   it('asks the planner only once the classifier has given up', async () => {

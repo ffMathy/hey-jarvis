@@ -610,4 +610,3 @@ async function prepareSources(sources: readonly DirectAnswerSource[]): Promise<P
   );
   return prepared.filter((source) => source !== undefined);
 }
-
