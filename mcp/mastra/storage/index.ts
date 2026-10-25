@@ -6,7 +6,8 @@ import { CredentialsStorage } from './credentials.js';
 import { DeviceStateStorage } from './device-state.js';
 import { EmailStateStorage } from './email-state.js';
 import { EntityNoiseBaselineStorage } from './entity-noise-baseline.js';
-import { withFeedbackFrom } from './observability.js';
+import { withFallbacks } from './observability.js';
+import { ObservabilityLogStorage } from './observability-logs.js';
 import { SQLITE_BUSY_TIMEOUT_MS } from './sqlite-client.js';
 import { SubscriptionStorage } from './subscriptions.js';
 import { TokenUsageStorage } from './token-usage.js';
@@ -94,11 +95,16 @@ export async function getVectorStorageProvider(): Promise<LibSQLVector> {
  * storageRetentionWorkflow exists; giving Mastra a durable store without a policy would
  * reintroduce the same leak on two more tables.
  *
+ * Observability logs live outside Mastra's own tables, so storageRetentionWorkflow
+ * prunes them separately, on the same window as spans.
+ *
  * Memory is deliberately absent: threads and messages are the user's own conversation
  * history, not telemetry, so they are kept until something deletes them on purpose.
  */
+export const OBSERVABILITY_RETENTION_DAYS = 14;
+
 const MASTRA_RETENTION: RetentionConfig = {
-  observability: { spans: { maxAge: '14d' } },
+  observability: { spans: { maxAge: `${OBSERVABILITY_RETENTION_DAYS}d` } },
   workflows: { workflowSnapshot: { maxAge: '30d' } },
 };
 
@@ -113,10 +119,11 @@ let mastraStorageProviderInstance: MastraCompositeStore | null = null;
  * notifications — was being kept in RAM and lost on restart, even though the LibSQL
  * database backing agent memory was right here.
  *
- * Feedback is served from a separate in-memory store because LibSQL does not implement
- * that part of the observability domain at all; see storage/observability.ts. Feedback
- * left in Studio therefore lasts as long as the process does, which is the most any
- * store here can offer for it, and better than the 500 the endpoint answers otherwise.
+ * LibSQL implements only the spans of the observability domain, so two other surfaces are
+ * spliced in; see storage/observability.ts. Logs go to their own table in the same SQLite
+ * file, shared by both processes like everything else. Feedback is kept in memory, so
+ * feedback left in Studio lasts as long as the process does — better than the 500 the
+ * endpoint answers otherwise, and nothing here writes it.
  */
 export async function getMastraStorageProvider(): Promise<MastraCompositeStore> {
   if (mastraStorageProviderInstance) {
@@ -134,12 +141,27 @@ export async function getMastraStorageProvider(): Promise<MastraCompositeStore> 
     default: sqlStorageProvider,
     domains:
       durableObservability && feedbackObservability
-        ? { observability: withFeedbackFrom(durableObservability, feedbackObservability) }
+        ? {
+            observability: withFallbacks(durableObservability, {
+              feedback: feedbackObservability,
+              logs: await getObservabilityLogStorage(),
+            }),
+          }
         : undefined,
     retention: MASTRA_RETENTION,
   });
 
   return mastraStorageProviderInstance;
+}
+
+let observabilityLogStorageInstance: ObservabilityLogStorage | null = null;
+
+export async function getObservabilityLogStorage(): Promise<ObservabilityLogStorage> {
+  if (!observabilityLogStorageInstance) {
+    await ensureDatabaseDirectory();
+    observabilityLogStorageInstance = new ObservabilityLogStorage(getSqlDatabasePath());
+  }
+  return observabilityLogStorageInstance;
 }
 
 let credentialsStorageInstance: CredentialsStorage | null = null;
@@ -205,6 +227,7 @@ export async function getEntityNoiseBaselineStorage(): Promise<EntityNoiseBaseli
 export { CredentialsStorage } from './credentials.js';
 export { type DeviceStateChange, DeviceStateStorage, type StoredDeviceState } from './device-state.js';
 export { EmailStateStorage, type LastEmailState } from './email-state.js';
+export { ObservabilityLogStorage } from './observability-logs.js';
 export {
   type EntityNoiseBaseline,
   EntityNoiseBaselineStorage,

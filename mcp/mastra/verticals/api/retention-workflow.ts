@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { getMastraStorageProvider, getTokenUsageStorage } from '../../storage/index.js';
+import {
+  getMastraStorageProvider,
+  getObservabilityLogStorage,
+  getTokenUsageStorage,
+  OBSERVABILITY_RETENTION_DAYS,
+} from '../../storage/index.js';
 import { logger } from '../../utils/logger.js';
 import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 
@@ -23,6 +28,7 @@ const TOKEN_USAGE_RETENTION_DAYS = 90;
 const retentionResultSchema = z.object({
   tokenUsageRecordsDeleted: z.number(),
   mastraRowsDeleted: z.number(),
+  observabilityLogsDeleted: z.number(),
   cutoff: z.string(),
 });
 
@@ -80,19 +86,26 @@ export const storageRetentionWorkflow = createWorkflow({
        * `prune()` deletes in bounded, resumable batches and reports `done: false` when
        * eligible rows remain, so an overdue first run cannot lock the database for the
        * length of a full backlog — whatever is left goes on the next nightly tick.
+       *
+       * Observability logs are pruned alongside, on the spans' window: they are written
+       * by Mastra's exporter but kept in a table of our own, which `prune()` does not know.
        */
       execute: async ({ inputData }) => {
         const storage = await getMastraStorageProvider();
         const results = await storage.prune();
         const mastraRowsDeleted = results.reduce((total, result) => total + result.deleted, 0);
 
+        const logCutoff = new Date(Date.now() - OBSERVABILITY_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+        const observabilityLogsDeleted = await (await getObservabilityLogStorage()).deleteOlderThan(logCutoff);
+
         logger.info('[RETENTION] Pruned Mastra storage', {
           mastraRowsDeleted,
           tables: results.map(({ domain, table, deleted, done }) => ({ domain, table, deleted, done })),
           hasMore: results.some(({ done }) => !done),
+          observabilityLogsDeleted,
         });
 
-        return { ...inputData, mastraRowsDeleted };
+        return { ...inputData, mastraRowsDeleted, observabilityLogsDeleted };
       },
     }),
   )

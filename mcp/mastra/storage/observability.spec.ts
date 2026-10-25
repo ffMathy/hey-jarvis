@@ -1,21 +1,28 @@
 /**
  * The observability domain split.
  *
- * `@mastra/libsql` implements every observability surface except feedback, where it
- * inherits the throwing stubs in `@mastra/core`. Studio polls `/observability/feedback`
- * unprompted, so once LibSQL backs Mastra's storage the server answers 500 and logs a
- * stack trace for a surface nothing here even writes to. These tests pin the seam that
- * keeps traces on LibSQL while feedback is answered by a store that implements it.
+ * `@mastra/libsql` implements the spans of the observability domain but not feedback or
+ * logs, where it inherits the throwing stubs in `@mastra/core`. Studio polls
+ * `/observability/feedback` unprompted, so once LibSQL backs Mastra's storage the server
+ * answers 500 for a surface nothing here even writes to, and its Logs page reports logs
+ * as unavailable. These tests pin the seam that keeps traces on LibSQL while feedback and
+ * logs are answered by stores that implement them.
  */
 
-import { beforeAll, describe, expect, it } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { InMemoryStore } from '@mastra/core/storage';
 import { LibSQLStore } from '@mastra/libsql';
-import { type ObservabilityStore, withFeedbackFrom } from './observability.js';
+import { mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import path from 'path';
+import { type ObservabilityStore, withFallbacks } from './observability.js';
+import { ObservabilityLogStorage } from './observability-logs.js';
 
 let libsqlObservability: ObservabilityStore;
 let inMemoryObservability: ObservabilityStore;
 let composed: ObservabilityStore;
+let databaseDirectory: string;
+let logs: ObservabilityLogStorage;
 
 beforeAll(async () => {
   const libsqlStore = new LibSQLStore({ id: 'observability-spec', url: ':memory:' });
@@ -31,7 +38,14 @@ beforeAll(async () => {
 
   libsqlObservability = libsql;
   inMemoryObservability = inMemory;
-  composed = withFeedbackFrom(libsql, inMemory);
+  databaseDirectory = await mkdtemp(path.join(tmpdir(), 'observability-spec-'));
+  logs = new ObservabilityLogStorage(path.join(databaseDirectory, 'logs.db'));
+  composed = withFallbacks(libsql, { feedback: inMemory, logs });
+});
+
+afterAll(async () => {
+  await logs.close();
+  await rm(databaseDirectory, { force: true, recursive: true });
 });
 
 describe('the premise', () => {
@@ -39,6 +53,12 @@ describe('the premise', () => {
     // If this ever starts passing, @mastra/libsql grew a feedback implementation and
     // the composition can be deleted outright.
     await expect(libsqlObservability.listFeedback({})).rejects.toThrow('does not support listing feedback');
+  });
+
+  it('libsql really does reject log reads', async () => {
+    // If this ever starts passing, @mastra/libsql grew a log implementation and
+    // observability-logs.ts can be deleted outright.
+    await expect(libsqlObservability.listLogs({})).rejects.toThrow('does not support listing logs');
   });
 
   it('the in-memory store answers them', async () => {
@@ -76,6 +96,21 @@ describe('the composed store', () => {
 
   it('leaves feedback out of the durable store, which cannot hold it', async () => {
     await expect(libsqlObservability.listFeedback({})).rejects.toThrow('does not support listing feedback');
+  });
+
+  it('answers a log read instead of throwing', async () => {
+    // The throw is what Studio's Logs page turns into "Logs are not available with your
+    // current storage".
+    await expect(composed.listLogs({})).resolves.toMatchObject({ logs: [] });
+  });
+
+  it('round-trips a log write through the log store', async () => {
+    await composed.batchCreateLogs({
+      logs: [{ logId: 'log-1', timestamp: new Date(), level: 'warn', message: 'the boiler is offline' }],
+    });
+
+    expect((await composed.listLogs({})).logs.map((log) => log.message)).toEqual(['the boiler is offline']);
+    await expect(libsqlObservability.listLogs({})).rejects.toThrow('does not support listing logs');
   });
 
   it('serves everything else from the durable store', async () => {
