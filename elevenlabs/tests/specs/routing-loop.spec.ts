@@ -129,13 +129,9 @@ describe('isFinalReport', () => {
     expect(isFinalReport({ instructions: 'Anything at all.', taskIdsInProgress: [] })).toBe(true);
   });
 
-  it('recognises the closing report by its wording', () => {
-    expect(isFinalReport({ instructions: 'All tasks have completed. Summarize the results.' })).toBe(true);
-  });
-
-  it('does not mistake a mid-flight report for the closing one', () => {
-    // Verbatim from the workflow, and the reason the wording is matched anchored:
-    // the mid-flight instruction contains the closing one's words inside a negation.
+  it('does not mistake a mid-flight report or an instruction to poll for the closing one', () => {
+    // Verbatim from the workflow: the mid-flight instruction contains the closing one's words
+    // inside a negation, which is why the wording is not what is read.
     expect(
       isFinalReport({
         instructions:
@@ -146,6 +142,9 @@ describe('isFinalReport', () => {
     ).toBe(false);
     expect(isFinalReport({ instructions: 'More tasks have finished.', taskIdsInProgress: ['b'] })).toBe(false);
     expect(isFinalReport({ instructions: 'Still processing your request.' })).toBe(false);
+    expect(
+      isFinalReport({ instructions: 'The request is now being processed. Call getNextInstructionsWorkflow now.' }),
+    ).toBe(false);
     expect(isFinalReport(undefined)).toBe(false);
   });
 });
