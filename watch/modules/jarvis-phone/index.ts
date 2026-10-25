@@ -18,6 +18,7 @@ interface JarvisPhoneNativeModule {
   askThePhone(): Promise<boolean>;
   askThePhoneToAnswer(timeoutMs: number): Promise<boolean>;
   addListener(event: 'onSettingsArrived', listener: () => void): { remove: () => void };
+  addListener(event: 'onPhoneMirrored', listener: (event: { frame: number[] }) => void): { remove: () => void };
 }
 
 /**
@@ -117,6 +118,15 @@ export async function askThePhoneToAnswer(timeoutMs: number): Promise<boolean> {
 /** Calls back when credentials land, so a waiting screen can stop waiting. */
 export function whenSettingsArrive(arrived: () => void): () => void {
   const subscription = nativeModule?.addListener('onSettingsArrived', arrived);
+  return () => subscription?.remove();
+}
+
+/**
+ * Calls back with each frame of the phone's sphere, while the phone holds a conversation this watch
+ * was summoned for: `encodeMirrorFrame` in `hologram`, or empty when he has stopped.
+ */
+export function whenThePhoneMirrors(received: (frame: number[]) => void): () => void {
+  const subscription = nativeModule?.addListener('onPhoneMirrored', (event) => received(event.frame));
   return () => subscription?.remove();
 }
 

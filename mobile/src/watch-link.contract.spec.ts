@@ -12,7 +12,8 @@ import { join } from 'node:path';
  * writes. **The settings path**, which carries the ElevenLabs credentials from the phone to the
  * watch so they are only ever typed on a keyboard worth typing them on. **The asking path**, which
  * carries the watch's request for them back the other way. **The answering path**, which carries the
- * watch asking the phone to hold a conversation in its earbuds, and the phone's reply.
+ * watch asking the phone to hold a conversation in its earbuds, and the phone's reply. **The mirror
+ * path**, which carries the phone's sphere back to the watch while it holds that conversation.
  *
  * Nothing fails loudly if any of them drift. Both apps build, both install, both run — and the
  * phone says Jarvis is not on the watch however many times it is installed, or the watch waits for
@@ -37,6 +38,8 @@ const WATCH_MANIFEST = 'watch/modules/jarvis-phone/android/src/main/AndroidManif
 const PHONE_SUMMON_SERVICE =
   'mobile/modules/jarvis-assistant/android/src/main/java/expo/modules/jarvisassistant/JarvisWatchSummonService.kt';
 const PHONE_ASSISTANT_MANIFEST = 'mobile/modules/jarvis-assistant/android/src/main/AndroidManifest.xml';
+const PHONE_WATCH_MIRROR =
+  'mobile/modules/jarvis-assistant/android/src/main/java/expo/modules/jarvisassistant/WatchMirror.kt';
 
 /** One `const NAME = "value"` out of a Kotlin source, however it is qualified. */
 function readKotlinConstant(source: string, name: string): string {
@@ -169,5 +172,28 @@ describe('the path the watch asks the phone to answer in its earbuds on', () => 
     expect(phoneWait).not.toBeNull();
     expect(watchWait).not.toBeNull();
     expect(Number(watchWait?.[1].replaceAll('_', '')) - Number(phoneWait?.[1])).toBeGreaterThanOrEqual(500);
+  });
+});
+
+describe('the path the phone shows the watch its sphere on', () => {
+  it('is spelled the same on the phone and on the watch', () => {
+    // A mismatch is a watch that shows him frozen at rest while the phone talks in the earbuds.
+    const wanted = readKotlinConstant(PHONE_WATCH_MIRROR, 'MIRROR_PATH');
+
+    expect(wanted).toMatch(/^\/jarvis\//);
+    expect(readKotlinConstant(WATCH_MODULE, 'MIRROR_PATH')).toBe(wanted);
+  });
+
+  it('names the same event on both sides of the watch app', () => {
+    expect(readSource(WATCH_TYPESCRIPT)).toContain(readKotlinConstant(WATCH_MODULE, 'PHONE_MIRRORED'));
+  });
+
+  it('starts when the phone tells the watch yes, and stops when the window is put away', () => {
+    expect(readSource(PHONE_SUMMON_SERVICE)).toContain('WatchMirror.follow(');
+    expect(
+      readSource(
+        'mobile/modules/jarvis-assistant/android/src/main/java/expo/modules/jarvisassistant/JarvisVoiceInteractionSession.kt',
+      ),
+    ).toContain('WatchMirror.stop(');
   });
 });

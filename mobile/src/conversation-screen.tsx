@@ -29,6 +29,7 @@ import { theme } from './theme';
 import { TypedMessageField } from './typed-message-field';
 import { usePhotoSending } from './use-photo-sending';
 import { useScreenshotSending } from './use-screenshot-sending';
+import { useWatchMirror } from './use-watch-mirror';
 import { WrittenReplyLine } from './written-reply-line';
 
 interface ConversationScreenProps {
@@ -379,6 +380,8 @@ export function ConversationScreen({
    * first message is switched off for exactly as long as this plays.
    */
   const voice = readingAloud ? simulatedVoice : conversation.greeting ? conversation.voice : liveVoice;
+  // The same three the sphere below is handed, for a watch that summoned him to show. See `use-watch-mirror.ts`.
+  useWatchMirror({ voice, user: conversation.user, thinking: conversation.thinking }, inAssistantWindow);
 
   /**
    * Tapping him switches a phone's conversation between talking and writing: the microphone muted,

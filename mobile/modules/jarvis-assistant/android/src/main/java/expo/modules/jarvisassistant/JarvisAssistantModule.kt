@@ -88,6 +88,15 @@ class JarvisAssistantModule : Module() {
       JarvisVoiceInteractionSession.returnFromTheCamera(showWindowAgain)
     }.runOnQueue(Queues.MAIN)
 
+    // Whether a watch is showing this conversation, and a frame of the sphere for it. See `WatchMirror`.
+    Function("isMirroringOnTheWatch") {
+      WatchMirror.isFollowed()
+    }
+
+    Function("mirrorOnTheWatch") { frame: List<Int> ->
+      WatchMirror.send(context(), ByteArray(frame.size) { frame[it].toByte() })
+    }
+
     Events(WINDOW_PUT_AWAY)
 
     // Main thread, because the session reads it there: `onHide` runs on the main looper.
