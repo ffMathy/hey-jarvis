@@ -182,20 +182,30 @@ runs only when `Release` calls it (or someone starts it by hand).
 ### Releases
 
 `Release` runs on every push to `main` and does the whole release itself — no
-human clicks merge. Release Please opens (or updates) the release pull request,
-the workflow immediately hands that pull request to GitHub's auto-merge, and
-falls back to merging it outright when auto-merge has nothing to wait for. The
-pull request is safe to merge unattended: it only restates commits that already
-passed review and CI on `main`, plus the version bumps and changelog entries
-derived from them.
+human clicks merge. Release Please opens the release pull request, and the same
+run merges it straight away with `gh pr merge --admin`, so the pull request is
+plumbing that lives for a few seconds rather than a second thing to merge. It is
+safe to merge unattended: it only restates commits that already passed review
+and CI on `main`, plus the version bumps and `CHANGELOG.md` entries derived from
+them.
 
-Merging it is not the end of the run, because a merge performed with
-`GITHUB_TOKEN` does not start another workflow run. So the same run invokes
-Release Please a second time to tag the release it just merged, and `deploy`
-checks out that tagged commit (`needs.release.outputs.sha`) rather than the
-commit the run started from — only the tagged commit carries the bumped
-versions. If auto-merge does park the pull request instead of merging it, the
-release is tagged by the next run of the workflow, and the run log says so.
+The merge needs the `RELEASE_TOKEN` repository secret: a fine-grained personal
+access token of a repository admin, with Contents and Pull requests read/write
+on this repository. Release Please opens the pull request with `GITHUB_TOKEN`,
+and GitHub starts no workflow for anything that token does, so the checks
+branch protection requires never report on it and auto-merge would wait on them
+forever — which is why, before this secret existed, every release pull request
+sat there until someone merged it by hand. `--admin` merges past those checks,
+which only an admin's token may do. Without the secret the workflow falls back
+to auto-merge and warns that the pull request is parked.
+
+Merging it is not the end of the run. The same run invokes Release Please a
+second time to tag the release it just merged, and `deploy` checks out that
+tagged commit (`needs.release.outputs.sha`) rather than the commit the run
+started from — only the tagged commit carries the bumped versions. The push the
+merge makes starts another `Release` run, which `concurrency` queues behind this
+one and which finds nothing left to release. If the pull request is parked
+instead of merged, the release is tagged by the next run, and the log says so.
 
 To hold a release back, hold the commits back: anything that lands on `main`
 ships on the next run.

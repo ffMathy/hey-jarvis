@@ -45,15 +45,24 @@ jobs:
           target-branch: main
 
       # A release pull request only restates commits that already went through
-      # review and CI on main, so it never needs a second human read. Hand it to
-      # GitHub's auto-merge, which lands it once branch protection is satisfied;
-      # auto-merge refuses a pull request that has nothing left to wait for, so
-      # fall back to merging it outright.
-      - name: Auto-merge the release pull request
+      # review and CI on main, so it never needs a second human read, and it is
+      # merged here, in the same run that opened it, so every merge to main is
+      # its own release with nothing left for a person to click.
+      #
+      # That takes `RELEASE_TOKEN`: a token of an admin of this repository
+      # (a fine-grained personal access token with Contents and Pull requests
+      # read/write on this repository). The pull request is opened with
+      # GITHUB_TOKEN, and GitHub starts no workflow for anything that token
+      # does, so the checks branch protection requires never report on it and
+      # auto-merge waits on them forever. `--admin` merges past them, which only
+      # an admin's token may do. Without the secret the step falls back to
+      # auto-merge, which parks the pull request until somebody merges it.
+      - name: Merge the release pull request
         id: merge
         if: ${{ steps.release.outputs.prs_created == 'true' }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          HAS_RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN != '' }}
           GH_REPO: ${{ github.repository }}
           RELEASE_PRS: ${{ steps.release.outputs.prs }}
         run: |
@@ -62,8 +71,13 @@ jobs:
           merged=false
           for number in $(jq -r '.[].number' <<<"$RELEASE_PRS"); do
             echo "Merging release pull request #${number}"
-            gh pr merge "${number}" --squash --auto ||
-              gh pr merge "${number}" --squash
+            if [ "$HAS_RELEASE_TOKEN" = 'true' ]; then
+              gh pr merge "${number}" --squash --admin
+            else
+              echo "::warning::RELEASE_TOKEN is not set, so release pull request #${number} can only be handed to auto-merge, which waits on checks that never run on it."
+              gh pr merge "${number}" --squash --auto ||
+                gh pr merge "${number}" --squash
+            fi
 
             if [ "$(gh pr view "${number}" --json merged --jq '.merged')" = 'true' ]; then
               merged=true
@@ -74,11 +88,13 @@ jobs:
 
           echo "merged=${merged}" >> "$GITHUB_OUTPUT"
 
-      # A merge performed with GITHUB_TOKEN does not start another workflow run,
-      # so the push that just landed on main never comes back around to tag the
-      # release. Run Release Please once more instead: it picks up the release
-      # pull request it has just seen merged and cuts the tags and GitHub
-      # releases here, in the same run, so `deploy` below has something to ship.
+      # Tag the release in this same run rather than leaving it to the run the
+      # merge's push starts: a merge with GITHUB_TOKEN starts none at all, and
+      # one with RELEASE_TOKEN starts one that `concurrency` queues behind this
+      # run, by which time the release is tagged and it has nothing left to do.
+      # Release Please picks up the pull request it has just seen merged and
+      # cuts the tags and GitHub releases here, so `deploy` below has something
+      # to ship.
       - name: Tag the merged release
         id: tag
         if: ${{ steps.merge.outputs.merged == 'true' }}
