@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.20.2](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.20.1...mcp-v2.20.2) (2026-10-25)
+
+
+### Bug Fixes
+
+* **mcp:** store observability logs so Studio's logs page works ([#994](https://github.com/ffMathy/hey-jarvis/issues/994)) ([f0d7dce](https://github.com/ffMathy/hey-jarvis/commit/f0d7dce5d187f36739f76b053be1703d7d1dda71))
+
 ## [2.20.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.20.0...mcp-v2.20.1) (2026-10-24)
 
 
