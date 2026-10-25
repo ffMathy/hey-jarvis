@@ -2008,11 +2008,21 @@ question that only shows up halfway through can still be asked.
 ElevenLabs scores every finished conversation against the criteria in `platformSettings.evaluation` of
 `elevenlabs/src/assets/agent-config.json`, and posts the result with the full transcript to the agent's
 post-call webhook — `POST /api/elevenlabs/post-call` on this server (`verticals/api/evaluation-webhook.ts`).
-A conversation that failed a criterion (`failure`; `unknown` is not one) starts `implementFeatureWorkflow`
-with the failed criteria, the evaluator's reasons, ElevenLabs' summary and the whole transcript, tool
-calls and results included (`verticals/coding/evaluation-failures.ts`). From there it is an ordinary
-coding session: it finds the cause, fixes it with a test, and the watcher pushes its branch and opens the
-pull request when it is done.
+A conversation that failed a criterion (`failure`; `unknown` is not one) starts an **unattended** coding
+session (`startImplementationSession` with `unattended: true`) with the failed criteria, the evaluator's
+reasons, ElevenLabs' summary and the whole transcript, tool calls and results included
+(`verticals/coding/evaluation-failures.ts`). It finds the cause, fixes it with a test, and the watcher
+pushes its branch and opens the pull request when it is done.
+
+**Unattended means sir is never asked anything.** Nobody asked for the fix in person, so nobody is called
+about it. The session's task says nobody can answer questions and tells it to decide every choice itself,
+picking whatever changes least and is easiest to undo, and to list its assumptions in its final message
+so they reach the pull request (`buildUnattendedSessionInstructions` in `session-questions.ts`). A
+question it asks anyway, fenced or caught in prose by the classifier, never reaches `askUserQuestion`: the
+watcher resumes the session with `UNATTENDED_SESSION_ANSWER`, telling it to decide for itself. After three
+such answers the watcher publishes the work as it stands, so a session that keeps asking cannot keep
+itself running. The only thing he hears is the usual notice that the pull request is ready. The coding
+agent's `startCodingSession` tool cannot start an unattended session: only the webhook does.
 
 - **Signed, not authenticated by Access.** ElevenLabs cannot present a Cloudflare Access service token, so
   the path needs its own **Bypass** application, as `/api/photos/*` does (see [MCP Server Access](#mcp-server-access)).

@@ -18,7 +18,8 @@
  * And it is how a session asks the user something. A turn that ends on a question
  * (`session-questions.ts`), or asks one in prose that the classifier catches (`classifier.ts`), is not published: the question is put to the user over a channel his
  * answer can come back on, and the answer resumes the session. So a session can ask at any point
- * in its work — before it has changed a line, or halfway through — and carry on from there.
+ * in its work — before it has changed a line, or halfway through — and carry on from there. An
+ * unattended session's questions never reach the user: the session is told to decide for itself.
  */
 
 import { truncate } from 'lodash-es';
@@ -30,7 +31,7 @@ import { registerStateChange } from '../synapse/tools.js';
 import { createProseQuestionReader, type SessionProseQuestionReader } from './classifier.js';
 import { type ClaudeSessionEvent, sendClaudeSessionMessage, streamClaudeSessionEvents } from './claude-sessions.js';
 import { type PublishTarget, publishSessionWork, type SessionWorkPublication } from './publish-session-work.js';
-import { readSessionQuestion } from './session-questions.js';
+import { readSessionQuestion, UNATTENDED_SESSION_ANSWER } from './session-questions.js';
 
 /** Vertical name every coding state change is attributed to. */
 export const CODING_STATE_CHANGE_SOURCE = 'coding';
@@ -57,7 +58,19 @@ export interface ClaudeSessionContext {
    * implement a change has one; a session asked for an answer publishes nothing.
    */
   publishTo?: PublishTarget;
+  /**
+   * Whether the session works without the user. Its questions are never put to him: the session is
+   * told to decide for itself instead ({@link UNATTENDED_SESSION_ANSWER}), at most
+   * {@link MAXIMUM_UNATTENDED_ANSWERS} times, after which its work is published as it stands.
+   */
+  unattended?: boolean;
 }
+
+/**
+ * How many times an unattended session that keeps asking is told to decide for itself before its
+ * work is published as it stands, so one that will not stop asking cannot keep itself running.
+ */
+const MAXIMUM_UNATTENDED_ANSWERS = 3;
 
 /**
  * Pulls the one field that carries an event's meaning.
@@ -290,6 +303,8 @@ interface WatchedSession {
 export class ClaudeSessionWatcher {
   private readonly watched = new Map<string, WatchedSession>();
   private readonly seenEventIds = new Set<string>();
+  /** How many questions each unattended session has been told to decide for itself. */
+  private readonly unattendedAnswers = new Map<string, number>();
 
   constructor(
     private readonly streamEvents: ClaudeSessionEventStream = (sessionId, signal) =>
@@ -300,6 +315,7 @@ export class ClaudeSessionWatcher {
     private readonly askQuestion: SessionQuestionAsker = createSessionQuestionAsker(),
     private readonly notifyUser: SessionOutcomeNotifier = notifyUserOfSessionOutcome,
     private readonly readProseQuestion: SessionProseQuestionReader = createProseQuestionReader(),
+    private readonly sendMessage: (sessionId: string, message: string) => Promise<void> = sendClaudeSessionMessage,
   ) {}
 
   /**
@@ -408,9 +424,14 @@ export class ClaudeSessionWatcher {
 
     // A turn that ended on a question is waiting for the user, not done: it is asked, and the
     // answer resumes the session. One that asked in prose rather than in the block is caught by the
-    // session question classifier, and asked the same way.
+    // session question classifier, and asked the same way. An unattended session's question is
+    // never asked: the session is told to decide for itself.
     const question = readSessionQuestion(finalMessage) ?? (await this.readProseQuestion(sessionId, finalMessage));
-    if (question) {
+    if (question && context.unattended) {
+      if (await this.answerUnattended(sessionId, question)) {
+        return;
+      }
+    } else if (question) {
       const asking = await this.askQuestion(sessionId, question, context).catch(
         (error: unknown): SessionQuestionAsking => ({
           status: 'failed',
@@ -436,6 +457,34 @@ export class ClaudeSessionWatcher {
           logger.error('[CLAUDE SESSION] Failed to tell the user how the session ended', { sessionId, error });
         });
       }
+    }
+  }
+
+  /**
+   * Tells an unattended session that asked a question to decide for itself, rather than asking the
+   * user.
+   *
+   * @returns Whether the session was resumed; `false` once it has been told often enough, or could
+   *   not be told, and its work is published as it stands instead
+   */
+  private async answerUnattended(sessionId: string, question: string): Promise<boolean> {
+    const answered = this.unattendedAnswers.get(sessionId) ?? 0;
+    if (answered >= MAXIMUM_UNATTENDED_ANSWERS) {
+      logger.warn('[CLAUDE SESSION] Unattended session keeps asking; publishing its work as it stands', {
+        sessionId,
+        question,
+      });
+      return false;
+    }
+
+    this.unattendedAnswers.set(sessionId, answered + 1);
+    logger.info('[CLAUDE SESSION] Unattended session asked a question; telling it to decide', { sessionId, question });
+    try {
+      await this.sendMessage(sessionId, UNATTENDED_SESSION_ANSWER);
+      return true;
+    } catch (error) {
+      logger.error('[CLAUDE SESSION] Could not resume the unattended session', { sessionId, error });
+      return false;
     }
   }
 

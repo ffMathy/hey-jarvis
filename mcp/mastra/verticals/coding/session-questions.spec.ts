@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import {
   buildSessionQuestionInstructions,
+  buildUnattendedSessionInstructions,
   readProseQuestion,
   readSessionQuestion,
   SESSION_QUESTION_FENCE,
@@ -75,5 +76,15 @@ describe('readProseQuestion', () => {
     expect(question?.length).toBeLessThanOrEqual(300);
     expect(question?.endsWith('...')).toBe(true);
     expect(question).not.toContain('reall...');
+  });
+});
+
+describe('buildUnattendedSessionInstructions', () => {
+  it('tells the session nobody can be asked, and never how to ask', () => {
+    const instructions = buildUnattendedSessionInstructions();
+
+    expect(instructions).toContain('Nobody is available to answer questions');
+    expect(instructions).toContain('Never end your turn on a question');
+    expect(instructions).not.toContain(SESSION_QUESTION_FENCE);
   });
 });
