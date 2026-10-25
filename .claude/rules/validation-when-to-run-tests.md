@@ -7,7 +7,7 @@
 ## When to Skip Validation
 
 Validation is **NOT required** when changes only affect non-code files:
-- Documentation files (`.md`, `AGENTS.md`, `README.md`, `CHANGELOG.md`)
+- Documentation files (`.md`, including `.claude/rules/` and `README.md`, `CHANGELOG.md`)
 - Comments-only changes in code files
 - Configuration files that don't affect build/runtime (`.gitignore`, `.nxignore`, editor settings)
 - License files, `.editorconfig`, or other metadata
