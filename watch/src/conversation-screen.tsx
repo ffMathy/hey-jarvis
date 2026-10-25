@@ -1,4 +1,4 @@
-import { type ElevenLabsSettings, isLive, WATCH_PARTICIPANT_NAME, WATCH_PARTICLE_COUNT } from 'hologram';
+import { type ElevenLabsSettings, isLive, WATCH_PARTICIPANT_NAME } from 'hologram';
 import { useJarvisSession } from 'hologram/conversation';
 import { JarvisHologram } from 'hologram/react';
 import { useIsForeground } from 'hologram/react/lifecycle';
@@ -202,7 +202,6 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
           voice={sphere.voice}
           user={sphere.user}
           thinking={sphere.thinking}
-          particleCount={WATCH_PARTICLE_COUNT}
           frameRate={frameRate}
           buildMilliseconds={buildMilliseconds}
           particleShare={particleShare}

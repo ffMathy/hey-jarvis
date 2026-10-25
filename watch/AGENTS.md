@@ -30,7 +30,7 @@ watch/
     ├── phone-settings.ts         # the credentials, and the asking that gets them
     ├── phone-mirror.ts           # the phone's sphere, drawn here while the phone holds the conversation
     ├── microphone-permission.ts  # PermissionsAndroid
-    ├── watch-density.ts          # the watch's pace, and letting the drawing find its own count (the ceiling is `WATCH_PARTICLE_COUNT`, in `hologram`)
+    ├── watch-density.ts          # the watch's pace, and letting the drawing find its own count (the ceiling is the phone's `PARTICLE_COUNT`, in `hologram`)
     └── watch-screen.ts           # how big the sphere is drawn on a round screen
 ```
 
@@ -140,6 +140,11 @@ the phone draws at 0.45 and scales up. The watch's sphere is about half the phon
 the phone's share each spark was a pixel or less wide and the scale-up smeared it; the user saw him
 as smudgy next to the phone. What drawing every pixel costs the watch's GPU has not been measured: if
 it costs frames, the density loop sheds particles rather than sharpness.
+
+**Its ceiling is the phone's** (`PARTICLE_COUNT`, 10,000): the watch's screens leave `particleCount`
+at its default, and `WATCH_PACE`'s thirty frames a second decides how much of it a watch draws. The
+cost no loop can steer away from is building that scene when the view mounts, twice what the watch's
+own 5,000 cost, so a later arrival is the first thing to look for.
 
 The view behind both canvases paints the black. The halo target is sized to the canvas, a texel to a
 pixel, rather than the headset's 512 a side.

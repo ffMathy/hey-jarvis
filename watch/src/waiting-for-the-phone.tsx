@@ -3,8 +3,8 @@ import {
   moodOf,
   nextSampleMode,
   SAMPLE_MODE_LABELS,
+  PARTICLE_COUNT,
   type SampleMode,
-  WATCH_PARTICLE_COUNT,
 } from 'hologram';
 import { JarvisHologram } from 'hologram/react';
 import { FrameRate, ModeToast, useSimulatedUser, useSimulatedVoice } from 'hologram/react/sample';
@@ -63,7 +63,6 @@ export function WaitingForThePhone({ isPhoneInRange }: WaitingForThePhoneProps) 
           voice={voice}
           user={user}
           thinking={mode === 'thinking'}
-          particleCount={WATCH_PARTICLE_COUNT}
           frameRate={frameRate}
           buildMilliseconds={buildMilliseconds}
           particleShare={particleShare}
@@ -78,7 +77,7 @@ export function WaitingForThePhone({ isPhoneInRange }: WaitingForThePhoneProps) 
         frameRate={frameRate}
         buildMilliseconds={buildMilliseconds}
         particleShare={particleShare}
-        particles={WATCH_PARTICLE_COUNT}
+        particles={PARTICLE_COUNT}
         withBuildTime={false}
         style={styles.frameRate}
       />

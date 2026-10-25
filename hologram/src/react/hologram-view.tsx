@@ -111,8 +111,8 @@ export interface JarvisHologramProps {
    * How many fragments the scene is built from at all — the ceiling the density share is a share
    * *of*, rather than how many are drawn right now.
    *
-   * Left alone it is {@link PARTICLE_COUNT}, which is what a phone gets. A watch asks for fewer,
-   * and this is the only way to give it them: building the scene is not free — that many fragments
+   * Left alone it is {@link PARTICLE_COUNT}, which is what the phone and the watch get. A renderer
+   * that wants fewer has only this way to ask: building the scene is not free — that many fragments
    * times `BODY_STRIDE` numbers, built into the GPU's rows when the view mounts — and that cost
    * cannot be steered away from on any device, which is why it is a parameter and not a
    * measurement.

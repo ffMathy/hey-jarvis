@@ -12,11 +12,11 @@ import { useSharedValue } from 'react-native-reanimated';
  * chosen by nobody, on the one device least able to afford being wrong about it.
  *
  * Wiring it up is all it takes for the behaviour the watch wanted anyway, because the controller
- * already works this way: it opens at `STARTING_SHARE`, half of the watch's `WATCH_PARTICLE_COUNT`,
+ * already works this way: it opens at `STARTING_SHARE`, half of `PARTICLE_COUNT` — the phone's ceiling, which the watch shares —
  * and adds more while building a frame takes less than the watch's budget (`WATCH_PACE`: 16 ms, at
  * thirty frames a second), never past a count at which the frame rate was seen falling behind, and
  * sheds them quickly when either says it is too many, down to `FEWEST_PARTICLES` — a fortieth of
- * the scene, 125 fragments.
+ * the scene, 250 fragments.
  */
 export function useWatchDensity() {
   // Written by the drawing on the UI thread every measurement window. They exist because handing
