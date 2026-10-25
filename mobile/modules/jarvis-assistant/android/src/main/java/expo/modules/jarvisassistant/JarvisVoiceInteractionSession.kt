@@ -169,6 +169,8 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
       awayForTheCamera = false
       keptRunning = WeakReference(this)
     } else {
+      // The watch mirroring this conversation is told he has stopped. See `WatchMirror`.
+      WatchMirror.stop(context)
       whenPutAway?.invoke()
       handler.postDelayed(letReactNativeRest, HANG_UP_GRACE_MS)
     }

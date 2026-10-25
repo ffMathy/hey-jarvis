@@ -60,6 +60,9 @@ private const val WAIT_FOR_THE_WINDOW_MS = 2000L
  * - **Jarvis is not the phone's assistant.** Only the active voice interaction service may open a
  *   session, so there is nothing to open.
  *
+ * Told yes, the watch holds no conversation but goes on showing him: the phone sends it what its
+ * sphere is doing for as long as the window is up (`WatchMirror`).
+ *
  * `WearableListenerService` checks that it is Play Services calling, and the Data Layer only
  * connects this app to its twin on the watch — same package name, same signing key — so the
  * request has no payload to validate.
@@ -72,18 +75,23 @@ class JarvisWatchSummonService : WearableListenerService() {
       return null
     }
     val reply = TaskCompletionSource<ByteArray>()
-    main.post { answer(reply) }
+    main.post { answer(nodeId, reply) }
     return reply.task
   }
 
   /** On the main thread, where the session's `onShow` also runs. */
-  private fun answer(reply: TaskCompletionSource<ByteArray>) {
+  private fun answer(watch: String, reply: TaskCompletionSource<ByteArray>) {
     if (!hasBluetoothHeadset() || isLocked()) {
       reply.setResult(NOT_ANSWERING)
       return
     }
 
-    JarvisVoiceInteractionSession.nextShowing = { reply.trySetResult(ANSWERING) }
+    // The watch goes on showing him, moving as he does here, from the moment it is told yes.
+    JarvisVoiceInteractionSession.nextShowing = {
+      if (reply.trySetResult(ANSWERING)) {
+        WatchMirror.follow(watch)
+      }
+    }
     if (!JarvisVoiceInteractionService.summon()) {
       JarvisVoiceInteractionSession.nextShowing = null
       reply.setResult(NOT_ANSWERING)

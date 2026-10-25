@@ -34,6 +34,14 @@ internal const val ASK_PATH = "/jarvis/ask-for-credentials"
 internal const val ANSWER_PATH = "/jarvis/answer-on-the-phone"
 
 /**
+ * The phone sending what its sphere is doing, while it holds a conversation this watch was summoned
+ * for, so he moves here as he does there. A frame of `mirrored-sphere.ts` in `hologram`, or empty for
+ * "he has stopped". `MIRROR_PATH` in the phone's `WatchMirror.kt` is the other spelling, pinned by the
+ * same contract spec. Heard only while the app is up: nobody is looking otherwise.
+ */
+internal const val MIRROR_PATH = "/jarvis/mirror-the-phone"
+
+/**
  * What the watch knows about the phone beside it: only ever the ElevenLabs credentials.
  *
  * A watch keyboard is not where anybody should type a key that starts `sk_` and runs to fifty
@@ -72,7 +80,7 @@ class JarvisPhoneModule : Module() {
       askThePhoneToAnswer(context(), timeoutMs.toLong(), promise)
     }
 
-    Events(SETTINGS_ARRIVED)
+    Events(SETTINGS_ARRIVED, PHONE_MIRRORED)
 
     OnStartObserving {
       Wearable.getMessageClient(context()).addListener(arriving)
@@ -94,6 +102,9 @@ class JarvisPhoneModule : Module() {
   private val arriving = MessageClient.OnMessageReceivedListener { event: MessageEvent ->
     if (event.path == SETTINGS_PATH && PhoneSettingsStore.save(context(), event.data)) {
       sendEvent(SETTINGS_ARRIVED)
+    } else if (event.path == MIRROR_PATH) {
+      // As unsigned bytes: a frame is a few dozen of them, a dozen times a second.
+      sendEvent(PHONE_MIRRORED, mapOf("frame" to event.data.map { it.toInt() and 0xff }))
     }
   }
 
@@ -102,6 +113,9 @@ class JarvisPhoneModule : Module() {
   private companion object {
     /** The event a waiting screen subscribes to, so it can stop waiting. */
     const val SETTINGS_ARRIVED = "onSettingsArrived"
+
+    /** A frame of the phone's sphere, for a watch showing the conversation the phone holds. */
+    const val PHONE_MIRRORED = "onPhoneMirrored"
   }
 }
 

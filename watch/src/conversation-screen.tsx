@@ -8,6 +8,7 @@ import { type FastNetwork, holdFastNetwork, releaseFastNetwork } from '../module
 import { askThePhoneToAnswer } from '../modules/jarvis-phone';
 import { capCallVolume } from '../modules/jarvis-volume';
 import { requestMicrophoneAccess } from './microphone-permission';
+import { usePhoneMirror } from './phone-mirror';
 import { useWatchDensity } from './watch-density';
 import { useWatchHologramSize } from './watch-screen';
 
@@ -78,8 +79,11 @@ const NO_ANSWER_PROBLEM = 'Jarvis did not answer. ElevenLabs may be unreachable.
  *
  * **He answers in the phone's earbuds when there are some.** Summoned on the wrist, he asks the
  * phone first, and a phone with AirPods connected holds the conversation itself, where only the
- * wearer hears it — the watch cannot play into a headset connected to its phone. The watch then says
- * so, and stays out of it. See `JarvisWatchSummonService.kt` in `mobile/modules/jarvis-assistant`.
+ * wearer hears it — the watch cannot play into a headset connected to its phone. The watch then
+ * holds no conversation, and says nothing about it either: he stays on the screen and moves as the
+ * phone's sphere does, from the frames the phone sends (`phone-mirror.ts`), so summoning him on the
+ * wrist looks the same wherever he answers. See `JarvisWatchSummonService.kt` in
+ * `mobile/modules/jarvis-assistant`.
  *
  * **It ends when the wrist drops, and that is the difference that matters most from the phone.** A
  * phone conversation survives the app going to the background — the assistant's window is retracted
@@ -120,6 +124,9 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
     deadlineProblem: () => (network.current === 'none' ? OFF_THE_PROXY_PROBLEM : NO_ANSWER_PROBLEM),
   });
   const { status, summon, endQuietly } = conversation;
+  // The phone's sphere, while the phone holds the conversation: drawn here in place of the watch's own.
+  const mirrored = usePhoneMirror(onThePhone && isForeground);
+  const sphere = onThePhone ? mirrored : conversation;
   const size = useWatchHologramSize();
   // Handing these over is what turns the density loop on at all — the drawing skips it
   // entirely when there is nowhere to write the frame rate. See `watch-density.ts`.
@@ -192,9 +199,9 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
       <View accessible accessibilityLabel="Jarvis" style={{ width: size, height: size }} testID="hologram">
         <JarvisHologram
           size={size}
-          voice={conversation.voice}
-          user={conversation.user}
-          thinking={conversation.thinking}
+          voice={sphere.voice}
+          user={sphere.user}
+          thinking={sphere.thinking}
           particleCount={WATCH_PARTICLE_COUNT}
           frameRate={frameRate}
           buildMilliseconds={buildMilliseconds}
@@ -203,12 +210,6 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
           background="#000000"
         />
       </View>
-
-      {onThePhone ? (
-        <Text style={styles.onThePhone} testID="conversation-on-the-phone">
-          Jarvis is answering on your phone.
-        </Text>
-      ) : null}
 
       {problem ? (
         <Text style={styles.problem} testID="conversation-problem">
@@ -242,15 +243,6 @@ const styles = StyleSheet.create({
     left: 24,
     right: 24,
     color: '#f87171',
-    textAlign: 'center',
-    fontSize: 13,
-  },
-  /** Where the problem line would be, in the colour of him rather than of something wrong. */
-  onThePhone: {
-    position: 'absolute',
-    left: 24,
-    right: 24,
-    color: '#38bdf8',
     textAlign: 'center',
     fontSize: 13,
   },

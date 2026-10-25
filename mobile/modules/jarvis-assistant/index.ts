@@ -20,6 +20,8 @@ interface JarvisAssistantNativeModule {
   returnFromTheCamera(showWindowAgain: boolean): Promise<boolean>;
   /** The summoning's screenshot as a `file://` URI, or `null` for none. */
   screenshotOfThisSummoning(): Promise<string | null>;
+  isMirroringOnTheWatch(): boolean;
+  mirrorOnTheWatch(frame: number[]): void;
   addListener(event: typeof WINDOW_PUT_AWAY, listener: () => void): { remove: () => void };
 }
 
@@ -172,4 +174,17 @@ export async function screenshotOfThisSummoning(): Promise<string | undefined> {
 export function whenTheAssistantWindowIsPutAway(listener: () => void): () => void {
   const subscription = nativeModule?.addListener(WINDOW_PUT_AWAY, listener);
   return () => subscription?.remove();
+}
+
+/**
+ * Whether a watch is showing this conversation: one that was summoned on the wrist and handed to
+ * this phone, for its earbuds. See `WatchMirror.kt`.
+ */
+export function isMirroringOnTheWatch(): boolean {
+  return nativeModule?.isMirroringOnTheWatch() ?? false;
+}
+
+/** Sends the watch following this conversation one frame of the sphere (`encodeMirrorFrame` in `hologram`). */
+export function mirrorOnTheWatch(frame: number[]): void {
+  nativeModule?.mirrorOnTheWatch(frame);
 }
