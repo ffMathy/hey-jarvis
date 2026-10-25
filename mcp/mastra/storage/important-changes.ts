@@ -90,7 +90,8 @@ export class ImportantChangeStorage {
         WHERE id = (
           SELECT id FROM important_changes
           WHERE mentioned_at IS NULL AND noted_at >= ?
-          ORDER BY noted_at DESC
+          -- rowid breaks a tie between changes noted in the same millisecond, in the order noted.
+          ORDER BY noted_at DESC, rowid DESC
           LIMIT 1
         )
         RETURNING id, summary, source, noted_at

@@ -48,6 +48,20 @@ describe('ImportantChangeStorage', () => {
     expect(claimed.map((change) => change?.summary)).toEqual(['newest', 'middle', 'oldest', undefined]);
   });
 
+  it('takes the one noted last when two were noted in the same instant', async () => {
+    await storage.add({ summary: 'first', source: 'email' }, minutesBefore(1));
+    await storage.add({ summary: 'second', source: 'email' }, minutesBefore(1));
+    await storage.add({ summary: 'third', source: 'email' }, minutesBefore(1));
+
+    const claimed = [
+      await storage.claimNewestUnmentioned(now),
+      await storage.claimNewestUnmentioned(now),
+      await storage.claimNewestUnmentioned(now),
+    ];
+
+    expect(claimed.map((change) => change?.summary)).toEqual(['third', 'second', 'first']);
+  });
+
   it('lets a change lapse after a day, told or not', async () => {
     const aDayAndAMinute = IMPORTANT_CHANGE_TTL_MS / 60_000 + 1;
     await storage.add({ summary: 'stale', source: 'weather' }, minutesBefore(aDayAndAMinute));
