@@ -93,6 +93,7 @@ describe('the workflow wiring', () => {
     const parsed = (storageRetentionWorkflow.outputSchema as ZodTypeAny).safeParse({
       tokenUsageRecordsDeleted: 3,
       mastraRowsDeleted: 12,
+      observabilityLogsDeleted: 40,
       cutoff: new Date().toISOString(),
     });
 

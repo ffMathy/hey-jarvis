@@ -1525,6 +1525,11 @@ one request. Workflows are the only thing Studio draws as a graph, and the graph
 machinery would be the same picture every time; what varies is which agents were asked and what
 they said, which is what a trace shows.
 
+Studio's Logs page lists every warning and error Mastra logged, from both processes.
+`@mastra/libsql` stores no logs, so they are kept in an `observability_logs` table of our own
+in the same SQLite file and spliced into the LibSQL observability store
+(`storage/observability-logs.ts`, `storage/observability.ts`).
+
 ### 📅 Workflow Scheduling
 
 Scheduled workflows run through Mastra's built-in `mastra.schedules`, which persists each
@@ -1645,7 +1650,8 @@ in standard 5-field form; croner nicknames (`@hourly`, `@daily`) work too.
 
 6. **Storage Retention** - Runs nightly at midnight
    - Workflow: `storageRetentionWorkflow`
-   - Purpose: Trims token usage rows past their retention window
+   - Purpose: Trims token usage rows (90 days), Mastra's spans and workflow snapshots, and
+     observability logs (14 days) past their retention window
 
 7. **Weekly News Digest** - Runs every Monday at 7:00 AM
    - Workflow: `weeklyNewsDigestWorkflow`
