@@ -50,8 +50,14 @@
       "cache": false
     },
     "test": {
-      "dependsOn": ["^transit", "lint"],
+      "dependsOn": ["^transit", "lint", "//#test:release"],
       "outputs": ["../coverage/**"]
+    },
+    // The release script lives at the root, outside every package, so its spec is a root task that
+    // `test` pulls in rather than a package's own.
+    "//#test:release": {
+      "inputs": [".scripts/release.js", ".scripts/release.spec.ts"],
+      "outputs": []
     },
     // vr's agent-contract.spec.ts reads the ElevenLabs prompt, the evals' copy of the
     // headset's sentences and the MCP routing workflow and planner as text, to catch them
@@ -97,8 +103,11 @@
       "cache": false,
       "outputs": []
     },
+    // The version the MCP image is tagged with, handed in by `release.yml`. Part of the hash, so a
+    // new release can never replay the previous one's deploy.
     "deploy": {
-      "dependsOn": ["build"]
+      "dependsOn": ["build"],
+      "env": ["RELEASE_VERSION"]
     },
     "serve": {
       "cache": false,
@@ -117,8 +126,11 @@
       "cache": false,
       "outputs": []
     },
+    // The two numbers on a bundle, both handed in by the `Play` workflow — see
+    // `.scripts/expo-release-signing.js`.
     "build:aab": {
       "dependsOn": ["initialize"],
+      "env": ["JARVIS_ANDROID_VERSION_CODE", "RELEASE_VERSION"],
       "cache": false,
       "outputs": []
     },

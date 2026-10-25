@@ -88,7 +88,7 @@ bunx turbo serve --filter=home-assistant-voice-firmware     # Flash firmware ove
 - **Code quality**: Biome (formatting + linting), TypeScript strict mode
 - **Commits**: Conventional Commits enforced via commitlint in a git hook
 - **Secrets**: 1Password CLI — Turborepo tasks inject credentials via `op run`
-- **CI/CD**: GitHub Actions with DevContainer, Release Please for versioning
+- **CI/CD**: GitHub Actions with DevContainer, a release (tag and GitHub Release) for every merge to main
 - **Supply chain**: Bun-only installs, exact version pins, a 7-day release cooldown, no dependency install scripts, SHA-pinned Actions — see [AGENTS.md](./AGENTS.md#supply-chain-security)
 
 ```bash

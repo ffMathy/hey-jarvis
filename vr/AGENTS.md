@@ -1360,8 +1360,8 @@ app at the root, `dist/vr` in `vr/` — and publishes it. Vite's
 sub-path and needs no base-path variable.
 
 **The root is the release; each pull request has a folder of its own.**
-`release.yml` calls the workflow with the tagged commit once Release Please has
-cut a release, and it publishes to `/hey-jarvis/` and `/hey-jarvis/vr/`.
+`release.yml` calls the workflow with the released commit once it has tagged
+the release, and it publishes to `/hey-jarvis/` and `/hey-jarvis/vr/`.
 `web-preview.yml` calls it for every push to a pull request from a branch of
 this repository, with `subpath: pr/<n>`, so that pull request's build is at
 `/hey-jarvis/pr/<n>/vr/` — the same build at a different sub-path, which the

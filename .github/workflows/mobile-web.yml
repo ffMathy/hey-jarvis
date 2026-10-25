@@ -15,7 +15,7 @@ name: Mobile Web
 # gesture is Android's alone and the app says so when it is on web, so the page
 # is for looking at Jarvis and talking to him, not for replacing your assistant.
 #
-# The root is the release: `release.yml` calls this once Release Please has tagged
+# The root is the release: `release.yml` calls this once it has tagged
 # one, handing it the tagged commit, so the root always shows what was released.
 # `web-preview.yml` calls it for every push to a pull request with `subpath:
 # pr/<n>`, so each pull request can be opened on a phone or a headset before it is

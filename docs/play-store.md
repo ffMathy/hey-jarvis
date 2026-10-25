@@ -4,8 +4,8 @@ Two things come out of this, from one pipeline:
 
 - **Only a release publishes.** Pull requests build the APKs as run artifacts but upload nothing to
   Play; the manual trigger is there for anything else, internal testing included.
-- **Every release cut on `main` publishes to the closed test.** Release Please tags the release and
-  `release.yml` hands the tagged commit to the same workflow with the closed track named instead.
+- **Every release cut on `main` publishes to the closed test.** `release.yml` tags the release and
+  hands the released commit and its version to the same workflow with the closed track named instead.
   Production is not where a release goes, and §9 explains why: it is not open to this account yet,
   and the closed test is how it becomes open.
 
@@ -416,8 +416,8 @@ the Actions tab, which is how you pick a track that neither of those two names, 
 as a draft for the Console.
 
 **The two numbers on a bundle come from different places.** The version *name* — `2.2.0`, what the
-listing shows — is the monorepo's own version out of the root `package.json`, which Release Please
-bumps when it cuts a release, so an upload is stamped with the release that published it.
+listing shows — is the version of the release that published it, which `release.yml` hands in and
+`RELEASE_VERSION` carries into both app configs.
 The version *code* is seconds since 2025-01-01, which is the one clock both entry points share: a
 run number counts the runs of one workflow, and two workflows counting separately would sooner or
 later hand Play a code it had already seen. See `.scripts/expo-release-signing.js`.
@@ -469,14 +469,14 @@ Worth knowing, because it is the part that looks like magic:
 | `Precondition check failed.` **after** `Successfully uploaded 1 artifacts` on a production track | the upload and the service account are fine and Play is refusing to *commit* the release. Google sends no detail at all — this bare sentence is the whole message. This is what release 2.2.0 hit, and it is why a release goes to the closed test instead: see §9 |
 | `Track "wear:alpha" could not be found` | there is no Wear OS closed track. Read the list the error prints; of the `wear:` tracks that exist, only `wear:internal` is not public, which is where the watch goes from a release — see §9 |
 | `Your app cannot be released to production` / the production track is missing from the error's track list | the developer account has not been granted production access yet. It is a closed test with twelve testers for fourteen days and then an application — see §9 |
-| A release on `main` published nothing at all | Release Please cut no release, so there was nothing to publish. A batch of only `chore`, `ci`, `build` and `test` commits does that by design — the run says `No user facing commits found since <sha> - skipping` |
+| A release on `main` published nothing at all | No release was cut, so there was nothing to publish. Every commit releases, so the `Work out the release` step saying `Nothing has landed since <tag>` means the pushed commit was already behind the latest release tag |
 
 ---
 
 ## 9. What a release publishes, and why it is not production
 
-When a release is cut on `main`, `release.yml` waits for Release Please to tag it and then calls the
-**Play** workflow with the tagged commit. The bundles are built the same way, signed with the same
+When a release is cut on `main`, `release.yml` tags it and then calls the
+**Play** workflow with the released commit and its version. The bundles are built the same way, signed with the same
 key and uploaded by the same action as a manual run —
 the track names are the only difference, which is the point of it being one workflow.
 
@@ -575,7 +575,7 @@ that uploads and then waits unsent looks like a green run that shipped nothing.
 ### What a user sees
 
 The version on the listing is the monorepo's version — `2.2.0` and so on — because both app configs
-read it from the root `package.json`, which Release Please bumps. So a release is identifiable in
+take it from `RELEASE_VERSION`, which the release hands in. So a release is identifiable in
 the Console by the release that produced it, rather than by the frozen `0.1.0` both apps used to
 report.
 

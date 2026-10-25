@@ -13,8 +13,8 @@ name: Play
 # phone's release down with it. See the note above the publish steps.
 #
 # **It runs only for a release.** Every release cut on `main` publishes to the *closed test*:
-# `release.yml` calls this workflow through `workflow_call` once Release Please has tagged the
-# release, handing it the tagged commit and the tracks to use. Pull requests no longer publish
+# `release.yml` calls this workflow through `workflow_call` once it has tagged the release,
+# handing it the released commit, its version and the tracks to use. Pull requests no longer publish
 # anything — a branch's build is checked by the Mobile APK and Wear APK workflows, which build
 # without signing or uploading, so nothing reaches testers until it has been released.
 #
@@ -40,7 +40,12 @@ on:
   workflow_call:
     inputs:
       ref:
-        description: 'The commit to build. Release passes the tagged one, which is not the commit its run started from.'
+        description: 'The commit to build. Release passes the one it released, even if main has moved on since.'
+        type: string
+        required: false
+        default: ''
+      version:
+        description: 'The version name the bundles carry. Release passes the one it just tagged; empty means the latest release tag.'
         type: string
         required: false
         default: ''
@@ -127,10 +132,8 @@ jobs:
         uses: actions/checkout@v6.1.0
         with:
           # Empty for a manual run, which is what `actions/checkout` wants in
-          # order to take the commit that started the run. Release passes the *tagged* commit
-          # instead: it merges the release pull request inside its own run, so the commit carrying
-          # the bumped version — the one the bundle is stamped with — is newer than the commit that
-          # run started from. Same reasoning as `deploy` in `release.yml`.
+          # order to take the commit that started the run. Release passes the commit it released,
+          # which main may have moved past while the run waited its turn.
           ref: ${{ inputs.ref }}
           persist-credentials: false
 
@@ -189,9 +192,21 @@ jobs:
       # so nothing already uploaded is in its way, and even doubled for the phone — the watch takes
       # one more, see `.scripts/expo-release-signing.js` — it does not reach Android's ceiling of
       # 2100000000 until 2058.
+      #
+      # The version name is the release's: `release.yml` hands in the version it has just tagged.
+      # A manual run has none to hand in, so it takes the latest `root-v*` release tag, which is
+      # what is on main's tip or just behind it.
       - name: Work out the version code
         id: version
-        run: echo "code=$(( $(date -u +%s) - 1735689600 ))" >> "$GITHUB_OUTPUT"
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          echo "code=$(( $(date -u +%s) - 1735689600 ))" >> "$GITHUB_OUTPUT"
+          if [ -z "$VERSION" ]; then
+            VERSION=$(git ls-remote --tags --refs origin 'root-v*' | sed 's#.*refs/tags/root-v##' | sort -V | tail -n 1)
+          fi
+          echo "name=${VERSION}" >> "$GITHUB_OUTPUT"
 
       # No secrets listed: `build:aab` goes through `run-with-env.sh mobile/op.env`, which resolves
       # the four signing values from 1Password with the token above. The same command a laptop runs.
@@ -207,6 +222,7 @@ jobs:
           # The phone takes twice it and the watch one more, because a version code has to be
           # unique across every form factor in a listing — see `.scripts/expo-release-signing.js`.
           JARVIS_ANDROID_VERSION_CODE: ${{ steps.version.outputs.code }}
+          RELEASE_VERSION: ${{ steps.version.outputs.name }}
         run: bunx turbo build:aab --filter=mobile --filter=watch --concurrency=1
 
       # Kept whatever happens to the upload. A bundle that Play rejected is still the bundle that
