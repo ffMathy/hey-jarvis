@@ -285,6 +285,15 @@ whose first message is empty (the apps play a recorded greeting instead). If the
 those silences with "are you still there?", `turnTimeout: -1` switches it off again — and with it
 every hang-up after a finished request, so that is a trade, not a fix.
 
+**`retranscribeOnTurnTimeout: true`** is what keeps that from hanging up on sir mid-sentence. A long
+reply has pauses in it, and three seconds of one fires the timeout before ElevenLabs has turned the
+words before it into a transcript. With retranscription off, Jarvis was then asked to speak again
+with nothing from sir since his last reply, and after a finished request that means `end_call` — so
+the longer sir talked, the likelier the line went dead under him. With it on, the audio gathered so
+far is transcribed when the timeout fires, and Jarvis hears what sir said instead of a silence. It
+costs the silence discount on those turns, which is cheap beside a dropped call.
+`tests/specs/agent-config.spec.ts` holds the setting on.
+
 There used to be a second mechanism, the `hangUpWhenQuiet` client tool, that armed a three-second
 clock on the device itself. It was removed: the agent asked for it, the phone, watch and firmware
 each kept their own copy of the clock, and `turnTimeout` already did the same job everywhere.
