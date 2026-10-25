@@ -99,7 +99,7 @@ const prompt = new PromptBuilder()
 **Don't use when:** a factory function with parameters produces the variations just as easily.
 
 ```typescript
-const baseRequest = { model: 'gemini-flash-latest', temperature: 0, tools: [] as string[] };
+const baseRequest = { model: 'gemini-flash-latest', temperature: 0, tools: ['getCurrentTime'] };
 const weatherRequest = { ...structuredClone(baseRequest), tools: ['getForecast'] };
 ```
 
