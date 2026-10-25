@@ -8,7 +8,7 @@ import { visionTools } from './tools.js';
  * Vision Agent
  *
  * **What the planner routes a photo to.** Sir sends Jarvis a photo with the camera button on his
- * phone — see "Showing him something" in `.claude/rules/mobile.md`, and `POST /api/photos/slots` in
+ * phone — see "Showing him something" in `.claude/rules/mobile-showing-him-something.md`, and `POST /api/photos/slots` in
  * `api/routes.ts`, for how it gets here — and the voice agent passes on what he wants done with it,
  * with the photo's id in it. This agent hands both to `lookAtPhoto`, which shows the photo to a
  * model that can see, and says what came back.

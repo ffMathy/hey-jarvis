@@ -11,7 +11,7 @@ import { SPHERE_FRACTION } from './hologram-drawing';
  * its own `modify`, beside the clock's, with the latest reading as positional arguments, so a frame
  * allocates nothing; and only the GPU body reads it, never the Skia picture, so a reading arriving
  * does not rebuild the picture. Every function here closes over nothing but module-level constants
- * and the worklets declared above it — see `.claude/rules/hologram.md`, "Worklets".
+ * and the worklets declared above it — see `.claude/rules/hologram-worklets.md`, "Worklets".
  *
  * Device coordinates are Reanimated's: x right, y up the screen, z out of the screen towards the
  * person, and gravity pointing at the ground — (0, -g, 0) held upright, (0, 0, -g) lying on its back.

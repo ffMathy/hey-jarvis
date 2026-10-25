@@ -5,7 +5,7 @@ import type { GreetingPlayer } from 'hologram';
  * summoned, while the session is fetched and dialled behind it.
  *
  * A plain `HTMLAudioElement`. The phone needed call audio and a native player to be heard at all
- * (see "Summoned, he greets you before he is connected" in `.claude/rules/hologram.md`); a browser has
+ * (see "Summoned, he greets you before he is connected" in `.claude/rules/hologram-summoned-he-greets-you-before-he-is-connected.md`); a browser has
  * neither and needs neither, and the phone's web build plays it through expo-audio's element for
  * the same reason. Its envelope is what the sphere follows while it plays, read at this player's
  * own position (`createGreetingReaders`), so he says the words as they are heard.

@@ -7,6 +7,15 @@ paths:
 
 > Paths in this rule are relative to `home-assistant-voice-firmware/` unless they say otherwise.
 
+## Its rules
+
+Each topic is a rule of its own, under the same paths:
+
+- [Ending a Conversation](home-assistant-voice-firmware-ending-a-conversation.md)
+- [Wake Word Configuration](home-assistant-voice-firmware-wake-word-configuration.md)
+- [Troubleshooting Wake Word Issues](home-assistant-voice-firmware-troubleshooting-wake-word-issues.md)
+- [Development](home-assistant-voice-firmware-development.md)
+
 ## Overview
 ESPHome firmware for dedicated voice hardware devices with local processing capabilities.
 
@@ -29,24 +38,6 @@ Designed to be compatible with:
 - Voice processing hardware
 - Home Assistant ecosystem
 
-## Ending a Conversation
-
-The `elevenlabs_stream` component (`components/elevenlabs_stream/`) hangs up on its own
-in two cases. Each ends through `stop_stream()`, so `on_end` fires, the wake word
-restarts and the LEDs go idle:
-
-- **`end_call`** — the agent's system tool, received as an `agent_tool_response`. The
-  device waits for the farewell to finish playing first. This is also how a finished
-  request hangs up: the agent's `turnTimeout` prompts Jarvis after 3 s of silence, and
-  he calls `end_call` without a word. The device keeps no clock of its own for it.
-- **Announcement window** — `announce` starts a stream with a `timeout`, and a quiet
-  window hangs up if nobody answers. Speech (`vad_score` ≥ 0.5) only pushes that clock
-  back, and the first transcript drops it. After that the conversation behaves like a
-  wake-word one.
-
-The announcement window is timed on the device because ElevenLabs'
-`silence_end_call_timeout` is not an overridable setting.
-
 ## MCP Tool Calls
 
 The speaker shares its agent with the apps, and the agent's client events include
@@ -56,66 +47,6 @@ them, and it logs each at DEBUG by tool name and state only, never in full: a re
 can carry an email summary or a calendar entry, and the unknown-type fallback would
 have logged all of it at WARN.
 
-## Wake Word Configuration
-
-### Supported Wake Words
-The firmware supports multiple wake words configured in `micro_wake_word:` section:
-- **Hey Jarvis**: Primary wake word for this project
-- **Hey Mycroft**: Alternative wake word
-- **Okay Nabu**: Most reliable wake word according to community feedback
-- **Stop**: Special wake word for timer control (internal use)
-
-### Important Configuration Notes
-**ESPHome 2024.7.0+ Breaking Change**: Wake word models must use full GitHub URLs, not short names.
-
-✅ **Correct:**
-```yaml
-models:
-  - model: https://github.com/esphome/micro-wake-word-models/raw/main/models/v2/hey_jarvis.json
-    id: hey_jarvis
-```
-
-❌ **Incorrect (will not work):**
-```yaml
-models:
-  - model: hey_jarvis
-    id: hey_jarvis
-```
-
-### Voice Activity Detection (VAD)
-VAD is critical for wake word reliability. Always configure the VAD model:
-```yaml
-vad:
-  model: https://github.com/esphome/micro-wake-word-models/raw/main/models/v2/vad.json
-```
-
-## Troubleshooting Wake Word Issues
-
-### Wake Word Not Detecting
-1. **Check ESPHome Version**: The firmware needs ESPHome 2026.10.0 or later (see [ESPHome Version](#esphome-version))
-2. **Verify Model URLs**: All models must use full GitHub URLs (see above)
-3. **Enable VAD**: Voice Activity Detection must be configured
-4. **Check Logs**: Monitor ESPHome logs for "wake word detected" messages
-5. **Test Microphone**: Verify audio input is working (check gain_factor setting)
-6. **Adjust Sensitivity**: Use the "Wake word sensitivity" selector in Home Assistant
-
-### Common Issues
-- **Works once then stops**: Try restarting the device or toggling the use_wake_word switch
-- **Hey Jarvis unreliable**: Consider switching to "Okay Nabu" (reported as more reliable)
-- **No response after wake word**: Check that voice_assistant is properly connected to Home Assistant
-
-### Debug Commands
-```bash
-# View device logs
-bunx turbo serve --filter=home-assistant-voice-firmware
-
-# Or directly with ESPHome
-esphome logs home-assistant-voice.elevenlabs.yaml --verbose
-
-# Validate configuration
-esphome config home-assistant-voice.elevenlabs.yaml
-```
-
 ## Usage
 ```bash
 # Build the firmware
@@ -124,49 +55,6 @@ bunx turbo build --filter=home-assistant-voice-firmware
 # Flash and monitor (OTA or USB)
 bunx turbo serve --filter=home-assistant-voice-firmware
 ```
-
-## Development
-
-### Build System
-The firmware uses ESPHome with Turborepo monorepo conventions. Configuration files:
-- `home-assistant-voice.yaml`: Standard configuration with all wake words
-- `home-assistant-voice.elevenlabs.yaml`: ElevenLabs-optimized configuration
-- `home-assistant-voice.8mb.yaml`: Full-featured build for 8MB+ flash
-- `home-assistant-voice.factory.yaml`: Production build
-
-### ESPHome Version
-The firmware needs **ESPHome 2026.10.0 or later**. `esphome.min_version` in
-`home-assistant-voice.elevenlabs.yaml` enforces it, and no older release can build it.
-
-ESPHome 2026.10.0 (esphome/esphome#20072) keeps audio files in flash. As a result, every
-`media_player.files` id is now a `const audio::AudioFile *`, and that is also the type
-`play_file` takes. The `play_sound` script receives a file as a parameter, so its
-`sound_file` parameter is a pointer to const as well. ESPHome rejects a parameter type
-that contains a space, so `const` cannot be written out. The type is spelled
-`std::add_pointer_t<std::add_const_t<audio::AudioFile>>` instead. Do not loosen it back
-to `audio::AudioFile*`, which breaks every call site, and do not reach for `const_cast`.
-
-`initialize` (which `build` depends on) reads that `min_version`. It upgrades an
-installed ESPHome that is older and installs the latest release when none is present.
-Neither CI nor the setup scripts pin ESPHome, so a new release can break the build with
-no change in this repository, as 2026.10.0 did. When a fix relies on a newer ESPHome,
-raise `min_version` in the same change.
-
-### Configuration Files
-Each YAML file configures:
-- Hardware pins and I2S audio
-- Wake word models and VAD
-- Voice assistant integration
-- LED animations and feedback
-- Audio files and sounds
-
-### Firmware-Specific YAGNI Guidelines
-Apply YAGNI to embedded systems development:
-- **Hardware Abstraction**: Only abstract when supporting multiple platforms
-- **Protocol Support**: Don't implement protocols until needed
-- **Memory Management**: Keep simple until optimization is required
-- **Feature Flags**: Avoid options for unimplemented features
-- **Wake Word Models**: Only include models you'll actually use
 
 ## Testing
 

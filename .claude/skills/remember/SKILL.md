@@ -49,9 +49,13 @@ paths:
 
 **Always-on** — no frontmatter, loaded into every session. Reserve this for guidance with no meaningful file scope (commit format, command runner, security posture).
 
-**NEVER write to an `AGENTS.md` or `CLAUDE.md`, and never create one.** This repository has none: anything that would have gone into one is a rule scoped to that directory — for a project's notes, the section of `.claude/rules/<project>.md` (scoped to `<project>/**`) it belongs in.
+**NEVER write to an `AGENTS.md` or `CLAUDE.md`, and never create one.** This repository has none, and must not get one. Anything that would have gone into one is a rule scoped to that directory. A project's notes are rules named `.claude/rules/<project>-<topic>.md` and scoped to `<project>/**`, indexed from `.claude/rules/<project>.md`. See [`no-agents-md`](../../rules/no-agents-md.md).
 
 Prefer the narrowest glob that still catches every case. Broad-but-real (`**/*.ts`) beats always-on for anything code-specific.
+
+### One topic per rule
+
+**ALWAYS write one topic per rule, even when several rules share the same `paths`.** Never grow a monolith that covers a project's whole manual or a list of unrelated conventions. Two topics under one glob are two files with the same frontmatter. When a rule has grown several topics, split it, and link the pieces from the rule they came out of.
 
 ### Skill — only when a rule genuinely won't fit
 
@@ -67,9 +71,9 @@ A skill is a directory `.claude/skills/<name>/SKILL.md` with `name` and `descrip
 
 ## 3. Prefer editing over creating
 
-Search `.claude/rules/` before writing a new file. Adding a bullet or a section to an existing rule is almost always better than a new near-duplicate — overlapping rules drift apart and contradict each other.
+Search `.claude/rules/` before writing a new file. When a rule for the same topic exists, add to it rather than writing a near-duplicate — overlapping rules drift apart and contradict each other.
 
-Only create a new rule when the topic has no existing home, or when the new guidance needs a *different* path scope than any existing rule.
+Create a new rule when the topic has no existing home, even if an existing rule has the same path scope. A different topic is a different rule. When you add one, link it from the index it belongs to: `<project>.md` for a project's notes, or `repository-core-development-principles.md` for a repository-wide one.
 
 ## 4. Write it
 
@@ -81,7 +85,7 @@ Match the style of the existing rules:
 - Explain *why* in a line or two — a rule whose reason is clear survives edge cases
 - Keep it short; a rule nobody finishes reading isn't a rule
 
-Name the file after the topic, kebab-case: `.claude/rules/error-handling.md`.
+Name the file after the topic, kebab-case: `.claude/rules/error-handling.md`. A project's topic is prefixed with the project: `.claude/rules/vr-the-wake-word.md`.
 
 ## 5. Close the loop
 
@@ -99,4 +103,5 @@ Name the file after the topic, kebab-case: `.claude/rules/error-handling.md`.
 | "Never commit without running tests" | Always-on rule (+ hook if it must be enforced) |
 | "Every time you edit a file, run the linter" | Hook + rule |
 | "When I ask for a release, follow these 8 steps" | Skill (situational workflow, no path scope) |
+| "Document how the headset finds his spot" | New rule `vr-<topic>.md` scoped to `vr/**`, linked from `vr.md` — never an `AGENTS.md` |
 | "Rename this to `userName`" | Nothing — one-off edit |

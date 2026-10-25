@@ -44,7 +44,7 @@ import { logger } from '../../utils/logger.js';
  * for as long as it lasts, and the first raises what that costs — five sources asking at once rather
  * than one — without ruling it out: a stranger with a few proxies, Tor's exit nodes or several
  * tunnels of their own has five sources. What stands behind it is the Cloudflare rate limiting rule
- * in front of the tunnel (see **MCP Server Access** in `.claude/rules/mcp.md`), which turns away any one
+ * in front of the tunnel (see **MCP Server Access** in `.claude/rules/mcp-mcp-server-access.md`), which turns away any one
  * address's flood before it reaches this server, and the process-wide limit itself, which keeps what
  * such a stranger can spend on the key to those checks. A malformed id never gets as far as
  * ElevenLabs at all.

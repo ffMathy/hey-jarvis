@@ -1,0 +1,64 @@
+---
+paths:
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "**/*.js"
+  - "**/*.jsx"
+---
+
+# YAGNI (You Aren't Gonna Need It)
+
+> Part of [Clean Code](clean-code.md).
+
+**Build only what is required right now.** Don't speculate about future needs.
+
+Factory methods should be **opinionated with sensible defaults**, not extensive customization surfaces:
+
+```typescript
+// ✅ GOOD - Opinionated with defaults
+export const createAgent = (config: AgentConfig) => {
+  return new Agent({
+    ...config,
+    model: getModel('gemini-flash-latest'),
+    memory: getSharedMemory(),
+  });
+};
+
+// ❌ BAD - Too many options
+export const createAgent = (config: AgentConfig & {
+  customMemory?: Memory,
+  customModel?: Model,
+  customScorers?: Scorer[],
+  customProcessors?: Processor[],
+}) => { ... };
+```
+
+Add features ONLY when there is a concrete use case right now, multiple call sites show the same need, the cost of not having it is measurable, and you are actively building something that requires it.
+
+**Red flags** that signal a YAGNI violation: "we might need this in the future", "what if someone wants to…", "just in case we need to…", "it's more flexible if we…".
+
+## Remove options every caller sets the same way
+
+**ALWAYS remove an option, parameter or dependency once every real caller passes it the same value**, and hardcode that behaviour. That includes an option your own change has just made uniform: when you flip the last caller, delete the option in the same change. A default kept only so tests can choose the other branch is dead configuration. Rewrite those tests against the one behaviour that ships.
+
+```typescript
+// ❌ BAD - every caller passes false; true survives only in tests
+createJarvisSession({ ...deps, waitsForGreetingBeforeDialling: false });
+
+// ✅ GOOD - the session always dials behind the greeting; there is nothing to choose
+createJarvisSession(deps);
+```
+
+## Replace old code, never keep it behind a switch
+
+**NEVER keep the old implementation behind a flag, prop, query parameter, environment variable or fallback when you replace it.** Delete it in the same change. A kept-around path is code nobody runs, that every later change still has to carry and test, and it quietly becomes the thing that ships when the new path hiccups.
+
+```typescript
+// ❌ BAD - the 2D body survives behind three switches "just in case"
+<JarvisHologram body={process.env.EXPO_PUBLIC_HOLOGRAM_BODY === 'skia' || query.has('flat') ? 'skia' : 'gpu'} />
+
+// ✅ GOOD - the GPU body is the body; the 2D one is gone
+<JarvisHologram />
+```
+
+If the new code cannot run somewhere, say so and decide what that platform gets — do not keep the old code as a silent fallback.

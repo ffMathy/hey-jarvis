@@ -5,7 +5,7 @@ import { blockExternalRequests } from './external-requests';
  * Jarvis's body on the GPU, in the phone's web build: his body is drawn by `hologram/gpu` on a
  * canvas of its own (`hologram-body`), Screened onto Skia's picture of the rest of him
  * (`hologram-picture`). Where the browser cannot draw it, there is no body and the rest of him is
- * drawn all the same. See "His body on the GPU, on a phone and a watch" in `.claude/rules/hologram.md`.
+ * drawn all the same. See "His body on the GPU, on a phone and a watch" in `.claude/rules/hologram-his-body-on-the-gpu-on-a-phone-and-a-watch.md`.
  *
  * **Every test here runs on a stopped clock.** Playwright's fake clock replaces the page's
  * `requestAnimationFrame`, timers, `Date` and `performance`, and the page is stopped before sample
