@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.20.3](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.20.2...mcp-v2.20.3) (2026-10-25)
+
+
+### Bug Fixes
+
+* **agents:** tell agents the time in the household's time zone ([#998](https://github.com/ffMathy/hey-jarvis/issues/998)) ([d020d26](https://github.com/ffMathy/hey-jarvis/commit/d020d263de3621e7279d27b38d8bba67f986da1a))
+* **coding:** never ask sir about fixes for failed evaluations ([#997](https://github.com/ffMathy/hey-jarvis/issues/997)) ([47d89e4](https://github.com/ffMathy/hey-jarvis/commit/47d89e4ae54d6fc0232dc0fa11618e1793a3ecd0))
+
 ## [2.20.2](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.20.1...mcp-v2.20.2) (2026-10-25)
 
 
