@@ -6,6 +6,7 @@ import { CredentialsStorage } from './credentials.js';
 import { DeviceStateStorage } from './device-state.js';
 import { EmailStateStorage } from './email-state.js';
 import { EntityNoiseBaselineStorage } from './entity-noise-baseline.js';
+import { ImportantChangeStorage } from './important-changes.js';
 import { withFallbacks } from './observability.js';
 import { ObservabilityLogStorage } from './observability-logs.js';
 import { SQLITE_BUSY_TIMEOUT_MS } from './sqlite-client.js';
@@ -224,6 +225,16 @@ export async function getEntityNoiseBaselineStorage(): Promise<EntityNoiseBaseli
   return entityNoiseBaselineStorageInstance;
 }
 
+let importantChangeStorageInstance: ImportantChangeStorage | null = null;
+
+export async function getImportantChangeStorage(): Promise<ImportantChangeStorage> {
+  if (!importantChangeStorageInstance) {
+    await ensureDatabaseDirectory();
+    importantChangeStorageInstance = new ImportantChangeStorage(getSqlDatabasePath());
+  }
+  return importantChangeStorageInstance;
+}
+
 export { CredentialsStorage } from './credentials.js';
 export { type DeviceStateChange, DeviceStateStorage, type StoredDeviceState } from './device-state.js';
 export { EmailStateStorage, type LastEmailState } from './email-state.js';
@@ -232,6 +243,7 @@ export {
   EntityNoiseBaselineStorage,
   type NoiseAnalysisResult,
 } from './entity-noise-baseline.js';
+export { type ImportantChange, ImportantChangeStorage } from './important-changes.js';
 export { ObservabilityLogStorage } from './observability-logs.js';
 export {
   type EmbeddedSubscription,

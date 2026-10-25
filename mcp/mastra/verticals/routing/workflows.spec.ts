@@ -12,6 +12,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { getImportantChangeStorage } from '../../storage/index.js';
 import { currentConversationId } from '../../utils/conversation.js';
 import { onLiveEvent } from '../../utils/live-events.js';
 import { forgetPointing, reportPointing } from '../../utils/pointing.js';
@@ -153,7 +154,10 @@ function resultOf<T>(outcome: WorkflowResult<T>): T {
   return outcome.result;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  // The store is a real SQLite file shared across runs, so news another run left behind must not
+  // turn up in the acknowledgements below.
+  await (await getImportantChangeStorage()).clear();
   progressBySessionId.clear();
   setRoutingRuntime(fakeRuntime);
   // A poll with nothing to report blocks until its deadline by design. That is five seconds
@@ -271,6 +275,71 @@ describe('routePromptWorkflow', () => {
     expect(startedConversations.slice(-2)).toEqual(['conv_kitchen', undefined]);
   });
 
+  it('tells sir the news the reactor kept for him while his request runs, and only once', async () => {
+    const storage = await getImportantChangeStorage();
+    await storage.add({
+      summary: 'Your parcel arrives on Monday 26 October between 14:00 and 16:00.',
+      source: 'email',
+    });
+
+    const first = resultOf(await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the lights', async: false }));
+    const second = resultOf(await runWorkflow(routePromptWorkflow, { userQuery: 'turn off the lights', async: false }));
+
+    expect(first.instructions).toContain('Your parcel arrives on Monday 26 October between 14:00 and 16:00.');
+    expect(first.instructions).toContain('By the way, sir');
+    // Said before the poll, which is what puts it in the silence while the lights come on, and
+    // without undoing the rest of the loop.
+    expect(first.instructions).not.toContain('Say nothing to the user before that call');
+    expect(first.instructions).toContain('Call getNextInstructionsWorkflow now');
+    expect(first.instructions).toContain('call it again straight away');
+    expect(second.instructions).not.toContain('parcel');
+    expect(second.instructions).toContain('Say nothing to the user before that call');
+  });
+
+  it('tells the news after the answer when the request finished before the call returned', async () => {
+    const storage = await getImportantChangeStorage();
+    await storage.add({ summary: 'Your parcel arrives on Monday 26 October.', source: 'email' });
+    setRoutingRuntime({
+      ...fakeRuntime,
+      async start(sessionId, userQuery) {
+        await fakeRuntime.start(sessionId, userQuery);
+        delegate(sessionId, 'internetOfThings', 'Called Turn on on Living room ceiling. 1 device changed state.');
+        endPlanRun(progressFor(sessionId));
+      },
+    });
+
+    const outcome = resultOf(
+      await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the living room light', async: false }),
+    );
+
+    expect(outcome.instructions).toContain('Your parcel arrives on Monday 26 October.');
+    expect(outcome.instructions).toContain('Straight after your answer or confirmation');
+    // The rest of the closing report still holds: the request is over, and so is the call.
+    expect(outcome.instructions).toContain('All tasks have completed');
+    expect(outcome.instructions).toContain('end_call');
+  });
+
+  it('tells one piece of news per request, and keeps the rest for the silences after it', async () => {
+    const storage = await getImportantChangeStorage();
+    await storage.add({ summary: 'The bin collection moved to Thursday 29 October.', source: 'calendar' });
+    await storage.add({ summary: 'Your parcel arrives on Monday 26 October.', source: 'email' });
+
+    const outcome = resultOf(await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the lights', async: false }));
+
+    expect(outcome.instructions).toContain('Your parcel arrives on Monday 26 October.');
+    expect(outcome.instructions).not.toContain('bin collection');
+  });
+
+  it('tells the news before ending a fire-and-forget call', async () => {
+    const storage = await getImportantChangeStorage();
+    await storage.add({ summary: 'The bin collection moved to Thursday 29 October.', source: 'calendar' });
+
+    const outcome = resultOf(await runWorkflow(routePromptWorkflow, { userQuery: 'turn the lights off', async: true }));
+
+    expect(outcome.instructions).toContain('The bin collection moved to Thursday 29 October.');
+    expect(outcome.instructions).toContain('Then end the call.');
+  });
+
   it('defaults to one shared session when the caller does not identify itself', async () => {
     const outcome = resultOf(
       await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false }),
@@ -281,6 +350,44 @@ describe('routePromptWorkflow', () => {
 });
 
 describe('getNextInstructionsWorkflow', () => {
+  it('fills each poll that runs out with nothing to report with the next piece of news', async () => {
+    const storage = await getImportantChangeStorage();
+    await storage.add({ summary: 'The bin collection moved to Thursday 29 October.', source: 'calendar' });
+    await storage.add({ summary: 'Your parcel arrives on Monday 26 October.', source: 'email' });
+    await storage.add({ summary: 'Your electricity bill is due on Friday 30 October.', source: 'email' });
+
+    const acknowledgement = resultOf(
+      await runWorkflow(routePromptWorkflow, { userQuery: 'plan my week', async: false }),
+    );
+    startDelegation(DEFAULT_ROUTING_SESSION_ID, 'calendar');
+    const first = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+    const second = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+    const third = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(acknowledgement.instructions).toContain('Your electricity bill is due on Friday 30 October.');
+    expect(first.instructions).toContain('Still processing');
+    expect(first.instructions).toContain('Your parcel arrives on Monday 26 October.');
+    expect(first.instructions).toContain('By the way, sir');
+    expect(first.instructions).toContain('call getNextInstructionsWorkflow again');
+    expect(second.instructions).toContain('The bin collection moved to Thursday 29 October.');
+    // Nothing left to tell, so the wait is silent again.
+    expect(third.instructions).toContain('Say nothing to the user in the meantime');
+  });
+
+  it('leaves the news for a later silence when a poll has results to report', async () => {
+    const storage = await getImportantChangeStorage();
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    await storage.add({ summary: 'Your parcel arrives on Monday 26 October.', source: 'email' });
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
+    startDelegation(DEFAULT_ROUTING_SESSION_ID, 'calendar');
+
+    const report = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+    const wait = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(report.instructions).not.toContain('parcel');
+    expect(wait.instructions).toContain('Your parcel arrives on Monday 26 October.');
+  });
+
   it('reports a delegation that has finished', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
     delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');

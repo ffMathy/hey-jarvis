@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
+import { importantChangeTools } from './important-changes.js';
 import { registerStateChangeNotification } from './state-change-notifier.js';
 import { subscriptionTools } from './subscription-tools.js';
 import { stateChangeNotificationWorkflow } from './workflows.js';
@@ -75,6 +76,7 @@ export const registerStateChange = createTool({
 export const synapseTools = {
   registerStateChange,
   ...subscriptionTools,
+  ...importantChangeTools,
 };
 
 export {

@@ -1,8 +1,10 @@
 import { upperFirst } from 'lodash-es';
 import z from 'zod';
+import type { ImportantChange } from '../../storage/index.js';
 import { createStep, createWorkflow } from '../../utils';
 import { withinConversation } from '../../utils/conversation.js';
 import { withPointing } from '../../utils/pointing.js';
+import { claimImportantChangeToMention } from '../synapse/important-changes.js';
 import {
   DEFAULT_ROUTING_SESSION_ID,
   getRoutingRuntime,
@@ -163,6 +165,10 @@ const CONVERSATION_CONTROL_EXCEPTION =
   'end_call tool and do not send it through routePromptWorkflow. Nothing on the other side of that ' +
   'tool can hang up a phone call, so routing it wastes his time and leaves him on an open line.';
 
+/** Why the poll goes out before a word is said. Replaced, word for word, when there is news to tell. */
+const SAY_NOTHING_BEFORE_POLLING =
+  'Say nothing to the user before that call — he has already heard you say you are on it.';
+
 /**
  * Instruction strings handed back to Jarvis. They are part of the outward contract —
  * `elevenlabs/src/assets/agent-prompt.md` points the agent at this field — so treat them as
@@ -200,11 +206,78 @@ const INSTRUCTIONS = {
   // response, and treat a failed call as something to retry rather than as the end of the
   // request.
   poll:
-    'The request is now being processed in the background. Call getNextInstructionsWorkflow now to check on the status and receive the next instructions, and keep doing exactly what each response tells you until one of them says every task has completed. Say nothing to the user before that call — he has already heard you say you are on it. If a call hands you an error instead of instructions, call it again straight away and say nothing about it — those failures are transient, and only when several attempts in a row have failed should you tell the user plainly what you could not find out. An error is never the end of the request. ' +
+    `The request is now being processed in the background. Call getNextInstructionsWorkflow now to check on the status and receive the next instructions, and keep doing exactly what each response tells you until one of them says every task has completed. ${SAY_NOTHING_BEFORE_POLLING} If a call hands you an error instead of instructions, call it again straight away and say nothing about it — those failures are transient, and only when several attempts in a row have failed should you tell the user plainly what you could not find out. An error is never the end of the request. ` +
     CONVERSATION_CONTROL_EXCEPTION,
   stillProcessing:
     'Still processing your request. Call getNextInstructionsWorkflow again to wait a bit longer for it to complete. Say nothing to the user in the meantime — he has already been told you are on it, and has no use for a running commentary on the waiting.',
 } as const;
+
+/**
+ * The news the State Change Reactor kept for sir (see `synapse/important-changes.ts`), worked into the
+ * silences of whatever he has just asked for.
+ *
+ * Those silences are the moment for it: the acknowledgement and every poll that runs out with nothing
+ * to report arrive while the work runs, and the time they are read into is otherwise spent waiting.
+ * So sir asks for the lights and hears, while they come on, that his parcel arrives between two and four.
+ *
+ * One piece of news per silence. A list read out at once buries what he asked for; a slow request
+ * has more silences, and each one that would otherwise be dead air carries the next piece instead.
+ *
+ * It is an aside, and said as one. It has nothing to do with what he asked, so it is introduced as
+ * such rather than run into the answer, and it is said once — a change is counted as told the moment
+ * it is handed over, so no later report carries it again. Something that is already over by the time
+ * it is read is left out: it was noted up to a day ago.
+ */
+function importantChangeAside(importantChange: ImportantChange): string {
+  return (
+    `There is news he has not heard yet, which has nothing to do with what he asked: ${importantChange.summary} ` +
+    'Tell him in a sentence, in your own voice, as an aside — "By the way, sir, …" — unless what it describes is ' +
+    'already over, in which case leave it out. Say nothing else: he has already heard you say you are on it.'
+  );
+}
+
+/** What `routePromptWorkflow` answers with: run in the background, or poll — with any news worked in. */
+export function routeInstructions(async: boolean, importantChange: ImportantChange | undefined): string {
+  if (!importantChange) {
+    return async ? INSTRUCTIONS.async : INSTRUCTIONS.poll;
+  }
+
+  const aside = importantChangeAside(importantChange);
+  if (async) {
+    return `The request is being processed in the background and will complete on its own. ${aside} Then end the call.`;
+  }
+  return INSTRUCTIONS.poll.replace(SAY_NOTHING_BEFORE_POLLING, `Before that call: ${aside}`);
+}
+
+/**
+ * A closing report with the news worked in, for a request that finished before the route call
+ * returned and so never had a silence to tell it in.
+ *
+ * Said straight after the answer, before whatever the report asks for last — a hang-up, a question —
+ * so it neither runs into the answer nor keeps the line open after it.
+ */
+function withImportantChangeAfterAnswer(instructions: string, importantChange: ImportantChange | undefined): string {
+  if (!importantChange) {
+    return instructions;
+  }
+  return (
+    `There is also news he has not heard yet, which has nothing to do with what he asked: ${importantChange.summary} ` +
+    'Straight after your answer or confirmation, tell him in a sentence, in your own voice, as an aside — "By the ' +
+    'way, sir, …" — unless what it describes is already over, in which case leave it out. Everything below still ' +
+    `applies after it. ${instructions}`
+  );
+}
+
+/** What a poll that ran out with nothing to report answers with — with the next piece of news, if any. */
+function stillProcessingInstructions(importantChange: ImportantChange | undefined): string {
+  if (!importantChange) {
+    return INSTRUCTIONS.stillProcessing;
+  }
+  return (
+    `Still processing your request. ${importantChangeAside(importantChange)} Then call ` +
+    'getNextInstructionsWorkflow again to wait a bit longer for it to complete.'
+  );
+}
 
 /**
  * How to speak a result, by the style the planner gave the request (see `RESPONSE_STYLES`).
@@ -837,17 +910,20 @@ const routePromptStep = createStep({
     // Started inside the conversation's scope, so the planner, the plan run and everything it
     // delegates to -- all of which outlive this step -- are traced under it.
     const runtime = getRoutingRuntime();
-    await withinConversation(inputData.conversationId, () =>
-      runtime.start(sessionId, withPointing(inputData.userQuery)),
-    );
+    const [, importantChange] = await Promise.all([
+      withinConversation(inputData.conversationId, () => runtime.start(sessionId, withPointing(inputData.userQuery))),
+      claimImportantChangeToMention(),
+    ]);
 
-    if (inputData.async) {
-      return { instructions: INSTRUCTIONS.async, sessionId };
+    if (!inputData.async && (await runtime.finishesWithin(sessionId, ROUTE_ANSWER_WAIT_MS))) {
+      const report = buildClosingReport(await runtime.poll(sessionId));
+      return {
+        ...report,
+        instructions: withImportantChangeAfterAnswer(report.instructions, importantChange),
+        sessionId,
+      };
     }
-    if (await runtime.finishesWithin(sessionId, ROUTE_ANSWER_WAIT_MS)) {
-      return { ...buildClosingReport(await runtime.poll(sessionId)), sessionId };
-    }
-    return { instructions: INSTRUCTIONS.poll, sessionId };
+    return { instructions: routeInstructions(inputData.async, importantChange), sessionId };
   },
 });
 
@@ -912,7 +988,7 @@ async function waitForReport(
 
     if (pastDeadline) {
       return {
-        instructions: INSTRUCTIONS.stillProcessing,
+        instructions: stillProcessingInstructions(await claimImportantChangeToMention()),
         taskIdsInProgress: snapshot.inProgress,
       };
     }

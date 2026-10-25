@@ -1,5 +1,10 @@
 // Synapse vertical exports
 export { getStateChangeReactorAgent } from './agent.js';
+export {
+  claimImportantChangeToMention,
+  importantChangeTools,
+  noteImportantChange,
+} from './important-changes.js';
 export { describeStateChange, type StateChange } from './state-change.js';
 export { getStateChangeClassifier } from './state-change-classifier.js';
 export {
