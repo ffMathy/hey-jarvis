@@ -62,56 +62,64 @@ interface WhereClause {
   args: Array<string | number>;
 }
 
-function buildWhereClause(filters: LogsFilter | undefined): WhereClause {
-  const conditions: string[] = [];
-  const args: Array<string | number> = [];
+/** One condition of a WHERE clause, with the arguments its placeholders take. */
+interface Condition {
+  sql: string;
+  args: Array<string | number>;
+}
 
-  if (filters?.timestamp?.start) {
-    conditions.push(`timestamp ${filters.timestamp.startExclusive ? '>' : '>='} ?`);
-    args.push(filters.timestamp.start.getTime());
-  }
-  if (filters?.timestamp?.end) {
-    conditions.push(`timestamp ${filters.timestamp.endExclusive ? '<' : '<='} ?`);
-    args.push(filters.timestamp.end.getTime());
-  }
+/** Conditions on the columns pulled out beside the stored record. */
+function columnConditions(filters: LogsFilter): Condition[] {
+  const conditions: Condition[] = [];
+  const { timestamp, level, traceId, spanId } = filters;
 
-  if (filters?.level !== undefined) {
-    const levels = Array.isArray(filters.level) ? filters.level : [filters.level];
-    conditions.push(`level IN (${levels.map(() => '?').join(', ')})`);
-    args.push(...levels);
+  if (timestamp?.start) {
+    conditions.push({ sql: `timestamp ${timestamp.startExclusive ? '>' : '>='} ?`, args: [timestamp.start.getTime()] });
   }
-
-  if (filters?.traceId !== undefined) {
-    conditions.push('trace_id = ?');
-    args.push(filters.traceId);
+  if (timestamp?.end) {
+    conditions.push({ sql: `timestamp ${timestamp.endExclusive ? '<' : '<='} ?`, args: [timestamp.end.getTime()] });
   }
-  if (filters?.spanId !== undefined) {
-    conditions.push('span_id = ?');
-    args.push(filters.spanId);
+  if (level !== undefined) {
+    const levels = Array.isArray(level) ? level : [level];
+    conditions.push({ sql: `level IN (${levels.map(() => '?').join(', ')})`, args: levels });
   }
-
-  for (const field of JSON_EQUALITY_FILTERS) {
-    const value = filters?.[field];
-    if (value !== undefined) {
-      conditions.push(`json_extract(record, '$.${field}') = ?`);
-      args.push(value);
-    }
+  if (traceId !== undefined) {
+    conditions.push({ sql: 'trace_id = ?', args: [traceId] });
+  }
+  if (spanId !== undefined) {
+    conditions.push({ sql: 'span_id = ?', args: [spanId] });
   }
 
-  for (const value of [filters?.executionSource, filters?.source]) {
-    if (value !== undefined) {
-      conditions.push(`${EXECUTION_SOURCE} = ?`);
-      args.push(value);
-    }
-  }
+  return conditions;
+}
+
+/** Conditions on fields kept only inside the stored record's JSON. */
+function recordConditions(filters: LogsFilter): Condition[] {
+  const equalities = JSON_EQUALITY_FILTERS.flatMap((field) => {
+    const value = filters[field];
+    return value === undefined ? [] : [{ sql: `json_extract(record, '$.${field}') = ?`, args: [value] }];
+  });
+
+  const sources = [filters.executionSource, filters.source].flatMap((value) =>
+    value === undefined ? [] : [{ sql: `${EXECUTION_SOURCE} = ?`, args: [value] }],
+  );
 
   // A log must carry every tag asked for, not just one of them.
-  for (const tag of filters?.tags ?? []) {
-    conditions.push(`EXISTS (SELECT 1 FROM json_each(record, '$.tags') WHERE json_each.value = ?)`);
-    args.push(tag);
-  }
+  const tags = (filters.tags ?? []).map((tag) => ({
+    sql: `EXISTS (SELECT 1 FROM json_each(record, '$.tags') WHERE json_each.value = ?)`,
+    args: [tag],
+  }));
 
-  return { sql: conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '', args };
+  return [...equalities, ...sources, ...tags];
+}
+
+function buildWhereClause(filters: LogsFilter | undefined): WhereClause {
+  const conditions = filters ? [...columnConditions(filters), ...recordConditions(filters)] : [];
+
+  return {
+    sql: conditions.length > 0 ? `WHERE ${conditions.map((condition) => condition.sql).join(' AND ')}` : '',
+    args: conditions.flatMap((condition) => condition.args),
+  };
 }
 
 function parseRecord(json: string): LogRecord {
