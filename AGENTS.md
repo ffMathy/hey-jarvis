@@ -232,12 +232,17 @@ seconds since 2025-01-01, which is the one clock both entry points can share
 without eventually colliding. `docs/play-store.md` §9 has the tracks, the gates
 and the failure.
 
-What counts as releasable is `changelog-sections` in
-`.github/release-please-config.json`: `feat`, `fix`, `perf`, `refactor` and
-`docs` cut a release, and everything else — `test`, `build`, `ci`, `chore` —
-lands on `main` without one. A batch made up only of those types produces no
-release pull request at all, and the run says `No user facing commits found
-since <sha> - skipping`. That is the expected outcome, not a broken workflow.
+Every merge to `main` cuts a release, whatever its type. Release Please skips a
+batch whose changelog would be empty (`No user facing commits found since <sha>
+- skipping`), and a type whose section in `changelog-sections` of
+`.github/release-please-config.json` is hidden contributes nothing to it — so
+every type commitlint accepts has a visible section there. Hiding one again, or
+leaving a new type out, brings back merges that land on `main` without a
+release. `feat` bumps the minor version, a `!` the major, and every other type
+the patch.
+
+A commit that is not a conventional commit at all still releases nothing,
+because Release Please cannot place it in any section — see below.
 
 The config is checked against Release Please's schema through its `$schema`
 key, which is worth keeping: the key was previously spelled `changelog-types`,
@@ -246,7 +251,7 @@ which the schema does not define, so the whole block was silently ignored and
 
 ### A pull request body can cost you the release
 
-A releasable type is not enough on its own. Merges here are squashes, and the
+A conventional subject is not enough on its own. Merges here are squashes, and the
 squash commit's body is the pull request description — so the description is
 part of the commit message that Release Please parses, and it parses the whole
 message, not just the subject. One unparseable line and the commit is dropped

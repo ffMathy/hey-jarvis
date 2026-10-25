@@ -469,7 +469,7 @@ Worth knowing, because it is the part that looks like magic:
 | `Precondition check failed.` **after** `Successfully uploaded 1 artifacts` on a production track | the upload and the service account are fine and Play is refusing to *commit* the release. Google sends no detail at all — this bare sentence is the whole message. This is what release 2.2.0 hit, and it is why a release goes to the closed test instead: see §9 |
 | `Track "wear:alpha" could not be found` | there is no Wear OS closed track. Read the list the error prints; of the `wear:` tracks that exist, only `wear:internal` is not public, which is where the watch goes from a release — see §9 |
 | `Your app cannot be released to production` / the production track is missing from the error's track list | the developer account has not been granted production access yet. It is a closed test with twelve testers for fourteen days and then an application — see §9 |
-| A release on `main` published nothing at all | Release Please cut no release, so there was nothing to publish. A batch of only `chore`, `ci`, `build` and `test` commits does that by design — the run says `No user facing commits found since <sha> - skipping` |
+| A release on `main` published nothing at all | Release Please cut no release, so there was nothing to publish. Every conventional commit type releases, so the run saying `No user facing commits found since <sha> - skipping` means nothing merged since the last release counted — a hidden section in `.github/release-please-config.json`, a non-conventional subject, or a pull request body line that reads as a commit header (see *A pull request body can cost you the release* in the root `AGENTS.md`) |
 
 ---
 

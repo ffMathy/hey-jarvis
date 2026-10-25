@@ -402,8 +402,8 @@ shopping list" reads the photo before `shoppingList` in the same chain. Both nee
 only under `turbo test:integration`.
 
 **None of this reaches the live agent until a release deploys it.** `bunx turbo deploy` runs in the
-release workflow, and only when a releasable commit type (`feat`, `fix`, `perf`, `refactor`, `docs`)
-cuts a release. Until then the phone's camera button sends photos to an agent whose prompt has never
+release workflow, which every merge to `main` triggers once Release Please has cut its release.
+Until then the phone's camera button sends photos to an agent whose prompt has never
 heard of them.
 
 ## The headset
