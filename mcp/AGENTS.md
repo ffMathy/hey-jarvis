@@ -887,6 +887,14 @@ costs tokens once Synapse reasons over the batch. Events are deduplicated by id,
 without tearing down the watch. A finished turn is published once, when its `session.status_idle` is first seen, and
 the watcher waits for it before handling the session's next event, so a session is never published twice at once.
 
+**Following a Session in Mastra Studio:**
+Each event is also recorded in the trace of whatever started the session, as an event span named
+`claude session: <event type>` under the span it was started from — the `start-coding-session-tool` step of an
+`implementFeatureWorkflow` run, or the `startCodingSession` tool call of an agent. Open that run's trace in Studio to
+read Claude's messages, in full, as the session writes them. The run itself finishes as soon as the session starts;
+event spans are exported the moment they are made, so they still reach its trace. `createToolStep` hands its step's
+`tracingContext` to the tool for this, so anything a tool step traces lands under that step.
+
 **Environment Requirements:**
 
 | Environment variable | 1Password reference | What it is |

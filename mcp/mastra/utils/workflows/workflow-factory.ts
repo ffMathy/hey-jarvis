@@ -407,7 +407,8 @@ export function createToolStep<
           ...(params.inputData as Record<string, unknown>),
           ...(config.inputOverrides ?? {}),
         } as TToolInput,
-        { mastra: params.mastra },
+        // The step's span goes along, so whatever the tool traces lands under this step in the run's trace.
+        { mastra: params.mastra, tracingContext: params.tracingContext },
       ),
   });
 }
