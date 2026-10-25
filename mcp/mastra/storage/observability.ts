@@ -59,7 +59,10 @@ export interface ObservabilityFallbacks {
  * @param fallbacks - The stores backing the feedback and log methods listed above
  * @returns An observability store delegating each method to the right one of the three
  */
-export function withFallbacks(durable: ObservabilityStore, { feedback, logs }: ObservabilityFallbacks): ObservabilityStore {
+export function withFallbacks(
+  durable: ObservabilityStore,
+  { feedback, logs }: ObservabilityFallbacks,
+): ObservabilityStore {
   return new Proxy(durable, {
     get(target, property) {
       const source: object = FEEDBACK_METHODS.has(property) ? feedback : LOG_METHODS.has(property) ? logs : target;

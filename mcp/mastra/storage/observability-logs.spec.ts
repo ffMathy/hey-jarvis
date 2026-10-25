@@ -83,7 +83,9 @@ describe('listing', () => {
   it('pages newest first by default', async () => {
     const start = Date.now();
     await logs.batchCreateLogs({
-      logs: [1, 2, 3].map((second) => logRecord({ message: `log ${second}`, timestamp: new Date(start + second * 1000) })),
+      logs: [1, 2, 3].map((second) =>
+        logRecord({ message: `log ${second}`, timestamp: new Date(start + second * 1000) }),
+      ),
     });
 
     const firstPage = await logs.listLogs({ pagination: { page: 0, perPage: 2 } });

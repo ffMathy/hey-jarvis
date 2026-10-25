@@ -227,12 +227,12 @@ export async function getEntityNoiseBaselineStorage(): Promise<EntityNoiseBaseli
 export { CredentialsStorage } from './credentials.js';
 export { type DeviceStateChange, DeviceStateStorage, type StoredDeviceState } from './device-state.js';
 export { EmailStateStorage, type LastEmailState } from './email-state.js';
-export { ObservabilityLogStorage } from './observability-logs.js';
 export {
   type EntityNoiseBaseline,
   EntityNoiseBaselineStorage,
   type NoiseAnalysisResult,
 } from './entity-noise-baseline.js';
+export { ObservabilityLogStorage } from './observability-logs.js';
 export {
   type EmbeddedSubscription,
   type NewSubscription,

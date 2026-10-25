@@ -18,8 +18,8 @@ import {
   type ListLogsArgs,
   type ListLogsResponse,
   type LogRecord,
-  listLogsArgsSchema,
   type LogsFilter,
+  listLogsArgsSchema,
 } from '@mastra/core/storage';
 import { openSqliteClient } from './sqlite-client.js';
 
