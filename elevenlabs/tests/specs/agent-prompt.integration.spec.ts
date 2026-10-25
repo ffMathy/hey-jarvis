@@ -620,7 +620,9 @@ describe('Agent Prompt Specifications', () => {
             const messages = conversation.getMessages();
             const conversationId = conversationIdOf(messages);
             const routes = routingCallsOf(messages);
-            expect(conversationId).toBeDefined();
+            if (!conversationId) {
+              throw new Error('ElevenLabs never sent the conversation id this call was opened with');
+            }
             expect(routes.length).toBeGreaterThan(routesBeforeAnalysis);
             for (const route of routes) {
               expect(route.parameters?.conversationId).toBe(conversationId);
