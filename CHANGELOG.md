@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.28.3](https://github.com/ffMathy/hey-jarvis/compare/root-v4.28.2...root-v4.28.3) (2026-10-25)
+
+
+### Bug Fixes
+
+* **mcp:** store observability logs so Studio's logs page works ([#994](https://github.com/ffMathy/hey-jarvis/issues/994)) ([f0d7dce](https://github.com/ffMathy/hey-jarvis/commit/f0d7dce5d187f36739f76b053be1703d7d1dda71))
+
 ## [4.28.2](https://github.com/ffMathy/hey-jarvis/compare/root-v4.28.1...root-v4.28.2) (2026-10-24)
 
 
