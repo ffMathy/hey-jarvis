@@ -25,41 +25,41 @@ describe('ImportantChangeStorage', () => {
   it('hands a change over once, and never again', async () => {
     await storage.add({ summary: 'Your parcel arrives at 14:00.', source: 'email' }, minutesBefore(5));
 
-    const first = await storage.claimUnmentioned(3, now);
-    const second = await storage.claimUnmentioned(3, now);
+    const first = await storage.claimNewestUnmentioned(now);
+    const second = await storage.claimNewestUnmentioned(now);
 
-    expect(first.map((change) => change.summary)).toEqual(['Your parcel arrives at 14:00.']);
-    expect(first[0]?.source).toBe('email');
-    expect(second).toEqual([]);
+    expect(first?.summary).toBe('Your parcel arrives at 14:00.');
+    expect(first?.source).toBe('email');
+    expect(second).toBeUndefined();
   });
 
-  it('hands over the newest first, and keeps what is past the limit for the next request', async () => {
+  it('hands over one change at a time, newest first', async () => {
     await storage.add({ summary: 'oldest', source: 'email' }, minutesBefore(30));
     await storage.add({ summary: 'newest', source: 'email' }, minutesBefore(10));
     await storage.add({ summary: 'middle', source: 'email' }, minutesBefore(20));
 
-    const first = await storage.claimUnmentioned(2, now);
-    const second = await storage.claimUnmentioned(2, now);
+    const claimed = [
+      await storage.claimNewestUnmentioned(now),
+      await storage.claimNewestUnmentioned(now),
+      await storage.claimNewestUnmentioned(now),
+      await storage.claimNewestUnmentioned(now),
+    ];
 
-    expect(first.map((change) => change.summary)).toEqual(['newest', 'middle']);
-    expect(second.map((change) => change.summary)).toEqual(['oldest']);
+    expect(claimed.map((change) => change?.summary)).toEqual(['newest', 'middle', 'oldest', undefined]);
   });
 
   it('lets a change lapse after a day, told or not', async () => {
     const aDayAndAMinute = IMPORTANT_CHANGE_TTL_MS / 60_000 + 1;
     await storage.add({ summary: 'stale', source: 'weather' }, minutesBefore(aDayAndAMinute));
-    await storage.add({ summary: 'fresh', source: 'weather' }, minutesBefore(60));
 
-    const claimed = await storage.claimUnmentioned(3, now);
-
-    expect(claimed.map((change) => change.summary)).toEqual(['fresh']);
+    expect(await storage.claimNewestUnmentioned(now)).toBeUndefined();
   });
 
-  it('never hands one change to two requests arriving together', async () => {
+  it('never hands one change to two polls arriving together', async () => {
     await storage.add({ summary: 'only once', source: 'calendar' }, minutesBefore(1));
 
-    const [first, second] = await Promise.all([storage.claimUnmentioned(3, now), storage.claimUnmentioned(3, now)]);
+    const claimed = await Promise.all([storage.claimNewestUnmentioned(now), storage.claimNewestUnmentioned(now)]);
 
-    expect([...first, ...second].map((change) => change.summary)).toEqual(['only once']);
+    expect(claimed.filter((change) => change !== undefined).map((change) => change.summary)).toEqual(['only once']);
   });
 });

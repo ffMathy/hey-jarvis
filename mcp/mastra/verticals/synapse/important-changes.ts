@@ -13,15 +13,10 @@ import { createTool } from '../../utils/tool-factory.js';
  * `routePromptWorkflow` hands it over while his request runs: he asks for the lights, and hears about
  * the parcel while they come on.
  *
- * Each change is mentioned once. A day of "and your parcel arrives today" on every request would be
- * noise, and a change he has heard is one he knows.
+ * One piece of news is mentioned at a time -- in the acknowledgement of a request, and in each poll
+ * that runs out with nothing to report -- and each is mentioned once. A day of "and your parcel arrives
+ * today" on every request would be noise, and a change he has heard is one he knows.
  */
-
-/**
- * How many changes one request brings up. The rest wait for the next one: a request is about what
- * he asked, and a list of news read out on top of it buries the answer.
- */
-export const MAXIMUM_IMPORTANT_CHANGES_PER_REQUEST = 3;
 
 export const noteImportantChange = createTool({
   id: 'noteImportantChange',
@@ -58,19 +53,19 @@ export const importantChangeTools = {
 };
 
 /**
- * Takes the changes sir has not heard about yet, newest first, and counts them as told.
+ * Takes the newest change sir has not heard about yet, if there is one, and counts it as told.
  *
  * Never throws. The news is an aside to whatever he asked for, so a storage failure costs him the
  * aside and nothing else.
  */
-export async function claimImportantChangesToMention(): Promise<ImportantChange[]> {
+export async function claimImportantChangeToMention(): Promise<ImportantChange | undefined> {
   try {
     const storage = await getImportantChangeStorage();
-    return await storage.claimUnmentioned(MAXIMUM_IMPORTANT_CHANGES_PER_REQUEST);
+    return await storage.claimNewestUnmentioned();
   } catch (error) {
-    logger.warn('Could not read the important changes to mention; carrying on without them', {
+    logger.warn('Could not read the important change to mention; carrying on without it', {
       error: error instanceof Error ? error.message : String(error),
     });
-    return [];
+    return undefined;
   }
 }

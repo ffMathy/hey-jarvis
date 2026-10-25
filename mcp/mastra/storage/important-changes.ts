@@ -68,12 +68,12 @@ export class ImportantChangeStorage {
   }
 
   /**
-   * Hands over the changes sir has not been told about yet, newest first, and marks them told.
+   * Hands over the newest change sir has not been told about yet, and marks it told.
    *
-   * One statement, so two requests arriving together cannot both claim the same change and have
-   * it said twice. Anything past `limit` stays for the next request.
+   * One statement, so two polls arriving together cannot both claim the same change and have it
+   * said twice. The rest stay for the next silence.
    */
-  async claimUnmentioned(limit: number, now = new Date()): Promise<ImportantChange[]> {
+  async claimNewestUnmentioned(now = new Date()): Promise<ImportantChange | undefined> {
     await this.initialize();
 
     const oldestWorthMentioning = new Date(now.getTime() - IMPORTANT_CHANGE_TTL_MS).toISOString();
@@ -87,25 +87,28 @@ export class ImportantChangeStorage {
     const result = await this.client.execute({
       sql: `
         UPDATE important_changes SET mentioned_at = ?
-        WHERE id IN (
+        WHERE id = (
           SELECT id FROM important_changes
           WHERE mentioned_at IS NULL AND noted_at >= ?
           ORDER BY noted_at DESC
-          LIMIT ?
+          LIMIT 1
         )
         RETURNING id, summary, source, noted_at
       `,
-      args: [now.toISOString(), oldestWorthMentioning, limit],
+      args: [now.toISOString(), oldestWorthMentioning],
     });
 
-    return result.rows
-      .map((row) => ({
-        id: row.id as string,
-        summary: row.summary as string,
-        source: row.source as string,
-        notedAt: row.noted_at as string,
-      }))
-      .sort((left, right) => right.notedAt.localeCompare(left.notedAt));
+    const row = result.rows[0];
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      id: String(row.id),
+      summary: String(row.summary),
+      source: String(row.source),
+      notedAt: String(row.noted_at),
+    };
   }
 
   async clear(): Promise<void> {

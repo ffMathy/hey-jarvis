@@ -1915,11 +1915,12 @@ it calls `noteImportantChange` with the sentence Jarvis should say. The change i
 `mastra/storage/important-changes.ts` (table `important_changes`, in SQLite because the reactor and the
 MCP server are different processes).
 
-`routePromptWorkflow` claims up to `MAXIMUM_IMPORTANT_CHANGES_PER_REQUEST` (3) of them, newest first,
-and works them into its acknowledgement: Jarvis tells them as an aside ("By the way, sir, …") before
-the first `getNextInstructionsWorkflow` call, so they are heard while the request runs. A claim marks
-them told in the same statement, so each change is mentioned once, and a storage failure only costs
-the aside (`claimImportantChangesToMention` in `synapse/important-changes.ts`).
+One piece of news is told per silence, newest first: `routePromptWorkflow` works one into its
+acknowledgement, so Jarvis tells it as an aside ("By the way, sir, …") before the first
+`getNextInstructionsWorkflow` call, and every poll that runs out with nothing to report ("Still
+processing") carries the next one. A claim marks the change told in the same statement, so each is
+mentioned once, and a storage failure only costs the aside (`claimImportantChangeToMention` in
+`synapse/important-changes.ts`).
 
 ### Synapse Rules (Standing Instructions in Code)
 

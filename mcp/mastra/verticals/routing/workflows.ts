@@ -1,9 +1,10 @@
 import { upperFirst } from 'lodash-es';
 import z from 'zod';
+import type { ImportantChange } from '../../storage/index.js';
 import { createStep, createWorkflow } from '../../utils';
 import { withinConversation } from '../../utils/conversation.js';
 import { withPointing } from '../../utils/pointing.js';
-import { claimImportantChangesToMention } from '../synapse/important-changes.js';
+import { claimImportantChangeToMention } from '../synapse/important-changes.js';
 import {
   DEFAULT_ROUTING_SESSION_ID,
   getRoutingRuntime,
@@ -11,7 +12,6 @@ import {
   type RoutingSnapshot,
   rememberMastraRegistry,
 } from './controller.js';
-import type { ImportantChange } from '../../storage/index.js';
 import type { ResponseStyle } from './planner.js';
 import type { OpenQuestion } from './questions.js';
 
@@ -211,37 +211,50 @@ const INSTRUCTIONS = {
 
 /**
  * The news the State Change Reactor kept for sir (see `synapse/important-changes.ts`), worked into the
- * acknowledgement of whatever he has just asked for.
+ * silences of whatever he has just asked for.
  *
- * This is the moment for it: the acknowledgement is the one instruction every request reaches, it
- * arrives while the work runs, and the silence it is read into is otherwise spent waiting. So sir asks
- * for the lights and hears, while they come on, that his parcel arrives between two and four.
+ * Those silences are the moment for it: the acknowledgement and every poll that runs out with nothing
+ * to report arrive while the work runs, and the time they are read into is otherwise spent waiting.
+ * So sir asks for the lights and hears, while they come on, that his parcel arrives between two and four.
+ *
+ * One piece of news per silence. A list read out at once buries what he asked for; a slow request
+ * has more silences, and each one that would otherwise be dead air carries the next piece instead.
  *
  * It is an aside, and said as one. It has nothing to do with what he asked, so it is introduced as
- * such rather than run into the answer, and it is said once — the changes are counted as told the
- * moment they are handed over, so the closing report does not carry them again. Something that is
- * already over by the time it is read is left out: it was noted up to a day ago.
+ * such rather than run into the answer, and it is said once — a change is counted as told the moment
+ * it is handed over, so no later report carries it again. Something that is already over by the time
+ * it is read is left out: it was noted up to a day ago.
  */
-function importantChangesAside(importantChanges: ImportantChange[]): string {
-  const news = importantChanges.map((change, index) => `${index + 1}. ${change.summary}`).join(' ');
+function importantChangeAside(importantChange: ImportantChange): string {
   return (
-    'There is news he has not heard yet, which has nothing to do with what he asked: ' +
-    `${news} Tell him in a sentence or two, in your own voice, as an aside — "By the way, sir, …" — and leave out ` +
-    'anything it describes that is already over. Say nothing else: he has already heard you say you are on it.'
+    `There is news he has not heard yet, which has nothing to do with what he asked: ${importantChange.summary} ` +
+    'Tell him in a sentence, in your own voice, as an aside — "By the way, sir, …" — unless what it describes is ' +
+    'already over, in which case leave it out. Say nothing else: he has already heard you say you are on it.'
   );
 }
 
 /** What `routePromptWorkflow` answers with: run in the background, or poll — with any news worked in. */
-export function routeInstructions(async: boolean, importantChanges: ImportantChange[]): string {
-  if (importantChanges.length === 0) {
+export function routeInstructions(async: boolean, importantChange: ImportantChange | undefined): string {
+  if (!importantChange) {
     return async ? INSTRUCTIONS.async : INSTRUCTIONS.poll;
   }
 
-  const aside = importantChangesAside(importantChanges);
+  const aside = importantChangeAside(importantChange);
   if (async) {
     return `The request is being processed in the background and will complete on its own. ${aside} Then end the call.`;
   }
   return INSTRUCTIONS.poll.replace(SAY_NOTHING_BEFORE_POLLING, `Before that call: ${aside}`);
+}
+
+/** What a poll that ran out with nothing to report answers with — with the next piece of news, if any. */
+function stillProcessingInstructions(importantChange: ImportantChange | undefined): string {
+  if (!importantChange) {
+    return INSTRUCTIONS.stillProcessing;
+  }
+  return (
+    `Still processing your request. ${importantChangeAside(importantChange)} Then call ` +
+    'getNextInstructionsWorkflow again to wait a bit longer for it to complete.'
+  );
 }
 
 /**
@@ -859,15 +872,15 @@ const routePromptStep = createStep({
     const sessionId = inputData.sessionId ?? DEFAULT_ROUTING_SESSION_ID;
     // Started inside the conversation's scope, so the planner, the plan run and everything it
     // delegates to -- all of which outlive this step -- are traced under it.
-    const [, importantChanges] = await Promise.all([
+    const [, importantChange] = await Promise.all([
       withinConversation(inputData.conversationId, () =>
         getRoutingRuntime().start(sessionId, withPointing(inputData.userQuery)),
       ),
-      claimImportantChangesToMention(),
+      claimImportantChangeToMention(),
     ]);
 
     return {
-      instructions: routeInstructions(inputData.async, importantChanges),
+      instructions: routeInstructions(inputData.async, importantChange),
       sessionId,
     };
   },
@@ -934,7 +947,7 @@ async function waitForReport(
 
     if (pastDeadline) {
       return {
-        instructions: INSTRUCTIONS.stillProcessing,
+        instructions: stillProcessingInstructions(await claimImportantChangeToMention()),
         taskIdsInProgress: snapshot.inProgress,
       };
     }

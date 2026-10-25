@@ -226,7 +226,10 @@ describe('routePromptWorkflow', () => {
 
   it('tells sir the news the reactor kept for him while his request runs, and only once', async () => {
     const storage = await getImportantChangeStorage();
-    await storage.add({ summary: 'Your parcel arrives on Monday 26 October between 14:00 and 16:00.', source: 'email' });
+    await storage.add({
+      summary: 'Your parcel arrives on Monday 26 October between 14:00 and 16:00.',
+      source: 'email',
+    });
 
     const first = resultOf(await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the lights', async: false }));
     const second = resultOf(await runWorkflow(routePromptWorkflow, { userQuery: 'turn off the lights', async: false }));
@@ -240,6 +243,17 @@ describe('routePromptWorkflow', () => {
     expect(first.instructions).toContain('call it again straight away');
     expect(second.instructions).not.toContain('parcel');
     expect(second.instructions).toContain('Say nothing to the user before that call');
+  });
+
+  it('tells one piece of news per request, and keeps the rest for the silences after it', async () => {
+    const storage = await getImportantChangeStorage();
+    await storage.add({ summary: 'The bin collection moved to Thursday 29 October.', source: 'calendar' });
+    await storage.add({ summary: 'Your parcel arrives on Monday 26 October.', source: 'email' });
+
+    const outcome = resultOf(await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the lights', async: false }));
+
+    expect(outcome.instructions).toContain('Your parcel arrives on Monday 26 October.');
+    expect(outcome.instructions).not.toContain('bin collection');
   });
 
   it('tells the news before ending a fire-and-forget call', async () => {
@@ -262,6 +276,44 @@ describe('routePromptWorkflow', () => {
 });
 
 describe('getNextInstructionsWorkflow', () => {
+  it('fills each poll that runs out with nothing to report with the next piece of news', async () => {
+    const storage = await getImportantChangeStorage();
+    await storage.add({ summary: 'The bin collection moved to Thursday 29 October.', source: 'calendar' });
+    await storage.add({ summary: 'Your parcel arrives on Monday 26 October.', source: 'email' });
+    await storage.add({ summary: 'Your electricity bill is due on Friday 30 October.', source: 'email' });
+
+    const acknowledgement = resultOf(
+      await runWorkflow(routePromptWorkflow, { userQuery: 'plan my week', async: false }),
+    );
+    startDelegation(DEFAULT_ROUTING_SESSION_ID, 'calendar');
+    const first = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+    const second = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+    const third = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(acknowledgement.instructions).toContain('Your electricity bill is due on Friday 30 October.');
+    expect(first.instructions).toContain('Still processing');
+    expect(first.instructions).toContain('Your parcel arrives on Monday 26 October.');
+    expect(first.instructions).toContain('By the way, sir');
+    expect(first.instructions).toContain('call getNextInstructionsWorkflow again');
+    expect(second.instructions).toContain('The bin collection moved to Thursday 29 October.');
+    // Nothing left to tell, so the wait is silent again.
+    expect(third.instructions).toContain('Say nothing to the user in the meantime');
+  });
+
+  it('leaves the news for a later silence when a poll has results to report', async () => {
+    const storage = await getImportantChangeStorage();
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    await storage.add({ summary: 'Your parcel arrives on Monday 26 October.', source: 'email' });
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
+    startDelegation(DEFAULT_ROUTING_SESSION_ID, 'calendar');
+
+    const report = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+    const wait = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(report.instructions).not.toContain('parcel');
+    expect(wait.instructions).toContain('Your parcel arrives on Monday 26 October.');
+  });
+
   it('reports a delegation that has finished', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
     delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
