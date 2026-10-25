@@ -632,7 +632,9 @@ describe('Agent Prompt Specifications', () => {
             await conversation.assertCriteria(
               `The agent answered the bare word "analysis" by first calling routePromptWorkflow once with a ` +
                 `query asking for an analysis of this conversation, following its instructions until the ` +
-                `results were in, and then giving an out-of-character diagnostic readout. The readout must walk ` +
+                `results were in while saying nothing at all, and only then giving an out-of-character diagnostic ` +
+                `readout. Any line spoken after the analysis request but before the results came back fails. The ` +
+                `readout must mention every result the analysis returned that bears on the conversation. It must walk ` +
                 `the conversation in order, one step at a time — what the user asked, what the agent said, and ` +
                 `which tools it called with what arguments and what came back — covering the calendar request ` +
                 `and the routing call that followed it, and add what the analysis results say happened behind ` +
