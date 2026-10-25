@@ -464,7 +464,7 @@ describe('what the SDK’s React provider used to get wrong on the phone and the
   it('says a dropped room, and a missing network, in words rather than in LiveKit’s or the platform’s', async () => {
     const dropped = onAPhone();
     await goLiveOn(dropped);
-    dropped.sdk.latest.drop('LiveKit connection state changed to disconnected');
+    dropped.sdk.latest.drop('LiveKit connection state changed to disconnected', 'connection_state_changed');
     await dropped.clock.advance(REDIAL_GIVE_UP_AFTER_MS);
     expect(dropped.events.problems).toEqual([DROPPED_PROBLEM]);
     expect(dropped.events.sources).toEqual(['session']);
@@ -495,7 +495,7 @@ describe('what the SDK’s React provider used to get wrong on the phone and the
 
     const closed = onAPhone();
     await goLiveOn(closed);
-    closed.sdk.latest.drop('Quota exceeded');
+    closed.sdk.latest.drop('Quota exceeded', 'close');
     expect(closed.events.problems).toEqual(['Quota exceeded']);
     expect(closed.events.sources).toEqual(['session']);
   });

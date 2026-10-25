@@ -8,6 +8,14 @@ let tunnelProcess: ChildProcess | null = null;
 const TUNNEL_REQUEST_TIMEOUT_MS = 10000;
 
 /**
+ * Cloudflare Access refused the credentials the health check presented. Access decides on the
+ * credentials alone, and those do not improve by being offered again, so this is never retried.
+ */
+class AccessRefusedError extends Error {
+  override name = 'AccessRefusedError';
+}
+
+/**
  * Kills all existing cloudflared processes
  */
 function killExistingTunnels(): void {
@@ -208,7 +216,7 @@ export async function ensureTunnelRunning(): Promise<void> {
       // Access decides on the credentials presented, and those do not improve by
       // being offered again — so stop rather than spend a minute proving it.
       if (healthResult.rejectedByAccess) {
-        throw new Error(`Tunnel reachable but Access refused the request: ${healthResult.error}`);
+        throw new AccessRefusedError(`Tunnel reachable but Access refused the request: ${healthResult.error}`);
       }
 
       // If health check fails, try the MCP endpoint (requires JWT)
@@ -223,7 +231,7 @@ export async function ensureTunnelRunning(): Promise<void> {
       maxRetries: 60,
       initialDelay: 1000,
       backoffMultiplier: 1, // Linear retry (1 second between attempts)
-      shouldRetry: (error: Error) => !error.message.startsWith('Tunnel reachable but Access refused'),
+      shouldRetry: (error: Error) => !(error instanceof AccessRefusedError),
       onRetry: (error: Error, attempt: number, _delay: number) => {
         // Log extra diagnostics every 10 attempts
         if (attempt % 10 === 0) {

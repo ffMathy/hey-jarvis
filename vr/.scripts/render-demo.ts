@@ -222,16 +222,15 @@ async function serveBuild(port: number): Promise<Subprocess> {
  * `cancelAnimationFrame` for one of those can be passed on to it.
  */
 async function takeOverFrames(page: Page) {
-  for (;;) {
-    try {
-      const pageNow = await page.evaluate(() => Date.now());
-      // Jumping forward a little, since the page's clock kept running while it was asked the time.
-      await page.clock.pauseAt(pageNow + 2000);
-      break;
-    } catch (error) {
-      if (!String(error).includes('past')) throw error;
-    }
-  }
+  // `pauseAt` refuses a time the page's clock has already passed, and that clock runs on while it
+  // is asked the time. So its date is fixed first — a fixed date stands still while the rest of the
+  // clock runs — which makes `pauseAt` the same moment a jump of nothing; then it is unfixed, so
+  // the date moves with every frame again. The target is a little ahead of the page's time, so the
+  // date jumps forward to it rather than back, unless asking took longer than that.
+  const target = (await page.evaluate(() => Date.now())) + 2000;
+  await page.clock.setFixedTime(target);
+  await page.clock.pauseAt(target);
+  await page.clock.setSystemTime(target);
   await page.evaluate(() => {
     if (window.__demoFrames !== undefined) return;
     const pending = new Map<number, FrameRequestCallback>();

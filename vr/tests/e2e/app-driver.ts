@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Page, Route, TestInfo } from '@playwright/test';
+import type { ConsoleMessage, Page, Route, TestInfo } from '@playwright/test';
 import type { JarvisDebugState, RoomPoint, RoomReport } from '../../src/debug-hook';
 import { expect, photograph } from './fixtures';
 
@@ -69,17 +69,38 @@ export async function scene(page: Page): Promise<string | undefined> {
 }
 
 /**
- * Chromium's own report of a response that was not a success, or a request that never got one:
- * the tests' doing — ElevenLabs answered with a refusal, LiveKit's socket closed — not the app's.
+ * Every page error and console error but Chromium's network reports, for a test to expect none of.
+ *
+ * A network report is the tests' doing — ElevenLabs answered with a refusal, a request leaving the
+ * machine aborted, LiveKit's socket failing — not the app's. It is told by what Playwright says
+ * about it, never by its words: Chromium's own console entries carry no arguments (a `console.error`
+ * from the page always has at least one), and Chromium reports each one right after the network
+ * event it is about. A failed resource's report is located at that resource's URL; a failed socket's
+ * is located at the script that opened it, so it is matched to a socket error instead.
  */
-const NETWORK_REPORT = /^(Failed to load resource|WebSocket connection to 'wss:\/\/[^']+' failed)/;
-
-/** Every page error and console error but Chromium's network reports, for a test to expect none of. */
 export function collectProblems(page: Page): string[] {
   const problems: string[] = [];
+  const failedResources = new Set<string>();
+  let unreportedSocketErrors = 0;
+  page.on('response', (response) => {
+    if (!response.ok()) failedResources.add(response.url());
+  });
+  page.on('requestfailed', (request) => failedResources.add(request.url()));
+  page.on('websocket', (webSocket) =>
+    webSocket.on('socketerror', () => {
+      unreportedSocketErrors += 1;
+    }),
+  );
+  const isNetworkReport = (message: ConsoleMessage) => {
+    if (message.args().length > 0) return false;
+    if (failedResources.has(message.location().url)) return true;
+    if (unreportedSocketErrors === 0) return false;
+    unreportedSocketErrors -= 1;
+    return true;
+  };
   page.on('pageerror', (error) => problems.push(error.message));
   page.on('console', (message) => {
-    if (message.type() === 'error' && !NETWORK_REPORT.test(message.text())) problems.push(message.text());
+    if (message.type() === 'error' && !isNetworkReport(message)) problems.push(message.text());
   });
   return problems;
 }
