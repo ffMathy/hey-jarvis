@@ -1,3 +1,8 @@
+---
+paths:
+  - "home-assistant-voice-firmware/**"
+---
+
 # Home Assistant Voice Firmware
 
 > Paths in this rule are relative to `home-assistant-voice-firmware/` unless they say otherwise.

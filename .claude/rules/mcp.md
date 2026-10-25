@@ -1,3 +1,8 @@
+---
+paths:
+  - "mcp/**"
+---
+
 # Jarvis Mastra AI Agents
 
 > Paths in this rule are relative to `mcp/` unless they say otherwise.

@@ -9,7 +9,7 @@ The shared conventions every project in this monorepo follows.
 - **[`.claude/rules/`](.)** — always-applied guidelines. A rule with a `paths` frontmatter glob loads only when matching files are in play; a rule without one applies to every session.
 - **[`.claude/skills/`](../skills/)** — optional, situational workflows that are loaded on demand.
 
-**ALWAYS write what would have gone into an `AGENTS.md` as a rule with no `paths` frontmatter.** A project's notes are `.claude/rules/<project>.md` (`mcp.md`, `hologram.md`, `mobile.md`, …): the same text, loaded in every session rather than only when a file under that directory is open, so nothing about one project is ever missing while changing another that depends on it. Path-scoped rules stay what they are for: conventions about a kind of file (`**/*.ts`, `mcp/mastra/**/tools.ts`), not a project's documentation.
+**ALWAYS write what would have gone into an `AGENTS.md` as a rule whose `paths` frontmatter scopes it to that directory**, the way an `AGENTS.md` applied to its own folder. A project's notes are `.claude/rules/<project>.md` (`mcp.md`, `hologram.md`, `mobile.md`, …), scoped to `<project>/**`. What the root `AGENTS.md` held applies everywhere, so those rules (this one, `supply-chain-security`, `releases`, `1password`) have no `paths`.
 
 Prefer a rule over a skill. Use the [`remember`](../skills/remember/SKILL.md) skill to capture a new convention into the right place.
 
@@ -26,7 +26,7 @@ Prefer a rule over a skill. Use the [`remember`](../skills/remember/SKILL.md) sk
 
 ## Repository Structure
 
-This is a Turborepo monorepo containing intelligent voice assistant components. Each project's notes are its own always-applied rule; paths inside each are relative to that project's directory unless they say otherwise.
+This is a Turborepo monorepo containing intelligent voice assistant components. Each project's notes are a rule scoped to that project's directory; paths inside each are relative to it unless they say otherwise. When a change in one project depends on another (the apps on `hologram`, the apps on `mcp`'s server), read that project's rule too.
 
 | Project                           | Description                                       | Rule |
 | --------------------------------- | ------------------------------------------------- | ---- |

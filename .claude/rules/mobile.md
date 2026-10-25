@@ -1,3 +1,8 @@
+---
+paths:
+  - "mobile/**"
+---
+
 # Mobile App
 
 > Paths in this rule are relative to `mobile/` unless they say otherwise.

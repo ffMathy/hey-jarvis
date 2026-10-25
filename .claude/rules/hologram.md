@@ -1,3 +1,8 @@
+---
+paths:
+  - "hologram/**"
+---
+
 # Hologram
 
 > Paths in this rule are relative to `hologram/` unless they say otherwise.

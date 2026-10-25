@@ -1,3 +1,8 @@
+---
+paths:
+  - "vr/**"
+---
+
 # VR
 
 > Paths in this rule are relative to `vr/` unless they say otherwise.

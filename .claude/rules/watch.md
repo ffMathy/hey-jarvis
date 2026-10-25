@@ -1,3 +1,8 @@
+---
+paths:
+  - "watch/**"
+---
+
 # Wear OS App
 
 > Paths in this rule are relative to `watch/` unless they say otherwise.

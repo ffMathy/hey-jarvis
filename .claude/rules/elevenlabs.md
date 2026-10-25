@@ -1,3 +1,8 @@
+---
+paths:
+  - "elevenlabs/**"
+---
+
 # ElevenLabs Integration
 
 > Paths in this rule are relative to `elevenlabs/` unless they say otherwise.
