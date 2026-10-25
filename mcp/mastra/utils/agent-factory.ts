@@ -1,6 +1,7 @@
 import { Agent, type AgentConfig } from '@mastra/core/agent';
 import type { OutputProcessor } from '@mastra/core/processors';
 import { createMemory } from '../memory/index.js';
+import { householdTime } from './household.js';
 import { getModel } from './providers/google-provider.js';
 import { getDefaultScorers } from './scorers-config.js';
 
@@ -43,7 +44,7 @@ function withSharedGuidelines(instructions: string): string {
     // An id in a request is the user saying which thing he means -- on his headset, the thing he is
     // pointing at -- so looking it up again can only lose it, or land on the wrong one of two.
     POINTED_AT_ID_GUIDELINE,
-    `The time is currently: \`${new Date().toString()}\`.`,
+    `The time is currently: \`${householdTime()}\`.`,
   ];
 
   return `${instructions}\n\n# Additional context and guidelines\n${guidelines.join('\n')}`;

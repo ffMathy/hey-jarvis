@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it, setSystemTime } from 'bun:test';
 import type { LanguageModelV3CallOptions, LanguageModelV3StreamPart, LanguageModelV3Usage } from '@ai-sdk/provider';
 import { z } from 'zod';
 import { createAgent, POINTED_AT_ID_GUIDELINE } from './agent-factory.js';
+import { householdTime } from './household.js';
 import { createTool } from './tool-factory.js';
 
 /** A provider's token accounting, which nothing here looks at but the stream shape requires. */
@@ -153,8 +154,11 @@ function modelReadingSystemPrompt(onCall: (systemMessages: string[]) => void) {
  * pinned here for that reason.
  */
 describe('createAgent instructions', () => {
+  const serverTimeZone = process.env.TZ;
+
   afterEach(() => {
     setSystemTime();
+    process.env.TZ = serverTimeZone;
   });
 
   async function createProbe() {
@@ -182,7 +186,7 @@ describe('createAgent instructions', () => {
         '# Additional context and guidelines',
         'Never ask questions. Always make best-guess assumptions.',
         POINTED_AT_ID_GUIDELINE,
-        `The time is currently: \`${now.toString()}\`.`,
+        `The time is currently: \`${householdTime(now)}\`.`,
       ].join('\n'),
     );
   });
@@ -208,7 +212,7 @@ describe('createAgent instructions', () => {
         '# Additional context and guidelines',
         'Never ask questions. Always make best-guess assumptions.',
         POINTED_AT_ID_GUIDELINE,
-        `The time is currently: \`${now.toString()}\`.`,
+        `The time is currently: \`${householdTime(now)}\`.`,
       ].join('\n'),
     );
   });
@@ -234,7 +238,20 @@ describe('createAgent instructions', () => {
 
     const systemPrompt = systemPrompts.flat().join('\n');
     expect(systemPrompts).toHaveLength(1);
-    expect(systemPrompt).toContain(`The time is currently: \`${askedAt.toString()}\`.`);
-    expect(systemPrompt).not.toContain(builtAt.toString());
+    expect(systemPrompt).toContain(`The time is currently: \`${householdTime(askedAt)}\`.`);
+    expect(systemPrompt).not.toContain(householdTime(builtAt));
   }, 30000);
+
+  it('tells the model the household’s time when the server runs in UTC', async () => {
+    // The add-on container's clock is UTC. Asked at 14:25 in Copenhagen for an alarm in an hour
+    // and five minutes, the agent read 13:25 off the old prompt and set the alarm for 14:30.
+    process.env.TZ = 'UTC';
+    setSystemTime(new Date('2026-10-25T13:25:00Z'));
+
+    const instructions = await (await createProbe()).getInstructions();
+
+    expect(instructions).toContain(
+      'The time is currently: `Sun Oct 25 2026 14:25:00 GMT+0100 (Central European Standard Time)`.',
+    );
+  });
 });
