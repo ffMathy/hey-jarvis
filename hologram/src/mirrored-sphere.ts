@@ -1,5 +1,5 @@
-import { bandEdges, VOICE_BAND_COUNT } from './voice-levels';
 import type { JarvisVoice, UserVoice } from './voice-contract';
+import { bandEdges, VOICE_BAND_COUNT } from './voice-levels';
 
 /**
  * Jarvis drawn on one device from a conversation held on another: the watch showing what the phone's
@@ -122,7 +122,10 @@ export function bandMeans(spectrum: ArrayLike<number>, bandCount: number = VOICE
  */
 export function encodeMirrorFrame({ voice, user, thinking }: MirroredSphereState): number[] {
   const flags =
-    (voice.listening ? LISTENING : 0) | (voice.speaking ? SPEAKING : 0) | (thinking ? THINKING : 0) | (user ? HAS_USER : 0);
+    (voice.listening ? LISTENING : 0) |
+    (voice.speaking ? SPEAKING : 0) |
+    (thinking ? THINKING : 0) |
+    (user ? HAS_USER : 0);
   const volume = voice.listening ? Math.sqrt(Math.max(0, voice.getVolume())) : 0;
   const bands = voice.listening ? bandMeans(voice.getSpectrum()) : MIRROR_AT_REST.bands;
   return [
@@ -217,5 +220,7 @@ export function createSphereMirror(now: () => number): SphereMirror {
 
 /** Whether two frames would render the same — every flag the view takes as a prop. */
 export function sameFlags(a: MirrorFrame, b: MirrorFrame): boolean {
-  return a.listening === b.listening && a.speaking === b.speaking && a.thinking === b.thinking && a.hasUser === b.hasUser;
+  return (
+    a.listening === b.listening && a.speaking === b.speaking && a.thinking === b.thinking && a.hasUser === b.hasUser
+  );
 }
