@@ -458,13 +458,21 @@ describe('a request answered without its agent, with the headset watching', () =
     resetHomeServicesForTest();
     resetHomeDomainsForTest();
 
-    // A house with one service to offer and no entities: a command can be routed to the direct
-    // path, and the direct path then finds nothing to carry it out on.
+    // A house with lights and a service for them, but no light to call it on: a command can be
+    // routed to the direct path, and the direct path then finds nothing to carry it out on.
     spies.push(
       spyOn(globalThis, 'fetch').mockImplementation(
         Object.assign(
-          async (input: Parameters<typeof fetch>[0]) =>
-            new Response(JSON.stringify(String(input).endsWith('/api/services') ? HOME_SERVICES : [])),
+          async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
+            new Response(
+              JSON.stringify(
+                String(input).endsWith('/api/services')
+                  ? HOME_SERVICES
+                  : String(init?.body ?? '').includes("attribute='domain'")
+                    ? ['light']
+                    : [],
+              ),
+            ),
           { preconnect: globalThis.fetch.preconnect },
         ),
       ),
@@ -540,7 +548,7 @@ describe('a request answered without its agent, with the headset watching', () =
 
   it('hands a command the direct path declines to the agent, and reports nothing of what it tried', async () => {
     setRoutingClassifierForTest(
-      routingClassifierSureOf({ route: 'internetOfThings', responseStyle: 'command', homeService: 'light.turn_off' }),
+      routingClassifierSureOf({ route: 'internetOfThings', responseStyle: 'command', homeDomain: 'light' }),
     );
 
     await executeTool(routeTool, { userQuery: LIGHTS_COMMAND, async: false });

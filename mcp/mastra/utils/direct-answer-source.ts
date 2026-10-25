@@ -14,7 +14,7 @@ import type { DirectAnswerOutcome, DirectCommand, DirectLookup } from './direct-
 
 /** A request routed to one agent that can be answered without it, ready to be carried out. */
 export interface DirectAnswer {
-  /** What it is, for the logs: "lookup calendar.today", "home command light.turn_off". */
+  /** What it is, for the logs: "lookup calendar.today", "home command on light". */
   description: string;
   /**
    * Answers the request, or resolves to `undefined` when the agent should after all.

@@ -35,54 +35,44 @@ function choose(answers: ClassifierAnswerSet, context: DirectAnswerChoiceContext
 }
 
 describe('homeDirectAnswers', () => {
-  it('asks nothing when Home Assistant offered nothing', () => {
-    expect(homeDirectAnswers([], [])).toBeUndefined();
+  it('asks nothing when Home Assistant listed no kinds of device', () => {
+    expect(homeDirectAnswers([LIGHT_TURN_OFF], [])).toBeUndefined();
   });
 
-  it('asks only about what Home Assistant offered', () => {
-    expect(Object.keys(homeDirectAnswers([LIGHT_TURN_OFF], [])?.questions ?? {})).toEqual([
-      'homeService',
+  it('asks which kind of device, for commands and questions alike, rather than which service', () => {
+    // The services are hundreds and the kinds of device a few dozen, so the routing call asks about
+    // the kinds, and only a command's own call is offered the services of the kind it chose.
+    expect(Object.keys(homeDirectAnswers([LIGHT_TURN_OFF], ['light'])?.questions ?? {})).toEqual([
+      'homeDomain',
       'homeCommandGivesSetting',
-    ]);
-    expect(Object.keys(homeDirectAnswers([], ['lock'])?.questions ?? {})).toEqual([
-      'homeQuestionDomain',
       'homeQuestionIsAboutNow',
     ]);
   });
 
-  it('carries out a command whose service it is sure of', () => {
-    const direct = choose({ homeService: sure('light.turn_off'), homeCommandGivesSetting: probably(0.02) }, COMMAND);
+  it('carries out a command on a kind of device it is sure of', () => {
+    const direct = choose({ homeDomain: sure('light'), homeCommandGivesSetting: probably(0.02) }, COMMAND);
 
-    expect(direct?.description).toBe('home command light.turn_off');
+    expect(direct?.description).toBe('home command on light');
   });
 
-  it('leaves a command that gives a setting, or an unsure service, to the agent', () => {
+  it('leaves a command that gives a setting, an unsure kind of device, or one with no service, to the agent', () => {
+    expect(choose({ homeDomain: sure('light'), homeCommandGivesSetting: probably(0.6) }, COMMAND)).toBeUndefined();
     expect(
-      choose({ homeService: sure('light.turn_off'), homeCommandGivesSetting: probably(0.6) }, COMMAND),
+      choose({ homeDomain: sure('light', 0.6), homeCommandGivesSetting: probably(0.02) }, COMMAND),
     ).toBeUndefined();
-    expect(
-      choose({ homeService: sure('light.turn_off', 0.6), homeCommandGivesSetting: probably(0.02) }, COMMAND),
-    ).toBeUndefined();
-  });
-
-  it('never picks a service for a question', () => {
-    expect(
-      choose({ homeService: sure('light.turn_off'), homeCommandGivesSetting: probably(0.02) }, QUESTION),
-    ).toBeUndefined();
+    expect(choose({ homeDomain: sure('lock'), homeCommandGivesSetting: probably(0.02) }, COMMAND)).toBeUndefined();
   });
 
   it('answers a question about how the house is now from the kind of device it is about', () => {
-    const direct = choose({ homeQuestionDomain: sure('lock'), homeQuestionIsAboutNow: probably(0.97) }, QUESTION);
+    const direct = choose({ homeDomain: sure('lock'), homeQuestionIsAboutNow: probably(0.97) }, QUESTION);
 
     expect(direct?.description).toBe('home question about lock');
   });
 
   it('leaves a question about history, or an unsure kind of device, to the agent', () => {
+    expect(choose({ homeDomain: sure('lock'), homeQuestionIsAboutNow: probably(0.2) }, QUESTION)).toBeUndefined();
     expect(
-      choose({ homeQuestionDomain: sure('lock'), homeQuestionIsAboutNow: probably(0.2) }, QUESTION),
-    ).toBeUndefined();
-    expect(
-      choose({ homeQuestionDomain: sure('lock', 0.6), homeQuestionIsAboutNow: probably(0.97) }, QUESTION),
+      choose({ homeDomain: sure('lock', 0.6), homeQuestionIsAboutNow: probably(0.97) }, QUESTION),
     ).toBeUndefined();
   });
 });
