@@ -38,6 +38,7 @@ import { PLANNER_AGENT_ID } from './planner.js';
 import { listOpenQuestions } from './questions.js';
 import {
   getNextInstructionsWorkflow,
+  instructionsOutputSchema,
   resetPollDeadlineForTest,
   routePromptWorkflow,
   setPollDeadlineForTest,
@@ -55,7 +56,7 @@ const TITLE = 'Push reminders for tasks';
  */
 function scriptedPlanner() {
   return createScriptedModel(({ transcript }) => {
-    const waitingQuestionId = transcript.match(/id "(q\d+)", asked by/)?.[1];
+    const waitingQuestionId = listOpenQuestions()[0]?.id;
 
     if (waitingQuestionId && transcript.includes(ANSWER)) {
       return {
@@ -120,28 +121,13 @@ async function scriptedAgent(id: string, model: ReturnType<typeof createScripted
 const routeTool = createInstructionsWorkflowTool(routePromptWorkflow);
 const pollTool = createSimplifiedWorkflowTool(getNextInstructionsWorkflow);
 
-/** What the poll answers with, as far as these tests read it. */
-interface PollResponse {
-  instructions: string;
-  completedTaskResults?: { id: string; result: unknown }[];
-  questionsForUser?: { id: string; question: string }[];
-  slowTaskIds?: string[];
-}
-
-/**
- * The openings a response has when it closes a request, and only then.
- *
- * Searched for rather than expected at the start, since another instruction may come first.
- */
-const CLOSING_OPENINGS = ['All tasks have completed', 'The request could not be completed', 'Part of this request'];
-
 /** Says something to Jarvis, and does what he does: polls until the request is closed. */
-async function say(userQuery: string): Promise<PollResponse> {
+async function say(userQuery: string) {
   await executeTool(routeTool, { userQuery, async: false });
 
   for (let attempt = 0; attempt < 30; attempt += 1) {
-    const response = (await executeTool(pollTool, {})) as PollResponse;
-    if (CLOSING_OPENINGS.some((opening) => response.instructions.includes(opening))) {
+    const response = instructionsOutputSchema.parse(await executeTool(pollTool, {}));
+    if (response.requestFinished) {
       return response;
     }
   }

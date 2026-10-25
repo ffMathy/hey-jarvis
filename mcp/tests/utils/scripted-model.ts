@@ -2,6 +2,7 @@ import type {
   LanguageModelV3,
   LanguageModelV3CallOptions,
   LanguageModelV3StreamPart,
+  LanguageModelV3ToolResultPart,
   LanguageModelV3Usage,
 } from '@ai-sdk/provider';
 
@@ -25,6 +26,8 @@ export interface ScriptedCall {
   index: number;
   /** Every message's text, tool calls and tool results, in order. */
   transcript: string;
+  /** Every tool result the model was sent, in order, as the parts it was sent them in. */
+  toolResults: LanguageModelV3ToolResultPart[];
   options: LanguageModelV3CallOptions;
 }
 
@@ -46,6 +49,12 @@ function transcriptOf(options: LanguageModelV3CallOptions): string {
       return `${message.role}: ${parts.join('\n')}`;
     })
     .join('\n');
+}
+
+function toolResultsOf(options: LanguageModelV3CallOptions): LanguageModelV3ToolResultPart[] {
+  return options.prompt.flatMap((message) =>
+    message.role === 'tool' ? message.content.flatMap((part) => (part.type === 'tool-result' ? [part] : [])) : [],
+  );
 }
 
 function toolCallsOf(turn: ScriptedTurn, index: number) {
@@ -85,7 +94,12 @@ export function createScriptedModel(respond: (call: ScriptedCall) => ScriptedTur
   const calls: ScriptedCall[] = [];
 
   const record = (options: LanguageModelV3CallOptions) => {
-    const call = { index: calls.length + 1, transcript: transcriptOf(options), options };
+    const call = {
+      index: calls.length + 1,
+      transcript: transcriptOf(options),
+      toolResults: toolResultsOf(options),
+      options,
+    };
     calls.push(call);
     return { call, turn: respond(call) };
   };

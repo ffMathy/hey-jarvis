@@ -52,6 +52,7 @@ const routingReportSchema = z.object({
   instructions: z.string(),
   completedTaskResults: z.array(completedTaskResultSchema).optional(),
   taskIdsInProgress: z.array(z.string()).optional(),
+  requestFinished: z.boolean().optional(),
 });
 
 export type RoutingReport = z.infer<typeof routingReportSchema>;
@@ -105,13 +106,14 @@ export function parseRoutingReport(result: unknown): RoutingReport | undefined {
 }
 
 /**
- * The closing report: every task has finished and the request is done, which
- * the server says by listing nothing as still in progress. Every closing report
- * carries the empty list, whether a poll or the route call itself delivers it;
- * a route call that only says to poll carries no list at all.
+ * The closing report, from a poll or from a route call that finished before it returned: the one
+ * whose `requestFinished` is true.
+ *
+ * Read from that flag alone. An empty in-progress list is no sign of it — a poll that ran out
+ * while the plan was still being written has one too, and nothing has even started then.
  */
 export function isFinalReport(report: RoutingReport | undefined): boolean {
-  return report?.taskIdsInProgress?.length === 0;
+  return report?.requestFinished === true;
 }
 
 export type RoutingLoopStepKind = 'route' | 'poll';

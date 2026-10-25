@@ -95,6 +95,9 @@ const instructionsOutputSchema = z.object({
     .optional()
     .describe('Results that have finished since the last call, if any'),
   taskIdsInProgress: z.array(z.string()).optional().describe('The agents the plan is still waiting on'),
+  requestFinished: z
+    .boolean()
+    .describe('Whether this request is over: true on its closing report, false while work is still running'),
   questionsForUser: z
     .array(
       z.object({
@@ -779,6 +782,7 @@ function failureReport(
       completedTaskResults: answered.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
     }),
     taskIdsInProgress: [],
+    requestFinished: true,
     ...(fromEarlier.length > 0 && { questionsForUser: fromEarlier }),
   };
 }
@@ -821,7 +825,11 @@ function waitingFromEarlier(
  */
 function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructionsOutputSchema> {
   if (snapshot.conversationControl) {
-    return { instructions: CONVERSATION_CONTROL_INSTRUCTIONS[snapshot.conversationControl], taskIdsInProgress: [] };
+    return {
+      instructions: CONVERSATION_CONTROL_INSTRUCTIONS[snapshot.conversationControl],
+      taskIdsInProgress: [],
+      requestFinished: true,
+    };
   }
 
   // A request that failed has not said what its photos show, so it asks nothing about them: a photo
@@ -857,6 +865,7 @@ function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructi
         CONVERSATION_CONTROL_EXCEPTION,
       ...(completedTaskResults.length > 0 && { completedTaskResults }),
       taskIdsInProgress: [],
+      requestFinished: true,
       questionsForUser: questions,
     };
   }
@@ -867,6 +876,7 @@ function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructi
       : allTasksCompletedInstructions(snapshot.responseStyle),
     completedTaskResults,
     taskIdsInProgress: [],
+    requestFinished: true,
   };
 }
 
@@ -891,6 +901,7 @@ function buildProgressReport(snapshot: RoutingSnapshot): z.infer<typeof instruct
     // Answerable because the plan is written down before anything runs: what is still
     // outstanding is known, not inferred from whatever happened to start.
     taskIdsInProgress: snapshot.inProgress,
+    requestFinished: false,
     ...(hasNewlySlow && { slowTaskIds: snapshot.newlySlow }),
   };
 }
@@ -923,7 +934,7 @@ const routePromptStep = createStep({
         sessionId,
       };
     }
-    return { instructions: routeInstructions(inputData.async, importantChange), sessionId };
+    return { instructions: routeInstructions(inputData.async, importantChange), requestFinished: false, sessionId };
   },
 });
 
@@ -990,6 +1001,7 @@ async function waitForReport(
       return {
         instructions: stillProcessingInstructions(await claimImportantChangeToMention()),
         taskIdsInProgress: snapshot.inProgress,
+        requestFinished: false,
       };
     }
 
@@ -1020,6 +1032,7 @@ const getNextInstructionsStep = createStep({
             completedTaskResults: snapshot.landed.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
           }),
           taskIdsInProgress: snapshot.inProgress,
+          requestFinished: false,
         };
       }
 

@@ -40,11 +40,12 @@ import {
 } from './completion-notice.js';
 import { DEFAULT_ROUTING_SESSION_ID, getRoutingRuntime, resetRoutingRuntime } from './controller.js';
 import { PLANNER_AGENT_ID } from './planner.js';
-import { openAnsweredByQuestion, QUESTION_REMINDER_INTERVAL_MS } from './questions.js';
+import { listOpenQuestions, openAnsweredByQuestion, QUESTION_REMINDER_INTERVAL_MS } from './questions.js';
 import { forgetWaitingPhotoReminders, PHOTO_WAITING_GRACE_MS, takePhotosToBringUp } from './waiting-photos.js';
 import {
   FINISHED_REQUEST_INSTRUCTIONS,
   getNextInstructionsWorkflow,
+  instructionsOutputSchema,
   resetPollDeadlineForTest,
   routePromptWorkflow,
   setPollDeadlineForTest,
@@ -163,6 +164,12 @@ const LIGHTS = 'The kitchen lights are on.';
 const DISMISSAL = "Answer to 'what would you like done with the photo?': nothing, never mind (photo photo1)";
 /** The same, said beside a request still running rather than in answer to being asked. */
 const WAVED_AWAY = 'And never mind that photo (photo photo1)';
+/** His answer once Jarvis has looked at the photo and asked what he would like done with it. */
+const NOTHING_AFTER_THE_LOOK = "Answer to 'what would you like done with it?': nothing, never mind (photo photo1)";
+/** The same, in words the routing classifier takes for stopping the request running beside it. */
+const ONLY_TESTING = 'Never mind that photo, I was only testing (photo photo1)';
+/** Everything sir says here to wave a photo away, each of them about the first one he sent. */
+const WAVING_THE_PHOTO_AWAY = [DISMISSAL, WAVED_AWAY, NOTHING_AFTER_THE_LOOK, ONLY_TESTING];
 /** What he says before he sends a photo, which the voice agent is told to hold, and routes anyway. */
 const ANNOUNCEMENT = "I'll send you a receipt in a moment.";
 
@@ -230,7 +237,7 @@ function scriptedPlanner() {
 
 /** What the planner makes of his answer to the question earlier work is waiting on: that answer, and nothing to run. */
 function answerPlan(transcript: string) {
-  const questionId = transcript.match(/- id "(q\d+)", asked by coding: /)?.[1];
+  const questionId = listOpenQuestions().find((question) => question.taskId === EARLIER_TASK)?.id;
   if (!questionId || !transcript.includes(ANSWER_TO_EARLIER_QUESTION)) {
     return undefined;
   }
@@ -244,11 +251,10 @@ function answerPlan(transcript: string) {
  * sent with nothing said, and Jarvis to ask about it, or at one he asked the total of.
  */
 function photoPlan(transcript: string) {
-  // By the tag in what he said rather than by a listed photo: one Jarvis has just asked him about
-  // has been looked at, and the planner is shown it only because the request names it.
-  const wavedAwayPhotoId = transcript.match(/never mind[^(]*\(photo (photo\d+)\)/i)?.[1];
-  if (wavedAwayPhotoId) {
-    return plan({ responseStyle: 'command', dismissedPhotoIds: [wavedAwayPhotoId] });
+  // By what he said rather than by the waiting photos: one Jarvis has just asked him about has been
+  // looked at, and the planner is shown it only because the request names it.
+  if (WAVING_THE_PHOTO_AWAY.some((words) => transcript.includes(words))) {
+    return plan({ responseStyle: 'command', dismissedPhotoIds: ['photo1'] });
   }
 
   if (transcript.includes(ANNOUNCEMENT)) {
@@ -260,7 +266,10 @@ function photoPlan(transcript: string) {
     });
   }
 
-  const listedPhotoId = transcript.match(/^- (photo\d+), sent /m)?.[1];
+  const waitingPhotoIds = photosWaiting().map((photo) => photo.photoId);
+  const listedPhotoId = waitingPhotoIds.find(
+    (photoId) => transcript.includes(barePhoto(photoId)) || transcript.includes(totalOfPhoto(photoId)),
+  );
   if (listedPhotoId && transcript.includes(barePhoto(listedPhotoId))) {
     return plan({
       responseStyle: 'lookup',
@@ -307,9 +316,10 @@ function errandPlan(transcript: string) {
  * came back — or says it could not, when the reader failed.
  */
 function scriptedVision() {
-  return createScriptedModel(({ transcript }) => {
-    if (transcript.includes('"type":"tool-result"')) {
-      return { text: transcript.includes('shows: «') ? LOOK : 'I could not look at the photo.' };
+  return createScriptedModel(({ transcript, toolResults }) => {
+    const [look] = toolResults;
+    if (look) {
+      return { text: look.output.type === 'json' ? LOOK : 'I could not look at the photo.' };
     }
 
     const photoId = transcript.match(/\(photo (photo\d+)\)/)?.[1];
@@ -321,17 +331,20 @@ function scriptedVision() {
   });
 }
 
+/** What a scripted model is sent on one call. */
+type CallOptions = Parameters<ReturnType<typeof createScriptedModel>['model']['doStream']>[0];
+
 /**
  * A model that holds back each reply `holdsBack` picks out by what the model was sent, until `until`
  * settles, so the request it is part of stays in flight.
  */
 function heldBackWhen(
   model: ReturnType<typeof createScriptedModel>['model'],
-  holdsBack: (prompt: string) => boolean,
+  holdsBack: (options: CallOptions) => boolean,
   until: Promise<void>,
 ) {
-  const waitIfHeldBack = async (options: Parameters<typeof model.doStream>[0]) => {
-    if (holdsBack(JSON.stringify(options.prompt))) {
+  const waitIfHeldBack = async (options: CallOptions) => {
+    if (holdsBack(options)) {
       await until;
     }
   };
@@ -358,7 +371,7 @@ function heldBack(model: ReturnType<typeof createScriptedModel>['model'], until:
  * and the photo marked looked at with it — is done while the request is still in flight.
  */
 function heldBackAfterItsLook(model: ReturnType<typeof createScriptedModel>['model'], until: Promise<void>) {
-  return heldBackWhen(model, (prompt) => prompt.includes('"tool-result"'), until);
+  return heldBackWhen(model, (options) => options.prompt.some((message) => message.role === 'tool'), until);
 }
 
 /** How the stand-ins for the models are set up for one test. */
@@ -388,7 +401,11 @@ async function setUp({
 }: SetUpOptions = {}) {
   const planner = scriptedPlanner();
   const plannerModel = planHeldBack
-    ? heldBackWhen(planner.model, (prompt) => prompt.includes(planHeldBack.request), planHeldBack.until)
+    ? heldBackWhen(
+        planner.model,
+        (options) => JSON.stringify(options.prompt).includes(planHeldBack.request),
+        planHeldBack.until,
+      )
     : planner.model;
   const weather = createScriptedModel(() => ({ text: WEATHER }));
   const lights = createScriptedModel(() => ({ text: LIGHTS }));
@@ -431,21 +448,10 @@ async function scriptedAgent(
 const routeTool = createInstructionsWorkflowTool(routePromptWorkflow);
 const pollTool = createSimplifiedWorkflowTool(getNextInstructionsWorkflow);
 
-/** What the poll answers with, as far as these tests read it. */
-interface PollResponse {
-  instructions: string;
-  completedTaskResults?: { id: string; result: unknown }[];
-  questionsForUser?: { id: string; question: string }[];
+/** One poll, read the way the voice agent reads it. */
+async function poll(input: { notifyWhenDone?: boolean } = {}) {
+  return instructionsOutputSchema.parse(await executeTool(pollTool, input));
 }
-
-/** The openings a response has when it closes a request, and only then. */
-const CLOSING_OPENINGS = [
-  'All tasks have completed',
-  'The request could not be completed',
-  'Part of this request',
-  'This request has finished',
-  'He asked you to stop',
-];
 
 /** Says something to Jarvis, and does what he does with it: routes it. */
 async function route(userQuery: string): Promise<void> {
@@ -453,10 +459,10 @@ async function route(userQuery: string): Promise<void> {
 }
 
 /** Polls, as Jarvis does, until the request is closed. */
-async function closingReport(): Promise<PollResponse> {
+async function closingReport() {
   for (let attempt = 0; attempt < 30; attempt += 1) {
-    const response = (await executeTool(pollTool, {})) as PollResponse;
-    if (CLOSING_OPENINGS.some((opening) => response.instructions.startsWith(opening))) {
+    const response = await poll();
+    if (response.requestFinished) {
       return response;
     }
   }
@@ -465,7 +471,7 @@ async function closingReport(): Promise<PollResponse> {
 }
 
 /** Says something to Jarvis, and does what he does: routes it, then polls until the request is closed. */
-async function say(userQuery: string): Promise<PollResponse> {
+async function say(userQuery: string) {
   await route(userQuery);
   return closingReport();
 }
@@ -589,16 +595,12 @@ describe('a waiting photo, as a request sir makes brings it up', () => {
     });
     photoSent(2 * 60_000);
 
-    await executeTool(routeTool, { userQuery: WEATHER_REQUEST, async: false });
-    let accepted: PollResponse | undefined;
-    for (
-      let attempt = 0;
-      attempt < 10 && !accepted?.instructions.startsWith('The user will be notified');
-      attempt += 1
-    ) {
-      accepted = (await executeTool(pollTool, { notifyWhenDone: true })) as PollResponse;
-    }
-    expect(accepted?.instructions).toStartWith('The user will be notified');
+    await route(WEATHER_REQUEST);
+    // Accepted only once there is work to be notified about, which the held-back weather keeps running.
+    await untilWorkIsUnderWay();
+    const accepted = await poll({ notifyWhenDone: true });
+    expect(accepted.requestFinished).toBe(false);
+    expect(accepted.instructions).toStartWith('The user will be notified');
 
     letTheWeatherAnswer();
     await until(() => notices.length > 0);
@@ -650,6 +652,7 @@ describe('a photo sent with nothing said, as the phone reports it', () => {
 
     const reply = await say(barePhoto('photo1'));
 
+    expect(reply.completedTaskResults).toEqual([{ id: 'look', result: 'I could not look at the photo.' }]);
     expect(reply.questionsForUser).toBeUndefined();
     expect(reply.instructions).not.toContain('what photo1 shows');
     expect(photosWaiting().map((photo) => photo.photoId)).toEqual(['photo1']);
@@ -679,7 +682,7 @@ describe('a photo sent with nothing said, as the phone reports it', () => {
     const asked = await say(barePhoto('photo1'));
     expect(asked.questionsForUser?.map((question) => question.id)).toEqual(['photo1']);
 
-    const reply = await say("Answer to 'what would you like done with it?': nothing, never mind (photo photo1)");
+    const reply = await say(NOTHING_AFTER_THE_LOOK);
 
     expect(plannerCalls[plannerCalls.length - 1]?.transcript).toContain(
       'Photos the request names, which are no longer waiting to be looked at:\n- photo1, sent just now',
@@ -912,7 +915,7 @@ describe('a waiting photo, and a request joined to a running one', () => {
 
     await route(WEATHER_REQUEST);
     await untilWorkIsUnderWay();
-    await route('Never mind that photo, I was only testing (photo photo1)');
+    await route(ONLY_TESTING);
     await until(() => photosWaiting().length === 0);
     weather.release();
     const reply = await closingReport();

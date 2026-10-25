@@ -42,6 +42,7 @@ const routed = (...taskIds: string[]): ServerMessage =>
   called('routePromptWorkflow', {
     instructions: 'The request is now being processed in the background.',
     taskIdsInProgress: taskIds,
+    requestFinished: false,
   });
 
 const polled = (delivered: string[], stillRunning: string[]): ServerMessage =>
@@ -52,6 +53,7 @@ const polled = (delivered: string[], stillRunning: string[]): ServerMessage =>
         : 'More tasks have finished since last time, but not all tasks have completed yet.',
     completedTaskResults: delivered.map((id) => ({ id, result: `Result of ${id}` })),
     taskIdsInProgress: stillRunning,
+    requestFinished: stillRunning.length === 0,
   });
 
 /**
@@ -66,6 +68,7 @@ const recapped = (allTaskIds: string[]): ServerMessage =>
       'already relayed.',
     completedTaskResults: allTaskIds.map((id) => ({ id, result: `Result of ${id}` })),
     taskIdsInProgress: [],
+    requestFinished: true,
   });
 
 /**
@@ -98,6 +101,7 @@ describe('parseRoutingReport', () => {
     instructions: 'Call again.',
     completedTaskResults: [{ id: 'a', result: 'x' }],
     taskIdsInProgress: ['b'],
+    requestFinished: false,
   };
 
   it('reads the report out of an MCP text content part', () => {
@@ -125,26 +129,29 @@ describe('parseRoutingReport', () => {
 });
 
 describe('isFinalReport', () => {
-  it('recognises the closing report by its empty in-progress list', () => {
-    expect(isFinalReport({ instructions: 'Anything at all.', taskIdsInProgress: [] })).toBe(true);
+  it('recognises the closing report by what it says outright, whatever its wording', () => {
+    expect(isFinalReport({ instructions: 'Anything at all.', taskIdsInProgress: [], requestFinished: true })).toBe(
+      true,
+    );
   });
 
-  it('does not mistake a mid-flight report or an instruction to poll for the closing one', () => {
-    // Verbatim from the workflow: the mid-flight instruction contains the closing one's words
-    // inside a negation, which is why the wording is not what is read.
+  it('does not take an empty in-progress list for the close', () => {
+    // A poll that runs out while the plan is still being written has an empty list too.
+    expect(isFinalReport({ instructions: 'Anything at all.', taskIdsInProgress: [] })).toBe(false);
+    expect(isFinalReport({ instructions: 'Anything at all.', taskIdsInProgress: [], requestFinished: false })).toBe(
+      false,
+    );
+  });
+
+  it('does not take the closing wording for the close', () => {
+    expect(isFinalReport({ instructions: 'All tasks have completed. Summarize the results.' })).toBe(false);
+  });
+
+  it('does not mistake a mid-flight report for the closing one', () => {
     expect(
-      isFinalReport({
-        instructions:
-          'More tasks have finished since last time, but not all tasks have completed yet. ' +
-          'Then call getNextInstructionsWorkflow again.',
-        taskIdsInProgress: ['b'],
-      }),
+      isFinalReport({ instructions: 'More tasks have finished.', taskIdsInProgress: ['b'], requestFinished: false }),
     ).toBe(false);
-    expect(isFinalReport({ instructions: 'More tasks have finished.', taskIdsInProgress: ['b'] })).toBe(false);
     expect(isFinalReport({ instructions: 'Still processing your request.' })).toBe(false);
-    expect(
-      isFinalReport({ instructions: 'The request is now being processed. Call getNextInstructionsWorkflow now.' }),
-    ).toBe(false);
     expect(isFinalReport(undefined)).toBe(false);
   });
 });
@@ -183,7 +190,12 @@ describe('readRoutingLoop', () => {
           tool_name: 'routePromptWorkflow',
           tool_call_id: 'call-x',
           state: 'success',
-          result: [{ type: 'text', text: JSON.stringify({ instructions: 'Poll now.', taskIdsInProgress: ['a'] }) }],
+          result: [
+            {
+              type: 'text',
+              text: JSON.stringify({ instructions: 'Poll now.', taskIdsInProgress: ['a'], requestFinished: false }),
+            },
+          ],
         },
       },
     ];
@@ -197,11 +209,16 @@ describe('readRoutingLoop', () => {
 
   it('matches the tool names ElevenLabs actually reports, prefix and all', () => {
     const loop = readRoutingLoop([
-      called('jarvis_mcp_server_routePromptWorkflow', { instructions: 'Poll now.', taskIdsInProgress: ['a'] }),
+      called('jarvis_mcp_server_routePromptWorkflow', {
+        instructions: 'Poll now.',
+        taskIdsInProgress: ['a'],
+        requestFinished: false,
+      }),
       called('jarvis_mcp_server_getNextInstructionsWorkflow', {
         instructions: 'All tasks have completed.',
         completedTaskResults: [{ id: 'a', result: 'done' }],
         taskIdsInProgress: [],
+        requestFinished: true,
       }),
     ]);
 
@@ -244,6 +261,7 @@ describe('findRoutingLoopViolations', () => {
         instructions: 'All tasks have completed.',
         completedTaskResults: [{ id: 'a', result: 'done' }],
         taskIdsInProgress: [],
+        requestFinished: true,
       }),
     ]);
 
