@@ -103,8 +103,11 @@
       "cache": false,
       "outputs": []
     },
+    // The version the MCP image is tagged with, handed in by `release.yml`. Part of the hash, so a
+    // new release can never replay the previous one's deploy.
     "deploy": {
-      "dependsOn": ["build"]
+      "dependsOn": ["build"],
+      "env": ["RELEASE_VERSION"]
     },
     "serve": {
       "cache": false,
@@ -123,8 +126,11 @@
       "cache": false,
       "outputs": []
     },
+    // The two numbers on a bundle, both handed in by the `Play` workflow — see
+    // `.scripts/expo-release-signing.js`.
     "build:aab": {
       "dependsOn": ["initialize"],
+      "env": ["JARVIS_ANDROID_VERSION_CODE", "RELEASE_VERSION"],
       "cache": false,
       "outputs": []
     },

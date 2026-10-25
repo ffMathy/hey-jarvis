@@ -4,10 +4,10 @@
 // Plain Node with no dependencies, because `release.yml` runs it straight on the runner, whose
 // preinstalled `node` is all it needs — no `bun install`, and no action beyond `actions/checkout`.
 //
-//   node .scripts/release.js <commit>
+//   node .scripts/release.js <commit> [output]
 //
-// prints nothing when there is nothing to release, and otherwise writes `version`, `tag` and
-// `notes` (a file path) to `$GITHUB_OUTPUT`.
+// prints the notes, and appends `version`, `tag` and `notes` (a file path) to `output` — the step's
+// `$GITHUB_OUTPUT` — or appends nothing when there is nothing to release.
 
 const { execFileSync } = require('node:child_process');
 const { appendFileSync, writeFileSync } = require('node:fs');
@@ -122,7 +122,7 @@ function commitsSince(previousTag, commit) {
 }
 
 function main() {
-  const commit = process.argv[2] || 'HEAD';
+  const [commit = 'HEAD', output] = process.argv.slice(2);
   const previousTag = latestTag(commit);
   const commits = commitsSince(previousTag, commit);
   if (commits.length === 0) {
@@ -139,7 +139,6 @@ function main() {
   writeFileSync(notesPath, notes);
   console.log(notes);
 
-  const output = process.env.GITHUB_OUTPUT;
   if (output) {
     appendFileSync(output, `version=${version}\ntag=${TAG_PREFIX}${version}\nnotes=${notesPath}\n`);
   }

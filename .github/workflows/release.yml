@@ -46,7 +46,7 @@ jobs:
       # `node` is already on the runner, and the script needs nothing else.
       - name: Work out the release
         id: release
-        run: node .scripts/release.js "$GITHUB_SHA"
+        run: node .scripts/release.js "$GITHUB_SHA" "$GITHUB_OUTPUT"
 
       # Through the API rather than `git push`, so the checkout keeps no usable token. The tag is
       # created on the pushed commit itself, not on whatever main has moved on to since.

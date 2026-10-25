@@ -59,7 +59,7 @@ describe('the release a push to main cuts', () => {
   const commit = (message: string) => git('commit', '--allow-empty', '-q', '-m', message);
   const release = () => {
     writeFileSync(output, '');
-    execFileSync('node', [script, 'HEAD'], { cwd: repository, env: { ...process.env, GITHUB_OUTPUT: output } });
+    execFileSync('node', [script, 'HEAD', output], { cwd: repository });
     return Object.fromEntries(
       readFileSync(output, 'utf8')
         .split('\n')
@@ -101,9 +101,7 @@ describe('the release a push to main cuts', () => {
     const text = readFileSync(notes, 'utf8');
 
     expect(version).toBe('4.29.0');
-    expect(text).toContain(
-      '## [4.29.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.28.3...root-v4.29.0)',
-    );
+    expect(text).toContain('## [4.29.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.28.3...root-v4.29.0)');
     expect(text).toContain(
       `### Features\n\n* **vr:** stand in the room (#3) ([${sha.slice(0, 7)}](https://github.com/ffMathy/hey-jarvis/commit/${sha}))`,
     );
