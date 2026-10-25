@@ -10,7 +10,7 @@ import { capCallVolume } from '../modules/jarvis-volume';
 import { requestMicrophoneAccess } from './microphone-permission';
 import { usePhoneMirror } from './phone-mirror';
 import { useWatchDensity } from './watch-density';
-import { useWatchHologramSize } from './watch-screen';
+import { useWatchHologramSize, WATCH_DRAWN_RESOLUTION } from './watch-screen';
 
 interface ConversationScreenProps {
   /** The credentials the phone handed over. There is no conversation without them. */
@@ -207,6 +207,8 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
           buildMilliseconds={buildMilliseconds}
           particleShare={particleShare}
           pace={pace}
+          drawnResolution={WATCH_DRAWN_RESOLUTION}
+          tilt
           background="#000000"
         />
       </View>

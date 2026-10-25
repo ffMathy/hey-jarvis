@@ -145,10 +145,17 @@ export interface JarvisHologramProps {
   /**
    * Whether tilting the device turns the view round him, by up to `TILT_LARGEST_DEGREES` from a
    * rest pose that follows how it is held, so a device held still shows him straight on. Only while
-   * his body is drawn, which is what can show him from the side. The phone asks for it; the watch
-   * does not. See `tilt.ts`.
+   * his body is drawn, which is what can show him from the side. The phone and the watch both ask
+   * for it. See `tilt.ts`.
    */
   tilt?: boolean;
+  /**
+   * What share of the screen's own resolution both canvases are drawn at, before being scaled back
+   * up. Left out, {@link DRAWN_RESOLUTION}, which is what a phone gets. A watch asks for 1: its
+   * sphere is a few hundred pixels across, so at the phone's share each spark is drawn a pixel or
+   * less wide and smeared by the scale-up, where a phone's canvas still has the pixels to hide it.
+   */
+  drawnResolution?: number;
 }
 
 /**
@@ -164,7 +171,7 @@ export interface JarvisHologramProps {
  * pixels; the user asked for "a lot" more, and this is a fifth of what a full-resolution canvas
  * would cost. What it buys is worth the sharpness because of what this drawing is: soft glowing
  * strokes, with no text and no hard edges anywhere in it. On a phone at three device pixels to the
- * point it is drawn at 1.35.
+ * point it is drawn at 1.35. That is the phone's share; a watch passes its own (`drawnResolution`).
  *
  * **The GPU body is drawn at it too.** Its canvas is laid out beside Skia's in the same scaled
  * view, and on Android that view is rendered into a texture of its own at this size
@@ -247,6 +254,7 @@ function JarvisHologramView({
   background,
   satellites,
   tilt = false,
+  drawnResolution = DRAWN_RESOLUTION,
 }: JarvisHologramProps) {
   const { listening, speaking, getVolume, getSpectrum } = voice;
   const isForeground = useIsForeground();
@@ -254,7 +262,7 @@ function JarvisHologramView({
   // so a view a fraction of a pixel across comes out a pixel wider or narrower depending on where
   // it is laid out — and expo-gl sizes the GPU body's canvas from the view, which would then be a
   // pixel off Skia's square. A whole number of pixels is that number wherever it lands.
-  const drawnSize = PixelRatio.roundToNearestPixel(size * DRAWN_RESOLUTION);
+  const drawnSize = PixelRatio.roundToNearestPixel(size * drawnResolution);
   // The GPU body's canvas in pixels, which on a device is the size it is laid out at, and whole by
   // construction: see `drawingBufferSide`.
   const laidOutPixels = Math.round(drawnSize * PixelRatio.get());
@@ -589,7 +597,7 @@ function JarvisHologramView({
     return recorded;
   });
 
-  // Laid out small and scaled up: see DRAWN_RESOLUTION. The scale is about the canvas's own
+  // Laid out small and scaled up: see `drawnResolution`. The scale is about the canvas's own
   // centre, which is the container's centre too, so the sphere lands exactly where a full-sized
   // canvas would have put it.
   //
@@ -613,7 +621,7 @@ function JarvisHologramView({
       <Animated.View
         renderToHardwareTextureAndroid
         style={[
-          { width: drawnSize, height: drawnSize, transform: [{ scale: 1 / DRAWN_RESOLUTION }] },
+          { width: drawnSize, height: drawnSize, transform: [{ scale: 1 / drawnResolution }] },
           screensOntoBackground ? styles.groupScreenedOntoBackground : styles.group,
           faded,
         ]}

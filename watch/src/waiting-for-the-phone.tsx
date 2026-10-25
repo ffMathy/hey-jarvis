@@ -11,7 +11,7 @@ import { FrameRate, ModeToast, useSimulatedUser, useSimulatedVoice } from 'holog
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useWatchDensity } from './watch-density';
-import { useWatchHologramSize } from './watch-screen';
+import { useWatchHologramSize, WATCH_DRAWN_RESOLUTION } from './watch-screen';
 
 interface WaitingForThePhoneProps {
   /** Whether the last ask found a phone at all, which is the only thing worth saying differently. */
@@ -68,6 +68,8 @@ export function WaitingForThePhone({ isPhoneInRange }: WaitingForThePhoneProps) 
           buildMilliseconds={buildMilliseconds}
           particleShare={particleShare}
           pace={pace}
+          drawnResolution={WATCH_DRAWN_RESOLUTION}
+          tilt
           background="#000000"
         />
       </Pressable>
