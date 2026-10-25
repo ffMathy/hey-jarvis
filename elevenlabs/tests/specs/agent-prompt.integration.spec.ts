@@ -612,7 +612,7 @@ describe('Agent Prompt Specifications', () => {
             await conversation.sendMessage('Analysis');
             await waitForToolCallsBeyond(conversation, (await conversation.getCalledToolNames()).length);
             // The readout follows the records, which arrive over one or more polls.
-            await waitForTranscript(conversation, /robot-like/i);
+            await waitForTranscript(conversation, /\[monotone\]\[emotionless\]/i);
 
             // What happened behind routePromptWorkflow is only readable through it, and only when
             // every call names the conversation: the calendar request has to carry the id for its
@@ -635,9 +635,12 @@ describe('Agent Prompt Specifications', () => {
                 `which tools it called with what arguments and what came back — covering the calendar request ` +
                 `and the routing call that followed it, and add what the analysis results say happened behind ` +
                 `that routing call where they say anything. It must leave the analysis call and its polls out ` +
-                `of the readout. Its delivery must be flat and literal: a "[robot-like]" audio tag or an ` +
-                `equivalent machine-voiced one, with none of the usual Jarvis wit, condescension, flourish or ` +
-                `Victorian tag, and none of the 5-15 word brevity that governs ordinary replies. Naming its ` +
+                `of the readout. Every sentence of the readout must begin with the "[monotone][emotionless]" audio ` +
+                `tags and carry no other tag — no Victorian tag and no expressive one. Its text must be flat: ` +
+                `short declarative sentences ending in full stops, with no exclamation marks, questions, ` +
+                `ellipses, words carrying judgement or feeling, or emphasis, and none of the usual Jarvis wit, ` +
+                `condescension, flourish or "sir"; lines it said earlier in character are reported flatly, ` +
+                `without their original tags. None of the 5-15 word brevity of ordinary replies applies. Naming its ` +
                 `tools aloud is correct here and must not count against it. Inventing steps that did not ` +
                 `happen fails.`,
               0.9,

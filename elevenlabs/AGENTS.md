@@ -116,7 +116,11 @@ The agent prompt in `src/assets/agent-prompt.md` defines:
   character for conversation (the planner labels each request; see `mcp/AGENTS.md`)
 - **When to reach for a tool**: answer outright or route, and never both
 - **Analysis Mode**: any phrase *beginning* with "analysis" drops the persona for
-  a flat, robot-like step-by-step readout. Whatever follows the word is the focus.
+  a monotone, emotionless step-by-step readout. Every sentence opens with
+  `[monotone][emotionless]` and no other tag — both are in `suggestedAudioTags`, since
+  expressive mode leans on that list — and the text itself is written flat (full stops only,
+  no judgement words, no emphasis), because the voice performs whatever feeling the text
+  carries and a tag alone did not strip it. Whatever follows the word is the focus.
   Every analysis first calls `routePromptWorkflow` once — "Analysis of conversation
   `<id>`: <focus>" — which reaches the `reflection` agent's `describeConversation`:
   the agents, tool calls, failures and logs Mastra recorded behind each routed
