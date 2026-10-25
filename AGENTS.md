@@ -181,43 +181,43 @@ runs only when `Release` calls it (or someone starts it by hand).
 
 ### Releases
 
-`Release` runs on every push to `main` and does the whole release itself — no
-human clicks merge, and no secret beyond `GITHUB_TOKEN` is involved. Release
-Please opens the release pull request, and the same run merges it once CI has
-passed on it, so the pull request is plumbing rather than a second thing to
-merge. It is safe to merge unattended: it only restates commits that already
-passed review and CI on `main`, plus the version bumps and `CHANGELOG.md`
-entries derived from them.
+`Release` runs on every push to `main`, and every push is a release of the
+commit it pushed. There is no release pull request and nothing is committed
+back to `main`: a release is a tag and a GitHub Release, nothing more, so
+`GITHUB_TOKEN` is all it needs and branch protection never gets in its way.
 
-CI has to be started on it by hand, because Release Please opens it with
-`GITHUB_TOKEN` and GitHub starts no `pull_request` workflow for anything that
-token does — before this, the checks branch protection requires never reported
-on the release pull request, auto-merge waited on them forever, and every
-release took a second, manual merge. `workflow_dispatch` is the one trigger
-`GITHUB_TOKEN` may fire, so the run dispatches `CI` (`build.yml`) on the
-release branch, watches it, and merges with `--match-head-commit` once it is
-green. Its check runs land on the pull request's head commit, which is what
-branch protection reads. A red CI leaves the pull request open and fails the
-run.
+`.scripts/release.js` works it out. It finds the last `root-v*` tag behind the
+pushed commit, reads the conventional commits since it, and raises the version
+by them — `feat` the minor, a `!` or a `BREAKING CHANGE:` footer the major, and
+everything else the patch. Every commit releases: a type with no section of its
+own, or a commit that is not conventional at all, still bumps the patch and is
+listed under "Other changes". Only the subject line is parsed, so nothing in a
+squash commit's body — the pull request description — can stop a release. The
+`root-v` prefix is kept from the Release Please days, so the tags it cut are the
+history this continues from.
 
-That wait is about as long as CI, roughly twenty minutes. Pushes to `main` in
-the meantime queue behind it under the workflow's `concurrency` group, and
-GitHub keeps only the newest queued run, so merges that land within one wait
-are released together by that run rather than one release each.
+The notes on the GitHub Release are the changelog, grouped by type in the shape
+Release Please used to write them, with each commit linked and the comparison
+with the previous release in the heading. The `CHANGELOG.md` files are no longer
+written; they keep the history up to 4.28.3, and the Releases page has
+everything after. Likewise the `version` fields in the `package.json` files no
+longer move — nothing reads them for a release.
 
-Merging it is not the end of the run, because a merge performed with
-`GITHUB_TOKEN` does not start another workflow run. So the same run invokes
-Release Please a second time to tag the release it just merged, and `deploy`
-checks out that tagged commit (`needs.release.outputs.sha`) rather than the
-commit the run started from — only the tagged commit carries the bumped
-versions. If the merge does park the pull request on auto-merge instead, the
-release is tagged by the next run of the workflow, and the run log says so.
+The version reaches what ships as `RELEASE_VERSION`: `deploy` tags the MCP
+image with it (`mcp/.scripts/deploy.sh`, which refuses to run without it), and
+`play` passes it to the `Play` workflow, where it becomes both apps' version
+name. Every package is released under that one version.
+
+The runs queue under the workflow's `concurrency` group, and GitHub keeps only
+the newest queued run. If merges land faster than a release and its deploy
+finish, the run for the newest of them releases them all together — it counts
+everything since the last tag — rather than one release each.
 
 To hold a release back, hold the commits back: anything that lands on `main`
 ships on the next run.
 
 A release ships the phone, the watch and the web build too. Once the release is
-tagged, the `play` job hands the tagged commit to the `Play` workflow and the
+tagged, the `play` job hands the released commit to the `Play` workflow and the
 `pages` job hands it to `Mobile Web`, which publishes to GitHub Pages. Those are
 the only automatic ways into Play or the root of the Pages site: branch pushes
 publish nothing to Play. A pull request still builds the phone and watch APKs
@@ -243,52 +243,10 @@ earned. The watch stays on `wear:internal`, because no Wear OS closed track
 exists — the API's own track list has no `wear:alpha`.
 
 Both numbers on a bundle come from outside the app configs: the version name is
-the root `package.json` version Release Please bumps, and the version code is
+the release's version, handed in as `RELEASE_VERSION`, and the version code is
 seconds since 2025-01-01, which is the one clock both entry points can share
 without eventually colliding. `docs/play-store.md` §9 has the tracks, the gates
 and the failure.
-
-Every merge to `main` cuts a release, whatever its type. Release Please skips a
-batch whose changelog would be empty (`No user facing commits found since <sha>
-- skipping`), and a type whose section in `changelog-sections` of
-`.github/release-please-config.json` is hidden contributes nothing to it — so
-every type commitlint accepts has a visible section there. Hiding one again, or
-leaving a new type out, brings back merges that land on `main` without a
-release. `feat` bumps the minor version, a `!` the major, and every other type
-the patch.
-
-A commit that is not a conventional commit at all still releases nothing,
-because Release Please cannot place it in any section — see below.
-
-The config is checked against Release Please's schema through its `$schema`
-key, which is worth keeping: the key was previously spelled `changelog-types`,
-which the schema does not define, so the whole block was silently ignored and
-`refactor` and `docs` commits never released.
-
-### A pull request body can cost you the release
-
-A conventional subject is not enough on its own. Merges here are squashes, and the
-squash commit's body is the pull request description — so the description is
-part of the commit message that Release Please parses, and it parses the whole
-message, not just the subject. One unparseable line and the commit is dropped
-from every path, silently: the log says `commit could not be parsed`, the run
-reports `Considering: 0 commits`, no release pull request is opened, and both
-`deploy` and `play` skip for want of a release.
-
-The trigger is narrow and easy to hit: a body line that *begins* with an
-identifier and an open parenthesis, with a second parenthesis before the first
-one closes. That is the shape of a conventional-commit header, so the parser
-reads the line as one, looks for a scope, and fails on the nested parenthesis.
-Ordinary code samples land on it. A body line opening with `fs.rmSync(path.join(…`
-is what stopped commit `703c2c2` from cutting a release at all, leaving the
-Skia fix it carried on `main` and out of every changelog.
-
-It is the *start* of the line that matters, so the ways out are all cheap:
-indent the block by one space, put it in a list item, or let any prose precede
-the call. A line that opens with a backtick still counts as opening with the
-call. Nothing catches this for you — `commitlint` runs in the `commit-msg`
-hook, and GitHub builds the squash commit server-side where no hook runs, so a
-body that breaks the parser passes every check and merges clean.
 
 ## 1Password Authentication
 

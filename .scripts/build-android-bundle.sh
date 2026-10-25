@@ -23,6 +23,7 @@
 # Optional:
 #   JARVIS_ANDROID_VERSION_CODE           the build number Play orders uploads by; the phone takes
 #                                         twice it and the watch one more, so the two never collide.
+#   RELEASE_VERSION                       the version name both apps carry, the release being built.
 #
 # Also needs a JDK 17+, the Android SDK (`ANDROID_HOME`) and Node for the Gradle plugin's bundling
 # step.

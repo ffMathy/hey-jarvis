@@ -93,17 +93,12 @@ function androidVersionCode(offset) {
  * Not `versionCode`, and not related to it: this is the string Play shows on the listing and in the
  * Console's release list, and the one the two apps have to agree on because they are one listing.
  *
- * It is read from the root `package.json` rather than written into either app config, because that
- * is the number Release Please bumps when a release is cut on `main` — so the bundle a production
- * release publishes is stamped with the version of the release that published it, without anything
- * having to thread a value through the workflow. Both apps were previously frozen at the `0.1.0`
- * the Expo template shipped with, which made every upload in the Console look like the last one.
- *
- * `require` rather than an import, for the same reason nothing else here imports: this file is
- * loaded by plain Node out of `.scripts/`, and `../package.json` is the repository root from here.
+ * Handed in as `RELEASE_VERSION` by the `Play` workflow — the version `release.yml` has just tagged —
+ * because a release is a tag and nothing in the repository carries its number. A build outside that
+ * workflow has no release to name, and says so with `0.0.0`, the way an unset version code is 1.
  */
 function androidVersionName() {
-  return require('../package.json').version;
+  return process.env.RELEASE_VERSION || '0.0.0';
 }
 
 module.exports = { createReleaseSigning, androidVersionCode, androidVersionName };

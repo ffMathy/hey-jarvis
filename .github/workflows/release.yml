@@ -22,100 +22,42 @@ env:
   GITHUB_ACTIONS: true
 
 jobs:
+  # Every push to main is a release, cut from that very commit: no release pull request, nothing
+  # committed back. The version is the last `root-v*` tag raised by the conventional commits since
+  # it (`feat` the minor, a breaking change the major, everything else the patch), and the notes on
+  # the GitHub Release are the changelog. See `.scripts/release.js` and "Releases" in AGENTS.md.
   release:
     runs-on: ubuntu-latest
     permissions:
+      # To create the tag and the GitHub Release.
       contents: write
-      pull-requests: write
-      # To start CI on the release pull request and watch it finish.
-      actions: write
     outputs:
-      # A release is cut either by the run that follows a human merging the
-      # release pull request, or — now that the pull request merges itself — by
-      # the tagging step further down in this same run.
-      release_created: ${{ steps.release.outputs.release_created || steps.tag.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name || steps.tag.outputs.tag_name }}
-      version: ${{ steps.release.outputs.version || steps.tag.outputs.version }}
-      sha: ${{ steps.release.outputs.sha || steps.tag.outputs.sha }}
+      tag_name: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+      sha: ${{ github.sha }}
     steps:
-      - name: Release using "Release Please"
-        id: release
-        uses: googleapis/release-please-action@v4.4.1
+      - name: Checkout
+        uses: actions/checkout@v6.1.0
         with:
-          config-file: .github/release-please-config.json
-          manifest-file: .github/.release-please-manifest.json
-          target-branch: main
+          # The whole history and its tags, to find the last release and every commit since.
+          fetch-depth: 0
+          persist-credentials: false
 
-      # A release pull request only restates commits that already went through
-      # review and CI on main, so it never needs a human: it is merged here, in
-      # the same run that opened it, so every merge to main is its own release.
-      #
-      # Release Please opens it with GITHUB_TOKEN, and GitHub starts no
-      # `pull_request` workflow for anything that token does — so on its own the
-      # pull request never gets the checks branch protection requires, and
-      # auto-merge would wait on them forever. `workflow_dispatch` is the one
-      # trigger GITHUB_TOKEN may fire, so CI is started on the release branch by
-      # hand; its check runs land on the pull request's head commit, which
-      # satisfies branch protection, and the pull request is merged once it is
-      # green. A red CI leaves the pull request open and fails this run.
-      - name: Merge the release pull request
-        id: merge
-        if: ${{ steps.release.outputs.prs_created == 'true' }}
+      # `node` is already on the runner, and the script needs nothing else.
+      - name: Work out the release
+        id: release
+        run: node .scripts/release.js "$GITHUB_SHA"
+
+      # Through the API rather than `git push`, so the checkout keeps no usable token. The tag is
+      # created on the pushed commit itself, not on whatever main has moved on to since.
+      - name: Tag it and publish the release
+        if: ${{ steps.release.outputs.version != '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_PRS: ${{ steps.release.outputs.prs }}
-        run: |
-          set -euo pipefail
-
-          merged=false
-          for number in $(jq -r '.[].number' <<<"$RELEASE_PRS"); do
-            branch=$(gh pr view "${number}" --json headRefName --jq '.headRefName')
-            sha=$(gh pr view "${number}" --json headRefOid --jq '.headRefOid')
-
-            echo "Running CI on release pull request #${number} (${branch} at ${sha})"
-            gh workflow run build.yml --ref "${branch}"
-
-            run_id=''
-            for _ in $(seq 1 60); do
-              run_id=$(gh run list --workflow build.yml --branch "${branch}" --event workflow_dispatch \
-                --json databaseId,headSha --jq "map(select(.headSha == \"${sha}\")) | .[0].databaseId // empty")
-              [ -n "${run_id}" ] && break
-              sleep 5
-            done
-            if [ -z "${run_id}" ]; then
-              echo "::error::CI never started on release pull request #${number}."
-              exit 1
-            fi
-
-            gh run watch "${run_id}" --exit-status --interval 60 >/dev/null
-
-            echo "Merging release pull request #${number}"
-            gh pr merge "${number}" --squash --match-head-commit "${sha}" ||
-              gh pr merge "${number}" --squash --auto --match-head-commit "${sha}"
-
-            if [ "$(gh pr view "${number}" --json merged --jq '.merged')" = 'true' ]; then
-              merged=true
-            else
-              echo "::notice::Pull request #${number} is waiting on auto-merge. Its own merge starts no workflow run, so the release is tagged by the next run of this workflow."
-            fi
-          done
-
-          echo "merged=${merged}" >> "$GITHUB_OUTPUT"
-
-      # A merge performed with GITHUB_TOKEN does not start another workflow run,
-      # so the push that just landed on main never comes back around to tag the
-      # release. Run Release Please once more instead: it picks up the release
-      # pull request it has just seen merged and cuts the tags and GitHub
-      # releases here, in the same run, so `deploy` below has something to ship.
-      - name: Tag the merged release
-        id: tag
-        if: ${{ steps.merge.outputs.merged == 'true' }}
-        uses: googleapis/release-please-action@v4.4.1
-        with:
-          config-file: .github/release-please-config.json
-          manifest-file: .github/.release-please-manifest.json
-          target-branch: main
+          TAG: ${{ steps.release.outputs.tag }}
+          NOTES: ${{ steps.release.outputs.notes }}
+        run: gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file "$NOTES"
 
   # The phone and the watch on Google Play, to the closed test.
   #
@@ -132,17 +74,17 @@ jobs:
   # out to the testers rather than waiting in the Console for somebody to press a button. To hold
   # one back, hold the commits back — the same rule as everything else here.
   play:
-    if: ${{ needs.release.outputs.release_created }}
+    if: ${{ needs.release.outputs.version != '' }}
     needs:
       - release
     permissions:
       contents: read
     uses: ./.github/workflows/play.yml
     with:
-      # The tagged commit, for the same reason `deploy` checks it out: the release pull request
-      # merged inside this run, so only that commit carries the bumped version the bundles are
-      # stamped with.
+      # The released commit, and the version it was released as: nothing in the repository carries
+      # the version any more, so the bundles are stamped with the one handed in here.
       ref: ${{ needs.release.outputs.sha }}
+      version: ${{ needs.release.outputs.version }}
       # `alpha` *is* closed testing. The Console calls the track "Closed testing" and the API calls
       # it `alpha`; they are the same track, and there is no track named `closed`.
       track: alpha
@@ -162,9 +104,9 @@ jobs:
     secrets:
       OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 
-  # The web build of the app, to GitHub Pages — the tagged commit, for the same reason as `play`.
+  # The web build of the app, to GitHub Pages, from the released commit.
   pages:
-    if: ${{ needs.release.outputs.release_created }}
+    if: ${{ needs.release.outputs.version != '' }}
     needs:
       - release
     permissions:
@@ -177,7 +119,7 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    if: ${{ needs.release.outputs.release_created }}
+    if: ${{ needs.release.outputs.version != '' }}
     needs:
       - release
     permissions:
@@ -199,10 +141,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.1.0
         with:
-          # Check out the commit that was actually tagged. When the release
-          # pull request merged inside this same run, that commit is newer than
-          # the one this run started from, and only it carries the bumped
-          # versions the deploy publishes.
+          # The released commit, even if main has moved on while this run
+          # waited its turn.
           ref: ${{ needs.release.outputs.sha }}
           # The deploy runs project code and container builds; don't leave a
           # usable GitHub token behind in .git/config.
@@ -225,6 +165,8 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           REGISTRY: ghcr.io
           IMAGE_OWNER: ${{ env.REPO_OWNER_LC }}
+          # What the MCP image is tagged with (`mcp/.scripts/deploy.sh`).
+          RELEASE_VERSION: ${{ needs.release.outputs.version }}
         with:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
@@ -238,5 +180,6 @@ jobs:
             GITHUB_ACTIONS
             REGISTRY
             IMAGE_OWNER
+            RELEASE_VERSION
 
             OP_SERVICE_ACCOUNT_TOKEN

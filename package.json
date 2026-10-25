@@ -18,6 +18,7 @@
     "serve": "turbo serve",
     "test": "turbo test",
     "test:integration": "turbo test:integration",
+    "test:release": "bun test ./.scripts/release.spec.ts",
     "deploy": "turbo deploy",
     "install-skia": "bash ./.scripts/install-skia.sh",
     "lint": "turbo lint",

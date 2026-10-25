@@ -33,7 +33,6 @@ workflows:
         - 'actions/checkout@v6.1.0'
         - 'devcontainers/ci@v0.3.1900000450'
         - 'docker/login-action@v3.7.0'
-        - 'googleapis/release-please-action@v4.4.1'
         - 'jlumbroso/free-disk-space@v1.3.1'
     '.github/workflows/watch-apk.yml':
         - 'actions/cache@v5.1.0'
@@ -86,11 +85,6 @@ dependencies:
         commit: 'sha1-c94ce9fb468520275223c153574b00df6fe4bcc9'
         owner_id: 5429470
         repo_id: 287743349
-    'googleapis/release-please-action@v4.4.1':
-        ref: 'v4.4.1'
-        commit: 'sha1-5c625bfb5d1ff62eadeeb3772007f7f66fdcf071'
-        owner_id: 16785467
-        repo_id: 262236530
     'jlumbroso/free-disk-space@v1.3.1':
         ref: 'v1.3.1'
         commit: 'sha1-54081f138730dfa15788a46383842cd2f914a1be'

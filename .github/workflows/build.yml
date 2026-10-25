@@ -9,9 +9,6 @@ on:
   pull_request:
     types: [opened, synchronize, labeled]
     branches: [ main ]
-  # How `release.yml` runs CI on the release pull request, which GITHUB_TOKEN
-  # opens and which therefore gets no `pull_request` run of its own.
-  workflow_dispatch:
 
 # Least privilege by default: every job below opts into exactly what it needs.
 permissions: {}

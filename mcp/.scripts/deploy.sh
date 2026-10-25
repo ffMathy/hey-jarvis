@@ -4,8 +4,6 @@ set -e
 # MCP Deployment Script
 # Builds and pushes multi-architecture Docker images to GitHub Container Registry
 
-PROJECT_DIR="$(dirname "$0")/.."
-
 echo "🚀 Starting MCP deployment..."
 
 # Check required environment variables
@@ -22,10 +20,14 @@ fi
 # Set defaults for optional environment variables
 IMAGE_OWNER="${IMAGE_OWNER:-ffmathy}"
 
-# Determine version from project's package.json
-PROJECT_VERSION=$(jq -r '.version' "$PROJECT_DIR/package.json")
-IMAGE_TAG="${PROJECT_VERSION}"
-echo "📦 Detected project version: $PROJECT_VERSION"
+# The version `release.yml` has just tagged. Nothing in the repository carries it — releases are
+# tags, not commits — so a deploy without one has no version to publish.
+if [ -z "$RELEASE_VERSION" ]; then
+    echo "❌ RELEASE_VERSION environment variable is required: the release version to tag the image with"
+    exit 1
+fi
+IMAGE_TAG="${RELEASE_VERSION}"
+echo "📦 Release version: $RELEASE_VERSION"
 
 echo "📋 Deployment configuration:"
 echo "   Image Owner: $IMAGE_OWNER"

@@ -172,7 +172,7 @@ const withReleaseSigning = createReleaseSigning(withAppBuildGradle);
 const config: ExpoConfig = {
   name: 'Jarvis',
   slug: 'hey-jarvis-wear',
-  // The monorepo's released version, which Release Please bumps on `main`, rather than a
+  // The monorepo's released version, which the `Play` workflow hands in, rather than a
   // number frozen here. Both apps are one Play listing and must agree on it; see
   // `.scripts/expo-release-signing.js`.
   version: androidVersionName(),

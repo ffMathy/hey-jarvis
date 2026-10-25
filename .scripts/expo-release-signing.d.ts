@@ -15,7 +15,7 @@ export declare function createReleaseSigning(mod: typeof withAppBuildGradle): Co
 export declare function androidVersionCode(offset: number): number;
 
 /**
- * The version a human reads, taken from the monorepo's own released version — the one Release
- * Please bumps on `main`. Shared by both apps, because they are one Play listing.
+ * The version a human reads: the release being built, handed in as `RELEASE_VERSION`, or `0.0.0`
+ * outside a release. Shared by both apps, because they are one Play listing.
  */
 export declare function androidVersionName(): string;
