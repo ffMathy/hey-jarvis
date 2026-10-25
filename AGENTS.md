@@ -199,8 +199,8 @@ history this continues from.
 The notes on the GitHub Release are the changelog, grouped by type in the shape
 Release Please used to write them, with each commit linked and the comparison
 with the previous release in the heading. The `CHANGELOG.md` files are no longer
-written; they keep the history up to 4.28.3, and the Releases page has
-everything after. Likewise the `version` fields in the `package.json` files no
+written; they keep the history of the Release Please releases, and the
+Releases page has everything after. Likewise the `version` fields in the `package.json` files no
 longer move — nothing reads them for a release.
 
 The version reaches what ships as `RELEASE_VERSION`: `deploy` tags the MCP

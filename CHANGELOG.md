@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.28.4](https://github.com/ffMathy/hey-jarvis/compare/root-v4.28.3...root-v4.28.4) (2026-10-25)
+
+
+### Bug Fixes
+
+* **agents:** tell agents the time in the household's time zone ([#998](https://github.com/ffMathy/hey-jarvis/issues/998)) ([d020d26](https://github.com/ffMathy/hey-jarvis/commit/d020d263de3621e7279d27b38d8bba67f986da1a))
+* **coding:** never ask sir about fixes for failed evaluations ([#997](https://github.com/ffMathy/hey-jarvis/issues/997)) ([47d89e4](https://github.com/ffMathy/hey-jarvis/commit/47d89e4ae54d6fc0232dc0fa11618e1793a3ecd0))
+
 ## [4.28.3](https://github.com/ffMathy/hey-jarvis/compare/root-v4.28.2...root-v4.28.3) (2026-10-25)
 
 
