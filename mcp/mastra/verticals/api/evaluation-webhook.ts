@@ -1,9 +1,9 @@
 /**
  * The endpoint ElevenLabs calls when a conversation with Jarvis's voice agent has ended, with the
  * whole transcript and how the conversation scored against the agent's evaluation criteria. A
- * conversation that failed one has a Claude Code session started on it, through
- * `implementFeatureWorkflow`, to find the cause and fix it; the server opens the pull request once
- * the session is done, as it does for every coding session.
+ * conversation that failed one has an unattended Claude Code session started on it to find the
+ * cause and fix it: it asks the user nothing, and the server opens the pull request once the session
+ * is done, as it does for every coding session.
  *
  * **ElevenLabs signs, the server checks.** The webhook is a workspace webhook with an HMAC secret
  * (`HEY_JARVIS_ELEVENLABS_WEBHOOK_SECRET`), and ElevenLabs cannot present a Cloudflare Access
@@ -24,7 +24,7 @@ import {
   type PostCallTranscription,
   postCallTranscriptionSchema,
 } from '../coding/evaluation-failures.js';
-import { implementFeatureWorkflow } from '../coding/workflows.js';
+import { startImplementationSession } from '../coding/tools.js';
 
 /** Where ElevenLabs posts a finished conversation. */
 export const EVALUATION_WEBHOOK_ROUTE = '/api/elevenlabs/post-call';
@@ -60,13 +60,14 @@ export interface EvaluationWebhookDependencies {
   now?: () => number;
 }
 
-/** Starts the fix through `implementFeatureWorkflow`, on Jarvis's own repository. */
-const startFixWithWorkflow: StartEvaluationFix = async ({ title, request }) => {
-  const run = await implementFeatureWorkflow.createRun();
-  const result = await run.start({ inputData: { initialRequest: request, title } });
-  if (result.status !== 'success' || !result.result.success) {
-    const reason = result.status === 'success' ? result.result.message : `workflow ${result.status}`;
-    throw new Error(reason);
+/**
+ * Starts the fix as an unattended session on Jarvis's own repository: nobody asked for it, so nobody
+ * is asked anything about it.
+ */
+const startUnattendedFix: StartEvaluationFix = async ({ title, request }) => {
+  const started = await startImplementationSession({ request, title, unattended: true });
+  if (!started.success) {
+    throw new Error(started.message);
   }
 };
 
@@ -275,7 +276,7 @@ export function registerEvaluationWebhookApi(router: Router, dependencies: Evalu
     EVALUATION_WEBHOOK_ROUTE,
     checkHeaderBeforeReading(now),
     readRawBody,
-    handlePostCallWebhook(ledger, dependencies.startEvaluationFix ?? startFixWithWorkflow, now),
+    handlePostCallWebhook(ledger, dependencies.startEvaluationFix ?? startUnattendedFix, now),
   );
   logger.info('[API] Registered ElevenLabs post-call webhook', { method: 'POST', path: EVALUATION_WEBHOOK_ROUTE });
   return EVALUATION_WEBHOOK_ROUTE;

@@ -33,6 +33,23 @@ Jarvis asks him out loud, on a call or on the house speakers, and resumes this s
 }
 
 /**
+ * The part of an unattended session's task that replaces {@link buildSessionQuestionInstructions}:
+ * nobody is there to ask, so it decides everything itself.
+ */
+export function buildUnattendedSessionInstructions(): string {
+  return `Before changing anything, study the parts of the codebase this request touches: where the change belongs, what it builds on, and how it should behave.
+
+Nobody is available to answer questions: this session was started automatically, and the user is not to be called or asked anything about it. Decide every choice yourself — what the code, its documentation and its conventions settle, and anything else by picking the option that changes the least and is easiest to undo. Never end your turn on a question; implement the change, and list the assumptions you made in your final message, so they are in the pull request for review.`;
+}
+
+/**
+ * What an unattended session is told when it asks a question anyway, in place of the user's
+ * answer: nobody will answer, so it decides and carries on.
+ */
+export const UNATTENDED_SESSION_ANSWER =
+  'Nobody is available to answer: this session runs unattended, and the user is not to be asked anything. Decide this yourself — the option that changes the least and is easiest to undo — note the assumption in your final message, and finish the change.';
+
+/**
  * Reads the question a session ended its turn on, if it ended on one.
  *
  * The block is the last thing in the message, so it is looked for from the end — the message may
