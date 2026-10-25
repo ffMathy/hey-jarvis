@@ -7,7 +7,8 @@
  *
  * **ElevenLabs signs, the server checks.** The webhook is a workspace webhook with an HMAC secret
  * (`HEY_JARVIS_ELEVENLABS_WEBHOOK_SECRET`), and ElevenLabs cannot present a Cloudflare Access
- * service token, so the path bypasses Access and the signature is the only credential. Nothing past
+ * service token, so the path is under {@link WEBHOOKS_PATH}, which bypasses Access, and the signature
+ * is the only credential. Nothing past
  * the header is read until the header is well-formed and fresh, and nothing is acted on until the
  * body's signature matches.
  *
@@ -26,8 +27,20 @@ import {
 } from '../coding/evaluation-failures.js';
 import { startImplementationSession } from '../coding/tools.js';
 
-/** Where ElevenLabs posts a finished conversation. */
-export const EVALUATION_WEBHOOK_ROUTE = '/api/elevenlabs/post-call';
+/**
+ * Where every webhook is served: the one prefix a single Cloudflare Access *Bypass* application covers
+ * (`<hostname>/webhooks/*`). A webhook's sender cannot present an Access service token, so each one
+ * guards itself, with its sender's signature, and reads its own body to check it
+ * (`readsItsOwnBody` in `routes.ts`).
+ */
+export const WEBHOOKS_PATH = '/webhooks';
+
+/**
+ * Where ElevenLabs posts a finished conversation. Spelled out rather than built from
+ * {@link WEBHOOKS_PATH}, so that it can be found as it is: it is the URL the ElevenLabs webhook is
+ * created with.
+ */
+export const EVALUATION_WEBHOOK_ROUTE = '/webhooks/elevenlabs/post-call';
 
 /** The variable holding the HMAC secret ElevenLabs shows when the webhook is created. */
 export const WEBHOOK_SECRET_VARIABLE = 'HEY_JARVIS_ELEVENLABS_WEBHOOK_SECRET';
