@@ -15,7 +15,7 @@
       "turnEagerness": "normal",
       "spellingPatience": "auto",
       "speculativeTurn": true,
-      "retranscribeOnTurnTimeout": false,
+      "retranscribeOnTurnTimeout": true,
       "turnModel": "turn_v3",
       "interruptionIgnoreTerms": [
         "mmhmm",
