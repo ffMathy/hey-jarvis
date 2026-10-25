@@ -82,18 +82,27 @@ describe('homeServicesFrom', () => {
       { domain: 'update', services: { install: { target: { entity: [{ domain: ['update'] }] } } } },
     ]);
 
-    expect(services).toEqual([
-      lightTurnOff,
-      climateSetTemperature,
+    expect(services).toEqual([lightTurnOff, climateSetTemperature]);
+  });
+
+  it('leaves out the generic services, which compete with every domain-specific one', () => {
+    // Offered beside `light.turn_off`, "Generic turn off" split Jev's confidence on every light
+    // switched off, and the request went to the agent instead.
+    const services = homeServicesFrom([
       {
-        id: 'homeassistant.turn_off',
+        domain: 'light',
+        services: { turn_on: { name: 'Turn on', target: { entity: [{ domain: ['light'] }] } } },
+      },
+      {
         domain: 'homeassistant',
-        service: 'turn_off',
-        description: 'Generic turn off',
-        requiredFields: [],
-        entityDomains: ['homeassistant'],
+        services: {
+          turn_on: { name: 'Generic turn on', target: { entity: {} } },
+          toggle: { name: 'Generic toggle', target: { entity: {} } },
+        },
       },
     ]);
+
+    expect(services.map((service) => service.id)).toEqual(['light.turn_on']);
   });
 });
 

@@ -1173,12 +1173,16 @@ same way, as a request naming it (see [Vision Vertical](#vision-vertical)); the 
 over the REST API, not through the voice model.
 
 **Workflows:**
-- **`routePromptWorkflow`**: starts a request and returns at once, with the session to poll
+- **`routePromptWorkflow`**: starts a request and returns its closing report if it finishes within
+  a few seconds, or else the instruction to poll
 - **`getNextInstructionsWorkflow`**: reports whatever has landed since the last call
 
 **How a request runs:**
-1. `routePromptWorkflow` starts the request and returns immediately — it does not wait for the
-   planner, let alone for the agents the plan names.
+1. `routePromptWorkflow` starts the request and waits up to `ROUTE_ANSWER_WAIT_MS` (5s) for it to
+   finish. A request that does — a light switched by Jev and one Home Assistant call, with no
+   language model on this side — is answered with its closing report right there, so the voice
+   model speaks the result on its next turn instead of spending that turn on a poll. Otherwise it
+   returns the instruction to poll, having handed nothing over, and the loop below runs as before.
 2. The planner writes a plan. Mastra validates and registers it as a **dynamic workflow** built
    for this one request: one workflow per chain, and a root running the chains in parallel.
 3. Every delegation in the plan is marked outstanding *before a single step runs*, so the first

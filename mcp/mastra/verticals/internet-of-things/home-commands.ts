@@ -36,8 +36,26 @@ import {
  * exist.
  */
 
-/** Domains whose services are about Home Assistant itself rather than the home. */
-const EXCLUDED_DOMAINS = new Set(['update', 'hassio', 'frontend', 'logger', 'system_log', 'recorder', 'backup']);
+/**
+ * Domains whose services are about Home Assistant itself rather than the home, and `homeassistant`,
+ * whose generic turn on, turn off and toggle act on any entity at all.
+ *
+ * Those generic ones are a second answer to nearly every command -- "turn on the living room light"
+ * is `light.turn_on` and `homeassistant.turn_on` alike -- so offering them split Jev's confidence
+ * between the two and sent plain light switches to the agent. And choosing one would not have helped:
+ * every entity in the house is its target, far more than are put to Jev, so it declined anyway. A
+ * command spanning kinds of device is the agent's either way.
+ */
+const EXCLUDED_DOMAINS = new Set([
+  'update',
+  'hassio',
+  'frontend',
+  'logger',
+  'system_log',
+  'recorder',
+  'backup',
+  'homeassistant',
+]);
 
 /** The choice for a request that is not one of the listed services as it stands. */
 const OTHER_SERVICE = 'other';

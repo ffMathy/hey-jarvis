@@ -253,6 +253,20 @@ export class RoutingProgress {
   }
 
   /**
+   * Resolves when the request has ended, however many changes come before that.
+   *
+   * Parked on the same wake-ups as {@link wait}, but only the end releases it, so a caller waiting
+   * for the closing report does not spin through every result that lands on the way.
+   */
+  async waitUntilFinished(): Promise<void> {
+    while (!this.isFinished()) {
+      await new Promise<void>((resolve) => {
+        this.waiters.push(resolve);
+      });
+    }
+  }
+
+  /**
    * Whether the request is done.
    *
    * The request's work ending is the whole of it -- its plan run, and any answers it carried
@@ -619,6 +633,11 @@ export interface RoutingRuntime {
   poll(sessionId: string): Promise<RoutingSnapshot>;
   /** Resolves when the request next changes, or after `deadlineMs`. */
   waitForChange(sessionId: string, deadlineMs: number): Promise<void>;
+  /**
+   * Resolves to whether the request finished within `deadlineMs`. Unlike {@link poll}, it hands
+   * nothing over, so the results are still there for whichever report goes out next.
+   */
+  finishesWithin(sessionId: string, deadlineMs: number): Promise<boolean>;
   /**
    * Has the user notified when the session's request is done, and lets it outlive the
    * conversation. Resolves to whether there was anything left to wait for.
@@ -1676,6 +1695,12 @@ const planRuntime: RoutingRuntime = {
     // Everything that changes what a poll would say arrives on the run's own stream, so the
     // wait is that stream against the deadline.
     await Promise.race([progressFor(resolvePolledSessionId(sessionId)).wait(), delay(deadlineMs)]);
+  },
+
+  async finishesWithin(sessionId, deadlineMs) {
+    const progress = progressFor(resolvePolledSessionId(sessionId));
+    await Promise.race([progress.waitUntilFinished(), delay(deadlineMs)]);
+    return progress.isFinished();
   },
 };
 

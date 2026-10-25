@@ -6,7 +6,8 @@ import type { ServerMessage } from './conversation-strategy';
  *
  * Jarvis fulfils a request by calling `routePromptWorkflow` once and then
  * `getNextInstructionsWorkflow` over and over until the DAG reports itself
- * finished. Every one of those calls carries a JSON report — which task results
+ * finished — unless the request finished before the route call returned, in
+ * which case that call carries the closing report and nothing is polled. Every one of those calls carries a JSON report — which task results
  * are being handed over, and which tasks are still running — and the loop is
  * only correct if those reports line up: nothing polled before anything was
  * routed, no result delivered twice, no task rising from the dead after it was
@@ -108,17 +109,25 @@ export function parseRoutingReport(result: unknown): RoutingReport | undefined {
  * states it two ways at once, and either is enough — an empty in-progress list,
  * or the instruction that says so in words.
  *
- * Only ever asked of a poll's report. A routing acknowledgement whose plan had
- * not landed in time also carries an empty list, and it means the opposite:
- * nothing has finished, because nothing has started.
+ * The empty list only counts on a poll's report. A routing acknowledgement whose
+ * plan had not landed in time also carries an empty list, and it means the
+ * opposite: nothing has finished, because nothing has started.
  */
 export function isFinalReport(report: RoutingReport | undefined): boolean {
   if (!report) {
     return false;
   }
+  return report.taskIdsInProgress?.length === 0 || saysAllTasksCompleted(report);
+}
+
+/**
+ * Whether a report closes the request in words, which is the only way a route call's can: its
+ * empty in-progress list may only mean the plan had not landed yet.
+ */
+function saysAllTasksCompleted(report: RoutingReport | undefined): boolean {
   // Anchored, because the mid-flight instruction contains the closing one's words:
   // "More tasks have finished since last time, but not all tasks have completed yet."
-  return report.taskIdsInProgress?.length === 0 || /^\s*all tasks have completed/i.test(report.instructions);
+  return report !== undefined && /^\s*all tasks have completed/i.test(report.instructions);
 }
 
 export type RoutingLoopStepKind = 'route' | 'poll';
@@ -238,7 +247,10 @@ export function readRoutingLoop(messages: ServerMessage[]): RoutingLoop {
     deliveredTaskIds,
     undeliveredTaskIds: [...announced].filter((id) => !delivered.has(id)),
     failedCalls: steps.filter((step) => step.state === 'failure'),
-    finished: polls.some((step) => isFinalReport(step.report)),
+    // The route call itself closes a request that finished before it returned, and says so in words.
+    finished:
+      polls.some((step) => isFinalReport(step.report)) ||
+      steps.some((step) => step.kind === 'route' && saysAllTasksCompleted(step.report)),
   };
 }
 
@@ -276,7 +288,7 @@ function findStructureViolations(loop: RoutingLoop): string[] {
       `the request was routed ${loop.routeCalls.length} times; a single request is routed once and then polled`,
     );
   }
-  if (loop.routeCalls.length > 0 && loop.polls.length === 0) {
+  if (loop.routeCalls.length > 0 && loop.polls.length === 0 && !loop.finished) {
     violations.push(`the request was routed but never polled: ${NEXT_INSTRUCTIONS_TOOL_NAME} was never called`);
   }
   if (loop.steps.length > 0 && loop.steps[0].kind === 'poll') {
