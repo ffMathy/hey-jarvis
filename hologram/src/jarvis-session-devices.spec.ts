@@ -3,7 +3,7 @@ import { GIVE_UP_CONNECTING_AFTER_MS } from './conversation-life';
 import { PHONE_PARTICIPANT_NAME, WATCH_PARTICIPANT_NAME } from './conversation-token';
 import { DEADLINE_PROBLEM, DROPPED_PROBLEM, OFFLINE_PROBLEM } from './failure-text';
 import { MATERIALISE_SECONDS } from './frame-timing';
-import { RELEASE_HELD_VOICE_AFTER_MS } from './jarvis-session';
+import { REDIAL_GIVE_UP_AFTER_MS, RELEASE_HELD_VOICE_AFTER_MS } from './jarvis-session';
 import { createFakeCallAudio, createFakeHeldVoice, createHarness, settle } from './jarvis-session.fakes';
 import type { JarvisSessionDependencies } from './session-contract';
 
@@ -465,6 +465,7 @@ describe('what the SDK’s React provider used to get wrong on the phone and the
     const dropped = onAPhone();
     await goLiveOn(dropped);
     dropped.sdk.latest.drop('LiveKit connection state changed to disconnected');
+    await dropped.clock.advance(REDIAL_GIVE_UP_AFTER_MS);
     expect(dropped.events.problems).toEqual([DROPPED_PROBLEM]);
     expect(dropped.events.sources).toEqual(['session']);
 

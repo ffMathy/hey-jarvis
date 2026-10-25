@@ -1,7 +1,14 @@
 import { type AgentTrackRoom, agentAudioTracks } from './agent-audio-track';
+import { isDroppedLine } from './connection-drop';
 import { GIVE_UP_CONNECTING_AFTER_MS, isLive } from './conversation-life';
 import { requestConversationToken, requestSignedConversationUrl } from './conversation-token';
-import { DEADLINE_PROBLEM, describeDisconnect, describeStartFailure, describeTokenFailure } from './failure-text';
+import {
+  DEADLINE_PROBLEM,
+  DROPPED_PROBLEM,
+  describeDisconnect,
+  describeStartFailure,
+  describeTokenFailure,
+} from './failure-text';
 import { MATERIALISE_SECONDS } from './frame-timing';
 import { isGreetingOver, WITHOUT_FIRST_MESSAGE } from './greeting-handover';
 import { createGreetingReaders } from './greeting-voice';
@@ -63,6 +70,23 @@ const ORPHAN_SWEEP_AGAIN_MS = 2_000;
  */
 export const RELEASE_HELD_VOICE_AFTER_MS = 1_500;
 
+/**
+ * How long a conversation whose line dropped is redialled for before he gives up and says it
+ * dropped. LiveKit has usually spent a while on retries of its own before a drop reaches the
+ * session, so this is time on top of that: enough for a phone to come out of a lift or a tunnel.
+ */
+export const REDIAL_GIVE_UP_AFTER_MS = 30_000;
+
+/** How long each redial after the first waits, the first going at once; the last repeats. */
+const REDIAL_DELAYS_MS = [1_000, 2_000, 4_000];
+
+/** How many of the latest lines a redialled agent is told, and how much of each. */
+const RECAP_LINES = 12;
+const RECAP_LINE_CHARACTERS = 300;
+
+/** The context id the recap goes under, so a second redial's recap replaces the first's. */
+const RECAP_CONTEXT_ID = 'redialled';
+
 const SILENT_SPECTRUM = new Uint8Array(0);
 
 /** Nothing to listen to: what the sphere follows between conversations and while one is dialled. */
@@ -89,6 +113,24 @@ type CallAudioHolder = 'nobody' | 'greeting' | 'conversation';
 
 /** What a summoning dials with, once it has been asked for: a token, or a signed URL. */
 type Credential = { kind: 'token'; token: string } | { kind: 'signed-url'; signedUrl: string };
+
+/**
+ * What a redialled agent is told about the conversation it is picking up: that the line dropped,
+ * not to greet him again, and the last few lines said, oldest first.
+ */
+function recapOf(lines: readonly ConversationMessage[]): string {
+  const opening =
+    'The line to sir dropped mid-conversation and has just been reconnected. Do not greet him again; carry on from where it left off.';
+  if (lines.length === 0) {
+    return opening;
+  }
+  const said = lines.map(({ role, message }) => {
+    const line = message.trim();
+    const shortened = line.length > RECAP_LINE_CHARACTERS ? `${line.slice(0, RECAP_LINE_CHARACTERS)}…` : line;
+    return `${role === 'user' ? 'Sir' : 'You'}: ${shortened}`;
+  });
+  return `${opening} The last of what was said, oldest first:\n${said.join('\n')}`;
+}
 
 /**
  * One summoning, from the wake word to its ending.
@@ -122,6 +164,24 @@ interface Attempt<Timer> {
   network: 'unasked' | 'coming-up' | 'held';
   credential?: Credential;
   dialled: boolean;
+  /**
+   * Which `startSession` call of this summoning is the current one, counting from 1: a redial dials
+   * again, and nothing a dial it has moved on from reports counts any more.
+   */
+  line: number;
+  /** From a dropped line (see `isDroppedLine`) until the conversation is connected again. */
+  redialling: boolean;
+  /** Redials that failed since the line dropped, which set how long the next one waits. */
+  redials: number;
+  redialWait?: Timer;
+  /**
+   * Whether sir has said anything since the conversation was last redialled, and true before any
+   * redial. An agent that seems to leave a redialled conversation nobody has spoken in may really
+   * have left, and redialling it again and again would keep him on screen for ever.
+   */
+  spokenSinceRedial: boolean;
+  /** The latest lines of the conversation, for the agent a redial reaches: see `recapOf`. */
+  recentLines: ConversationMessage[];
   /** Whether `startSession` has been called and has not yet resolved or rejected. */
   starting: boolean;
   conversation?: SessionConversation;
@@ -336,14 +396,18 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
   };
 
   /**
-   * Binds an SDK callback to the attempt that dialled it (see {@link Attempt}), and keeps it from
-   * throwing into the SDK: a throw from `onConversationCreated` makes the SDK end the conversation
-   * as though the user had, which would send him away with nothing to say why.
+   * Binds an SDK callback to the attempt that dialled it (see {@link Attempt}), and to that attempt's
+   * current dial, and keeps it from throwing into the SDK: a throw from `onConversationCreated`
+   * makes the SDK end the conversation as though the user had, which would send him away with
+   * nothing to say why.
    */
-  const bound =
-    <CallbackArguments extends unknown[]>(owner: Attempt<Timer>, handler: (...parameters: CallbackArguments) => void) =>
-    (...parameters: CallbackArguments) => {
-      if (!isCurrent(owner)) {
+  const bound = <CallbackArguments extends unknown[]>(
+    owner: Attempt<Timer>,
+    handler: (...parameters: CallbackArguments) => void,
+  ) => {
+    const line = owner.line;
+    return (...parameters: CallbackArguments) => {
+      if (!isCurrent(owner) || owner.line !== line) {
         return;
       }
       try {
@@ -352,6 +416,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
         noteError(error);
       }
     };
+  };
 
   // ── Whose voice, and whose microphone ──────────────────────────────────────────────────────────
 
@@ -548,6 +613,10 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       cancel(current.heldVoiceRelease);
       current.heldVoiceRelease = undefined;
     }
+    if (current.redialWait !== undefined) {
+      cancel(current.redialWait);
+      current.redialWait = undefined;
+    }
   };
 
   // ── What is said while he connects ─────────────────────────────────────────────────────────────
@@ -729,29 +798,43 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     });
   };
 
-  const statusChanged = (current: Attempt<Timer>, status: string) => {
-    current.status = status;
-    if (status === 'connected') {
-      if (current.deadline !== undefined) {
-        cancel(current.deadline);
-        current.deadline = undefined;
-      }
-      // Before the phase moves on, so that anything the holder says the moment he is live comes
-      // after what was waiting, and is what the agent is left with.
-      sayPendingContext(current);
-      if (current.heldVoice === 'holding' && current.heldVoiceRelease === undefined) {
-        current.heldVoiceRelease = schedule(() => {
-          current.heldVoiceRelease = undefined;
-          releaseVoice(current);
-        }, RELEASE_HELD_VOICE_AFTER_MS);
-      }
-      if (current.greeting === 'over') {
-        setPhase('live');
-      }
+  /** The conversation is up: a redial is over, and whatever waited for it goes now. */
+  const cameUp = (current: Attempt<Timer>) => {
+    current.redialling = false;
+    current.redials = 0;
+    if (current.deadline !== undefined) {
+      cancel(current.deadline);
+      current.deadline = undefined;
     }
+    // Before the phase moves on, so that anything the holder says the moment he is live comes
+    // after what was waiting, and is what the agent is left with.
+    sayPendingContext(current);
+    if (current.heldVoice === 'holding' && current.heldVoiceRelease === undefined) {
+      current.heldVoiceRelease = schedule(() => {
+        current.heldVoiceRelease = undefined;
+        releaseVoice(current);
+      }, RELEASE_HELD_VOICE_AFTER_MS);
+    }
+    if (current.greeting === 'over') {
+      setPhase('live');
+    }
+  };
+
+  const statusChanged = (current: Attempt<Timer>, status: string) => {
     if (!isLive(status)) {
       // A call still running when the conversation drops never gets its answer.
       toolActivity.forget();
+      if (current.status === 'connected' || current.redialling) {
+        // The conversation is going, or a redial did not come up. Whether that ends the summoning
+        // or is dialled again is `onDisconnect`'s to say, or the redial's; until then he is still
+        // here, since a screen that saw `disconnected` would send him away.
+        report();
+        return;
+      }
+    }
+    current.status = status;
+    if (status === 'connected') {
+      cameUp(current);
     }
     updateHearing(current);
     report();
@@ -789,10 +872,12 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     events.onInterruption?.();
   };
 
-  const messageArrived = (message: ConversationMessage) => {
+  const messageArrived = (current: Attempt<Timer>, message: ConversationMessage) => {
     if (message.role === 'user') {
       halfDuplex.userSpoke();
+      current.spokenSinceRedial = true;
     }
+    current.recentLines = [...current.recentLines, message].slice(-RECAP_LINES);
     caption.heard(message);
     events.onMessage?.(message);
   };
@@ -803,7 +888,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
    */
   const errorReported = (current: Attempt<Timer>, message: string) => {
     if (current.status !== 'connected') {
-      fail(current, describeStartFailure(message, offlineProblem), 'session');
+      couldNotConnect(current, describeStartFailure(message, offlineProblem), 'session');
       return;
     }
     lastError = message;
@@ -811,6 +896,18 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
   };
 
   const disconnected = (current: Attempt<Timer>, ending: SessionEnding) => {
+    if (
+      current.status === 'connected' &&
+      isDroppedLine(ending) &&
+      (ending.reason === 'error' || current.spokenSinceRedial)
+    ) {
+      redial(current);
+      return;
+    }
+    if (current.redialling) {
+      couldNotConnect(current, DROPPED_PROBLEM, 'session');
+      return;
+    }
     if (ending.reason !== 'error') {
       end(current);
       return;
@@ -832,7 +929,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     onAgentToolResponse: bound(current, toolActivity.toolHandlers.onAgentToolResponse),
     onMCPToolCall: bound(current, toolActivity.toolHandlers.onMCPToolCall),
     onInterruption: bound(current, () => interrupted(current)),
-    onMessage: bound(current, messageArrived),
+    onMessage: bound(current, (message: ConversationMessage) => messageArrived(current, message)),
     onError: bound(current, (message: string) => errorReported(current, message)),
     onDisconnect: bound(current, (ending: SessionEnding) => disconnected(current, ending)),
   });
@@ -845,6 +942,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
         connectionType: 'websocket',
         textOnly: true,
         ...delay,
+        ...(current.redialling ? { overrides: WITHOUT_FIRST_MESSAGE } : {}),
         ...callbacks(current),
       };
     }
@@ -852,18 +950,23 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       conversationToken: credential.token,
       connectionType: 'webrtc',
       ...delay,
-      ...(current.greeted ? { overrides: WITHOUT_FIRST_MESSAGE } : {}),
+      ...(current.greeted || current.redialling ? { overrides: WITHOUT_FIRST_MESSAGE } : {}),
       ...callbacks(current),
     };
   };
 
   // ── Dialling ───────────────────────────────────────────────────────────────────────────────────
 
-  const started = (current: Attempt<Timer>, conversation: SessionConversation) => {
+  const started = (current: Attempt<Timer>, line: number, conversation: SessionConversation) => {
     current.starting = false;
     if (!isCurrent(current)) {
       // Given up on or hung up while it was dialling: nobody is waiting for it now.
       endAndRelease(current, conversation);
+      return;
+    }
+    if (line !== current.line) {
+      // A redial that was given up on: the call's audio is the summoning's, and stays.
+      endOnly(conversation);
       return;
     }
     if (!current.conversation) {
@@ -873,21 +976,25 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
 
   const dial = (current: Attempt<Timer>, credential: Credential) => {
     current.dialled = true;
+    current.line += 1;
+    const line = current.line;
     let starting: Promise<SessionConversation>;
     try {
       starting = startSession(sessionOptions(current, credential));
     } catch (error) {
-      fail(current, describeStartFailure(error, offlineProblem), 'session');
+      couldNotConnect(current, describeStartFailure(error, offlineProblem), 'session');
       return;
     }
     current.starting = true;
     changed();
     starting.then(
-      (conversation) => started(current, conversation),
+      (conversation) => started(current, line, conversation),
       (error: unknown) => {
         current.starting = false;
         if (isCurrent(current)) {
-          fail(current, describeStartFailure(error, offlineProblem), 'session');
+          if (line === current.line) {
+            couldNotConnect(current, describeStartFailure(error, offlineProblem), 'session');
+          }
           return;
         }
         // Closed while it was dialling, and nothing came of it: the call's audio can go now.
@@ -910,9 +1017,14 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
 
   const giveUp = (current: Attempt<Timer>) => {
     current.deadline = undefined;
-    if (isCurrent(current) && current.status !== 'connected') {
-      fail(current, deadlineProblem(), 'deadline');
+    if (!isCurrent(current) || current.status === 'connected') {
+      return;
     }
+    if (current.redialling) {
+      fail(current, DROPPED_PROBLEM, 'session');
+      return;
+    }
+    fail(current, deadlineProblem(), 'deadline');
   };
 
   const requestCredential = (current: Attempt<Timer>): Promise<Credential> => {
@@ -950,6 +1062,101 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       },
     );
   };
+
+  // ── Redialling a dropped line ──────────────────────────────────────────────────────────────────
+
+  /** Ends a conversation and nothing else: the summoning goes on, and keeps the call's audio. */
+  const endOnly = (conversation: SessionConversation) => {
+    try {
+      conversation.endSession().catch(() => undefined);
+    } catch {
+      // Already gone.
+    }
+  };
+
+  /** Lets go of the conversation a dropped line or a failed redial leaves behind, and shows him connecting. */
+  const forgetConversation = (current: Attempt<Timer>) => {
+    current.stopFollowing?.();
+    current.stopFollowing = undefined;
+    current.room = undefined;
+    current.conversation = undefined;
+    current.conversationId = undefined;
+    current.status = 'connecting';
+    current.mode = 'listening';
+    current.microphoneMuted = false;
+    liveVoice = createLiveVoice(sdkReaders);
+    toolActivity.forget();
+    vadScore.forget();
+  };
+
+  /** Asks for a fresh credential and dials with it, unless the redial is over by then. */
+  const redialNow = (current: Attempt<Timer>) => {
+    requestCredential(current).then(
+      (credential) => {
+        if (isCurrent(current) && current.redialling) {
+          dial(current, credential);
+        }
+      },
+      () => {
+        if (isCurrent(current) && current.redialling) {
+          redialLater(current);
+        }
+      },
+    );
+  };
+
+  /** Tries again after the next of `REDIAL_DELAYS_MS`; the deadline armed by `redial` ends it. */
+  function redialLater(current: Attempt<Timer>) {
+    if (current.redialWait !== undefined) {
+      return;
+    }
+    const wait = REDIAL_DELAYS_MS[Math.min(current.redials, REDIAL_DELAYS_MS.length - 1)] ?? 0;
+    current.redials += 1;
+    current.redialWait = schedule(() => {
+      current.redialWait = undefined;
+      if (isCurrent(current) && current.redialling) {
+        redialNow(current);
+      }
+    }, wait);
+  }
+
+  /**
+   * A failure to bring a conversation up: one more failed redial while redialling, the summoning's
+   * failure otherwise. A redial's dial is abandoned first, so nothing it reports later counts.
+   */
+  function couldNotConnect(current: Attempt<Timer>, problem: string, source: ProblemSource) {
+    if (!current.redialling) {
+      fail(current, problem, source);
+      return;
+    }
+    const abandoned = current.conversation;
+    current.line += 1;
+    forgetConversation(current);
+    if (abandoned) {
+      endOnly(abandoned);
+    }
+    report();
+    redialLater(current);
+  }
+
+  /**
+   * Redials a conversation whose line dropped (`isDroppedLine`), rather than letting him go: a new
+   * conversation, with a new credential, that skips its first message and is told what was said
+   * before the drop (`recapOf`), since ElevenLabs cannot resume the old one. He stays on screen
+   * meanwhile, `connecting`, and gives up with the drop's own words after `REDIAL_GIVE_UP_AFTER_MS`.
+   */
+  function redial(current: Attempt<Timer>) {
+    forgetConversation(current);
+    current.redialling = true;
+    current.redials = 0;
+    current.spokenSinceRedial = false;
+    current.pendingContext = [{ text: recapOf(current.recentLines), contextId: RECAP_CONTEXT_ID }];
+    current.deadline = schedule(() => giveUp(current), REDIAL_GIVE_UP_AFTER_MS);
+    sweepOrphanedAudio();
+    setPhase('connecting');
+    report();
+    redialNow(current);
+  }
 
   /**
    * Starts reaching ElevenLabs, once: at once, or — on a device that has to find a network a
@@ -1217,6 +1424,11 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       reaching: false,
       network: 'unasked',
       dialled: false,
+      line: 0,
+      redialling: false,
+      redials: 0,
+      spokenSinceRedial: true,
+      recentLines: [],
       starting: false,
       callAudio: 'nobody',
       status: 'disconnected',

@@ -178,6 +178,26 @@ rules live:
   phone it used to connect under a line saying it had not.
 - **The greeting and the token start together** and the session is dialled
   behind him on every device, muted until he has finished.
+- **A dropped line is redialled, not the end of him.** LiveKit rides out a
+  short gap itself, but what it cannot — giving up on the room, or a change of
+  network (Wi-Fi to mobile data) making it rejoin from scratch, which unwinds
+  the agent's participant so the SDK reports the agent leaving — used to end
+  the conversation, and on a phone that is every lift and tunnel.
+  `isDroppedLine` (`connection-drop.ts`) tells those, and a written
+  conversation's socket failing, from a call that is over (`end_call`, a room
+  closed on purpose, a normal socket close, the maximum duration, the server
+  ending it). A dropped line goes back to `connecting` with him still on
+  screen, and the status held at `connecting` rather than `disconnected`, so
+  nothing that folds it (`afterStatus`) sends him away. It redials at once with
+  a fresh credential, then after 1, 2 and every 4 s, and gives up with
+  `DROPPED_PROBLEM` after `REDIAL_GIVE_UP_AFTER_MS`. ElevenLabs cannot resume a
+  conversation, so the new one skips its first message and is told, as a
+  contextual update, that the line dropped and the last few lines said. The
+  call's audio stays switched in across it. An agent that seems to leave a
+  redialled conversation nobody has spoken in is taken at its word, so an
+  agent that really did leave cannot bring him back for ever. Pinned in
+  `jarvis-session-redial.spec.ts`; the fakes end conversations in the SDK's
+  own shapes (`drop`, `agentSeemsToLeave`, `agentHangsUp`).
 
 Everything that differs by device is handed in, and the main entry stays free of
 platforms: the participant name, the timers, how his track is listened to

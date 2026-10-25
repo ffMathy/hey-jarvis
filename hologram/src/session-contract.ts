@@ -24,6 +24,10 @@ import type { ConversationMessage, WrittenReply } from './written-reply';
  * screen: an ending is him leaving, and a failure is a line or a panel saying why, which has to
  * outlive him. Every way a summoning can go wrong before or after it opens ends in `failed`, so
  * nothing is ever left waiting for a conversation that is not coming.
+ *
+ * `live` can go back to `connecting`: a conversation whose line dropped (see `connection-drop.ts`)
+ * is redialled, and he stays while it is, with the status reading `connecting` rather than
+ * `disconnected`, so nothing that watches for the conversation ending sends him away.
  */
 export type SessionPhase = 'idle' | 'greeting' | 'connecting' | 'live' | 'ended' | 'failed';
 
@@ -259,6 +263,12 @@ export interface SessionEnding {
   reason: string;
   /** Only with `error`: what went wrong, in the SDK's (or LiveKit's) words. */
   message?: string;
+  /**
+   * What closed it, as the SDK says: `end_call`, `close` (a room or socket closing, with LiveKit's
+   * reason or the socket's code), `connection_state_changed` (LiveKit giving up on the room), and so
+   * on. What tells a dropped line from a call that is over (see `connection-drop.ts`).
+   */
+  context?: { type: string; reason?: string; code?: number };
 }
 
 /**
@@ -301,6 +311,8 @@ export interface TextSessionOptions extends SessionCallbacks {
   connectionType: 'websocket';
   textOnly: true;
   connectionDelay?: ConnectionDelay;
+  /** Only when redialling a dropped conversation, which has already been greeted. */
+  overrides?: { agent: { firstMessage: string } };
 }
 
 /**
