@@ -49,7 +49,7 @@ export async function getMyAgent(): Promise<Agent> {
 4. **Export** from the vertical's `index.ts`
 5. **Register** in `mcp/mastra/verticals/index.ts`
 6. **Register in Mastra** in `mcp/mastra/index.ts`
-7. **Document** in `mcp/AGENTS.md`
+7. **Document** in `.claude/rules/mcp.md`
 
 ```typescript
 // In mastra/index.ts

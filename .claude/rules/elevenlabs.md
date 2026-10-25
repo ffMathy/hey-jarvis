@@ -1,6 +1,6 @@
 # ElevenLabs Integration
 
-> **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (Turborepo commands, commit standards, 1Password, etc.)
+> Paths in this rule are relative to `elevenlabs/` unless they say otherwise.
 
 ## Overview
 TypeScript-based integration connecting ElevenLabs voice AI agents with the Hey Jarvis ecosystem.
@@ -27,7 +27,6 @@ elevenlabs/
 │   ├── specs/                       # Agent behavior specification tests
 │   ├── utils/                       # Conversation framework, tunnel, MCP helpers
 │   └── README.md                    # How the tests are wired together
-├── AGENTS.md                        # This file
 ├── package.json                     # Project scripts, run through Turborepo
 └── op.env                           # 1Password environment variable references
 ```
@@ -113,7 +112,7 @@ The agent prompt in `src/assets/agent-prompt.md` defines:
 - **Conciseness**: Brief, witty acknowledgements (5-15 words, max 20) — and for a routed
   request, whatever length the `instructions` field asks for, which outranks the prompt's own
   rules: a few words for a command, a sentence for a lookup, detail for a briefing, full
-  character for conversation (the planner labels each request; see `mcp/AGENTS.md`)
+  character for conversation (the planner labels each request; see `.claude/rules/mcp.md`)
 - **When to reach for a tool**: answer outright or route, and never both
 - **Analysis Mode**: any phrase *beginning* with "analysis" drops the persona for
   a monotone, emotionless step-by-step readout. Every sentence opens with
@@ -125,7 +124,7 @@ The agent prompt in `src/assets/agent-prompt.md` defines:
   `<id>`: <focus>" — which reaches the `reflection` agent's `describeConversation`:
   the agents, tool calls, failures and logs Mastra recorded behind each routed
   request of this call. The readout then walks the call in order and inserts what
-  happened behind every `routePromptWorkflow` step (see `mcp/AGENTS.md`)
+  happened behind every `routePromptWorkflow` step (see `.claude/rules/mcp.md`)
 - **Conversation id**: the prompt carries `{{system__conversation_id}}`, and every
   `routePromptWorkflow` call passes it as `conversationId`. ElevenLabs substitutes dynamic
   variables in the prompt but cannot bind an MCP tool argument to one, so the model copies
@@ -151,7 +150,7 @@ session connects, the socket shuts, and the SDK reports it through `onDisconnect
 
 `conversation.textOnly` is on that list because the phone app needs it. A browser with the
 microphone refused holds the conversation as text on both sides, which is done by sending exactly
-that override — see "What a typed conversation asks for" in `mobile/AGENTS.md`. It is also the
+that override — see "What a typed conversation asks for" in `.claude/rules/mobile.md`. It is also the
 least sensitive thing on the list: it changes whether Jarvis writes or speaks, not what he is or
 what he can reach.
 
@@ -306,7 +305,7 @@ to follow that field literally. So the run-time mechanics — how long to keep
 polling, what to say between reports, what to do with a failed call, that a
 finished request does not finish the conversation — live in `INSTRUCTIONS` and
 `ALL_TASKS_COMPLETED_INSTRUCTIONS` in
-[`mcp/mastra/verticals/routing/workflows.ts`](../mcp/mastra/verticals/routing/workflows.ts),
+[`mcp/mastra/verticals/routing/workflows.ts`](../../mcp/mastra/verticals/routing/workflows.ts),
 where they arrive exactly when they apply.
 
 State each such rule in one place only. Asking for the same line here *and*
@@ -321,8 +320,8 @@ the server checks with ElevenLabs that the conversation is live on Jarvis's agen
 and the phone then uploads the photo to it. The phone and the server settle between them where the
 photo goes, so nothing the model reads — an email it summarised, the text on an earlier photo — can
 send it anywhere else: no address ever passes through the conversation. The phone's half is
-"Showing him something" in `mobile/AGENTS.md`, and the server's is the Vision vertical in
-`mcp/AGENTS.md`.
+"Showing him something" in `.claude/rules/mobile.md`, and the server's is the Vision vertical in
+`.claude/rules/mcp.md`.
 
 **What the agent hears of it is the phone's, sentence for sentence** (`mobile/src/photo-messages.ts`).
 Three are contextual updates, which start no turn: once connected, that this device is sir's phone
@@ -348,7 +347,7 @@ photo without saying what he wants: look at it and say what it shows (photo phot
 puts that photo in `photosToAskAbout`, so routing's closing report has Jarvis say what it shows, then
 ask what sir would like done with it and wait for the answer rather than hang up. That question comes
 from routing's `instructions` and not from the prompt, because those outrank the prompt and would
-otherwise forbid ending on a question (`mcp/AGENTS.md`, "Routing"). Every later request about the
+otherwise forbid ending on a question (`.claude/rules/mcp.md`, "Routing"). Every later request about the
 photo names it by its id the same way, which is how the planner knows to send it to the `vision`
 agent. The prompt states each of these rules once, in its **Photos** section, and a photo's id joins
 the tool names and argument lists sir must never hear.
@@ -390,7 +389,7 @@ outlives it.
 the conversation that opened the slot. If that conversation ended first, the photo stays with Mastra
 as one nobody has looked at, and routing brings it up in the closing report of the next request it
 answers, in whichever conversation that is, the way it brings up earlier work still waiting on sir
-(`mcp/AGENTS.md`, "Vision" and "Routing"). None of this is in the prompt: it arrives in
+(`.claude/rules/mcp.md`, "Vision" and "Routing"). None of this is in the prompt: it arrives in
 `instructions`, beside the rest of routing's run-time mechanics, when it applies.
 
 **The agent has no client tools, and asks ElevenLabs to send none.** `clientEvents` keeps
@@ -428,7 +427,7 @@ heard of them.
 
 The agent knows nothing about sir's headset, and the headset tells it nothing about itself: no device
 context, no pointing updates, no client tool. Both of the headset's extras travel between the MCP
-server and the devices over its `/api/live` WebSocket instead (see `mcp/AGENTS.md`):
+server and the devices over its `/api/live` WebSocket instead (see `.claude/rules/mcp.md`):
 
 - **What a request reads or changes** is pushed by the server straight to the devices, as a list of
   `{ id, name? }` entities, and the headset lights it up where sir placed it in the room. The routing
@@ -447,7 +446,7 @@ ElevenLabs scores every conversation against `platformSettings.evaluation.criter
 `src/assets/agent-config.json`, and the production agent's post-call webhook sends the transcript and
 those results to the MCP server. A conversation that failed a criterion has a Claude Code session started
 on it, which finds the cause, fixes it and opens a pull request — see "Fixing Failed ElevenLabs
-Evaluations" in `mcp/AGENTS.md`. So a criterion here is also a standing request for a fix whenever it
+Evaluations" in `.claude/rules/mcp.md`. So a criterion here is also a standing request for a fix whenever it
 fails: word it as something the agent can be changed to pass.
 
 `deploy` links the webhook only when `HEY_JARVIS_ELEVENLABS_POST_CALL_WEBHOOK_ID` is set, and never on the

@@ -1,11 +1,11 @@
 # Hologram
 
+> Paths in this rule are relative to `hologram/` unless they say otherwise.
+
 Jarvis himself: the sphere, the voice tracking that drives it, and the
 conversation with the agent doing the talking. Shared by every app that *is*
 him — `mobile/` and `watch/`, and `vr/`, the Quest headset app that stands
 him in your room, which uses the main entry, `hologram/gpu` and the assets.
-
-> **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (Turborepo commands, commit standards, 1Password, etc.)
 
 ## Four entry points
 
@@ -227,7 +227,7 @@ left out, and no device sets it. Only the headset's browser tests pass it,
 `Infinity` from `?deadline=never`, because they keep him greeting on a token that
 never comes while an emulator draws a frame a second or slower, and the shared
 twenty seconds raced them on a slow machine (see "The browser tests" in
-`vr/AGENTS.md`). An infinite wait arms no timer at all: a browser runs a
+`.claude/rules/vr.md`). An infinite wait arms no timer at all: a browser runs a
 timer of `Infinity` at once, and the specs' fake clock does the same, so a session
 that handed it over would fail in their hands as it would on a page.
 
@@ -503,7 +503,7 @@ for it, and each sees it as the agent hanging up. No device registers a client t
 
 Only the phone can show Jarvis something: its camera button takes a photo and sends it to sir's own
 Jarvis server, and everything about that — the button, the upload, the notes and messages the agent
-is sent — is the phone's ("Showing him something" in `mobile/AGENTS.md`). The agent has no client
+is sent — is the phone's ("Showing him something" in `.claude/rules/mobile.md`). The agent has no client
 tool for it, so no device answers one (no device registers any client tool), and the watch and the
 headset hold nothing for the camera at all. What the session gives the phone is general, and three things:
 
@@ -525,7 +525,7 @@ headset hold nothing for the camera at all. What the session gives the phone is 
   open: a quiet call is still the agent's to end (see above), and ElevenLabs does not document user
   activity as holding off either its turn timeout or its silence timeout. What keeps the agent from
   hanging up on the camera is its own rule, that a photo it is waiting for gets `skip_turn` ("Hanging
-  up when he goes quiet" in `elevenlabs/AGENTS.md`).
+  up when he goes quiet" in `.claude/rules/elevenlabs.md`).
 
 The photo goes to the server, never through the session; what goes through it is the message that
 names the photo once it has arrived, or says why it did not, as a user message through `sendText`,

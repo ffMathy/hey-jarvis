@@ -77,6 +77,13 @@ The suite is split in two by file name:
 - `*.spec.ts` / `*.test.ts` — mocked, offline, no credentials. Run by `turbo test`.
 - `*.integration.spec.ts` — real credentials, real APIs, real quota. Run by `turbo test:integration`.
 
+| | `*.spec.ts` / `*.test.ts` | `*.integration.spec.ts` |
+| --- | --- | --- |
+| Target | `turbo test` | `turbo test:integration` |
+| Secrets | none — the job runs with an empty environment | the full `Jarvis` vault, via `run-with-env.sh` |
+| Talks to | nothing outside the process | real APIs, a real Home Assistant, a real ElevenLabs agent |
+| Runs in CI | every push | never — only when run by hand |
+
 Only `test:integration` goes through `run-with-env.sh`, so only it resolves
 secrets from 1Password. `turbo test` runs with none of them, on purpose.
 

@@ -42,7 +42,7 @@ import { randomBytes } from 'node:crypto';
  *
  * **A screenshot is kept beside the photos, and never waits on anyone.** Every time sir summons
  * Jarvis from his phone, the phone sends what was on its screen at that moment (`kind: 'screenshot'`
- * in the slot request; see "What was on the screen" in `mobile/AGENTS.md`), so that "what does this
+ * in the slot request; see "What was on the screen" in `.claude/rules/mobile.md`), so that "what does this
  * say?" has something to be about. Nobody asked Jarvis to look at it, so it is never waiting
  * ({@link photosWaiting}) and never brought up, it never stands in for a question that names no photo
  * ({@link findPhoto}), and screenshots are counted apart from photos ({@link keepPhoto}): a summoning a

@@ -18,7 +18,7 @@ import { forgetPointing, reportPointing } from '../../utils/pointing.js';
  *
  * **Public and unauthenticated.** The server checks nothing: whoever opens a socket and says hello
  * is sent every live event. Who may reach {@link LIVE_SOCKET_PATH} at all is left to Cloudflare Zero
- * Trust in front of the tunnel (see "MCP Server Access" in `mcp/AGENTS.md`). The hello is not a
+ * Trust in front of the tunnel (see "MCP Server Access" in `.claude/rules/mcp.md`). The hello is not a
  * credential: it says which device a socket is, for the log.
  *
  * **The protocol**, one JSON object per text frame:

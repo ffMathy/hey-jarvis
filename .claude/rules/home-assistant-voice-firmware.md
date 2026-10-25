@@ -1,6 +1,6 @@
 # Home Assistant Voice Firmware
 
-> **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (Turborepo commands, commit standards, 1Password, etc.)
+> Paths in this rule are relative to `home-assistant-voice-firmware/` unless they say otherwise.
 
 ## Overview
 ESPHome firmware for dedicated voice hardware devices with local processing capabilities.

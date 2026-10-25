@@ -1,6 +1,6 @@
 # Jarvis Mastra AI Agents
 
-> **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (Turborepo commands, commit standards, 1Password, etc.)
+> Paths in this rule are relative to `mcp/` unless they say otherwise.
 
 ## Overview
 Mastra-powered AI agent framework for intelligent home automation, voice interactions, and Model Context Protocol (MCP) integrations.
@@ -79,8 +79,7 @@ mcp/
 │   ├── memory/          # Shared memory management
 │   ├── storage/         # Shared storage configuration
 │   └── index.ts         # Main Mastra configuration
-├── project.json         # TURBO project configuration
-└── AGENTS.md           # This documentation
+└── project.json         # TURBO project configuration
 ```
 
 ## Key Features
@@ -427,7 +426,7 @@ companion-app notify service the [Notification Agent](#notification-agent) uses 
 ### Vision Vertical
 Lets sir send Jarvis a photo with the camera button on his phone — a receipt, a label, a letter, a
 screen — and ask about it, whether he says what he wants before he sends it or not at all. The camera
-and the shot are the phone's (see "Showing him something" in `mobile/AGENTS.md`); what lives here is
+and the shot are the phone's (see "Showing him something" in `.claude/rules/mobile.md`); what lives here is
 the check that lets a phone send one, where the photo is kept, and how an agent gets to see it.
 
 **How a photo arrives:**
@@ -460,7 +459,7 @@ the check that lets a phone send one, where the photo is kept, and how an agent 
 
 **A screenshot of sir's screen is kept beside the photos, and never waits.** On every summoning from
 the assistant gesture, the phone sends what was on its screen (`"kind": "screenshot"` in the slot
-request, `PHOTO_KINDS` in `vision/photos.ts`; see "What was on the screen" in `mobile/AGENTS.md`) and
+request, `PHOTO_KINDS` in `vision/photos.ts`; see "What was on the screen" in `.claude/rules/mobile.md`) and
 tells the voice agent its id in a note that takes no turn. It is looked at like a photo when sir asks
 about his screen, but nobody sent it to be looked at: it is never in `photosWaiting`, never brought up,
 never the latest photo standing in for a question that names none, and at most
@@ -1236,7 +1235,7 @@ ahead with the camera button, and hold the line with `skip_turn` — or, where n
 device has a camera button, send him to his phone and hang up on the silence, since that photo goes
 to the phone's own conversation. One that also asks sir something tells him to go ahead before the
 question (`GO_AHEAD_BEFORE_ASKING`), and the question is still asked last. See **Hanging up when he
-goes quiet** in `elevenlabs/AGENTS.md`.
+goes quiet** in `.claude/rules/elevenlabs.md`.
 
 The wait lasts only until a photo is kept after the request said one was coming
 (`followThePhotoWait` in `routing/controller.ts`, asked again whenever a report is built). The photo
@@ -1432,7 +1431,7 @@ ever glow. It also answers a question, to pin the resumed-agent path.
 
 **Which agents are at work:**
 The headset also shows sir which of Jarvis's agents a request is using, as satellites round him that
-flare on every tool call and fold back into him when done (`../vr/AGENTS.md`, "Seeing him work"). So
+flare on every tool call and fold back into him when done (`.claude/rules/vr.md`, "Seeing him work"). So
 `RoutingProgress` publishes `{ type: "agentActivity", delegationId, agentId, state }` on
 `utils/live-events.ts` as each delegation moves on:
 
@@ -3189,7 +3188,7 @@ const PROVIDERS: OAuthProvider[] = [
    - Skip any provider with missing credentials
    - Each provider opens its own browser authorization flow
 
-7. **Update Documentation**: Add provider-specific notes to this AGENTS.md file
+7. **Update Documentation**: Add provider-specific notes to this rule (`.claude/rules/mcp.md`)
 
 #### Multi-Provider Benefits
 
@@ -3738,7 +3737,7 @@ Before considering a vertical complete:
 - [ ] Workflows match business processes
 - [ ] Main index files are updated
 - [ ] Build passes: `bunx turbo build --filter=mcp`
-- [ ] Documentation updated in this AGENTS.md file
+- [ ] Documentation updated in this rule (`.claude/rules/mcp.md`)
 
 ### 🎯 **When to Create Sub-Verticals**
 Create sub-verticals when:
@@ -3783,18 +3782,18 @@ Create sub-verticals when:
    - `mcp/lib/ports.sh` - Bash port constants (centralized)
 
 3. **Documentation**:
-   - `mcp/AGENTS.md` - Update port references in documentation
+   - `.claude/rules/mcp.md` - Update port references in documentation
 
 **Port Change Checklist**:
 - [ ] Update supervisord.conf
 - [ ] Update ports.sh
-- [ ] Update AGENTS.md documentation
+- [ ] Update this rule (`.claude/rules/mcp.md`)
 
 ### File Creation Policy
 **CRITICAL**: When working on this project:
 
 #### ❌ ABSOLUTELY PROHIBITED FILES:
-- **NEVER create ANY .md files** - Not README.md, not GUIDE.md, not TESTING.md, not anything
+- **NEVER create ANY .md files** outside `.claude/rules/` and `.claude/skills/`, and never an AGENTS.md or CLAUDE.md - Not README.md, not GUIDE.md, not TESTING.md, not anything
 - **NO markdown files of any kind** (README, GUIDE, DOCS, SHOPPING_README, TESTING, IMPLEMENTATION_SUMMARY, etc.)
 - **NO documentation artifacts** (ANALYSIS.md, COMPARISON.md, ARCHITECTURE.md, etc.)
 - **NO explanation files** (MIGRATION.md, CONVERSION.md, FEATURES.md, etc.)
@@ -3808,25 +3807,25 @@ Create sub-verticals when:
 - **Test scripts**: Only .js/.ts files in appropriate test directories when needed
 
 #### 📝 DOCUMENTATION UPDATES:
-- **UPDATE this AGENTS.md file** instead of creating new documentation
+- **UPDATE this rule** (`.claude/rules/mcp.md`) instead of creating new documentation
 - **Add inline comments** in code for complex logic explanations
 - **Update existing configuration files** when adding new features
 - **Use the Mastra playground** for testing and examples instead of creating files
 
 #### 🎯 REASONING:
 This project follows a strict "lean documentation" approach because:
-- **AGENTS.md is the single source of truth** for all project documentation
-- **NO OTHER .md FILES ARE PERMITTED** - everything goes in AGENTS.md
+- **This rule is the single source of truth** for all project documentation
+- **NO OTHER .md FILES ARE PERMITTED** - everything goes in `.claude/rules/mcp.md`
 - **Scattered documentation** creates maintenance overhead and confusion
 - **The Mastra playground** provides interactive testing without file creation
 - **Inline comments** are more maintainable than separate documentation files
 - **Multiple README files** violate the monorepo structure and TURBO conventions
 
-**If you feel documentation is needed, ALWAYS update this AGENTS.md file instead of creating new files. DO NOT CREATE ANY .md FILES UNDER ANY CIRCUMSTANCES.**
+**If you feel documentation is needed, ALWAYS update this rule instead of creating new files. DO NOT CREATE ANY OTHER .md FILES UNDER ANY CIRCUMSTANCES.**
 
 ### Tool ID Naming Conventions
 **CRITICAL**: A tool's id, its variable name and its export key must be the same camelCase
-word. See the [`mastra-tools`](../.claude/rules/mastra-tools.md) rule, which is the
+word. See the [`mastra-tools`](mastra-tools.md) rule, which is the
 authority on this.
 
 #### ✅ CORRECT Examples:

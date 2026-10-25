@@ -16,7 +16,7 @@ import { androidVersionCode, androidVersionName, createReleaseSigning } from '..
  * Everything that makes this an app a watch will run, and offer as its assistant.
  *
  * All of it is manifest, and all of it was verified on Wear OS 6.1 and 7 emulators by the plain
- * Gradle prototype this app replaced — see AGENTS.md. Three things carry over:
+ * Gradle prototype this app replaced — see `.claude/rules/watch.md`. Three things carry over:
  *
  * - `uses-feature android.hardware.type.watch`, which is what makes it a watch app: the package
  *   manager and the Play Store keep it off phones, which matters here because it shares the

@@ -18,7 +18,7 @@ import { type HologramCanvas, type HologramSkia, SPHERE_FRACTION } from './holog
  * The paths a frame made are handed back, for a renderer over CanvasKit to delete once its picture
  * is recorded, as it does the drawing's own (`createReleasableHologramResources`).
  *
- * It keeps the main entry's rule (see `hologram/AGENTS.md`): Skia arrives as an argument, its enums
+ * It keeps the main entry's rule (see `.claude/rules/hologram.md`): Skia arrives as an argument, its enums
  * as plain values, and the drawing runs as a worklet on the phone's UI thread, in CanvasKit in a
  * browser, and headless in the specs.
  */

@@ -16,7 +16,7 @@
  * readings come in as positional arguments rather than an object built for the call; and nothing
  * is allocated, because the bands are eased in place and the voice tracker advances its own state.
  * Every function here closes over nothing but module-level constants and other worklets, each
- * declared after the worklets it calls — see the package's AGENTS.md, "Worklets", for why a
+ * declared after the worklets it calls — see `.claude/rules/hologram.md`, "Worklets", for why a
  * mistake there fails only on a device or in the phone's web bundle.
  *
  * **Advanced inside `modify` on the phone**, for the reason `voice-levels.ts` gives: only `modify`

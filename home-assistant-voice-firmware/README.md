@@ -129,4 +129,4 @@ esphome logs home-assistant-voice.elevenlabs.yaml      # Monitor logs
 esphome clean home-assistant-voice.elevenlabs.yaml     # Clean build cache
 ```
 
-For development guidelines, see [AGENTS.md](./AGENTS.md).
+For development guidelines, see [`.claude/rules/home-assistant-voice-firmware.md`](../.claude/rules/home-assistant-voice-firmware.md).

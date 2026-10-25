@@ -15,7 +15,7 @@ import { readStoredValue, writeStoredValue } from './key-value-store';
  * **Optional.** Talking to Jarvis needs nothing but ElevenLabs, as it always has, so a phone without
  * an address talks to him exactly as before: no camera button beside him, nothing told to the agent
  * about one (`use-photo-sending.ts`), and no line to the server. See "Showing him something" in
- * `mobile/AGENTS.md`.
+ * `.claude/rules/mobile.md`.
  *
  * **Handed to the watch**, with the ElevenLabs settings (`answer-the-watch.ts`), so it opens the same
  * line; the headset's page reads it from the `localStorage` it shares with the phone's web build. It

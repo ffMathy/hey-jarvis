@@ -206,7 +206,7 @@ export function readsItsOwnBody(path: string): boolean {
  * Where sir's phone asks for somewhere to send a photo, with the id of the conversation it is in.
  *
  * Under {@link PHOTO_UPLOAD_PATH} on purpose: that is the one path Cloudflare Access lets the phone
- * through without a service token (see "MCP Server Access" in `mcp/AGENTS.md`), and the one the MCP
+ * through without a service token (see "MCP Server Access" in `.claude/rules/mcp.md`), and the one the MCP
  * server's JSON parser leaves alone. Spelled out rather than built, so that it can be found as it
  * is: the phone posts to this exact path.
  */

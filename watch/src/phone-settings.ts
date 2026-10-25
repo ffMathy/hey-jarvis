@@ -22,7 +22,7 @@ export interface PhoneHandover {
  * API key is fifty characters that begin `sk_`, and a watch is not where anybody should type one.
  * The phone already has it, the Data Layer exists to carry exactly this, and the two apps share
  * the package name and signing key that Play Services requires before it will — see
- * `watch/AGENTS.md`.
+ * `.claude/rules/watch.md`.
  *
  * Three things can happen, and the screen looks different for each:
  *

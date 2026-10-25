@@ -1,6 +1,6 @@
 # Wear OS App
 
-> **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (Turborepo commands, commit standards, 1Password, etc.)
+> Paths in this rule are relative to `watch/` unless they say otherwise.
 
 ## Overview
 
@@ -8,7 +8,7 @@ Jarvis on the wrist: an Expo app that draws the same sphere the phone does, hold
 
 **Nothing is ever typed here.** There is no settings screen and no keyboard on the critical path: the ElevenLabs API key is fifty characters beginning `sk_`, and a watch is not where anybody should enter one. It arrives from the phone over the Wearable Data Layer instead — see [Credentials](#credentials-the-phone-hands-them-over) — and once it has, the watch holds conversations on its own with the phone out of range, asleep or absent.
 
-**The sphere is not a copy, and neither is the conversation.** Both come from [`hologram/`](../hologram/AGENTS.md), the workspace package the phone app bundles from too — the drawing and the voice tracking from its main entry, the sphere itself from `hologram/react`, and the ElevenLabs credentials, the token request and the conversation itself from its main entry and `hologram/conversation`. Changing how Jarvis looks, or what ElevenLabs saying no means, is one edit in one place and both apps follow. What lives here is only what a watch does differently: a round screen drawn edge to edge, an assistant gesture that arrives as an intent, and a credential that arrives from a phone.
+**The sphere is not a copy, and neither is the conversation.** Both come from [`hologram/`](hologram.md), the workspace package the phone app bundles from too — the drawing and the voice tracking from its main entry, the sphere itself from `hologram/react`, and the ElevenLabs credentials, the token request and the conversation itself from its main entry and `hologram/conversation`. Changing how Jarvis looks, or what ElevenLabs saying no means, is one edit in one place and both apps follow. What lives here is only what a watch does differently: a round screen drawn edge to edge, an assistant gesture that arrives as an intent, and a credential that arrives from a phone.
 
 It was a plain Gradle project in Kotlin until 2026-09-16, on the belief that Expo does not target Wear OS. It does — a Wear OS app is an Android app with `uses-feature android.hardware.type.watch` — and the cost of the other arrangement was a second Jarvis to keep in step with the first.
 
@@ -117,7 +117,7 @@ Two things differ from the phone, both deliberate:
 - **His voice comes from the SDK's analysers**, not from a tap on the WebRTC track: the watch hands the session no room check and no way to follow his track, so it reads the SDK's readings, and the note on the conversation screen says why: tapping the track means a native module, a peer-connection id and a ring buffer, and on a sphere this size the SDK's readings are good enough. The phone keeps its tap.
 - **A refused microphone is the end of it.** The phone falls back to a text field in a browser, where there is a keyboard in front of you. Here the assistant gesture *is* the request to be talked to.
 
-**The conversation is the phone's and the headset's session** (`useJarvisSession` in `hologram/conversation` over `createJarvisSession` in `hologram`; see "One conversation, three devices" in [`hologram/AGENTS.md`](../hologram/AGENTS.md)). What the watch hands it is only its own: its name in the history (`jarvis-wear`), getting off the phone's Bluetooth before the token (`holdFastNetwork` as `untilOnline`, `releaseFastNetwork` as `leaveNetwork`), and what the deadline says. Asking the phone, the microphone and the call volume happen on the screen before he is summoned.
+**The conversation is the phone's and the headset's session** (`useJarvisSession` in `hologram/conversation` over `createJarvisSession` in `hologram`; see "One conversation, three devices" in [`.claude/rules/hologram.md`](hologram.md)). What the watch hands it is only its own: its name in the history (`jarvis-wear`), getting off the phone's Bluetooth before the token (`holdFastNetwork` as `untilOnline`, `releaseFastNetwork` as `leaveNetwork`), and what the deadline says. Asking the phone, the microphone and the call volume happen on the screen before he is summoned.
 
 **He greets you before he is connected**, exactly as the phone does: "Hello sir, how can I help?" plays from the firmware's recording as soon as the microphone is granted, inside the call's audio, and everything else — getting off the Bluetooth proxy, the token — happens while he says it, with the agent's first message switched off; the session is dialled behind him the moment the token is in, muted until he has finished, so the agent never hears the greeting through a speaker centimetres from the microphone. Dropping the wrist mid-greeting stops it. The listening lattice comes from the session's `user`, as on the phone. An error once the conversation is open no longer stops the sphere following him, or lets the network go under a call still running; the twenty-second deadline, counted from the moment the network is up, ends a conversation that connects after it. None of this has been heard on a watch yet: whether the greeting survives LiveKit switching the audio mode for the call mid-sentence is the first thing a real one should settle.
 
@@ -129,7 +129,7 @@ Two things differ from the phone, both deliberate:
 
 The watch draws his body on the GPU, as the phone does: `hologram/gpu`'s renderer through expo-gl, on a
 canvas Screened over Skia's picture of the rest of him (see "His body on the GPU" in
-[`hologram/AGENTS.md`](../hologram/AGENTS.md)). It needs Android 10, which every watch this app installs
+[`.claude/rules/hologram.md`](hologram.md)). It needs Android 10, which every watch this app installs
 on has (its `minSdk` is 30), and a GPU that gives OpenGL ES 3. **There is no other body:** on a watch
 whose GPU gives ES 2, or whose shaders will not compile, he is drawn without one, and the rest of him
 arrives after a wait of at most 800 ms. Unlike the phone it shows him **straight on**: it passes no
@@ -140,7 +140,7 @@ pixel, rather than the headset's 512 a side.
 
 Read off the watch's Android bundle, exported unminified and without bytecode, the GPU body's
 UI-thread code compiles into worklets exactly as the phone's does, and autolinking links `ExpoGL` here
-too; the phone's notes ("His body on the GPU" in [`mobile/AGENTS.md`](../mobile/AGENTS.md)) say what
+too; the phone's notes ("His body on the GPU" in [`.claude/rules/mobile.md`](mobile.md)) say what
 was checked. None of it has run on a watch.
 
 ## What has been verified

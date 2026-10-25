@@ -1,6 +1,6 @@
 # Mobile App
 
-> **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (Turborepo commands, commit standards, 1Password, etc.)
+> Paths in this rule are relative to `mobile/` unless they say otherwise.
 
 ## Overview
 
@@ -56,12 +56,12 @@ phone (assist gesture)
                                                           open for as long as the app runs
 ```
 
-The agent on the other end is the same one `elevenlabs/` deploys, with the same prompt and the same `routePromptWorkflow` tools. This app adds a way to reach it, not a second Jarvis. The camera button and the live line are the two things that reach past ElevenLabs, and only once sir has given the phone his Jarvis server's address: see "Showing him something", and `jarvis-server-link.ts` in `hologram` for the line. The line is opened by `app.tsx` (`useJarvisServer`) as soon as there is an address, and stays open across conversations and between them. What it hears of his agents at work (`useAgentSatellites`) is put round him as satellites on whichever screen shows him, through `AgentSatellitesContext` at the top of the app: see "Which agents are at work" in `hologram/AGENTS.md`. The address is handed to the watch with the credentials, so it opens the same line.
+The agent on the other end is the same one `elevenlabs/` deploys, with the same prompt and the same `routePromptWorkflow` tools. This app adds a way to reach it, not a second Jarvis. The camera button and the live line are the two things that reach past ElevenLabs, and only once sir has given the phone his Jarvis server's address: see "Showing him something", and `jarvis-server-link.ts` in `hologram` for the line. The line is opened by `app.tsx` (`useJarvisServer`) as soon as there is an address, and stays open across conversations and between them. What it hears of his agents at work (`useAgentSatellites`) is put round him as satellites on whichever screen shows him, through `AgentSatellitesContext` at the top of the app: see "Which agents are at work" in `.claude/rules/hologram.md`. The address is handed to the watch with the credentials, so it opens the same line.
 
 ## File Structure
 
 ```
-../hologram/src/                  # Jarvis himself, shared with the watch — see ../hologram/AGENTS.md
+../hologram/src/                  # Jarvis himself, shared with the watch — see .claude/rules/hologram.md
 ├── elevenlabs-settings.ts        # the two credentials, and what is wrong with them
 ├── conversation-token.ts         # minting a token, and every ElevenLabs failure explained
 ├── hologram-drawing.ts           # what one frame of the hologram looks like (worklets)
@@ -147,7 +147,7 @@ run it too: **the conversation itself** is `hologram`'s session (`jarvis-session
 screen holds with `useJarvisSession` from `hologram/conversation` — the greeting, the token, the
 twenty-second deadline, the failures in words, the tool calls, the listening lattice's score, the
 dropping of what an interruption leaves queued, text mode's muted microphone and written lines. See
-"One conversation, three devices" in `../hologram/AGENTS.md`. So are whether a conversation is open
+"One conversation, three devices" in `.claude/rules/hologram.md`. So are whether a conversation is open
 or has ended (`conversation-life.ts`), his voice analysed from what a browser plays
 (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), his last written line
 (`written-reply.ts`), and the settings' storage key and format (`elevenlabs-settings.ts`). They are
@@ -200,7 +200,7 @@ watch's sets 30 (`withPhoneSdkLevel`, a Gradle property, since prebuild regenera
 Where the GPU cannot draw him — a development client built without expo-gl, a GPU that gives OpenGL
 ES 2, a shader that will not compile — he is drawn without a body, and nothing else changes; a
 context lost mid-show takes the body away until expo-gl hands a new one over. "His body on the GPU"
-in [`hologram/AGENTS.md`](../hologram/AGENTS.md) has every case.
+in [`.claude/rules/hologram.md`](hologram.md) has every case.
 
 The view behind the two canvases paints `SHEET_INK` in the sheet, and the two are Screened onto it as
 one group. The sheet still waits for `settled` before he is drawn, so his arrival is not spent
@@ -252,7 +252,7 @@ recording and the token request goes out beside it, so by the time he has asked,
 usually up. The session is opened with the agent's first message switched off and its microphone
 muted until the recording ends; if it is slower than that, the screen goes on connecting exactly as
 before, under the same `GIVE_UP_CONNECTING_AFTER_MS`. Hanging up mid-greeting stops it. How it
-works, and the ways to break it, are in `../hologram/AGENTS.md` ("Summoned, he greets you before he is
+works, and the ways to break it, are in `.claude/rules/hologram.md` ("Summoned, he greets you before he is
 connected"): the session does all of it.
 
 Two places it deliberately does not play. **The text-only session**, a browser that refused the
@@ -283,7 +283,7 @@ so the session is now dialled behind him, as in a browser, muted until he has fi
 plays it with expo-audio. WebRTC opening its microphone behind him was a second switch — the call
 is only fully set up once a call's input is open too, so the greeting started loud and caught as
 the conversation connected — and `hologram`'s `CallMicrophone` now opens that input before he
-speaks (see `hologram/AGENTS.md`).
+speaks (see `.claude/rules/hologram.md`).
 Still to settle on a device: that he is heard this way, and that `vad_score` events arrive over
 WebRTC as they do over the firmware's socket.
 
@@ -389,7 +389,7 @@ of using it work:
   asks what sir would like done with it — and can answer questions about it from there.
 
 The photo goes to the Jarvis server (the MCP server), is kept there in memory for a day, and a
-model that can see answers from it (`mcp/AGENTS.md`, "Vision").
+model that can see answers from it (`.claude/rules/mcp.md`, "Vision").
 
 ```
 connected, server set  phone ─ contextual update ──▶ agent   "…it has a camera button beside you…"
@@ -421,7 +421,7 @@ Six decisions carry it, and each has a reason:
   behind the Cloudflare Access bypass for `/api/photos/*`, since the phone holds no Access service
   token, so anyone can reach them. The slot request carries the conversation's ElevenLabs id (the
   session's `liveConversationId`), and the server asks ElevenLabs whether that conversation is in
-  progress on Jarvis's agent before it opens one (`mcp/AGENTS.md`, "Vision"). The slot's token is 128
+  progress on Jarvis's agent before it opens one (`.claude/rules/mcp.md`, "Vision"). The slot's token is 128
   random bits that go straight from the server to this phone and nowhere else, which is all the upload
   asks for. The id is read at the tap, while the conversation is certainly live: the call may drop
   while sir frames the shot, and the slot, open for five minutes, outlives that.
@@ -478,7 +478,7 @@ one, and `sendUserActivity`. `sendText` and `sendUserActivity` are ignored unles
 connected, and a note said before then waits until it connects (the button is only there once it
 has). The session dials with no client tools at all. The live line to the server also carries the
 `affectedEntities` frames the server broadcasts, which the phone simply ignores (see
-`hologram/AGENTS.md`).
+`.claude/rules/hologram.md`).
 
 **The button.** A small outline of a camera at the sphere's lower right, half strength, drawn from
 views (no icon library, and no Skia before CanvasKit has loaded in a browser). It is there only while
@@ -490,7 +490,7 @@ picker inside the gesture; the slot request, the note to the agent and the first
 follow in the same tap.
 
 **The call is not hung up on while sir frames the shot.** A finished request is ended by the agent
-itself, after its `turnTimeout` (see `hologram/AGENTS.md`). The note that the camera is open
+itself, after its `turnTimeout` (see `.claude/rules/hologram.md`). The note that the camera is open
 (`CAMERA_OPENED`) is what the prompt waits on instead, on a device that has said it has a camera
 button (`CAMERA_BUTTON_HERE`): asked to speak again before the photo has come, before a message that it
 did not reach him (`photoNotSent`), before the note that he closed the camera without one
@@ -508,13 +508,13 @@ way the routing names a photo. The agent's prompt decides from what sir has said
 wants done with it — before sending it or with it — that is routed with the photo named; if he said
 nothing, the agent routes a look at it, the routing plans a vision task that says what it shows and
 what could be done with it, and its closing report has Jarvis say so, ask sir what he would like done
-with it, and wait (`mcp/AGENTS.md`, "Routing"). It used to ask first and route only the answer; a
+with it, and wait (`.claude/rules/mcp.md`, "Routing"). It used to ask first and route only the answer; a
 photo sent with nothing said is now looked at at once, since that is what sending it means.
 
 **A photo is not lost with the conversation.** If the call drops while sir frames the shot, the photo
 is still sent, to the slot opened at the tap, and the server keeps it as one nobody has looked at yet;
 routing brings it up in the closing report of a later request — in any conversation, on any device —
-the way it brings up earlier work still waiting on him (`mcp/AGENTS.md`, "Vision" and "Routing"). What
+the way it brings up earlier work still waiting on him (`.claude/rules/mcp.md`, "Vision" and "Routing"). What
 the phone never does is tell a later conversation about it: each conversation is numbered as it ends,
 and a photo in flight speaks only into the one it was taken in.
 
@@ -560,7 +560,7 @@ What it bought was proof that the hologram follows a real voice, which is worth 
 
 **Painting is pixels only on a CPU rasteriser.** Split apart headlessly, where CanvasKit rasterises on the CPU, painting scaled with area: 384 px costs 49 ms, 269 px costs 28 ms, 230 px costs 22 ms. That is why `DRAWN_RESOLUTION` in `hologram/src/react/hologram-view.tsx` lays both canvases out at 0.45 of the screen's resolution and scales them up as one, and why `SPHERE_FRACTION` counts there too, since a bigger sphere fills more pixels. What a phone's GPU pays for the pixels, Skia's and the body's, has not been measured anywhere — SwiftShader emulates one on the CPU, so its GPU timings say nothing about a phone's. **The frame rate is steered, not capped.** `MINIMUM_FRAME_SECONDS` in the view is a safety rail at 1/128 s, not the rate: `hologram/src/density-control.ts` moves the share of the body's particles toward a frame that builds in `BUILD_BUDGET_MS` (8 ms), with `TARGET_FRAMES_PER_SECOND` (40) as a backstop — two windows running below it set a ceiling the count may not climb past. With the body on the GPU a frame builds in well under a millisecond whatever the count, so that backstop is what holds it: the share starts at half (`STARTING_SHARE`) and climbs until the GPU falls behind.
 
-**Sample mode shows the frame rate, how long a picture took to build and the particle count in the corner** (the watch leaves out the build time, for room), counted on the UI thread where the frames happen and read twice a second by a leaf component. It reports what the device achieves, so forty or more means it is holding `TARGET_FRAMES_PER_SECOND` — the least the density loop will settle for — and less is what it managed. The build time is Skia's picture of the rest of him plus issuing the GPU's frame, well under a millisecond whatever the count, so it always says there is room and the frame rate is what holds the count — see "His body on the GPU" in [`hologram/AGENTS.md`](../hologram/AGENTS.md). Use it before and after any change made for speed. **Only sample mode shows it**, on the phone and the watch alike: the conversation screen used to carry a faint copy in a browser, and it was removed at the user's request — a screen that is the assistant has nothing on it but him. The e2e suite checks both halves of that.
+**Sample mode shows the frame rate, how long a picture took to build and the particle count in the corner** (the watch leaves out the build time, for room), counted on the UI thread where the frames happen and read twice a second by a leaf component. It reports what the device achieves, so forty or more means it is holding `TARGET_FRAMES_PER_SECOND` — the least the density loop will settle for — and less is what it managed. The build time is Skia's picture of the rest of him plus issuing the GPU's frame, well under a millisecond whatever the count, so it always says there is room and the frame rate is what holds the count — see "His body on the GPU" in [`.claude/rules/hologram.md`](hologram.md). Use it before and after any change made for speed. **Only sample mode shows it**, on the phone and the watch alike: the conversation screen used to carry a faint copy in a browser, and it was removed at the user's request — a screen that is the assistant has nothing on it but him. The e2e suite checks both halves of that.
 
 **The square is bigger than the screen, and that is nearly free.** Chips are thrown to about 1.6R on a syllable and the drawing clips at the edge of its square, so a square the size of the screen cut them in mid-air. `useWholeScreenHologramSize` makes it half again wider and `SPHERE_FRACTION` is set against that, so the sphere is the same size on screen and the only thing that cuts a chip is the screen itself — where an edge cannot be seen. Measured, that cost 0.6 ms a frame, because Skia rasterises only what is drawn and everything drawn is sized from the sphere. That was on a CPU rasteriser; what the square's area costs a phone's GPU, in two canvases composed as one group, has not been measured.
 
@@ -656,7 +656,7 @@ Both halves of the plumbing are in `modules/jarvis-watch`, beside the capability
 - **`sendSettingsToTheWatch`** puts them on `/jarvis/elevenlabs-settings` as a JSON message, addressed to a node advertising the `jarvis_on_the_watch` capability — the capability rather than the connected nodes, because a message to a watch without the app is accepted by Play Services and then dropped, which would look exactly like a successful handover.
 - **`whenTheWatchAsksForCredentials`** hears `/jarvis/ask-for-credentials`, which the watch sends whenever it starts with none. `src/answer-the-watch.ts` mounts that for the life of the app and answers it without a prompt; the note on that file argues why no prompt is the right default, and it is worth reading before changing it.
 
-Only a *running* phone app can answer an ask, because the credentials are behind the keystore in JavaScript's hands rather than in the native module that hears the question. That asymmetry is the whole reason the watch's own screen says "open Jarvis on your phone" rather than waiting silently, and the reason the watch card also has a button: a watch that is not running when the button is pressed still receives, because on that side a `WearableListenerService` takes the message. See [`watch/AGENTS.md`](../watch/AGENTS.md).
+Only a *running* phone app can answer an ask, because the credentials are behind the keystore in JavaScript's hands rather than in the native module that hears the question. That asymmetry is the whole reason the watch's own screen says "open Jarvis on your phone" rather than waiting silently, and the reason the watch card also has a button: a watch that is not running when the button is pressed still receives, because on that side a `WearableListenerService` takes the message. See [`.claude/rules/watch.md`](watch.md).
 
 **A message rather than a `DataItem`** is a security decision. See the note in `JarvisWatchModule.kt`: a data item replicates by being stored, in Play Services' own store on both devices, which is a live API key at rest somewhere neither app controls.
 
@@ -664,7 +664,7 @@ Four strings hold this together — two paths, each spelled in Kotlin and in Typ
 
 ### Answering the watch in the earbuds
 
-`modules/jarvis-assistant/.../JarvisWatchSummonService.kt` is a `WearableListenerService` for Data Layer *requests* on `/jarvis/answer-on-the-phone`. The watch sends one on every summoning. If a Bluetooth headset is connected, the phone isn't locked behind a PIN, and Jarvis holds the assistant role, it calls `showSession` on `JarvisVoiceInteractionService`. That opens the same window the phone's own gesture opens, so the conversation goes to the AirPods and not out of the watch's speaker. It replies `1` only once `JarvisVoiceInteractionSession.onShow` has run. If that takes longer than two seconds it replies `0`, and the watch talks for itself. Nothing public can cancel a session once `showSession` has asked for it, so a window that opens later than that means two of him talk at once. The window normally opens within a few hundred milliseconds or not at all. See [the watch's notes](../watch/AGENTS.md#the-conversation).
+`modules/jarvis-assistant/.../JarvisWatchSummonService.kt` is a `WearableListenerService` for Data Layer *requests* on `/jarvis/answer-on-the-phone`. The watch sends one on every summoning. If a Bluetooth headset is connected, the phone isn't locked behind a PIN, and Jarvis holds the assistant role, it calls `showSession` on `JarvisVoiceInteractionService`. That opens the same window the phone's own gesture opens, so the conversation goes to the AirPods and not out of the watch's speaker. It replies `1` only once `JarvisVoiceInteractionSession.onShow` has run. If that takes longer than two seconds it replies `0`, and the watch talks for itself. Nothing public can cancel a session once `showSession` has asked for it, so a window that opens later than that means two of him talk at once. The window normally opens within a few hundred milliseconds or not at all. See [the watch's notes](watch.md#the-conversation).
 
 ## What was on the screen
 
@@ -697,7 +697,7 @@ sir asks      agent ─ routePromptWorkflow "What does the message on his screen
   does for a photo, and with `kind: "screenshot"`, so the server never treats it as a photo sir sent:
   it is never *waiting*, never brought up in a later reply, never stands in for "the latest photo",
   and it is kept for a day, as a photo is, counted apart from his photos rather than instead of
-  them (`mcp/AGENTS.md`, "Vision"). Only the tree drawn in the assistant's window sends one (`useScreenshotSending`), and
+  them (`.claude/rules/mcp.md`, "Vision"). Only the tree drawn in the assistant's window sends one (`useScreenshotSending`), and
   only with a server address.
 - **The agent is told in a note, never a turn, and nothing is said when it fails.** Sir asked nothing
   about his screen, so `screenshotTaken` is a contextual update, and the prompt ("Photos") has the
@@ -734,7 +734,7 @@ adb shell cmd role get-role-holders android.app.role.ASSISTANT
 
 ## Dependencies
 
-Versions are pinned exactly, and every one of them has to clear the repository's 7-day npm cooldown (see the root AGENTS.md). Three pins are not just "the latest that fits":
+Versions are pinned exactly, and every one of them has to clear the repository's 7-day npm cooldown (see [Supply Chain Security](supply-chain-security.md)). Three pins are not just "the latest that fits":
 
 - `@livekit/react-native` is held at **2.x**. The 3.x line is published as `latest` but does not satisfy `@elevenlabs/react-native`'s peer range.
 - `livekit-client` is a direct dependency even though it is transitive, so only one copy can resolve.

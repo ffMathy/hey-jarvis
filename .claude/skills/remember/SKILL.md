@@ -47,7 +47,9 @@ paths:
 ...
 ```
 
-**Always-on** — no frontmatter, loaded into every session. Reserve this for guidance with no meaningful file scope (commit format, command runner, security posture).
+**Always-on** — no frontmatter, loaded into every session. Reserve this for guidance with no meaningful file scope (commit format, command runner, security posture) and for a project's own notes (`.claude/rules/mcp.md`, `.claude/rules/hologram.md`, …).
+
+**NEVER write to an `AGENTS.md` or `CLAUDE.md`, and never create one.** This repository has none: anything that would have gone into one is an always-on rule — for a project's notes, the section of `.claude/rules/<project>.md` it belongs in.
 
 Prefer the narrowest glob that still catches every case. Broad-but-real (`**/*.ts`) beats always-on for anything code-specific.
 

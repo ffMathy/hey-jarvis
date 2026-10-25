@@ -68,7 +68,7 @@ pull request title — decides the version bump and the changelog section it is
 listed under on the GitHub Release: `feat` raises the minor version, a `!` or a
 `BREAKING CHANGE:` footer the major, and everything else the patch. Only the
 subject is parsed, so the pull request description cannot affect a release. See
-the Releases section of the root `AGENTS.md`.
+[`releases`](releases.md).
 
 ## What NOT to Do
 

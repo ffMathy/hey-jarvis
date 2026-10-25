@@ -97,7 +97,7 @@ esphome run home-assistant-voice.elevenlabs.yaml
 2. ✅ Device is not muted (hardware or software switch)
 3. ✅ VAD model is configured
 4. ✅ Model URLs are complete (not short names)
-5. ✅ ESPHome version is 2026.10.0 or later (the firmware's `min_version`; see AGENTS.md)
+5. ✅ ESPHome version is 2026.10.0 or later (the firmware's `min_version`; see `.claude/rules/home-assistant-voice-firmware.md`)
 
 **Debug commands:**
 ```bash

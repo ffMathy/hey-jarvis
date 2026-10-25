@@ -452,7 +452,7 @@ export function buildCodebaseQuestionTask(
     ...(context?.trim() ? ['', 'What is known beyond the code, to take into account:', context.trim()] : []),
     '',
     'How to answer it:',
-    `- Clone the repository into the current directory (\`git clone https://github.com/${repository}.git .\` — it needs no credentials) and read the parts of it the question is about, AGENTS.md and CLAUDE.md included.`,
+    `- Clone the repository into the current directory (\`git clone https://github.com/${repository}.git .\` — it needs no credentials) and read the parts of it the question is about, its rules (\`.claude/rules/\`, AGENTS.md and CLAUDE.md, whichever it has) included.`,
     '- This session only reads: do not change anything, create a branch, open a pull request or file an issue.',
     '- Nobody is there to answer questions, so do not ask any. Make sensible assumptions and carry on.',
     '- Ground every claim in the code, and name the files it is about. Say plainly when the code does not settle something rather than guessing.',

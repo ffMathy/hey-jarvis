@@ -1,6 +1,9 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "envMode": "loose",
+  // The agent guidance turbo would write into an AGENTS.md lives in
+  // .claude/rules/turbo-commands.md; this repository has no AGENTS.md.
+  "agentGuidance": false,
   "tasks": {
     "build": {
       "dependsOn": ["^build", "lint", "typecheck", "initialize"],

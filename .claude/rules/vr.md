@@ -1,13 +1,13 @@
 # VR
 
+> Paths in this rule are relative to `vr/` unless they say otherwise.
+
 Jarvis in your room, on a Meta Quest. A WebXR page that opens an `immersive-ar`
 (passthrough) session and waits: say "Hey Jarvis" and he appears where the room
 has space in front of you, greets you, and holds the full ElevenLabs
 conversation — the same hologram, the same agent and the same rules for a
 conversation as the phone and the watch, from the same `hologram` package. When
 he has gone, the wake word is listened for again.
-
-> **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (Turborepo commands, commit standards, 1Password, etc.)
 
 ## Using it on a Quest
 
@@ -541,7 +541,7 @@ the emulated Quest's real XR frames in the browser.
 
 The session is `hologram`'s `createJarvisSession` — the one the phone and the
 watch hold their conversations in too (see "One conversation, three devices" in
-`../hologram/AGENTS.md`). `createHeadsetSession` (`headset-session.ts`) hands it
+`.claude/rules/hologram.md`). `createHeadsetSession` (`headset-session.ts`) hands it
 what is the headset's: its name (`jarvis-vr`), no platform delay before
 dialling, the half-duplex fallback, its words for being offline, his track
 analysed on the app's `AudioContext` (`agent-room.ts`), the greeting's `<audio>`
@@ -565,7 +565,7 @@ the line's `point`.
   tab can be closed once the login is done. The line's own
   retries connect within half a minute after. The Access application has to
   hand out that cookie as `SameSite=None` — see "MCP Server Access" in
-  `mcp/AGENTS.md`.
+  `.claude/rules/mcp.md`.
 - **What he is working on comes in on it.** The server broadcasts an
   `affectedEntities` frame to every device that has said hello as soon as a tool
   in a request reports what it touched; `serverMessageHandler` hands those
@@ -737,7 +737,7 @@ An entity is whatever an agent behind the conversation read or changed for sir �
 light, an email folder, a calendar — pushed by the Jarvis server in an `affectedEntities` frame over
 the socket the headset holds open during a conversation, as an opaque id, which may come from any
 agent and is never parsed, and an optional display name. The MCP side decides what a request
-touches and broadcasts it (`../mcp/AGENTS.md`, "What a request touches"), and `hologram` reads the
+touches and broadcasts it (`.claude/rules/mcp.md`, "What a request touches"), and `hologram` reads the
 frame (`jarvis-server-link.ts`, validated by `affected-entities.ts`); the phone and the watch ignore
 it. This app keeps them, lets sir put them in the room, lights them while Jarvis works on them, and
 tells the server what sir points at.
@@ -831,7 +831,7 @@ HUD has one `entities` line.
 ## Seeing him work (`src/satellites/`, `app/room-satellites.ts`, `hologram3d/satellites.ts`)
 
 The phone and its web build show the same satellites round the sphere on the screen, from the same
-lifecycle in `hologram` (`agent-work.ts`; see `../hologram/AGENTS.md`). What is the headset's own is
+lifecycle in `hologram` (`agent-work.ts`; see `.claude/rules/hologram.md`). What is the headset's own is
 where they are in the room (`satellites/satellite-spots.ts`) and how they are drawn there.
 
 While a request runs, each of the agents it uses circles him as a small glyph of its own — the SVG
@@ -849,7 +849,7 @@ while any satellite wears it, and a new one is drawn into a slot no glyph still 
 
 The server says where each delegation has got to in an `agentActivity` message on the line the page
 keeps open (`hologram`'s `agent-activity.ts`; the server's side is "What a request touches" in
-`../mcp/AGENTS.md`), and `hologram`'s `agent-work.ts` — the lifecycle the phone shares — turns that into satellites, purely:
+`.claude/rules/mcp.md`), and `hologram`'s `agent-work.ts` — the lifecycle the phone shares — turns that into satellites, purely:
 
 | Message | Satellite |
 | --- | --- |
@@ -904,7 +904,7 @@ Per frame, on the CPU:
 
 On the GPU, in passes whose shaders, rows and arithmetic are `hologram/gpu`'s —
 shared with the phone and the watch, which draw them with no three.js (see
-`../hologram/AGENTS.md`) — and which the files here wrap in three.js's
+`.claude/rules/hologram.md`) — and which the files here wrap in three.js's
 materials, targets and meshes:
 
 3. **The halo union** (`halo-union.ts`), once a frame, before either eye: every lit

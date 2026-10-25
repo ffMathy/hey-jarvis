@@ -18,7 +18,7 @@ import org.json.JSONObject
  * it, so the file on disk is useless to anything that reads it without this app's user ID.
  *
  * What the keystore does and does not protect the key from is the same list as on the phone — see
- * "Credentials" in `watch/AGENTS.md`.
+ * "Credentials" in `.claude/rules/watch.md`.
  */
 internal object PhoneSettingsStore {
   /** Its own file, so nothing else this app keeps shares the encryption of a live credential. */

@@ -100,7 +100,7 @@ export const ARM_LENGTH_METRES = 0.8;
 export const RETREAT_METRES = 1.9;
 
 /**
- * He fades out when the head comes within 2.5 of his radii of his centre (vr/AGENTS.md, "How
+ * He fades out when the head comes within 2.5 of his radii of his centre (.claude/rules/vr.md, "How
  * he is drawn"), and a walk that grazed that distance would dim him mid-shot.
  */
 export const FADE_STARTS_AT_RADII = 2.5;
@@ -118,7 +118,7 @@ export function closestApproachMetres(radius: number): number {
 
 /**
  * How far below the eyes placement puts him when there is room: clamp(eyes − 0.15, 1.1, 1.6) m
- * (vr/AGENTS.md, "Where he stands"). Before he is placed the head looks where he will be, so
+ * (.claude/rules/vr.md, "Where he stands"). Before he is placed the head looks where he will be, so
  * turning to look at him once he is there is a small correction rather than a swing.
  */
 const PLACEMENT_DROP_METRES = 0.15;
