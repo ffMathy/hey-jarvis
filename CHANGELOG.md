@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.29.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.28.4...root-v4.29.0) (2026-10-25)
+
+
+### Features
+
+* **coding:** show claude session progress in the workflow trace ([#1000](https://github.com/ffMathy/hey-jarvis/issues/1000)) ([0b26e03](https://github.com/ffMathy/hey-jarvis/commit/0b26e0355bcfe2af292116cc17fa1b868d35aadf))
+
 ## [4.28.4](https://github.com/ffMathy/hey-jarvis/compare/root-v4.28.3...root-v4.28.4) (2026-10-25)
 
 

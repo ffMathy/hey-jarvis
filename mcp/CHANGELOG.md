@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.21.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.20.3...mcp-v2.21.0) (2026-10-25)
+
+
+### Features
+
+* **coding:** show claude session progress in the workflow trace ([#1000](https://github.com/ffMathy/hey-jarvis/issues/1000)) ([0b26e03](https://github.com/ffMathy/hey-jarvis/commit/0b26e0355bcfe2af292116cc17fa1b868d35aadf))
+
 ## [2.20.3](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.20.2...mcp-v2.20.3) (2026-10-25)
 
 
