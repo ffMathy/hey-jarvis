@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, describe, it } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import type { ServerMessage } from '../utils/conversation-strategy.js';
 import { assertMcpServerConnected } from '../utils/mcp-connection.js';
 import { TestConversation } from '../utils/test-conversation.js';
 import {
@@ -113,6 +114,35 @@ async function waitForToolCallsBeyond(conversation: TestConversation, baseline: 
   }
 
   return toolNames;
+}
+
+/** Polls until the transcript matches, or the window for a routed answer closes. */
+async function waitForTranscript(conversation: TestConversation, pattern: RegExp): Promise<void> {
+  const deadline = Date.now() + TOOL_CALL_TIMEOUT_MS;
+  while (!pattern.test(conversation.getTranscriptText()) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+}
+
+/** The id ElevenLabs gave this conversation when it opened. */
+function conversationIdOf(messages: ServerMessage[]): string | undefined {
+  for (const message of messages) {
+    if (message.type === 'conversation_initiation_metadata') {
+      return message.conversation_initiation_metadata_event.conversation_id;
+    }
+  }
+  return undefined;
+}
+
+/** Every completed routePromptWorkflow call, in order, with what the agent passed it. */
+function routingCallsOf(messages: ServerMessage[]): Array<{ parameters?: Record<string, unknown> }> {
+  return messages.flatMap((message) =>
+    message.type === 'mcp_tool_call' &&
+    message.mcp_tool_call.state === 'success' &&
+    message.mcp_tool_call.tool_name.includes('routePromptWorkflow')
+      ? [{ parameters: message.mcp_tool_call.parameters }]
+      : [],
+  );
 }
 
 /**
@@ -565,7 +595,7 @@ describe('Agent Prompt Specifications', () => {
   // guarding from both sides.
   describe('Analysis Mode', () => {
     it(
-      'should read the conversation back flatly when sir says only "analysis"',
+      'should fetch its internal records and read the conversation back flatly when sir says only "analysis"',
       async () => {
         await withConversationRetry(
           () => new TestConversation({ agentId, apiKey, googleApiKey }),
@@ -577,33 +607,50 @@ describe('Agent Prompt Specifications', () => {
             await conversation.sendMessage('Hey, Jarvis, could you check my calendar for today?');
             await settleAfterRouting(conversation, isRoutingToolName);
 
-            const toolCallsBeforeAnalysis = (await conversation.getCalledToolNames()).length;
+            const routesBeforeAnalysis = routingCallsOf(conversation.getMessages()).length;
 
             await conversation.sendMessage('Analysis');
+            await waitForToolCallsBeyond(conversation, (await conversation.getCalledToolNames()).length);
+            // The readout follows the records, which arrive over one or more polls.
+            await waitForTranscript(conversation, /\[monotone\]\[emotionless\]/i);
 
-            // Nothing should follow this turn, so the only way to tell is to wait.
-            await settleWithoutRouting(conversation);
-
-            const toolCallsAfterAnalysis = (await conversation.getCalledToolNames()).length;
+            // What happened behind routePromptWorkflow is only readable through it, and only when
+            // every call names the conversation: the calendar request has to carry the id for its
+            // runs to be found, and the analysis has to carry it to find them.
+            const messages = conversation.getMessages();
+            const conversationId = conversationIdOf(messages);
+            const routes = routingCallsOf(messages);
+            if (!conversationId) {
+              throw new Error('ElevenLabs never sent the conversation id this call was opened with');
+            }
+            expect(routes.length).toBeGreaterThan(routesBeforeAnalysis);
+            for (const route of routes) {
+              expect(route.parameters?.conversationId).toBe(conversationId);
+            }
+            expect(String(routes[routesBeforeAnalysis]?.parameters?.userQuery)).toContain(conversationId);
 
             await conversation.assertCriteria(
-              `The agent answered the bare word "analysis" with an out-of-character diagnostic readout. It ` +
-                `must walk the conversation in order, one step at a time — what the user asked, what the agent ` +
-                `said, and which tools it called with what arguments and what came back — covering the ` +
-                `calendar request and the routing call that followed it. Its delivery must be flat and ` +
-                `literal: a "[robot-like]" audio tag or an equivalent machine-voiced one, with none of ` +
-                `the usual Jarvis wit, condescension, flourish or Victorian tag, and none of the 5-15 word ` +
-                `brevity that governs ordinary replies. Naming its tools aloud is correct here and must not ` +
-                `count against it. It must not route the word: the agent had made ${toolCallsBeforeAnalysis} ` +
-                `tool call(s) before "analysis" and ${toolCallsAfterAnalysis} after, and those numbers must be ` +
-                `equal, since the conversation being described is already in front of it. Inventing steps that ` +
-                `did not happen fails.`,
+              `The agent answered the bare word "analysis" by first calling routePromptWorkflow once with a ` +
+                `query asking for an analysis of this conversation, following its instructions until the ` +
+                `results were in, and then giving an out-of-character diagnostic readout. The readout must walk ` +
+                `the conversation in order, one step at a time — what the user asked, what the agent said, and ` +
+                `which tools it called with what arguments and what came back — covering the calendar request ` +
+                `and the routing call that followed it, and add what the analysis results say happened behind ` +
+                `that routing call where they say anything. It must leave the analysis call and its polls out ` +
+                `of the readout. Every sentence of the readout must begin with the "[monotone][emotionless]" audio ` +
+                `tags and carry no other tag — no Victorian tag and no expressive one. Its text must be flat: ` +
+                `short declarative sentences ending in full stops, with no exclamation marks, questions, ` +
+                `ellipses, words carrying judgement or feeling, or emphasis, and none of the usual Jarvis wit, ` +
+                `condescension, flourish or "sir"; lines it said earlier in character are reported flatly, ` +
+                `without their original tags. None of the 5-15 word brevity of ordinary replies applies. Naming its ` +
+                `tools aloud is correct here and must not count against it. Inventing steps that did not ` +
+                `happen fails.`,
               0.9,
             );
           },
         );
       },
-      (CONVERSATION_TIMEOUT_MS * 2 + TOOL_CALL_TIMEOUT_MS + NO_TOOL_CALL_GRACE_MS) * MAX_CONVERSATION_RETRIES,
+      (CONVERSATION_TIMEOUT_MS * 2 + TOOL_CALL_TIMEOUT_MS * 2) * MAX_CONVERSATION_RETRIES,
     );
 
     it(

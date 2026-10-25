@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { conversationTracingOptions } from './conversation.js';
 import { createTool } from './tool-factory.js';
 import type { AnyWorkflow } from './workflows/workflow-factory.js';
 
@@ -11,6 +12,16 @@ import type { AnyWorkflow } from './workflows/workflow-factory.js';
  * of the response is decided here rather than falling out of the workflow's output schema.
  */
 
+/** The conversation a tool call says it came from, for a workflow whose input names one. */
+function conversationIdOf(inputData: unknown): string | undefined {
+  return inputData !== null &&
+    typeof inputData === 'object' &&
+    'conversationId' in inputData &&
+    typeof inputData.conversationId === 'string'
+    ? inputData.conversationId
+    : undefined;
+}
+
 /** Runs a workflow on behalf of a tool call and hands back what it produced. */
 async function runWorkflowForTool(workflow: AnyWorkflow, inputData: unknown): Promise<unknown> {
   const workflowName = workflow.name ?? workflow.id;
@@ -19,6 +30,7 @@ async function runWorkflowForTool(workflow: AnyWorkflow, inputData: unknown): Pr
   const run = await workflow.createRun();
   const result = await run.start({
     inputData,
+    ...conversationTracingOptions(conversationIdOf(inputData)),
   });
   if (result.status !== 'success') {
     const errorMessage =

@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'bun:test';
-import { errorSummary, failedSteps, innermostFailure, runReport, spanReport, traceReport } from './reports';
+import {
+  conversationLogReport,
+  conversationTraceReport,
+  errorSummary,
+  failedSteps,
+  innermostFailure,
+  runReport,
+  spanReport,
+  traceReport,
+} from './reports';
 
 /**
  * What the reflection vertical is allowed to say about a failure.
@@ -308,5 +317,63 @@ describe('runReport', () => {
 
     expect(report.status).toBe('unknown');
     expect(report.failedSteps).toEqual([]);
+  });
+});
+
+describe('conversationTraceReport', () => {
+  it('keeps a failing span of a type it would otherwise leave out, and names it as the cause', () => {
+    const report = conversationTraceReport('trace-1', [
+      span({ spanId: 'root', entityName: 'calendar' }),
+      span({
+        spanId: 'model',
+        parentSpanId: 'root',
+        name: 'model step',
+        spanType: 'model_step',
+        startedAt: new Date('2026-09-20T10:00:01Z'),
+        error: { message: 'quota exceeded' },
+      }),
+      span({
+        spanId: 'processor',
+        parentSpanId: 'root',
+        name: 'processor',
+        spanType: 'processor_run',
+        startedAt: new Date('2026-09-20T10:00:01.500Z'),
+      }),
+    ]);
+
+    expect(report.entity).toBe('calendar');
+    expect(report.failed).toBe(true);
+    expect(report.cause).toMatchObject({ spanId: 'model', error: 'quota exceeded' });
+    expect(report.steps.map((step) => step.spanId)).toEqual(['root', 'model']);
+  });
+});
+
+describe('conversationLogReport', () => {
+  it('reads one log line, with its fields trimmed and the agent it was written in', () => {
+    expect(
+      conversationLogReport({
+        timestamp: new Date('2026-01-01T00:00:00Z'),
+        level: 'warn',
+        message: 'Token refresh failed',
+        entityName: 'calendar',
+        data: { status: 401, body: 'x'.repeat(2000) },
+      }),
+    ).toEqual({
+      at: '2026-01-01T00:00:00.000Z',
+      level: 'warn',
+      entity: 'calendar',
+      message: 'Token refresh failed',
+      data: expect.stringContaining('(truncated)'),
+    });
+  });
+
+  it('leaves out fields that were not logged', () => {
+    expect(
+      conversationLogReport({ timestamp: '2026-01-01T00:00:00Z', level: 'error', message: 'boom', data: {} }),
+    ).toEqual({
+      at: '2026-01-01T00:00:00.000Z',
+      level: 'error',
+      message: 'boom',
+    });
   });
 });

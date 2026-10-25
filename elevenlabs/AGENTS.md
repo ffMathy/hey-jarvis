@@ -116,12 +116,21 @@ The agent prompt in `src/assets/agent-prompt.md` defines:
   character for conversation (the planner labels each request; see `mcp/AGENTS.md`)
 - **When to reach for a tool**: answer outright or route, and never both
 - **Analysis Mode**: any phrase *beginning* with "analysis" drops the persona for
-  a flat, robot-like step-by-step readout. Whatever follows the word is the focus,
-  and it decides where the readout comes from: a focus on this call is answered
-  from the conversation and never routed, while a focus the conversation cannot
-  answer — why something failed elsewhere, whether the scheduled checks are still
-  running — goes through `routePromptWorkflow` to the `reflection` agent, which
-  reads Mastra's own errors and failed runs (see `mcp/AGENTS.md`)
+  a monotone, emotionless step-by-step readout. Every sentence opens with
+  `[monotone][emotionless]` and no other tag — both are in `suggestedAudioTags`, since
+  expressive mode leans on that list — and the text itself is written flat (full stops only,
+  no judgement words, no emphasis), because the voice performs whatever feeling the text
+  carries and a tag alone did not strip it. Whatever follows the word is the focus.
+  Every analysis first calls `routePromptWorkflow` once — "Analysis of conversation
+  `<id>`: <focus>" — which reaches the `reflection` agent's `describeConversation`:
+  the agents, tool calls, failures and logs Mastra recorded behind each routed
+  request of this call. The readout then walks the call in order and inserts what
+  happened behind every `routePromptWorkflow` step (see `mcp/AGENTS.md`)
+- **Conversation id**: the prompt carries `{{system__conversation_id}}`, and every
+  `routePromptWorkflow` call passes it as `conversationId`. ElevenLabs substitutes dynamic
+  variables in the prompt but cannot bind an MCP tool argument to one, so the model copies
+  it. That id is what Mastra files the request's traces and logs under, and a call
+  without it still runs but is missing from every analysis
 - **Ending the call**: a closing line in character, then the `end_call` tool — a
   written "[end_call invoked]" is a stage direction, not a call, and leaves the
   line open

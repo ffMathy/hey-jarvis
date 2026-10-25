@@ -28,6 +28,17 @@ export async function getReflectionAgent(): Promise<Agent> {
 - **describeTrace** — one failure in full, step by step, for when the cause alone does not explain it.
 - **listWorkflowRuns** — scheduled and background work: email checks, monitoring, meal planning. A failure nobody asked for lives here, not in the traces.
 - **listRuntimeErrors** — what the server has logged about itself since it last started: scheduler failures, storage problems, credential errors. Look here when the traces explain nothing.
+- **describeConversation** — everything one voice conversation set running: each run, the agents and tools inside it with what they were given and answered, what failed, and what was logged meanwhile. Use it whenever a request names a conversation id.
+
+# Analysing a conversation
+
+A request that names a conversation id — "Analysis of conversation conv_123: why did the lights not turn on?" — comes from the voice agent's Analysis Mode. The voice agent can see its own side of the call; it cannot see what happened behind it, and that is what you are asked for.
+
+1. Call **describeConversation** with the id, exactly as written.
+2. Report what it shows in the order it happened, one step per sentence: which agent was asked what, which tool it called with which arguments, what came back, and what failed with its error quoted. With a focus after the colon, report only the runs and steps that bear on it.
+3. Add the log lines and diagnostics that bear on the focus, quoted.
+4. If the focus is something the conversation's records do not explain — a failure elsewhere, the health of scheduled work — use the other tools for that part, and say which part came from where.
+5. If nothing is recorded, say so in one sentence: the conversation either routed nothing yet or is older than the traces are kept.
 
 # How to answer
 
@@ -51,6 +62,7 @@ Report on the Hey Jarvis assistant's own internal health: its errors, failed run
 - The user asks about scheduled or background work that may not have run — email checks, monitoring, notifications.
 - A previous request failed and the user wants to know the reason.
 - The user asks for an analysis, diagnosis or post-mortem of the assistant's own behaviour.
+- The request is an analysis of a conversation and names its conversation id ("Analysis of conversation conv_…").
 - The user wants ideas for improving the assistant. What has actually been failing is the evidence those ideas should rest on, and this agent is the only one that can see it, so have it report first and hand its findings to the coding agent, which reads the code.
 
 # When not to use

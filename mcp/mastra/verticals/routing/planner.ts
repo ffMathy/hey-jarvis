@@ -1,5 +1,6 @@
 import type { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
+import { conversationTracingOptions } from '../../utils/conversation.js';
 import type { DirectAnswer, DirectAnswerSource } from '../../utils/direct-answer-source.js';
 import { createAgent, getModel } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
@@ -433,6 +434,7 @@ async function planWithPlanner(
   const response = await planner.generate(plannerPrompt(userQuery, openQuestions, waitingPhotos, namedPhotos), {
     structuredOutput: { schema: planSchema },
     toolChoice: 'none',
+    ...conversationTracingOptions(),
   });
 
   const plan = response.object;

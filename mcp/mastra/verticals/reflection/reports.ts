@@ -347,3 +347,94 @@ export function runReport(run: WorkflowRun): RunReport {
     failedSteps: failedSteps(run.snapshot),
   };
 }
+
+/**
+ * The span types a conversation readout walks: who was asked, which tools they called, and the
+ * runs those happened in. Everything else in a trace — model steps, processors, workflow
+ * plumbing — is how those happened rather than what happened, and is left out unless it failed.
+ */
+const CONVERSATION_STEP_TYPES: ReadonlySet<string> = new Set([
+  'agent_run',
+  'workflow_run',
+  'tool_call',
+  'mcp_tool_call',
+  'classifier_evaluation',
+]);
+
+/** One run a conversation set going, as Analysis Mode reads it back. */
+export interface ConversationTraceReport {
+  traceId: string;
+  entity?: string;
+  startedAt?: string;
+  durationMs?: number;
+  failed: boolean;
+  /** The innermost failing span, when anything in the run failed. */
+  cause?: SpanReport;
+  /**
+   * The agents, tools and runs inside it, in the order they started, each with what it was given
+   * and what it answered, trimmed. Failing spans are included whatever their type.
+   */
+  steps: SpanReport[];
+}
+
+/**
+ * Describes one run of a conversation step by step.
+ *
+ * Payloads are kept for every step, unlike {@link traceReport}'s default: the question Analysis
+ * Mode asks is not only "what broke" but "what did each agent do with what it was given", and the
+ * filter on span types is what keeps that short enough to read.
+ */
+export function conversationTraceReport(traceId: string, spans: SpanLike[]): ConversationTraceReport {
+  const report = traceReport(traceId, spans);
+  const inStartOrder = [...spans].sort((left, right) =>
+    (toIso(left.startedAt) ?? '').localeCompare(toIso(right.startedAt) ?? ''),
+  );
+
+  return {
+    traceId,
+    ...(report.entity ? { entity: report.entity } : {}),
+    ...(report.startedAt ? { startedAt: report.startedAt } : {}),
+    ...(report.durationMs === undefined ? {} : { durationMs: report.durationMs }),
+    failed: report.failed,
+    ...(report.failingSpans[0] ? { cause: report.failingSpans[0] } : {}),
+    steps: inStartOrder
+      .filter(
+        (span) =>
+          CONVERSATION_STEP_TYPES.has(String(span.spanType)) || (span.error !== null && span.error !== undefined),
+      )
+      .map((span) => spanReport(span, { includePayloads: true })),
+  };
+}
+
+/** A log line written while a conversation's work ran. */
+export interface ConversationLogReport {
+  at: string;
+  level: string;
+  /** The agent, workflow or tool it was written in, when it was written inside one. */
+  entity?: string;
+  message: string;
+  /** The fields logged beside it, trimmed. */
+  data?: string;
+}
+
+/** The log fields a report is built from. */
+interface LogLike {
+  timestamp: Date | string;
+  level: string;
+  message: string;
+  entityName?: string | null;
+  data?: Record<string, unknown> | null;
+}
+
+/** Describes one log line, its fields cut to the length of a span's payload. */
+export function conversationLogReport(log: LogLike): ConversationLogReport {
+  const hasData = log.data !== null && log.data !== undefined && Object.keys(log.data).length > 0;
+
+  return {
+    at: toIso(log.timestamp) ?? String(log.timestamp),
+    level: log.level,
+    ...(log.entityName ? { entity: log.entityName } : {}),
+    message: truncateTo(log.message, MAX_ERROR_LENGTH),
+    ...(hasData ? { data: truncateTo(stringify(log.data), MAX_PAYLOAD_LENGTH) } : {}),
+  };
+}

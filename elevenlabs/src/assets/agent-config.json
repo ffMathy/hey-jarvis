@@ -83,6 +83,14 @@
         {
           "tag": "matter-of-factly",
           "description": "Delivering information with understated superiority"
+        },
+        {
+          "tag": "monotone",
+          "description": "Analysis Mode only, always together with emotionless: one flat pitch and a steady pace, no rise, fall or emphasis, like a machine reading a log"
+        },
+        {
+          "tag": "emotionless",
+          "description": "Analysis Mode only, always together with monotone: every feeling, accent and trace of character stripped from the voice"
         }
       ],
       "agentOutputAudioFormat": "pcm_16000",
