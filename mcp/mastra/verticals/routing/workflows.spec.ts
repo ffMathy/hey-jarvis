@@ -108,6 +108,10 @@ const fakeRuntime: RoutingRuntime = {
     // is what keeps the poll loop from spinning through it in tight iterations.
     await new Promise((resolve) => setTimeout(resolve, deadlineMs));
   },
+  async finishesWithin(sessionId) {
+    // Nothing settles on its own here either, so whether it has finished is already known.
+    return progressFor(sessionId).isFinished();
+  },
   async notifyWhenDone(sessionId) {
     const progress = progressFor(sessionId);
     if (progress.isFinished() || progress.isIdle()) {
@@ -182,6 +186,53 @@ describe('routePromptWorkflow', () => {
     expect(outcome.instructions).not.toContain('under six words');
   });
 
+  it('answers with the closing report when the request finishes before the call returns', async () => {
+    // A light switched by Jev and one Home Assistant call is done in a second or two. Telling Jarvis
+    // to poll for it cost a whole turn of the voice model before he could say "Done, sir".
+    setRoutingRuntime({
+      ...fakeRuntime,
+      async start(sessionId, userQuery) {
+        await fakeRuntime.start(sessionId, userQuery);
+        delegate(sessionId, 'internetOfThings', 'Called Turn on on Living room ceiling. 1 device changed state.');
+        endPlanRun(progressFor(sessionId));
+      },
+    });
+
+    const outcome = resultOf(
+      await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the living room light', async: false }),
+    );
+
+    expect(outcome.instructions).toContain('All tasks have completed');
+    expect(outcome.instructions).not.toContain('Call getNextInstructionsWorkflow now');
+    expect(outcome.completedTaskResults).toEqual([
+      { id: 'internetOfThings', result: 'Called Turn on on Living room ceiling. 1 device changed state.' },
+    ]);
+  });
+
+  it('waits for a request that finishes shortly after it was started', async () => {
+    setRoutingRuntime({
+      ...fakeRuntime,
+      async start(sessionId, userQuery) {
+        await fakeRuntime.start(sessionId, userQuery);
+        setTimeout(() => {
+          delegate(sessionId, 'internetOfThings', 'Done');
+          endPlanRun(progressFor(sessionId));
+        }, 20);
+      },
+      async finishesWithin(sessionId, deadlineMs) {
+        const progress = progressFor(sessionId);
+        await Promise.race([progress.waitUntilFinished(), new Promise((resolve) => setTimeout(resolve, deadlineMs))]);
+        return progress.isFinished();
+      },
+    });
+
+    const outcome = resultOf(
+      await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the living room light', async: false }),
+    );
+
+    expect(outcome.instructions).toContain('All tasks have completed');
+  });
+
   it('carries the loop and its failure handling, so the prompt does not have to', async () => {
     const outcome = resultOf(
       await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false }),
@@ -243,6 +294,29 @@ describe('routePromptWorkflow', () => {
     expect(first.instructions).toContain('call it again straight away');
     expect(second.instructions).not.toContain('parcel');
     expect(second.instructions).toContain('Say nothing to the user before that call');
+  });
+
+  it('tells the news after the answer when the request finished before the call returned', async () => {
+    const storage = await getImportantChangeStorage();
+    await storage.add({ summary: 'Your parcel arrives on Monday 26 October.', source: 'email' });
+    setRoutingRuntime({
+      ...fakeRuntime,
+      async start(sessionId, userQuery) {
+        await fakeRuntime.start(sessionId, userQuery);
+        delegate(sessionId, 'internetOfThings', 'Called Turn on on Living room ceiling. 1 device changed state.');
+        endPlanRun(progressFor(sessionId));
+      },
+    });
+
+    const outcome = resultOf(
+      await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the living room light', async: false }),
+    );
+
+    expect(outcome.instructions).toContain('Your parcel arrives on Monday 26 October.');
+    expect(outcome.instructions).toContain('Straight after your answer or confirmation');
+    // The rest of the closing report still holds: the request is over, and so is the call.
+    expect(outcome.instructions).toContain('All tasks have completed');
+    expect(outcome.instructions).toContain('end_call');
   });
 
   it('tells one piece of news per request, and keeps the rest for the silences after it', async () => {

@@ -1,5 +1,6 @@
 /**
- * Smart home commands carried out without the agent: the services and entities Jev is offered,
+ * Smart home commands carried out without the agent: the kinds of device, services and entities Jev
+ * is offered,
  * when its answers are plain enough to act on, and what Home Assistant is then asked.
  *
  * Declining is always safe -- the agent handles the request instead -- so most of what is pinned
@@ -15,12 +16,14 @@ import {
   entitiesFrom,
   entityQuestions,
   type HomeService,
+  homeCommandDomainFrom,
+  homeDomainQuestions,
   homeQuestionDomainFrom,
-  homeQuestionQuestions,
   homeServiceFrom,
-  homeServiceQuestions,
+  homeServiceQuestion,
   homeServicesFrom,
   runHomeCommand,
+  servicesFor,
 } from './home-commands.js';
 import { type EntitySummary, MOST_ENTITIES_A_LOOKUP_AFFECTS, resetHomeAssistantCachesForTest } from './tools.js';
 
@@ -44,7 +47,37 @@ const climateSetTemperature: HomeService = {
   entityDomains: ['climate'],
 };
 
+const lightTurnOn: HomeService = {
+  id: 'light.turn_on',
+  domain: 'light',
+  service: 'turn_on',
+  description: 'Turn on: Turns on one or more lights.',
+  requiredFields: [],
+  entityDomains: ['light'],
+};
+
+const genericTurnOn: HomeService = {
+  id: 'homeassistant.turn_on',
+  domain: 'homeassistant',
+  service: 'turn_on',
+  description: 'Generic turn on',
+  requiredFields: [],
+  entityDomains: ['homeassistant'],
+};
+
+const genericToggle: HomeService = {
+  id: 'homeassistant.toggle',
+  domain: 'homeassistant',
+  service: 'toggle',
+  description: 'Generic toggle',
+  requiredFields: [],
+  entityDomains: ['homeassistant'],
+};
+
 const SERVICES = [lightTurnOff, climateSetTemperature];
+
+/** What a house offers: lights with their own services, a thermostat, and the generic services. */
+const HOUSE_SERVICES = [lightTurnOff, lightTurnOn, climateSetTemperature, genericTurnOn, genericToggle];
 
 const kitchenLight = { id: 'light.kitchen', name: 'Kitchen ceiling', area: 'Kitchen', state: 'on' };
 const sofaLamp = { id: 'light.sofa', name: 'Sofa lamp', area: 'Living Room', state: 'on' };
@@ -97,9 +130,21 @@ describe('homeServicesFrom', () => {
   });
 });
 
-describe('homeServiceQuestions', () => {
+describe('servicesFor', () => {
+  it('offers a kind of device its own services, and only the generic ones it has none of the same name for', () => {
+    // `light.turn_on` and `homeassistant.turn_on` do the same thing to a light, so offering both
+    // would split Jev's confidence between them and send the command to the agent.
+    expect(servicesFor('light', HOUSE_SERVICES)).toEqual([lightTurnOff, lightTurnOn, genericToggle]);
+  });
+
+  it('offers the generic services where a kind of device has none of its own', () => {
+    expect(servicesFor('group', HOUSE_SERVICES)).toEqual([genericTurnOn, genericToggle]);
+  });
+});
+
+describe('homeServiceQuestion', () => {
   it('offers every service by its own description, with a way out', () => {
-    const { homeService } = homeServiceQuestions(SERVICES);
+    const { homeService } = homeServiceQuestion(SERVICES);
 
     expect(homeService.criteria).toEqual({
       'light.turn_off': 'Turn off: Turns off one or more lights.',
@@ -110,49 +155,55 @@ describe('homeServiceQuestions', () => {
 });
 
 describe('homeServiceFrom', () => {
-  function answers(choice: string, confidence: number, givesSetting = 0.02) {
-    return {
-      homeService: { choice, probabilities: { [choice]: confidence } },
-      homeCommandGivesSetting: { probability: givesSetting },
-    };
+  function answer(choice: string, confidence: number) {
+    return { choice, probabilities: { [choice]: confidence } };
   }
 
   it('takes a service it is sure of', () => {
-    expect(homeServiceFrom(answers('light.turn_off', 0.95), SERVICES, SURE)).toBe(lightTurnOff);
+    expect(homeServiceFrom(answer('light.turn_off', 0.95), SERVICES, SURE)).toBe(lightTurnOff);
   });
 
-  it('leaves it to the agent when it is unsure, or the answer is other', () => {
-    expect(homeServiceFrom(answers('light.turn_off', 0.6), SERVICES, SURE)).toBeUndefined();
-    expect(homeServiceFrom(answers('other', 0.99), SERVICES, SURE)).toBeUndefined();
-  });
-
-  it('leaves a command that gives a setting to the agent, which can write the value', () => {
-    expect(homeServiceFrom(answers('light.turn_off', 0.95, 0.4), SERVICES, SURE)).toBeUndefined();
+  it('leaves it to the agent when it is unsure, the answer is other, or there is no answer', () => {
+    expect(homeServiceFrom(answer('light.turn_off', 0.6), SERVICES, SURE)).toBeUndefined();
+    expect(homeServiceFrom(answer('other', 0.99), SERVICES, SURE)).toBeUndefined();
+    expect(homeServiceFrom(undefined, SERVICES, SURE)).toBeUndefined();
   });
 
   it('never calls a service that needs a value nothing here can write', () => {
-    expect(homeServiceFrom(answers('climate.set_temperature', 0.99), SERVICES, SURE)).toBeUndefined();
+    expect(homeServiceFrom(answer('climate.set_temperature', 0.99), SERVICES, SURE)).toBeUndefined();
   });
 });
 
 describe('entitiesFrom', () => {
   it('takes every entity it is sure the command acts on', () => {
-    expect(entitiesFrom({ entity0: { probability: 0.97 }, entity1: { probability: 0.03 } }, ENTITIES, SURE)).toEqual([
-      kitchenLight,
-    ]);
+    expect(
+      entitiesFrom(
+        { entity0: { type: 'boolean', probability: 0.97 }, entity1: { type: 'boolean', probability: 0.03 } },
+        ENTITIES,
+        SURE,
+      ),
+    ).toEqual([kitchenLight]);
   });
 
   it('leaves the command to the agent when any entity is uncertain', () => {
     expect(
-      entitiesFrom({ entity0: { probability: 0.97 }, entity1: { probability: 0.5 } }, ENTITIES, SURE),
+      entitiesFrom(
+        { entity0: { type: 'boolean', probability: 0.97 }, entity1: { type: 'boolean', probability: 0.5 } },
+        ENTITIES,
+        SURE,
+      ),
     ).toBeUndefined();
   });
 
   it('leaves the command to the agent when it acts on nothing, or an answer is missing', () => {
     expect(
-      entitiesFrom({ entity0: { probability: 0.01 }, entity1: { probability: 0.02 } }, ENTITIES, SURE),
+      entitiesFrom(
+        { entity0: { type: 'boolean', probability: 0.01 }, entity1: { type: 'boolean', probability: 0.02 } },
+        ENTITIES,
+        SURE,
+      ),
     ).toBeUndefined();
-    expect(entitiesFrom({ entity0: { probability: 0.97 } }, ENTITIES, SURE)).toBeUndefined();
+    expect(entitiesFrom({ entity0: { type: 'boolean', probability: 0.97 } }, ENTITIES, SURE)).toBeUndefined();
   });
 });
 
@@ -167,18 +218,44 @@ describe('entityQuestions', () => {
   });
 });
 
-describe('homeQuestionQuestions', () => {
+describe('homeDomainQuestions', () => {
   it('offers each domain in words where it can, with a way out', () => {
-    const { homeQuestionDomain } = homeQuestionQuestions(['lock', 'camera']);
+    const { homeDomain } = homeDomainQuestions(['lock', 'camera']);
 
-    expect(homeQuestionDomain.criteria).toEqual({ lock: 'Door locks', camera: 'camera', other: expect.any(String) });
+    expect(homeDomain.criteria).toEqual({ lock: 'Door locks', camera: 'camera', other: expect.any(String) });
+  });
+});
+
+describe('homeCommandDomainFrom', () => {
+  function answers(choice: string, confidence: number, givesSetting = 0.02) {
+    return {
+      homeDomain: { choice, probabilities: { [choice]: confidence } },
+      homeCommandGivesSetting: { probability: givesSetting },
+    };
+  }
+
+  it('takes a kind of device it is sure of, with a service to call on it', () => {
+    expect(homeCommandDomainFrom(answers('light', 0.95), ['light'], HOUSE_SERVICES, SURE)).toBe('light');
+  });
+
+  it('leaves it to the agent when it is unsure, or the kind is not in the house', () => {
+    expect(homeCommandDomainFrom(answers('light', 0.6), ['light'], HOUSE_SERVICES, SURE)).toBeUndefined();
+    expect(homeCommandDomainFrom(answers('fan', 0.99), ['light'], HOUSE_SERVICES, SURE)).toBeUndefined();
+  });
+
+  it('leaves a command that gives a setting to the agent, which can write the value', () => {
+    expect(homeCommandDomainFrom(answers('light', 0.95, 0.4), ['light'], HOUSE_SERVICES, SURE)).toBeUndefined();
+  });
+
+  it('leaves it to the agent when nothing could be called on that kind of device', () => {
+    expect(homeCommandDomainFrom(answers('light', 0.95), ['light'], [climateSetTemperature], SURE)).toBeUndefined();
   });
 });
 
 describe('homeQuestionDomainFrom', () => {
   function answers(choice: string, confidence: number, aboutNow = 0.97) {
     return {
-      homeQuestionDomain: { choice, probabilities: { [choice]: confidence } },
+      homeDomain: { choice, probabilities: { [choice]: confidence } },
       homeQuestionIsAboutNow: { probability: aboutNow },
     };
   }
@@ -191,6 +268,10 @@ describe('homeQuestionDomainFrom', () => {
     expect(homeQuestionDomainFrom(answers('lock', 0.95, 0.3), ['lock'], SURE)).toBeUndefined();
     expect(homeQuestionDomainFrom(answers('lock', 0.6), ['lock'], SURE)).toBeUndefined();
     expect(homeQuestionDomainFrom(answers('garage', 0.99), ['lock'], SURE)).toBeUndefined();
+  });
+
+  it('leaves a question about scenes and scripts to the agent, since they have no state worth reading', () => {
+    expect(homeQuestionDomainFrom(answers('scene', 0.95), ['scene'], SURE)).toBeUndefined();
   });
 });
 
@@ -258,26 +339,55 @@ describe('runHomeCommand', () => {
     }
   });
 
-  /** A classifier whose model answers every entity question with the given probabilities, in order. */
-  function classifierAnswering(probabilities: number[]) {
-    return new Classifier({
+  /**
+   * A classifier whose model answers every entity question with the given probabilities, in order,
+   * and the service question, when one is asked, with `service` at `serviceConfidence`.
+   */
+  function classifierAnswering(probabilities: number[], service = 'light.turn_off', serviceConfidence = 0.97) {
+    return classifierRecording(probabilities, service, serviceConfidence).classifier;
+  }
+
+  /** {@link classifierAnswering}, also keeping the services each call offered Jev. */
+  function classifierRecording(probabilities: number[], service = 'light.turn_off', serviceConfidence = 0.97) {
+    const offeredServices: string[][] = [];
+    const classifier = new Classifier({
       id: 'homeCommandClassifier',
       model: {
         specificationVersion: 'v4',
         provider: 'fake',
         modelId: 'jev-fake',
-        supportedQuestionTypes: ['boolean'],
-        doEvaluate: async ({ questions }) => ({
-          answers: Object.fromEntries(
-            Object.keys(questions).map((key, index) => [
-              key,
-              { type: 'boolean' as const, probability: probabilities[index] ?? 0 },
-            ]),
-          ),
-          warnings: [],
-        }),
+        supportedQuestionTypes: ['choice', 'boolean'],
+        doEvaluate: async ({ questions }) => {
+          const entityKeys = Object.keys(questions).filter((key) => questions[key]?.type === 'boolean');
+          return {
+            answers: Object.fromEntries(
+              Object.entries(questions).map(([key, question]) =>
+                question.type === 'choice'
+                  ? [key, choiceAnswer(Object.keys(question.criteria))]
+                  : [key, { type: 'boolean' as const, probability: probabilities[entityKeys.indexOf(key)] ?? 0 }],
+              ),
+            ),
+            warnings: [],
+          };
+        },
       },
     });
+
+    /** The complete distribution Mastra requires, with what is left over spread across the rest. */
+    function choiceAnswer(options: string[]) {
+      offeredServices.push(options);
+      const others = options.filter((option) => option !== service);
+      return {
+        type: 'choice' as const,
+        choice: service,
+        probabilities: Object.fromEntries([
+          [service, serviceConfidence],
+          ...others.map((option) => [option, (1 - serviceConfidence) / others.length]),
+        ]),
+      };
+    }
+
+    return { classifier, offeredServices };
   }
 
   it('calls the service on the entities Jev chose, and says how many changed', async () => {
@@ -285,7 +395,8 @@ describe('runHomeCommand', () => {
 
     const outcome = await runHomeCommand(
       'turn off the kitchen lights',
-      lightTurnOff,
+      'light',
+      HOUSE_SERVICES,
       SURE,
       classifierAnswering([0.97, 0.02]),
     );
@@ -304,7 +415,8 @@ describe('runHomeCommand', () => {
 
     const outcome = await runHomeCommand(
       'turn off the kitchen lights',
-      lightTurnOff,
+      'light',
+      HOUSE_SERVICES,
       SURE,
       classifierAnswering([0.97, 0.02]),
     );
@@ -317,7 +429,8 @@ describe('runHomeCommand', () => {
 
     const outcome = await runHomeCommand(
       'turn off the kitchen lights',
-      lightTurnOff,
+      'light',
+      HOUSE_SERVICES,
       SURE,
       classifierAnswering([0.97, 0.02]),
     );
@@ -331,9 +444,50 @@ describe('runHomeCommand', () => {
     serviceResponse = () => new Response('[]');
 
     expect(
-      await runHomeCommand('turn off some lights', lightTurnOff, SURE, classifierAnswering([0.97, 0.5])),
+      await runHomeCommand('turn off some lights', 'light', HOUSE_SERVICES, SURE, classifierAnswering([0.97, 0.5])),
     ).toBeUndefined();
     expect(serviceCalls).toEqual([]);
+  });
+
+  it('declines without calling anything when Jev is unsure of the service', async () => {
+    serviceResponse = () => new Response('[]');
+
+    expect(
+      await runHomeCommand(
+        'turn off the kitchen lights',
+        'light',
+        HOUSE_SERVICES,
+        SURE,
+        classifierAnswering([0.97, 0.02], 'light.turn_off', 0.6),
+      ),
+    ).toBeUndefined();
+    expect(serviceCalls).toEqual([]);
+  });
+
+  it('calls a generic service Jev chose for a kind of device with none of its own of that name', async () => {
+    serviceResponse = () => new Response(JSON.stringify([{ entity_id: 'light.kitchen' }]));
+
+    await runHomeCommand(
+      'toggle the kitchen light',
+      'light',
+      HOUSE_SERVICES,
+      SURE,
+      classifierAnswering([0.97, 0.02], 'homeassistant.toggle'),
+    );
+
+    expect(serviceCalls).toEqual([
+      { url: 'http://home-assistant.test/api/services/homeassistant/toggle', body: { entity_id: ['light.kitchen'] } },
+    ]);
+  });
+
+  it('never offers a generic service a kind of device has its own of the same name for', async () => {
+    serviceResponse = () => new Response(JSON.stringify([{ entity_id: 'light.kitchen' }]));
+    const { classifier, offeredServices } = classifierRecording([0.97, 0.02], 'light.turn_on');
+
+    await runHomeCommand('turn on the kitchen light', 'light', HOUSE_SERVICES, SURE, classifier);
+
+    expect(offeredServices).toEqual([['light.turn_off', 'light.turn_on', 'homeassistant.toggle', 'other']]);
+    expect(serviceCalls.map((call) => call.url)).toEqual(['http://home-assistant.test/api/services/light/turn_on']);
   });
 
   it('answers a question from the states of the entities Jev chose, calling no service', async () => {
@@ -387,14 +541,14 @@ describe('runHomeCommand', () => {
   });
 
   it('declines when there is no classifier', async () => {
-    expect(await runHomeCommand('turn off the lights', lightTurnOff, SURE, undefined)).toBeUndefined();
+    expect(await runHomeCommand('turn off the lights', 'light', HOUSE_SERVICES, SURE, undefined)).toBeUndefined();
   });
 
   it('throws when Home Assistant refuses, so the agent can take over', async () => {
     serviceResponse = () => new Response('Service not found', { status: 400, statusText: 'Bad Request' });
 
     await expect(
-      runHomeCommand('turn off the kitchen lights', lightTurnOff, SURE, classifierAnswering([0.97, 0.02])),
+      runHomeCommand('turn off the kitchen lights', 'light', HOUSE_SERVICES, SURE, classifierAnswering([0.97, 0.02])),
     ).rejects.toThrow('Service not found');
   });
 });

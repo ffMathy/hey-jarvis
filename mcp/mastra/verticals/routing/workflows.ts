@@ -83,15 +83,6 @@ const inputSchema = z.object({
     ),
 });
 
-const routeAcknowledgementSchema = z.object({
-  instructions: z.string().describe('Instructions for Jarvis to follow'),
-  // Only reaches a caller that runs the workflow directly, not one going through MCP: the
-  // voice agent names no session and so polls the default, and a caller that does name one
-  // already knows what it sent. Echoing it to everyone bought nothing and cost the
-  // instruction its clarity.
-  sessionId: z.string().describe('The session this request is running in; pass it back when polling'),
-});
-
 const instructionsOutputSchema = z.object({
   instructions: z.string().describe('Instructions for Jarvis to follow'),
   completedTaskResults: z
@@ -119,6 +110,18 @@ const instructionsOutputSchema = z.object({
     .array(z.string())
     .optional()
     .describe('Tasks that have just started work taking minutes rather than seconds'),
+});
+
+/**
+ * What `routePromptWorkflow` answers with: the instruction to poll, or the whole closing report when
+ * the request finished before the call returned (see {@link ROUTE_ANSWER_WAIT_MS}).
+ */
+const routeAcknowledgementSchema = instructionsOutputSchema.extend({
+  // Only reaches a caller that runs the workflow directly, not one going through MCP: the
+  // voice agent names no session and so polls the default, and a caller that does name one
+  // already knows what it sent. Echoing it to everyone bought nothing and cost the
+  // instruction its clarity.
+  sessionId: z.string().describe('The session this request is running in; pass it back when polling'),
 });
 
 const pollInputSchema = z.object({
@@ -244,6 +247,25 @@ export function routeInstructions(async: boolean, importantChange: ImportantChan
     return `The request is being processed in the background and will complete on its own. ${aside} Then end the call.`;
   }
   return INSTRUCTIONS.poll.replace(SAY_NOTHING_BEFORE_POLLING, `Before that call: ${aside}`);
+}
+
+/**
+ * A closing report with the news worked in, for a request that finished before the route call
+ * returned and so never had a silence to tell it in.
+ *
+ * Said straight after the answer, before whatever the report asks for last — a hang-up, a question —
+ * so it neither runs into the answer nor keeps the line open after it.
+ */
+function withImportantChangeAfterAnswer(instructions: string, importantChange: ImportantChange | undefined): string {
+  if (!importantChange) {
+    return instructions;
+  }
+  return (
+    `There is also news he has not heard yet, which has nothing to do with what he asked: ${importantChange.summary} ` +
+    'Straight after your answer or confirmation, tell him in a sentence, in your own voice, as an aside — "By the ' +
+    'way, sir, …" — unless what it describes is already over, in which case leave it out. Everything below still ' +
+    `applies after it. ${instructions}`
+  );
 }
 
 /** What a poll that ran out with nothing to report answers with — with the next piece of news, if any. */
@@ -663,6 +685,21 @@ export function resetPollDeadlineForTest(): void {
 }
 
 /**
+ * How long `routePromptWorkflow` waits for the request to finish before telling Jarvis to poll.
+ *
+ * Every poll is a turn of the voice model: it reads "call getNextInstructionsWorkflow", generates
+ * that call, and only then gets the result to speak. For a request settled in a second or two --
+ * "turn on the living room light", answered by Jev and one Home Assistant call without any language
+ * model on this side -- that turn was most of the wait sir heard. So the route call holds on long
+ * enough for such a request to finish, and when it does, answers with the closing report itself and
+ * the loop never starts. Nothing is lost by waiting: sir is hearing the pre-tool line meanwhile, and
+ * a request still running at the end is polled exactly as before, its results all still to hand over.
+ *
+ * Bound by the same `cascadeTimeoutSeconds` as {@link POLL_DEADLINE_MS}, and kept well under it.
+ */
+const ROUTE_ANSWER_WAIT_MS = 5_000;
+
+/**
  * How long a poll holds the last result back for the request to finish.
  *
  * A delegation's answer and the end of the plan run are two events, and the answer comes first:
@@ -872,17 +909,21 @@ const routePromptStep = createStep({
     const sessionId = inputData.sessionId ?? DEFAULT_ROUTING_SESSION_ID;
     // Started inside the conversation's scope, so the planner, the plan run and everything it
     // delegates to -- all of which outlive this step -- are traced under it.
+    const runtime = getRoutingRuntime();
     const [, importantChange] = await Promise.all([
-      withinConversation(inputData.conversationId, () =>
-        getRoutingRuntime().start(sessionId, withPointing(inputData.userQuery)),
-      ),
+      withinConversation(inputData.conversationId, () => runtime.start(sessionId, withPointing(inputData.userQuery))),
       claimImportantChangeToMention(),
     ]);
 
-    return {
-      instructions: routeInstructions(inputData.async, importantChange),
-      sessionId,
-    };
+    if (!inputData.async && (await runtime.finishesWithin(sessionId, ROUTE_ANSWER_WAIT_MS))) {
+      const report = buildClosingReport(await runtime.poll(sessionId));
+      return {
+        ...report,
+        instructions: withImportantChangeAfterAnswer(report.instructions, importantChange),
+        sessionId,
+      };
+    }
+    return { instructions: routeInstructions(inputData.async, importantChange), sessionId };
   },
 });
 

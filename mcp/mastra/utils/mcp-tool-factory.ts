@@ -55,18 +55,18 @@ export function createSimplifiedWorkflowTool(workflow: AnyWorkflow) {
   });
 }
 
-/** The instruction a workflow produced, which for some of them is the whole answer. */
-function readInstructions(workflowName: string, result: unknown): string {
-  if (
-    result !== null &&
-    typeof result === 'object' &&
-    'instructions' in result &&
-    typeof result.instructions === 'string'
-  ) {
-    return result.instructions;
+/**
+ * What a workflow produced for the caller: its instruction, and whatever report came with it, less
+ * the session the caller is already in.
+ */
+function readInstructions(workflowName: string, result: unknown): Record<string, unknown> & { instructions: string } {
+  const parsed = instructionsResultSchema.safeParse(result);
+  if (!parsed.success) {
+    throw new Error(`Workflow ${workflowName} returned no instructions`);
   }
 
-  throw new Error(`Workflow ${workflowName} returned no instructions`);
+  const { sessionId: _sessionId, ...payload } = parsed.data;
+  return payload;
 }
 
 /**
@@ -109,6 +109,10 @@ const EMPTY_TEXT_CONTENT = [{ type: 'text', text: '' }];
  * stated once, with the text channel left empty rather than repeating it. A client that reads
  * only `content` would find nothing to act on — the one that matters here, ElevenLabs, reads
  * the structured channel, and this is the shape it asked for.
+ *
+ * Anything else the workflow answered with travels beside the instruction, the session aside.
+ * `routePromptWorkflow` answers a request that finished before it returned with the whole closing
+ * report, and its results are what that instruction tells Jarvis to say.
  */
 export function createInstructionsWorkflowTool(workflow: AnyWorkflow) {
   const workflowName = workflow.name ?? workflow.id;
@@ -118,8 +122,7 @@ export function createInstructionsWorkflowTool(workflow: AnyWorkflow) {
     inputSchema: workflow.inputSchema ?? z.object({}),
     outputSchema: instructionsResultSchema,
     execute: async (context) => {
-      const instructions = readInstructions(workflowName, await runWorkflowForTool(workflow, context));
-      const payload = { instructions };
+      const payload = readInstructions(workflowName, await runWorkflowForTool(workflow, context));
 
       return {
         ...payload,
