@@ -71,7 +71,7 @@ Turborepo configuration, task behavior, and CLI commands vary between versions a
 - USE the docs for: advanced config options, unfamiliar flags, migration guides, plugin configuration, edge cases
 - DON'T USE them for: basic Turborepo command syntax and common day-to-day commands
 
-`turbo` writes this guidance into an `AGENTS.md` itself when it detects an agent. `"agentGuidance": false` in the root `turbo.json` turns that off, because this repository has no `AGENTS.md` (see [`repository`](repository.md)). **NEVER remove that setting.**
+Newer versions of `turbo` write this guidance into an `AGENTS.md` themselves when they detect an agent. This repository has no `AGENTS.md` (see [`repository`](repository.md)), so when a bump makes `turbo` start writing one, set `"agentGuidance": false` in the root `turbo.json` in the same change and delete the file. The pinned 2.10.10 has no such key and rejects `turbo.json` if it is set.
 
 ## What NOT to Do
 
