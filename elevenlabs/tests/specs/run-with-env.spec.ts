@@ -9,7 +9,7 @@ const runWithEnv = path.join(repositoryRoot, '.scripts/run-with-env.sh');
 // Stands in for the 1Password CLI. Like the real `op run`, it refuses an env file holding a line it
 // cannot parse as dotenv, and otherwise resolves every reference and runs the command after `--`.
 const fakeOp = `#!/bin/bash
-if [ "$1" = read ]; then exit 1; fi
+if [ "$1" = read ]; then exit 0; fi
 env_file=""
 for argument in "$@"; do
   case "$argument" in --env-file=*) env_file="\${argument#--env-file=}" ;; esac
@@ -58,5 +58,31 @@ describe('run-with-env.sh', () => {
     expect(result.stderr.toString()).not.toContain('parsing Dotenv file');
     expect(result.exitCode).toBe(0);
     expect(result.stdout.toString()).toEndWith('resolved|say "hi" HEY there');
+  });
+
+  it('keeps an optional reference on its own line when the env file does not end in a newline', () => {
+    writeFileSync(path.join(directory, 'op.env'), 'FAKE_SECRET="op://vault/item/field"');
+    writeFileSync(path.join(directory, 'op.optional.env'), 'FAKE_OPTIONAL="op://vault/item/optional"\n');
+
+    const result = Bun.spawnSync(
+      [
+        'bash',
+        runWithEnv,
+        path.join(directory, 'op.env'),
+        'bash',
+        '-c',
+        'printf "%s|%s" "$FAKE_SECRET" "$FAKE_OPTIONAL"',
+      ],
+      {
+        env: {
+          PATH: `${directory}:${process.env.PATH}`,
+          OP_SERVICE_ACCOUNT_TOKEN: 'fake',
+        },
+      },
+    );
+
+    expect(result.stderr.toString()).not.toContain('parsing Dotenv file');
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.toString()).toEndWith('resolved|resolved');
   });
 });
