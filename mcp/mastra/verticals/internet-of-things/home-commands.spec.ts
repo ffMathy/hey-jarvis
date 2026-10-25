@@ -344,7 +344,13 @@ describe('runHomeCommand', () => {
    * and the service question, when one is asked, with `service` at `serviceConfidence`.
    */
   function classifierAnswering(probabilities: number[], service = 'light.turn_off', serviceConfidence = 0.97) {
-    return new Classifier({
+    return classifierRecording(probabilities, service, serviceConfidence).classifier;
+  }
+
+  /** {@link classifierAnswering}, also keeping the services each call offered Jev. */
+  function classifierRecording(probabilities: number[], service = 'light.turn_off', serviceConfidence = 0.97) {
+    const offeredServices: string[][] = [];
+    const classifier = new Classifier({
       id: 'homeCommandClassifier',
       model: {
         specificationVersion: 'v4',
@@ -357,7 +363,7 @@ describe('runHomeCommand', () => {
             answers: Object.fromEntries(
               Object.entries(questions).map(([key, question]) =>
                 question.type === 'choice'
-                  ? [key, { type: 'choice' as const, choice: service, probabilities: { [service]: serviceConfidence } }]
+                  ? [key, choiceAnswer(Object.keys(question.criteria))]
                   : [key, { type: 'boolean' as const, probability: probabilities[entityKeys.indexOf(key)] ?? 0 }],
               ),
             ),
@@ -366,6 +372,22 @@ describe('runHomeCommand', () => {
         },
       },
     });
+
+    /** The complete distribution Mastra requires, with what is left over spread across the rest. */
+    function choiceAnswer(options: string[]) {
+      offeredServices.push(options);
+      const others = options.filter((option) => option !== service);
+      return {
+        type: 'choice' as const,
+        choice: service,
+        probabilities: Object.fromEntries([
+          [service, serviceConfidence],
+          ...others.map((option) => [option, (1 - serviceConfidence) / others.length]),
+        ]),
+      };
+    }
+
+    return { classifier, offeredServices };
   }
 
   it('calls the service on the entities Jev chose, and says how many changed', async () => {
@@ -458,20 +480,14 @@ describe('runHomeCommand', () => {
     ]);
   });
 
-  it('never calls a generic service a kind of device has its own of the same name for', async () => {
-    // Jev is never offered it, so an answer naming it can only be a model gone wrong.
-    serviceResponse = () => new Response('[]');
+  it('never offers a generic service a kind of device has its own of the same name for', async () => {
+    serviceResponse = () => new Response(JSON.stringify([{ entity_id: 'light.kitchen' }]));
+    const { classifier, offeredServices } = classifierRecording([0.97, 0.02], 'light.turn_on');
 
-    expect(
-      await runHomeCommand(
-        'turn on the kitchen light',
-        'light',
-        HOUSE_SERVICES,
-        SURE,
-        classifierAnswering([0.97, 0.02], 'homeassistant.turn_on'),
-      ),
-    ).toBeUndefined();
-    expect(serviceCalls).toEqual([]);
+    await runHomeCommand('turn on the kitchen light', 'light', HOUSE_SERVICES, SURE, classifier);
+
+    expect(offeredServices).toEqual([['light.turn_off', 'light.turn_on', 'homeassistant.toggle', 'other']]);
+    expect(serviceCalls.map((call) => call.url)).toEqual(['http://home-assistant.test/api/services/light/turn_on']);
   });
 
   it('answers a question from the states of the entities Jev chose, calling no service', async () => {
