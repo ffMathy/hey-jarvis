@@ -27,6 +27,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # To start CI on the release pull request and watch it finish.
+      actions: write
     outputs:
       # A release is cut either by the run that follows a human merging the
       # release pull request, or — now that the pull request merges itself — by
@@ -45,24 +47,22 @@ jobs:
           target-branch: main
 
       # A release pull request only restates commits that already went through
-      # review and CI on main, so it never needs a second human read, and it is
-      # merged here, in the same run that opened it, so every merge to main is
-      # its own release with nothing left for a person to click.
+      # review and CI on main, so it never needs a human: it is merged here, in
+      # the same run that opened it, so every merge to main is its own release.
       #
-      # That takes `RELEASE_TOKEN`: a token of an admin of this repository
-      # (a fine-grained personal access token with Contents and Pull requests
-      # read/write on this repository). The pull request is opened with
-      # GITHUB_TOKEN, and GitHub starts no workflow for anything that token
-      # does, so the checks branch protection requires never report on it and
-      # auto-merge waits on them forever. `--admin` merges past them, which only
-      # an admin's token may do. Without the secret the step falls back to
-      # auto-merge, which parks the pull request until somebody merges it.
+      # Release Please opens it with GITHUB_TOKEN, and GitHub starts no
+      # `pull_request` workflow for anything that token does — so on its own the
+      # pull request never gets the checks branch protection requires, and
+      # auto-merge would wait on them forever. `workflow_dispatch` is the one
+      # trigger GITHUB_TOKEN may fire, so CI is started on the release branch by
+      # hand; its check runs land on the pull request's head commit, which
+      # satisfies branch protection, and the pull request is merged once it is
+      # green. A red CI leaves the pull request open and fails this run.
       - name: Merge the release pull request
         id: merge
         if: ${{ steps.release.outputs.prs_created == 'true' }}
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
-          HAS_RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN != '' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           RELEASE_PRS: ${{ steps.release.outputs.prs }}
         run: |
@@ -70,14 +70,29 @@ jobs:
 
           merged=false
           for number in $(jq -r '.[].number' <<<"$RELEASE_PRS"); do
-            echo "Merging release pull request #${number}"
-            if [ "$HAS_RELEASE_TOKEN" = 'true' ]; then
-              gh pr merge "${number}" --squash --admin
-            else
-              echo "::warning::RELEASE_TOKEN is not set, so release pull request #${number} can only be handed to auto-merge, which waits on checks that never run on it."
-              gh pr merge "${number}" --squash --auto ||
-                gh pr merge "${number}" --squash
+            branch=$(gh pr view "${number}" --json headRefName --jq '.headRefName')
+            sha=$(gh pr view "${number}" --json headRefOid --jq '.headRefOid')
+
+            echo "Running CI on release pull request #${number} (${branch} at ${sha})"
+            gh workflow run build.yml --ref "${branch}"
+
+            run_id=''
+            for _ in $(seq 1 60); do
+              run_id=$(gh run list --workflow build.yml --branch "${branch}" --event workflow_dispatch \
+                --json databaseId,headSha --jq "map(select(.headSha == \"${sha}\")) | .[0].databaseId // empty")
+              [ -n "${run_id}" ] && break
+              sleep 5
+            done
+            if [ -z "${run_id}" ]; then
+              echo "::error::CI never started on release pull request #${number}."
+              exit 1
             fi
+
+            gh run watch "${run_id}" --exit-status --interval 60 >/dev/null
+
+            echo "Merging release pull request #${number}"
+            gh pr merge "${number}" --squash --match-head-commit "${sha}" ||
+              gh pr merge "${number}" --squash --auto --match-head-commit "${sha}"
 
             if [ "$(gh pr view "${number}" --json merged --jq '.merged')" = 'true' ]; then
               merged=true
@@ -88,13 +103,11 @@ jobs:
 
           echo "merged=${merged}" >> "$GITHUB_OUTPUT"
 
-      # Tag the release in this same run rather than leaving it to the run the
-      # merge's push starts: a merge with GITHUB_TOKEN starts none at all, and
-      # one with RELEASE_TOKEN starts one that `concurrency` queues behind this
-      # run, by which time the release is tagged and it has nothing left to do.
-      # Release Please picks up the pull request it has just seen merged and
-      # cuts the tags and GitHub releases here, so `deploy` below has something
-      # to ship.
+      # A merge performed with GITHUB_TOKEN does not start another workflow run,
+      # so the push that just landed on main never comes back around to tag the
+      # release. Run Release Please once more instead: it picks up the release
+      # pull request it has just seen merged and cuts the tags and GitHub
+      # releases here, in the same run, so `deploy` below has something to ship.
       - name: Tag the merged release
         id: tag
         if: ${{ steps.merge.outputs.merged == 'true' }}
