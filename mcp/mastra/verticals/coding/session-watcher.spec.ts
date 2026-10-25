@@ -5,6 +5,7 @@ import type { StateChange } from '../synapse/state-change.js';
 import type { SessionProseQuestionReader } from './classifier.js';
 import type { ClaudeSessionEvent } from './claude-sessions.js';
 import type { PublishTarget, SessionWorkPublication } from './publish-session-work.js';
+import { UNATTENDED_SESSION_ANSWER } from './session-questions.js';
 import {
   ClaudeSessionWatcher,
   createSessionQuestionAsker,
@@ -151,6 +152,7 @@ describe('ClaudeSessionWatcher', () => {
     askSessionQuestion?: SessionQuestionAsker,
     // Never the real classifier: whether it runs would depend on a key in the environment.
     readProseQuestion: SessionProseQuestionReader = async () => undefined,
+    sendMessage: (sessionId: string, message: string) => Promise<void> = async () => {},
   ): {
     watcher: ClaudeSessionWatcher;
     published: StateChange[];
@@ -183,6 +185,7 @@ describe('ClaudeSessionWatcher', () => {
         notices.push(notice);
       },
       readProseQuestion,
+      sendMessage,
     );
 
     return { watcher, published, notices, streamedSessionIds };
@@ -408,6 +411,87 @@ describe('ClaudeSessionWatcher', () => {
       stateType: 'coding_session_question_asked',
       stateData: { question: 'Should it be in Danish, or English?', questionId: 'q1', channel: 'phone-call' },
     });
+  });
+
+  /** A turn that ends on a fenced question, numbered from `first`. */
+  function questionTurn(first: number): ClaudeSessionEvent[] {
+    return [
+      runningEvent(`sevt_${first}`),
+      messageEvent(`sevt_${first + 1}`, '```jarvis-question\nShould it be in Danish, or English?\n```'),
+      idleEvent(`sevt_${first + 2}`),
+    ];
+  }
+
+  it('never asks the user the question an unattended session ended on, and tells it to decide', async () => {
+    const { calls, publishWork } = recordingPublisher();
+    const asked: string[] = [];
+    const sent: { sessionId: string; message: string }[] = [];
+    const { watcher, notices } = watcherOver(
+      [questionTurn(1)],
+      publishWork,
+      async (_sessionId, question) => {
+        asked.push(question);
+        return { status: 'asked', questionId: 'q1', channel: 'phone-call', reason: 'He is in the car.' };
+      },
+      async () => undefined,
+      async (sessionId, message) => {
+        sent.push({ sessionId, message });
+      },
+    );
+
+    watcher.watch('sess_1', { title: 'Fix a failed evaluation', publishTo: PUBLISH_TO, unattended: true });
+    await settle();
+
+    expect(asked).toEqual([]);
+    expect(sent).toEqual([{ sessionId: 'sess_1', message: UNATTENDED_SESSION_ANSWER }]);
+    expect(calls).toEqual([]);
+    expect(notices).toEqual([]);
+  });
+
+  it('never asks a question the classifier caught in an unattended session either', async () => {
+    const asked: string[] = [];
+    const sent: string[] = [];
+    const { watcher } = watcherOver(
+      [[runningEvent('sevt_1'), messageEvent('sevt_2', 'Should it be in Danish, or English?'), idleEvent('sevt_3')]],
+      recordingPublisher().publishWork,
+      async (_sessionId, question) => {
+        asked.push(question);
+        return { status: 'asked', questionId: 'q1', channel: 'phone-call', reason: 'He is in the car.' };
+      },
+      async () => 'Should it be in Danish, or English?',
+      async (_sessionId, message) => {
+        sent.push(message);
+      },
+    );
+
+    watcher.watch('sess_1', { publishTo: PUBLISH_TO, unattended: true });
+    await settle();
+
+    expect(asked).toEqual([]);
+    expect(sent).toEqual([UNATTENDED_SESSION_ANSWER]);
+  });
+
+  it('publishes an unattended session that keeps asking, after telling it three times to decide', async () => {
+    const { calls, publishWork } = recordingPublisher();
+    const sent: string[] = [];
+    const { watcher, notices } = watcherOver(
+      [[...questionTurn(1), ...questionTurn(4), ...questionTurn(7), ...questionTurn(10)]],
+      publishWork,
+      async () => {
+        throw new Error('An unattended session must never ask the user');
+      },
+      async () => undefined,
+      async (_sessionId, message) => {
+        sent.push(message);
+      },
+    );
+
+    watcher.watch('sess_1', { publishTo: PUBLISH_TO, unattended: true });
+    await settle();
+
+    expect(sent).toHaveLength(3);
+    expect(calls).toHaveLength(1);
+    expect(notices).toHaveLength(1);
   });
 
   it('asks a question the classifier caught in prose the way a fenced one is asked, and publishes nothing', async () => {

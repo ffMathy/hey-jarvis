@@ -14,7 +14,7 @@ import {
 import { octokit } from './github-client.js';
 import { buildSessionWorkInstructions } from './publish-session-work.js';
 import { DEFAULT_OWNER, DEFAULT_REPOSITORY, describeRepository } from './repository.js';
-import { buildSessionQuestionInstructions } from './session-questions.js';
+import { buildSessionQuestionInstructions, buildUnattendedSessionInstructions } from './session-questions.js';
 import { claudeSessionWatcher } from './session-watcher.js';
 
 // Extract Octokit response types for type inference
@@ -246,6 +246,73 @@ export const searchRepositories = createTool({
  * house. The session has no way to push, so the watcher publishes its branch and
  * opens the pull request once a turn ends with the work done.
  */
+/** What an implementing session is started with. */
+export interface ImplementationRequest {
+  owner?: string;
+  repo?: string;
+  request: string;
+  title?: string;
+  instructions?: string;
+  /**
+   * Whether the session works without the user: it asks him nothing, and a question it asks anyway
+   * is answered for him with "decide yourself" (see `session-questions.ts`). For changes nobody
+   * asked for in person, such as fixing a conversation that failed its evaluation.
+   */
+  unattended?: boolean;
+}
+
+/**
+ * Starts a Claude Code session that implements a change, and watches it until its pull request is
+ * opened. A session that fails to start is reported rather than thrown, so the caller can say what
+ * went wrong instead of going quiet.
+ */
+export async function startImplementationSession(implementation: ImplementationRequest) {
+  const owner = implementation.owner || DEFAULT_OWNER;
+  const repo = implementation.repo || DEFAULT_REPOSITORY;
+  const repository = `${owner}/${repo}`;
+
+  const task = [
+    `Implement the following change in the ${repository} repository.`,
+    implementation.title ? `Title: ${implementation.title}` : undefined,
+    `\nRequest:\n${implementation.request}`,
+    implementation.instructions ? `\n${implementation.instructions}` : undefined,
+    // The session starts in an empty directory of its own in the sandbox, so it fetches the code
+    // itself — but it pushes nothing: the watcher publishes its branch from the server once it is
+    // done (see `publish-session-work.ts`).
+    `\n${buildSessionWorkInstructions(repository)}`,
+    `\n${implementation.unattended ? buildUnattendedSessionInstructions() : buildSessionQuestionInstructions()}`,
+  ]
+    .filter((line): line is string => typeof line === 'string')
+    .join('\n');
+
+  try {
+    const session = await createClaudeSession(task);
+
+    claudeSessionWatcher.watch(session.id, {
+      repository,
+      title: implementation.title,
+      publishTo: { owner, repo },
+      unattended: implementation.unattended,
+    });
+
+    return {
+      success: true,
+      session_id: session.id,
+      status: session.status,
+      message: `Started Claude Code session ${session.id} in ${repository}`,
+    };
+  } catch (error) {
+    logger.error('[CLAUDE SESSION] Failed to start session', { repository, error });
+
+    return {
+      success: false,
+      message: `Could not start a Claude Code session in ${repository}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+}
+
 export const startCodingSession = createTool({
   id: 'startCodingSession',
   description: `Starts a Claude Code session that implements a change autonomously. The session clones the repository, studies the code, and commits the work on a branch; Jarvis pushes the branch and opens a pull request once it is done. Whenever the session needs a decision only the user can make, Jarvis asks him on a call or on the house speakers and hands his answer back to the session. Its events, and the pull request, are reported back into the Synapse vertical as state changes. Defaults to Jarvis's own repository, "${DEFAULT_OWNER}/${DEFAULT_REPOSITORY}", if none is given.`,
@@ -270,49 +337,7 @@ export const startCodingSession = createTool({
     status: z.string().optional(),
     message: z.string(),
   }),
-  execute: async (inputData) => {
-    const owner = inputData.owner || DEFAULT_OWNER;
-    const repo = inputData.repo || DEFAULT_REPOSITORY;
-    const repository = `${owner}/${repo}`;
-
-    const task = [
-      `Implement the following change in the ${repository} repository.`,
-      inputData.title ? `Title: ${inputData.title}` : undefined,
-      `\nRequest:\n${inputData.request}`,
-      inputData.instructions ? `\n${inputData.instructions}` : undefined,
-      // The session starts in an empty directory of its own in the sandbox, so it fetches the code
-      // itself — but it pushes nothing: the watcher publishes its branch from the server once it is
-      // done (see `publish-session-work.ts`).
-      `\n${buildSessionWorkInstructions(repository)}`,
-      `\n${buildSessionQuestionInstructions()}`,
-    ]
-      .filter((line): line is string => typeof line === 'string')
-      .join('\n');
-
-    // A session that fails to start is reported rather than thrown, so the
-    // caller can say what went wrong instead of going quiet.
-    try {
-      const session = await createClaudeSession(task);
-
-      claudeSessionWatcher.watch(session.id, { repository, title: inputData.title, publishTo: { owner, repo } });
-
-      return {
-        success: true,
-        session_id: session.id,
-        status: session.status,
-        message: `Started Claude Code session ${session.id} in ${repository}`,
-      };
-    } catch (error) {
-      logger.error('[CLAUDE SESSION] Failed to start session', { repository, error });
-
-      return {
-        success: false,
-        message: `Could not start a Claude Code session in ${repository}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      };
-    }
-  },
+  execute: async (inputData) => startImplementationSession(inputData),
 });
 
 /** How long {@link runCodingTask} waits for a session before handing back its id instead. */
