@@ -87,6 +87,32 @@ describe('createInstructionsWorkflowTool', () => {
     expect(result.instructions).toBe('Say a short line, then call getNextInstructionsWorkflow.');
   });
 
+  it('passes a report on beside the instruction, so a route call that finished can be spoken from', async () => {
+    const inputSchema = z.object({ sessionId: z.string() });
+    const outputSchema = acknowledgementSchema.extend({
+      completedTaskResults: z.array(z.object({ id: z.string(), result: z.unknown() })),
+    });
+    const step = createStep({
+      id: 'report',
+      description: 'Answer with a closing report',
+      inputSchema,
+      outputSchema,
+      execute: async ({ inputData }) => ({
+        instructions: 'All tasks have completed.',
+        completedTaskResults: [{ id: 'internetOfThings', result: 'Living room light on' }],
+        sessionId: inputData.sessionId,
+      }),
+    });
+    const workflow = createWorkflow({ id: 'reportingWorkflow', inputSchema, outputSchema }).then(step).commit();
+
+    const result = await executeTool(createInstructionsWorkflowTool(workflow), { sessionId: 'jarvis-voice' });
+
+    expect(result.structuredContent).toEqual({
+      instructions: 'All tasks have completed.',
+      completedTaskResults: [{ id: 'internetOfThings', result: 'Living room light on' }],
+    });
+  });
+
   it('fails loudly when a workflow answers with no instruction to pass on', async () => {
     const inputSchema = z.object({});
     const outputSchema = z.object({ somethingElse: z.string() });

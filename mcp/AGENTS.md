@@ -1123,22 +1123,29 @@ then thrown away. Without `HEY_JARVIS_TYPESAFE_AI_API_KEY` there is no classifie
 every request is planned as before. The response-style wording lives in `response-styles.ts`, so
 the planner and the classifier describe the four styles identically.
 
-**Smart home commands skip the agent too.** Home Assistant's own services, every one that
-targets entities with its name and description, fetched live and cached for ten minutes, ride
-along on the same Jev call: which service carries the request out, and whether the request gives a
-setting (a brightness, temperature, colour). These are the vertical's own questions, declared as a
-direct answer source (`internet-of-things/direct-answers.ts`); routing asks them without knowing what
-they are about. When the request is routed to `internetOfThings` as a
-`command`, the service is sure, needs no required field and no setting was given, every entity
-that service can act on is fetched live and put to Jev as one yes/no each, with its name, area and
-state (`internet-of-things/home-commands.ts`). If every entity is settled one way or the other and
-at least one is chosen, the service is called on exactly those, with no language model involved.
+**Smart home commands skip the agent too.** The kinds of device Home Assistant holds (its
+domains: lights, switches, covers), fetched live and cached for ten minutes, ride along on the same
+Jev call: which kind of device the request is about, and whether it gives a setting (a brightness,
+temperature, colour). These are the vertical's own questions, declared as a direct answer source
+(`internet-of-things/direct-answers.ts`); routing asks them without knowing what they are about.
+When the request is routed to `internetOfThings` as a `command`, Jev is sure of the kind of device
+and no setting was given, one more Jev call asks the rest together
+(`internet-of-things/home-commands.ts`): which service carries it out, chosen from the services
+that act on that kind of device, and one yes/no per entity of that kind, with its name, area and
+state. The services offered are the kind's own plus Home Assistant's generic `homeassistant.*` ones
+it has no service of the same name for (`servicesFor`), so `light.turn_on` and
+`homeassistant.turn_on` never compete for the same light, while a group, which has no
+`group.turn_on`, is still turned on by the generic one. Asking for the kind of device first keeps
+the routing call short, since a few dozen kinds stand in for hundreds of services. If the service is
+sure and needs no required field, and every entity is settled one way or the other with at least one
+chosen, the service is called on exactly those, with no language model involved.
 The result says how many devices changed state, and does not claim success when none did, and the
 entities it was called on are reported as what the request touched, exactly as the agent's
 `callIoTService` would have reported them (see [What a request touches](#affected-entities)). Anything
-else (an unsure service or entity, a setting, more than 150 candidate entities, Home Assistant
-refusing the call) runs the same one-agent chain the request would have run anyway. Jev only picks
-from what Home Assistant listed, so it cannot call a service or touch an entity that does not exist.
+else (an unsure kind, service or entity, a setting, more than 150 entities of that kind, Home
+Assistant refusing the call) runs the same one-agent chain the request would have run anyway. Jev
+only picks from what Home Assistant listed, so it cannot call a service or touch an entity that does
+not exist.
 
 **The same call settles three more decisions** that used to fall to the planner or a rule of thumb:
 
@@ -1173,12 +1180,16 @@ same way, as a request naming it (see [Vision Vertical](#vision-vertical)); the 
 over the REST API, not through the voice model.
 
 **Workflows:**
-- **`routePromptWorkflow`**: starts a request and returns at once, with the session to poll
+- **`routePromptWorkflow`**: starts a request and returns its closing report if it finishes within
+  a few seconds, or else the instruction to poll
 - **`getNextInstructionsWorkflow`**: reports whatever has landed since the last call
 
 **How a request runs:**
-1. `routePromptWorkflow` starts the request and returns immediately — it does not wait for the
-   planner, let alone for the agents the plan names.
+1. `routePromptWorkflow` starts the request and waits up to `ROUTE_ANSWER_WAIT_MS` (5s) for it to
+   finish. A request that does — a light switched by Jev and one Home Assistant call, with no
+   language model on this side — is answered with its closing report right there, so the voice
+   model speaks the result on its next turn instead of spending that turn on a poll. Otherwise it
+   returns the instruction to poll, having handed nothing over, and the loop below runs as before.
 2. The planner writes a plan. Mastra validates and registers it as a **dynamic workflow** built
    for this one request: one workflow per chain, and a root running the chains in parallel.
 3. Every delegation in the plan is marked outstanding *before a single step runs*, so the first

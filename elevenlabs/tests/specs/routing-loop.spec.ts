@@ -237,6 +237,21 @@ describe('findRoutingLoopViolations', () => {
     expect(violations.join('\n')).toContain('never polled');
   });
 
+  it('passes a request the route call itself closed, with nothing left to poll for', () => {
+    // A light switched without any language model finishes before routePromptWorkflow returns, and
+    // that call answers with the closing report rather than an instruction to poll.
+    const loop = readRoutingLoop([
+      called('jarvis_mcp_server_routePromptWorkflow', {
+        instructions: 'All tasks have completed.',
+        completedTaskResults: [{ id: 'a', result: 'done' }],
+        taskIdsInProgress: [],
+      }),
+    ]);
+
+    expect(loop.finished).toBe(true);
+    expect(findRoutingLoopViolations(loop)).toEqual([]);
+  });
+
   it('catches the same result being delivered twice mid-flight', () => {
     // Both polls are mid-flight — the closing recap is deliberately exempt, and
     // is covered separately below.
