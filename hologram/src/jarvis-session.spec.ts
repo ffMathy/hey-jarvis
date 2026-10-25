@@ -4,6 +4,7 @@ import { HEADSET_PARTICIPANT_NAME } from './conversation-token';
 import { DEADLINE_PROBLEM, DROPPED_PROBLEM, MICROPHONE_PROBLEM, UNREACHABLE_PROBLEM } from './failure-text';
 import { MATERIALISE_SECONDS } from './frame-timing';
 import { GREETING_GRACE_SECONDS, WITHOUT_FIRST_MESSAGE } from './greeting-handover';
+import { REDIAL_GIVE_UP_AFTER_MS } from './jarvis-session';
 import { createHarness, HEADSET_OFFLINE_PROBLEM, settle } from './jarvis-session.fakes';
 
 /**
@@ -401,17 +402,20 @@ describe('when a summoning fails', () => {
     expect(harness.events.diagnostics.at(-1)?.lastError).toBe('Server error: something non-fatal');
   });
 
-  it('says the connection dropped, in words, when the room closes under an open conversation', async () => {
+  it('says the connection dropped, in words, when a room that closed under him cannot be redialled', async () => {
     const harness = createHarness();
     await harness.goLive();
 
     harness.sdk.latest.drop('LiveKit connection state changed to disconnected');
-
-    expect(harness.events.problems).toEqual([DROPPED_PROBLEM]);
-    expect(harness.session.phase).toBe('failed');
+    expect(harness.events.problems).toEqual([]);
     expect(harness.orphanSweeps).toBe(1);
     await harness.clock.advance(2_000);
     expect(harness.orphanSweeps).toBe(2);
+
+    await harness.clock.advance(REDIAL_GIVE_UP_AFTER_MS);
+    expect(harness.events.problems).toEqual([DROPPED_PROBLEM]);
+    expect(harness.events.sources).toEqual(['session']);
+    expect(harness.session.phase).toBe('failed');
   });
 
   it('passes on the SDK’s reason for any other error ending, unless it could carry a credential', async () => {

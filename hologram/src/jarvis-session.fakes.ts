@@ -9,6 +9,7 @@ import type {
   ProblemSource,
   SessionConversation,
   SessionDiagnostics,
+  SessionEnding,
   SessionOptions,
   SessionPhase,
   StartSession,
@@ -334,11 +335,22 @@ export interface FakeDial {
   connect(): Promise<void>;
   /** A start that fails before any conversation exists: `disconnected`, then the rejection. */
   reject(error: unknown): Promise<void>;
-  /** The room closes under an open conversation. */
+  /**
+   * The conversation ends with an error, in the shape the SDK gives it: LiveKit giving up on the
+   * room (`connection_state_changed`) when the message is LiveKit's, a server closing it otherwise.
+   */
   drop(message: string): void;
+  /**
+   * The agent seems to leave: what the SDK reports when a change of network makes LiveKit rejoin the
+   * room from scratch, unwinding every participant as it starts (see `connection-drop.ts`).
+   */
+  agentSeemsToLeave(): void;
   /** The agent calls `end_call`. */
   agentHangsUp(): void;
 }
+
+/** The message the SDK ends a conversation with when LiveKit gives up on its room. */
+const LIVEKIT_GAVE_UP = /^LiveKit connection state changed to disconnected$/;
 
 function createFakeDial(
   options: SessionOptions,
@@ -349,13 +361,13 @@ function createFakeDial(
   let slowEnding = false;
   let ending: Deferred<void> | undefined;
 
-  const finishWith = (details: { reason: string; message?: string }) => {
+  const finishWith = (details: SessionEnding) => {
     status = 'disconnected';
     options.onStatusChange({ status });
     options.onDisconnect(details);
   };
 
-  const endWith = (details: { reason: string; message?: string }) => {
+  const endWith = (details: SessionEnding) => {
     if (status !== 'connected' && status !== 'connecting') {
       return ending?.promise ?? Promise.resolve();
     }
@@ -434,10 +446,17 @@ function createFakeDial(
       await settle();
     },
     drop: (message) => {
-      endWith({ reason: 'error', message });
+      endWith({
+        reason: 'error',
+        message,
+        context: LIVEKIT_GAVE_UP.test(message) ? { type: 'connection_state_changed' } : { type: 'close' },
+      });
+    },
+    agentSeemsToLeave: () => {
+      endWith({ reason: 'agent', context: { type: 'close', reason: 'agent disconnected' } });
     },
     agentHangsUp: () => {
-      endWith({ reason: 'agent' });
+      endWith({ reason: 'agent', context: { type: 'end_call', reason: 'Agent ended the call' } });
     },
   };
   return { dial, promise: started.promise };
