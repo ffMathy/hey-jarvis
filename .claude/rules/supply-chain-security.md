@@ -120,7 +120,7 @@ The `OP_SERVICE_ACCOUNT_TOKEN` that unlocks the whole `Jarvis` vault is kept out
 of `CI`, which compiles the firmware and runs `turbo test` over untrusted pull
 request code on every push: that workflow is given no vault token at all, and the
 integration tests that would need one do not run on GitHub Actions (see
-[Testing Changes](#testing-changes)). The workflows that do carry it are
+[Unit Tests vs Integration Tests](validation.md#unit-tests-vs-integration-tests)). The workflows that do carry it are
 `Release`, which runs only on `main`, and `Play`, which needs the upload key and
 runs only when `Release` calls it (or someone starts it by hand).
 
