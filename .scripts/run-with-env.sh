@@ -68,6 +68,12 @@ trap "rm -f '$temp_env_file'" EXIT
 
 cat "$env_file" > "$temp_env_file"
 
+# An env file without a trailing newline would have the first optional reference glued onto its
+# last line, which `op` then rejects as an unexpected character. End it with one if it lacks it.
+if [ -s "$temp_env_file" ] && [ -n "$(tail -c 1 "$temp_env_file")" ]; then
+    echo >> "$temp_env_file"
+fi
+
 # Append the optional references that resolve, so a missing one cannot stop `op run`
 bash "$(dirname "${BASH_SOURCE[0]}")/append-optional-env.sh" "$optional_env_file" "$temp_env_file"
 
