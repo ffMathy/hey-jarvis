@@ -131,7 +131,7 @@ describe('homeServicesFrom', () => {
 });
 
 describe('servicesFor', () => {
-  it("offers a kind of device its own services, and only the generic ones it has none of the same name for", () => {
+  it('offers a kind of device its own services, and only the generic ones it has none of the same name for', () => {
     // `light.turn_on` and `homeassistant.turn_on` do the same thing to a light, so offering both
     // would split Jev's confidence between them and send the command to the agent.
     expect(servicesFor('light', HOUSE_SERVICES)).toEqual([lightTurnOff, lightTurnOn, genericToggle]);
@@ -176,20 +176,32 @@ describe('homeServiceFrom', () => {
 
 describe('entitiesFrom', () => {
   it('takes every entity it is sure the command acts on', () => {
-    expect(entitiesFrom({ entity0: { type: 'boolean', probability: 0.97 }, entity1: { type: 'boolean', probability: 0.03 } }, ENTITIES, SURE)).toEqual([
-      kitchenLight,
-    ]);
+    expect(
+      entitiesFrom(
+        { entity0: { type: 'boolean', probability: 0.97 }, entity1: { type: 'boolean', probability: 0.03 } },
+        ENTITIES,
+        SURE,
+      ),
+    ).toEqual([kitchenLight]);
   });
 
   it('leaves the command to the agent when any entity is uncertain', () => {
     expect(
-      entitiesFrom({ entity0: { type: 'boolean', probability: 0.97 }, entity1: { type: 'boolean', probability: 0.5 } }, ENTITIES, SURE),
+      entitiesFrom(
+        { entity0: { type: 'boolean', probability: 0.97 }, entity1: { type: 'boolean', probability: 0.5 } },
+        ENTITIES,
+        SURE,
+      ),
     ).toBeUndefined();
   });
 
   it('leaves the command to the agent when it acts on nothing, or an answer is missing', () => {
     expect(
-      entitiesFrom({ entity0: { type: 'boolean', probability: 0.01 }, entity1: { type: 'boolean', probability: 0.02 } }, ENTITIES, SURE),
+      entitiesFrom(
+        { entity0: { type: 'boolean', probability: 0.01 }, entity1: { type: 'boolean', probability: 0.02 } },
+        ENTITIES,
+        SURE,
+      ),
     ).toBeUndefined();
     expect(entitiesFrom({ entity0: { type: 'boolean', probability: 0.97 } }, ENTITIES, SURE)).toBeUndefined();
   });

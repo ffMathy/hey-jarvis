@@ -189,13 +189,9 @@ const GENERIC_DOMAIN = 'homeassistant';
  * in only where the kind has none of its own -- turning on a group, which has no `group.turn_on`.
  */
 export function servicesFor(domain: string, services: HomeService[]): HomeService[] {
-  const own = services.filter(
-    (service) => service.domain !== GENERIC_DOMAIN && service.entityDomains.includes(domain),
-  );
+  const own = services.filter((service) => service.domain !== GENERIC_DOMAIN && service.entityDomains.includes(domain));
   const ownNames = new Set(own.map((service) => service.service));
-  const generic = services.filter(
-    (service) => service.domain === GENERIC_DOMAIN && !ownNames.has(service.service),
-  );
+  const generic = services.filter((service) => service.domain === GENERIC_DOMAIN && !ownNames.has(service.service));
   return [...own, ...generic];
 }
 

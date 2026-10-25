@@ -71,8 +71,6 @@ describe('homeDirectAnswers', () => {
 
   it('leaves a question about history, or an unsure kind of device, to the agent', () => {
     expect(choose({ homeDomain: sure('lock'), homeQuestionIsAboutNow: probably(0.2) }, QUESTION)).toBeUndefined();
-    expect(
-      choose({ homeDomain: sure('lock', 0.6), homeQuestionIsAboutNow: probably(0.97) }, QUESTION),
-    ).toBeUndefined();
+    expect(choose({ homeDomain: sure('lock', 0.6), homeQuestionIsAboutNow: probably(0.97) }, QUESTION)).toBeUndefined();
   });
 });
