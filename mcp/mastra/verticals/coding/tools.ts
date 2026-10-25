@@ -1,3 +1,4 @@
+import type { AnySpan } from '@mastra/core/observability';
 import { pick, truncate } from 'lodash-es';
 import { z } from 'zod';
 import { type AffectedEntity, markAsAffectingEntities } from '../../utils/affected-entities.js';
@@ -265,8 +266,11 @@ export interface ImplementationRequest {
  * Starts a Claude Code session that implements a change, and watches it until its pull request is
  * opened. A session that fails to start is reported rather than thrown, so the caller can say what
  * went wrong instead of going quiet.
+ *
+ * @param trace - The span of the workflow step or tool call starting the session, which the
+ *   session's messages are recorded under so its progress shows in that trace in Mastra Studio
  */
-export async function startImplementationSession(implementation: ImplementationRequest) {
+export async function startImplementationSession(implementation: ImplementationRequest, trace?: AnySpan) {
   const owner = implementation.owner || DEFAULT_OWNER;
   const repo = implementation.repo || DEFAULT_REPOSITORY;
   const repository = `${owner}/${repo}`;
@@ -293,6 +297,7 @@ export async function startImplementationSession(implementation: ImplementationR
       title: implementation.title,
       publishTo: { owner, repo },
       unattended: implementation.unattended,
+      trace,
     });
 
     return {
@@ -337,7 +342,7 @@ export const startCodingSession = createTool({
     status: z.string().optional(),
     message: z.string(),
   }),
-  execute: async (inputData) => startImplementationSession(inputData),
+  execute: async (inputData, context) => startImplementationSession(inputData, context?.tracingContext?.currentSpan),
 });
 
 /** How long {@link runCodingTask} waits for a session before handing back its id instead. */

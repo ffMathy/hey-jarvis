@@ -1,4 +1,5 @@
 import { spyOn } from 'bun:test';
+import type { AnySpan } from '@mastra/core/observability';
 import { startCodingSession } from '../../mastra/verticals/coding/tools.js';
 
 /**
@@ -22,6 +23,8 @@ export interface StartedSession {
 
 export interface CodingToolRecorder {
   startedSessions: StartedSession[];
+  /** The span each session was started under, which its events are recorded in. */
+  startedUnder: (AnySpan | undefined)[];
   /** Puts the real tool back. */
   restore(): void;
 }
@@ -31,9 +34,11 @@ export const RECORDED_SESSION_ID = 'session_123';
 /** Records every session started, and reports each as having succeeded. */
 export function recordCodingTools(): CodingToolRecorder {
   const startedSessions: StartedSession[] = [];
+  const startedUnder: (AnySpan | undefined)[] = [];
 
-  const sessionSpy = spyOn(startCodingSession, 'execute').mockImplementation(async (inputData) => {
+  const sessionSpy = spyOn(startCodingSession, 'execute').mockImplementation(async (inputData, context) => {
     startedSessions.push(inputData);
+    startedUnder.push(context?.tracingContext?.currentSpan);
     return {
       success: true,
       session_id: RECORDED_SESSION_ID,
@@ -44,6 +49,7 @@ export function recordCodingTools(): CodingToolRecorder {
 
   return {
     startedSessions,
+    startedUnder,
     restore() {
       sessionSpy.mockRestore();
     },

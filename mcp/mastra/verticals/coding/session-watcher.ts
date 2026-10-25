@@ -20,8 +20,14 @@
  * answer can come back on, and the answer resumes the session. So a session can ask at any point
  * in its work — before it has changed a line, or halfway through — and carry on from there. An
  * unattended session's questions never reach the user: the session is told to decide for itself.
+ *
+ * And it is where a session's progress shows in Mastra Studio. The session outlives the workflow run
+ * (or agent tool call) that started it, so each of its events — every message Claude writes — is
+ * recorded as an event span under the span that started it (`ClaudeSessionContext.trace`). Opening
+ * that run's trace shows the session's work as it happens.
  */
 
+import { type AnySpan, SpanType } from '@mastra/core/observability';
 import { truncate } from 'lodash-es';
 import { logger } from '../../utils/logger.js';
 import { executeTool } from '../../utils/tool-factory.js';
@@ -64,6 +70,11 @@ export interface ClaudeSessionContext {
    * {@link MAXIMUM_UNATTENDED_ANSWERS} times, after which its work is published as it stands.
    */
   unattended?: boolean;
+  /**
+   * The span of whatever started the session — the workflow step or tool call — that its events are
+   * recorded under, so its progress shows in that run's trace in Mastra Studio.
+   */
+  trace?: AnySpan;
 }
 
 /**
@@ -88,6 +99,21 @@ function describeEvent(event: ClaudeSessionEvent): Record<string, unknown> {
     default:
       return {};
   }
+}
+
+/**
+ * Records a session event in the trace of whatever started the session, as an event span named
+ * after it. Unlike a state change, a message is kept whole: the trace is where it is read in full.
+ *
+ * Event spans are exported the moment they are made, so they reach the trace store even though the
+ * span they hang off ended when the session started.
+ */
+export function traceSessionEvent(trace: AnySpan | undefined, event: ClaudeSessionEvent): void {
+  trace?.createEventSpan({
+    type: SpanType.GENERIC,
+    name: `claude session: ${event.type}`,
+    output: event.type === 'agent.message' ? { message: event.text } : describeEvent(event),
+  });
 }
 
 /**
@@ -415,6 +441,13 @@ export class ClaudeSessionWatcher {
     }
 
     this.seenEventIds.add(event.id);
+
+    try {
+      traceSessionEvent(context.trace, event);
+    } catch (error) {
+      // The trace is for looking at; a span that cannot be made must not cost the session its watch.
+      logger.error('[CLAUDE SESSION] Failed to record event in the trace', { sessionId, eventId: event.id, error });
+    }
 
     await this.forward(sessionId, event.id, toStateChange(event, sessionId, context));
 
