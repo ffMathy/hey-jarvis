@@ -12,6 +12,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { getImportantChangeStorage } from '../../storage/index.js';
 import { currentConversationId } from '../../utils/conversation.js';
 import { onLiveEvent } from '../../utils/live-events.js';
 import { forgetPointing, reportPointing } from '../../utils/pointing.js';
@@ -149,7 +150,10 @@ function resultOf<T>(outcome: WorkflowResult<T>): T {
   return outcome.result;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  // The store is a real SQLite file shared across runs, so news another run left behind must not
+  // turn up in the acknowledgements below.
+  await (await getImportantChangeStorage()).clear();
   progressBySessionId.clear();
   setRoutingRuntime(fakeRuntime);
   // A poll with nothing to report blocks until its deadline by design. That is five seconds
@@ -218,6 +222,34 @@ describe('routePromptWorkflow', () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
 
     expect(startedConversations.slice(-2)).toEqual(['conv_kitchen', undefined]);
+  });
+
+  it('tells sir the news the reactor kept for him while his request runs, and only once', async () => {
+    const storage = await getImportantChangeStorage();
+    await storage.add({ summary: 'Your parcel arrives on Monday 26 October between 14:00 and 16:00.', source: 'email' });
+
+    const first = resultOf(await runWorkflow(routePromptWorkflow, { userQuery: 'turn on the lights', async: false }));
+    const second = resultOf(await runWorkflow(routePromptWorkflow, { userQuery: 'turn off the lights', async: false }));
+
+    expect(first.instructions).toContain('Your parcel arrives on Monday 26 October between 14:00 and 16:00.');
+    expect(first.instructions).toContain('By the way, sir');
+    // Said before the poll, which is what puts it in the silence while the lights come on, and
+    // without undoing the rest of the loop.
+    expect(first.instructions).not.toContain('Say nothing to the user before that call');
+    expect(first.instructions).toContain('Call getNextInstructionsWorkflow now');
+    expect(first.instructions).toContain('call it again straight away');
+    expect(second.instructions).not.toContain('parcel');
+    expect(second.instructions).toContain('Say nothing to the user before that call');
+  });
+
+  it('tells the news before ending a fire-and-forget call', async () => {
+    const storage = await getImportantChangeStorage();
+    await storage.add({ summary: 'The bin collection moved to Thursday 29 October.', source: 'calendar' });
+
+    const outcome = resultOf(await runWorkflow(routePromptWorkflow, { userQuery: 'turn the lights off', async: true }));
+
+    expect(outcome.instructions).toContain('The bin collection moved to Thursday 29 October.');
+    expect(outcome.instructions).toContain('Then end the call.');
   });
 
   it('defaults to one shared session when the caller does not identify itself', async () => {

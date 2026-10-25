@@ -1907,6 +1907,20 @@ await registerStateChange.execute({
 });
 ```
 
+### Synapse Important Changes (News for the Next Request)
+
+Not everything worth knowing is worth a push notification. When the State Change Reactor decides a
+change is something sir would want to hear about — a parcel arriving this afternoon, a meeting moved —
+it calls `noteImportantChange` with the sentence Jarvis should say. The change is kept for 24 hours in
+`mastra/storage/important-changes.ts` (table `important_changes`, in SQLite because the reactor and the
+MCP server are different processes).
+
+`routePromptWorkflow` claims up to `MAXIMUM_IMPORTANT_CHANGES_PER_REQUEST` (3) of them, newest first,
+and works them into its acknowledgement: Jarvis tells them as an aside ("By the way, sir, …") before
+the first `getNextInstructionsWorkflow` call, so they are heard while the request runs. A claim marks
+them told in the same statement, so each change is mentioned once, and a storage failure only costs
+the aside (`claimImportantChangesToMention` in `synapse/important-changes.ts`).
+
 ### Synapse Rules (Standing Instructions in Code)
 
 Rules are the State Change Reactor's equivalent of Claude Code rules. Each rule is a Markdown file in

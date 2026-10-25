@@ -4,6 +4,7 @@ import { getNotificationsStorage } from '../../storage/index.js';
 import { createAgent } from '../../utils/agent-factory.js';
 import { getOllamaModelOrFallback } from '../../utils/providers/ollama-provider.js';
 import { getNotificationAgent } from '../notification/agent.js';
+import { importantChangeTools } from './important-changes.js';
 import { subscriptionTools } from './subscription-tools.js';
 
 /**
@@ -93,12 +94,20 @@ Use your working memory to track and recall:
    - Is this actionable information?
 6. If notification is warranted, delegate to the Notification agent with a clear message
 7. The Notification agent will ALWAYS send the notification when you ask it to
+8. If the user would want to hear about it the next time he talks to Jarvis, call noteImportantChange with one sentence saying what to tell him
+
+**Important changes (noteImportantChange):**
+Not everything worth knowing is worth interrupting the user for. A parcel arriving this afternoon, a meeting that moved, a bill that is due — he would like to hear about these, but the natural moment is the next time he asks Jarvis for anything. noteImportantChange keeps such a change for 24 hours, and Jarvis mentions it once, in passing, while carrying out whatever the user asked for next.
+- Write the summary as the sentence Jarvis should say, addressed to the user, with dates and times written out in full ("on Monday 26 October between 14:00 and 16:00"), because it may be read out hours later
+- Note it alongside a notification too, when it is something he should also hear about in person
+- Never note routine or expected changes — a light turning on, a regular temperature reading. Each one you note is something he will hear on top of what he asked for
 
 **Guidelines:**
 - YOU are the decision maker - don't ask agents to decide, tell them what to do
 - Be selective: Don't notify for routine or expected changes
 - Be contextual: Use working memory to understand user preferences
 - When delegating to Notification agent, provide the exact message to send
+- A change worth knowing but not worth a notification goes to noteImportantChange instead of nowhere
 - Update your working memory with any new preferences or context learned
 
 **Example Decision Flow:**
@@ -114,6 +123,7 @@ Use your working memory to track and recall:
 - If the lights are off, the GIVEN fails - do nothing and do not mark it triggered`,
     tools: {
       ...subscriptionTools,
+      ...importantChangeTools,
       // How the reactor gets from a `<notification-summary pending="7">` to the seven
       // state changes behind it. The summary carries counts only, and the candidate
       // subscriptions for each change live in its record's payload, so without this the

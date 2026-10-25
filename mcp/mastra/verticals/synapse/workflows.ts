@@ -158,7 +158,7 @@ ${inputData.matchedSubscriptions}
 
 These candidates are suggestions, not decisions. For each one, confirm that its WHEN describes what actually happened and that its GIVEN (when present) currently holds. Carry out the THEN of every subscription that genuinely fires, and call markSubscriptionTriggered with its id afterwards.
 
-Then analyze this state change using your working memory and context. Decide if the user should be notified or if any other action is needed. If you decide to notify, delegate to the Notification agent with a clear message to send.`;
+Then analyze this state change using your working memory and context. Decide if the user should be notified or if any other action is needed. If you decide to notify, delegate to the Notification agent with a clear message to send. If it is worth his knowing but not worth interrupting him for, call noteImportantChange so Jarvis mentions it the next time the user talks to him.`;
 
         // Run the reactor as a supervisor - it decides what fires and delegates to the
         // Notification agent itself. Blocks until the whole delegation loop is done.
