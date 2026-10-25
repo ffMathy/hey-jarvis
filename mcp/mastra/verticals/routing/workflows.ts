@@ -1,6 +1,7 @@
 import { upperFirst } from 'lodash-es';
 import z from 'zod';
 import { createStep, createWorkflow } from '../../utils';
+import { withinConversation } from '../../utils/conversation.js';
 import { withPointing } from '../../utils/pointing.js';
 import {
   DEFAULT_ROUTING_SESSION_ID,
@@ -67,6 +68,16 @@ const inputSchema = z.object({
     .optional()
     .describe(
       'Leave this out. Only a caller running several requests side by side needs one, to keep them apart, and it must then pass the same value to getNextInstructionsWorkflow. Callers that do not set one share a single session.',
+    ),
+  // Not the routing session above, which keeps concurrent requests apart: this names the call the
+  // request came from, so everything it sets running can be found again by Analysis Mode (see
+  // `utils/conversation.ts`). ElevenLabs cannot bind an MCP tool argument to a dynamic variable, so
+  // the voice agent's prompt carries `{{system__conversation_id}}` and the model copies it here.
+  conversationId: z
+    .string()
+    .optional()
+    .describe(
+      'The id of this conversation, exactly as your prompt gives it. Pass it on every call: it is how what this request runs is found again when the user asks for an analysis.',
     ),
 });
 
@@ -805,7 +816,11 @@ const routePromptStep = createStep({
   execute: async ({ inputData, mastra }) => {
     rememberMastraRegistry(mastra);
     const sessionId = inputData.sessionId ?? DEFAULT_ROUTING_SESSION_ID;
-    await getRoutingRuntime().start(sessionId, withPointing(inputData.userQuery));
+    // Started inside the conversation's scope, so the planner, the plan run and everything it
+    // delegates to -- all of which outlive this step -- are traced under it.
+    await withinConversation(inputData.conversationId, () =>
+      getRoutingRuntime().start(sessionId, withPointing(inputData.userQuery)),
+    );
 
     return {
       instructions: inputData.async ? INSTRUCTIONS.async : INSTRUCTIONS.poll,

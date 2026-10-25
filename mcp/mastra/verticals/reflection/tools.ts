@@ -3,7 +3,14 @@ import { z } from 'zod';
 import { getMastraStorageProvider } from '../../storage/index.js';
 import { diagnosticCount, recentDiagnostics } from '../../utils/diagnostics.js';
 import { createTool } from '../../utils/tool-factory.js';
-import { innermostFailure, runReport, spanReport, traceReport } from './reports.js';
+import {
+  conversationLogReport,
+  conversationTraceReport,
+  innermostFailure,
+  runReport,
+  spanReport,
+  traceReport,
+} from './reports.js';
 
 /**
  * Reading Jarvis's own machinery.
@@ -413,8 +420,113 @@ Use this tool when:
   },
 });
 
+/**
+ * Everything one voice conversation set running, behind the voice agent's back.
+ *
+ * The voice agent can read its own side of a call — what it was told, which tools it called and
+ * what came back — but nothing of what happened behind `routePromptWorkflow`: which agents the
+ * plan asked, what tools they called with what, which of them failed and what was logged while
+ * they ran. Routing files all of that under the ElevenLabs conversation id (see
+ * `utils/conversation.ts`), and this reads it back for Analysis Mode.
+ *
+ * Three sources, because each holds what the others do not: the traces (every run, step by step),
+ * the logs written inside those runs, and the diagnostics ring for the warnings routing logs
+ * outside any run.
+ */
+export const describeConversation = createTool({
+  id: 'describeConversation',
+  description: `Read back everything a voice conversation set running inside the assistant: which agents were asked, which tools they called with what and what came back, what failed and why, and what was logged meanwhile — in the order it happened.
+
+Use this tool when:
+- The request is an analysis of a conversation and names its conversation id
+- The user asks what happened behind the scenes of a call, or why a call went the way it did`,
+  inputSchema: z.object({
+    conversationId: z.string().describe('The ElevenLabs conversation id, exactly as the request gives it'),
+  }),
+  outputSchema: z.object({
+    conversationId: z.string(),
+    message: z.string().optional().describe('Why there is nothing to report, when nothing was found'),
+    runs: z
+      .array(
+        z.object({
+          traceId: z.string(),
+          entity: z.string().optional().describe('The agent or workflow the run was'),
+          startedAt: z.string().optional(),
+          durationMs: z.number().optional(),
+          failed: z.boolean(),
+          cause: spanReportSchema.optional().describe('The innermost step that failed, when one did'),
+          steps: z
+            .array(spanReportSchema)
+            .describe(
+              'The agents, tools and runs inside it, in the order they started, with what each was given and answered',
+            ),
+        }),
+      )
+      .describe('The runs, oldest first'),
+    logs: z
+      .array(
+        z.object({
+          at: z.string(),
+          level: z.string(),
+          entity: z.string().optional().describe('The agent, workflow or tool it was logged in'),
+          message: z.string(),
+          data: z.string().optional().describe('The fields logged beside it, trimmed'),
+        }),
+      )
+      .describe('Log lines written inside those runs, oldest first'),
+    diagnostics: z
+      .array(
+        z.object({
+          at: z.string(),
+          level: z.enum(['error', 'warn']),
+          component: z.string().optional(),
+          message: z.string(),
+          details: z.record(z.string(), z.unknown()).optional(),
+        }),
+      )
+      .describe('Warnings and errors logged outside any run while this conversation was being served, oldest first'),
+  }),
+  execute: async (inputData) => {
+    const store = await getObservabilityStore();
+    const conversationId = inputData.conversationId.trim();
+
+    const [{ spans: roots }, { logs }] = await Promise.all([
+      store.listTraces({
+        filters: { sessionId: conversationId },
+        pagination: { page: 0, perPage: MAX_RESULTS },
+        orderBy: { field: 'startedAt', direction: 'ASC' },
+      }),
+      store.listLogs({
+        filters: { sessionId: conversationId },
+        pagination: { page: 0, perPage: MAX_RESULTS },
+        orderBy: { field: 'timestamp', direction: 'ASC' },
+      }),
+    ]);
+
+    // A run that cannot be read is left out rather than failing the readout around it.
+    const traces = await Promise.all(roots.map((root) => store.getTrace({ traceId: root.traceId }).catch(() => null)));
+    const runs = traces.flatMap((trace) =>
+      trace && trace.spans.length > 0 ? [conversationTraceReport(trace.traceId, trace.spans)] : [],
+    );
+    const diagnostics = recentDiagnostics({ conversationId }).reverse();
+
+    return {
+      conversationId,
+      ...(runs.length === 0 && logs.length === 0 && diagnostics.length === 0
+        ? {
+            message: `Nothing is recorded for conversation ${conversationId}. Either it routed no request, or it is older than the ${TRACE_RETENTION_DAYS} days traces are kept.`,
+          }
+        : {}),
+      runs,
+      logs: logs.map(conversationLogReport),
+      diagnostics,
+    };
+  },
+});
+
 export const reflectionTools = {
   listRecentFailures,
+  describeConversation,
   describeTrace,
   listWorkflowRuns,
   listRuntimeErrors,

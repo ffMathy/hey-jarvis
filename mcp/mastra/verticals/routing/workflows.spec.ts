@@ -12,6 +12,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { currentConversationId } from '../../utils/conversation.js';
 import { onLiveEvent } from '../../utils/live-events.js';
 import { forgetPointing, reportPointing } from '../../utils/pointing.js';
 import {
@@ -86,10 +87,13 @@ function delegate(sessionId: string, agentId: string, text: string): void {
 
 /** Every request the fake runtime was started with, as routing handed it over. */
 const startedQueries: string[] = [];
+/** The conversation each request was started in, in the same order. */
+const startedConversations: Array<string | undefined> = [];
 
 const fakeRuntime: RoutingRuntime = {
   async start(sessionId, userQuery) {
     startedQueries.push(userQuery);
+    startedConversations.push(currentConversationId());
     // A fresh buffer, the way the real runtime starts one: a superseded run keeps folding
     // into the buffer it was handed, so a new request must not be handed the same object.
     progressBySessionId.set(sessionId, new RoutingProgress());
@@ -203,6 +207,17 @@ describe('routePromptWorkflow', () => {
     );
 
     expect(outcome.sessionId).toBe('caller-a');
+  });
+
+  it("starts the request inside the caller's conversation, so what it runs is traced under it", async () => {
+    await runWorkflow(routePromptWorkflow, {
+      userQuery: 'turn on the kitchen lights',
+      async: false,
+      conversationId: 'conv_kitchen',
+    });
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+
+    expect(startedConversations.slice(-2)).toEqual(['conv_kitchen', undefined]);
   });
 
   it('defaults to one shared session when the caller does not identify itself', async () => {

@@ -3,6 +3,7 @@ import type { Agent } from '@mastra/core/agent';
 import { uniq, uniqBy } from 'lodash-es';
 import { z } from 'zod';
 import { type AffectedEntity, readAffectedEntities } from '../../utils/affected-entities.js';
+import { conversationTracingOptions } from '../../utils/conversation.js';
 import type { DirectAnswer } from '../../utils/direct-answer-source.js';
 import type { DirectAnswerOutcome } from '../../utils/direct-lookup-factory.js';
 import { type AgentActivityState, publishLiveEvent } from '../../utils/live-events.js';
@@ -1074,7 +1075,7 @@ async function runPlan(
   };
   signal.addEventListener('abort', () => void cancelRun(), { once: true });
 
-  const output = run.stream({ inputData: { prompt: userQuery } });
+  const output = run.stream({ inputData: { prompt: userQuery }, ...conversationTracingOptions() });
   const consumed = consumeRun(sessionId, progress, plan, output.fullStream, cancelRun);
 
   // Sweeping after the run is under way, not before it: the sweep reads and writes storage,
@@ -1156,12 +1157,15 @@ async function resumeWithAnswer(
   const delegationId = answerDelegationId(question);
 
   try {
-    const output = await mastra
-      .getAgentById(question.agentId)
-      .resumeStream(
-        { [question.answerField]: answer },
-        { runId: question.agentRunId, toolCallId: question.toolCallId, abortSignal: signal },
-      );
+    const output = await mastra.getAgentById(question.agentId).resumeStream(
+      { [question.answerField]: answer },
+      {
+        runId: question.agentRunId,
+        toolCallId: question.toolCallId,
+        abortSignal: signal,
+        ...conversationTracingOptions(),
+      },
+    );
 
     let suspension: DelegationSuspension | undefined;
     for await (const chunk of output.fullStream) {

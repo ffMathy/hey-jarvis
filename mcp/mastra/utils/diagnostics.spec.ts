@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
+import { withinConversation } from './conversation';
 import { clearDiagnostics, diagnosticCount, recentDiagnostics, rememberDiagnostic } from './diagnostics';
 
 /**
@@ -22,6 +23,19 @@ describe('rememberDiagnostic', () => {
       details: { scheduleId: 'sched_abc' },
     });
     expect(Date.parse(record.at)).not.toBeNaN();
+  });
+
+  it("files what is reported during a conversation's work under it, and filters by it", () => {
+    withinConversation('conv_a', () => rememberDiagnostic('warn', 'Routing classifier failed; using the planner'));
+    rememberDiagnostic('error', 'Scheduled workflow failed');
+    withinConversation('conv_b', () => rememberDiagnostic('warn', 'Direct answer failed'));
+
+    expect(recentDiagnostics({ conversationId: 'conv_a' })).toEqual([
+      expect.objectContaining({ message: 'Routing classifier failed; using the planner', conversationId: 'conv_a' }),
+    ]);
+    expect(recentDiagnostics().find((record) => record.message === 'Scheduled workflow failed')).not.toHaveProperty(
+      'conversationId',
+    );
   });
 
   it('returns the newest first, which is the one being asked about', () => {

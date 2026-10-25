@@ -1,3 +1,5 @@
+import { currentConversationId } from './conversation.js';
+
 /**
  * The errors and warnings Mastra reports about itself, kept where something can read them
  * back.
@@ -51,6 +53,12 @@ export interface DiagnosticRecord {
    * Absent when nothing was logged beside the message.
    */
   details?: Record<string, unknown>;
+  /**
+   * The ElevenLabs conversation whose work was running when it was reported (see
+   * `conversation.ts`). Most of what routing logs happens outside any span, so this is the only
+   * thing tying a warning like "Routing classifier failed" to the call that heard its effect.
+   */
+  conversationId?: string;
 }
 
 /**
@@ -114,6 +122,7 @@ export function rememberDiagnostic(
 ): void {
   try {
     const details = args && Object.keys(args).length > 0 ? (truncate(args) as Record<string, unknown>) : undefined;
+    const conversationId = currentConversationId();
 
     records.push({
       at: new Date().toISOString(),
@@ -121,6 +130,7 @@ export function rememberDiagnostic(
       component: componentOf(bindings),
       message: truncate(message) as string,
       ...(details ? { details } : {}),
+      ...(conversationId ? { conversationId } : {}),
     });
 
     if (records.length > MAX_RECORDS) {
@@ -136,15 +146,19 @@ export function rememberDiagnostic(
  *
  * @param options.level - Keep only records at this level. Omitted, both are returned.
  * @param options.since - Keep only records reported at or after this time.
+ * @param options.conversationId - Keep only records reported while this conversation's work ran.
  * @param options.limit - How many to return at most, counting from the newest.
  */
 export function recentDiagnostics(
-  options: { level?: DiagnosticRecord['level']; since?: Date; limit?: number } = {},
+  options: { level?: DiagnosticRecord['level']; since?: Date; conversationId?: string; limit?: number } = {},
 ): DiagnosticRecord[] {
   const sinceIso = options.since?.toISOString();
 
   const matching = records.filter(
-    (record) => (!options.level || record.level === options.level) && (sinceIso === undefined || record.at >= sinceIso),
+    (record) =>
+      (!options.level || record.level === options.level) &&
+      (sinceIso === undefined || record.at >= sinceIso) &&
+      (options.conversationId === undefined || record.conversationId === options.conversationId),
   );
 
   // `reverse` mutates, so this has to be the filtered copy rather than `records` itself.

@@ -1038,6 +1038,10 @@ It reads three things, because a failure lands in a different place depending on
   them. A `foreach` step reports each failing iteration separately, because "the step failed" and
   "the step failed on two of forty items" are different answers.
 - **`listRuntimeErrors`**: the diagnostics ring, filterable by level.
+- **`describeConversation`**: everything one ElevenLabs conversation set running — each run, the
+  agents, tool calls and workflow runs inside it with their trimmed payloads, what failed, the logs
+  written inside those runs, and the diagnostics logged outside them while the conversation was being
+  served. What Analysis Mode reads.
 
 **Nothing here writes.** A vertical that could clear its own error log would be the last thing worth
 trusting about an error.
@@ -1050,9 +1054,22 @@ agent — `[Agent:RoutingSupervisor] - Failed agent tool execution for calendar`
 reason kept underneath it, and either half alone has been the one that was not useful.
 
 **Reached by voice through Analysis Mode.** `elevenlabs/src/assets/agent-prompt.md` sends any phrase
-beginning with "analysis" into a flat, numbered readout, and a focus that the live conversation
-cannot answer — why something failed elsewhere, whether the scheduled checks are running — is routed
-here rather than guessed at.
+beginning with "analysis" into a flat, numbered readout, and every analysis is routed here once —
+"Analysis of conversation `<id>`: <focus>" — so the readout carries what happened behind the voice
+agent's back, not only what it can see of its own call.
+
+**How a conversation's work is found again.** The voice agent passes its ElevenLabs conversation id
+(`{{system__conversation_id}}`, substituted into its prompt) as `routePromptWorkflow`'s
+`conversationId`. The routing step starts the request inside `withinConversation`
+(`utils/conversation.ts`), an `AsyncLocalStorage` scope that every promise the request leaves running
+inherits, so nothing in the routing controller has to carry the id as a parameter. Where a run
+starts — the MCP tool's own workflow run, the planner, the plan run, an agent resumed with an
+answer — `conversationTracingOptions()` sets the root span's `sessionId` metadata, which Mastra
+copies onto every child span, stores in the span's `sessionId` column and stamps onto every log
+written inside those spans. `describeConversation` is then two queries: `listTraces` and `listLogs`
+filtered on `sessionId`. Warnings routing logs outside any span go to the diagnostics ring with the
+conversation id attached. The classifier and the direct answers start no root span of their own, so
+their failures surface through those diagnostics rather than through a trace.
 
 ### Routing Planner Agent
 Turns a voice request into a **plan** for the specialized agents to run:
