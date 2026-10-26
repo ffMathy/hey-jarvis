@@ -185,6 +185,18 @@ describe('the picture round him', () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
+  it('draws the cage and the embers from generators of their own, so the rest of the scene never moves them', () => {
+    // They used to be drawn from the scene's main generator after everything else, so taking
+    // anything out of the scene before them — the slow script, which the picture no longer reads —
+    // would have reshuffled every edge and ember. Seeded apart, as the body is, the same seed builds
+    // the same cage and embers whatever the main generator is asked for: these are their first rows
+    // for this seed, and they move only when the cage or the embers themselves are redrawn.
+    expect(scene.cage.slice(0, CAGE_EDGE_STRIDE)).toEqual([
+      0.87432, -0.392, -0.37624, 0.74049, -0.43257, -0.39698, 0.0958, 0.24884, 0.89821, 1,
+    ]);
+    expect(scene.embers.slice(0, EMBER_STRIDE)).toEqual([0.45383, 0.80972, 0.225, 4.10875, 0.14711, 0.00652, 0.97971]);
+  });
+
   it('arrives out of the core: the core first, on its own, the aura with his body, the cage last', () => {
     const early = stateOf({ appearance: 0.12 });
     // the vortex has yet to carry any of the specks out of the core: nothing to glow round

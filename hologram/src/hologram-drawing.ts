@@ -860,6 +860,11 @@ const CAGE_LONGEST_MESH_EDGE = 0.42;
 /** The longest spike from an outer node down to the shell's, and the longest chord between two outer nodes. */
 const CAGE_LONGEST_SPIKE = 0.55;
 const CAGE_LONGEST_CHORD = 0.9;
+/**
+ * What the scene's seed is mixed with to seed the cage's own generator, as {@link BODY_SEED_MIX}
+ * seeds the body's: what the scene draws from its main generator can change without moving the cage.
+ */
+const CAGE_SEED_MIX = 0x5bd1e995;
 
 /**
  * A cage edge as a row: both ends (y down, z towards the eye at rest), its twinkle's rate and phase,
@@ -1035,6 +1040,8 @@ const EMBERS_IN_SILENCE = 0.45;
 const EMBER_FARTHEST = 1.45;
 /** How far up an ember rises for every R it drifts outward. */
 export const EMBER_RISE = 0.3;
+/** What the scene's seed is mixed with to seed the embers' own generator (see {@link CAGE_SEED_MIX}). */
+const EMBER_SEED_MIX = 0x27d4eb2f;
 
 /**
  * The embers: tiny golden flecks drifting out from the shell's edge and a little upward, each on its
@@ -1093,9 +1100,10 @@ export function createHologramScene(seed: number, particleCount: number = PARTIC
     scriptPeriod: roundToFiveDecimals(script.period),
     // only a seed: the static textures are built straight into paths, never copied to the worklet runtime
     textureSeed: Math.floor(random() * 4294967296),
-    // Drawn after the texture's seed, so nothing above is reshuffled by them.
-    cage: buildCage(random).map(roundToFiveDecimals),
-    embers: buildEmbers(random).map(roundToFiveDecimals),
+    // Each from a generator of its own, as the body is, so that nothing drawn from the one above —
+    // taken out or added — reshuffles them, nor they it.
+    cage: buildCage(createRandom(seed ^ CAGE_SEED_MIX)).map(roundToFiveDecimals),
+    embers: buildEmbers(createRandom(seed ^ EMBER_SEED_MIX)).map(roundToFiveDecimals),
   };
 }
 
