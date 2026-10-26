@@ -579,17 +579,18 @@ function strokeCage(
 }
 
 /**
- * The cage round him: hairlines that glow, a soft warm glow under an amber line, and a gold core
- * along it that glitters as it turns. Gold, not pale gold: where it crosses the brightest specks on
- * his limb a paler one Screened them past near-white, which only his core's ring may reach.
+ * The cage round him: hairlines, as the film's wireframe is — a fine gold line that glitters as it
+ * turns, over a glow much fainter and not much wider, so a line blooms a little and never reads as
+ * a bar. It was a gold line on an amber one on a glow five times its width, and read as thick
+ * glowing bars. Gold, not pale gold: where it crosses the brightest specks on his limb a paler one
+ * Screened them past near-white, which only his core's ring may reach.
  */
 function drawCage(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
   const alpha = frame.state.cageAlpha;
   if (alpha <= 0) return;
-  strokeCage(gl, picture, frame, 0.06 / 2, PICTURE_PAINTS.solid, GLOW, 0.32 * alpha);
-  strokeCage(gl, picture, frame, 0.02 / 2, PICTURE_PAINTS.solid, AMBER, 0.7 * alpha);
-  strokeCage(gl, picture, frame, 0.012 / 2, PICTURE_PAINTS.sparkle, GOLD, clamp01(alpha));
+  strokeCage(gl, picture, frame, 0.034 / 2, PICTURE_PAINTS.solid, GLOW, 0.15 * alpha);
+  strokeCage(gl, picture, frame, 0.011 / 2, PICTURE_PAINTS.sparkle, PALE_GOLD, clamp01(0.9 * alpha));
 }
 
 /** The embers, in one paint and width. */

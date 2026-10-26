@@ -238,8 +238,13 @@ uniform vec3 disc;
 
 // ---- round him: the cage and the embers --------------------------------------------------------
 
-/** How far a cage node sways about its place, in R: the film's wireframe shifts a little, and holds its shape. */
-const CAGE_SWAY = 0.012;
+/**
+ * How far a cage node sways about its place, in R: the film's wireframe shifts a little, and holds
+ * its shape. Under a pixel at a phone's size. Twice this suited the cage's wide glowing lines, but
+ * it moved the hairlines that replaced them clean off their own pixels, so the cage no longer
+ * looked like itself from one moment to the next.
+ */
+const CAGE_SWAY = 0.006;
 
 /**
  * The cage: straight hairlines between nodes round the shell of specks, in three dimensions, turned
