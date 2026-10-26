@@ -18,7 +18,7 @@ import {
 /** How far apart its repeats are, in the drawing's unit. */
 export const SPARKLE_REPEAT = SPARKLE_TEXTURE_TEXELS * SPARKLE_TEXEL_SIZE;
 
-/** The sparkle's RGBA bytes for a scene, as `createHologramResources` makes them. */
-export function sceneSparklePixels(scene: HologramScene): Uint8Array {
+/** The sparkle's RGBA bytes for a scene. */
+export function sceneSparklePixels(scene: Pick<HologramScene, 'textureSeed'>): Uint8Array {
   return sparklePixels(scene.textureSeed ^ SPARKLE_SEED_MIX);
 }

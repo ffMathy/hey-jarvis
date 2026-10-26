@@ -19,14 +19,17 @@ import type {
  * object, and it comes back under a new id so that it is treated as the new context it is.
  */
 
-/** What the body's canvas asks of the browser: premultiplied light over transparent black, as on a device, and nothing it does not read. */
+/**
+ * What his canvas asks of the browser: premultiplied light over transparent black, as on a device,
+ * and the depth and stencil buffers the picture keeps each path's coverage in (`gpu-picture.ts`).
+ */
 const CONTEXT_ATTRIBUTES: WebGLContextAttributes = {
   alpha: true,
   premultipliedAlpha: true,
   // A device's context has no multisampling either; the browser's would only cost fill.
   antialias: false,
-  depth: false,
-  stencil: false,
+  depth: true,
+  stencil: true,
   preserveDrawingBuffer: false,
 };
 

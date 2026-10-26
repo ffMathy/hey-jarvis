@@ -1251,7 +1251,7 @@ function appendWhorlArm(
  * swirl over a field of fragments — the film's interior is a few fat luminous ribbons, not a
  * star chart of hairlines of equal weight.
  */
-function buildWhorl(Skia: SkiaApiType, random: Random) {
+function buildWhorl(random: Random) {
   const whorl = makePathBuilder();
   const outer = makePathBuilder();
   const ticks = makePathBuilder();
@@ -1259,18 +1259,14 @@ function buildWhorl(Skia: SkiaApiType, random: Random) {
   appendWhorlArm(whorl, outer, ticks, random, 0.33, 1.1, 6.5);
   appendArc(outer, CORE_X, CORE_Y, 0.7, 0.3, 0.8);
   appendArc(outer, CORE_X, CORE_Y, 0.66, 1.35, 0.55);
-  return {
-    whorlPath: pathOf(Skia, whorl, true),
-    whorlOuterPath: pathOf(Skia, outer, true),
-    whorlTickPath: pathOf(Skia, ticks, true),
-  };
+  return { whorl, whorlOuter: outer, whorlTicks: ticks };
 }
 
 /**
  * The inner structure: the long bright loop rising 37° to the right past the core, the faint
  * near half of the tall edge-on ellipse beside it, and two data streaks through the core.
  */
-function buildInnerStructure(Skia: SkiaApiType) {
+function buildInnerStructure() {
   const loop = makePathBuilder();
   appendEllipse(loop, 0.04, 0.03, 0.74, 0.2, -37 * DEGREES_TO_RADIANS, 56);
   // the edge-on ellipse's near half only, faint
@@ -1288,16 +1284,11 @@ function buildInnerStructure(Skia: SkiaApiType) {
     pathMoveTo(streaks, CORE_X + from, CORE_Y + y);
     pathLineTo(streaks, CORE_X + to, CORE_Y + y);
   }
-  return {
-    loopPath: pathOf(Skia, loop, true),
-    edgeOnPath: pathOf(Skia, edgeOn, true),
-    bracketPath: pathOf(Skia, bracket, true),
-    dataStreakPath: pathOf(Skia, streaks, true),
-  };
+  return { loop, edgeOn, bracket, dataStreaks: streaks };
 }
 
 /** The core glyph: a hooked ring of radius 0.1R with a stem curling in, and the bar. The whorl's first turn is the film's second ring at 0.3R. */
-function buildCoreGlyph(Skia: SkiaApiType) {
+function buildCoreGlyph() {
   const ring = makePathBuilder();
   appendArc(ring, 0, 0, 0.1, -35 * DEGREES_TO_RADIANS, 305 * DEGREES_TO_RADIANS);
   // the hook: from the ring's open end a short stem curls in toward the middle
@@ -1308,14 +1299,14 @@ function buildCoreGlyph(Skia: SkiaApiType) {
   const bar = makePathBuilder();
   pathMoveTo(bar, -0.3, 0.012);
   pathLineTo(bar, 0.3, 0.012);
-  return { coreRingPath: pathOf(Skia, ring, true), coreBarPath: pathOf(Skia, bar, true) };
+  return { coreRing: ring, coreBar: bar };
 }
 
 /**
  * The fan of strands on the right: four concentric strands from 1 to 5 o'clock whose
  * clockwise ends peel out to 1.08R (shot d).
  */
-function buildStrandFan(Skia: SkiaApiType) {
+function buildStrandFan() {
   const fan = makePathBuilder();
   const radii = [0.9, 0.95, 1.0, 1.03];
   radii.forEach((radius, strand) => {
@@ -1329,7 +1320,41 @@ function buildStrandFan(Skia: SkiaApiType) {
       else pathLineTo(fan, Math.cos(angle) * pointRadius, Math.sin(angle) * pointRadius);
     }
   });
-  return pathOf(Skia, fan, true);
+  return fan;
+}
+
+/**
+ * The paths that never change, as commands: the whorl's arms, wisps and ticks, the loop, the
+ * edge-on ellipse, the ")" bracket and the data streaks, the core's ring and bar, and the strand
+ * fan. The whorl's are random, from the scene's texture seed, so the same seed always builds them
+ * the same.
+ */
+export function staticPathsOf(textureSeed: number) {
+  return {
+    ...buildWhorl(createRandom(textureSeed ^ 0x5bd1e995)),
+    ...buildInnerStructure(),
+    ...buildCoreGlyph(),
+    strandFan: buildStrandFan(),
+  };
+}
+
+/** The paths that never change, as {@link staticPathsOf} builds them. */
+export type StaticPaths = ReturnType<typeof staticPathsOf>;
+
+/** The paths that never change, made into Skia's once. */
+function prebuiltPaths(Skia: SkiaApiType, paths: StaticPaths) {
+  return {
+    whorlPath: pathOf(Skia, paths.whorl, true),
+    whorlOuterPath: pathOf(Skia, paths.whorlOuter, true),
+    whorlTickPath: pathOf(Skia, paths.whorlTicks, true),
+    loopPath: pathOf(Skia, paths.loop, true),
+    edgeOnPath: pathOf(Skia, paths.edgeOn, true),
+    bracketPath: pathOf(Skia, paths.bracket, true),
+    dataStreakPath: pathOf(Skia, paths.dataStreaks, true),
+    coreRingPath: pathOf(Skia, paths.coreRing, true),
+    coreBarPath: pathOf(Skia, paths.coreBar, true),
+    strandFanPath: pathOf(Skia, paths.strandFan, true),
+  };
 }
 
 /** A colour from 0-255 channels, as the hex string Skia.Color takes. */
@@ -1339,6 +1364,23 @@ function amberHex(red: number, green: number, blue: number) {
       .toString(16)
       .padStart(2, '0');
   return `#${channel(red)}${channel(green)}${channel(blue)}`;
+}
+
+/**
+ * The limb ridge's colours round the limb: thirty stops of amber, bright stretches and see-through
+ * ones from the seed, the last the same as the first so the sweep closes without a seam.
+ */
+export function limbRidgeStops(textureSeed: number) {
+  const random = createRandom(textureSeed ^ 0x68e31da4);
+  const colours: string[] = [];
+  const positions: number[] = [];
+  for (let stop = 0; stop < 30; stop++) {
+    const lit = stop === 29 ? colours[0] : undefined;
+    const strength = 0.18 + 0.82 * random() ** 0.8;
+    colours.push(lit ?? amberHex(0xd0 * strength, 0x7c * strength, 0x30 * strength));
+    positions.push(stop / 29);
+  }
+  return { colours, positions };
 }
 
 /** Paints, gradient shaders, prebuilt paths and the reusable path builders. */
@@ -1384,15 +1426,7 @@ export function createHologramResources(Skia: SkiaApiType, scene: HologramPictur
   // The limb ridge under the thin ring: a ring profile peaked at 0.965R, lumpy round the circle
   // (bright stretches and see-through ones, from the seed) and drawn in the rolling frame, so it
   // rolls with the rest of the rim layer rather than sitting under it as an evenly lit coin edge.
-  const ridgeRandom = createRandom(scene.textureSeed ^ 0x68e31da4);
-  const ridgeColours: string[] = [];
-  const ridgeStops: number[] = [];
-  for (let stop = 0; stop < 30; stop++) {
-    const lit = stop === 29 ? ridgeColours[0] : undefined;
-    const strength = 0.18 + 0.82 * ridgeRandom() ** 0.8;
-    ridgeColours.push(lit ?? amberHex(0xd0 * strength, 0x7c * strength, 0x30 * strength));
-    ridgeStops.push(stop / 29);
-  }
+  const ridge = limbRidgeStops(scene.textureSeed);
   const limbRidgeFill = makeStroke('#ffffff', StrokeCap.Butt);
   limbRidgeFill.setStrokeWidth(LIMB_RIDGE_BAND);
   limbRidgeFill.setShader(
@@ -1403,7 +1437,7 @@ export function createHologramResources(Skia: SkiaApiType, scene: HologramPictur
         ['#ffffff00', '#ffffff00', '#ffffff80', '#ffffffff', '#ffffff70', '#ffffff00'],
         [0, 0.84, 0.885, 0.915, 0.94, 0.965],
       ),
-      Skia.Shader.MakeSweepGradient(0, 0, colors(ridgeColours), ridgeStops, TileMode.Clamp),
+      Skia.Shader.MakeSweepGradient(0, 0, colors(ridge.colours), ridge.positions, TileMode.Clamp),
     ),
   );
   // The thin rim ring, brightest from 1 to 4 o'clock.
@@ -1542,10 +1576,7 @@ export function createHologramResources(Skia: SkiaApiType, scene: HologramPictur
     sparkStroke: makeStroke('#ffae4e', StrokeCap.Round),
     lightningStroke: makeStroke('#c39568', StrokeCap.Butt),
     redStroke: makeStroke('#b3470f', StrokeCap.Butt),
-    ...buildWhorl(Skia, createRandom(scene.textureSeed ^ 0x5bd1e995)),
-    strandFanPath: buildStrandFan(Skia),
-    ...buildInnerStructure(Skia),
-    ...buildCoreGlyph(Skia),
+    ...prebuiltPaths(Skia, staticPathsOf(scene.textureSeed)),
     // Carried so that a draw function can hand a finished path over; see pathOf.
     skia: Skia,
     pathBuilders,

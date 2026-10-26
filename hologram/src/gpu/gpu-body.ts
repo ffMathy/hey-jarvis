@@ -3,6 +3,44 @@ import { buildHologramRows } from './body-rows';
 import { STROKE_FRAGMENT_SHADER, STROKE_VERTEX_SHADER } from './body-strokes';
 import type { ViewBasis } from './fragment-3d';
 import { createFragmentUniforms, type FragmentUniforms, writeFragmentUniforms } from './fragment-glsl';
+import {
+  ARRAY_BUFFER,
+  arrayBuffer,
+  BLEND,
+  CLAMP_TO_EDGE,
+  COLOR_ATTACHMENT0,
+  COLOR_BUFFER_BIT,
+  CONSTANT_ALPHA,
+  CONSTANT_COLOR,
+  CULL_FACE,
+  carried,
+  DEPTH_TEST,
+  DITHER,
+  ELEMENT_ARRAY_BUFFER,
+  FRAMEBUFFER,
+  FRAMEBUFFER_COMPLETE,
+  FUNC_ADD,
+  type HologramGl,
+  type LinkedProgram,
+  link,
+  MAX,
+  ONE,
+  ONE_MINUS_SRC_ALPHA,
+  ONE_MINUS_SRC_COLOR,
+  REPEAT,
+  RGBA,
+  RGBA8,
+  SCISSOR_TEST,
+  STENCIL_TEST,
+  TEXTURE_2D,
+  TEXTURE0,
+  TRIANGLES,
+  texture,
+  UNSIGNED_BYTE,
+  UNSIGNED_INT,
+  UNSIGNED_SHORT,
+  vertexArray,
+} from './gl-objects';
 import { HALO_LIGHT_FRAGMENT_SHADER, HALO_LIGHT_VERTEX_SHADER, haloShares } from './halo-light';
 import {
   HALO_TEXELS,
@@ -12,6 +50,9 @@ import {
   haloUnionPlacement,
 } from './halo-union';
 import { buildRowVertices, quadsKept } from './row-vertices';
+
+export type { HologramGl } from './gl-objects';
+
 import { sceneSparklePixels } from './sparkle';
 
 /**
@@ -41,99 +82,6 @@ import { sceneSparklePixels } from './sparkle';
  * (see `GpuBody`), and the drawing then runs wherever the context lives, the UI thread with expo-gl's
  * worklet support or the JS thread.
  */
-
-/** The WebGL 2 calls the raw renderer makes, and nothing else: widen this to make another. */
-export type HologramGl = Pick<
-  WebGL2RenderingContext,
-  | 'activeTexture'
-  | 'attachShader'
-  | 'bindBuffer'
-  | 'bindFramebuffer'
-  | 'bindTexture'
-  | 'bindVertexArray'
-  | 'blendColor'
-  | 'blendEquationSeparate'
-  | 'blendFuncSeparate'
-  | 'bufferData'
-  | 'checkFramebufferStatus'
-  | 'clear'
-  | 'clearColor'
-  | 'compileShader'
-  | 'createBuffer'
-  | 'createFramebuffer'
-  | 'createProgram'
-  | 'createShader'
-  | 'createTexture'
-  | 'createVertexArray'
-  | 'deleteProgram'
-  | 'deleteShader'
-  | 'disable'
-  | 'drawElements'
-  | 'enable'
-  | 'enableVertexAttribArray'
-  | 'framebufferTexture2D'
-  | 'getAttribLocation'
-  | 'getProgramInfoLog'
-  | 'getProgramParameter'
-  | 'getShaderInfoLog'
-  | 'getShaderParameter'
-  | 'getUniformLocation'
-  | 'linkProgram'
-  | 'shaderSource'
-  | 'texImage2D'
-  | 'texParameteri'
-  | 'uniform1f'
-  | 'uniform1i'
-  | 'uniform2f'
-  | 'uniform3f'
-  | 'uniform4f'
-  | 'uniformMatrix4fv'
-  | 'useProgram'
-  | 'vertexAttribPointer'
-  | 'viewport'
->;
-
-// The GL enums the renderer uses, as the numbers the WebGL 2 and OpenGL ES 3 specifications give.
-const VERTEX_SHADER = 0x8b31;
-const FRAGMENT_SHADER = 0x8b30;
-const COMPILE_STATUS = 0x8b81;
-const LINK_STATUS = 0x8b82;
-const ARRAY_BUFFER = 0x8892;
-const ELEMENT_ARRAY_BUFFER = 0x8893;
-const STATIC_DRAW = 0x88e4;
-const FLOAT = 0x1406;
-const UNSIGNED_BYTE = 0x1401;
-const UNSIGNED_SHORT = 0x1403;
-const UNSIGNED_INT = 0x1405;
-const TRIANGLES = 0x0004;
-const TEXTURE_2D = 0x0de1;
-const TEXTURE0 = 0x84c0;
-const RGBA = 0x1908;
-const RGBA8 = 0x8058;
-const TEXTURE_MAG_FILTER = 0x2800;
-const TEXTURE_MIN_FILTER = 0x2801;
-const TEXTURE_WRAP_S = 0x2802;
-const TEXTURE_WRAP_T = 0x2803;
-const LINEAR = 0x2601;
-const REPEAT = 0x2901;
-const CLAMP_TO_EDGE = 0x812f;
-const FRAMEBUFFER = 0x8d40;
-const COLOR_ATTACHMENT0 = 0x8ce0;
-const FRAMEBUFFER_COMPLETE = 0x8cd5;
-const COLOR_BUFFER_BIT = 0x4000;
-const BLEND = 0x0be2;
-const CULL_FACE = 0x0b44;
-const DEPTH_TEST = 0x0b71;
-const STENCIL_TEST = 0x0b90;
-const SCISSOR_TEST = 0x0c11;
-const DITHER = 0x0bd0;
-const FUNC_ADD = 0x8006;
-const MAX = 0x8008;
-const ONE = 1;
-const ONE_MINUS_SRC_COLOR = 0x0301;
-const ONE_MINUS_SRC_ALPHA = 0x0303;
-const CONSTANT_COLOR = 0x8001;
-const CONSTANT_ALPHA = 0x8003;
 
 /** The view-plane square's corners, and its two triangles: three's PlaneGeometry(1, 1), corner for corner. */
 const SQUARE_CORNERS = new Float32Array([-1, 1, 1, 1, -1, -1, 1, -1]);
@@ -177,12 +125,6 @@ export interface GpuBodyFrame {
   /** What alpha the light writes, as a share of its brightest channel (see `gpu-body.ts`'s header). */
   alphaFromLight: number;
   camera: GpuBodyCamera;
-}
-
-interface LinkedProgram {
-  program: WebGLProgram;
-  /** Every uniform the program reads, by name; null for one the compiler dropped. */
-  uniforms: Record<string, WebGLUniformLocation | null>;
 }
 
 /**
@@ -242,93 +184,6 @@ const HALO_LIGHT_UNIFORMS = [
   'haloShares',
   'alphaFromLight',
 ];
-
-/**
- * A GL object as the body keeps it: a plain `{ id }` for one expo-gl made, which is all expo-gl reads
- * of it, and the object itself for a browser's, which has no `id` (see `GpuBody`).
- */
-function carried<Handle extends object>(handle: Handle): Handle | { id: number } {
-  return 'id' in handle && typeof handle.id === 'number' ? { id: handle.id } : handle;
-}
-
-function compile(gl: HologramGl, type: number, source: string): WebGLShader {
-  const shader = gl.createShader(type);
-  if (shader === null) throw new Error('The GPU body could not make a shader.');
-  // GLSL ES 3.00, as three's RawShaderMaterial with GLSL3 compiles the headset's.
-  gl.shaderSource(shader, `#version 300 es\n${source}`);
-  gl.compileShader(shader);
-  if (gl.getShaderParameter(shader, COMPILE_STATUS) !== true) {
-    const log = gl.getShaderInfoLog(shader);
-    gl.deleteShader(shader);
-    throw new Error(`The GPU body's shader did not compile: ${log}`);
-  }
-  return shader;
-}
-
-function link(gl: HologramGl, vertexSource: string, fragmentSource: string, uniformNames: string[]): LinkedProgram {
-  const program = gl.createProgram();
-  if (program === null) throw new Error('The GPU body could not make a program.');
-  const vertex = compile(gl, VERTEX_SHADER, vertexSource);
-  const fragment = compile(gl, FRAGMENT_SHADER, fragmentSource);
-  gl.attachShader(program, vertex);
-  gl.attachShader(program, fragment);
-  gl.linkProgram(program);
-  gl.deleteShader(vertex);
-  gl.deleteShader(fragment);
-  if (gl.getProgramParameter(program, LINK_STATUS) !== true) {
-    const log = gl.getProgramInfoLog(program);
-    gl.deleteProgram(program);
-    throw new Error(`The GPU body's program did not link: ${log}`);
-  }
-  const uniforms: Record<string, WebGLUniformLocation | null> = {};
-  for (const name of uniformNames) {
-    const location = gl.getUniformLocation(program, name);
-    uniforms[name] = location === null ? null : carried(location);
-  }
-  return { program: carried(program), uniforms };
-}
-
-function arrayBuffer(gl: HologramGl, target: number, data: ArrayBufferView): WebGLBuffer {
-  const buffer = gl.createBuffer();
-  if (buffer === null) throw new Error('The GPU body could not make a buffer.');
-  gl.bindBuffer(target, buffer);
-  gl.bufferData(target, data, STATIC_DRAW);
-  return buffer;
-}
-
-/** A vertex array for `program` over the named buffers, each of its size in floats a vertex, and the index. */
-function vertexArray(
-  gl: HologramGl,
-  program: WebGLProgram,
-  attributes: [string, WebGLBuffer, number][],
-  index: WebGLBuffer,
-): WebGLVertexArrayObject {
-  const array = gl.createVertexArray();
-  if (array === null) throw new Error('The GPU body could not make a vertex array.');
-  gl.bindVertexArray(array);
-  for (const [name, buffer, size] of attributes) {
-    const location = gl.getAttribLocation(program, name);
-    // A program that does not read an attribute is not given it.
-    if (location < 0) continue;
-    gl.bindBuffer(ARRAY_BUFFER, buffer);
-    gl.enableVertexAttribArray(location);
-    gl.vertexAttribPointer(location, size, FLOAT, false, 0, 0);
-  }
-  gl.bindBuffer(ELEMENT_ARRAY_BUFFER, index);
-  gl.bindVertexArray(null);
-  return array;
-}
-
-function texture(gl: HologramGl, wrap: number): WebGLTexture {
-  const made = gl.createTexture();
-  if (made === null) throw new Error('The GPU body could not make a texture.');
-  gl.bindTexture(TEXTURE_2D, made);
-  gl.texParameteri(TEXTURE_2D, TEXTURE_MIN_FILTER, LINEAR);
-  gl.texParameteri(TEXTURE_2D, TEXTURE_MAG_FILTER, LINEAR);
-  gl.texParameteri(TEXTURE_2D, TEXTURE_WRAP_S, wrap);
-  gl.texParameteri(TEXTURE_2D, TEXTURE_WRAP_T, wrap);
-  return made;
-}
 
 export interface GpuBodyOptions {
   /**
@@ -492,37 +347,72 @@ function drawHaloLight(gl: HologramGl, body: GpuBody, frame: GpuBodyFrame) {
   gl.drawElements(TRIANGLES, SQUARE_TRIANGLES.length, UNSIGNED_SHORT, 0);
 }
 
-/**
- * Draws one frame of the body onto the canvas's own framebuffer, cleared first, and leaves it there
- * for the caller to present (expo-gl's `endFrameEXP`; a browser presents on its own). Nothing but
- * the clear while he is faded out.
- */
-export function drawGpuBody(gl: HologramGl, body: GpuBody, frame: GpuBodyFrame) {
+/** The state every pass assumes: no depth, culling, stencil, scissor or dither. */
+function resetPassState(gl: HologramGl) {
   'worklet';
-  const { state, camera } = frame;
   gl.disable(DEPTH_TEST);
   gl.disable(CULL_FACE);
   gl.disable(STENCIL_TEST);
   gl.disable(SCISSOR_TEST);
   gl.disable(DITHER);
+}
+
+/** Whether anything of the body is drawn this frame: not while he is faded out. */
+function bodyShows(frame: GpuBodyFrame) {
+  'worklet';
+  return frame.fade > 0 && frame.state.arrival > 0;
+}
+
+/**
+ * The first of a frame's passes: the halo union, into the body's own target. A phone and a watch
+ * draw it before anything goes onto the canvas — their canvas then carries the picture of the rest of
+ * him as well (`gpu-picture.ts`) — so a GPU that renders in tiles finishes the target before the
+ * canvas is begun rather than breaking off the canvas to draw it.
+ */
+export function drawGpuBodyHalos(gl: HologramGl, body: GpuBody, frame: GpuBodyFrame) {
+  'worklet';
+  resetPassState(gl);
+  if (!bodyShows(frame)) return;
+  const { state, camera } = frame;
+  writeFragmentUniforms(body.fragmentUniforms, state, camera.basis, frame.density, camera.eyeDistance);
+  // Only the quads the share keeps, which are the index's first: the rest would be shaded only to be hidden.
+  drawHaloUnion(gl, body, state.radius, quadsKept(body.quadKeys, frame.density) * 6);
+}
+
+/**
+ * The rest of a frame of the body, after {@link drawGpuBodyHalos}: onto the canvas, Screened and
+ * faded as one layer, the strokes, then the halos' light. Whatever is on the canvas already stays.
+ */
+export function drawGpuBodyOnCanvas(gl: HologramGl, body: GpuBody, frame: GpuBodyFrame) {
+  'worklet';
+  if (!bodyShows(frame)) return;
+  const { camera } = frame;
+  gl.disable(STENCIL_TEST);
+  gl.bindFramebuffer(FRAMEBUFFER, null);
+  gl.viewport(0, 0, camera.width, camera.height);
+  gl.enable(BLEND);
+  gl.blendEquationSeparate(FUNC_ADD, FUNC_ADD);
+  gl.blendFuncSeparate(CONSTANT_COLOR, ONE_MINUS_SRC_COLOR, CONSTANT_ALPHA, ONE_MINUS_SRC_ALPHA);
+  gl.blendColor(frame.fade, frame.fade, frame.fade, frame.fade);
+  drawStrokes(gl, body, frame, quadsKept(body.quadKeys, frame.density) * 6);
+  drawHaloLight(gl, body, frame);
+  gl.bindVertexArray(null);
+  gl.bindTexture(TEXTURE_2D, null);
+  gl.disable(BLEND);
+}
+
+/**
+ * Draws one frame of the body onto the canvas's own framebuffer, cleared first, and leaves it there
+ * for the caller to present (expo-gl's `endFrameEXP`; a browser presents on its own). Nothing but
+ * the clear while he is faded out. The headset's check draws it so; a phone and a watch draw the
+ * picture between its two halves.
+ */
+export function drawGpuBody(gl: HologramGl, body: GpuBody, frame: GpuBodyFrame) {
+  'worklet';
+  resetPassState(gl);
   gl.bindFramebuffer(FRAMEBUFFER, null);
   gl.clearColor(0, 0, 0, 0);
   gl.clear(COLOR_BUFFER_BIT);
-  if (frame.fade > 0 && state.arrival > 0) {
-    writeFragmentUniforms(body.fragmentUniforms, state, camera.basis, frame.density, camera.eyeDistance);
-    // Only the quads the share keeps, which are the index's first: the rest would be shaded only to be hidden.
-    const indexCount = quadsKept(body.quadKeys, frame.density) * 6;
-    drawHaloUnion(gl, body, state.radius, indexCount);
-    // Onto the canvas, Screened and faded as one layer: the strokes, then the halos' light.
-    gl.bindFramebuffer(FRAMEBUFFER, null);
-    gl.viewport(0, 0, camera.width, camera.height);
-    gl.blendEquationSeparate(FUNC_ADD, FUNC_ADD);
-    gl.blendFuncSeparate(CONSTANT_COLOR, ONE_MINUS_SRC_COLOR, CONSTANT_ALPHA, ONE_MINUS_SRC_ALPHA);
-    gl.blendColor(frame.fade, frame.fade, frame.fade, frame.fade);
-    drawStrokes(gl, body, frame, indexCount);
-    drawHaloLight(gl, body, frame);
-    gl.bindVertexArray(null);
-    gl.bindTexture(TEXTURE_2D, null);
-    gl.disable(BLEND);
-  }
+  drawGpuBodyHalos(gl, body, frame);
+  drawGpuBodyOnCanvas(gl, body, frame);
 }
