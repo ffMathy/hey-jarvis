@@ -17,6 +17,6 @@ Three things do differ, and each is a pair of files Metro picks between rather t
 
 `platform-contracts.ts` holds the types both halves implement, so neither can drift — nothing else in the app imports both.
 
-The hologram is the fourth pair, and a different kind: Skia's web build is WebAssembly that has to be fetched before anything Skia-backed can even be imported. `jarvis-hologram.web.tsx` loads the view lazily through `WithSkiaWeb`, holding its space empty meanwhile, and CanvasKit is served from the site root — `turbo initialize` copies `canvaskit.wasm` into `public/`, which the web export publishes — so a browser never reaches for a CDN. His body is drawn with WebGL 2, on a second canvas Screened over CanvasKit's with CSS `mix-blend-mode`; a browser without WebGL 2 shows the rest of him without a body.
+The hologram is not a pair at all. Both platforms import `JarvisHologram` from `hologram/react`, and in a browser all of him is drawn with WebGL 2 into the one canvas expo-gl's browser `GLView` makes, as a phone draws him with OpenGL ES, so there is nothing to fetch before he can be imported or drawn — not the CanvasKit WebAssembly the browser once had to load, behind a lazily loaded view and an error boundary of its own (`jarvis-hologram.web.tsx`, gone with Skia). A browser without WebGL 2 shows his square empty, and the rest of the screen works as before.
 
 What does **not** work on web is the assistant role, and it never will: it is Android's. The assistant card says that outright instead of offering a setup step that leads nowhere.

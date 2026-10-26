@@ -32,9 +32,8 @@ interface CameraButtonProps {
  * nothing on it but him. It takes the accent colour only under a finger. Jarvis cannot light it up
  * or open the camera himself: showing him something is sir's to decide, and this is the only way in.
  *
- * **Drawn from views, not an icon set or Skia.** No icon library is installed, and Skia may not be
- * touched on this screen before CanvasKit has loaded in a browser — which is the whole reason
- * `jarvis-hologram.web.tsx` exists.
+ * **Drawn from views, not an icon set.** No icon library is installed, and a few views are all an
+ * outline of a camera needs.
  *
  * Positioned from the middle of the screen, where the sphere is, rather than laid out: the square
  * he is drawn in is wider than the screen, and anything taking part in the layout would push him

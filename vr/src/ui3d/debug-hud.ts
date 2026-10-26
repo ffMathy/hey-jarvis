@@ -80,8 +80,8 @@ export interface Diagnostics {
   frameRates?: { supported: readonly number[]; requested?: number; measured?: number };
   /** Milliseconds between the last two frames. */
   frameMilliseconds?: number;
-  /** `surface` is where CanvasKit draws: `webgl` or `cpu`. */
-  hologram?: { cpuMilliseconds: number; density: number; canvasKitMilliseconds: number; surface?: string };
+  /** `pictureMilliseconds` is the main thread's share of drawing his picture, of `cpuMilliseconds`. */
+  hologram?: { cpuMilliseconds: number; density: number; pictureMilliseconds: number };
   /** The things he works on, placed in the room (`app/room-entities.ts`). */
   entities?: {
     known: number;
@@ -189,9 +189,8 @@ function microphoneLine(diagnostics: Diagnostics): string | undefined {
 }
 
 function hologramLine(hologram: NonNullable<Diagnostics['hologram']>): string {
-  const { cpuMilliseconds, canvasKitMilliseconds, density, surface } = hologram;
-  const skia = `skia ${fixed(canvasKitMilliseconds, 1)} ms${surface === undefined ? '' : ` ${surface}`}`;
-  return `hologram cpu ${fixed(cpuMilliseconds, 1)} ms  ${skia}  density ${fixed(density, 2)}`;
+  const { cpuMilliseconds, pictureMilliseconds, density } = hologram;
+  return `hologram cpu ${fixed(cpuMilliseconds, 1)} ms  picture ${fixed(pictureMilliseconds, 1)} ms  density ${fixed(density, 2)}`;
 }
 
 function entitiesLine(entities: NonNullable<Diagnostics['entities']>): string {

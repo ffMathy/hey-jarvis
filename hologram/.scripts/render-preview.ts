@@ -3,7 +3,9 @@
  * is on a device: the vortex he arrives in, the lattice he listens with, and the greeting he says.
  *
  * Every frame goes through the same voice pipeline the app runs — see `simulated-performance.ts` —
- * so what a clip shows is what the view would draw, not an impression of it.
+ * so what a clip shows is what the view would draw, not an impression of it. And all of him is drawn
+ * on the GPU, body and all, through `hologram/gpu` in headless Chromium (`render-preview-page.ts`,
+ * opened by `render-page.ts`), as the phone and the watch draw him.
  *
  * Usage, from the repository root:
  *   bun hologram/.scripts/render-preview.ts <output directory> [ffmpeg]
@@ -14,18 +16,8 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ImageFormat } from '@shopify/react-native-skia/lib/module/skia/types';
-import { JsiSkApi } from '@shopify/react-native-skia/lib/module/skia/web';
-import { LoadSkiaWeb } from '@shopify/react-native-skia/lib/module/web/LoadSkiaWeb';
-import {
-  createHologramResources,
-  createHologramScene,
-  drawHologram,
-  GREETING_SECONDS,
-  MATERIALISE_SECONDS,
-  SCENE_SEED,
-  THOUGHT_FADE_SECONDS,
-} from '../src/index';
+import { GREETING_SECONDS, MATERIALISE_SECONDS, THOUGHT_FADE_SECONDS } from '../src/index';
+import { bytesOf, openRenderPage } from './render-page';
 import { createPerformance, type SimulatedMoment } from './simulated-performance';
 
 const SIZE = 540;
@@ -33,14 +25,6 @@ const FPS = 60;
 const FRAME_SECONDS = 1 / FPS;
 /** A beat of black before he appears, so the start of the arrival is seen. */
 const BEFORE_SECONDS = 0.4;
-
-interface CanvasKitGlobal {
-  CanvasKit: Parameters<typeof JsiSkApi>[0];
-}
-
-function hasCanvasKit(scope: object): scope is CanvasKitGlobal {
-  return 'CanvasKit' in scope;
-}
 
 /** A clip: how long it runs, and what is happening `seconds` after he began to appear. */
 interface Clip {
@@ -73,51 +57,25 @@ const CLIPS: Clip[] = [
 async function main() {
   const [output = 'hologram-preview', ffmpeg = 'ffmpeg'] = process.argv.slice(2);
   mkdirSync(output, { recursive: true });
-  await LoadSkiaWeb();
-  if (!hasCanvasKit(globalThis)) {
-    throw new Error('CanvasKit did not load');
-  }
-  const skia = JsiSkApi(globalThis.CanvasKit);
-  const scene = createHologramScene(SCENE_SEED);
-  const resources = createHologramResources(skia, scene);
-  const surface = skia.Surface.Make(SIZE, SIZE);
-  if (!surface) {
-    throw new Error('Could not make a surface');
-  }
-  const canvas = surface.getCanvas();
-
-  for (const clip of CLIPS) {
-    const perform = createPerformance(FRAME_SECONDS, THOUGHT_FADE_SECONDS);
-    const jpegs: Uint8Array[] = [];
-    for (let index = 0; index * FRAME_SECONDS <= BEFORE_SECONDS + clip.seconds; index++) {
-      const seconds = index * FRAME_SECONDS - BEFORE_SECONDS;
-      canvas.clear(skia.Color('#000000'));
-      if (seconds >= 0) {
-        const moment = { ...clip.at(seconds), hologramSeconds: seconds, thinkingWanted: false, leaving: false };
-        drawHologram(canvas, SIZE, perform(moment), scene, resources);
+  const { page, close } = await openRenderPage('render-preview-page.ts');
+  try {
+    await page.evaluate((size) => window.preview.setUp(size), SIZE);
+    for (const clip of CLIPS) {
+      const perform = createPerformance(FRAME_SECONDS, THOUGHT_FADE_SECONDS);
+      const jpegs: Uint8Array[] = [];
+      for (let index = 0; index * FRAME_SECONDS <= BEFORE_SECONDS + clip.seconds; index++) {
+        const seconds = index * FRAME_SECONDS - BEFORE_SECONDS;
+        const frame =
+          seconds >= 0
+            ? perform({ ...clip.at(seconds), hologramSeconds: seconds, thinkingWanted: false, leaving: false })
+            : null;
+        jpegs.push(bytesOf(await page.evaluate((drawn) => window.preview.frame(drawn), frame)));
       }
-      surface.flush();
-      jpegs.push(snapshot(surface));
+      encode(output, clip.name, jpegs, ffmpeg);
     }
-    encode(output, clip.name, jpegs, ffmpeg);
+  } finally {
+    await close();
   }
-}
-
-/** The surface's picture as a JPEG, which is what the frames are stitched from. */
-function snapshot(surface: {
-  makeImageSnapshot: () => {
-    encodeToBytes: (format: ImageFormat, quality: number) => Uint8Array | null;
-    dispose: () => void;
-  };
-}) {
-  const image = surface.makeImageSnapshot();
-  const bytes = image.encodeToBytes(ImageFormat.JPEG, 95);
-  // Freed at once: CanvasKit's images live in its own heap, which a few hundred frames of them fill.
-  image.dispose();
-  if (!bytes) {
-    throw new Error('Could not encode a frame');
-  }
-  return bytes;
 }
 
 /** Where a clip's frames are gathered — concatenated JPEGs — emptied for a fresh clip. */

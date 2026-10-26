@@ -19,7 +19,6 @@
     "@livekit/react-native": "2.12.0",
     "@livekit/react-native-expo-plugin": "1.0.2",
     "@livekit/react-native-webrtc": "144.1.2",
-    "@shopify/react-native-skia": "2.6.2",
     "expo": "57.0.20",
     "expo-audio": "57.0.5",
     "expo-gl": "57.0.2",

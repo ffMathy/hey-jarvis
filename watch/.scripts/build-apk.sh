@@ -16,7 +16,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Watches are arm64, like phones — a Pixel Watch is a Snapdragon W5. Every extra
-# ABI compiles Skia and the React Native core again, which is twenty minutes a
+# ABI compiles Reanimated, Worklets and the React Native core again, which is twenty minutes a
 # piece, so only the one the watch runs is built.
 architectures='arm64-v8a'
 

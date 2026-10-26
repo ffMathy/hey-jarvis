@@ -23,27 +23,27 @@ import {
 import { Group, Matrix4, type Object3D, Vector3, type WebGLRenderer } from 'three';
 import type { PoseLike } from '../xr/ray';
 import { createBodyStrokes } from './body-strokes';
-import { loadPainter, type Painter } from './canvaskit';
 import { createDensityBackstop } from './density-backstop';
 import { HOLOGRAM_RADIUS_METRES } from './dimensions';
-import { createFlatHologram, DRAWING_SIZE_PIXELS, type DrawingSurfaceKind } from './flat-hologram';
 import { createFrameClock, type HologramDrive } from './frame-clock';
 import { createHaloUnion } from './halo-union';
 import { closeRangeFade } from './head';
 import { setLayerFade } from './layer-blending';
+import { createPictureTarget, NO_SATELLITES } from './picture-target';
 import { createRowGeometry } from './row-geometry';
 import { createSparkleTexture } from './sparkle-texture';
 import { createViewPlaneQuad } from './view-plane-quad';
 
 export interface HologramDiagnostics {
-  /** Main-thread time `update` took last frame, CanvasKit included. */
+  /** Main-thread time `update` took last frame, the picture's draws included. */
   cpuMilliseconds: number;
   /** The share of the body's particles being drawn (see `density-backstop.ts`). */
   density: number;
-  /** Of that, the time CanvasKit took to draw and hand over its picture. */
-  canvasKitMilliseconds: number;
-  /** Whether CanvasKit got a GPU surface, which is most of what its time depends on. */
-  surface: DrawingSurfaceKind;
+  /**
+   * Of that, the main-thread time spent issuing the picture's draws into its target: the GPU's own
+   * time drawing them is not in it, since nothing waits for the GPU to finish.
+   */
+  pictureMilliseconds: number;
 }
 
 export interface JarvisHologram3D {
@@ -63,7 +63,7 @@ export interface JarvisHologram3D {
   settle(): void;
   /**
    * Once per XR frame, before `renderer.render`: moves his clock on, then draws what lives off the
-   * screen — CanvasKit's layers and the halo union — against this frame's centre eye. `displayRate`
+   * screen — the picture of everything but his body, and the halo union — against this frame's centre eye. `displayRate`
    * is the display's own rate, when the headset says it: what the backstop judges a frame on time by.
    */
   update(deltaSeconds: number, drive: HologramDrive, centreEye: PoseLike, displayRate?: number): void;
@@ -82,14 +82,8 @@ export interface JarvisHologram3D {
 }
 
 export interface JarvisHologramOptions {
-  /** The site's base URL: CanvasKit's wasm is loaded from `vendor/` under it. */
-  assetBase: URL;
-  /** CanvasKit already loading, so it is not loaded twice; loaded from `assetBase` otherwise. */
-  painter?: Painter | Promise<Painter>;
   /** Whether dropped frames may thin him (see `density-backstop.ts`). On unless a preview wants every frame alike. */
   densityBackstop?: boolean;
-  /** Pixels across CanvasKit's picture. */
-  drawingSize?: number;
 }
 
 /** Somewhere to build a 4×4 from a basis, made once rather than once a frame. */
@@ -112,18 +106,15 @@ function placement(scratch: PlacementScratch, centre: Vector3, basis: ViewBasis,
 /**
  * Jarvis in three dimensions, for a three.js scene in a headset or on a desktop canvas.
  *
- * Per frame on the CPU: the phone's frame clock, `analyseFrame`, and CanvasKit drawing the layers
- * that are flat — the whorl, the core, the rim, the chips — which leave the body out. On
- * the GPU: the halo union once, then per eye the view-plane quad (CanvasKit's picture Screened with
- * the halos) and the body's strokes where they really are. See .claude/rules/vr.md.
+ * Per frame on the CPU: the phone's frame clock and `analyseFrame`. On the GPU, all through
+ * three's own context: the picture of the layers that are flat — the whorl, the core, the rim, the
+ * chips, which leave the body out — into a target of its own, the halo union once, then per eye
+ * the view-plane quad (the picture Screened with the halos) and the body's strokes where they
+ * really are. See .claude/rules/vr-how-he-is-drawn-src-hologram3d.md.
  */
-export async function createJarvisHologram3D(
-  renderer: WebGLRenderer,
-  options: JarvisHologramOptions,
-): Promise<JarvisHologram3D> {
-  const painter = await (options.painter ?? loadPainter(new URL('vendor/', options.assetBase)));
+export function createJarvisHologram3D(renderer: WebGLRenderer, options: JarvisHologramOptions = {}): JarvisHologram3D {
   const scene = createHologramScene(SCENE_SEED);
-  const flat = createFlatHologram(painter, options.drawingSize ?? DRAWING_SIZE_PIXELS, scene);
+  const picture = createPictureTarget(renderer);
   // One geometry for both passes that read the rows, so the GPU holds the rows once.
   const rowGeometry = createRowGeometry(buildHologramRows(scene));
   const fragmentUniforms = createFragmentUniforms();
@@ -131,7 +122,7 @@ export async function createJarvisHologram3D(
   const strokes = createBodyStrokes(rowGeometry, fragmentUniforms, sparkle);
   const halo = createHaloUnion(rowGeometry, fragmentUniforms);
   const haloPlacement: HaloUnionPlacement = { texelUnits: 0, radiusFraction: 0 };
-  const quad = createViewPlaneQuad(1);
+  const quad = createViewPlaneQuad(1, picture.texture);
   const clock = createFrameClock();
   const backstop = options.densityBackstop === false ? null : createDensityBackstop();
 
@@ -160,14 +151,13 @@ export async function createJarvisHologram3D(
   const diagnostics: HologramDiagnostics = {
     cpuMilliseconds: 0,
     density: 1,
-    canvasKitMilliseconds: 0,
-    surface: flat.kind,
+    pictureMilliseconds: 0,
   };
 
   function hide() {
     quad.mesh.visible = false;
     strokes.mesh.visible = false;
-    diagnostics.canvasKitMilliseconds = 0;
+    diagnostics.pictureMilliseconds = 0;
   }
 
   function placeLocally(mesh: Object3D, basis: ViewBasis, scale: number) {
@@ -175,10 +165,11 @@ export async function createJarvisHologram3D(
     mesh.matrixWorldNeedsUpdate = true;
   }
 
-  function drawPicture(frame: HologramFrame) {
+  function drawPicture(state: HologramFrameState) {
     const started = performance.now();
-    quad.showPicture(flat.draw(frame));
-    diagnostics.canvasKitMilliseconds = performance.now() - started;
+    picture.draw(state, NO_SATELLITES);
+    quad.mesh.visible = true;
+    diagnostics.pictureMilliseconds = performance.now() - started;
   }
 
   function drawBody(state: HologramFrameState, basis: ViewBasis, bodyBasis: ViewBasis, distance: number, fade: number) {
@@ -219,8 +210,8 @@ export async function createJarvisHologram3D(
     toParent.copy(object.matrixWorld).invert();
     placeLocally(quad.mesh, view, radius / SPHERE_FRACTION);
     // The phone fades him as one layer while he arrives and leaves; so does every part here.
-    quad.setFade(state.arrival * fade, state.arrival);
-    drawPicture(frame);
+    quad.setFade(state.arrival * fade);
+    drawPicture(state);
     drawBody(state, view, bodyFrame(front), distance, fade);
   }
 
@@ -280,7 +271,7 @@ export async function createJarvisHologram3D(
       halo.dispose();
       rowGeometry.dispose();
       sparkle.dispose();
-      flat.dispose();
+      picture.dispose();
     },
   };
 }

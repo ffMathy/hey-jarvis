@@ -8,9 +8,6 @@
 /modules/*/android/build/
 /modules/*/android/.cxx/
 
-# Copied out of canvaskit-wasm by `turbo initialize` (.scripts/initialize.sh)
-/public/canvaskit.wasm
-
 # Expo CLI state and bundler output
 .expo/
 /dist

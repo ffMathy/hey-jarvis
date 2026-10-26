@@ -134,19 +134,11 @@ test('the page credits the wake-word models and links their licence', async ({ p
   );
 });
 
-test('without CanvasKit the page says it could not get ready, and a room he cannot be drawn in is closed again', async ({
-  page,
-}) => {
-  // CanvasKit's wasm missing from the site, as it was from the phone's first published page.
-  await page.route('**/vendor/canvaskit.wasm', (route) => route.fulfill({ status: 404, body: 'Not found' }));
-  await page.addInitScript((storageKey) => {
-    window.localStorage.setItem(storageKey, JSON.stringify({ apiKey: 'sk_saved', agentId: 'agent_saved' }));
-  }, SETTINGS_KEY);
+test('a room he cannot be drawn in is closed again, and the page can try once more', async ({ page }) => {
+  // His drawing's chunk missing from the site, as the phone's wasm once was from its first published
+  // page: the room loads apart from the page, so the page gets ready, and only the room fails.
+  await page.route('**/assets/hologram3d-*.js', (route) => route.fulfill({ status: 404, body: 'Not found' }));
   await openPage(page);
-
-  const primary = page.locator('#primary');
-  await expect(primary).toHaveText('Try getting ready again', { timeout: 60000 });
-  await expect(page.locator('#status')).toContainText('Jarvis could not get ready: his drawing did not load.');
 
   // Sample mode needs no models, so it can be tried, and fails the moment he would be drawn.
   const sample = page.getByRole('button', { name: 'Try him in your room' });

@@ -116,12 +116,11 @@ async function configureElevenLabs(page: Page): Promise<void> {
  * the one before. Twice, because the first change could be the first draw landing
  * on an empty canvas; a picture drawn once and never again fails the second.
  *
- * The look is the whole of him: Skia's canvas (`hologram-picture`) and, where the
- * browser has WebGL 2, the GPU body's laid over it (`hologram-body`).
+ * The look is the whole of him, drawn on the GPU into the one canvas (`hologram-canvas`).
  */
 async function expectHologramToKeepMoving(page: Page): Promise<void> {
   const hologram = page.getByTestId('hologram');
-  await expect(page.getByTestId('hologram-picture')).toBeVisible();
+  await expect(page.getByTestId('hologram-canvas')).toBeVisible();
 
   for (let change = 0; change < 2; change++) {
     const previousLook = await hologram.screenshot();
@@ -263,12 +262,11 @@ test('saves valid settings, shows the conversation, and remembers across a reloa
   await expect(page.getByTestId('api-key')).toHaveCount(0);
 });
 
-test('draws the hologram and keeps it moving, from a CanvasKit the site serves itself', async ({ page }) => {
-  const canvasKitResponses: Array<{ hostname: string; status: number }> = [];
-  page.on('response', (response) => {
-    const url = new URL(response.url());
-    if (url.pathname.endsWith('canvaskit.wasm')) {
-      canvasKitResponses.push({ hostname: url.hostname, status: response.status() });
+test('draws the hologram on WebGL 2 and keeps it moving, with nothing to fetch first', async ({ page }) => {
+  const webAssemblyRequests: string[] = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.endsWith('.wasm')) {
+      webAssemblyRequests.push(request.url());
     }
   });
   const pageErrors: string[] = [];
@@ -277,15 +275,22 @@ test('draws the hologram and keeps it moving, from a CanvasKit the site serves i
   await page.goto('/');
   await configureElevenLabs(page);
 
-  // Nothing Skia-backed renders until CanvasKit has loaded, so Skia's canvas at all
-  // means the WebAssembly arrived. Every other host is aborted, so it can only
-  // have come from the export's own `public/` — which `turbo initialize` fills.
-  await expect(page.getByTestId('hologram-picture')).toBeVisible();
-  expect(canvasKitResponses).toEqual([{ hostname: 'localhost', status: 200 }]);
+  // All of him is one canvas holding a WebGL 2 context: there is no second canvas for the rest of
+  // him, and no WebAssembly to wait for before he can be drawn.
+  const canvas = page.getByTestId('hologram-canvas').locator('canvas');
+  await expect(canvas).toHaveCount(1);
+  await expect(page.getByTestId('hologram').locator('canvas')).toHaveCount(1);
+  expect(
+    await canvas.evaluate(
+      (element) =>
+        element instanceof HTMLCanvasElement && element.getContext('webgl2') instanceof WebGL2RenderingContext,
+    ),
+  ).toBe(true);
 
   // It turns on its own, with no conversation open.
   await expectHologramToKeepMoving(page);
 
+  expect(webAssemblyRequests).toEqual([]);
   expect(pageErrors).toEqual([]);
 });
 
@@ -330,23 +335,32 @@ test('offers sample mode from the tour, walks its moods on a tap, and comes back
   await expect(page.getByTestId('onboarding-agent')).toBeVisible();
 });
 
-test('keeps the conversation screen working when CanvasKit cannot load', async ({ page }) => {
-  await page.route('**/canvaskit.wasm', async (route: Route) => {
-    await route.fulfill({ status: 404, body: 'Not found' });
+test('keeps the conversation screen working in a browser without WebGL 2', async ({ page }) => {
+  await page.addInitScript(() => {
+    Reflect.deleteProperty(window, 'WebGL2RenderingContext');
+    const getContext = HTMLCanvasElement.prototype.getContext;
+    Reflect.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+      value(this: HTMLCanvasElement, kind: string, ...rest: unknown[]) {
+        return kind === 'webgl2' ? null : Reflect.apply(getContext, this, [kind, ...rest]);
+      },
+    });
   });
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
 
   await page.goto('/');
   await configureElevenLabs(page);
 
-  // The hologram is decoration. Waiting for its placeholder means the failed load
-  // has already happened, so the rest of the screen — the part that talks to
-  // Jarvis — is checked after it, not before it had the chance to break.
-  await expect(page.getByTestId('hologram-unavailable')).toBeVisible();
-  await expect(page.getByTestId('hologram').locator('canvas')).toHaveCount(0);
-  await expect(page.getByTestId('hologram-picture')).toHaveCount(0);
+  // The hologram is decoration. With nothing to draw him with there is no GL view at all, and his
+  // square is held empty rather than letting the screen jump.
+  const hologram = page.getByTestId('hologram');
+  await expect(page.getByTestId('hologram-canvas')).toHaveCount(0);
+  await expect(hologram.locator('canvas')).toHaveCount(0);
+  expect((await hologram.boundingBox())?.width ?? 0).toBeGreaterThan(0);
   // And the screen is still the conversation rather than having fallen back to setup: the drawing
   // failing must not take the thing it decorates with it.
   await expect(page.getByTestId('api-key')).toHaveCount(0);
+  expect(pageErrors).toEqual([]);
 });
 
 test('asks ElevenLabs for a conversation token for the agent, with the API key', async ({ page }) => {

@@ -110,7 +110,7 @@ has). The session dials with no client tools at all. The live line to the server
 `.claude/rules/hologram.md`).
 
 **The button.** A small outline of a camera at the sphere's lower right, half strength, drawn from
-views (no icon library, and no Skia before CanvasKit has loaded in a browser). It is there only while
+views (no icon library is installed). It is there only while
 a server is set and he is connected, past the greeting and settled, not held in writing on a phone,
 and neither thinking nor speaking — a photo arrives as sir's turn, and a turn in the middle of one
 cancels a request or cuts off an answer — and not while its camera is open or its photo on the way.

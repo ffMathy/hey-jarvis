@@ -106,7 +106,7 @@ function compare(drawnByThree: Uint8Array, drawnRaw: Uint8Array, width: number, 
 
 /**
  * Holds the raw renderer to the headset's three.js passes: draws `hologram`, already updated for
- * `camera`, with the CanvasKit picture on its view-plane quad blacked out — which leaves three's
+ * `camera`, with his picture on its view-plane quad blacked out — which leaves three's
  * halo union, strokes and halos' light, the body the phone and the watch draw on the GPU — then
  * draws the same moment with `drawGpuBody` from the matrices and uniforms three drew the strokes
  * with, into a drawing buffer the same size, and compares the two byte for byte.

@@ -10,23 +10,51 @@
  * Prints `left top width height` in screen pixels, or exits 1 if there is no
  * hologram-sized golden region.
  *
+ * The PNG is decoded by ffmpeg, which the emulator check already needs for its
+ * recording, rather than by a decoder of this package's own: ffprobe gives the
+ * size, and ffmpeg writes the pixels out as plain RGBA.
+ *
  * Usage: bun find-hologram.ts <screenshot PNG>
  */
-import { readFileSync } from 'node:fs';
-import { JsiSkApi } from '@shopify/react-native-skia/lib/module/skia/web';
-import { LoadSkiaWeb } from '@shopify/react-native-skia/lib/module/web/LoadSkiaWeb';
+import { spawnSync } from 'bun';
 
 /** Ignore the status bar, whose icons can be any colour. */
 const TOP_MARGIN_FRACTION = 0.06;
 /** A region this much smaller than the screen width is not the hologram. */
 const MINIMUM_SIZE_FRACTION = 0.3;
 
-interface CanvasKitGlobal {
-  CanvasKit: Parameters<typeof JsiSkApi>[0];
+/** Runs a tool to the end and hands back what it wrote, or throws with what it said went wrong. */
+function outputOf(command: string[]): Uint8Array {
+  const run = spawnSync(command, { stdout: 'pipe', stderr: 'pipe' });
+  if (!run.success) {
+    throw new Error(`${command[0]} failed: ${run.stderr.toString().trim()}`);
+  }
+  return run.stdout;
 }
 
-function hasCanvasKit(scope: object): scope is CanvasKitGlobal {
-  return 'CanvasKit' in scope;
+/** The screenshot's size, from ffprobe, as `width,height`. */
+function sizeOf(png: string): { width: number; height: number } {
+  const size = new TextDecoder()
+    .decode(
+      outputOf([
+        'ffprobe',
+        '-v',
+        'error',
+        '-select_streams',
+        'v:0',
+        '-show_entries',
+        'stream=width,height',
+        '-of',
+        'csv=p=0',
+        png,
+      ]),
+    )
+    .trim();
+  const [width, height] = size.split(',').map(Number);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width === undefined || height === undefined) {
+    throw new Error(`${png} is not an image (ffprobe read its size as "${size}")`);
+  }
+  return { width, height };
 }
 
 /** Amber and gold: red strong, blue well below it, green in between. */
@@ -39,21 +67,10 @@ if (!file) {
   throw new Error('Usage: bun find-hologram.ts <screenshot PNG>');
 }
 
-await LoadSkiaWeb();
-if (!hasCanvasKit(globalThis)) {
-  throw new Error('CanvasKit did not load');
-}
-const Skia = JsiSkApi(globalThis.CanvasKit);
-
-const image = Skia.Image.MakeImageFromEncoded(Skia.Data.fromBytes(new Uint8Array(readFileSync(file))));
-if (!image) {
-  throw new Error(`${file} is not an image`);
-}
-const width = image.width();
-const height = image.height();
-const pixels = image.readPixels();
-if (!(pixels instanceof Uint8Array)) {
-  throw new Error(`Could not read the pixels of ${file}`);
+const { width, height } = sizeOf(file);
+const pixels = outputOf(['ffmpeg', '-loglevel', 'error', '-i', file, '-f', 'rawvideo', '-pix_fmt', 'rgba', '-']);
+if (pixels.length !== width * height * 4) {
+  throw new Error(`Could not read the pixels of ${file}: ${pixels.length} bytes for ${width}x${height}`);
 }
 
 let left = width;

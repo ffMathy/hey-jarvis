@@ -1,9 +1,10 @@
 #!/bin/bash
 # Run the hologram package's tests.
 #
-# Everything here is pure TypeScript with no device in it: the drawing is put
-# through a headless CanvasKit surface and the voice tracker is stepped by hand,
-# so the whole suite runs on any machine with no emulator and no credential.
+# Everything here is pure TypeScript with no device in it: the drawing is held
+# to its CPU references and to a GL context that writes its calls down, and the
+# voice tracker is stepped by hand, so the whole suite runs on any machine with
+# no GPU, no emulator and no credential.
 #
 # Usage:
 #   ./hologram/.scripts/test.sh                                 # all of them

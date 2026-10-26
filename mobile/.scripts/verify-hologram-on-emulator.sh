@@ -1,9 +1,10 @@
 #!/bin/bash
 # Look at the Jarvis hologram on an emulator, and measure that it stirs with a voice without flashing.
 #
-# The hologram's drawing is covered offline (`hologram/src/hologram-drawing.spec.ts`
-# renders it headlessly), but whether it animates in the app, on the UI thread,
-# through Reanimated and native Skia, is something only a running Android shows.
+# The hologram's drawing is covered in a browser (`tests/e2e/hologram-canvas.spec.ts`
+# draws it with WebGL 2 in Chromium), but whether it animates in the app, on the
+# UI thread, through Reanimated and expo-gl, is something only a running Android
+# shows.
 # An emulator has no ElevenLabs session to listen to, so the app is built with a
 # recorded voice in place of the live one (see `metro.config.js` and
 # `tests/hologram-preview/jarvis-voice.replay.ts`), replaying readings made
@@ -167,11 +168,10 @@ bun "$PREVIEW_DIR/analyse-voice.ts" "$OUTPUT_DIR/voice-paced.wav" "$RECORDING" "
 # --- The app ----------------------------------------------------------------
 
 # Built before any emulator is running, on purpose. The native build compiles
-# Skia, Reanimated and Worklets' C++ and took over half an hour on a 16 GB
+# Reanimated and Worklets' C++ and took over half an hour on a 16 GB
 # machine; with an emulator booted beside it, the emulator was killed by a
 # segmentation fault partway through. Nothing about the build needs a device.
 echo '→ Building the release app (x86_64, for the emulator)'
-bunx turbo initialize --filter=mobile >/dev/null
 (cd mobile && bunx expo prebuild --platform android --no-install >/dev/null)
 rm -rf "$GENERATED_BUNDLE_DIR"
 (cd mobile/android && JARVIS_VOICE_REPLAY=1 ./gradlew app:assembleRelease --no-daemon -PreactNativeArchitectures=x86_64)

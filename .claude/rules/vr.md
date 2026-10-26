@@ -61,7 +61,7 @@ behaviour on `GITHUB_ACTIONS`, which the workflow passes into the dev container
 
 `vr#initialize` is uncached in `turbo.json`: it writes gitignored files, so a
 cache hit would replay its log, restore nothing, and the build would publish a
-site with no CanvasKit.
+site with no wake word.
 
 ## Scope Guidelines for Commits
 

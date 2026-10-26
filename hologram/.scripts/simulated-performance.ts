@@ -7,8 +7,8 @@
  * scripts is only what they do with the frames — one stitches them into a clip, the other keeps a
  * single one — so the simulation lives here and neither owns it.
  *
- * Nothing in here touches Skia or the file system. It answers one question: given a moment, what
- * is Jarvis doing.
+ * Nothing in here touches the GPU, the browser or the file system. It answers one question: given a
+ * moment, what is Jarvis doing.
  */
 import {
   advanceVoiceActivity,

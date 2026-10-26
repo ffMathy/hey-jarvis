@@ -35,7 +35,7 @@ export const FOVEATION = 0.3;
  * which is how the compositor reads the layer anyway.
  *
  * Multisampled, four samples a pixel. Jarvis smooths his own edges — his strokes are distance
- * fields a pixel soft at the rim, his flat parts are Skia's — and the canvases' outlines are
+ * fields a pixel soft at the rim, his flat parts antialiased by the picture's own coverage — and the canvases' outlines are
  * smoothed in their pictures (`ui3d/ui-canvas.ts`), but the rest of the room is plain triangles
  * whose edges nothing else smooths: the tokens and rings of what he works on, the pointing
  * reticle, the pointer arrow, and a canvas's plane seen edge on.
@@ -51,8 +51,8 @@ export const FOVEATION = 0.3;
  * gets. Foveation is still set on the layer, whatever the samples; on the blit path the eyes are
  * drawn into three's renderbuffer rather than the layer's own texture, and whether the headset
  * still foveates them there is its to show. Fragments are still shaded once a pixel, so what
- * already smoothed itself is drawn exactly as before: his strokes, the CanvasKit quad and the halo
- * union, which renders into a target of its own that is never multisampled.
+ * already smoothed itself is drawn exactly as before: his strokes, the picture's quad, and
+ * the picture and the halo union, which render into targets of their own that are never multisampled.
  *
  * Meta recommends four samples on Quest, and no more, as nearly free on its tiled GPUs — 0.5 to
  * 1.5 ms a frame in its measurements:

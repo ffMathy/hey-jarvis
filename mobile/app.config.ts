@@ -23,10 +23,10 @@ const withReleaseSigning = createReleaseSigning(withAppBuildGradle);
 /**
  * The oldest phone this will install on: Android 10.
  *
- * His body is drawn on the GPU, in a canvas laid over Skia's picture and Screened onto it with
- * React Native's `mixBlendMode`, and Android 10 is the first on which that style does anything.
- * Below it the body would be laid on top unblended, up to ninety levels off, so those phones are
- * not offered the app rather than shown a Jarvis drawn wrongly.
+ * He is drawn on the GPU, in a canvas Screened onto the sheet behind him with React Native's
+ * `mixBlendMode`, and Android 10 is the first on which that style does anything. Below it his
+ * canvas would be laid on top unblended, its black square over the sheet, so those phones are not
+ * offered the app rather than shown a Jarvis drawn wrongly.
  *
  * Set as a Gradle property for the reason the watch's `OLDEST_WATCH_SDK` gives: it is the knob
  * Expo's generated `android/build.gradle` reads (`findProperty('android.minSdkVersion')`), and

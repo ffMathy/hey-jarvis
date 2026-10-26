@@ -378,7 +378,7 @@ async function shootFrame(render: Render, frame: number, press: boolean): Promis
 async function shootWaitingRoom(render: Render, hintFrames: number) {
   const { page } = render;
   const enter = page.getByRole('button', { name: 'Enter your room' });
-  await until('"Enter your room" (the wake-word models and CanvasKit loading)', () => enter.isEnabled());
+  await until('"Enter your room" (the wake-word models loading)', () => enter.isEnabled());
   await enter.click();
   await until('the room to show its hint (the wake word listening)', async () =>
     page.evaluate(() => (window.__jarvis?.room?.view.panels.hint ?? null) !== null),

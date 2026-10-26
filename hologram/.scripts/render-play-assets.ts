@@ -26,8 +26,10 @@
  * what anyone would be agreeing to ship. So each one is drawn onto the same near-black wash the
  * repository cover uses, which is also what the app itself is.
  *
- * What is drawn is the app rather than an advertisement for it: the same `drawHologram` both apps
- * call, driven by the same simulated voice the README clips use — see `simulated-performance.ts`.
+ * What is drawn is the app rather than an advertisement for it: all of him, body and all, on the GPU
+ * through `hologram/gpu` as both apps draw him — in headless Chromium, where
+ * `render-play-assets-page.ts` draws each picture in the page `render-page.ts` opens — driven by the
+ * same simulated voice the README clips use — see `simulated-performance.ts`.
  * The four phone shots are four things he genuinely does, in order: waiting, answering quietly,
  * answering loudly, and thinking. There is no invented copy over them, because the screen has no
  * text on it and a screenshot claiming otherwise would be a lie about the product.
@@ -37,23 +39,14 @@
  *
  * Writes into `docs/play-assets/`, and the apps' own icons into `hologram/assets/`. Needs `device-art/roboto-light.ttf`, which
  * `prepare-device-art.sh` fetches, and `ffmpeg` on the path — see {@link dropAlphaChannel}.
+ * CHROMIUM_EXECUTABLE_PATH picks the browser, as for the browser tests.
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { TileMode } from '@shopify/react-native-skia/lib/module/skia/types';
-import { JsiSkApi } from '@shopify/react-native-skia/lib/module/skia/web';
-import { LoadSkiaWeb } from '@shopify/react-native-skia/lib/module/web/LoadSkiaWeb';
-import {
-  createHologramResources,
-  createHologramScene,
-  drawHologram,
-  PARTICLE_COUNT,
-  SCENE_SEED,
-  type SimulatedMood,
-  SPHERE_FRACTION,
-  THOUGHT_FADE_SECONDS,
-} from '../src/index';
+import { PARTICLE_COUNT, type SimulatedMood, THOUGHT_FADE_SECONDS } from '../src/index';
+import { bytesOf, openRenderPage } from './render-page';
+import type { PlayPicture } from './render-play-assets-page';
 import { createPerformance, findLoudestMoment, type SimulatedFrame, stillMoment } from './simulated-performance';
 
 /** The clock the simulated voice is advanced on, matching the clips. */
@@ -62,27 +55,6 @@ const FRAME_SECONDS = 1 / FRAMES_PER_SECOND;
 
 /** How far into a speech to look for its loudest instant. */
 const LISTEN_SECONDS = 9;
-
-/** What everything sits on: the app's own near-black, lifted a little toward the middle. */
-const BACKDROP = ['#0a0e16', '#141c2b', '#070a10'];
-
-/** Where the fetched artwork lives. See `device-art/NOTICE.md`. */
-const DEVICE_ART = join(import.meta.dir, 'device-art');
-
-/**
- * How big the drawing's square is on a screenshot, as a share of the screen's shortest side.
- *
- * Bigger than the screen, which is not a mistake: `useWholeScreenHologramSize` gives the app
- * `(shortest - 20dp) × 1.35`, because the drawing clips at the edge of its own square and the chips
- * Jarvis throws on a syllable travel well past the limb — with the square *at* the screen they were
- * cut off in mid-air just inside the bezel. The screen does the cutting instead, and an edge there
- * is invisible because there is nothing past it to compare against.
- *
- * So a screenshot has to overflow too, or it would show a sphere half the size of the real one with
- * a field of empty black around it. The 20dp is about 60px at the density of a 1080-wide phone,
- * which is where the 1.32 comes from.
- */
-const SCREEN_SQUARE_SHARE = 1.32;
 
 /** The feature graphic's drawing square, as a share of its shortest side. */
 const FEATURE_SPHERE_SHARE = 0.78;
@@ -116,29 +88,10 @@ const PHONE_ADAPTIVE_ICON_SPHERE_DIAMETER = 54 / 108;
 /** Where the app icons go: beside the greeting, in the package both apps take their Jarvis from. */
 const APP_ASSETS = join(import.meta.dir, '..', 'assets');
 
-/** The wordmark on the feature graphic, which is the only picture here with any text on it. */
-const NAME = 'JARVIS';
-const NAME_SIZE = 78;
-const NAME_TRACKING = 0.34;
-const NAME_INK = '#ffd18a';
-
 /** Play's ceilings, in bytes, so {@link check} can measure rather than trust. */
 const ONE_MEGABYTE = 1024 * 1024;
 /** Not a Play slot, so no Play ceiling: only a guard against something having gone badly wrong. */
 const APP_ICON_LARGEST_BYTES = 5 * ONE_MEGABYTE;
-
-type SkiaApi = ReturnType<typeof JsiSkApi>;
-type SkiaSurface = NonNullable<ReturnType<SkiaApi['Surface']['MakeOffscreen']>>;
-type SkiaCanvas = ReturnType<SkiaSurface['getCanvas']>;
-
-/** Where `LoadSkiaWeb` leaves CanvasKit once the WebAssembly is up, as in the drawing's tests. */
-interface CanvasKitGlobal {
-  CanvasKit: Parameters<typeof JsiSkApi>[0];
-}
-
-function hasCanvasKit(scope: object): scope is CanvasKitGlobal {
-  return 'CanvasKit' in scope;
-}
 
 /**
  * One picture Play wants, and what would make it refuse it.
@@ -146,33 +99,14 @@ function hasCanvasKit(scope: object): scope is CanvasKitGlobal {
  * `mood` is what Jarvis is doing in it; `undefined` is him waiting, which is what the app shows
  * before anyone has said anything.
  */
-interface Asset {
+interface Asset extends PlayPicture {
   name: string;
-  width: number;
-  height: number;
   largestBytes: number;
   mood: SimulatedMood | undefined;
   /** Whether to run the voice to its loudest instant first, rather than opening on it. */
   loudest?: boolean;
-  /** The drawing square's share of the shortest side. */
-  share?: number;
-  /** The sphere's own diameter as a share of the shortest side: set instead of `share` on icons. */
-  sphere?: number;
-  /** How many particles: the most the device this picture is of can hold. */
-  particles: number;
   /** Written into the apps' assets rather than the Play listing's. */
   forApps?: boolean;
-  /**
-   * Plain black behind him rather than the listing's wash: the apps' icons, so the adaptive icon's
-   * foreground meets the black background layer it is composited onto without a seam.
-   *
-   * Black rather than transparent, though a foreground may be transparent. The drawing blends
-   * everything with Screen, which is light added to what is underneath; over nothing it has no
-   * underneath and comes out a saturated orange nothing like him. Over black it is him.
-   */
-  onBlack?: boolean;
-  /** The wordmark, on the one picture that has it. */
-  wordmark?: boolean;
 }
 
 const PHONE_WIDTH = 1080;
@@ -309,8 +243,6 @@ const ASSETS: Asset[] = [
   },
 ];
 
-type SkiaFont = ReturnType<SkiaApi['Font']>;
-
 /**
  * Runs the simulated voice forward to the instant this picture wants, and reports that frame.
  *
@@ -326,106 +258,10 @@ function performTo(mood: SimulatedMood | undefined, seconds: number): SimulatedF
   return frame;
 }
 
-/** The near-black wash everything is drawn onto, so no picture ships with an alpha channel to lose. */
-function paintBackdrop(skia: SkiaApi, canvas: SkiaCanvas, width: number, height: number) {
-  canvas.clear(skia.Color(BACKDROP[0] ?? '#000000'));
-
-  const backdrop = skia.Paint();
-  backdrop.setShader(
-    skia.Shader.MakeRadialGradient(
-      { x: width / 2, y: height / 2 },
-      Math.max(width, height) * 0.62,
-      BACKDROP.map((colour) => skia.Color(colour)),
-      [0, 0.45, 1],
-      TileMode.Clamp,
-    ),
-  );
-  canvas.drawRect(skia.XYWHRect(0, 0, width, height), backdrop);
-}
-
-/**
- * The wordmark, laid out along a line with the tracking the cover uses.
- *
- * Letter by letter rather than as one string, because the space between them is the whole look and
- * Skia has no letter-spacing of its own.
- */
-function drawWordmark(
-  skia: SkiaApi,
-  canvas: SkiaCanvas,
-  font: SkiaFont,
-  middleY: number,
-  rightOf: number,
-  width: number,
-) {
-  const letters = [...NAME];
-  const tracking = NAME_TRACKING * font.getSize();
-  const widths = letters.map((letter) => font.getTextWidth(letter));
-  const total = widths.reduce((sum, each) => sum + each, 0) + tracking * (letters.length - 1);
-
-  const ink = skia.Paint();
-  ink.setColor(skia.Color(NAME_INK));
-  ink.setAntiAlias(true);
-
-  let x = rightOf + (width - total) / 2;
-  for (const [index, letter] of letters.entries()) {
-    canvas.drawText(letter, x, middleY + font.getSize() / 3, ink, font);
-    x += (widths[index] ?? 0) + tracking;
-  }
-}
-
-/** Draws one asset and returns its PNG bytes. */
-function render(
-  skia: SkiaApi,
-  asset: Asset,
-  frame: SimulatedFrame,
-  scene: ReturnType<typeof createHologramScene>,
-  resources: ReturnType<typeof createHologramResources>,
-  font: SkiaFont,
-): Uint8Array {
-  const surface = skia.Surface.MakeOffscreen(asset.width, asset.height) ?? skia.Surface.Make(asset.width, asset.height);
-  if (!surface) {
-    throw new Error(`Could not make a surface for ${asset.name}`);
-  }
-  const canvas = surface.getCanvas();
-  if (asset.onBlack) {
-    canvas.clear(skia.Color('#000000'));
-  } else {
-    paintBackdrop(skia, canvas, asset.width, asset.height);
-  }
-
-  // The feature graphic is the one picture that is not just him: he takes the left, his name the
-  // right. Everywhere else he is centred, because everywhere else he is the whole screen.
-  const shortest = Math.min(asset.width, asset.height);
-  // An icon names the sphere's own width; everything else its drawing square's. See ICON_SPHERE_DIAMETER.
-  const sphere = Math.round(
-    asset.sphere === undefined
-      ? shortest * (asset.share ?? SCREEN_SQUARE_SHARE)
-      : (shortest * asset.sphere) / (2 * SPHERE_FRACTION),
-  );
-  const middleX = asset.wordmark ? sphere / 2 + shortest * 0.12 : asset.width / 2;
-
-  canvas.save();
-  canvas.translate(middleX - sphere / 2, asset.height / 2 - sphere / 2);
-  drawHologram(canvas, sphere, frame, scene, resources);
-  canvas.restore();
-
-  if (asset.wordmark) {
-    const from = middleX + sphere / 2;
-    drawWordmark(skia, canvas, font, asset.height / 2, from, asset.width - from);
-  }
-
-  surface.flush();
-  const bytes = surface.makeImageSnapshot().encodeToBytes();
-  if (!bytes) {
-    throw new Error(`Could not encode ${asset.name}`);
-  }
-  return bytes;
-}
-
 /**
  * Rewrites a PNG with no alpha channel at all.
  *
- * Skia hands back RGBA, and every pixel it draws here is already fully opaque — the backdrop goes
+ * The page hands back RGBA, and every pixel it draws here is already fully opaque — the backdrop goes
  * down first and nothing punches through it. But "opaque" and "has no alpha channel" are different
  * claims, and the Wear OS slot asks for the second one: a picture *with* transparency is refused,
  * and the check is on the channel rather than on what is in it. So the channel goes, which also
@@ -461,37 +297,6 @@ function check(asset: Asset, path: string): string {
 }
 
 async function main() {
-  await LoadSkiaWeb();
-  if (!hasCanvasKit(globalThis)) {
-    throw new Error('CanvasKit did not load');
-  }
-  const skia = JsiSkApi(globalThis.CanvasKit);
-
-  // The same seed the clips use, so the sphere in the store is the sphere in the README — and, like
-  // the clips, each device drawn at the most particles it can hold. Built once per count.
-  const hologramFor = new Map<
-    number,
-    { scene: ReturnType<typeof createHologramScene>; resources: ReturnType<typeof createHologramResources> }
-  >();
-  const hologramOf = (particles: number) => {
-    const known = hologramFor.get(particles);
-    if (known) {
-      return known;
-    }
-    const scene = createHologramScene(SCENE_SEED, particles);
-    const built = { scene, resources: createHologramResources(skia, scene) };
-    hologramFor.set(particles, built);
-    return built;
-  };
-
-  const typeface = skia.Typeface.MakeFreeTypeFaceFromData(
-    skia.Data.fromBytes(readFileSync(join(DEVICE_ART, 'roboto-light.ttf'))),
-  );
-  if (!typeface) {
-    throw new Error('Could not load Roboto — run ./hologram/.scripts/prepare-device-art.sh');
-  }
-  const font = skia.Font(typeface, NAME_SIZE);
-
   const output = join(process.cwd(), 'docs', 'play-assets');
   mkdirSync(output, { recursive: true });
   mkdirSync(APP_ASSETS, { recursive: true });
@@ -499,13 +304,22 @@ async function main() {
   // Found once and reused: it is the same voice in every picture that wants its loudest moment.
   const loudestAt = findLoudestMoment(LISTEN_SECONDS, FRAME_SECONDS);
 
-  for (const asset of ASSETS) {
-    const frame = performTo(asset.mood, asset.loudest ? loudestAt : 0);
-    const path = join(asset.forApps ? APP_ASSETS : output, asset.name);
-    const { scene, resources } = hologramOf(asset.particles);
-    writeFileSync(path, render(skia, asset, frame, scene, resources, font));
-    dropAlphaChannel(path);
-    console.log(check(asset, path));
+  const { page, close } = await openRenderPage('render-play-assets-page.ts');
+  try {
+    await page.evaluate(() => window.playAssets.setUp());
+    for (const asset of ASSETS) {
+      const frame = performTo(asset.mood, asset.loudest ? loudestAt : 0);
+      const path = join(asset.forApps ? APP_ASSETS : output, asset.name);
+      const png = await page.evaluate(([picture, drawn]) => window.playAssets.render(picture, drawn), [
+        asset,
+        frame,
+      ] as const);
+      writeFileSync(path, bytesOf(png));
+      dropAlphaChannel(path);
+      console.log(check(asset, path));
+    }
+  } finally {
+    await close();
   }
 
   console.log(`\n${ASSETS.length} files in ${output} and ${APP_ASSETS}`);

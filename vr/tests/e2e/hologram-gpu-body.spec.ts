@@ -6,8 +6,8 @@ import { expect, test } from './fixtures';
  *
  * `hologram/gpu`'s `drawGpuBody` draws his body with no three.js — the halo union, the strokes and
  * the halos' light, from the same shader sources the headset wraps in three.js materials — so a
- * phone and a watch can draw it over Skia's picture of the rest of him. Nothing but drawing both can
- * say they agree: the preview page draws one moment with the headset's three.js passes, CanvasKit's
+ * phone and a watch can draw it over the GPU picture of the rest of him. Nothing but drawing both can
+ * say they agree: the preview page draws one moment with the headset's three.js passes, his
  * picture blacked out, then with the raw renderer from the matrices and uniforms three used, on a
  * context made the way three made its own, and compares the two drawing buffers byte for byte.
  *

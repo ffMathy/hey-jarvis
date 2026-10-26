@@ -3,26 +3,29 @@ import {
   type AgentActivityState,
   type AgentWorkState,
   agentActivityOf,
-  createSatelliteResources,
-  drawSatellites,
+  analyseFrame,
+  createHologramScene,
   NO_WORK,
+  pictureSceneOf,
   recordActivity,
   type SatelliteOrbit,
-  SPHERE_FRACTION,
+  SCENE_SEED,
+  SILENT_VOICE,
   satelliteOrbits,
   stepWork,
 } from 'hologram';
+import { createGpuPicture, drawGpuPicture } from 'hologram/gpu';
 import { AGENT_GLYPHS } from '../../../mcp/mastra/verticals/agent-glyphs';
 import type { RoomSatellites } from '../app/room-satellites';
-import type { Painter } from '../hologram3d';
-import { wrapCanvas } from '../hologram3d/canvaskit';
+import type { HologramDrive } from '../hologram3d';
+import { createFrameClock } from '../hologram3d/frame-clock';
 
 /**
  * The preview's satellites panel: every agent's glyph, as its vertical on the server declares it
  * (`mcp/mastra/verticals/agent-glyphs.ts` — files that import nothing, read here at build time, so
  * the page needs no server), to set to work round him and watch both ways they are drawn: in 3D on
  * the stage, as the headset draws them, and flat beside it, as the phone and its web build do
- * (`hologram`'s `satellite-drawing.ts`, in CanvasKit). A path of your own can be tried in the same
+ * (`hologram/gpu`'s picture, over him at rest). A path of your own can be tried in the same
  * way, and is read as strictly as one from the server.
  *
  * Everything goes through `agentActivity` messages, built here as routing would send them, so what
@@ -67,35 +70,43 @@ function glyphIcon(glyph: string): HTMLCanvasElement {
   return icon;
 }
 
+/** Him with no voice, as the phone shows him between words, so the satellites have him to go round. */
+const AT_REST: HologramDrive = { voice: SILENT_VOICE, thinking: false, leaving: false };
+
 /**
- * The flat view: the satellites as the phone draws them, round a ring where he would be, in
- * CanvasKit on its own canvas, every frame.
+ * The flat view: the satellites as the phone draws them, over the phone's picture of him at rest,
+ * with `hologram/gpu`'s picture on a WebGL 2 canvas of its own — the very calls the phone makes,
+ * cleared as it clears — every frame.
  */
-function startPhoneView(canvas: HTMLCanvasElement, painter: Painter, orbits: () => SatelliteOrbit[]) {
-  const surface = painter.canvasKit.MakeSWCanvasSurface(canvas);
-  if (surface === null) return;
-  const resources = createSatelliteResources(painter.skia);
-  // Where he would be, so the ring has something to go round.
-  const outline = new painter.canvasKit.Paint();
-  outline.setAntiAlias(true);
-  outline.setStyle(painter.canvasKit.PaintStyle.Stroke);
-  outline.setColor(painter.canvasKit.Color(90, 60, 40, 1));
-  const started = performance.now();
-  const frame = () => {
-    const seconds = (performance.now() - started) / 1000;
-    const raw = surface.getCanvas();
-    raw.clear(painter.canvasKit.BLACK);
-    raw.drawCircle(canvas.width / 2, canvas.height / 2, canvas.width * SPHERE_FRACTION, outline);
-    const made = drawSatellites(wrapCanvas(painter, raw), painter.skia, canvas.width, seconds, orbits(), resources);
-    surface.flush();
-    for (const path of made) path?.dispose();
+function startPhoneView(canvas: HTMLCanvasElement, orbits: () => SatelliteOrbit[]) {
+  // The picture needs a depth and a stencil buffer (`gpu-picture.ts`), as the phone's canvas has.
+  const gl = canvas.getContext('webgl2', { depth: true, stencil: true, premultipliedAlpha: true });
+  if (gl === null) throw new Error('There is no WebGL 2 context for the phone view.');
+  const scene = createHologramScene(SCENE_SEED);
+  const picture = createGpuPicture(gl, pictureSceneOf(scene));
+  const clock = createFrameClock();
+  let last = performance.now();
+  const frame = (now: number) => {
+    clock.advance(Math.min(0.1, (now - last) / 1000), AT_REST);
+    last = now;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clearDepth(1);
+    gl.clearStencil(0);
+    gl.depthMask(true);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+    const state = analyseFrame(clock.frame(), 1, scene);
+    drawGpuPicture(gl, picture, { state, pixels: canvas.width, satellites: orbits() });
+    // The picture is drawn unfaded; the phone fades the canvas he is on as he arrives, and so does this.
+    canvas.style.opacity = String(state.arrival);
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
 }
 
 /** Wires the panel's buttons to the stage's satellites and the phone view beside them. */
-export function startSatellitesPanel(stage: RoomSatellites, painter: Painter): SatellitesPanel {
+export function startSatellitesPanel(stage: RoomSatellites): SatellitesPanel {
   const gallery = required('#satellite-agents', HTMLElement);
   const status = required('#satellite-status', HTMLElement);
   const customInput = required('#satellite-path', HTMLInputElement);
@@ -188,7 +199,7 @@ export function startSatellitesPanel(stage: RoomSatellites, painter: Painter): S
     if (drawable) agents.push(agent);
   });
 
-  startPhoneView(phoneCanvas, painter, () => {
+  startPhoneView(phoneCanvas, () => {
     phoneWork = stepWork(phoneWork, now());
     return satelliteOrbits(phoneWork, now());
   });

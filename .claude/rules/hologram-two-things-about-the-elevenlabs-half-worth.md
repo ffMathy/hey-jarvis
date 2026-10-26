@@ -43,12 +43,12 @@ chosen over drifting clusters, orbital rings, ripples and a galaxy's arms.
 half before settling (`swirlFragment`); it moves only the particles being drawn, so the scene's
 count and the density share hold throughout.
 
-**The offline renders draw no body.** `.scripts/render-preview.ts` (the arrival, the listening
-lattice and the greeting, to WebM), `render-showcase.ts` (the README's clips and cover) and
-`render-play-assets.ts` (the Play listing and the apps' icons) draw with `drawHologram` under
-CanvasKit in Bun, which has no GPU, and `drawHologram` no longer draws his body. Until they draw the
-body on a GPU (in a headless browser, through `hologram/gpu`, as vr's preview does), what they render
-is everything but his body: do not regenerate the committed clips, stills or icons from them.
+**The offline renders draw all of him on the GPU.** `.scripts/render-preview.ts` (the arrival, the
+listening lattice and the greeting, to WebM), `render-showcase.ts` (the README's clips and cover) and
+`render-play-assets.ts` (the Play listing and the apps' icons) draw him, body and all, through
+`hologram/gpu` in headless Chromium, each through a page entry of its own (`render-*-page.ts`); none
+of them touches Skia. The committed clips, stills and icons may be regenerated from them: see
+`.claude/rules/hologram-renders.md`.
 
 **Sample mode is shared, and only sample mode has a readout.** Both devices have one — the phone's
 before there is an account, the watch's while it waits for the phone — so the moods, their order,

@@ -28,8 +28,8 @@ paths:
 - **Pages shows the last release** at the root, not the latest push; each pull
   request has its own preview under `pr/<n>/` (see "Publishing" below).
 - **No service worker.** The wasm in `vendor/` and the models are not
-  content-hashed, so a cache-first worker would serve an old `canvaskit.wasm` to a
-  newer CanvasKit loader after a dependency update, and a network-first one would
+  content-hashed, so a cache-first worker would serve an old
+  `ort-wasm-simd-threaded.wasm` to a newer onnxruntime-web after a dependency update, and a network-first one would
   buy only an offline start, which a conversation over the network cannot use.
   Add one when there is a way to version its cache with the build. There is a web
   manifest and an icon.

@@ -53,7 +53,7 @@ describe('describeDiagnostics', () => {
         },
         frameRates: { supported: [72, 80, 90, 120], requested: 90, measured: 89.6 },
         frameMilliseconds: 11.1,
-        hologram: { cpuMilliseconds: 1.84, density: 1, canvasKitMilliseconds: 3.2, surface: 'webgl' },
+        hologram: { cpuMilliseconds: 1.84, density: 1, pictureMilliseconds: 0.6 },
         webglExtensions: ['OCULUS_multiview'],
       }),
     ).toEqual([
@@ -67,7 +67,7 @@ describe('describeDiagnostics', () => {
       'labels wall 6, table 4, (none) 1',
       'placed full 1.6 m',
       'rates 72/80/90/120  asked 90  got 90  frame 11.1 ms',
-      'hologram cpu 1.8 ms  skia 3.2 ms webgl  density 1.00',
+      'hologram cpu 1.8 ms  picture 0.6 ms  density 1.00',
       'gl OCULUS_multiview',
     ]);
   });

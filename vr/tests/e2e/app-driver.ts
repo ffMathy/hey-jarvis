@@ -302,7 +302,7 @@ export async function enterRoom(page: Page, path = APP_PAGE) {
   await page.goto(path);
   await page.evaluate(() => window.__xrHarness?.ready);
   const enter = page.getByRole('button', { name: 'Enter your room' });
-  // The wake-word models and CanvasKit load first, with a progress bar.
+  // The wake-word models load first, with a progress bar.
   await expect(enter).toBeEnabled({ timeout: 90000 });
   await enter.click();
   await expect.poll(() => scene(page), { timeout: 90000 }).toBe('waiting');
