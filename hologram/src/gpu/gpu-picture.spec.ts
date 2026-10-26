@@ -81,11 +81,11 @@ describe('the picture on the GPU', () => {
     const calls = draw(madePicture());
     const draws = calls.flatMap((call, index) => (call[0] === 'drawElements' ? [index] : []));
 
-    // A speaking frame with a burst draws at least sixteen paths: the aura, the core's five (its
-    // glow, its two marks and its ring's two strokes), the cage's three, the embers' two, the fray's
-    // two and the chips' three. It drew more than twenty before the Vision footage replaced the Age
-    // of Ultron layers with fewer, finer ones.
-    expect(draws.length).toBeGreaterThanOrEqual(32);
+    // A speaking frame with a burst draws at least fifteen paths: the aura, the core's five (its
+    // glow, its two marks and its ring's two strokes), the cage's two (its hairline and the glow
+    // under it), the embers' two, the fray's two and the chips' three. It drew more than twenty
+    // before the Vision footage replaced the Age of Ultron layers with fewer, finer ones.
+    expect(draws.length).toBeGreaterThanOrEqual(30);
     expect(draws.length % 2).toBe(0);
     for (let pair = 0; pair < draws.length; pair += 2) {
       const [depthPass, colourPass] = [draws[pair] ?? 0, draws[pair + 1] ?? 0];

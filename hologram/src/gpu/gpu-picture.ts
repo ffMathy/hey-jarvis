@@ -2,6 +2,7 @@ import { PLAIN_RING_GLYPH, type SatelliteOrbit } from '../agent-work';
 import {
   AURA_INNER,
   AURA_OUTER,
+  CHIP_GONE_SECONDS,
   CORE_RING_RADIUS,
   CORE_X,
   CORE_Y,
@@ -53,6 +54,7 @@ import { GRADIENTS, pictureGradientPixels } from './picture-gradients';
 import {
   ARC_PIECES,
   arcLayer,
+  type CHIP_PARTS,
   cageLayer,
   chipsLayer,
   discLayer,
@@ -137,7 +139,7 @@ export interface GpuPicture {
   fray: PictureLayer;
   chips: PictureLayer;
   paths: Record<StaticPathName, ShapeRange>;
-  chipParts: Record<'slab' | 'middle', ShapeRange>;
+  chipParts: Record<(typeof CHIP_PARTS)[number], ShapeRange>;
   sparkle: WebGLTexture;
   gradients: WebGLTexture;
   /** The glyphs' runs, written as the satellites change, and the glyph each slot holds now. */
@@ -579,17 +581,18 @@ function strokeCage(
 }
 
 /**
- * The cage round him: hairlines that glow, a soft warm glow under an amber line, and a gold core
- * along it that glitters as it turns. Gold, not pale gold: where it crosses the brightest specks on
- * his limb a paler one Screened them past near-white, which only his core's ring may reach.
+ * The cage round him: hairlines, as the film's wireframe is — a fine gold line that glitters as it
+ * turns, over a glow much fainter and not much wider, so a line blooms a little and never reads as
+ * a bar. It was a gold line on an amber one on a glow five times its width, and read as thick
+ * glowing bars. Gold, not pale gold: where it crosses the brightest specks on his limb a paler one
+ * Screened them past near-white, which only his core's ring may reach.
  */
 function drawCage(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
   const alpha = frame.state.cageAlpha;
   if (alpha <= 0) return;
-  strokeCage(gl, picture, frame, 0.06 / 2, PICTURE_PAINTS.solid, GLOW, 0.32 * alpha);
-  strokeCage(gl, picture, frame, 0.02 / 2, PICTURE_PAINTS.solid, AMBER, 0.7 * alpha);
-  strokeCage(gl, picture, frame, 0.012 / 2, PICTURE_PAINTS.sparkle, GOLD, clamp01(alpha));
+  strokeCage(gl, picture, frame, 0.034 / 2, PICTURE_PAINTS.solid, GLOW, 0.15 * alpha);
+  strokeCage(gl, picture, frame, 0.011 / 2, PICTURE_PAINTS.sparkle, PALE_GOLD, clamp01(0.9 * alpha));
 }
 
 /** The embers, in one paint and width. */
@@ -653,12 +656,13 @@ function drawFray(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   strokeFray(gl, picture, frame, 0.0065 / 2, GOLD, 0.75);
 }
 
-function fillChips(
+/** The chips' streaks, or their cores, in one paint and width. */
+function strokeChips(
   gl: HologramGl,
   picture: GpuPicture,
   frame: GpuPictureFrame,
   part: ShapeRange,
-  strokeHalf: number,
+  halfWidth: number,
   colour: number,
   alpha: number,
 ) {
@@ -668,21 +672,21 @@ function fillChips(
   beginPath(gl, picture);
   useLayerFlat(gl, picture, layer, frame);
   setSolid(gl, layer, colour, alpha);
-  setUniform1(layer, gl, 'strokeHalf', strokeHalf);
+  setUniform1(layer, gl, 'halfWidth', halfWidth);
   const location = layer.program.uniforms.burst;
   if (location) gl.uniform4f(location, state.burstAge, state.burstCount, state.burstReach, state.burstStrength);
   drawShapes(gl, picture, layer, part.first, part.count);
 }
 
-/** The latest burst's chips: a soft edge, the slab, its hot middle (`drawChips`). */
+/** The latest burst's shards of light: a soft glow, a gold streak, and its white-hot core (`drawChips`). */
 function drawChips(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
   const state = frame.state;
-  if (state.burstAge >= 0.2 || state.burstStrength <= 0) return;
+  if (state.burstAge >= CHIP_GONE_SECONDS || state.burstStrength <= 0) return;
   const parts = picture.chipParts;
-  fillChips(gl, picture, frame, parts.slab, 0.024 / 2, GLOW, 0.4);
-  fillChips(gl, picture, frame, parts.slab, 0, GOLD, 0.9);
-  fillChips(gl, picture, frame, parts.middle, 0, WHITE_HOT, 0.5);
+  strokeChips(gl, picture, frame, parts.streak, 0.045 / 2, GLOW, 0.35);
+  strokeChips(gl, picture, frame, parts.streak, 0.017 / 2, GOLD, 0.95);
+  strokeChips(gl, picture, frame, parts.core, 0.007 / 2, WHITE_HOT, 0.55);
 }
 
 // ---- while he thinks --------------------------------------------------------------------------

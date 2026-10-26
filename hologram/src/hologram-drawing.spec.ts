@@ -6,6 +6,9 @@ import {
   BODY_TURN_SECONDS,
   bodyTurnRadians,
   CAGE_EDGE_STRIDE,
+  CAGE_LONGEST_SPIKE,
+  CAGE_SHELL_OUTER,
+  CAGE_WOVEN_REACH,
   createHologramScene,
   EMBER_RISE,
   EMBER_STRIDE,
@@ -180,6 +183,80 @@ describe('the picture round him', () => {
 
     expect(below.length).toBeGreaterThan(0);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  /** Every edge of the cage as its two ends, its far end as written, and how lit that far end is. */
+  const cageStrokes = () => {
+    const strokes: { from: number[]; to: number[]; farLight: number }[] = [];
+    for (let offset = 0; offset < scene.cage.length; offset += CAGE_EDGE_STRIDE) {
+      strokes.push({
+        from: scene.cage.slice(offset, offset + 3),
+        to: scene.cage.slice(offset + 3, offset + 6),
+        farLight: scene.cage[offset + 9] ?? 1,
+      });
+    }
+    return strokes;
+  };
+  /** How many of the cage's edges end at each of its points. */
+  const endsAt = () => {
+    const counts = new Map<string, number>();
+    for (const { from, to } of cageStrokes()) {
+      for (const end of [from, to]) counts.set(end.join(','), (counts.get(end.join(',')) ?? 0) + 1);
+    }
+    return counts;
+  };
+
+  it('stands nothing off him past its weave but single strokes: short spikes, and the trails fading away', () => {
+    // The cage turns with his body. It used to run long chords out to 1.4R as well, joined into
+    // polylines held to the shell at one end, and turning with him they swung round him as hooks
+    // and arms — what the user had had taken away once already. Past the nodes woven over its shell
+    // there is now nothing but single strokes, each running out to a tip of its own that it fades
+    // towards: a spike, never long, or a trail, faded to nothing.
+    const counts = endsAt();
+    const outside = cageStrokes().filter(
+      ({ from, to }) => Math.max(Math.hypot(...from), Math.hypot(...to)) > CAGE_WOVEN_REACH,
+    );
+
+    expect(outside.length).toBeGreaterThan(0);
+    for (const { from, to, farLight } of outside) {
+      const length = Math.hypot(...to.map((value, axis) => value - (from[axis] ?? 0)));
+      expect(Math.hypot(...from)).toBeLessThanOrEqual(CAGE_WOVEN_REACH);
+      expect(counts.get(to.join(','))).toBe(1);
+      expect(farLight).toBeLessThan(1);
+      expect(farLight === 0 || length <= CAGE_LONGEST_SPIKE + 1e-4).toBe(true);
+    }
+  });
+
+  it('ties every node woven over its shell back down to it twice, so nothing round him has a loose end', () => {
+    // A chain of lines out past the shell held at one end only is a hook. Every point of the cage
+    // between its shell's nodes and the end of its weave — but the tip of a trail fading away — is
+    // held by at least two lines to points nearer him.
+    const nearer = new Map<string, number>();
+    const strokes = cageStrokes();
+    for (const { from, to } of strokes) {
+      if (Math.hypot(...from) > Math.hypot(...to)) nearer.set(from.join(','), (nearer.get(from.join(',')) ?? 0) + 1);
+      if (Math.hypot(...to) > Math.hypot(...from)) nearer.set(to.join(','), (nearer.get(to.join(',')) ?? 0) + 1);
+    }
+    const fadingTips = new Set(strokes.filter(({ farLight }) => farLight < 1).map(({ to }) => to.join(',')));
+    const woven = [...endsAt().keys()].filter((key) => {
+      const radius = Math.hypot(...key.split(',').map(Number));
+      return radius > CAGE_SHELL_OUTER + 1e-4 && radius <= CAGE_WOVEN_REACH && !fadingTips.has(key);
+    });
+
+    expect(woven.length).toBeGreaterThan(20);
+    for (const key of woven) expect(nearer.get(key) ?? 0).toBeGreaterThanOrEqual(2);
+  });
+
+  it('draws the cage and the embers from generators of their own, so the rest of the scene never moves them', () => {
+    // They used to be drawn from the scene's main generator after everything else, so taking
+    // anything out of the scene before them — the slow script, which the picture no longer reads —
+    // would have reshuffled every edge and ember. Seeded apart, as the body is, the same seed builds
+    // the same cage and embers whatever the main generator is asked for: these are their first rows
+    // for this seed, and they move only when the cage or the embers themselves are redrawn.
+    expect(scene.cage.slice(0, CAGE_EDGE_STRIDE)).toEqual([
+      0.85967, -0.38543, -0.36993, 0.73579, -0.42982, -0.39446, 0.1043, 0.86953, 0.76642, 1,
+    ]);
+    expect(scene.embers.slice(0, EMBER_STRIDE)).toEqual([0.45383, 0.80972, 0.225, 4.10875, 0.14711, 0.00652, 0.97971]);
   });
 
   it('arrives out of the core: the core first, on its own, the aura with his body, the cage last', () => {

@@ -1,5 +1,7 @@
 import {
   CAGE_EDGE_STRIDE,
+  CORE_X,
+  CORE_Y,
   EMBER_RISE,
   EMBER_STRIDE,
   FRAY_STRIDE,
@@ -238,8 +240,20 @@ uniform vec3 disc;
 
 // ---- round him: the cage and the embers --------------------------------------------------------
 
-/** How far a cage node sways about its place, in R: the film's wireframe shifts a little, and holds its shape. */
-const CAGE_SWAY = 0.012;
+/**
+ * How far a cage node sways about its place, in R: the film's wireframe shifts a little, and holds
+ * its shape. Under a pixel at a phone's size. Twice this suited the cage's wide glowing lines, but
+ * it moved the hairlines that replaced them clean off their own pixels, so the cage no longer
+ * looked like itself from one moment to the next.
+ */
+const CAGE_SWAY = 0.006;
+
+/**
+ * How near his core, in R, the cage may pass and still be drawn at all, and over how much farther it
+ * comes back to its full light: clear of the white-hot ring (`CORE_RING_RADIUS`) and its bloom.
+ */
+const CAGE_CORE_CLEARANCE = 0.42;
+const CAGE_CORE_FADE = 0.15;
 
 /**
  * The cage: straight hairlines between nodes round the shell of specks, in three dimensions, turned
@@ -249,6 +263,11 @@ const CAGE_SWAY = 0.012;
  * cage reads as round him rather than over him. Each edge is lit at both ends (`shapeLight`), so
  * an edge running from his front to his back fades along itself, and so does one whose far end the
  * scene lights less than its near one: the lines trailing below him fade away as they leave him.
+ *
+ * And none of it crosses his core: an edge that passes over it, seen flat, is not drawn, and one that
+ * passes near it is faint, so the white-hot ring and the haze inside it are seen clear of the cage,
+ * as the film's are. Lines turning with his body across the ring, at their own rate, also hid the
+ * ring's own slow roll.
  */
 export function cageLayer(scene: HologramPictureScene): PictureLayerSource {
   const froms: number[][] = [];
@@ -287,15 +306,28 @@ float nodeLight(vec3 turned) {
   float aside = smooth01((length(turned.xy) - 0.3) / 0.55);
   return (0.6 + 0.4 * front) * (0.25 + 0.75 * aside);
 }
+
+// How near an edge, seen flat, comes to his core.
+float nearestToTheCore(vec2 from, vec2 to) {
+  vec2 core = vec2(${glslFloat(CORE_X)}, ${glslFloat(CORE_Y)});
+  vec2 run = to - from;
+  float share = clamp(dot(core - from, run) / max(dot(run, run), 1e-6), 0.0, 1.0);
+  return length(from + run * share - core);
+}
 `,
       `
   // edgeClock: its twinkle's rate (cycles a second) and phase, the edge's weight, and how lit its
   // far end is as a share of its near one's.
   vec3 from = turnedNode(edgeFrom);
   vec3 to = turnedNode(edgeTo);
+  float clearOfTheCore = smooth01((nearestToTheCore(from.xy, to.xy) - ${glslFloat(CAGE_CORE_CLEARANCE)}) / ${glslFloat(CAGE_CORE_FADE)});
+  if (clearOfTheCore <= 0.0) {
+    hide();
+    return;
+  }
   float twinkle = 0.55 + 0.45 * smooth01(0.5 + 0.5 * sin((time * edgeClock.x + edgeClock.y) * TAU));
   emitSegment(from.xy, to.xy, halfWidth, 1.0, 1.0);
-  shapeLight = edgeClock.z * twinkle * (corner.x < 0.0 ? nodeLight(from) : edgeClock.w * nodeLight(to));
+  shapeLight = clearOfTheCore * edgeClock.z * twinkle * (corner.x < 0.0 ? nodeLight(from) : edgeClock.w * nodeLight(to));
 `,
     ),
     uniforms: ['bodyTurn', 'time', 'halfWidth'],
@@ -433,43 +465,60 @@ uniform float halfWidth;
 
 // ---- chip bursts ------------------------------------------------------------------------------
 
-/** The chips' slabs, then their hot middles: one range each. */
-export const CHIP_PARTS = ['slab', 'middle'] as const;
+/** The chips' streaks whole, then their white-hot cores: one range each. */
+export const CHIP_PARTS = ['streak', 'core'] as const;
+
+/** How many chips a burst throws at most, how many shards each is, and how many pieces a shard breaks into. */
+const CHIPS = 5;
+const SHARDS_A_CHIP = 3;
+const PIECES_A_SHARD = 2;
+
+/** How lit a chip's streak is at its tail, as a share of its head. */
+const STREAK_TAIL_LIGHT = 0.5;
 
 /**
- * The latest burst's chips: up to five slabs thrown off the left of the shell's edge, each snapping
- * in two as it breaks up (`drawChips`, `appendBurstChip`, `appendChip`), a slab and its hot middle
- * apiece.
+ * The latest burst's chips: up to five thrown off the left of the shell's edge, each a few shards of
+ * light — a main streak and two splinters — streaking back from their heads the way they came, each
+ * snapping in two and thinning away as it breaks up (`drawChips`, `chipShard`), a streak and its
+ * white-hot core apiece. They were slabs, and then long thin plates laid along the edge, and read as
+ * panels of a screen; the film's light comes off him in shards and streaks.
  */
 export function chipsLayer(): { layer: PictureLayerSource; ranges: Record<(typeof CHIP_PARTS)[number], ShapeRange> } {
   const shapes: number[][] = [];
   const ranges: Partial<Record<(typeof CHIP_PARTS)[number], ShapeRange>> = {};
   CHIP_PARTS.forEach((part, partIndex) => {
     const first = shapes.length;
-    for (let chip = 0; chip < 5; chip++) for (let piece = 0; piece < 2; piece++) shapes.push([chip, piece, partIndex]);
+    for (let chip = 0; chip < CHIPS; chip++) {
+      for (let shard = 0; shard < SHARDS_A_CHIP; shard++) {
+        for (let piece = 0; piece < PIECES_A_SHARD; piece++) shapes.push([chip, shard, piece, partIndex]);
+      }
+    }
     ranges[part] = { first, count: shapes.length - first };
   });
   return {
     layer: {
       vertexShader: shader(
         `
-in vec3 chipShape;
-uniform float strokeHalf;
+in vec4 chipShape;
+uniform float halfWidth;
 `,
         `
-  // chipShape: which chip, which of its two pieces, and whether this is its slab or its hot middle.
-  vec2 middle;
-  vec2 axis;
-  vec2 halfSize;
-  if (!chipSlab(chipShape.x, chipShape.y, chipShape.z, middle, axis, halfSize)) {
+  // chipShape: which chip, which of its shards, which of that shard's pieces, and whether this is
+  // the whole streak or its white-hot core.
+  vec2 tail;
+  vec2 head;
+  float thinning;
+  float light;
+  if (!chipShard(chipShape.x, chipShape.y, chipShape.z, chipShape.w, tail, head, thinning, light)) {
     hide();
     return;
   }
-  emitBox(middle, axis, halfSize, strokeHalf);
+  emitSegment(tail, head, halfWidth * thinning, 1.0, 1.0);
+  shapeLight = light * (corner.x < 0.0 ? ${glslFloat(STREAK_TAIL_LIGHT)} : 1.0);
 `,
       ),
-      uniforms: ['burst', 'strokeHalf'],
-      attributes: [attribute('chipShape', 3, shapes)],
+      uniforms: ['burst', 'halfWidth'],
+      attributes: [attribute('chipShape', 4, shapes)],
       shapes: shapes.length,
     },
     ranges: ranges as Record<(typeof CHIP_PARTS)[number], ShapeRange>,

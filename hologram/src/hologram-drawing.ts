@@ -798,20 +798,37 @@ function buildLimbStreaks(random: Random) {
 }
 
 /**
- * The cage's make-up: the nodes of its shell, the nodes farther out that its long chords run
- * between, the anchors that tie it to the specks, and the lines trailing below him. CAGE_REACH is
- * the farthest any of it reaches, in R.
+ * The cage's make-up: the nodes of its shell, the nodes woven over it a little farther out, the
+ * spikes standing off it, the anchors that tie it to the specks, and the lines trailing below him.
+ * CAGE_REACH is the farthest any of it reaches, in R.
  */
-const CAGE_NODES = 150;
-const CAGE_OUTER_NODES = 26;
+const CAGE_NODES = 160;
+const CAGE_WOVEN_NODES = 34;
+const CAGE_SPIKES = 13;
 const CAGE_ANCHORS = 12;
 const CAGE_TRAILS = 5;
 const CAGE_REACH = 1.4;
+/** How far out the shell's nodes reach, in R, from just outside the specks' edge. */
+const CAGE_SHELL_INNER = 0.9;
+export const CAGE_SHELL_OUTER = 1.16;
+/**
+ * How far out the woven nodes reach, in R: past it there are only single strokes — the spikes and
+ * the trails — so that nothing round him can read as an arm.
+ */
+export const CAGE_WOVEN_REACH = 1.25;
 /** The longest edge between two of the shell's nodes, in R: the film's are short and jagged. */
 const CAGE_LONGEST_MESH_EDGE = 0.42;
-/** The longest spike from an outer node down to the shell's, and the longest chord between two outer nodes. */
-const CAGE_LONGEST_SPIKE = 0.55;
-const CAGE_LONGEST_CHORD = 0.9;
+/** The longest edge from a woven node back down to the shell's, and between two woven nodes. */
+const CAGE_LONGEST_WEAVE = 0.36;
+const CAGE_LONGEST_WOVEN_CHORD = 0.3;
+/** The longest a spike may be, in R, and how lit its tip is as a share of its root. */
+export const CAGE_LONGEST_SPIKE = 0.3;
+const CAGE_SPIKE_TIP_LIGHT = 0.3;
+/**
+ * What the scene's seed is mixed with to seed the cage's own generator, as {@link BODY_SEED_MIX}
+ * seeds the body's: what the scene draws from its main generator can change without moving the cage.
+ */
+const CAGE_SEED_MIX = 0x5bd1e995;
 
 /**
  * A cage edge as a row: both ends (y down, z towards the eye at rest), its twinkle's rate and phase,
@@ -837,24 +854,25 @@ function pickCageDirection(random: Random): number[] {
 }
 
 /**
- * A node of the cage's lumpy shell, hugging the shell of specks: 0.9-1.2R out, most of them inside
- * 1.1R. Lumpy rather than round, the reach swelling and dipping with the direction and a little at
- * random.
+ * A node of the cage's lumpy shell, hugging the shell of specks: {@link CAGE_SHELL_INNER} to
+ * {@link CAGE_SHELL_OUTER} out, most of them inside 1.05R. Lumpy rather than round, the reach
+ * swelling and dipping with the direction and a little at random.
  */
 function pickCageNode(random: Random): number[] {
   const direction = pickCageDirection(random);
   const lump = 0.5 + 0.5 * Math.sin(2.3 * direction[0] + 1.1) * Math.sin(3.1 * direction[1] - 0.4 + 1.7 * direction[2]);
   const out = Math.min(1, Math.max(0, 0.55 * lump + 0.45 * random()));
-  const radius = 0.9 + 0.3 * out ** 1.6;
+  const radius = CAGE_SHELL_INNER + (CAGE_SHELL_OUTER - CAGE_SHELL_INNER) * out ** 1.6;
   return direction.map((component) => component * radius);
 }
 
 /**
- * A node farther out than the shell's, 1.18R to just inside {@link CAGE_REACH}: where the long chords
- * run. Never under him, where a node so far out, joined down to the shell, would hang off him.
+ * A node woven over the shell's, a little farther out than any of them and no farther than
+ * {@link CAGE_WOVEN_REACH}: the crumpled outside of the film's mesh. Never under him, where a node
+ * out past the shell would hang off him.
  */
-function pickOuterCageNode(random: Random): number[] {
-  const radius = 1.18 + random() * (CAGE_REACH - 0.02 - 1.18);
+function pickWovenCageNode(random: Random): number[] {
+  const radius = CAGE_SHELL_OUTER + 0.02 + random() * (CAGE_WOVEN_REACH - CAGE_SHELL_OUTER - 0.02);
   for (;;) {
     const direction = pickCageDirection(random);
     if (direction[1] < 0.4) return direction.map((component) => component * radius);
@@ -888,27 +906,52 @@ function pushCageMesh(edges: number[], random: Random, nodes: number[][]) {
 }
 
 /**
- * The cage farther out: each outer node joined to its one or two nearest outer nodes by long
- * straight chords, which make loose polylines and the odd wide triangle wrapping round him well
- * clear of the specks, as the film's outer lines do, and most of them tied down to the shell by a
- * single spike to its nearest node there. They are a little fainter than the mesh, which is where
- * the film's wireframe is brightest.
+ * The cage's crumpled outside: each woven node tied back down to the two nodes of the shell nearest
+ * it, and some to the woven node nearest it as well, so the outside of the mesh is shallow jagged
+ * triangles lying over the shell, as the film's is. Every woven node is held by both ends of what it
+ * stands on, so none of it is a line with a loose end: a chain of chords out there, tied to the
+ * shell at one end only, was a hook, and turning with his body it swung round him like an arm.
  */
-function pushCageOuterMesh(edges: number[], random: Random, nodes: number[][], outerNodes: number[][]) {
+function pushCageWeave(edges: number[], random: Random, nodes: number[][], wovenNodes: number[][]) {
+  // A woven node out of reach of two of the shell's would hang by one line, a loose end, so it is
+  // left out altogether, and nothing else is joined to it either.
+  const held = wovenNodes.filter(
+    (node) => (nearestCageNodes(node, nodes)[1]?.distance ?? Infinity) <= CAGE_LONGEST_WEAVE,
+  );
   const joined = new Set<string>();
-  outerNodes.forEach((node, index) => {
-    const chords = random() < 0.5 ? 2 : 1;
-    for (const { otherIndex, distance } of nearestCageNodes(node, outerNodes).slice(0, chords)) {
-      const key = `${Math.min(index, otherIndex)}:${Math.max(index, otherIndex)}`;
-      if (joined.has(key) || distance > CAGE_LONGEST_CHORD) continue;
-      joined.add(key);
-      pushCageEdge(edges, random, node, outerNodes[otherIndex], 0.5 + 0.3 * random());
+  held.forEach((node, index) => {
+    for (const { otherIndex } of nearestCageNodes(node, nodes).slice(0, 2)) {
+      pushCageEdge(edges, random, node, nodes[otherIndex], 0.6 + 0.25 * random());
     }
-    const [nearest] = nearestCageNodes(node, nodes);
-    if (random() < 0.65 && nearest !== undefined && nearest.distance <= CAGE_LONGEST_SPIKE) {
-      pushCageEdge(edges, random, node, nodes[nearest.otherIndex], 0.6 + 0.25 * random());
-    }
+    const [nearest] = nearestCageNodes(node, held);
+    if (nearest === undefined || nearest.distance > CAGE_LONGEST_WOVEN_CHORD || random() < 0.4) return;
+    const key = `${Math.min(index, nearest.otherIndex)}:${Math.max(index, nearest.otherIndex)}`;
+    if (joined.has(key)) return;
+    joined.add(key);
+    pushCageEdge(edges, random, node, held[nearest.otherIndex], 0.55 + 0.25 * random());
   });
+}
+
+/**
+ * Spikes: short single strokes standing off the outermost of the shell's nodes, out past
+ * {@link CAGE_WOVEN_REACH}, their tips fading, as the film's wireframe throws the odd short line out
+ * of its mesh. Leaning a little but never far from straight out, so that turning with him a spike
+ * never sweeps round him as a hook does.
+ */
+function pushCageSpikes(edges: number[], random: Random, nodes: number[][]) {
+  const roots = nodes.filter((node) => Math.hypot(...node) >= CAGE_WOVEN_REACH - CAGE_LONGEST_SPIKE + 0.04);
+  for (let spike = 0; spike < CAGE_SPIKES && roots.length > 0; spike++) {
+    const root = roots[Math.floor(random() * roots.length)];
+    const rootRadius = Math.hypot(...root);
+    const leaning = root.map((value) => value / rootRadius + (random() - 0.5) * 0.45);
+    const leaningLength = Math.hypot(...leaning);
+    const tipRadius = CAGE_WOVEN_REACH + 0.02 + random() * 0.1;
+    // as long as it takes to stand past the woven nodes, and never longer than a spike may be
+    const length = Math.min(CAGE_LONGEST_SPIKE, tipRadius - rootRadius + 0.02);
+    const tip = root.map((value, axis) => value + ((leaning[axis] ?? 0) / leaningLength) * length);
+    if (Math.hypot(...tip) <= CAGE_WOVEN_REACH) continue;
+    pushCageEdge(edges, random, root, tip, 0.7 + 0.2 * random(), CAGE_SPIKE_TIP_LIGHT);
+  }
 }
 
 /** Anchors: down from a node to the specks' edge, a little to one side of straight in. */
@@ -954,14 +997,18 @@ function pushCageTrails(edges: number[], random: Random) {
 }
 
 /**
- * The cage: the film's loose angular wireframe round the shell of specks — straight hairlines
- * between nodes, making jagged triangles and polylines. Seeded nodes on a lumpy shell hugging the
- * specks, 0.9-1.2R out, each joined to its two or three nearest by short edges; nodes farther out
- * joined down to it and to each other by long straight chords; a few anchors running down to the
- * specks' edge; and a few long lines tapering below him, none of it reaching past
- * {@link CAGE_REACH}. It is in three dimensions and turns with the body (`gpu/picture-layers.ts`),
- * always there and calm: nothing grows out of it or swings away, which is what the user disliked in
- * the protrusions it replaces.
+ * The cage: the film's crumpled wireframe round the shell of specks — straight hairlines between
+ * nodes, making jagged triangles. Seeded nodes on a lumpy shell hugging the specks,
+ * {@link CAGE_SHELL_INNER} to {@link CAGE_SHELL_OUTER} out, each joined to its two or three nearest
+ * by short edges; nodes woven over them a little farther out, each tied back down to two of them; a
+ * few short spikes standing straight off it; a few anchors running down to the specks' edge; and a
+ * few long lines tapering below him. Past {@link CAGE_WOVEN_REACH} there are only the spikes and the
+ * trails, single strokes fading away, and none of it reaches past {@link CAGE_REACH}.
+ *
+ * It is in three dimensions and turns with the body (`gpu/picture-layers.ts`), always there and
+ * calm: nothing grows out of it or swings away, which is what the user disliked in the protrusions
+ * it replaces. It once had long chords out to 1.4R as well, joined into polylines held to the shell
+ * at one end; turning with him, they swung round him as hooks and arms, the very thing he had lost.
  *
  * Stride {@link CAGE_EDGE_STRIDE}: from x, y, z, to x, y, z, twinkle rate (cycles a second), its
  * phase, the edge's weight, and how lit its far end is as a share of its near one's. y runs down the
@@ -970,11 +1017,12 @@ function pushCageTrails(edges: number[], random: Random) {
 function buildCage(random: Random) {
   const nodes: number[][] = [];
   while (nodes.length < CAGE_NODES) nodes.push(pickCageNode(random));
-  const outerNodes: number[][] = [];
-  while (outerNodes.length < CAGE_OUTER_NODES) outerNodes.push(pickOuterCageNode(random));
+  const wovenNodes: number[][] = [];
+  while (wovenNodes.length < CAGE_WOVEN_NODES) wovenNodes.push(pickWovenCageNode(random));
   const edges: number[] = [];
   pushCageMesh(edges, random, nodes);
-  pushCageOuterMesh(edges, random, nodes, outerNodes);
+  pushCageWeave(edges, random, nodes, wovenNodes);
+  pushCageSpikes(edges, random, nodes);
   pushCageAnchors(edges, random, nodes);
   pushCageTrails(edges, random);
   return edges;
@@ -987,6 +1035,8 @@ const EMBERS_IN_SILENCE = 0.45;
 const EMBER_FARTHEST = 1.45;
 /** How far up an ember rises for every R it drifts outward. */
 export const EMBER_RISE = 0.3;
+/** What the scene's seed is mixed with to seed the embers' own generator (see {@link CAGE_SEED_MIX}). */
+const EMBER_SEED_MIX = 0x27d4eb2f;
 
 /**
  * The embers: tiny golden flecks drifting out from the shell's edge and a little upward, each on its
@@ -1042,9 +1092,10 @@ export function createHologramScene(seed: number, particleCount: number = PARTIC
     limbStreaks: buildLimbStreaks(random).map(roundToFiveDecimals),
     // only a seed: the static textures are built straight into paths, never copied to the worklet runtime
     textureSeed: Math.floor(random() * 4294967296),
-    // Drawn after the texture's seed, so nothing above is reshuffled by them.
-    cage: buildCage(random).map(roundToFiveDecimals),
-    embers: buildEmbers(random).map(roundToFiveDecimals),
+    // Each from a generator of its own, as the body is, so that nothing drawn from the one above —
+    // taken out or added — reshuffles them, nor they it.
+    cage: buildCage(createRandom(seed ^ CAGE_SEED_MIX)).map(roundToFiveDecimals),
+    embers: buildEmbers(createRandom(seed ^ EMBER_SEED_MIX)).map(roundToFiveDecimals),
   };
 }
 
