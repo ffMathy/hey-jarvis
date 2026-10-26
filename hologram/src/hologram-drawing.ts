@@ -235,7 +235,11 @@ export interface HologramFrame {
  * square costs is the canvas it is cleared on, not the picture painted into it.
  */
 export const SPHERE_FRACTION = 0.27;
-/** The outer rim layer rolls clockwise in the screen plane: one turn in about 33 s, as the film's ladder ring. */
+/**
+ * The white-hot core ring's brighter stretches roll clockwise round it: one turn in about 33 s, the
+ * rate the rim's ladder ring rolled at before the Vision footage replaced it, which the headset's
+ * coronas still roll their ticks at.
+ */
 export const ROLL_DEGREES_PER_SECOND = 11;
 /**
  * The inner layer turns the other way (shot d: -1.6 to -5.4°/s): the whorl, the loop, and half
@@ -325,6 +329,17 @@ export const CORE_Y = -0.02;
 /** How long a burst's chips stay fully lit, in seconds, and when the last of them has broken up and gone. */
 export const CHIP_HOLD_SECONDS = 0.13;
 export const CHIP_GONE_SECONDS = 0.2;
+/**
+ * Where the picture's layers leave his body, in R: the outer edge of the film's shell of specks
+ * (0.88R, the film's S). The fray, the chips and the embers start from it, and the cage's anchors
+ * reach down to it.
+ */
+export const PICTURE_SHELL_EDGE = 0.88;
+/**
+ * The white-hot ring round his core, in R from the core: the brightest thing in him, at about 0.4 of
+ * the film's S. The thinking pulse blooms out of it.
+ */
+export const CORE_RING_RADIUS = 0.35;
 
 // Strides of the flat scene tables (the builders describe the fields).
 export const BODY_STRIDE = 10;
@@ -333,15 +348,12 @@ export const STREAM_STRIDE = 11;
 export const BODY_ID_FIELD = 6;
 export const STREAM_ID_FIELD = 7;
 
-export const CRESCENT_PIECE_STRIDE = 3;
-export const CRESCENT_PIECES_PER_STRAND = 14;
-export const TRUSS_PIECE_STRIDE = 6;
 export const FRAY_STRIDE = 5;
 export const STREAK_ARC_STRIDE = 6;
 export const LIMB_STREAK_STRIDE = 5;
-export const RING_TICK_STRIDE = 2;
 const EPOCH_STRIDE = 10;
-export const COMET_STRIDE = 5;
+export const CAGE_EDGE_STRIDE = 9;
+export const EMBER_STRIDE = 7;
 /** Side of the tiled sparkle texture in texels, and how wide a texel is on the sphere: a stroke spans about two. */
 export const SPARKLE_TEXTURE_TEXELS = 64;
 export const SPARKLE_TEXEL_SIZE = 0.018;
@@ -349,16 +361,21 @@ export const SPARKLE_TEXEL_SIZE = 0.018;
 export const SPARKLE_SEED_MIX = 0x2545f491;
 
 /**
- * The limb bloom and the limb ridge are rings of light round the edge of the ball, and their
- * shaders are transparent over everything inside about 0.89R. Painting them as filled discs
- * still shades every pixel of the disc and blends a transparent result over it, which on these
- * two — the widest layers in the drawing — was a twelfth of the whole frame for nothing. They
- * are painted as bands instead: a stroked circle of these widths, centred so the band covers
- * everything the shader is not transparent over, with the inner edge well inside the transparent
- * part so its antialiasing multiplies by zero and the pixels come out identical. Measured over
- * a script's worth of frames — the intro, silence, three speaking levels and five burst ages,
- * at 384 px — not one channel of one pixel differs, and the frame is 8% cheaper.
+ * The aura: the film's bloom, a soft warm band of light round him, see-through inside AURA_INNER,
+ * at its brightest on the shell's edge and gone by AURA_OUTER, in R from his centre. It is not a
+ * filled volume — the middle stays see-through between his light, as the user asked ("I just want
+ * the particles to speak for themselves") — and it ends well inside his square, whose edge is about
+ * 1.8R away: the film's own bloom runs on past twice his radius, which a phone's screen has no
+ * room for.
+ *
+ * It is painted as a band rather than a disc. A gradient that is transparent over the middle still
+ * shades every pixel of a filled disc and blends nothing over it, which on the widest layer in the
+ * picture is a large share of the frame for nothing; a stroked circle covering just the radii the
+ * gradient lights draws exactly the same pixels. The limb bloom this replaced measured that: not
+ * one channel of one pixel differed, and the frame was 8% cheaper.
  */
+export const AURA_INNER = 0.45;
+export const AURA_OUTER = 1.56;
 /**
  * What Jarvis does while he is working rather than talking: a plane sweeps up through him.
  *
@@ -386,11 +403,6 @@ export const SCAN_FLOOR = 0.12;
 export const SCAN_BRIGHT_NEARNESS = 0.55;
 /** How long the ring takes to bloom from the core to past the limb, at the end of each pass. */
 export const PULSE_SECONDS = 0.55;
-
-export const LIMB_BLOOM_RADIUS = 0.995;
-export const LIMB_BLOOM_BAND = 0.25;
-export const LIMB_RIDGE_RADIUS = 0.955;
-export const LIMB_RIDGE_BAND = 0.17;
 
 /** A fragment is lit for this share of its clock's cycle, fading in and out over a third of that at each end. */
 export const FRAGMENT_DUTY = 0.6;
@@ -746,56 +758,9 @@ function buildStream(random: Random) {
 }
 
 /**
- * The crescent's strands as rings of pieces in the rolling frame, so their breaks
- * roll clockwise through the crescent while its brightness stays on the left.
- * Stride 3 per piece, CRESCENT_PIECES_PER_STRAND pieces per strand, four strands:
- * start (degrees), sweep (degrees), a 0..1 hash.
+ * Strands fraying off the upper-left of the shell's edge while he talks, drawn round
+ * {@link PICTURE_SHELL_EDGE}. Stride 5: clock angle, sweep (degrees), rate, phase, threshold.
  */
-function buildCrescentPieces(random: Random) {
-  const pieces: number[] = [];
-  for (let strand = 0; strand < 4; strand++) {
-    const weights: number[] = [];
-    for (let i = 0; i < CRESCENT_PIECES_PER_STRAND; i++) weights.push(0.6 + random());
-    const total = weights.reduce((sum, weight) => sum + weight, 0);
-    let start = random() * 360;
-    for (let i = 0; i < CRESCENT_PIECES_PER_STRAND; i++) {
-      const span = (weights[i] / total) * 360;
-      const gap = strand < 2 ? 2.2 + random() * 2.6 : 2.5 + random() * 6;
-      pieces.push(start, span - gap, random());
-      start += span;
-    }
-  }
-  return pieces;
-}
-
-/**
- * The segmented ladder ring ("crown truss"): pieces of about 9° along three partial
- * arcs in the rolling frame, 190° of arc in all. Stride 6: start (degrees), sweep,
- * circuit trace (0 none, 1 L, 2 Z, 3 T), hanging strut length (0 = none), hash, arc.
- */
-function buildTruss(random: Random) {
-  const truss: number[] = [];
-  const arcs = [
-    [280, 380],
-    [195, 245],
-    [62, 102],
-  ];
-  arcs.forEach(([from, to], arc) => {
-    let degrees = from;
-    while (degrees < to - 4) {
-      // pieces meet end to end, so a leading truss has continuous rails with rungs across
-      const sweep = Math.min(to - degrees, 8 + random() * 3);
-      const traceRoll = random();
-      const trace = traceRoll < 0.45 ? 0 : 1 + Math.floor(random() * 3);
-      const strut = random() < 0.22 ? 0.12 + random() * 0.13 : 0;
-      truss.push(degrees, sweep, trace, strut, random(), arc);
-      degrees += sweep;
-    }
-  });
-  return truss;
-}
-
-/** Strands fraying off the upper-left limb while he talks. Stride 5: clock angle, sweep (degrees), rate, phase, threshold. */
 function buildFray(random: Random) {
   const fray: number[] = [];
   for (let i = 0; i < 22; i++) {
@@ -810,13 +775,16 @@ function buildFray(random: Random) {
   return fray;
 }
 
-/** Outer streak arcs at 1.2-1.27R, upper left, while he talks. Stride 6: clock centre, radius, sweep, rate, phase, threshold. */
+/**
+ * Streak arcs a little off the shell's edge, at 1.0-1.07R, upper left, while he talks.
+ * Stride 6: clock centre, radius, sweep, rate, phase, threshold.
+ */
 function buildStreakArcs(random: Random) {
   const arcs: number[] = [];
   for (let i = 0; i < 7; i++) {
     arcs.push(
       286 + i * 11 + random() * 6,
-      1.2 + random() * 0.07,
+      1 + random() * 0.07,
       12 + random() * 12,
       0.5 + random() * 0.4,
       random(),
@@ -827,7 +795,7 @@ function buildStreakArcs(random: Random) {
 }
 
 /**
- * Horizontal streaks slipping out of the right limb while he talks, as the film's
+ * Horizontal streaks slipping out of the right of the shell while he talks, as the film's
  * sphere loosens on "Doctor.". Stride 5: height, length, rate, phase, threshold.
  */
 function buildLimbStreaks(random: Random) {
@@ -836,17 +804,6 @@ function buildLimbStreaks(random: Random) {
     streaks.push(-0.42 + random() * 0.72, 0.08 + random() * 0.26, 0.75 + random() * 0.7, random(), random() * 0.75);
   }
   return streaks;
-}
-
-/** Ticks along the thin rim ring, in the rolling frame. Stride 2: angle (degrees), length. */
-function buildRingTicks(random: Random) {
-  const ticks: number[] = [];
-  let degrees = random() * 10;
-  while (degrees < 356) {
-    ticks.push(degrees, 0.025 + random() * 0.045);
-    degrees += 5 + random() * 12;
-  }
-  return ticks;
 }
 
 /**
@@ -879,19 +836,141 @@ function buildScript(random: Random) {
   return { epochs, period: start };
 }
 
-/** Comet arcs curling from the core to the lower right. Stride 5: period, phase, base angle (radians), radius, sweep. */
-function buildComets(random: Random) {
-  const comets: number[] = [];
-  for (let i = 0; i < 5; i++) {
-    comets.push(
-      5 + random() * 4,
+/** How many nodes the cage's shell has, how many anchors tie it to the specks, and how far the tail reaches. */
+const CAGE_NODES = 72;
+const CAGE_ANCHORS = 9;
+const CAGE_TAIL_REACH = 1.4;
+
+/** A cage edge as a row: both ends (y down, z towards the eye at rest), its twinkle's rate and phase, and its weight. */
+function pushCageEdge(edges: number[], random: Random, from: number[], to: number[], weight: number) {
+  edges.push(from[0], from[1], from[2], to[0], to[1], to[2], 0.05 + random() * 0.13, random(), weight);
+}
+
+/** A node of the cage's lumpy shell, 0.95-1.31R out: more of them over the top, as the film's is fullest above. */
+function pickCageNode(random: Random): number[] {
+  for (;;) {
+    const height = random() * 2 - 1;
+    const around = random() * Math.PI * 2;
+    const ring = Math.sqrt(1 - height * height);
+    const direction = [Math.cos(around) * ring, height, Math.sin(around) * ring];
+    // y runs down, so a negative height is over the top
+    if (random() > 0.62 - 0.38 * height) continue;
+    // lumpy rather than round: the reach swells and dips with the direction, and a little at random
+    const lump =
+      0.5 + 0.5 * Math.sin(2.3 * direction[0] + 1.1) * Math.sin(3.1 * direction[1] - 0.4 + 1.7 * direction[2]);
+    const radius = 0.95 + 0.36 * Math.min(1, Math.max(0, 0.7 * lump + 0.3 * random()));
+    return direction.map((component) => component * radius);
+  }
+}
+
+/**
+ * The cage: the film's loose angular wireframe round the shell of specks — straight hairlines
+ * between nodes, making jagged triangles and polylines. Seeded nodes on a lumpy shell 0.95-1.31R
+ * out, each joined to its two or three nearest; a few anchors running down to the specks' edge;
+ * and a tail trailing below him to no more than {@link CAGE_TAIL_REACH}. It is in three dimensions
+ * and turns with the body (`gpu/picture-layers.ts`), always there and calm: nothing grows out of
+ * it or swings away, which is what the user disliked in the protrusions it replaces.
+ *
+ * Stride {@link CAGE_EDGE_STRIDE}: from x, y, z, to x, y, z, twinkle rate (cycles a second), its
+ * phase, and the edge's weight. y runs down the screen and z towards the eye at rest, as the body's.
+ */
+function buildCage(random: Random) {
+  const nodes: number[][] = [];
+  while (nodes.length < CAGE_NODES) nodes.push(pickCageNode(random));
+  const edges: number[] = [];
+  const joined = new Set<string>();
+  nodes.forEach((node, index) => {
+    const nearest = nodes
+      .map((other, otherIndex) => ({
+        otherIndex,
+        distance: Math.hypot(...node.map((value, axis) => value - other[axis])),
+      }))
+      .filter(({ otherIndex }) => otherIndex !== index)
+      .sort((first, second) => first.distance - second.distance);
+    const neighbours = random() < 0.6 ? 3 : 2;
+    for (const { otherIndex, distance } of nearest.slice(0, neighbours)) {
+      const key = `${Math.min(index, otherIndex)}:${Math.max(index, otherIndex)}`;
+      // a chord much longer than the cage's mesh would cut across his face
+      if (joined.has(key) || distance > 0.75) continue;
+      joined.add(key);
+      pushCageEdge(edges, random, node, nodes[otherIndex], 0.75 + 0.25 * random());
+    }
+  });
+  // anchors: down from a node to the specks' edge, a little to one side of straight in
+  for (let anchor = 0; anchor < CAGE_ANCHORS; anchor++) {
+    const node = nodes[Math.floor(random() * nodes.length)];
+    const length = Math.hypot(...node);
+    const aside = node.map((value) => value / length + (random() - 0.5) * 0.5);
+    const asideLength = Math.hypot(...aside);
+    const foot = aside.map((value) => (value / asideLength) * PICTURE_SHELL_EDGE * (0.93 + 0.07 * random()));
+    pushCageEdge(edges, random, node, foot, 0.5 + 0.2 * random());
+  }
+  // the tail: a chain from under the specks down and a little to the left, with a branch off it
+  let previous = [0.06, PICTURE_SHELL_EDGE * 0.97, 0.08];
+  const chain: number[][] = [];
+  for (let step = 0; step < 5; step++) {
+    const next = [
+      previous[0] - 0.04 + (random() - 0.5) * 0.16,
+      previous[1] + 0.1 + random() * 0.04,
+      (random() - 0.5) * 0.24,
+    ];
+    const reach = Math.hypot(...next);
+    const kept = reach > CAGE_TAIL_REACH ? next.map((value) => (value * CAGE_TAIL_REACH) / reach) : next;
+    pushCageEdge(edges, random, previous, kept, 0.85);
+    chain.push(kept);
+    previous = kept;
+  }
+  const fork = chain[1];
+  const branch = [fork[0] + 0.14 + random() * 0.08, fork[1] + 0.12, fork[2] + (random() - 0.5) * 0.2];
+  pushCageEdge(edges, random, fork, branch, 0.7);
+  // and the tail is tied into the cage where it leaves it
+  const top = chain[0];
+  const nearestNode = nodes.reduce((best, node) =>
+    Math.hypot(...node.map((value, axis) => value - top[axis])) <
+    Math.hypot(...best.map((value, axis) => value - top[axis]))
+      ? node
+      : best,
+  );
+  pushCageEdge(edges, random, top, nearestNode, 0.7);
+  return edges;
+}
+
+/** How many embers drift round him, and the share of them that show while he is quiet. */
+const EMBER_COUNT = 56;
+const EMBERS_IN_SILENCE = 0.45;
+/** How far out an ember may get before it has gone, in R: well inside his square's edge. */
+const EMBER_FARTHEST = 1.45;
+/** How far up an ember rises for every R it drifts outward. */
+export const EMBER_RISE = 0.3;
+
+/**
+ * The embers: tiny golden flecks drifting out from the shell's edge and a little upward, each on its
+ * own slow clock, fading in and out and gone before {@link EMBER_FARTHEST}. A quarter of them are
+ * streaked. Which of them show depends on a threshold each holds: {@link EMBERS_IN_SILENCE} of them
+ * while he is quiet, more while he talks, and all of them on the low notes of his voice
+ * (`emberShare` in {@link analyseFrame}).
+ *
+ * Stride {@link EMBER_STRIDE}: direction (radians from 3 o'clock, y down), where it starts (R),
+ * how far it drifts (R), its period (s), its phase, its streak's length (R) and its threshold.
+ */
+function buildEmbers(random: Random) {
+  const embers: number[] = [];
+  for (let ember = 0; ember < EMBER_COUNT; ember++) {
+    const start = PICTURE_SHELL_EDGE - 0.08 + random() * 0.12;
+    // what it rises adds to how far out it gets, at most EMBER_RISE as much again
+    const drift = Math.min(0.22 + random() * 0.36, (EMBER_FARTHEST - start) / (1 + EMBER_RISE));
+    const streaked = random() < 0.25;
+    embers.push(
+      random() * Math.PI * 2,
+      start,
+      drift,
+      4 + random() * 5,
       random(),
-      -0.1 + i * 0.3 + random() * 0.2,
-      0.35 + random() * 0.4,
-      1.2 + random() * 0.8,
+      streaked ? 0.025 + random() * 0.035 : 0.004 + random() * 0.006,
+      random(),
     );
   }
-  return comets;
+  return embers;
 }
 
 /** Keeps the worklet copy of the scene small. */
@@ -914,17 +993,16 @@ export function createHologramScene(seed: number, particleCount: number = PARTIC
   return {
     body: buildBody(createRandom(seed ^ BODY_SEED_MIX), particleCount).map(roundToFiveDecimals),
     stream: buildStream(random).map(roundToFiveDecimals),
-    crescentPieces: buildCrescentPieces(random).map(roundToFiveDecimals),
-    truss: buildTruss(random).map(roundToFiveDecimals),
     fray: buildFray(random).map(roundToFiveDecimals),
     streakArcs: buildStreakArcs(random).map(roundToFiveDecimals),
     limbStreaks: buildLimbStreaks(random).map(roundToFiveDecimals),
-    ringTicks: buildRingTicks(random).map(roundToFiveDecimals),
     epochs: script.epochs.map(roundToFiveDecimals),
     scriptPeriod: roundToFiveDecimals(script.period),
-    comets: buildComets(random).map(roundToFiveDecimals),
     // only a seed: the static textures are built straight into paths, never copied to the worklet runtime
     textureSeed: Math.floor(random() * 4294967296),
+    // Drawn after the texture's seed, so nothing above is reshuffled by them.
+    cage: buildCage(random).map(roundToFiveDecimals),
+    embers: buildEmbers(random).map(roundToFiveDecimals),
   };
 }
 
@@ -948,16 +1026,14 @@ export type HologramPictureScene = Omit<HologramScene, 'body' | 'stream'>;
 /** {@link HologramPictureScene} of a scene, as a new object holding only those parts. */
 export function pictureSceneOf(scene: HologramScene): HologramPictureScene {
   return {
-    crescentPieces: scene.crescentPieces,
-    truss: scene.truss,
     fray: scene.fray,
     streakArcs: scene.streakArcs,
     limbStreaks: scene.limbStreaks,
-    ringTicks: scene.ringTicks,
     epochs: scene.epochs,
     scriptPeriod: scene.scriptPeriod,
-    comets: scene.comets,
     textureSeed: scene.textureSeed,
+    cage: scene.cage,
+    embers: scene.embers,
   };
 }
 
@@ -1025,30 +1101,6 @@ function appendArc(
   }
 }
 
-/** A rotated ellipse, or the first `share` of its turn from the end of its major axis, as a polyline (prebuilt only). */
-function appendEllipse(
-  builder: PathBuilder,
-  centreX: number,
-  centreY: number,
-  radiusX: number,
-  radiusY: number,
-  tilt: number,
-  steps: number,
-  share = 1,
-) {
-  const cosTilt = Math.cos(tilt);
-  const sinTilt = Math.sin(tilt);
-  for (let step = 0; step <= steps; step++) {
-    const angle = (step / steps) * Math.PI * 2 * share - (share < 1 ? Math.PI / 2 : 0);
-    const x = Math.cos(angle) * radiusX;
-    const y = Math.sin(angle) * radiusY;
-    const pointX = centreX + x * cosTilt - y * sinTilt;
-    const pointY = centreY + x * sinTilt + y * cosTilt;
-    if (step === 0) pathMoveTo(builder, pointX, pointY);
-    else pathLineTo(builder, pointX, pointY);
-  }
-}
-
 /**
  * Brightness along the body's strokes: a tiled field of soft random dips and hot spots
  * (0.5-1), so a stroke is hot in places and dimmer in others rather than one flat tone.
@@ -1076,110 +1128,12 @@ export function sparklePixels(seed: number) {
   return pixels;
 }
 
-/** One unbroken stretch of a whorl arm, `stretch` radians of its spiral from `along`. */
-function appendWhorlStretch(
-  inner: PathBuilder,
-  outer: PathBuilder,
-  ticks: PathBuilder,
-  random: Random,
-  first: number,
-  firstAngle: number,
-  along: number,
-  stretch: number,
-) {
-  // Each turn is 2.7 times as wide as the one inside it, so an arm crosses the whole interior in
-  // under two turns: the film's whorl is one loose sweep with open fill between its passes, not
-  // a set of near-concentric rings.
-  const growth = Math.log(2.7) / (Math.PI * 2);
-  const steps = Math.ceil(stretch / 0.14);
-  let previousArm = ticks;
-  for (let step = 0; step <= steps; step++) {
-    const turned = along + (stretch * step) / steps;
-    const radius = first * Math.exp(growth * turned);
-    if (radius > 0.76) return;
-    const angle = firstAngle + turned;
-    const x = CORE_X + Math.cos(angle) * radius;
-    const y = CORE_Y + Math.sin(angle) * radius;
-    // an arm is bold round the core and thinner as it opens out past 0.46R; the two halves are
-    // drawn apart, so each is picked up where the other left it
-    const arm = radius < 0.46 ? inner : outer;
-    if (arm === previousArm) pathLineTo(arm, x, y);
-    else pathMoveTo(arm, x, y);
-    previousArm = arm;
-    // the arms are furry with short fragments across them, as the film's are
-    if (random() < 0.3) {
-      const across = (0.014 + 0.035 * random()) * (random() < 0.5 ? -1 : 1);
-      pathMoveTo(ticks, x, y);
-      pathLineTo(ticks, x + Math.cos(angle) * across, y + Math.sin(angle) * across);
-    }
-  }
-}
-
-/** One arm of the whorl: a spiral of broken stretches from `first` out to 0.76R. */
-function appendWhorlArm(
-  inner: PathBuilder,
-  outer: PathBuilder,
-  ticks: PathBuilder,
-  random: Random,
-  first: number,
-  firstAngle: number,
-  turns: number,
-) {
-  let along = 0;
-  while (along < turns) {
-    const stretch = Math.min(turns - along, 1.1 + random() * 1.5);
-    appendWhorlStretch(inner, outer, ticks, random, first, firstAngle, along, stretch);
-    // the gaps widen as an arm opens out
-    along += stretch + 0.12 + random() * 0.18 + 0.02 * along;
-  }
-}
-
 /**
- * The whorl round the core (shot d f40-150, the ball's boldest inner feature): two nested spiral
- * arms winding out from just outside the core's ring, each turn about 2.7× as wide as the one
- * inside it, broken into long stretches with short gaps, reaching 0.76R in under two turns. Two wisps just inside
- * the rim layer (shot b) keep them company out there. They are drawn wider than any stroke in
- * the body and turn the other way from the rim (drawInnerShells), so the ball reads as one loose
- * swirl over a field of fragments — the film's interior is a few fat luminous ribbons, not a
- * star chart of hairlines of equal weight.
+ * The marks of the core: inside its white-hot ring ({@link CORE_RING_RADIUS}) a hooked ring of radius
+ * 0.1R with a stem curling in, and a bar across short enough to stay inside it — the film's glowing
+ * disc has faint marks like these across it — and the short tick the film's ring puts out at its
+ * upper right, drawn as hot as the ring.
  */
-function buildWhorl(random: Random) {
-  const whorl = makePathBuilder();
-  const outer = makePathBuilder();
-  const ticks = makePathBuilder();
-  appendWhorlArm(whorl, outer, ticks, random, 0.16, 3.5, 10.5);
-  appendWhorlArm(whorl, outer, ticks, random, 0.33, 1.1, 6.5);
-  appendArc(outer, CORE_X, CORE_Y, 0.7, 0.3, 0.8);
-  appendArc(outer, CORE_X, CORE_Y, 0.66, 1.35, 0.55);
-  return { whorl, whorlOuter: outer, whorlTicks: ticks };
-}
-
-/**
- * The inner structure: the long bright loop rising 37° to the right past the core, the faint
- * near half of the tall edge-on ellipse beside it, and two data streaks through the core.
- */
-function buildInnerStructure() {
-  const loop = makePathBuilder();
-  appendEllipse(loop, 0.04, 0.03, 0.74, 0.2, -37 * DEGREES_TO_RADIANS, 56);
-  // the edge-on ellipse's near half only, faint
-  const edgeOn = makePathBuilder();
-  appendEllipse(edgeOn, 0.27, 0.02, 0.1, 0.44, 4 * DEGREES_TO_RADIANS, 20, 0.5);
-  // the ")" arc wrapping the core's right side at 0.57R: -60° to +40°, measured up from 3 o'clock
-  const bracket = makePathBuilder();
-  appendArc(bracket, CORE_X, CORE_Y, 0.575, 60 * DEGREES_TO_RADIANS, -100 * DEGREES_TO_RADIANS);
-  const streaks = makePathBuilder();
-  const streakRows = [
-    [-0.72, 0.6, 0.05],
-    [-0.5, 0.2, -0.065],
-  ];
-  for (const [from, to, y] of streakRows) {
-    pathMoveTo(streaks, CORE_X + from, CORE_Y + y);
-    pathLineTo(streaks, CORE_X + to, CORE_Y + y);
-  }
-  return { loop, edgeOn, bracket, dataStreaks: streaks };
-}
-
-/** The core glyph: a hooked ring of radius 0.1R with a stem curling in, and the bar. The whorl's first turn is the film's second ring at 0.3R. */
 function buildCoreGlyph() {
   const ring = makePathBuilder();
   appendArc(ring, 0, 0, 0.1, -35 * DEGREES_TO_RADIANS, 305 * DEGREES_TO_RADIANS);
@@ -1189,75 +1143,23 @@ function buildCoreGlyph() {
   pathLineTo(ring, 0.012, -0.055);
   pathLineTo(ring, 0.03, -0.02);
   const bar = makePathBuilder();
-  pathMoveTo(bar, -0.3, 0.012);
-  pathLineTo(bar, 0.3, 0.012);
-  return { coreRing: ring, coreBar: bar };
+  pathMoveTo(bar, -0.22, 0.012);
+  pathLineTo(bar, 0.22, 0.012);
+  const tickAngle = -38 * DEGREES_TO_RADIANS;
+  const tick = makePathBuilder();
+  pathMoveTo(tick, Math.cos(tickAngle) * CORE_RING_RADIUS, Math.sin(tickAngle) * CORE_RING_RADIUS);
+  pathLineTo(tick, CORE_RING_RADIUS + 0.1, -0.235);
+  pathLineTo(tick, CORE_RING_RADIUS + 0.15, -0.228);
+  return { coreRing: ring, coreBar: bar, coreTick: tick };
 }
 
-/**
- * The fan of strands on the right: four concentric strands from 1 to 5 o'clock whose
- * clockwise ends peel out to 1.08R (shot d).
- */
-function buildStrandFan() {
-  const fan = makePathBuilder();
-  const radii = [0.9, 0.95, 1.0, 1.03];
-  radii.forEach((radius, strand) => {
-    const from = 30 + strand * 6;
-    const to = 150 - strand * 4;
-    for (let degrees = from; degrees <= to; degrees += 5) {
-      const peel = Math.max(0, (degrees - (to - 30)) / 30);
-      const pointRadius = radius + peel * peel * (1.08 - radius);
-      const angle = (degrees - 90) * DEGREES_TO_RADIANS;
-      if (degrees === from) pathMoveTo(fan, Math.cos(angle) * pointRadius, Math.sin(angle) * pointRadius);
-      else pathLineTo(fan, Math.cos(angle) * pointRadius, Math.sin(angle) * pointRadius);
-    }
-  });
-  return fan;
-}
-
-/**
- * The paths that never change, as commands: the whorl's arms, wisps and ticks, the loop, the
- * edge-on ellipse, the ")" bracket and the data streaks, the core's ring and bar, and the strand
- * fan. The whorl's are random, from the scene's texture seed, so the same seed always builds them
- * the same.
- */
-export function staticPathsOf(textureSeed: number) {
-  return {
-    ...buildWhorl(createRandom(textureSeed ^ 0x5bd1e995)),
-    ...buildInnerStructure(),
-    ...buildCoreGlyph(),
-    strandFan: buildStrandFan(),
-  };
+/** The paths that never change, as commands: the core's marks — its hooked ring, its bar and its ring's tick. */
+export function staticPathsOf() {
+  return buildCoreGlyph();
 }
 
 /** The paths that never change, as {@link staticPathsOf} builds them. */
 export type StaticPaths = ReturnType<typeof staticPathsOf>;
-
-/** A colour from 0-255 channels, as a `#rrggbb` string (`gpu/picture-gradients.ts` reads it). */
-function amberHex(red: number, green: number, blue: number) {
-  const channel = (value: number) =>
-    Math.round(Math.min(255, Math.max(0, value)))
-      .toString(16)
-      .padStart(2, '0');
-  return `#${channel(red)}${channel(green)}${channel(blue)}`;
-}
-
-/**
- * The limb ridge's colours round the limb: thirty stops of amber, bright stretches and see-through
- * ones from the seed, the last the same as the first so the sweep closes without a seam.
- */
-export function limbRidgeStops(textureSeed: number) {
-  const random = createRandom(textureSeed ^ 0x68e31da4);
-  const colours: string[] = [];
-  const positions: number[] = [];
-  for (let stop = 0; stop < 30; stop++) {
-    const lit = stop === 29 ? colours[0] : undefined;
-    const strength = 0.18 + 0.82 * random() ** 0.8;
-    colours.push(lit ?? amberHex(0xd0 * strength, 0x7c * strength, 0x30 * strength));
-    positions.push(stop / 29);
-  }
-  return { colours, positions };
-}
 
 function clamp01(value: number) {
   'worklet';
@@ -1400,7 +1302,7 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
   const time = frame.time;
   // How far on the vortex is: 1 once it is over.
   const swirl = clamp01(frame.appearance);
-  // What speech does to him — chips thrown off the limb, the crescent splitting, the fraying —
+  // What speech does to him — chips thrown off the shell, the fraying, the embers it brings out —
   // waits until the vortex has all but formed him. The greeting plays while he arrives, and
   // without this it threw full-size slabs off a limb that was not there yet, into empty space
   // round a sphere still gathered at its core.
@@ -1440,14 +1342,24 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
     pulse: intoScan > SCAN_SECONDS - PULSE_SECONDS ? (intoScan - (SCAN_SECONDS - PULSE_SECONDS)) / PULSE_SECONDS : 0,
     arrival,
     bodyShare: script.density,
-    // Everything but the core recedes while he thinks, so that the plane sweeping through him is
-    // what the eye is left with. Without this the whorl, the rim and the ladder go on doing what
-    // they always do and the sweep is one more thing happening among several — which is how the
-    // first version of thinking looked, and why it did not read as a different state at all.
-    // The whorl recedes while he listens, as while he thinks, so the lattice is what is seen.
-    innerAlpha: (1 - 0.8 * thinking) * (1 - 0.6 * hearing) * smooth01((swirl - 0.15) / 0.6),
-    coreAlpha: smooth01(swirl / 0.25),
-    rimAlpha: (1 - 0.65 * thinking) * smooth01((swirl - 0.55) / 0.45),
+    // The picture arrives as the vortex does: the core first, the aura as the particles leave it,
+    // the cage and the embers last, round a ball that is already there. The core is half the
+    // picture's light, so it comes up over the first 0.4 of the vortex rather than all at once:
+    // over a quarter, under the view's own fade, a frame of it turned 8% of the light on at once.
+    //
+    // Everything but the core's ring recedes while he thinks, so that the plane sweeping through
+    // him is what the eye is left with. Without this the rest goes on doing what it always does and
+    // the sweep is one more thing happening among several — which is how the first version of
+    // thinking looked, and why it did not read as a different state at all.
+    coreAlpha: smooth01(swirl / 0.4),
+    auraAlpha: (1 - 0.5 * thinking) * smooth01((swirl - 0.15) / 0.6),
+    cageAlpha: (1 - 0.5 * thinking) * smooth01((swirl - 0.55) / 0.45),
+    // The core's glowing disc dims while he listens as well as while he thinks, so the lattice is
+    // what is seen.
+    coreGlow: (1 - 0.4 * thinking) * (1 - 0.3 * hearing),
+    // Which of the embers show: some of them always, and more while he talks, all of them on the
+    // low notes of his voice — as the fray answers the high ones.
+    emberShare: EMBERS_IN_SILENCE + (1 - EMBERS_IN_SILENCE) * agitation * (0.55 + 0.45 * lowDrive),
     swirl,
     hearing,
     hearingLevel,
@@ -1468,7 +1380,6 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
     // film's luma-200 highlights go almost entirely (section 4.2: they drop by about 70%). The
     // strokes themselves stay bright: it is the hot pixels that leave, not the texture.
     hotShare: 1 - 0.35 * agitation,
-    spread: agitation * (0.7 + 0.3 * lowDrive),
     frayDrive: agitation * (0.55 + 0.45 * highDrive),
     burstAge,
     burstStrength: clamp01(frame.burstStrength) * formed,
@@ -1490,6 +1401,7 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
     bodySin: Math.sin(bodyYaw),
     /** What the halos and the volume multiply their alpha by: 1 in silence, up to 1 + GLOW_WITH_VOICE. */
     glowGain: 1 + GLOW_WITH_VOICE * (GLOW_FROM_ENVELOPE * agitation + (1 - GLOW_FROM_ENVELOPE) * voice),
+    // how far the core ring's brighter stretches have rolled round it
     roll: fraction((time * ROLL_DEGREES_PER_SECOND) / 360) * 360,
     // the whorl winds up with the vortex, settling to its own slow turn as the particles do
     shellTurn: fraction((time * SHELL_DEGREES_PER_SECOND - 540 * settle * settle) / 360) * 360,

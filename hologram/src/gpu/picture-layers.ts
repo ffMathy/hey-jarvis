@@ -1,31 +1,27 @@
 import {
-  COMET_STRIDE,
-  CORE_X,
-  CORE_Y,
-  CRESCENT_PIECE_STRIDE,
-  CRESCENT_PIECES_PER_STRAND,
+  CAGE_EDGE_STRIDE,
+  EMBER_RISE,
+  EMBER_STRIDE,
   FRAY_STRIDE,
   type HologramPictureScene,
   LIMB_STREAK_STRIDE,
   type PathBuilder,
-  RING_TICK_STRIDE,
+  PICTURE_SHELL_EDGE,
   STREAK_ARC_STRIDE,
   type StaticPaths,
-  TRUSS_PIECE_STRIDE,
 } from '../hologram-drawing';
 import { glslFloat } from './glsl';
 import { PICTURE_VERTEX_PRELUDE } from './picture-glsl';
 
 /**
- * Every layer of the picture as a vertex shader and the table it reads: what was Skia's picture of
- * him, each layer's arithmetic — where its arcs and runs are this frame — moved from the drawing's
- * path builders into GLSL, line for line, so that a frame's JavaScript only says which layer to
- * draw with which paint.
+ * Every layer of the picture as a vertex shader and the table it reads: each layer's arithmetic —
+ * where its arcs and runs are this frame, the cage turned with his body, the embers on their clocks
+ * — in GLSL, so that a frame's JavaScript only says which layer to draw with which paint.
  *
  * A layer is one quad per shape it can draw, its table the numbers each shape is made from (a row of
  * the scene's, and which part of it the shape is), laid out once when the picture is made; the
- * shader hides a shape it does not draw this frame, as a path builder skipped it. The tables come
- * from the scene, and the shaders from the drawing as it was, so the two are the same picture.
+ * shader hides a shape it does not draw this frame. The tables come from the scene, so the same
+ * seed always draws the same picture.
  */
 
 /** One of a layer's per-shape numbers: its name in the shader, how many a shape has, and every shape's. */
@@ -42,9 +38,6 @@ export interface PictureLayerSource {
   attributes: LayerAttribute[];
   shapes: number;
 }
-
-/** The core's place, which the lines and the core are drawn round. */
-const CORE_GLSL = `vec2(${glslFloat(CORE_X)}, ${glslFloat(CORE_Y)})`;
 
 function shader(declarations: string, main: string): string {
   return `${PICTURE_VERTEX_PRELUDE}\n${declarations}\nvoid main() {\n${main}\n}\n`;
@@ -126,18 +119,7 @@ export function flattenPath(builder: PathBuilder): PathSegments {
 }
 
 /** The static paths' names, in the order their runs are laid out. */
-export const STATIC_PATH_NAMES = [
-  'whorl',
-  'whorlOuter',
-  'whorlTicks',
-  'loop',
-  'edgeOn',
-  'bracket',
-  'dataStreaks',
-  'coreRing',
-  'coreBar',
-  'strandFan',
-] as const satisfies readonly (keyof StaticPaths)[];
+export const STATIC_PATH_NAMES = ['coreRing', 'coreBar', 'coreTick'] as const satisfies readonly (keyof StaticPaths)[];
 
 export type StaticPathName = (typeof STATIC_PATH_NAMES)[number];
 
@@ -195,7 +177,10 @@ export function staticSegmentsLayer(paths: StaticPaths): {
 /** The most pieces a whole circle is drawn in. */
 export const ARC_PIECES = 32;
 
-/** One arc whose every number is a uniform — the limb's bands, the thin ring, the thinking pulse, a satellite's flare. */
+/**
+ * One arc whose every number is a uniform — the core's white-hot ring, the aura's band, the thinking
+ * pulse, a satellite's flare — lit evenly, or with brighter and dimmer stretches rolling round it.
+ */
 export function arcLayer(): PictureLayerSource {
   return {
     vertexShader: shader(
@@ -203,6 +188,7 @@ export function arcLayer(): PictureLayerSource {
 in float piece;
 uniform vec4 arc;
 uniform vec4 arcEnds;
+uniform vec2 arcLumps;
 `,
       `
   // arc: centre, radius, half width; arcEnds: start, sweep, pieces, caps (round = 1).
@@ -211,9 +197,16 @@ uniform vec4 arcEnds;
     return;
   }
   emitArcPiece(arc.xy, arc.z, arc.w, arcEnds.x, arcEnds.y, piece, arcEnds.z, arcEnds.w, arcEnds.w);
+  // arcLumps: how much dimmer its dimmest stretches are than its brightest (0: lit evenly), and how
+  // far round they have rolled, in radians. Worked out at each corner, so a lump is smooth along it.
+  if (arcLumps.x > 0.0 && shapeKind > 0.5) {
+    vec2 offset = local - arc.xy;
+    float angle = atan(offset.y, offset.x) - arcLumps.y;
+    shapeLight = 1.0 - arcLumps.x * (0.5 + 0.5 * sin(3.0 * angle + 0.6) * sin(2.0 * angle - 1.3));
+  }
 `,
     ),
-    uniforms: ['arc', 'arcEnds'],
+    uniforms: ['arc', 'arcEnds', 'arcLumps'],
     attributes: [
       attribute(
         'piece',
@@ -225,7 +218,7 @@ uniform vec4 arcEnds;
   };
 }
 
-/** One disc whose centre and radius are a uniform — the core's bloom, a satellite's halo and dot. */
+/** One disc whose centre and radius are a uniform — the core's glow, a satellite's halo and dot. */
 export function discLayer(): PictureLayerSource {
   return {
     vertexShader: shader(
@@ -243,419 +236,121 @@ uniform vec3 disc;
   };
 }
 
-/** One run whose ends are a uniform — the rare red segment. */
-export function segmentLayer(): PictureLayerSource {
-  return {
-    vertexShader: shader(
-      `
-in float shape;
-uniform vec4 segment;
-uniform float halfWidth;
-uniform float roundCaps;
-`,
-      `
-  emitSegment(segment.xy, segment.zw, halfWidth, roundCaps, roundCaps);
-`,
-    ),
-    uniforms: ['segment', 'halfWidth', 'roundCaps'],
-    attributes: [attribute('shape', 1, [[0]])],
-    shapes: 1,
-  };
-}
+// ---- round him: the cage and the embers --------------------------------------------------------
 
-// ---- the lines: comets, spokes, the swoosh -----------------------------------------------------
-
-const COMET_PIECES = 5;
-
-/** Comet arcs from the core to the lower right, each on its own slow clock (`appendComets`). */
-export function cometsLayer(scene: HologramPictureScene): PictureLayerSource {
-  const comets: number[][] = [];
-  const sweeps: number[][] = [];
-  for (let offset = 0; offset < scene.comets.length; offset += COMET_STRIDE) {
-    for (let piece = 0; piece < COMET_PIECES; piece++) {
-      comets.push(scene.comets.slice(offset, offset + 4));
-      sweeps.push([scene.comets[offset + 4], piece]);
-    }
-  }
-  return {
-    vertexShader: shader(
-      `
-in vec4 comet;
-in vec2 cometSweep;
-uniform float time;
-uniform float halfWidth;
-uniform float roundCaps;
-`,
-      `
-  // comet: period, phase, base angle, radius; cometSweep: sweep, which piece.
-  float life = fraction(time / comet.x + comet.y);
-  if (life > 0.85) {
-    hide();
-    return;
-  }
-  float grow = smooth01(life / 0.15);
-  float fade = 1.0 - smooth01((life - 0.7) / 0.15);
-  float sweep = cometSweep.x * grow;
-  float tail = cometSweep.x * (1.0 - fade);
-  float base = comet.z + life * 0.35;
-  float radius = comet.w;
-  if (sweep - tail < 0.05) {
-    hide();
-    return;
-  }
-  vec2 centre = ${CORE_GLSL} + vec2(cos(base), sin(base)) * radius;
-  emitArcPiece(centre, radius, halfWidth, base + PI + tail, sweep - tail, cometSweep.y, ${glslFloat(COMET_PIECES)}, roundCaps, roundCaps);
-`,
-    ),
-    uniforms: ['time', 'halfWidth', 'roundCaps'],
-    attributes: [attribute('comet', 4, comets), attribute('cometSweep', 2, sweeps)],
-    shapes: comets.length,
-  };
-}
-
-/** Faint radial spokes from the core's rim, fanning over the lower half or toward 9-10 o'clock (`appendSpokes`). */
-export function spokesLayer(): PictureLayerSource {
-  return {
-    vertexShader: shader(
-      `
-in float spoke;
-uniform float lineSeed;
-uniform float envelope;
-uniform float halfWidth;
-uniform float roundCaps;
-`,
-      `
-  bool towardNine = hashInteger(lineSeed) < 0.4;
-  float clock = towardNine ? 270.0 + (spoke - 2.5) * 9.0 : 130.0 + spoke * 20.0;
-  float angle = clockRadians(clock + (hashInteger(lineSeed * 7.0 + spoke) - 0.5) * 8.0);
-  float reach = (0.31 + 0.4 * hashInteger(lineSeed * 13.0 + spoke)) * envelope;
-  if (reach < 0.01) {
-    hide();
-    return;
-  }
-  vec2 direction = vec2(cos(angle), sin(angle));
-  emitSegment(${CORE_GLSL} + direction * 0.14, ${CORE_GLSL} + direction * (0.14 + reach), halfWidth, roundCaps, roundCaps);
-`,
-    ),
-    uniforms: ['lineSeed', 'envelope', 'halfWidth', 'roundCaps'],
-    attributes: [
-      attribute(
-        'spoke',
-        1,
-        Array.from({ length: 6 }, (_, spoke) => [spoke]),
-      ),
-    ],
-    shapes: 6,
-  };
-}
-
-/** A fan of hairlines arcing over the core, rising to the right, line by line (`appendSwoosh`). */
-export function swooshLayer(): PictureLayerSource {
-  const lines: number[][] = [];
-  for (let line = 0; line < 24; line++) for (let piece = 0; piece < 2; piece++) lines.push([line, piece]);
-  return {
-    vertexShader: shader(
-      `
-in vec2 swooshLine;
-uniform float lines;
-uniform float halfWidth;
-`,
-      `
-  float line = swooshLine.x;
-  if (line >= lines) {
-    hide();
-    return;
-  }
-  float tilt = -0.52;
-  float radius = 1.2 + line * 0.013;
-  vec2 offset = vec2(0.05, radius - 0.12 - line * 0.013);
-  vec2 centre = ${CORE_GLSL} + vec2(offset.x * cos(tilt) - offset.y * sin(tilt), offset.x * sin(tilt) + offset.y * cos(tilt));
-  emitArcPiece(centre, radius, halfWidth, -PI / 2.0 + tilt - 0.42, 0.84, swooshLine.y, 2.0, 0.0, 0.0);
-`,
-    ),
-    uniforms: ['lines', 'halfWidth'],
-    attributes: [attribute('swooshLine', 2, lines)],
-    shapes: lines.length,
-  };
-}
-
-// ---- the core -----------------------------------------------------------------------------------
-
-/** The furry knot of spikes on the core ring's upper left, re-drawn six times a second (`drawCore`). */
-export function knotLayer(): PictureLayerSource {
-  return {
-    vertexShader: shader(
-      `
-in float spike;
-uniform float knotStep;
-uniform float halfWidth;
-uniform float roundCaps;
-`,
-      `
-  float angle = (spike / 11.0) * TAU + hashInteger(knotStep * 11.0 + spike) * 0.6;
-  float spikeLength = 0.03 + 0.05 * hashInteger(knotStep * 17.0 + spike);
-  vec2 root = vec2(-0.075, -0.07);
-  emitSegment(root, root + vec2(cos(angle), sin(angle)) * spikeLength, halfWidth, roundCaps, roundCaps);
-`,
-    ),
-    uniforms: ['knotStep', 'halfWidth', 'roundCaps'],
-    attributes: [
-      attribute(
-        'spike',
-        1,
-        Array.from({ length: 11 }, (_, spike) => [spike]),
-      ),
-    ],
-    shapes: 11,
-  };
-}
-
-// ---- the rim ------------------------------------------------------------------------------------
-
-/** The parts of a truss piece, in the order they are laid out: one range a part. */
-export const TRUSS_PARTS = ['outer', 'inner', 'haze', 'rung', 'detail'] as const;
-
-export type TrussPart = (typeof TRUSS_PARTS)[number];
-
-/** How many runs a piece's circuit trace and struts take at most. */
-const TRUSS_DETAIL_RUNS = 5;
+/** How far a cage node sways about its place, in R: the film's wireframe shifts a little, and holds its shape. */
+const CAGE_SWAY = 0.012;
 
 /**
- * The segmented ladder ring, in the rolling frame: each piece's outer and inner rails, the haze
- * between them, its rung, and its circuit trace and hanging struts (`appendTruss`).
+ * The cage: straight hairlines between nodes round the shell of specks, in three dimensions, turned
+ * with his body about the vertical (`bodyTurn`, his body's cosine and sine, as `placeFragment`
+ * turns a fragment) and seen straight on. Every edge twinkles on its own slow clock and is fainter
+ * towards his back, and fainter again where it lies across his face rather than round him, so the
+ * cage reads as round him rather than over him. Each edge is lit at both ends (`shapeLight`), so
+ * an edge running from his front to his back fades along itself.
  */
-export function trussLayer(scene: HologramPictureScene): {
-  layer: PictureLayerSource;
-  ranges: Record<TrussPart, ShapeRange>;
-} {
-  const pieces: number[][] = [];
+export function cageLayer(scene: HologramPictureScene): PictureLayerSource {
+  const froms: number[][] = [];
+  const tos: number[][] = [];
+  const clocks: number[][] = [];
+  for (let offset = 0; offset < scene.cage.length; offset += CAGE_EDGE_STRIDE) {
+    froms.push(scene.cage.slice(offset, offset + 3));
+    tos.push(scene.cage.slice(offset + 3, offset + 6));
+    clocks.push(scene.cage.slice(offset + 6, offset + 9));
+  }
+  return {
+    vertexShader: shader(
+      `
+in vec3 edgeFrom;
+in vec3 edgeTo;
+in vec3 edgeClock;
+uniform vec2 bodyTurn;
+uniform float time;
+uniform float halfWidth;
+
+// A node where his body's turn has taken it, swaying a little about its place by an amount that
+// depends only on where it is, so the edges that share a node sway together and stay joined.
+vec3 turnedNode(vec3 node) {
+  vec3 sway = vec3(
+    sin(time * 0.37 + node.y * 5.3 + node.z * 2.1),
+    sin(time * 0.29 + node.z * 4.9 + node.x * 3.3),
+    sin(time * 0.33 + node.x * 4.1 + node.y * 2.7)
+  ) * ${glslFloat(CAGE_SWAY)};
+  vec3 at = node + sway;
+  return vec3(at.x * bodyTurn.x + at.z * bodyTurn.y, at.y, at.z * bodyTurn.x - at.x * bodyTurn.y);
+}
+
+// How lit a turned node is: fainter towards his back, and where it lies across his face.
+float nodeLight(vec3 turned) {
+  float front = smooth01((turned.z + 1.2) / 2.4);
+  float aside = smooth01((length(turned.xy) - 0.3) / 0.55);
+  return (0.5 + 0.5 * front) * (0.2 + 0.8 * aside);
+}
+`,
+      `
+  // edgeClock: its twinkle's rate (cycles a second) and phase, and the edge's weight.
+  vec3 from = turnedNode(edgeFrom);
+  vec3 to = turnedNode(edgeTo);
+  float twinkle = 0.55 + 0.45 * smooth01(0.5 + 0.5 * sin((time * edgeClock.x + edgeClock.y) * TAU));
+  emitSegment(from.xy, to.xy, halfWidth, 1.0, 1.0);
+  shapeLight = edgeClock.z * twinkle * nodeLight(corner.x < 0.0 ? from : to);
+`,
+    ),
+    uniforms: ['bodyTurn', 'time', 'halfWidth'],
+    attributes: [attribute('edgeFrom', 3, froms), attribute('edgeTo', 3, tos), attribute('edgeClock', 3, clocks)],
+    shapes: froms.length,
+  };
+}
+
+/**
+ * The embers: tiny flecks drifting out from the shell's edge and a little upward, each on its own
+ * clock, fading in and out, some streaked along the way they go. `share` says which show: those
+ * whose threshold is under it.
+ */
+export function embersLayer(scene: HologramPictureScene): PictureLayerSource {
+  const paths: number[][] = [];
   const more: number[][] = [];
-  const parts: number[][] = [];
-  const ranges: Partial<Record<TrussPart, ShapeRange>> = {};
-  TRUSS_PARTS.forEach((part, partIndex) => {
-    const first = pieces.length;
-    for (let offset = 0; offset < scene.truss.length; offset += TRUSS_PIECE_STRIDE) {
-      const runs = part === 'detail' ? TRUSS_DETAIL_RUNS : 1;
-      for (let run = 0; run < runs; run++) {
-        pieces.push(scene.truss.slice(offset, offset + 4));
-        more.push([scene.truss[offset + 4], scene.truss[offset + 5]]);
-        parts.push([partIndex, run]);
-      }
-    }
-    ranges[part] = { first, count: pieces.length - first };
-  });
-  return {
-    layer: {
-      vertexShader: shader(
-        `
-in vec4 trussPiece;
-in vec2 trussMore;
-in vec2 trussPart;
-uniform float weight;
-uniform float halfWidth;
-`,
-        `
-  // trussPiece: start (clock degrees), sweep (degrees), trace, strut; trussMore: hash, which arc.
-  float visible = clamp01((weight * 1.15 - trussMore.x * 0.55 - (trussMore.y == 2.0 ? 0.2 : 0.0)) / 0.35);
-  float part = trussPart.x;
-  float needs = part < 1.5 ? 0.08 : part < 3.5 ? 0.5 : 0.9;
-  if (visible < 0.08 || visible < needs) {
-    hide();
-    return;
+  for (let offset = 0; offset < scene.embers.length; offset += EMBER_STRIDE) {
+    paths.push(scene.embers.slice(offset, offset + 4));
+    more.push(scene.embers.slice(offset + 4, offset + 7));
   }
-  float start = clockRadians(trussPiece.x);
-  float sweep = trussPiece.y * DEGREES * visible;
-  if (part < 0.5) {
-    emitArcPiece(vec2(0.0), 1.035, halfWidth, start, sweep, 0.0, 1.0, 0.0, 0.0);
-    return;
-  }
-  if (part < 1.5) {
-    emitArcPiece(vec2(0.0), 0.935, halfWidth, start, sweep, 0.0, 1.0, 0.0, 0.0);
-    return;
-  }
-  if (part < 2.5) {
-    emitArcPiece(vec2(0.0), 0.985, halfWidth, start, sweep, 0.0, 1.0, 0.0, 0.0);
-    return;
-  }
-  vec2 startDirection = vec2(cos(start), sin(start));
-  if (part < 3.5) {
-    emitSegment(startDirection * 0.935, startDirection * 1.035, halfWidth, 0.0, 0.0);
-    return;
-  }
-  // The circuit trace and the struts (appendTrussDetail): a run of the trace's polyline, or a strut.
-  vec2 early = vec2(cos(start + 0.045), sin(start + 0.045));
-  vec2 late = vec2(cos(start + 0.11), sin(start + 0.11));
-  float trace = trussPiece.z;
-  float strut = trussPiece.w;
-  float run = trussPart.y;
-  if (run < 2.5) {
-    if (trace == 1.0 && run < 0.5) emitRun(early * 0.955, early * 1.005, halfWidth, 2.0, 0.0, 0.0);
-    else if (trace == 1.0 && run < 1.5) emitRun(early * 1.005, late * 1.005, halfWidth, 1.0, 0.0, 0.0);
-    else if (trace == 2.0 && run < 0.5) emitRun(early * 0.95, early * 0.99, halfWidth, 2.0, 0.0, 0.0);
-    else if (trace == 2.0 && run < 1.5) emitRun(early * 0.99, late * 0.99, halfWidth, 3.0, 0.0, 0.0);
-    else if (trace == 2.0) emitRun(late * 0.99, late * 1.03, halfWidth, 1.0, 0.0, 0.0);
-    else if (trace == 3.0 && run < 0.5) emitSegment(early * 1.02, late * 1.02, halfWidth, 0.0, 0.0);
-    else if (trace == 3.0 && run < 1.5) emitSegment((early + late) * 0.4725, (early + late) * 0.5, halfWidth, 0.0, 0.0);
-    else hide();
-    return;
-  }
-  if (strut <= 0.0) {
-    hide();
-    return;
-  }
-  // A pair of struts 0.02R apart hanging from the inner rail toward the centre.
-  vec2 tangent = vec2(-early.y, early.x) * (run < 3.5 ? 0.0 : 0.02);
-  float inner = 0.935 - strut;
-  emitSegment(early * 0.935 + tangent, early * inner + tangent, halfWidth, 0.0, 0.0);
-`,
-      ),
-      uniforms: ['weight', 'halfWidth'],
-      attributes: [
-        attribute('trussPiece', 4, pieces),
-        attribute('trussMore', 2, more),
-        attribute('trussPart', 2, parts),
-      ],
-      shapes: pieces.length,
-    },
-    ranges: ranges as Record<TrussPart, ShapeRange>,
-  };
-}
-
-/** The thin ring's ticks, rolling with the rim but showing only from 1 to 5 o'clock (`drawTruss`). */
-export function ticksLayer(scene: HologramPictureScene): PictureLayerSource {
-  const ticks: number[][] = [];
-  for (let offset = 0; offset < scene.ringTicks.length; offset += RING_TICK_STRIDE)
-    ticks.push(scene.ringTicks.slice(offset, offset + 2));
   return {
     vertexShader: shader(
       `
-in vec2 tick;
-uniform float roll;
+in vec4 emberPath;
+in vec3 emberMore;
+uniform float time;
+uniform float share;
 uniform float halfWidth;
 `,
       `
-  float onScreen = fraction((tick.x + roll) / 360.0) * 360.0;
-  if (onScreen < 30.0 || onScreen > 150.0) {
+  // emberPath: direction (radians), where it starts, how far it drifts, its period; emberMore: its
+  // phase, its streak's length and its threshold.
+  float gate = clamp01((share - emberMore.z) * 8.0);
+  float life = fraction(time / emberPath.w + emberMore.x);
+  float shown = gate * smooth01(life / 0.2) * (1.0 - smooth01((life - 0.5) / 0.45));
+  if (shown < 0.01) {
     hide();
     return;
   }
-  float angle = clockRadians(tick.x);
-  float halfTick = tick.y * 0.5 * smooth01((onScreen - 30.0) / 20.0) * smooth01((150.0 - onScreen) / 20.0);
-  if (halfTick < 0.004) {
-    hide();
-    return;
-  }
-  vec2 direction = vec2(cos(angle), sin(angle));
-  emitSegment(direction * (1.0 - halfTick), direction * (1.0 + halfTick), halfWidth, 0.0, 0.0);
+  // Out from the shell, and up a little as it goes: y runs down.
+  vec2 outward = vec2(cos(emberPath.x), sin(emberPath.x));
+  vec2 drifting = outward + vec2(0.0, ${glslFloat(-EMBER_RISE)});
+  vec2 at = outward * emberPath.y + drifting * emberPath.z * life;
+  emitSegment(at - normalize(drifting) * emberMore.y, at, halfWidth, 1.0, 1.0);
+  shapeLight = shown;
 `,
     ),
-    uniforms: ['roll', 'halfWidth'],
-    attributes: [attribute('tick', 2, ticks)],
-    shapes: ticks.length,
-  };
-}
-
-/** The crescent's width tiers, thin to core: one range a tier. */
-export const CRESCENT_TIERS = 4;
-
-/**
- * The bright crescent on the left limb: four strands of pieces rolling through a window pinned in
- * screen space, each piece drawn in every width tier whose window it falls inside.
- * A shape is one piece of one strand, tried at its angle or a turn earlier, in one tier, as one of
- * the two quads its arc is drawn in.
- */
-export function crescentLayer(scene: HologramPictureScene): { layer: PictureLayerSource; tiers: ShapeRange[] } {
-  const pieces: number[][] = [];
-  const slots: number[][] = [];
-  const tiers: ShapeRange[] = [];
-  for (let tier = 0; tier < CRESCENT_TIERS; tier++) {
-    const first = pieces.length;
-    for (let strand = 0; strand < 4; strand++) {
-      for (let piece = 0; piece < CRESCENT_PIECES_PER_STRAND; piece++) {
-        const offset = (strand * CRESCENT_PIECES_PER_STRAND + piece) * CRESCENT_PIECE_STRIDE;
-        for (let turn = 0; turn < 2; turn++) {
-          for (let arcPiece = 0; arcPiece < 2; arcPiece++) {
-            pieces.push(scene.crescentPieces.slice(offset, offset + CRESCENT_PIECE_STRIDE));
-            slots.push([strand, turn, tier, arcPiece]);
-          }
-        }
-      }
-    }
-    tiers.push({ first, count: pieces.length - first });
-  }
-  return {
-    layer: {
-      vertexShader: shader(
-        `
-in vec3 crescentPiece;
-in vec4 crescentSlot;
-uniform float spread;
-uniform float time;
-uniform float roll;
-uniform vec2 shatter;
-uniform float halfWidth;
-`,
-        `
-  // crescentPiece: start (degrees), sweep (degrees), hash; crescentSlot: strand, turn, tier, arc piece.
-  float strand = crescentSlot.x;
-  float tier = crescentSlot.z;
-  // The strand's radius calm and split, the deepest tier it reaches and the clock it is centred on.
-  float calm = 0.965;
-  float split = 0.94;
-  float deepestTier = 2.0;
-  if (strand == 1.0) {
-    calm = 0.99;
-    split = 1.02;
-    deepestTier = 3.0;
-  } else if (strand == 2.0) {
-    calm = 1.012;
-    split = 1.1;
-    deepestTier = 1.0;
-  } else if (strand == 3.0) {
-    calm = 1.03;
-    split = 1.19;
-    deepestTier = 0.0;
-  }
-  if (tier > deepestTier) {
-    hide();
-    return;
-  }
-  float outerShare = strand >= 2.0 ? spread : 0.0;
-  float radius = calm + spread * (split - calm);
-  float strandCentre = 262.0 + 28.0 * outerShare;
-  float narrowing = 1.0 - 0.4 * outerShare;
-  float drift = spread * (strand < 2.0 ? 0.025 : 0.06);
-  float sweep = crescentPiece.y;
-  float hash = crescentPiece.z;
-  float shrink = spread * sweep * (strand < 2.0 ? 0.1 + 0.45 * hash : 0.25 + 0.6 * hash) * 0.5;
-  float from = crescentPiece.x + roll + shrink;
-  from -= 360.0 * floor(from / 360.0);
-  float span = sweep - 2.0 * shrink;
-  float ragged = 14.0 * fraction(hash * 7.3 + strand * 0.37);
-  float turned = from - 360.0 * crescentSlot.y;
-  float halfWindow = (tier == 0.0 ? 70.0 : 72.0 - tier * 16.0) * narrowing;
-  float start = max(turned, strandCentre - halfWindow + ragged);
-  float end = min(turned + span, strandCentre + halfWindow - ragged);
-  // shatter: how much of the strands a fresh burst knocks out, and the clock it leaves from.
-  if (end - start < 0.6 || (shatter.x > hash && abs((start + end) * 0.5 - shatter.y) < 16.0)) {
-    hide();
-    return;
-  }
-  float along = drift == 0.0 ? radius : radius + drift * sin((time * 0.45 + hash) * TAU);
-  emitArcPiece(vec2(0.0), along, halfWidth, clockRadians(start), (end - start) * DEGREES, crescentSlot.w, 2.0, 0.0, 0.0);
-`,
-      ),
-      uniforms: ['spread', 'time', 'roll', 'shatter', 'halfWidth'],
-      attributes: [attribute('crescentPiece', 3, pieces), attribute('crescentSlot', 4, slots)],
-      shapes: pieces.length,
-    },
-    tiers,
+    uniforms: ['time', 'share', 'halfWidth'],
+    attributes: [attribute('emberPath', 4, paths), attribute('emberMore', 3, more)],
+    shapes: paths.length,
   };
 }
 
 /**
- * While he talks: strands fraying off the upper-left limb, thin streak arcs further out, and
- * streaks slipping out of the right limb, each on its own clock (`drawFray`).
+ * While he talks: strands fraying off the upper left of the shell's edge, thin streak arcs a little
+ * further out, and streaks slipping out of the right of the shell, each on its own clock
+ * (`drawFray`).
  */
 export function frayLayer(scene: HologramPictureScene): PictureLayerSource {
   const rows: number[][] = [];
@@ -698,7 +393,7 @@ uniform float halfWidth;
     }
     float sweep = frayRow.y * visible * DEGREES;
     float centre = clockRadians(frayRow.x);
-    emitArcPiece(vec2(0.0), 1.0 + 0.17 * life, halfWidth, centre - sweep / 2.0, sweep, 0.0, 1.0, 0.0, 0.0);
+    emitArcPiece(vec2(0.0), ${glslFloat(PICTURE_SHELL_EDGE)} + 0.17 * life, halfWidth, centre - sweep / 2.0, sweep, 0.0, 1.0, 0.0, 0.0);
     return;
   }
   if (frayKind < 1.5) {
@@ -714,8 +409,8 @@ uniform float halfWidth;
     emitArcPiece(vec2(0.0), frayRow.y, halfWidth, clockRadians(frayRow.x) - sweep / 2.0, sweep, 0.0, 1.0, 0.0, 0.0);
     return;
   }
-  // A limb streak: height, length, rate, phase; frayMore.x its threshold. Leaving the limb at about
-  // 0.3 R/s, bright head first.
+  // A limb streak: height, length, rate, phase; frayMore.x its threshold. Leaving the shell's edge
+  // at about 0.3 R/s, bright head first.
   float gate = clamp01((drive - frayMore.x) * 4.0);
   float life = fraction(time * frayRow.z + frayRow.w);
   float visible = gate * smooth01(life / 0.15) * (1.0 - smooth01((life - 0.6) / 0.3));
@@ -724,7 +419,7 @@ uniform float halfWidth;
     return;
   }
   float y = frayRow.x;
-  float head = sqrt(1.0 - y * y) * 0.96 + 0.3 * life;
+  float head = sqrt(max(${glslFloat(PICTURE_SHELL_EDGE * PICTURE_SHELL_EDGE)} - y * y, 0.0)) + 0.3 * life;
   emitSegment(vec2(head - frayRow.y * visible, y), vec2(head, y), halfWidth, 0.0, 0.0);
 `,
     ),
@@ -740,8 +435,9 @@ uniform float halfWidth;
 export const CHIP_PARTS = ['slab', 'middle'] as const;
 
 /**
- * The latest burst's chips: up to five slabs thrown off the left limb, each snapping in two as it
- * breaks up (`drawChips`, `appendBurstChip`, `appendChip`), a slab and its hot middle apiece.
+ * The latest burst's chips: up to five slabs thrown off the left of the shell's edge, each snapping
+ * in two as it breaks up (`drawChips`, `appendBurstChip`, `appendChip`), a slab and its hot middle
+ * apiece.
  */
 export function chipsLayer(): { layer: PictureLayerSource; ranges: Record<(typeof CHIP_PARTS)[number], ShapeRange> } {
   const shapes: number[][] = [];
@@ -768,9 +464,6 @@ uniform float strokeHalf;
     return;
   }
   emitBox(middle, axis, halfSize, strokeHalf);
-  // Drawn as the union of the part's slabs: see chipsCoverage.
-  shapeKind = 5.0;
-  shapeC = vec4(chipShape, 0.0);
 `,
       ),
       uniforms: ['burst', 'strokeHalf'],
@@ -778,47 +471,5 @@ uniform float strokeHalf;
       shapes: shapes.length,
     },
     ranges: ranges as Record<(typeof CHIP_PARTS)[number], ShapeRange>,
-  };
-}
-
-// ---- rare accents -----------------------------------------------------------------------------
-
-/** The jagged lightning filament, re-jagged every film frame (`drawAccents`): eight runs of one polyline. */
-export function lightningLayer(): PictureLayerSource {
-  return {
-    vertexShader: shader(
-      `
-in float joint;
-uniform float lineSeed;
-uniform float filmFrame;
-uniform float halfWidth;
-
-// The filament's joint \`index\`, 0 its start: along it, jagged across it but for the start.
-vec2 jointPoint(vec2 start, vec2 direction, vec2 normal, float filamentLength, float index) {
-  float jag = index > 0.5 ? (hashInteger(filmFrame * 29.0 + index) - 0.5) * 0.07 : 0.0;
-  return start + direction * (index / 8.0) * filamentLength + normal * jag;
-}
-`,
-      `
-  float anchor = clockRadians(40.0 + 70.0 * hashInteger(lineSeed * 3.0));
-  vec2 direction = vec2(cos(anchor), sin(anchor));
-  vec2 normal = vec2(-direction.y, direction.x);
-  // it runs out toward the limb from inside and stops short of it
-  vec2 start = direction * 0.42;
-  float filamentLength = 0.35 + 0.3 * hashInteger(lineSeed * 5.0);
-  vec2 from = jointPoint(start, direction, normal, filamentLength, joint - 1.0);
-  vec2 to = jointPoint(start, direction, normal, filamentLength, joint);
-  emitRun(from, to, halfWidth, (joint > 1.5 ? 1.0 : 0.0) + (joint < 7.5 ? 2.0 : 0.0), 0.0, 0.0);
-`,
-    ),
-    uniforms: ['lineSeed', 'filmFrame', 'halfWidth'],
-    attributes: [
-      attribute(
-        'joint',
-        1,
-        Array.from({ length: 8 }, (_, joint) => [joint + 1]),
-      ),
-    ],
-    shapes: 8,
   };
 }

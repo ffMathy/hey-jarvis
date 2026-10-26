@@ -5,7 +5,7 @@ import { analyseFrame, createHologramScene, type HologramFrame, pictureSceneOf }
 import { VOICE_BAND_COUNT } from '../voice-levels';
 import { BLEND, DEPTH_TEST, EQUAL, LESS, NOTEQUAL, STENCIL_TEST } from './gl-objects';
 import { createGpuPicture, drawGpuPicture } from './gpu-picture';
-import { type Call, ExpoObject, expoObjects, recordingGl, uncopyable } from './recording-gl.fakes';
+import { BrowserLocation, type Call, ExpoObject, expoObjects, recordingGl, uncopyable } from './recording-gl.fakes';
 
 /**
  * The picture of everything but his body against a context that only writes down what it is asked:
@@ -65,7 +65,11 @@ describe('the picture on the GPU', () => {
     const { picture, made } = madePicture();
     const sources = named(made, 'shaderSource').map(([, , source]) => String(source));
 
-    expect(sources.length).toBeGreaterThan(20);
+    // Eight programs, two sources each: the static runs, the glyphs, the arc, the disc, the cage, the
+    // embers, the fray and the chips. It was fifteen until the Vision footage replaced the Age of
+    // Ultron layers (the whorl, the comets, the truss, the crescent and the rest) with the cage and
+    // the embers.
+    expect(sources.length).toBeGreaterThanOrEqual(16);
     for (const source of sources) expect(source.startsWith('#version 300 es\n')).toBe(true);
     expect(uncopyable(picture, 'picture')).toEqual([]);
     expect(named(made, 'createVertexArray')[0]).toBeDefined();
@@ -77,7 +81,10 @@ describe('the picture on the GPU', () => {
     const calls = draw(madePicture());
     const draws = calls.flatMap((call, index) => (call[0] === 'drawElements' ? [index] : []));
 
-    expect(draws.length).toBeGreaterThan(40);
+    // A speaking frame with a burst draws at least eighteen paths: the aura, the core's eight, the
+    // cage's two, the embers' two, the fray's two and the chips' three. It drew more than twenty
+    // before the Vision footage replaced the Age of Ultron layers with fewer, finer ones.
+    expect(draws.length).toBeGreaterThanOrEqual(36);
     expect(draws.length % 2).toBe(0);
     for (let pair = 0; pair < draws.length; pair += 2) {
       const [depthPass, colourPass] = [draws[pair] ?? 0, draws[pair + 1] ?? 0];
@@ -124,6 +131,25 @@ describe('the picture on the GPU', () => {
       ]),
     );
     expect(named(last, 'depthMask').at(-1)).toEqual(['depthMask', true]);
+  });
+
+  it("turns the cage with his body, by the very turn the body's fragments are placed at", () => {
+    // A browser's context names each uniform's location, so the cage's turn can be read back.
+    const calls: Call[] = [];
+    const gl = recordingGl(calls);
+    const picture = createGpuPicture(gl, scene);
+    for (const time of [1, 7.5, 20]) {
+      calls.length = 0;
+      const state = analyseFrame(frameAt({ time }), 1, scene);
+      drawGpuPicture(gl, picture, { state, pixels: 512, satellites: [] });
+      const turns = calls.filter(
+        ([name, location]) =>
+          name === 'uniform2f' && location instanceof BrowserLocation && location.name === 'bodyTurn',
+      );
+
+      expect(turns.length).toBeGreaterThan(0);
+      for (const [, , cos, sin] of turns) expect([cos, sin]).toEqual([state.bodyCos, state.bodySin]);
+    }
   });
 
   it('writes a glyph into its slot once, and again only when the slot is given another', () => {

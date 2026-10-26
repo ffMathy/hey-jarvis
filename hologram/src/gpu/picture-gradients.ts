@@ -1,13 +1,12 @@
-import { limbRidgeStops } from '../hologram-drawing';
+import { AURA_INNER, AURA_OUTER, CORE_RING_RADIUS, PICTURE_SHELL_EDGE } from '../hologram-drawing';
 import { GRADIENT_ROWS, GRADIENT_TEXELS } from './picture-glsl';
 
 /**
- * The picture's gradients as rows of one texture: the limb bloom's ring profile and its mask round
- * the limb, the limb ridge's (lumpy, from the scene's seed), the thin ring's sweep and the core's
- * bloom. A row is the gradient's colours at {@link GRADIENT_TEXELS} positions from 0 to 1, made the
- * way Skia evaluates a gradient — the stops' colours interpolated as they are written, not
- * premultiplied, and premultiplied afterwards, clamped past the first and last stop — and stored
- * premultiplied, as the paints read them.
+ * The picture's gradients as rows of one texture: the glow of his core and the aura round him. A row
+ * is the gradient's colours at {@link GRADIENT_TEXELS} positions from 0 to 1, made the way Skia
+ * evaluates a gradient — the stops' colours interpolated as they are written, not premultiplied,
+ * and premultiplied afterwards, clamped past the first and last stop — and stored premultiplied, as
+ * the paints read them.
  */
 
 /** A gradient's stops: colours as `#rrggbb` or `#rrggbbaa`, at positions from 0 to 1. */
@@ -16,39 +15,51 @@ export interface GradientStops {
   positions: readonly number[];
 }
 
+/** How far the core's glow reaches from the core, in R. */
+const CORE_GLOW_REACH = 0.53;
+
 /** Which row each gradient is, and the radius a radial one reaches 1 at. */
 export const GRADIENTS = {
-  bloomRing: { row: 0, radius: 1.12 },
-  bloomMask: { row: 1 },
-  ridgeRing: { row: 2, radius: 1.06 },
-  ridgeLumps: { row: 3 },
-  thinRing: { row: 4 },
-  coreBloom: { row: 5, radius: 1 },
+  coreGlow: { row: 0, radius: CORE_GLOW_REACH },
+  aura: { row: 1, radius: AURA_OUTER },
 } as const;
 
-const BLOOM_RING: GradientStops = {
-  colours: ['#ffffff00', '#ffffff00', '#ffffff70', '#ffffffff', '#ffffff80', '#ffffff00'],
-  positions: [0, 0.79, 0.855, 0.895, 0.935, 0.985],
-};
-// Peaked at 8-9 o'clock: a sweep starts at 3 o'clock and runs clockwise.
-const BLOOM_MASK: GradientStops = {
-  colours: ['#e8801c00', '#e8801c00', '#ec8a2280', '#f0962aff', '#ec8a2280', '#e8801c00', '#e8801c00'],
-  positions: [0, 0.27, 0.37, 0.47, 0.6, 0.7, 1],
-};
-const RIDGE_RING: GradientStops = {
-  colours: ['#ffffff00', '#ffffff00', '#ffffff80', '#ffffffff', '#ffffff70', '#ffffff00'],
-  positions: [0, 0.84, 0.885, 0.915, 0.94, 0.965],
-};
-// Brightest from 1 to 4 o'clock.
-const THIN_RING: GradientStops = {
-  colours: ['#e69c50', '#e69c50', '#9c5e2e', '#9c5e2e', '#e69c50', '#e69c50'],
-  positions: [0, 0.09, 0.22, 0.7, 0.82, 1],
-};
-// Elongated along the diagonal by its draw, with a darker orange inside the hot ring, never white.
-const CORE_BLOOM: GradientStops = {
-  colours: ['#d06a2ec0', '#e88030e8', '#f68e30e8', '#e6802eb0', '#dc742a50', '#c8602600'],
-  positions: [0, 0.22, 0.34, 0.5, 0.74, 1],
-};
+/** Stops written at radii, in R, as a gradient that reaches its end at `reach`. */
+function stopsAtRadii(reach: number, stops: readonly [radius: number, colour: string][]): GradientStops {
+  return { colours: stops.map(([, colour]) => colour), positions: stops.map(([radius]) => radius / reach) };
+}
+
+/**
+ * The glowing disc inside the white-hot ring and the ring's own glow: pale gold and a little less
+ * bright than the ring inside it, at its brightest on the ring, and falling away fast outside it, so
+ * the band between the core and the shell of specks stays dark and see-through, as the film's is.
+ */
+const CORE_GLOW = stopsAtRadii(CORE_GLOW_REACH, [
+  [0, '#ffcf84a8'],
+  [0.2, '#ffcf84b4'],
+  [CORE_RING_RADIUS - 0.06, '#ffcf86d0'],
+  [CORE_RING_RADIUS, '#ffc870cc'],
+  [CORE_RING_RADIUS + 0.04, '#f5a2486b'],
+  [CORE_RING_RADIUS + 0.09, '#e08a2c24'],
+  [CORE_GLOW_REACH, '#e08a2c00'],
+]);
+
+/**
+ * The aura: nothing inside {@link AURA_INNER}, rising to its brightest on the shell's edge, and
+ * falling off softly to nothing at {@link AURA_OUTER}, warm gold where it is brightest and deep
+ * amber at its far edge, as the film's bloom is near-white at its heart and orange in its falloff.
+ */
+const AURA = stopsAtRadii(AURA_OUTER, [
+  [0, '#e08a2c00'],
+  [AURA_INNER, '#e08a2c00'],
+  [0.62, '#e8923410'],
+  [PICTURE_SHELL_EDGE - 0.08, '#f09c3e8c'],
+  [PICTURE_SHELL_EDGE, '#f4a246ff'],
+  [0.98, '#ec963ac0'],
+  [1.12, '#e08a2c5c'],
+  [1.3, '#cc74241c'],
+  [AURA_OUTER, '#b8641e00'],
+]);
 
 /** A `#rrggbb` or `#rrggbbaa` colour as four channels from 0 to 1, not premultiplied. */
 export function parseColour(colour: string): [number, number, number, number] {
@@ -77,14 +88,10 @@ export function gradientColour(stops: GradientStops, position: number): [number,
 }
 
 /** Every gradient's row, as the bytes of a {@link GRADIENT_TEXELS} × {@link GRADIENT_ROWS} RGBA8 texture. */
-export function pictureGradientPixels(textureSeed: number): Uint8Array {
+export function pictureGradientPixels(): Uint8Array {
   const rows: [number, GradientStops][] = [
-    [GRADIENTS.bloomRing.row, BLOOM_RING],
-    [GRADIENTS.bloomMask.row, BLOOM_MASK],
-    [GRADIENTS.ridgeRing.row, RIDGE_RING],
-    [GRADIENTS.ridgeLumps.row, limbRidgeStops(textureSeed)],
-    [GRADIENTS.thinRing.row, THIN_RING],
-    [GRADIENTS.coreBloom.row, CORE_BLOOM],
+    [GRADIENTS.coreGlow.row, CORE_GLOW],
+    [GRADIENTS.aura.row, AURA],
   ];
   const pixels = new Uint8Array(GRADIENT_TEXELS * GRADIENT_ROWS * 4);
   for (const [row, stops] of rows) {
