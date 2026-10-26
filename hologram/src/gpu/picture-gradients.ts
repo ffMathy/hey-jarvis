@@ -30,20 +30,23 @@ function stopsAtRadii(reach: number, stops: readonly [radius: number, colour: st
 }
 
 /**
- * The glow inside the white-hot ring and the ring's own bloom. Inside, the film's disc is mostly
- * see-through: a warm glow at its brightest just inside the ring, falling away towards the middle,
- * where it is faint amber. On the ring it blooms both ways, inward into that glow and outward into
- * the band between the core and the shell of specks, which it leaves dark and see-through, as the
- * film's is. It used to be pale gold and nearly as bright at the middle as at the ring, which read
- * as an opaque coin laid over him.
+ * The glow inside the white-hot ring and the ring's own bloom. Inside, the film's disc is a warm
+ * glowing haze that fills the ring: at its brightest just inside the ring, golden there, and falling
+ * away to about half the ring's light at the middle, a deeper gold, which leaves what lies behind it
+ * showing through. On the ring it blooms both ways, inward into that haze and outward into the band
+ * between the core and the shell of specks, which it leaves dark and see-through, as the film's is.
+ *
+ * It has been both ways wrong. Pale gold and nearly as bright at the middle as at the ring, it read
+ * as an opaque coin laid over him; then faint amber at a fifth of the ring's light, the inside of
+ * the ring was a dark hole where the film's glows.
  */
 const CORE_GLOW = stopsAtRadii(CORE_GLOW_REACH, [
-  [0, '#e08c3430'],
-  [0.12, '#e6923a36'],
-  [0.22, '#f0a2464e'],
-  [CORE_RING_RADIUS - 0.07, '#fab65a7a'],
-  [CORE_RING_RADIUS - 0.025, '#ffca7ab4'],
-  [CORE_RING_RADIUS, '#ffd48cd0'],
+  [0, '#eea85676'],
+  [0.12, '#f1ac5a7c'],
+  [0.22, '#f5b66290'],
+  [CORE_RING_RADIUS - 0.07, '#f9c06eac'],
+  [CORE_RING_RADIUS - 0.025, '#fdcc80cc'],
+  [CORE_RING_RADIUS, '#ffd48cd8'],
   [CORE_RING_RADIUS + 0.025, '#fcbc6aa0'],
   [CORE_RING_RADIUS + 0.06, '#f0a04658'],
   [CORE_RING_RADIUS + 0.11, '#e48e321c'],
