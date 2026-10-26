@@ -136,19 +136,61 @@ describe('summoning Jarvis', () => {
     expect(sdk.latest.spoken?.overrides).toBeUndefined();
   });
 
-  it('gives up on a recording the browser never answers for, and stops it if it starts late', async () => {
+  it('dials while the recording is still being asked for, asking the agent not to greet', async () => {
     const { session, tokens, greeting, sdk, clock } = createHarness();
 
     session.summon();
     tokens.grant();
+    await settle();
+    expect(greeting.plays).toBe(1);
+    expect(sdk.dials).toHaveLength(1);
+    expect(sdk.latest.spoken?.overrides).toEqual(WITHOUT_FIRST_MESSAGE);
+
+    const conversation = sdk.latest.conversation;
+    await sdk.latest.connect();
+    expect(conversation.muting).toEqual([true]);
+    expect(session.phase).toBe('greeting');
+
+    greeting.allow();
+    await clock.advance(greeting.durationMilliseconds);
+    expect(conversation.muting).toEqual([true, false]);
+    expect(session.phase).toBe('live');
+  });
+
+  it('opens the microphone of a conversation dialled behind the greeting when the recording is refused', async () => {
+    const { session, tokens, greeting, sdk } = createHarness();
+
+    session.summon();
+    tokens.grant();
+    await settle();
+    const conversation = sdk.latest.conversation;
+    await sdk.latest.connect();
+
+    greeting.refuse();
+    await settle();
+
+    expect(sdk.dials).toHaveLength(1);
+    expect(conversation.muting).toEqual([true, false]);
+    expect(session.phase).toBe('live');
+  });
+
+  it('gives up on a recording the browser never answers for, and stops it if it starts late', async () => {
+    const { session, tokens, greeting, sdk, clock } = createHarness();
+
+    session.summon();
     await clock.advance(greeting.durationMilliseconds + GREETING_GRACE_SECONDS * 1000);
     expect(session.phase).toBe('connecting');
     expect(greeting.stops).toBe(1);
-    expect(sdk.latest.spoken?.overrides).toBeUndefined();
+    expect(sdk.dials).toHaveLength(0);
 
     greeting.allow();
     await settle();
     expect(greeting.stops).toBe(2);
+
+    // Given up on before anything was dialled, so the agent greets for himself.
+    tokens.grant();
+    await settle();
+    expect(sdk.latest.spoken?.overrides).toBeUndefined();
   });
 
   it('notices the greeting has ended when the hologram reads his voice, even with its timers held back', async () => {

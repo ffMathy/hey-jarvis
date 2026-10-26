@@ -668,17 +668,16 @@ describe('on a watch, which has to get off its phone’s Bluetooth first', () =>
     });
   }
 
-  it('brings the network up once he has started greeting, and asks for the token only once it is up', async () => {
+  it('brings the network up as the greeting is asked for, and asks for the token only once it is up', async () => {
     const watch = onAWatch();
 
     watch.session.summon();
     await settle();
-    watch.greeting.routeReady();
-    await settle();
     expect(watch.networks).toHaveLength(0);
 
-    watch.greeting.allow();
+    watch.greeting.routeReady();
     await settle();
+    expect(watch.greeting.plays).toBe(1);
     expect(watch.networks).toHaveLength(1);
     expect(watch.tokens.requests).toHaveLength(0);
 

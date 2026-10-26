@@ -145,7 +145,11 @@ interface Attempt<Timer> {
   /** Held in writing on both sides: see `SummonOptions.textOnly`. */
   textOnly: boolean;
   greeting: GreetingState;
-  /** Whether the recording actually played, which is what switches the agent's first message off. */
+  /**
+   * Whether he greets from the recording, which is what switches the agent's first message off: set
+   * the moment the recording is asked to play, since the session dials while it plays (see
+   * `playWhileDialling`).
+   */
   greeted: boolean;
   /** When the recording was asked for, on `now()`'s clock. */
   askedAt: number;
@@ -994,7 +998,8 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     if (!isCurrent(current) || current.dialled || current.credential === undefined) {
       return;
     }
-    if (current.greeting === 'preparing' || current.greeting === 'asking') {
+    // Asking and already counted as greeted is dialling while he greets: see `playWhileDialling`.
+    if (current.greeting === 'preparing' || (current.greeting === 'asking' && !current.greeted)) {
       return;
     }
     dial(current, current.credential);
@@ -1184,6 +1189,10 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     if (current.greeting === 'playing') {
       lastHeardAt = now();
     }
+    if (current.greeting === 'asking' && !current.dialled) {
+      // Refused or never answered before anything was dialled: the agent keeps its own first message.
+      current.greeted = false;
+    }
     current.greeting = 'over';
     if (current.greetingCheck !== undefined) {
       cancel(current.greetingCheck);
@@ -1252,8 +1261,9 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     }
     if (!playing) {
       // Refused: the agent keeps its own first message, so he is never left not greeting at all.
-      // Nor is there a greeting left to hold the call's audio for; the conversation starts its own.
-      if (current.callAudio === 'greeting') {
+      // Nor is there a greeting left to hold the call's audio for; the conversation starts its own —
+      // unless one was already dialled behind it, which is about to take it over.
+      if (current.callAudio === 'greeting' && !current.dialled) {
         releaseCallAudio(current);
       }
       finishGreeting(current);
@@ -1282,6 +1292,21 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
   };
 
   /**
+   * Plays the recording and dials at once, rather than once the player has answered, counting him
+   * as greeted already: the agent is asked not to greet and the microphone stays muted until the
+   * recording is over. A device that brings up a network first (`untilOnline`) starts doing so now
+   * too. Should the browser then refuse the recording, the agent stays quiet until sir speaks — the
+   * price of connecting while he greets instead of after.
+   */
+  const playWhileDialling = (current: Attempt<Timer>) => {
+    current.askedAt = now();
+    startReaching(current);
+    current.greeted = true;
+    dialWhenReady(current);
+    playGreeting(current);
+  };
+
+  /**
    * Asks for the recording. A player with a route to wait for (`untilAudible`) is waited for
    * first, and the clock that gives up on the greeting starts again once it answers: the wait was
    * not him being late.
@@ -1292,7 +1317,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     scheduleGreetingCheck(current);
     changed();
     if (!greeting.untilAudible) {
-      playGreeting(current);
+      playWhileDialling(current);
       return;
     }
     let audible: Promise<void>;
@@ -1307,8 +1332,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
         if (!isCurrent(current) || current.greeting !== 'asking') {
           return;
         }
-        current.askedAt = now();
-        playGreeting(current);
+        playWhileDialling(current);
       });
   };
 
