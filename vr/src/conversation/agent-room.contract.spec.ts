@@ -57,11 +57,11 @@ describe("the SDK's conversation", () => {
     expect(readClientSource('utils/WebRTCConnection.js')).toContain('participant.identity.includes("agent")');
   });
 
-  it('reports a room that closed under the conversation in the words `describeDisconnect` looks for', () => {
-    // The text the error panel replaces with "The connection to Jarvis dropped."; if it changes,
+  it('closes a room LiveKit gave up on with the context `describeDisconnect` looks for', () => {
+    // The context the error panel replaces with "The connection to Jarvis dropped."; if it changes,
     // the raw LiveKit sentence would be what the user reads in the room.
     expect(readClientSource('utils/WebRTCConnection.js')).toMatch(
-      /message: `LiveKit connection state changed to \$\{state\}`/,
+      /ConnectionState\.Disconnected\)\s*\{[\s\S]{0,200}?reason: "error",[\s\S]{0,200}?context: \{ type: "connection_state_changed" \}/,
     );
   });
 

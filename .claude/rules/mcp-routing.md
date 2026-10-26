@@ -39,7 +39,9 @@ Split into rules of their own:
    folded from the run's own step-result stream. A result is handed over exactly once.
 5. When the run ends, the request is done and the closing report recaps everything — including
    anything the run never got to, so a delegation that never answered is reported rather than
-   dropped.
+   dropped. Every report says outright whether it is that one: `requestFinished` is true on the
+   closing report and false on every other, so callers and tests read that rather than the
+   wording, or an empty `taskIdsInProgress`, which a poll that runs out mid-planning has too.
 6. A delegation that stops to ask the user something is reported in that closing report as a
    question, in `questionsForUser` — see **Questions for the user** below.
 7. What a delegation's tools read or change is pushed straight to sir's devices over the WebSocket

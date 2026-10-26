@@ -11,7 +11,7 @@
  */
 
 import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test';
-import type { people_v1 } from 'googleapis';
+import { Common, type people_v1 } from 'googleapis';
 import * as realGoogleAuth from '../../credentials/google-auth.js';
 import { executeTool } from '../../utils/tool-factory.js';
 // Type-only, so it is erased rather than loading the module before the mock below.
@@ -91,6 +91,37 @@ const {
   scoreContactMatch,
   toContact,
 } = await import('./contacts.js');
+
+const PEOPLE_URL = 'https://people.googleapis.com/v1/people/me/connections';
+const TOKEN_URL = 'https://oauth2.googleapis.com/token';
+
+/**
+ * The error googleapis rejects with when Google answers `status` with `body`.
+ *
+ * Made by a real Gaxios request whose transport answers as Google does, so the
+ * spec sees the `GaxiosError` the library builds — its `response`, its parsed
+ * `data`, its message — rather than a guess at it.
+ */
+async function googleRefusal(url: string, status: number, body: unknown): Promise<Error> {
+  const failure = await new Common.Gaxios()
+    .request({
+      url,
+      retry: false,
+      fetchImplementation: Object.assign(
+        async () => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
+        { preconnect: globalThis.fetch.preconnect },
+      ),
+    })
+    .then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+  if (!(failure instanceof Common.GaxiosError)) {
+    throw new Error(`Expected Google's answer of ${status} to reject with a GaxiosError`);
+  }
+  return failure;
+}
 
 /** Builds a contact directly, for the pure matching and ranking functions. */
 function makeContact(displayName: string, overrides: Partial<Contact> = {}): Contact {
@@ -481,19 +512,78 @@ describe('getContacts', () => {
   it('explains a missing contacts scope instead of surfacing the raw rejection', async () => {
     // The scope is newer than the Google credentials most installs hold, so
     // this is the failure the very first call after deploying tends to hit.
-    requestFailure = new Error('Request had insufficient authentication scopes.');
+    requestFailure = await googleRefusal(PEOPLE_URL, 403, {
+      error: {
+        code: 403,
+        message: 'Request had insufficient authentication scopes.',
+        status: 'PERMISSION_DENIED',
+        details: [
+          {
+            '@type': 'type.googleapis.com/google.rpc.ErrorInfo',
+            reason: 'ACCESS_TOKEN_SCOPE_INSUFFICIENT',
+            domain: 'googleapis.com',
+            metadata: {
+              service: 'people.googleapis.com',
+              method: 'google.people.v1.PeopleService.ListConnections',
+            },
+          },
+        ],
+      },
+    });
+
+    await expect(executeTool(getContacts, { forceRefresh: false })).rejects.toThrow(/generate-tokens/);
+  });
+
+  it('explains a refresh token Google no longer accepts', async () => {
+    requestFailure = await googleRefusal(TOKEN_URL, 400, {
+      error: 'invalid_grant',
+      error_description: 'Token has been expired or revoked.',
+    });
 
     await expect(executeTool(getContacts, { forceRefresh: false })).rejects.toThrow(/generate-tokens/);
   });
 
   it('explains that the People API is not enabled', async () => {
-    // Google reports this as a 403 whose message also carries the words the
-    // scope check looks for, so the more specific diagnosis has to win.
-    requestFailure = new Error(
-      'Forbidden: People API has not been used in project 12345 before or it is disabled. PERMISSION_DENIED',
-    );
+    // Google reports this as a 403 PERMISSION_DENIED as well, so the more
+    // specific diagnosis, read from the reason, has to win.
+    requestFailure = await googleRefusal(PEOPLE_URL, 403, {
+      error: {
+        code: 403,
+        message:
+          'People API has not been used in project 12345 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/people.googleapis.com/overview?project=12345 then retry.',
+        status: 'PERMISSION_DENIED',
+        details: [
+          {
+            '@type': 'type.googleapis.com/google.rpc.ErrorInfo',
+            reason: 'SERVICE_DISABLED',
+            domain: 'googleapis.com',
+            metadata: { service: 'people.googleapis.com', consumer: 'projects/12345' },
+          },
+          {
+            '@type': 'type.googleapis.com/google.rpc.Help',
+            links: [
+              {
+                description: 'Google developers console API activation',
+                url: 'https://console.developers.google.com/apis/api/people.googleapis.com/overview?project=12345',
+              },
+            ],
+          },
+        ],
+      },
+    });
 
     await expect(executeTool(getContacts, { forceRefresh: false })).rejects.toThrow(/People API is not enabled/);
+  });
+
+  it('does not diagnose a failure from the words in its message', async () => {
+    // A server error whose wording happens to mention a scope is still a server error.
+    requestFailure = await googleRefusal(PEOPLE_URL, 500, {
+      error: { code: 500, message: 'Internal error while checking scope. Forbidden.', status: 'INTERNAL' },
+    });
+
+    const failure = await executeTool(getContacts, { forceRefresh: false }).catch((error: unknown) => error);
+
+    expect(failure).toBe(requestFailure);
   });
 
   it('passes an unrelated failure through unchanged', async () => {

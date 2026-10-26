@@ -336,10 +336,11 @@ export interface FakeDial {
   /** A start that fails before any conversation exists: `disconnected`, then the rejection. */
   reject(error: unknown): Promise<void>;
   /**
-   * The conversation ends with an error, in the shape the SDK gives it: LiveKit giving up on the
-   * room (`connection_state_changed`) when the message is LiveKit's, a server closing it otherwise.
+   * The conversation ends with an error, in the shape the SDK gives it: `message`, and the context
+   * it closed with — `connection_state_changed` for LiveKit giving up on the room, `close` for a
+   * server closing it.
    */
-  drop(message: string): void;
+  drop(message: string, contextType: 'connection_state_changed' | 'close'): void;
   /**
    * The agent seems to leave: what the SDK reports when a change of network makes LiveKit rejoin the
    * room from scratch, unwinding every participant as it starts (see `connection-drop.ts`).
@@ -348,9 +349,6 @@ export interface FakeDial {
   /** The agent calls `end_call`. */
   agentHangsUp(): void;
 }
-
-/** The message the SDK ends a conversation with when LiveKit gives up on its room. */
-const LIVEKIT_GAVE_UP = /^LiveKit connection state changed to disconnected$/;
 
 function createFakeDial(
   options: SessionOptions,
@@ -445,12 +443,8 @@ function createFakeDial(
       started.reject(error);
       await settle();
     },
-    drop: (message) => {
-      endWith({
-        reason: 'error',
-        message,
-        context: LIVEKIT_GAVE_UP.test(message) ? { type: 'connection_state_changed' } : { type: 'close' },
-      });
+    drop: (message, contextType) => {
+      endWith({ reason: 'error', message, context: { type: contextType } });
     },
     agentSeemsToLeave: () => {
       endWith({ reason: 'agent', context: { type: 'close', reason: 'agent disconnected' } });

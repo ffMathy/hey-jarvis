@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from 'bun:test';
 import { Classifier } from '@mastra/core/classifier';
+import { z } from 'zod';
 import {
   classifyEmail,
   EMAIL_KINDS,
@@ -150,6 +151,13 @@ function fakeClassifier(answersFor: (state: unknown) => EmailTriageAnswers | Err
 const OFFER = { from: 'news@shop.example', subject: '50% off everything', bodyPreview: 'This weekend only' };
 const CODE = { from: 'no-reply@bank.example', subject: 'Your sign-in code', bodyPreview: 'Your code is 123456' };
 
+const evaluatedEmailSchema = z.object({ subject: z.string() });
+
+/** Whether the classifier was shown the `CODE` fixture, told apart from the others by its subject. */
+function isCodeEmail(state: unknown): boolean {
+  return evaluatedEmailSchema.parse(state).subject === CODE.subject;
+}
+
 describe('classifyEmail', () => {
   it('shows the classifier the sender, the subject and the preview, and reads its answers', async () => {
     const { classifier, evaluatedStates } = fakeClassifier(() => answers('newsletter_or_promotion', 0.97, 0, 0.9));
@@ -162,7 +170,7 @@ describe('classifyEmail', () => {
 describe('triageEmails', () => {
   it('classifies every email and files only what is left', async () => {
     const { classifier } = fakeClassifier((state) =>
-      JSON.stringify(state).includes('sign-in')
+      isCodeEmail(state)
         ? answers('security_code_or_login_alert', 0.95, 3, 0.92)
         : answers('newsletter_or_promotion', 0.95, 0, 0.9),
     );
@@ -178,9 +186,7 @@ describe('triageEmails', () => {
 
   it('files an email whose classification fails as it always was', async () => {
     const { classifier } = fakeClassifier((state) =>
-      JSON.stringify(state).includes('sign-in')
-        ? new Error('Jev is down')
-        : answers('newsletter_or_promotion', 0.95, 1, 0.9),
+      isCodeEmail(state) ? new Error('Jev is down') : answers('newsletter_or_promotion', 0.95, 1, 0.9),
     );
 
     const filing = await triageEmails([OFFER, CODE], classifier);

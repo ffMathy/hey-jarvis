@@ -912,7 +912,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       end(current);
       return;
     }
-    fail(current, describeDisconnect(ending.message), 'session');
+    fail(current, describeDisconnect(ending), 'session');
     sweepOrphanedAudio();
   };
 

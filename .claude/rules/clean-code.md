@@ -17,6 +17,7 @@ Each topic is a rule of its own, under the same paths:
 - [Variable Naming](clean-code-variable-naming.md)
 - [YAGNI (You Aren't Gonna Need It)](clean-code-yagni-you-aren-t-gonna-need-it.md)
 - [ETC (Easy To Change)](clean-code-etc-easy-to-change.md)
+- [Never Read Meaning Out of Prose](clean-code-never-read-meaning-out-of-prose.md)
 
 ## DRY (Don't Repeat Yourself)
 

@@ -60,17 +60,10 @@ async function poll() {
   return instructionsOutputSchema.parse(await executeTool(pollTool, {}));
 }
 
-/** The openings a response has when it closes a request, wherever in it they come. */
-const CLOSING_OPENINGS = ['All tasks have completed', 'The request could not be completed'];
-
 /** Polls until a response closes the request, the way the voice agent does. */
 async function pollUntilClosed() {
   const responses = [await poll()];
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const latest = responses[responses.length - 1];
-    if (CLOSING_OPENINGS.some((opening) => latest.instructions.includes(opening))) {
-      break;
-    }
+  for (let attempt = 0; attempt < 20 && !responses[responses.length - 1].requestFinished; attempt += 1) {
     responses.push(await poll());
   }
   return responses;
@@ -107,6 +100,7 @@ describe('a lights request whose agent fails', () => {
     const responses = await pollUntilClosed();
     const closing = responses[responses.length - 1];
 
+    expect(closing.requestFinished).toBe(true);
     expect(closing.taskIdsInProgress).toEqual([]);
     const results = responses.flatMap((response) => response.completedTaskResults ?? []);
     expect(results).not.toContainEqual({ id: 'internetOfThings', result: 'null' });

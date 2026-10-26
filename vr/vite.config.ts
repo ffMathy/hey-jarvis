@@ -1,15 +1,37 @@
-import { defaultClientConditions, defineConfig } from 'vite';
+import { defaultClientConditions, defineConfig, type Plugin } from 'vite';
+
+/** The Node built-ins CanvasKit's loader asks for, and the module that stands in for them. */
+const CANVASKIT_NODE_BUILTINS = new Set(['fs', 'path']);
+const CANVASKIT_NODE_STUB = '\0canvaskit-node-stub';
+
+/** Whether a module's path is a file of the `canvaskit-wasm` package, wherever the linker put it. */
+const CANVASKIT_FILE = /[\\/]node_modules[\\/]canvaskit-wasm[\\/]/;
 
 /**
- * Whether `log` is Vite noting that CanvasKit's loader asks for Node's `fs` and `path`.
+ * Gives CanvasKit's loader an empty module for Node's `fs` and `path`, before Vite's resolver
+ * externalizes them and warns that it did.
  *
- * It does, in the branch its Emscripten glue takes when it finds itself running under Node to
- * read the wasm from disk; in a browser that branch never runs, so the stubs Vite puts in their
- * place are never touched. The note is dropped for that one file only, so the same note about
- * anything else still reaches the build log.
+ * It asks for them in the branch its Emscripten glue takes when it finds itself running under Node
+ * to read the wasm from disk; in a browser that branch never runs, so the stub is never touched.
+ * Only that package's imports are stubbed, so the same import from anything else still reaches
+ * Vite's resolver, and its warning still reaches the build log. The importer's path decides it,
+ * not the warning: Vite's warning carries nothing but its text and the resolver's name.
  */
-function isCanvasKitNodeBranch(log: { message: string }) {
-  return log.message.includes('externalized for browser compatibility') && log.message.includes('canvaskit-wasm');
+function canvasKitNodeStubs(): Plugin {
+  return {
+    name: 'canvaskit-node-stubs',
+    apply: 'build',
+    enforce: 'pre',
+    resolveId(source, importer) {
+      if (importer && CANVASKIT_FILE.test(importer) && CANVASKIT_NODE_BUILTINS.has(source)) {
+        return CANVASKIT_NODE_STUB;
+      }
+      return null;
+    },
+    load(id) {
+      return id === CANVASKIT_NODE_STUB ? 'module.exports = {};' : null;
+    },
+  };
 }
 
 export default defineConfig({
@@ -19,6 +41,7 @@ export default defineConfig({
   // through an environment variable, which Turbo does not hash, so a cached build for one
   // prefix could be replayed for another.
   base: './',
+  plugins: [canvasKitNodeStubs()],
   resolve: {
     // One copy of each, whatever the linker does. `@elevenlabs/client` brings its own
     // `livekit-client` range and the conversation code checks `instanceof Room` against
@@ -56,10 +79,6 @@ export default defineConfig({
       input: {
         main: 'index.html',
         preview: 'preview.html',
-      },
-      onLog(level, log, defaultHandler) {
-        if (isCanvasKitNodeBranch(log)) return;
-        defaultHandler(level, log);
       },
       output: {
         codeSplitting: {

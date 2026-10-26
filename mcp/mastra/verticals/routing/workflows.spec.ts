@@ -177,6 +177,7 @@ describe('routePromptWorkflow', () => {
     );
 
     expect(outcome.instructions).toContain('getNextInstructionsWorkflow');
+    expect(outcome.requestFinished).toBe(false);
 
     // The "I'm on it" line is ElevenLabs' now: `routePromptWorkflow` has pre-tool speech set to
     // Force in its tool settings, so the agent speaks *before* the call rather than after it
@@ -203,6 +204,7 @@ describe('routePromptWorkflow', () => {
     );
 
     expect(outcome.instructions).toContain('All tasks have completed');
+    expect(outcome.requestFinished).toBe(true);
     expect(outcome.instructions).not.toContain('Call getNextInstructionsWorkflow now');
     expect(outcome.completedTaskResults).toEqual([
       { id: 'internetOfThings', result: 'Called Turn on on Living room ceiling. 1 device changed state.' },
@@ -396,6 +398,17 @@ describe('getNextInstructionsWorkflow', () => {
 
     expect(outcome.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
     expect(outcome.instructions).toContain('not finished yet');
+    expect(outcome.requestFinished).toBe(false);
+  });
+
+  it('says the request is not over when a poll runs out while the plan is still being written', async () => {
+    // Nothing has started, so nothing is in progress either: the empty list is no sign of the close.
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.taskIdsInProgress).toEqual([]);
+    expect(outcome.requestFinished).toBe(false);
   });
 
   it('hands a result over exactly once while the request is still running', async () => {
@@ -410,6 +423,7 @@ describe('getNextInstructionsWorkflow', () => {
     // Nothing new settled, and the weather result has already been relayed.
     expect(second.completedTaskResults).toBeUndefined();
     expect(second.instructions).toContain('Still processing');
+    expect(second.requestFinished).toBe(false);
   });
 
   it('names what is still running, so the caller knows the request is not stalled', async () => {
@@ -440,6 +454,7 @@ describe('getNextInstructionsWorkflow', () => {
     // hang-up exception too — a request to end the call arriving here must reach end_call.
     expect(closing.instructions).toContain('end_call');
     expect(closing.taskIdsInProgress).toEqual([]);
+    expect(closing.requestFinished).toBe(true);
     // The unanswered one is reported rather than dropped: the caller should hear that the
     // calendar was asked and did not answer, not simply never hear of it.
     const calendar = closing.completedTaskResults?.find((entry) => entry.id === 'calendar');
@@ -531,6 +546,7 @@ describe('getNextInstructionsWorkflow', () => {
 
     expect(outcome.instructions).toContain('could not be completed');
     expect(outcome.instructions).toContain('the plan could not be registered');
+    expect(outcome.requestFinished).toBe(true);
   });
 });
 
@@ -972,6 +988,7 @@ describe('a request that has started something slow', () => {
     expect(outcome.instructions).toContain('will be notified when this request is done');
     expect(outcome.instructions).toContain('stop calling getNextInstructionsWorkflow');
     expect(outcome.taskIdsInProgress).toEqual(['coding']);
+    expect(outcome.requestFinished).toBe(false);
   });
 
   it('reports a request that finished before he accepted, rather than promising a notification', async () => {
@@ -1489,6 +1506,7 @@ describe('a request about the conversation itself', () => {
 
     expect(report.instructions).toContain('call end_call');
     expect(report.instructions).not.toContain('could not be completed');
+    expect(report.requestFinished).toBe(true);
   });
 
   it('says only that the earlier request was stopped', async () => {
@@ -1496,5 +1514,6 @@ describe('a request about the conversation itself', () => {
 
     expect(report.instructions).toContain('stopped');
     expect(report.completedTaskResults).toBeUndefined();
+    expect(report.requestFinished).toBe(true);
   });
 });

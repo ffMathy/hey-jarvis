@@ -116,11 +116,49 @@ export const getHomeAssistantConfig = () => {
 };
 
 /**
+ * Home Assistant refused a template because it rendered more output than it allows (256 KB at the
+ * time of writing).
+ *
+ * Thrown by {@link callHomeAssistantApi} so that callers can split an oversized batch and retry it
+ * by checking `instanceof`, rather than each of them reading the error's wording.
+ */
+export class TemplateOutputTooLargeError extends Error {
+  override name = 'TemplateOutputTooLargeError';
+}
+
+/** The JSON body Home Assistant answers a refused REST call with (`HomeAssistantView.json_message`). */
+const homeAssistantErrorBodySchema = z.object({ message: z.string() });
+
+/**
+ * Whether a failed call to the `template` endpoint failed because the output was too large.
+ *
+ * Home Assistant gives this failure no code: its template view answers every `TemplateError` with
+ * `json_message(f"Error rendering template: {ex}", 400)` and no `message_code`, so the 400 says
+ * only that rendering failed, and the wording of the message is the one thing that tells an
+ * oversized output from a syntax error. That wording is read here and nowhere else.
+ */
+function isTemplateOutputOverflow(endpoint: string, status: number, detail: string): boolean {
+  if (endpoint !== 'template' || status !== 400) {
+    return false;
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(detail);
+  } catch {
+    return false;
+  }
+  const parsed = homeAssistantErrorBodySchema.safeParse(body);
+  return parsed.success && parsed.data.message.includes('Template output exceeded maximum size');
+}
+
+/**
  * Makes a Home Assistant REST API call.
  *
  * Exported so sibling verticals that talk to the same instance -- the notification vertical
  * renders presence templates and calls announce/notify services -- go through one place that
  * knows how the add-on, the tunnel and the supervisor token fit together.
+ *
+ * @throws {TemplateOutputTooLargeError} If a template rendered more output than Home Assistant allows
  */
 export async function callHomeAssistantApi(endpoint: string, method = 'GET', body?: unknown) {
   const { url, token } = getHomeAssistantConfig();
@@ -141,7 +179,11 @@ export async function callHomeAssistantApi(endpoint: string, method = 'GET', bod
     // turns every one of those into an unactionable "Bad Request".
     const detail = await response.text().catch(() => '');
     const suffix = detail ? ` — ${detail.slice(0, 500)}` : '';
-    throw new Error(`Home Assistant API error calling ${method} ${endpoint}: ${response.statusText}${suffix}`);
+    const message = `Home Assistant API error calling ${method} ${endpoint}: ${response.statusText}${suffix}`;
+    if (isTemplateOutputOverflow(endpoint, response.status, detail)) {
+      throw new TemplateOutputTooLargeError(message);
+    }
+    throw new Error(message);
   }
 
   return response.json();
@@ -436,13 +478,6 @@ export const getAllDevices = createTool({
 });
 
 /**
- * Fragment of the error Home Assistant returns when a template renders more
- * output than it allows (256 KB at the time of writing). Matched so an
- * oversized batch can be split and retried rather than failing the whole call.
- */
-const HA_TEMPLATE_OUTPUT_LIMIT_MESSAGE = 'exceeded maximum size';
-
-/**
  * Devices requested per template render. Chosen well below the point where a
  * typical batch approaches Home Assistant's output cap; batches that still
  * overflow are split automatically.
@@ -580,11 +615,9 @@ async function renderBatch<TItem, TResult>(
   try {
     return await render(batch);
   } catch (error) {
-    const overflowed = error instanceof Error && error.message.includes(HA_TEMPLATE_OUTPUT_LIMIT_MESSAGE);
-
     // A single item that cannot be rendered on its own is not something
     // splitting can solve — surface it rather than looping forever.
-    if (!overflowed || batch.length === 1) {
+    if (!(error instanceof TemplateOutputTooLargeError) || batch.length === 1) {
       throw error;
     }
 

@@ -182,13 +182,14 @@ has one, on every device. The raw texts are replaced: the browser's "Failed to
 fetch" (the headset says it in its own words, `HEADSET_OFFLINE_PROBLEM`), LiveKit's
 text for a room it could not open ("The connection to ElevenLabs could not be
 opened. The network may be blocking it."), and "LiveKit connection state changed
-to disconnected". A message that looks like it contains a credential is never
+to disconnected" — told by the SDK's `connection_state_changed` disconnect
+context, never by its text. A message that looks like it contains a credential is never
 shown.
 
 `agent-room.contract.spec.ts` checks four things in the installed SDK: that it
 still keeps the room on `connection.getRoom()`, that it builds that room from the
 same `livekit-client` this app imports (so `instanceof Room` can match), that it
-still uses the disconnect wording `describeDisconnect` looks for, and, at compile
+still closes a room LiveKit gave up on with the `connection_state_changed` context `describeDisconnect` looks for, and, at compile
 time, that `Conversation.startSession` still fits `StartSession`; it also pins how
 the SDK sends a context id, which `hologram`'s fakes copy. The session's own
 behaviour is pinned in `hologram` (`jarvis-session.spec.ts` and
