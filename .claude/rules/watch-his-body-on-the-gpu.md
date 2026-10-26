@@ -15,11 +15,13 @@ whose GPU gives ES 2, or whose shaders will not compile, he is drawn without one
 arrives after a wait of at most 800 ms. Like the phone it passes `tilt`, so turning the wrist turns
 the view round him (see "Tilt to look around" in [`.claude/rules/hologram-tilt-to-look-around-on-the-phone-and-the-watch.md`](hologram-tilt-to-look-around-on-the-phone-and-the-watch.md)).
 
-**He is drawn at the screen's full resolution** (`WATCH_DRAWN_RESOLUTION` in `watch-screen.ts`), where
-the phone draws at 0.45 and scales up. The watch's sphere is about half the phone's in pixels, so at
-the phone's share each spark was a pixel or less wide and the scale-up smeared it; the user saw him
-as smudgy next to the phone. What drawing every pixel costs the watch's GPU has not been measured: if
-it costs frames, the density loop sheds particles rather than sharpness.
+**He is drawn at 0.7 of the screen's resolution** (`WATCH_DRAWN_RESOLUTION` in `watch-screen.ts`),
+where the phone draws at 0.45 and scales up. The watch's sphere is about half the phone's in pixels,
+so at the phone's share each spark was a pixel or less wide and the scale-up smeared it; the user saw
+him as smudgy next to the phone. Full resolution was tried next and was sharp, but the watch could not
+hold thirty frames a second at any count: the density loop fell to `FEWEST_PARTICLES` and stayed. 0.7
+is the middle ground, about half the pixels of full resolution; if the loop still sits at the floor,
+this is the number to lower.
 
 **Its ceiling is the phone's** (`PARTICLE_COUNT`, 10,000): the watch's screens leave `particleCount`
 at its default, and `WATCH_PACE`'s thirty frames a second decides how much of it a watch draws. The
