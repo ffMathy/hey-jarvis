@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
+import { FEWEST_PARTICLES } from '../density-control';
 import { SCENE_SEED } from '../frame-timing';
 import { analyseFrame, createHologramScene, type HologramFrame } from '../hologram-drawing';
-import { FEWEST_PARTICLES } from '../density-control';
 import { VOICE_BAND_COUNT } from '../voice-levels';
+import { buildHologramRows } from './body-rows';
 import { createFlatCamera, placeFlatCamera } from './flat-camera';
 import { FRONT_VIEW } from './fragment-3d';
-import { buildHologramRows } from './body-rows';
 import { createGpuBody, drawGpuBody, type HologramGl } from './gpu-body';
 import { HALO_TEXELS } from './halo-union';
 import { buildRowVertices } from './row-vertices';

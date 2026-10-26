@@ -18,7 +18,9 @@ describe('the rows’ vertices', () => {
     for (let quad = 0; quad < rows.count; quad++) {
       const first = vertices.index[quad * 6];
       expect(first % 4).toBe(0);
-      expect(Array.from(vertices.index.slice(quad * 6, quad * 6 + 6))).toEqual([0, 1, 2, 0, 2, 3].map((at) => first + at));
+      expect(Array.from(vertices.index.slice(quad * 6, quad * 6 + 6))).toEqual(
+        [0, 1, 2, 0, 2, 3].map((at) => first + at),
+      );
       seen.add(first / 4);
     }
     expect(seen.size).toBe(rows.count);
