@@ -35,7 +35,7 @@ mobile/
 ├── eas.json                      # development / preview / production builds
 ├── modules/jarvis-assistant/     # the local Expo module that owns the assistant registration
 │   ├── index.ts                  # the JS side
-│   └── android/src/main/         # Kotlin, the merged manifest, and res/xml — and the photo activity
+│   └── android/src/main/         # Kotlin, the merged manifest, and res/xml — and the photo and unlock activities
 ├── modules/jarvis-audio/         # raw audio for the hologram: the microphone, or Jarvis's WebRTC track
 └── src/
     ├── app.tsx                   # root component: the tour, settings, the conversation, sample mode

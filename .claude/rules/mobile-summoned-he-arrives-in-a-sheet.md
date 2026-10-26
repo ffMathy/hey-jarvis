@@ -34,6 +34,20 @@ paused two seconds later instead of at once. A paused instance stops its timers,
 should not depend on one of them never firing. The activity's tree does not listen, for the reason
 below.
 
+**Summoned on a locked phone, he asks for it to be unlocked first.** Holding the power button
+reaches the assistant whether or not the phone is locked, and the window used to draw the app and
+start a conversation regardless — behind the lock screen, where it could not be seen: sir heard
+"Hello sir, how can I help?" and then nothing, with no sheet to talk to. And Jarvis runs the house,
+which is why `supportsLaunchVoiceAssistFromKeyguard` is false; a conversation on a locked phone would
+be anybody's. So `JarvisVoiceInteractionSession.onShow` checks `isKeyguardLocked` first, and on a
+locked phone draws nothing, starts nothing, asks for no screenshot, and starts `JarvisUnlockActivity`
+instead: an activity shown over the lock screen, drawing nothing, whose only job is
+`KeyguardManager.requestDismissKeyguard` — the fingerprint, face or PIN prompt, or simply the swipe.
+Unlocked, it summons him through `showSession`, exactly as on an unlocked phone; turned down, nothing
+opens. The window is made once, so on a phone first summoned while locked the app is drawn into it at
+the first showing after the unlock. `assistant-window.contract.spec.ts` holds the order in `onShow`
+and the activity's manifest entry. Not yet seen on a device.
+
 **There are two apps on one JavaScript runtime, and a signal has to reach the right one.** The
 assistant's window is a second React Native surface; the app's own activity is often still alive
 from an earlier launch, behind whatever the user is doing, rendering its own tree. Anything that
