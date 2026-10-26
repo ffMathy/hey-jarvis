@@ -172,6 +172,12 @@ export interface SphereMirror {
   receive(frame: ArrayLike<number>, nowMs: number): boolean;
   /** The latest frame, or him at rest once none has come for {@link MIRROR_STALE_MS}. */
   current(nowMs: number): MirrorFrame;
+  /**
+   * Whether the phone has said the conversation is over, and sent nothing since: the watch then
+   * leaves, as the phone's sheet does. Silence alone is not an ending — a phone out of range says
+   * nothing — so only {@link isMirrorEnd} counts.
+   */
+  hasEnded(): boolean;
   /** Readers for his voice, over {@link current}. Stable, so the view's polling is too. */
   voice: Pick<JarvisVoice, 'getVolume' | 'getSpectrum'>;
   /** And for the listener's, likewise. */
@@ -187,6 +193,7 @@ export interface SphereMirror {
 export function createSphereMirror(now: () => number): SphereMirror {
   let latest: MirrorFrame = MIRROR_AT_REST;
   let receivedAt = Number.NEGATIVE_INFINITY;
+  let ended = false;
 
   const current = (nowMs: number) => (nowMs - receivedAt > MIRROR_STALE_MS ? MIRROR_AT_REST : latest);
 
@@ -196,6 +203,7 @@ export function createSphereMirror(now: () => number): SphereMirror {
       if (isMirrorEnd(frame)) {
         latest = MIRROR_AT_REST;
         receivedAt = Number.NEGATIVE_INFINITY;
+        ended = true;
       } else {
         const decoded = decodeMirrorFrame(frame);
         if (!decoded) {
@@ -203,10 +211,12 @@ export function createSphereMirror(now: () => number): SphereMirror {
         }
         latest = decoded;
         receivedAt = nowMs;
+        ended = false;
       }
       return !sameFlags(before, current(nowMs));
     },
     current,
+    hasEnded: () => ended,
     voice: {
       getVolume: () => current(now()).volume,
       getSpectrum: () => current(now()).bands,
