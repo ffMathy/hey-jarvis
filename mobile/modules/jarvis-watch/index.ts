@@ -73,7 +73,7 @@ export const JARVIS_ON_THE_WATCH = 'jarvis_on_the_watch';
  * Hands the ElevenLabs credentials to the watch, so they are typed once and on the right keyboard.
  *
  * This is the whole answer to "does the watch need its own setup?". It does not: the two apps
- * share a package name and a signing key on purpose — see `watch/AGENTS.md` — which is exactly
+ * share a package name and a signing key on purpose — see `.claude/rules/watch.md` — which is exactly
  * what Play Services requires before the Data Layer will connect them, and this is what that
  * connection is for. A long API key is not something anybody should enter on a watch.
  *

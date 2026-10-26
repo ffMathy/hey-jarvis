@@ -102,7 +102,7 @@ export function toTestAgentClientEvents(clientEvents: readonly ClientEvent[] | u
  * Points the agent's post-call webhook at the workspace webhook named by `webhookId`, so that every
  * finished conversation — its transcript and how it scored on `platformSettings.evaluation` — is
  * sent to the MCP server, which starts a Claude Code session on any that failed (see "Fixing failed
- * evaluations" in `AGENTS.md`).
+ * evaluations" in `.claude/rules/elevenlabs.md`).
  *
  * The id is the workspace's, not the repository's: the webhook is created once in the ElevenLabs
  * dashboard, with the MCP server's URL and the secret it checks signatures with. Without an id the

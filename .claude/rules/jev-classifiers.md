@@ -37,7 +37,7 @@ every result anyway, so the server only has to hand back facts.
   each result with that tool's own affected-entities reader, so a direct answer reports what it
   touched exactly as the agent's tool call would have, and sir's headset still lights it up. A new
   answer that bypasses the agent without that (as `runHomeCommand` and `answerHomeQuestion` show)
-  must return its entities itself. See "What a request touches" in `mcp/AGENTS.md`.
+  must return its entities itself. See "What a request touches" in `.claude/rules/mcp-routing-affected-entities.md`.
 - When the options come from live data rather than a fixed list (Home Assistant's devices), declare a
   `createDirectAnswerSource` that builds its questions per request and reads the answers itself, as
   `internet-of-things/direct-answers.ts` does.

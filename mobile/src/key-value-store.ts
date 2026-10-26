@@ -7,7 +7,7 @@ import type { ReadStoredValue, WriteStoredValue } from './platform-contracts';
  * What is kept here is an ElevenLabs API key — an account credential, not a
  * session — so it belongs behind the keystore rather than in ordinary app
  * storage. `elevenlabs-settings.ts` says why it should also be a key made for this
- * app alone, and mobile/AGENTS.md what the keystore does and does not protect it
+ * app alone, and .claude/rules/mobile.md what the keystore does and does not protect it
  * from.
  *
  * The web build takes `key-value-store.web.ts` instead, which is a real

@@ -2,7 +2,7 @@
 
 This repository uses plain git hooks in this directory plus [commitlint](https://commitlint.js.org/) to enforce commit message standards locally.
 
-Dependency install scripts are disabled repo-wide (see [Supply Chain Security](../AGENTS.md#supply-chain-security)), so nothing installs these hooks automatically. Point git at them once per clone:
+Dependency install scripts are disabled repo-wide (see [Supply Chain Security](../.claude/rules/supply-chain-security.md)), so nothing installs these hooks automatically. Point git at them once per clone:
 
 ```bash
 bun run prepare   # git config core.hooksPath .husky

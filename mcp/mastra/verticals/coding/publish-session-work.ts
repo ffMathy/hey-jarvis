@@ -77,7 +77,7 @@ export type SessionWorkReading =
  * @param repository - The repository, as `owner/repo`
  */
 export function buildSessionWorkInstructions(repository: string): string {
-  return `Start by cloning the repository into the current directory with \`git clone https://github.com/${repository}.git .\` — it needs no credentials. Create a branch named \`${BRANCH_PREFIX}<a few words describing the change, in kebab-case>\`, and commit your work on it, following the repository's conventions in AGENTS.md and CLAUDE.md, commit messages included. Run the tests.
+  return `Start by cloning the repository into the current directory with \`git clone https://github.com/${repository}.git .\` — it needs no credentials. Create a branch named \`${BRANCH_PREFIX}<a few words describing the change, in kebab-case>\`, and commit your work on it, following the repository's conventions in its rules (\`.claude/rules/\`, AGENTS.md and CLAUDE.md, whichever it has), commit messages included. Run the tests.
 
 Do not push and do not open a pull request: this sandbox has no GitHub credentials for either. Jarvis publishes the branch and opens the pull request once your turn ends. He refuses a branch whose name does not start with \`${BRANCH_PREFIX}\`, and any change to ${CI_PROTECTED_PATHS.join(', ')}, so leave CI alone.
 

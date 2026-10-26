@@ -26,7 +26,7 @@ import kotlin.math.roundToInt
  * (`JarvisPhotoActivity`), it is scaled to {@link LONG_EDGE} and written as a JPEG at
  * {@link JPEG_QUALITY}, off the main thread, into a directory of its own that every summoning empties
  * first. JavaScript reads it from there and sends it to sir's Jarvis server, which keeps it in memory
- * for a day at most (see "What was on the screen" in `mobile/AGENTS.md`).
+ * for a day at most (see "What was on the screen" in `.claude/rules/mobile-what-was-on-the-screen.md`).
  *
  * **Every question about it is answered, and never left hanging.** The screenshot arrives a moment
  * after the window is shown, and the conversation asks for it when it connects, which may be before or

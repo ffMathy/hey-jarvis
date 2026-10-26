@@ -48,7 +48,7 @@ web_modules/
 *.tsbuildinfo
 
 # Foreign package manager lockfiles. Bun is the only supported package manager
-# (see AGENTS.md → Supply Chain Security); a second lockfile would resolve
+# (see .claude/rules/supply-chain-security.md); a second lockfile would resolve
 # dependencies outside bun.lock's pins.
 package-lock.json
 npm-shrinkwrap.json

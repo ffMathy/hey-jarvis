@@ -7,7 +7,7 @@ import { join } from 'node:path';
  *
  * That rule is what lets the one drawing, the one frame clock and the one conversation run in four
  * places — native Skia on a phone and a watch, CanvasKit in a browser, CanvasKit headless in these
- * tests, and the headset, which has no React at all (the package's AGENTS.md, "The rule that makes
+ * tests, and the headset, which has no React at all (`.claude/rules/hologram-the-rule-that-makes-this-package-work.md`, "The rule that makes
  * this package work"). A value imported from anywhere else is a module every one of them has to load:
  * React Native's root under `bun test`, React on the headset, Skia before CanvasKit has loaded in a
  * browser. It loads fine wherever it was written, and fails in the other three — on a device, the

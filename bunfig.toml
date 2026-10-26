@@ -1,5 +1,5 @@
 # Supply chain hardening for every `bun install` in this repository.
-# See the "Supply Chain Security" section of AGENTS.md for the rationale and
+# See .claude/rules/supply-chain-security.md for the rationale and
 # for how to request an exception.
 
 [install]

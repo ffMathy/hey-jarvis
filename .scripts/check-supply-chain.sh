@@ -1,7 +1,8 @@
 #!/bin/bash
 # Verifies that the repository's supply chain policy is actually in force.
-# Run locally with `bun run check:supply-chain`; CI runs it on every pull
-# request. See AGENTS.md → Supply Chain Security for the policy itself.
+# Run it with `bun run check:supply-chain`; CI no longer runs it, so run it yourself
+# when touching dependencies or workflows. See .claude/rules/supply-chain-security.md
+# for the policy itself.
 
 set -uo pipefail
 

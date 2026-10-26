@@ -89,7 +89,7 @@ bunx turbo serve --filter=home-assistant-voice-firmware     # Flash firmware ove
 - **Commits**: Conventional Commits enforced via commitlint in a git hook
 - **Secrets**: 1Password CLI — Turborepo tasks inject credentials via `op run`
 - **CI/CD**: GitHub Actions with DevContainer, a release (tag and GitHub Release) for every merge to main
-- **Supply chain**: Bun-only installs, exact version pins, a 7-day release cooldown, no dependency install scripts, SHA-pinned Actions — see [AGENTS.md](./AGENTS.md#supply-chain-security)
+- **Supply chain**: Bun-only installs, exact version pins, a 7-day release cooldown, no dependency install scripts, SHA-pinned Actions — see [Supply Chain Security](./.claude/rules/supply-chain-security.md)
 
 ```bash
 bunx turbo test              # Mocked tests — no credentials needed
@@ -101,4 +101,4 @@ bunx biome check --write .   # Format + lint
 CI runs `turbo test` on every push. `turbo test:integration` never runs on
 GitHub Actions — only when you run it yourself.
 
-Each project has an `AGENTS.md` with detailed development guidelines.
+Each project's development guidelines are a rule in [`.claude/rules/`](./.claude/rules/), named after the project.

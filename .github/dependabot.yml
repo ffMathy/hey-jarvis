@@ -1,7 +1,7 @@
 # Only so GitHub's security updates run as Bun.
 #
 # Version updates stay off (open-pull-requests-limit: 0): every routine bump is made by
-# hand — see "Supply Chain Security" in AGENTS.md. But the repository's Dependabot
+# hand — see .claude/rules/supply-chain-security.md. But the repository's Dependabot
 # security updates still run on every push to main, and without this file they run
 # as `npm_and_yarn`, which refuses a project that has only a bun.lock, so every one of
 # them failed. Under the `bun` ecosystem they open a pull request for a vulnerable

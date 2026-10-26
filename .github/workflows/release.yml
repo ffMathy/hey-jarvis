@@ -25,7 +25,7 @@ jobs:
   # Every push to main is a release, cut from that very commit: no release pull request, nothing
   # committed back. The version is the last `root-v*` tag raised by the conventional commits since
   # it (`feat` the minor, a breaking change the major, everything else the patch), and the notes on
-  # the GitHub Release are the changelog. See `.scripts/release.js` and "Releases" in AGENTS.md.
+  # the GitHub Release are the changelog. See `.scripts/release.js` and .claude/rules/releases.md.
   release:
     runs-on: ubuntu-latest
     permissions:

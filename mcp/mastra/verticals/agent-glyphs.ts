@@ -15,7 +15,7 @@ import { webResearchGlyph } from './web-research/glyph.js';
 /**
  * How each agent routing can send a request to is drawn on sir's devices while a request has it at
  * work: a satellite round Jarvis with its agent's glyph (see "Which agents are at work" in
- * `mcp/AGENTS.md`). Each vertical draws its own, in its `glyph.ts`; this only gathers them, and
+ * `.claude/rules/mcp.md`). Each vertical draws its own, in its `glyph.ts`; this only gathers them, and
  * routing puts the glyph on every `agentActivity` it publishes, so a device draws whatever it is
  * sent and a new agent needs no change on any of them.
  *

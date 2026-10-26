@@ -115,7 +115,7 @@ function placement(scratch: PlacementScratch, centre: Vector3, basis: ViewBasis,
  * Per frame on the CPU: the phone's frame clock, `analyseFrame`, and CanvasKit drawing the layers
  * that are flat — the whorl, the core, the rim, the chips — which leave the body out. On
  * the GPU: the halo union once, then per eye the view-plane quad (CanvasKit's picture Screened with
- * the halos) and the body's strokes where they really are. See vr/AGENTS.md.
+ * the halos) and the body's strokes where they really are. See .claude/rules/vr.md.
  */
 export async function createJarvisHologram3D(
   renderer: WebGLRenderer,

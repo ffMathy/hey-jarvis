@@ -9,7 +9,7 @@ import { toWakeWorkerEvent } from './worker-protocol';
  *
  * openWakeWord's models on onnxruntime-web in a worker, fed by an AudioWorklet in a 16 kHz
  * AudioContext, watched by a watchdog that says in words why it is not listening and gets it
- * listening again. See vr/AGENTS.md for how the pieces fit.
+ * listening again. See .claude/rules/vr.md for how the pieces fit.
  */
 
 export { MICROPHONE_BLOCKED, microphonePermission, openWakeMicrophone } from './microphone';

@@ -437,7 +437,7 @@ ElevenLabs needs. Studio on 4111 is therefore not reachable until you route a ho
    Jarvis's agent, and a photo is taken only with the single-use token of a slot. The server limits
    how often each address can have a conversation checked, and a Cloudflare rate limiting rule on
    `/api/photos/slots` turns a flood away before it reaches the tunnel — see "MCP Server Access" in
-   [AGENTS.md](./AGENTS.md#mcp-server-access) for both.
+   [`.claude/rules/mcp-mcp-server-access.md`](../.claude/rules/mcp-mcp-server-access.md#mcp-server-access) for both.
 
 ### If Studio is served from a different origin
 
@@ -473,4 +473,4 @@ Secrets managed via 1Password CLI. Key variables:
   `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID`), which also confirm that a phone asking for a photo slot is
   in a live conversation with Jarvis; without the key or an agent id, photo uploads are off.
 
-See [AGENTS.md](./AGENTS.md) for development guidelines.
+See [`.claude/rules/mcp.md`](../.claude/rules/mcp.md) for development guidelines.

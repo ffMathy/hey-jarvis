@@ -7,7 +7,7 @@
  * ElevenLabs SDK provides both. On Android it does not provide them usably — its
  * LiveKit processors hand back a mostly empty comb of a spectrum, and a volume
  * read with the bytes of every sample swapped (see "The hologram on a device" in
- * mobile/AGENTS.md) — so the app takes the raw samples itself and turns them into
+ * .claude/rules/mobile.md) — so the app takes the raw samples itself and turns them into
  * those two numbers here, in plain TypeScript: the same code that builds the
  * emulator check's replayed voice, and that `bun test` runs.
  *

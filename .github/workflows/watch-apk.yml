@@ -3,7 +3,7 @@
 name: Wear APK
 
 # Builds the Wear OS app and uploads the APK as a workflow artifact, unzipped,
-# so it can be installed on a watch over wireless debugging — see watch/AGENTS.md.
+# so it can be installed on a watch over wireless debugging — see .claude/rules/watch.md.
 #
 # Only changes that can alter the watch app start it — including `hologram/`,
 # which is where the sphere the watch draws actually lives.

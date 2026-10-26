@@ -57,6 +57,22 @@ timeout 180 bunx turbo build --filter=mcp
 timeout 180 bunx turbo test --filter=mcp
 ```
 
+## Working with Turbo
+
+- For navigating/exploring the workspace, use Turborepo-aware project/task tooling first.
+- When running tasks (for example build, lint, test, e2e, etc.), prefer Turborepo task execution (`turbo <task>` and `--filter`) instead of calling underlying tools directly.
+- Prefix Turbo commands with the workspace package manager (`bunx turbo ...`) instead of relying on global binaries.
+- You have access to Turborepo MCP tooling; use it to inspect projects and tasks.
+
+### This is not the Turborepo you know
+
+Turborepo configuration, task behavior, and CLI commands vary between versions and may differ from your training data. Before changing `turbo.json` or a Turbo command, resolve the installed package (`node_modules/turbo`, pinned in the root `package.json`) and read `docs/README.md` inside it, then the relevant pages from its `docs/` directory. Heed deprecation notices. These bundled docs match the installed version and need no network.
+
+- USE the docs for: advanced config options, unfamiliar flags, migration guides, plugin configuration, edge cases
+- DON'T USE them for: basic Turborepo command syntax and common day-to-day commands
+
+Newer versions of `turbo` write this guidance into an `AGENTS.md` themselves when they detect an agent. This repository has no `AGENTS.md` (see [`repository`](repository.md)), so when a bump makes `turbo` start writing one, set `"agentGuidance": false` in the root `turbo.json` in the same change and delete the file. The pinned 2.10.10 has no such key and rejects `turbo.json` if it is set.
+
 ## What NOT to Do
 
 ❌ **NEVER** use `npm run <script>` — wrong package manager

@@ -10,7 +10,7 @@ import { createTappedVoiceReaders } from './tapped-voice';
  * them the way a browser would. Until the track is found, or if it cannot be listened to, the
  * session falls back to the SDK's own readers — LiveKit's processors, whose spectrum is mostly empty
  * and whose volume reads the bytes of each sample swapped (see "The hologram on a device" in
- * mobile/AGENTS.md), so a sphere drawn from them turns and flashes rather than following his voice.
+ * .claude/rules/mobile.md), so a sphere drawn from them turns and flashes rather than following his voice.
  *
  * Handed to the session as its `followAgentVoice`, which calls it once his room is found and stops
  * it when the conversation is over. The room comes checked against this app's own `Room`
