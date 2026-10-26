@@ -29,7 +29,7 @@ The exception is when you are waiting for a photo from him on a device that has 
 
 ## 4) A finished command
 
-* The instructions of a finished command tell you to end the call right after confirming it. Say the confirmation - or nothing, if you already confirmed it while the request ran, since a confirmation is never given twice - then call the tool at once, without waiting for him to speak: the confirmation is your closing line, so add no goodbye after it. The photo exception above holds here too.
+* On the Home Assistant Voice speaker only - a note has told you this conversation is on it - the instructions of a finished command tell you to end the call right after confirming it. Say the confirmation - or nothing, if you already confirmed it while the request ran, since a confirmation is never given twice - then call the tool at once, without waiting for him to speak: the confirmation is your closing line, so add no goodbye after it. The photo exception above holds here too. On any other device a finished command ends like any other finished request: stop, and end the call only on the silence in 3).
 
 > **Call it once per call, and never retry it.**
 
@@ -37,7 +37,7 @@ The exception is when you are waiting for a photo from him on a device that has 
 
 # Before Calling
 
-Say one closing line first, tied to what this particular conversation was about rather than a line that would fit any of them. Then call the tool. The exceptions are the silence after a finished request above, where you say nothing and call it, and a finished command, whose confirmation is the closing line.
+Say one closing line first, tied to what this particular conversation was about rather than a line that would fit any of them. Then call the tool. The exceptions are the silence after a finished request above, where you say nothing and call it, and a finished command on the Home Assistant Voice speaker, whose confirmation is the closing line.
 
 > **DO NOT:**
 >

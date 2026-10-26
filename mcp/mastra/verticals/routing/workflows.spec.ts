@@ -31,6 +31,7 @@ import {
   COMMAND_DONE_INSTRUCTIONS,
   FINISHED_REQUEST_INSTRUCTIONS,
   getNextInstructionsWorkflow,
+  HOME_ASSISTANT_VOICE_NOTE,
   inputSchema,
   resetPollDeadlineForTest,
   routePromptWorkflow,
@@ -1099,7 +1100,7 @@ const WAITING_FOR_A_PHOTO =
  * under a question he was about to answer.
  */
 describe('how a request is answered, and when the call may end', () => {
-  it('confirms a command in a few words, and hangs up straight after', async () => {
+  it('confirms a command in a few words, and keeps the line open unless it is the Voice speaker', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'set an alarm for 7', async: false });
     const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
     progress.responseStyle = 'command';
@@ -1110,10 +1111,20 @@ describe('how a request is answered, and when the call may end', () => {
 
     expect(closing.instructions).toContain('"Done, sir." is enough');
     expect(closing.instructions).not.toContain('in detail');
-    // Not the hang-up on the next silence, which an alarm once never reached: the call ends at once.
     expect(closing.instructions).toContain(COMMAND_DONE_INSTRUCTIONS);
-    expect(closing.instructions).toContain('without waiting for him to speak');
-    expect(closing.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
+    // On the phone, the watch and the headset sir dismisses Jarvis himself, so a command ends like any
+    // other finished request there: the hang-up waits for the silence, and he may ask for more.
+    expect(closing.instructions).toContain(FINISHED_REQUEST_INSTRUCTIONS);
+    expect(closing.instructions).toContain('That finishes this request, but not the conversation');
+  });
+
+  it('hangs up straight after a command only where the Voice speaker has said it is the device', () => {
+    // Not the hang-up on the next silence, which an alarm once never reached: on the speaker the call
+    // ends at once — and the condition names the note the firmware sends, word for word.
+    expect(HOME_ASSISTANT_VOICE_NOTE).toBe('This conversation is on the Home Assistant Voice speaker.');
+    expect(COMMAND_DONE_INSTRUCTIONS).toContain(`If a note has told you "${HOME_ASSISTANT_VOICE_NOTE}"`);
+    expect(COMMAND_DONE_INSTRUCTIONS).toContain('without waiting for him to speak');
+    expect(COMMAND_DONE_INSTRUCTIONS).toContain('On any other device, do not end the call after the confirmation');
   });
 
   it('confirms a command once, even when a part of it was confirmed as it landed', () => {
@@ -1124,7 +1135,7 @@ describe('how a request is answered, and when the call may end', () => {
   });
 
   it('still holds the line after a command while a photo is on its way', () => {
-    expect(COMMAND_DONE_INSTRUCTIONS).toContain(`Unless ${WAITING_FOR_A_PHOTO}`);
+    expect(COMMAND_DONE_INSTRUCTIONS).toContain(`unless ${WAITING_FOR_A_PHOTO}: then stop after the confirmation`);
     expect(COMMAND_DONE_INSTRUCTIONS).toContain('call skip_turn instead');
   });
 

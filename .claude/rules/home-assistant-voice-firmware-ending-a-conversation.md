@@ -15,6 +15,12 @@ restarts and the LEDs go idle:
   device waits for the farewell to finish playing first. This is also how a finished
   request hangs up: the agent's `turnTimeout` prompts Jarvis after 3 s of silence, and
   he calls `end_call` without a word. The device keeps no clock of its own for it.
+  A finished command does not wait for the silence here: as each conversation starts,
+  the device tells the agent where it is (`DEVICE_NOTE`, a `contextual_update` sent once
+  `conversation_initiation_metadata` arrives), and on that note alone the routing
+  instructions (`COMMAND_DONE_INSTRUCTIONS` in `mcp/mastra/verticals/routing/workflows.ts`)
+  have Jarvis call `end_call` straight after confirming a command. The two texts must
+  match word for word; every other device keeps the line open after a command.
 - **Announcement window** — `announce` starts a stream with a `timeout`, and a quiet
   window hangs up if nobody answers. Speech (`vad_score` ≥ 0.5) only pushes that clock
   back, and the first transcript drops it. After that the conversation behaves like a

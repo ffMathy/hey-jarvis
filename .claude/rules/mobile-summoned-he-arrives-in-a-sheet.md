@@ -14,7 +14,11 @@ Opened from the launcher he still fills the screen: there is nothing underneath 
 It used to take the whole screen when summoned too, and nobody chose that — the sheet was only
 ever written for sample mode, which is what a summoning showed before there were credentials, so a
 phone that had been set up simply stopped seeing it. Tapping beside the sheet or pressing back hangs
-up. The assistant's window is kept between summonings rather than rebuilt, so a summoning after he
+up — at once, unless he is in the middle of a tool call. Then the sheet still goes at once and his
+microphone is muted, but the call to ElevenLabs is held until the work is done (`hangUpAfterWork` in
+`hologram/src/jarvis-session.ts`, which ends it the moment the sphere would stop thinking), so a
+command is never cut off on its way just because sir dismissed him quickly. Summoned again before
+then, that conversation is taken back, listening again, rather than replaced. The assistant's window is kept between summonings rather than rebuilt, so a summoning after he
 has gone is announced by the session itself: every showing sets the surface's `showing` root prop
 (`SHOWING_PROP`) to a new number, which brings the sheet back and opens a new conversation.
 
@@ -24,7 +28,8 @@ is `hide()` by default. Holding the power button works with the phone locked and
 summoning from a pocket sat there talking, the screen slept, and the window went. The conversation did
 not. Sir unlocked to Jarvis listening and answering, with no sheet and nothing to hang up with. Now
 every hide except the camera's sends `onAssistantWindowPutAway` (`WINDOW_PUT_AWAY`, pinned by
-`assistant-window.contract.spec.ts`), and the window's tree answers it with `hangUp`. React Native is
+`assistant-window.contract.spec.ts`), and the window's tree answers it with `hangUpAfterWork`, as
+a dismissal. React Native is
 paused two seconds later instead of at once. A paused instance stops its timers, and the hang-up
 should not depend on one of them never firing. The activity's tree does not listen, for the reason
 below.

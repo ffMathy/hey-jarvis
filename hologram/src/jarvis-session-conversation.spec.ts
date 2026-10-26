@@ -143,6 +143,69 @@ describe('thinking', () => {
   });
 });
 
+/**
+ * Dismissed while he is working, he goes quiet at once and hangs up once the work is done: ending the
+ * session mid-call is what cut a command off on its way to the server.
+ */
+describe('hanging up after the work', () => {
+  it('mutes the microphone at once, and ends the session only once his tool call is done', async () => {
+    const harness = createHarness();
+    await harness.goLive();
+    const { session, sdk, clock } = harness;
+    const { conversation, options } = sdk.latest;
+
+    options.onMCPToolCall({ tool_call_id: 'route', state: 'loading' });
+    session.hangUpAfterWork();
+
+    expect(conversation.muting.at(-1)).toBe(true);
+    expect(conversation.endSessions).toBe(0);
+    expect(session.snapshot.hangingUp).toBe(true);
+    expect(session.phase).not.toBe('ended');
+
+    // A routing request is a stream of polls: one answering and the next going out is one piece of work.
+    options.onMCPToolCall({ tool_call_id: 'route', state: 'success' });
+    await clock.advance(KEEP_THINKING_AFTER_LAST_ANSWER_MS - 1);
+    options.onMCPToolCall({ tool_call_id: 'poll', state: 'loading' });
+    options.onMCPToolCall({ tool_call_id: 'poll', state: 'success' });
+    expect(conversation.endSessions).toBe(0);
+
+    await clock.advance(KEEP_THINKING_AFTER_LAST_ANSWER_MS);
+    expect(conversation.endSessions).toBe(1);
+    expect(session.phase).toBe('ended');
+    expect(session.snapshot.hangingUp).toBe(false);
+  });
+
+  it('hangs up at once when nothing is in flight', async () => {
+    const harness = createHarness();
+    await harness.goLive();
+
+    harness.session.hangUpAfterWork();
+
+    expect(harness.sdk.latest.conversation.endSessions).toBe(1);
+    expect(harness.session.phase).toBe('ended');
+  });
+
+  it('is taken back by a summoning before the work is done, listening again', async () => {
+    const harness = createHarness();
+    await harness.goLive();
+    const { session, sdk, clock } = harness;
+    const { conversation, options } = sdk.latest;
+
+    options.onAgentToolRequest({ tool_call_id: 'lights' });
+    session.hangUpAfterWork();
+    session.summon();
+
+    expect(conversation.muting.at(-1)).toBe(false);
+    expect(session.snapshot.hangingUp).toBe(false);
+    expect(sdk.dials).toHaveLength(1);
+
+    options.onAgentToolResponse({ tool_call_id: 'lights' });
+    await clock.advance(KEEP_THINKING_AFTER_LAST_ANSWER_MS);
+    expect(conversation.endSessions).toBe(0);
+    expect(session.phase).not.toBe('ended');
+  });
+});
+
 describe('interruptions', () => {
   it('drop what the browser still has queued of the sentence he was cut off in', async () => {
     const harness = createHarness();
