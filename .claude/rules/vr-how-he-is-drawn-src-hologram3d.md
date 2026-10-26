@@ -8,13 +8,14 @@ paths:
 > Part of [VR](vr.md). Paths in it are relative to `vr/` unless they say otherwise.
 
 `src/hologram3d/` stands the phone's Jarvis in the room in three dimensions.
-`createJarvisHologram3D(renderer, { assetBase })` is the whole of it for the app:
+`createJarvisHologram3D(renderer)` is the whole of it for the app:
 add `object` to the scene, set its position (the anchor), call `arrive()` on every
 summon and `update(delta, drive, centreEye)` once per XR frame before
 `renderer.render`, with the centre eye read from `frame.getViewerPose` at the start
 of the frame (three's XR camera lags one), and `settle()` when the next second's
 frames will hitch for reasons not his (see the backstop below). He is drawn
-one way only, his body in three dimensions beside CanvasKit's picture of the rest.
+one way only, all of it on three's own WebGL 2 context: his body in three
+dimensions beside the phone's picture of the rest of him.
 
 Per frame, on the CPU:
 
@@ -25,32 +26,45 @@ Per frame, on the CPU:
    their fixed rates, the lattice eased. This file keeps only what the headset does
    differently: the voice is read every READ_INTERVAL_MS on the clock's own time,
    and the arrival restarts on `arrive()` (`restartArrival`).
-2. **`analyseFrame`**, and CanvasKit drawing everything flat — the whorl, the core,
-   the rim, the chips, the pulse — with `drawHologram`, which draws everything but
-   the body and the stream (`flat-hologram.ts`). CanvasKit is the full build React
-   Native Skia's web API expects, from `./vendor/`, wrapped in `JsiSkApi` exactly as
-   hologram's own tests and the phone's web build do. Its surface is WebGL when
-   there is a real GPU and its CPU rasteriser otherwise: on SwiftShader the GPU
-   backend took about a second a frame and the CPU one under a tenth of that.
+2. **`analyseFrame(frame, 1, scene)`**, which is all the CPU does for the picture:
+   what it draws is a few dozen draws' uniforms.
 
 On the GPU, in passes whose shaders, rows and arithmetic are `hologram/gpu`'s —
 shared with the phone and the watch, which draw them with no three.js (see
 `.claude/rules/hologram.md`) — and which the files here wrap in three.js's
 materials, targets and meshes:
 
-3. **The halo union** (`halo-union.ts`), once a frame, before either eye: every lit
+3. **The picture** (`picture-target.ts`), once a frame, before either eye:
+   `hologram/gpu`'s `drawGpuPicture` — everything flat that the phone draws, the
+   whorl, the core, the rim, the truss, the crescent, the fray, the chips, the
+   pulse, everything but the body and the stream — into a 512-pixel
+   `WebGLRenderTarget` with a depth and a stencil buffer, which the picture needs
+   (`gpu-picture.ts` says why). It is drawn with raw GL calls on
+   `renderer.getContext()`: three's state is reset (`renderer.resetState()`)
+   before the target is bound with `setRenderTarget`, the target cleared to
+   transparent black (depth 1, stencil 0), the picture drawn, and three's state
+   reset again before whatever three was drawing into is bound back, since the
+   picture leaves its own programs, arrays, textures and blend behind. It is
+   drawn unfaded, premultiplied light over transparent black, and with no
+   satellites — the headset draws those in the room. Its programs are compiled
+   once for each context (`createGpuPicture`) and kept there, since `hologram/gpu`
+   has no call that deletes them and the preview makes a new hologram for every
+   still. The target is read bottom row first, as every framebuffer is, which is
+   the right way up for the quad's own coordinates, so nothing is flipped.
+4. **The halo union** (`halo-union.ts`), once a frame, before either eye: every lit
    fragment's halo as a capsule, MAX-blended into a 1024×512 byte target (R/G/B =
    dim/mid/bright coverage; the pinned fragments in the left half, the inner
    layer's in the right, as the phone paints them as separate paths). Stacked one
    by one, the halos were a flat orange coin; the phone strokes each tier's halos
    as one path, so they are a union.
-4. **Per eye, the view-plane quad** (`view-plane-quad.ts`): CanvasKit's picture
-   Screened with the halos' light, facing the centre eye. It is the whole square,
+5. **Per eye, the view-plane quad** (`view-plane-quad.ts`): the picture's target
+   Screened with the halos' light, facing the centre eye, and faded with the rest
+   of him by his arrival (`arrivalOf`) through the blend. It is the whole square,
    corners and all: the halos are where the centre eye sees each fragment, so
    perspective carries them past the 1.86R the phone's drawing stays inside
    (1.92R at 1.6 m while he talks, the corners at 0.4 m), and a quad cut to a
    fixed circle would clip them.
-5. **Per eye, the body's strokes** (`body-strokes.ts`): one draw of view-facing
+6. **Per eye, the body's strokes** (`body-strokes.ts`): one draw of view-facing
    glyph quads (dash, L, bracket, T, Z, ring, cell as distance fields,
    antialiased, never under 1.2 px) where each fragment really is, with the
    drawing's tier paints and sparkle.
@@ -79,18 +93,18 @@ feedback, and a float state pass needs an extension a Quest may not have). The
 unit tests hold `fragment-3d.ts` to the phone; `hologram-port.spec.ts` holds the
 GLSL to `fragment-3d.ts`; and `hologram-gpu-body.spec.ts` holds the raw renderer
 the phone and the watch draw the body with (`drawGpuBody`) to these passes, byte
-for byte: the preview draws a moment with three.js, CanvasKit's picture blacked
+for byte: the preview draws a moment with three.js, his picture blacked
 out, then with `drawGpuBody` on a context of its own from the matrices and
 uniforms three drew the strokes with (`src/preview/gpu-body-check.ts`), near and
 far, from the front, the side, above and below.
 
 The renderer takes four samples a pixel (`xr/xr-stage.ts`), for the room's plain
 triangles; fragments are still shaded once a pixel, so none of these passes looks
-any different for it, and the halo union renders into a target of its own that is
-never multisampled.
+any different for it, and the picture and the halo union render into targets of
+their own that are never multisampled.
 
 Blending (`layer-blending.ts`): Screen in colour and alpha, raw encoded sRGB — no
-three.js colour management anywhere between Skia's bytes and the layer — and
+three.js colour management anywhere between the picture's bytes and the layer — and
 alpha = ALPHA_FROM_LIGHT (0.85) × max(rgb). Why that alpha: passthrough is not
 black, and what the page writes as alpha is how much of the room it hides; 0 would
 be pure added light, which washes out in a bright room, and max(rgb) is Screen
@@ -111,9 +125,8 @@ own fastest frame sees nothing late; without the rate it is a quarter of the way
 the shortest intervals seen since the last settle. A film (`?film`) has no backstop:
 its faked clock is not the display's. It
 used to halve on one window and for good, which every summon's hitches could set
-off: nothing compiles his shaders before his first frame, CanvasKit compiles its
-programs as it meets each path, and the display switches from 72 Hz to 90 as
-placement, the greeting and the call all start. So the second after `arrive()`, a
+off: nothing compiles his shaders before his first frame, and the display
+switches from 72 Hz to 90 as placement, the greeting and the call all start. So the second after `arrive()`, a
 new display rate, a change of visibility, and every blurred frame, is not judged at
 all (`settle`, called by the room). And the share comes back: after ten seconds
 without a drop it doubles, on trial for as long as it was waited for; frames
@@ -125,4 +138,16 @@ below an eighth.
 
 Known deviations from the phone: strokes of one tier that cross add up rather than
 forming a union, so the arrival's first half-second and the listening knots are a
-little hotter; everything CanvasKit draws is flat in the view plane.
+little hotter; everything the picture draws is flat in the view plane.
+
+**The picture is held to Skia's.** Skia drew it on every device before
+`hologram/gpu` did, and `tests/e2e/hologram-picture.spec.ts` draws fourteen
+moments with it through `picture-target.ts` (the preview's `checkPicture`) and
+compares them with Skia's goldens (`tests/e2e/fixtures/picture/`, drawn with
+`fadeOutside`, RGB over black): a mean of 0.07–0.29 levels a channel, a 99th
+percentile of at most 8, at most 0.5% of pixels a channel more than 16 apart,
+and the mean luma within 0.02 of Skia's. The behaviour that was `hologram`'s
+pixel tests under CanvasKit — it moves, answers speech with activity, spirals in
+without a flash, leaves nothing behind, stays in its square, and draws each
+satellite where its orbit says — is `tests/e2e/hologram-picture-behaviour.spec.ts`,
+measured on the picture as a view shows it: faded as one layer by `arrivalOf`.

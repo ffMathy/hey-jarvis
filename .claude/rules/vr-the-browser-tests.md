@@ -115,6 +115,14 @@ paths:
   apart by how each is lit; each is attached to the report, and copied to
   `HOLOGRAM_SCREENS_DIR` when that is set. `hologram-room.spec.ts` logs the
   emulator's frame times, which say nothing about a Quest's.
+- **His picture alone.** `hologram-picture.spec.ts` holds the GPU picture of
+  everything but his body to Skia's goldens of fourteen moments
+  (`fixtures/picture/`), and `hologram-picture-behaviour.spec.ts` carries what
+  were `hologram`'s pixel tests under CanvasKit — of him and of his satellites,
+  with their thresholds as they were — onto it. Both draw through the preview's
+  hook into a target of the stage's own renderer, as the headset draws him, and
+  the behaviour spec measures each picture faded by `arrivalOf` as a view fades
+  it (see "How he is drawn").
 - **Pictures at a headset's density, nearly.** The emulator's XR framebuffer is
   the window's size in CSS pixels — IWER sets its canvas to `innerWidth` by
   `innerHeight` whatever the device pixel ratio, and its synthetic room would size
