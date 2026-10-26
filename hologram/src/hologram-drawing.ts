@@ -41,8 +41,9 @@
 //                     upward, each on its own clock, some of them streaked.
 //   drawFray          while he talks: strands fraying off the upper left of the shell's edge, streak
 //                     arcs a little further out, and streaks slipping out of its right.
-//   drawChips         the latest burst's chips: slabs of light thrown off the shell's edge on a
-//                     syllable, which break up rather than fade.
+//   drawChips         the latest burst's chips: shards of light thrown off the left of the shell's
+//                     edge on a syllable, each a streak and two splinters with white-hot cores,
+//                     which snap and thin away as they break up rather than fade.
 //   drawThinkingPulse while he thinks: a ring blooming out of the core's ring as each pass of the scan
 //                     plane ends.
 //   drawSatellites    the agents at work for him, circling him (`satellite-drawing.ts`). The headset
@@ -256,7 +257,7 @@ export function bodyTurnRadians(time: number) {
  *
  * Back to the film, after a long way round. The Age of Ultron footage's sphere holds its brightness
  * to within about 3% through "Doctor." and shows speech as *behaviour*: fragments turning over
- * faster, its limb fraying, slabs of light breaking off on syllable onsets. This
+ * faster, its limb fraying, shards of light breaking off on syllable onsets. This
  * drawing pinned that, then departed from it — the user could not tell on a phone whether he was
  * talking, so a glow went in at 0.3, and then 0.8, 2.4, 1.6, 1.1 and 1.35 as each version was seen
  * on a real screen. With the sphere now most of the screen wide and the sparks drawn out into
@@ -1304,7 +1305,7 @@ export function analyseFrame(frame: HologramFrame, size: number) {
   const swirl = clamp01(frame.appearance);
   // What speech does to him — chips thrown off the shell, the fraying, the embers it brings out —
   // waits until the vortex has all but formed him. The greeting plays while he arrives, and
-  // without this it threw full-size slabs off a limb that was not there yet, into empty space
+  // without this it threw full-size chips off a limb that was not there yet, into empty space
   // round a sphere still gathered at its core.
   const formed = smooth01((swirl - 0.6) / 0.4);
   const agitation = clamp01(frame.agitation) * formed;

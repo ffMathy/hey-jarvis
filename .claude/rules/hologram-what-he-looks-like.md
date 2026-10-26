@@ -28,8 +28,9 @@ does to it.
   (`buildEmbers`, `drawEmbers`).
 - **The aura:** the film's bloom, a soft warm band round him, see-through in the middle
   (`AURA_INNER`, `AURA_OUTER`, `drawAura`).
-- **The fray and the chips:** strands and streaks off the shell's edge while he talks, and slabs of
-  light thrown off it on a syllable (`drawFray`, `drawChips`).
+- **The fray and the chips:** strands and streaks off the shell's edge while he talks, and shards
+  of light thrown off its left on a syllable, streaking back the way they came and snapping as they
+  break up (`drawFray`, `drawChips`).
 - **The thinking pulse and the satellites:** a ring blooming out of the core as each pass of the
   scan plane ends, and the agents at work circling him (`drawThinkingPulse`, `drawSatellites`).
 
