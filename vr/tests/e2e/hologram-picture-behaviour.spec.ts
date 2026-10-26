@@ -182,6 +182,13 @@ function lightReach(picture: Picture, pixels: Uint8Array): number {
   return total === 0 ? 0 : weighted / total;
 }
 
+/**
+ * How far, in sphere radii, his light's reach may fall back while his core alone shows as he
+ * arrives: 0.003R when it was measured (see the vortex test), and the rest room for a GPU that
+ * rounds a little differently.
+ */
+const CORE_SETTLES_BY = 0.01;
+
 /** Mean luminance over the whole square, 0–255. */
 function brightness(pixels: Uint8Array): number {
   let total = 0;
@@ -574,12 +581,25 @@ test.describe('the hologram', () => {
     const formed = await at(1);
 
     expect(brightness(await at(0))).toBeLessThan(0.5);
-    // Early on the light is still gathered at the core, and it spreads outward steadily. With the
-    // white-hot ring at the core, most of the early light is the ring's: measured when the picture
-    // was redrawn, the reach runs 0.31, 0.49, 0.62, 0.67 and 0.69R, so the first is 0.45 of the last.
+    // The light starts at the core and reaches out from it as he forms. It used to spread outward
+    // at every step, but everything round his shell — the aura, the cage, the embers — is carried
+    // out with the specks now (`shellReach`, from 0.35 of the vortex), so until the shell is on its
+    // way the core is all there is to see, and its light does not reach out: it settles a little
+    // inward, as the white-hot ring saturates under Screen before its fainter glow does, and then
+    // as the outer layers start out from inside it. So what is held is what the vortex means now:
+    // the reach never falls back by more than CORE_SETTLES_BY while the core alone shows, rises at
+    // every step once the shell is carried out, and ends more than twice as far out as it began.
+    // Measured when this was written, at 0.2, 0.3 … 1: 0.303, 0.301, 0.301, 0.300, 0.307, 0.394,
+    // 0.552, 0.678 and 0.699R — at most 0.003R back from the farthest before it, and the first
+    // 0.43 of the last.
+    const coreAlone = [0.2, 0.3, 0.4, 0.5];
+    const carriedOut = [0.6, 0.7, 0.8, 0.9, 1];
     const reaches: number[] = [];
-    for (const appearance of [0.2, 0.4, 0.6, 0.8, 1]) reaches.push(lightReach(picture, await at(appearance)));
+    for (const appearance of [...coreAlone, ...carriedOut]) reaches.push(lightReach(picture, await at(appearance)));
     for (let step = 1; step < reaches.length; step++) {
+      expect(reaches[step]).toBeGreaterThan(Math.max(...reaches.slice(0, step)) - CORE_SETTLES_BY);
+    }
+    for (let step = coreAlone.length; step < reaches.length; step++) {
       expect(reaches[step]).toBeGreaterThan(reaches[step - 1] ?? 0);
     }
     expect(reaches[0]).toBeLessThan((reaches[reaches.length - 1] ?? 0) * 0.5);
