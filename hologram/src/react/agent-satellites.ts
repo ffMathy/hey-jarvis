@@ -20,7 +20,7 @@ import type { ServerLink } from '../jarvis-server-link';
  * each is on the ring is fixed here; the view goes round with its own frame clock, so they move as
  * smoothly as he turns (`satellite-drawing.ts`).
  *
- * Skia-free, so a screen can hold it before CanvasKit has loaded in a browser (`lifecycle.ts`).
+ * Clear of expo-gl, so a screen can hold it without the view (`lifecycle.ts`).
  */
 
 /**

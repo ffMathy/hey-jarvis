@@ -8,7 +8,7 @@ import {
 
 /**
  * The sparkle the body's mid and bright strokes are modulated by, for a GPU pass: the drawing's own
- * texels (`sparklePixels`, the very bytes Skia's image shader tiles), fixed in the drawing's unit
+ * texels (`sparklePixels`, the very bytes the picture's strokes are tiled with), fixed in the drawing's unit
  * space so strokes move through it and glint where the phone's do.
  *
  * Uploaded as a 64×64 RGBA8 texture, repeated both ways and filtered linearly without mipmaps, as

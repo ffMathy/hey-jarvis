@@ -90,7 +90,7 @@ export const ORTHOGRAPHIC_EYE_DISTANCE = 1e5;
 
 /**
  * Writes this frame's state into the uniforms. `density` is the share of the rows to draw — the
- * headset's own, not the frame's, since the frame CanvasKit draws has none of the body in it —
+ * headset's own, not the frame's, since the flat picture of the rest of him has none of the body —
  * and `eyeDistance` how far the centre eye is from his centre, in the drawing's unit.
  */
 export function writeFragmentUniforms(
@@ -453,7 +453,7 @@ float boxDistance(vec2 point, vec2 halfSize) {
 }
 
 // A butt-capped stroke of half-width w along one segment: a box, which draws nothing when the
-// segment has no length, as Skia's butt cap does.
+// segment has no length, as a butt cap does.
 float buttDistance(vec2 point, vec2 from, vec2 to, float halfWidth) {
   vec2 run = to - from;
   float runLength = length(run);

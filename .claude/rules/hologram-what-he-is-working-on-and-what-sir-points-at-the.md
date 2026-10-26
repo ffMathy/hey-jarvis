@@ -59,8 +59,9 @@ a place on a tilted ring of radius 1 (`satelliteOrbits`, `orbitPoint`), and each
 device scales that to his size and adds its own clock, so they go round as
 smoothly as that device draws him. The headset draws them in the room
 (`vr/src/hologram3d/satellites.ts`); the phone and its web build draw them on the
-screen, in the same picture as him (`satellite-drawing.ts`, the same glyphs
-as Skia strokes, dimmer and smaller passing behind him). On the phone,
+screen, in the same picture as him (`satellite-drawing.ts` says where each is
+and how lit, dimmer and smaller passing behind him, and `gpu-picture.ts` draws
+the glyphs as strokes on the GPU). On the phone,
 `useJarvisServer` returns the line, `useAgentSatellites` (in
 `hologram/react/lifecycle`) works the satellites out on the JS thread every
 `READ_INTERVAL_MS` into a shared value, and `JarvisHologram` draws whatever its
@@ -72,9 +73,9 @@ own, in its `glyph.ts`, and it comes with every message, so a new agent needs no
 change on any device. A satellite whose messages brought none is a plain ring
 (`PLAIN_RING_GLYPH`). A glyph is an SVG path in glyph radii — it fits the circle
 of radius 1 — with y down, drawn as round-capped strokes `GLYPH_STROKE_WIDTH`
-wide: by Skia on the phone, from the string each frame (and the paths released
-after recording in a browser), and by a 2D canvas into the headset's glyph
-atlas. Sample mode's three pretend agents have made-up glyphs of their own
+wide: on the phone flattened into runs once for each glyph a satellite is
+given (`picture-glyphs.ts`, which draws a path it cannot read as the plain
+ring), and by a 2D canvas into the headset's glyph atlas. Sample mode's three pretend agents have made-up glyphs of their own
 (`SAMPLE_AGENTS`), since the real ones are only the server's. With `pretending`, the hook has sample mode's
 three pretend agents at work (`pretendWork`), so they can be seen with no server.
 

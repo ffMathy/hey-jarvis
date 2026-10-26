@@ -5,10 +5,9 @@
  * design, the voice tracking, the credentials and the conversation's framework-free parts —
  * `createJarvisSession` among them, the session every device runs — with no framework in it, so it
  * runs headless in the tests and on the headset with no React at all. `hologram/react` needs React,
- * Reanimated and Skia for real. This one needs React, the ElevenLabs SDK's client and, on a device,
- * LiveKit's audio session and this package's own greeting player — and deliberately not Skia, so
- * that a screen can hold a conversation before CanvasKit has finished loading in a browser, which is
- * precisely the case `mobile/src/jarvis-hologram.web.tsx` exists to handle.
+ * Reanimated and expo-gl for real. This one needs React, the ElevenLabs SDK's client and, on a
+ * device, LiveKit's audio session and this package's own greeting player — and deliberately not
+ * expo-gl, so that a screen can hold a conversation whether or not the view can draw him.
  *
  * What is here is only the wiring a screen needs: `useJarvisSession` hands the session the SDK, the
  * greeting's player, the call's audio and a timer, and holds its snapshot in React. The rules are the

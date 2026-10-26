@@ -1,16 +1,10 @@
 /**
- * The parts of `hologram/react` that must be reachable *before* Skia exists.
+ * The parts of `hologram/react` a screen needs without the view.
  *
- * **Nothing in this file, or anything it imports, may touch `@shopify/react-native-skia`.** In a
- * browser that package is only usable once CanvasKit's WebAssembly has loaded, and it captures
- * what it found the moment it is first evaluated — so importing it early leaves `Skia` undefined
- * for the life of the page, and the first thing the hologram does with it throws. The lazy
- * `import()` in `jarvis-hologram.web.tsx` exists precisely to keep that from happening, and a
- * single eager import from the main `hologram/react` entry is enough to defeat it. That is not
- * hypothetical: it is what turned the published site black.
- *
- * So the screen-level pieces live here, apart from the view, and `react.contract.spec.ts` checks
- * that nothing on this side of the line reaches across it.
+ * **Nothing in this file, or anything it imports, may load expo-gl.** On a device it asks for its
+ * native module as it loads and throws in a build without one, and the view loads it only once it
+ * has found the module (`gl-context.ts`). So the screen-level pieces live here, apart from the view,
+ * and `react.contract.spec.ts` checks that nothing on this side of the line reaches across it.
  */
 
 export { AgentSatellitesContext, useAgentSatellites } from './agent-satellites';

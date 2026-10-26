@@ -1,6 +1,8 @@
 // The J.A.R.V.I.S. hologram: the golden sphere of light that stands in for Tony
-// Stark's AI in the Avengers: Age of Ultron lab scene, drawn every frame with React
-// Native Skia's imperative canvas API from a Reanimated worklet.
+// Stark's AI in the Avengers: Age of Ultron lab scene. This is what he is made of — the seeded
+// scene, the paths that never change — and what each frame of him is (analyseFrame); the GPU
+// draws him from it, his body in `gpu/gpu-body.ts` and every layer below in `gpu/gpu-picture.ts`,
+// whose draw functions carry the layers' names.
 //
 // WHAT IT DEPICTS
 // The film's J.A.R.V.I.S.: a round, glowing, translucent amber ball, brightest at its core
@@ -12,8 +14,8 @@
 // warm orange to amber: no blue, no white, no halo past 1.1R. Measurements and requirements come from the film study
 // (jarvis-reference.md), cited below by section.
 //
-// LAYERS, drawn back to front (unit space, R = 1, y down; clock angles in degrees
-// clockwise from 12 o'clock)
+// LAYERS, drawn back to front by `gpu/gpu-picture.ts` (unit space, R = 1, y down; clock angles in
+// degrees clockwise from 12 o'clock)
 //   (no warm volume)    The film's ball is a lit cloud, and this drawing used to paint one: a
 //                       textured circle of amber haze under everything, arriving patch by patch
 //                       while the ball formed. It is gone, at the user's asking — "I just want
@@ -155,56 +157,20 @@
 //               the film's point of light, sparks and spoked dial are gone at the user's asking.
 //
 // PERFORMANCE AND WORKLET RULES
-// - drawHologram and every helper it calls are worklets ('worklet' directive) that use
-//   only their arguments and module-level number constants: no module-level mutable state,
-//   no closures over outer values, no Math.random while drawing. Randomness comes from the
-//   seeded scene, and per-cycle variation from an integer hash.
+// - analyseFrame and every per-fragment helper are worklets ('worklet' directive) that use only
+//   their arguments and module-level number constants: no module-level mutable state, no closures
+//   over outer values, no Math.random in a frame. Randomness comes from the seeded scene, and
+//   per-cycle variation from an integer hash (in the shaders, as it was here).
 // - The scene is flat number arrays — about a hundred thousand numbers at PARTICLE_COUNT, ten
-//   to a body row — cloned into the worklet runtime once. The body's rows lost two numbers each
-//   when the body was first doubled (see buildBody). The fill and sparkle
-//   textures and the whorl are built straight into Skia images and paths from a seed in
-//   the resources, so they are never copied. The textures are small
-//   (128² and 64²) and built with table lookups and separable noise, because this runs on the
-//   JS thread at every mount, on a phone, under an interpreter with no JIT.
-// - Build the scene and the resources ONCE per mounted canvas (a stable useMemo with no
-//   changing dependencies). The resources hold mutable PathBuilders, so two mounted
-//   canvases must never share one resources object.
-// - Every PathBuilder is made once in createHologramResources, reset at the start of each
-//   frame (so an exception mid-frame cannot leak contours into the next one) and reused:
-//   detach() hands out the path and resets the builder.
-// - Every paint uses Screen blending, so faint overlapping strokes add up like light: glow
-//   comes from nested strokes, gradients and the prebuilt textures, with no blur filters —
-//   a Gaussian mask filter was measured and costs more than the ring it would replace,
-//   because its price follows a path's bounding box rather than its ink. It is drawn over
-//   black.
-// - A shader that is transparent over most of the disc is painted as a band, not a disc
+//   to a body row — laid out into the GPU's tables once, when the view mounts. The body's rows lost
+//   two numbers each when the body was first doubled (see buildBody). The sparkle texture and the
+//   whorl are built from a seed rather than carried in the scene. The texture is small (64²) and
+//   built with table lookups and separable noise, because this runs on the JS thread at every
+//   mount, on a phone, under an interpreter with no JIT.
+// - Every paint is Screen, so faint overlapping strokes add up like light: glow comes from nested
+//   strokes, gradients and the prebuilt texture, with no blur. It is drawn over black.
+// - A gradient that is transparent over most of the disc is painted as a band, not a disc
 //   (LIMB_BLOOM_BAND), which keeps the widest paints affordable.
-// - On a phone every worklet here runs under Hermes with no JIT, as bytecode compiled at runtime
-//   without optimisation. So the one loop that runs once a crescent piece, appendCrescent, works out
-//   each piece once and keeps its temporaries as `let`s declared before the loop, and
-//   crescent-loop.spec.ts holds it to a frozen copy of the loop it replaced, bit for bit.
-//   biome.json lets this file's functions be as complex as that loop is.
-// - Geometry lives in unit space under canvas.translate(centre)·scale(R), so gradient
-//   shaders are built once, and the rolling layers are drawn under canvas.rotate. Beyond
-//   paints, gradients and path builders, the textures use Data.fromBytes, Image.MakeImage
-//   (raster RGBA from bytes), Image.makeShaderOptions, Shader.MakeColor and Matrix().scale;
-//   like Shader.MakeBlend, MakeSweepGradient and PathBuilder.addCircle, each exists in React
-//   Native Skia 2.6.2's JSI API and in CanvasKit alike.
-import type { SkCanvas, Skia } from '@shopify/react-native-skia';
-// The enums come from the package's type module rather than from its root, which
-// imports react-native and so cannot load under `bun test` — where this file is
-// drawn for real, headlessly, in hologram-drawing.spec.ts. They are the same values.
-import {
-  AlphaType,
-  BlendMode,
-  ColorType,
-  FilterMode,
-  MipmapMode,
-  PaintStyle,
-  StrokeCap,
-  TileMode,
-} from '@shopify/react-native-skia/lib/module/skia/types';
-
 /** What one frame of the hologram is drawn from. */
 export interface HologramFrame {
   /** Seconds since the hologram mounted, accumulated per frame. All motion derives from this. */
@@ -252,29 +218,6 @@ export interface HologramFrame {
 }
 
 /**
- * The part of Skia the hologram draws with, and no more.
- *
- * Narrow on purpose. The app passes Skia from the package root; the headless test
- * passes the same API built over CanvasKit from the package's `lib/module` build,
- * whose declarations TypeScript treats as a separate copy. The members used here
- * are identical in both, so asking only for those lets both pass without a cast.
- */
-export type HologramSkia = Pick<typeof Skia, 'Color' | 'Data' | 'Image' | 'Matrix' | 'Paint' | 'Path' | 'Shader'>;
-
-/** The canvas calls the hologram makes, for the same reason. */
-export type HologramCanvas = Pick<
-  SkCanvas,
-  'drawCircle' | 'drawPath' | 'restore' | 'rotate' | 'save' | 'saveLayer' | 'scale' | 'translate'
->;
-
-type SkiaApiType = HologramSkia;
-
-// ---- constants (unit space: the sphere's radius R is 1, y points down) ---------------------
-// Clock angles are degrees clockwise from 12 o'clock, as the film study measures them.
-// The ones a renderer of the body and the stream reads are exported, for the reason
-// HologramFrameState gives; exporting one changes nothing about how it is captured in a worklet.
-
-/**
  * Sphere radius as a fraction of the square, at rest.
  *
  * Small, and it does not mean what it looks like it means. The square is not the screen: the view
@@ -287,9 +230,9 @@ type SkiaApiType = HologramSkia;
  * exactly that: "some of the particles that flow outwards are clipped ... its particles should be
  * able to extend further out without being clipped." It has 2.1R now.
  *
- * Paying for that in canvas rather than in sphere is deliberate, and it is nearly free: Skia only
- * rasterises what is drawn, and the drawn things are all sized from the sphere. What the extra
- * square costs is the surface it is cleared on, not the picture painted into it.
+ * Paying for that in canvas rather than in sphere is deliberate, and it is nearly free: the GPU
+ * only shades what is drawn, and the drawn things are all sized from the sphere. What the extra
+ * square costs is the canvas it is cleared on, not the picture painted into it.
  */
 export const SPHERE_FRACTION = 0.27;
 /** The outer rim layer rolls clockwise in the screen plane: one turn in about 33 s, as the film's ladder ring. */
@@ -313,7 +256,6 @@ export const STREAM_RADIANS_PER_SECOND = 0.21;
 export const BODY_RADIANS_PER_SECOND = 0.26;
 /** How long one turn of the body takes. */
 export const BODY_TURN_SECONDS = (2 * Math.PI) / BODY_RADIANS_PER_SECOND;
-
 /** How far the body has turned, in radians, at `time`. */
 export function bodyTurnRadians(time: number) {
   'worklet';
@@ -391,15 +333,15 @@ export const STREAM_STRIDE = 11;
 export const BODY_ID_FIELD = 6;
 export const STREAM_ID_FIELD = 7;
 
-const CRESCENT_PIECE_STRIDE = 3;
-const CRESCENT_PIECES_PER_STRAND = 14;
-const TRUSS_PIECE_STRIDE = 6;
-const FRAY_STRIDE = 5;
-const STREAK_ARC_STRIDE = 6;
-const LIMB_STREAK_STRIDE = 5;
-const RING_TICK_STRIDE = 2;
+export const CRESCENT_PIECE_STRIDE = 3;
+export const CRESCENT_PIECES_PER_STRAND = 14;
+export const TRUSS_PIECE_STRIDE = 6;
+export const FRAY_STRIDE = 5;
+export const STREAK_ARC_STRIDE = 6;
+export const LIMB_STREAK_STRIDE = 5;
+export const RING_TICK_STRIDE = 2;
 const EPOCH_STRIDE = 10;
-const COMET_STRIDE = 5;
+export const COMET_STRIDE = 5;
 /** Side of the tiled sparkle texture in texels, and how wide a texel is on the sphere: a stroke spans about two. */
 export const SPARKLE_TEXTURE_TEXELS = 64;
 export const SPARKLE_TEXEL_SIZE = 0.018;
@@ -445,10 +387,10 @@ export const SCAN_BRIGHT_NEARNESS = 0.55;
 /** How long the ring takes to bloom from the core to past the limb, at the end of each pass. */
 export const PULSE_SECONDS = 0.55;
 
-const LIMB_BLOOM_RADIUS = 0.995;
-const LIMB_BLOOM_BAND = 0.25;
-const LIMB_RIDGE_RADIUS = 0.955;
-const LIMB_RIDGE_BAND = 0.17;
+export const LIMB_BLOOM_RADIUS = 0.995;
+export const LIMB_BLOOM_BAND = 0.25;
+export const LIMB_RIDGE_RADIUS = 0.955;
+export const LIMB_RIDGE_BAND = 0.17;
 
 /** A fragment is lit for this share of its clock's cycle, fading in and out over a third of that at each end. */
 export const FRAGMENT_DUTY = 0.6;
@@ -992,32 +934,14 @@ export function pictureSceneOf(scene: HologramScene): HologramPictureScene {
   };
 }
 
-// ---- resources: Skia objects built once per mounted canvas --------------------------------
+// ---- the paths that never change ---------------------------------------------------------
 
 /**
- * A path under construction, kept in JavaScript until it is finished.
- *
- * Skia's own builder sends every `moveTo` and `lineTo` across into native code as it is called,
- * and a frame of this drawing is a few thousand of them. Measured headlessly with the JIT switched
- * off, a thousand two-verb dashes cost 4.41 ms built that way against 0.91 ms handed over as one
- * array of commands, so the verbs go into a plain array and the path is made in one call when it is
- * detached.
- *
- * What is left of the crossings is small. On a Hermes built the way React Native builds it, wrapped
- * the way the worklets runtime wraps it and timed on a desktop, handing the arrays over costs about
- * 190 ns a command — 2 ms of the 27 ms it took to build a frame at full density — and nearly all the
- * rest was the drawing's own JavaScript, which Hermes runs as unoptimised bytecode with no JIT.
- *
- *
- * Verb numbers are Skia's own, as `PathVerb` gives them, written out rather than imported because
- * this runs in a worklet and an imported enum is one more object to carry across.
- *
- * Exported, with {@link makePathBuilder}, for `crescent-loop.spec.ts` alone, which fills these from the
- * hand-written crescent loop and from a frozen copy of the one it replaced; nothing else outside this
- * file draws into one.
+ * A path as the commands it is made of: move, line and conic, in Skia's verb numbers, which is
+ * how the drawing was written when Skia drew it. The paths that never change are built into these
+ * once ({@link staticPathsOf}) and flattened into the GPU's straight runs (`gpu/picture-layers.ts`).
  */
 export interface PathBuilder {
-  /** The commands, and beyond `count` the ones last frame used — kept to be written over. */
   commands: number[][];
   count: number;
 }
@@ -1025,84 +949,26 @@ export interface PathBuilder {
 const MOVE_VERB = 0;
 const LINE_VERB = 1;
 const CONIC_VERB = 3;
-const CLOSE_VERB = 5;
 
-export function makePathBuilder(): PathBuilder {
+function makePathBuilder(): PathBuilder {
   return { commands: [], count: 0 };
 }
 
-/**
- * The next command's array, reused from last frame wherever it fits.
- *
- * A frame of the body is a couple of thousand commands, and a fresh `[verb, x, y]` for each is a
- * couple of thousand short-lived objects sixty — now thirty — times a second. On a phone that is
- * paid twice, once to allocate and again when the collector takes them back. The drawing puts very
- * nearly the same shapes in the same order every frame, so the arrays from the last one are
- * already the right size and are simply written over.
- */
-function nextCommand(builder: PathBuilder, size: number): number[] {
-  'worklet';
-  const existing = builder.commands[builder.count];
-  if (existing !== undefined && existing.length === size) {
-    builder.count++;
-    return existing;
-  }
-  const made = new Array<number>(size);
-  builder.commands[builder.count] = made;
+function pushCommand(builder: PathBuilder, command: number[]) {
+  builder.commands[builder.count] = command;
   builder.count++;
-  return made;
 }
 
 function pathMoveTo(builder: PathBuilder, x: number, y: number) {
-  'worklet';
-  const command = nextCommand(builder, 3);
-  command[0] = MOVE_VERB;
-  command[1] = x;
-  command[2] = y;
+  pushCommand(builder, [MOVE_VERB, x, y]);
 }
 
 function pathLineTo(builder: PathBuilder, x: number, y: number) {
-  'worklet';
-  const command = nextCommand(builder, 3);
-  command[0] = LINE_VERB;
-  command[1] = x;
-  command[2] = y;
+  pushCommand(builder, [LINE_VERB, x, y]);
 }
 
 function pathConicTo(builder: PathBuilder, x1: number, y1: number, x2: number, y2: number, weight: number) {
-  'worklet';
-  const command = nextCommand(builder, 6);
-  command[0] = CONIC_VERB;
-  command[1] = x1;
-  command[2] = y1;
-  command[3] = x2;
-  command[4] = y2;
-  command[5] = weight;
-}
-
-function pathClose(builder: PathBuilder) {
-  'worklet';
-  const command = nextCommand(builder, 1);
-  command[0] = CLOSE_VERB;
-}
-
-function pathReset(builder: PathBuilder) {
-  'worklet';
-  builder.count = 0;
-}
-
-/** The finished path, in one crossing. `keep` is for the handful built once at mount. */
-function pathOf(Skia: SkiaApiType, builder: PathBuilder, keep = false) {
-  'worklet';
-  // One array of references, where the commands themselves are last frame's; see nextCommand.
-  const path = Skia.Path.MakeFromCmds(builder.commands.slice(0, builder.count));
-  if (!keep) {
-    builder.count = 0;
-  }
-  if (!path) {
-    throw new Error('The hologram could not build one of its paths');
-  }
-  return path;
+  pushCommand(builder, [CONIC_VERB, x1, y1, x2, y2, weight]);
 }
 
 /** A circle arc (centre, radius, start angle, signed sweep) appended as conics of at most 0.8 rad. */
@@ -1114,7 +980,6 @@ function appendArc(
   startAngle: number,
   sweep: number,
 ) {
-  'worklet';
   const pieces = Math.max(1, Math.ceil(Math.abs(sweep) / 0.8));
   const step = sweep / pieces;
   const halfStep = step * 0.5;
@@ -1341,23 +1206,7 @@ export function staticPathsOf(textureSeed: number) {
 /** The paths that never change, as {@link staticPathsOf} builds them. */
 export type StaticPaths = ReturnType<typeof staticPathsOf>;
 
-/** The paths that never change, made into Skia's once. */
-function prebuiltPaths(Skia: SkiaApiType, paths: StaticPaths) {
-  return {
-    whorlPath: pathOf(Skia, paths.whorl, true),
-    whorlOuterPath: pathOf(Skia, paths.whorlOuter, true),
-    whorlTickPath: pathOf(Skia, paths.whorlTicks, true),
-    loopPath: pathOf(Skia, paths.loop, true),
-    edgeOnPath: pathOf(Skia, paths.edgeOn, true),
-    bracketPath: pathOf(Skia, paths.bracket, true),
-    dataStreakPath: pathOf(Skia, paths.dataStreaks, true),
-    coreRingPath: pathOf(Skia, paths.coreRing, true),
-    coreBarPath: pathOf(Skia, paths.coreBar, true),
-    strandFanPath: pathOf(Skia, paths.strandFan, true),
-  };
-}
-
-/** A colour from 0-255 channels, as the hex string Skia.Color takes. */
+/** A colour from 0-255 channels, as a `#rrggbb` string (`gpu/picture-gradients.ts` reads it). */
 function amberHex(red: number, green: number, blue: number) {
   const channel = (value: number) =>
     Math.round(Math.min(255, Math.max(0, value)))
@@ -1382,301 +1231,6 @@ export function limbRidgeStops(textureSeed: number) {
   }
   return { colours, positions };
 }
-
-/** Paints, gradient shaders, prebuilt paths and the reusable path builders. */
-export function createHologramResources(Skia: SkiaApiType, scene: HologramPictureScene) {
-  const makePaint = (color: string, style: PaintStyle, strokeCap: StrokeCap) => {
-    const paint = Skia.Paint();
-    paint.setAntiAlias(true);
-    paint.setStyle(style);
-    paint.setColor(Skia.Color(color));
-    paint.setBlendMode(BlendMode.Screen);
-    paint.setStrokeCap(strokeCap);
-    return paint;
-  };
-  const makeStroke = (color: string, strokeCap: StrokeCap) => makePaint(color, PaintStyle.Stroke, strokeCap);
-  const makeFill = (color: string) => makePaint(color, PaintStyle.Fill, StrokeCap.Butt);
-  const colors = (list: string[]) => list.map((color) => Skia.Color(color));
-  const radialGradient = (radius: number, list: string[], positions: number[]) =>
-    Skia.Shader.MakeRadialGradient({ x: 0, y: 0 }, radius, colors(list), positions, TileMode.Clamp);
-
-  // The limb bloom: a tight ring profile around 1R, multiplied by a mask peaked at
-  // 8-9 o'clock (a sweep gradient starts at 3 o'clock and runs clockwise). No halo.
-  // Painted as a band rather than a disc — see LIMB_BLOOM_BAND.
-  const limbBloomFill = makeStroke('#ffffff', StrokeCap.Butt);
-  limbBloomFill.setStrokeWidth(LIMB_BLOOM_BAND);
-  limbBloomFill.setShader(
-    Skia.Shader.MakeBlend(
-      BlendMode.Modulate,
-      radialGradient(
-        1.12,
-        ['#ffffff00', '#ffffff00', '#ffffff70', '#ffffffff', '#ffffff80', '#ffffff00'],
-        [0, 0.79, 0.855, 0.895, 0.935, 0.985],
-      ),
-      Skia.Shader.MakeSweepGradient(
-        0,
-        0,
-        colors(['#e8801c00', '#e8801c00', '#ec8a2280', '#f0962aff', '#ec8a2280', '#e8801c00', '#e8801c00']),
-        [0, 0.27, 0.37, 0.47, 0.6, 0.7, 1],
-        TileMode.Clamp,
-      ),
-    ),
-  );
-
-  // The limb ridge under the thin ring: a ring profile peaked at 0.965R, lumpy round the circle
-  // (bright stretches and see-through ones, from the seed) and drawn in the rolling frame, so it
-  // rolls with the rest of the rim layer rather than sitting under it as an evenly lit coin edge.
-  const ridge = limbRidgeStops(scene.textureSeed);
-  const limbRidgeFill = makeStroke('#ffffff', StrokeCap.Butt);
-  limbRidgeFill.setStrokeWidth(LIMB_RIDGE_BAND);
-  limbRidgeFill.setShader(
-    Skia.Shader.MakeBlend(
-      BlendMode.Modulate,
-      radialGradient(
-        1.06,
-        ['#ffffff00', '#ffffff00', '#ffffff80', '#ffffffff', '#ffffff70', '#ffffff00'],
-        [0, 0.84, 0.885, 0.915, 0.94, 0.965],
-      ),
-      Skia.Shader.MakeSweepGradient(0, 0, colors(ridge.colours), ridge.positions, TileMode.Clamp),
-    ),
-  );
-  // The thin rim ring, brightest from 1 to 4 o'clock.
-  const thinRingStroke = makeStroke('#ffffff', StrokeCap.Butt);
-  thinRingStroke.setShader(
-    Skia.Shader.MakeSweepGradient(
-      0,
-      0,
-      colors(['#e69c50', '#e69c50', '#9c5e2e', '#9c5e2e', '#e69c50', '#e69c50']),
-      [0, 0.09, 0.22, 0.7, 0.82, 1],
-      TileMode.Clamp,
-    ),
-  );
-
-  // The core: a bloom elongated along the lower-left to upper-right diagonal, with a
-  // darker orange interior inside the hot ring, never white.
-  const coreBloomFill = makeFill('#ffffff');
-  coreBloomFill.setShader(
-    radialGradient(
-      1,
-      ['#d06a2ec0', '#e88030e8', '#f68e30e8', '#e6802eb0', '#dc742a50', '#c8602600'],
-      [0, 0.22, 0.34, 0.5, 0.74, 1],
-    ),
-  );
-
-  // The whorl's strokes vary in brightness along their length (see sparklePixels).
-  const sparkleImage = Skia.Image.MakeImage(
-    {
-      width: SPARKLE_TEXTURE_TEXELS,
-      height: SPARKLE_TEXTURE_TEXELS,
-      alphaType: AlphaType.Premul,
-      colorType: ColorType.RGBA_8888,
-    },
-    Skia.Data.fromBytes(sparklePixels(scene.textureSeed ^ SPARKLE_SEED_MIX)),
-    SPARKLE_TEXTURE_TEXELS * 4,
-  );
-  if (!sparkleImage) throw new Error('The hologram could not make its sparkle texture');
-  const sparkleShader = sparkleImage.makeShaderOptions(
-    TileMode.Repeat,
-    TileMode.Repeat,
-    FilterMode.Linear,
-    MipmapMode.None,
-    Skia.Matrix().scale(SPARKLE_TEXEL_SIZE, SPARKLE_TEXEL_SIZE),
-  );
-  const makeSparkleStroke = (color: string, strokeCap: StrokeCap) => {
-    const paint = makeStroke(color, strokeCap);
-    paint.setShader(Skia.Shader.MakeBlend(BlendMode.Modulate, sparkleShader, Skia.Shader.MakeColor(Skia.Color(color))));
-    return paint;
-  };
-
-  const makeBuilder = () => makePathBuilder();
-  /** Stands in until the first frame builds the real thing; drawing it is a no-op. */
-  const emptyPath = pathOf(Skia, makeBuilder());
-  const pathBuilders = {
-    lines: makeBuilder(),
-    swoosh: makeBuilder(),
-    coreKnot: makeBuilder(),
-    truss: makeBuilder(),
-    trussInner: makeBuilder(),
-    trussHaze: makeBuilder(),
-    trussRungs: makeBuilder(),
-    trussDetail: makeBuilder(),
-    ringTicks: makeBuilder(),
-    crescent: [makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder()], // thin, medium, wide, core
-    fray: makeBuilder(),
-    chips: makeBuilder(),
-    chipCores: makeBuilder(),
-    lightning: makeBuilder(),
-    red: makeBuilder(),
-  };
-  // one flat list, so the frame can reset them all first
-  const allPathBuilders = [
-    pathBuilders.lines,
-    pathBuilders.swoosh,
-    pathBuilders.coreKnot,
-    pathBuilders.truss,
-    pathBuilders.trussInner,
-    pathBuilders.trussHaze,
-    pathBuilders.trussRungs,
-    pathBuilders.trussDetail,
-    pathBuilders.ringTicks,
-    ...pathBuilders.crescent,
-    pathBuilders.fray,
-    pathBuilders.chips,
-    pathBuilders.chipCores,
-    pathBuilders.lightning,
-    pathBuilders.red,
-  ];
-
-  return {
-    limbBloomFill,
-    limbRidgeFill,
-    thinRingStroke,
-    coreBloomFill,
-    whorlGlowStroke: makeStroke('#d8651e', StrokeCap.Round),
-    whorlStroke: makeSparkleStroke('#f47126', StrokeCap.Round),
-    whorlCoreStroke: makeSparkleStroke('#ff8c38', StrokeCap.Round),
-    bracketStroke: makeStroke('#e68727', StrokeCap.Round),
-    loopStroke: makeStroke('#e6862f', StrokeCap.Butt),
-    bodyGlowStroke: makeStroke('#dc6820', StrokeCap.Round),
-    lineStroke: makeStroke('#ec9440', StrokeCap.Butt),
-    coreRingStroke: makeStroke('#ffa440', StrokeCap.Round),
-    coreGlowStroke: makeStroke('#ec8c2c', StrokeCap.Round),
-    trussStroke: makeStroke('#f49838', StrokeCap.Butt),
-    trussGlowStroke: makeStroke('#c9812c', StrokeCap.Butt),
-    trussHazeStroke: makeStroke('#99561a', StrokeCap.Butt),
-    trussCoreStroke: makeStroke('#ffae46', StrokeCap.Butt),
-    crescentGlowStroke: makeStroke('#e07a1a', StrokeCap.Butt),
-    crescentThinStroke: makeStroke('#dca131', StrokeCap.Butt),
-    crescentMediumStroke: makeStroke('#f09430', StrokeCap.Butt),
-    crescentWideStroke: makeStroke('#fba838', StrokeCap.Butt),
-    crescentCoreStroke: makeStroke('#ffc244', StrokeCap.Butt),
-    /** Carries nothing but an alpha: the layer the sphere fades in through while it arrives. */
-    arrivalFade: Skia.Paint(),
-    /**
-     * The ladder ring's five paths, and the weight they were built for. A weight of -1 is a
-     * weight no frame asks for, so the first frame always builds.
-     */
-    trussCache: {
-      weight: -1,
-      shown: 0,
-      outer: emptyPath,
-      inner: emptyPath,
-      haze: emptyPath,
-      rungs: emptyPath,
-      detail: emptyPath,
-    },
-    frayStroke: makeStroke('#f0943a', StrokeCap.Butt),
-    chipGlowStroke: makeStroke('#f08a28', StrokeCap.Round),
-    chipFill: makeFill('#f59430'),
-    chipCoreFill: makeFill('#ffa840'),
-    rodGlowStroke: makeStroke('#dc8424', StrokeCap.Butt),
-    trussFaceFill: makeFill('#b4661c'),
-    rodCoreStroke: makeStroke('#ffb04a', StrokeCap.Butt),
-    railStroke: makeStroke('#f09c3c', StrokeCap.Butt),
-    sparkStroke: makeStroke('#ffae4e', StrokeCap.Round),
-    lightningStroke: makeStroke('#c39568', StrokeCap.Butt),
-    redStroke: makeStroke('#b3470f', StrokeCap.Butt),
-    ...prebuiltPaths(Skia, staticPathsOf(scene.textureSeed)),
-    // Carried so that a draw function can hand a finished path over; see pathOf.
-    skia: Skia,
-    pathBuilders,
-    allPathBuilders,
-  };
-}
-
-type Resources = ReturnType<typeof createHologramResources>;
-
-/** A Skia object that is freed only when something deletes it: a path, or a paint. */
-interface Disposable {
-  dispose(): void;
-}
-
-function isDisposable(value: unknown): value is Disposable {
-  return typeof value === 'object' && value !== null && 'dispose' in value && typeof value.dispose === 'function';
-}
-
-/**
- * The resources, and a way to let go of what drawing with them makes: for Skia over CanvasKit.
- *
- * Every frame builds its paths afresh (pathOf) and drops them once they are drawn. Native Skia
- * frees a dropped path when the collector finds its wrapper. React Native Skia's web API over
- * CanvasKit — what the headset draws with, and the phone's web build — never does: a path there
- * wraps a PathBuilder, a raw WebAssembly object no finalizer is registered for, and nothing in
- * the web API deletes it. Measured over CanvasKit, every frame left fourteen behind, about 4 kB a
- * frame, for as long as he is drawn and until CanvasKit's heap runs out.
- */
-export interface ReleasableHologramResources {
-  resources: Resources;
-  /**
-   * Deletes every path the frames since the last call made, except the ladder ring's, which
-   * drawTruss keeps from one frame to the next until its weight changes. Call it once a frame
-   * has been handed on — the surface flushed, or the picture recorded — never in the middle of one.
-   */
-  release(): void;
-  /** Deletes the paths still held and the paints; the resources cannot be drawn with afterwards. */
-  dispose(): void;
-}
-
-/**
- * {@link createHologramResources}, with every path they make recorded so it can be deleted.
- *
- * Only for Skia over CanvasKit. Native Skia already frees what the frame drops, and there this
- * would only add work to every frame.
- */
-export function createReleasableHologramResources(
-  Skia: SkiaApiType,
-  scene: HologramPictureScene,
-): ReleasableHologramResources {
-  const made: DetachedPath[] = [];
-  const makeFromCmds: SkiaApiType['Path']['MakeFromCmds'] = (commands) => {
-    const path = Skia.Path.MakeFromCmds(commands);
-    if (path !== null) made.push(path);
-    return path;
-  };
-  // Everything else about the path factory is left as it is, `this` included, so its other
-  // methods go on working on CanvasKit's own factory object.
-  const Path = new Proxy(Skia.Path, {
-    get: (target, property, receiver) =>
-      property === 'MakeFromCmds' ? makeFromCmds : Reflect.get(target, property, receiver),
-  });
-  const resources = createHologramResources({ ...Skia, Path }, scene);
-  // The prebuilt shapes, and the empty stand-in the ladder ring starts from: they last as long
-  // as the resources do.
-  const lasting = made.splice(0);
-  let disposed = false;
-  return {
-    resources,
-    release() {
-      const cache = resources.trussCache;
-      const reused = [cache.outer, cache.inner, cache.haze, cache.rungs, cache.detail];
-      let kept = 0;
-      for (const path of made) {
-        if (reused.includes(path)) {
-          made[kept++] = path;
-        } else {
-          path.dispose();
-        }
-      }
-      made.length = kept;
-    },
-    dispose() {
-      if (disposed) return;
-      disposed = true;
-      // A set, because the prebuilt paths are both recorded and held in the resources.
-      const everything = new Set<Disposable>([...made, ...lasting]);
-      for (const value of Object.values(resources)) {
-        if (isDisposable(value)) everything.add(value);
-      }
-      for (const disposable of everything) disposable.dispose();
-      made.length = 0;
-    },
-  };
-}
-
-// ---- math helpers (worklets) --------------------------------------------------------------
-// Every worklet is declared after the worklets it calls: the worklets plugin captures what a
-// worklet calls at the moment the worklet is defined, so a helper declared further down would
-// be captured as undefined on the UI thread (bun runs this file untransformed and would not notice).
 
 function clamp01(value: number) {
   'worklet';
@@ -1704,16 +1258,6 @@ export function densityKey(id: number) {
   return fraction(id * DENSITY_FROM_ID);
 }
 
-/** A repeatable 0..1 hash of an integer. */
-function hashInteger(value: number) {
-  'worklet';
-  let mixed = Math.imul(value | 0, 0x9e3779b1);
-  mixed ^= mixed >>> 15;
-  mixed = Math.imul(mixed, 0x85ebca77);
-  mixed ^= mixed >>> 13;
-  return (mixed >>> 0) / 4294967296;
-}
-
 /**
  * The order fragments drop out in when the script thins the body, 0 (last to go) to 1 (first):
  * across from the left and in patches rather than evenly.
@@ -1736,12 +1280,6 @@ function revealKey(x: number, y: number) {
  */
 function revealOrder(x: number, y: number, id: number) {
   return 0.55 * revealKey(x, y) + 0.45 * fraction(id * 7.31);
-}
-
-/** A clock angle (degrees clockwise from 12 o'clock) as canvas radians (from 3 o'clock, y down). */
-function clockRadians(clockDegrees: number) {
-  'worklet';
-  return (clockDegrees - 90) * DEGREES_TO_RADIANS;
 }
 
 /** Mean of bands[firstBand..endBand), 0 when there are none. */
@@ -1820,9 +1358,9 @@ function readScript(scene: HologramScript, time: number) {
  * the first particles leaving the core are seen as they go and their own travel does the arriving,
  * and leaving fades it out by the same alpha.
  *
- * The drawing fades by it in a layer of its own. A view that shows him as more than one surface —
- * the body drawn on the GPU beside this picture — fades the lot by it instead, which is what
- * {@link drawHologram}'s `fadeOutside` is for, and takes it from here so the two cannot drift apart.
+ * The GPU draws him unfaded, body and picture as one, and whoever shows him fades the lot by it:
+ * the two each faded before being Screened together would come out brighter where they overlap.
+ * Every renderer takes it from here so none can drift from the others.
  */
 export function arrivalOf(appearance: number, presence: number) {
   'worklet';
@@ -1949,54 +1487,6 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
 export type HologramFrameState = ReturnType<typeof analyseFrame>;
 
 // ---- the volume ---------------------------------------------------------------------------
-
-/**
- * The inner layer, all of it turning the other way from the rim at a few degrees a second
- * (section 3): the whorl winding out of the core, the bold loop rising past it, the ")" arc and
- * the faint near half of the edge-on ellipse. The data streaks lie on the pinned body.
- */
-function drawInnerShells(canvas: HologramCanvas, resources: Resources, state: HologramFrameState) {
-  'worklet';
-  const alpha = state.innerAlpha;
-  if (alpha <= 0) return;
-  canvas.save();
-  canvas.rotate(state.shellTurn, CORE_X, CORE_Y);
-  // the arms are boldest round the core and thin out as they open past 0.46R
-  resources.whorlGlowStroke.setStrokeWidth(0.115);
-  resources.whorlGlowStroke.setAlphaf(0.26 * alpha);
-  canvas.drawPath(resources.whorlPath, resources.whorlGlowStroke);
-  resources.whorlGlowStroke.setStrokeWidth(0.082);
-  resources.whorlGlowStroke.setAlphaf(0.17 * alpha);
-  canvas.drawPath(resources.whorlOuterPath, resources.whorlGlowStroke);
-  resources.whorlStroke.setStrokeWidth(0.04);
-  resources.whorlStroke.setAlphaf(0.95 * alpha);
-  canvas.drawPath(resources.whorlPath, resources.whorlStroke);
-  resources.whorlStroke.setStrokeWidth(0.028);
-  resources.whorlStroke.setAlphaf(0.7 * alpha);
-  canvas.drawPath(resources.whorlOuterPath, resources.whorlStroke);
-  resources.whorlCoreStroke.setStrokeWidth(0.013);
-  resources.whorlCoreStroke.setAlphaf(0.6 * alpha * (1 - 0.5 * state.agitation));
-  canvas.drawPath(resources.whorlPath, resources.whorlCoreStroke);
-  resources.whorlStroke.setStrokeWidth(0.01);
-  resources.whorlStroke.setAlphaf(0.6 * alpha);
-  canvas.drawPath(resources.whorlTickPath, resources.whorlStroke);
-  resources.bodyGlowStroke.setStrokeWidth(0.056);
-  resources.bodyGlowStroke.setAlphaf(0.14 * alpha);
-  canvas.drawPath(resources.loopPath, resources.bodyGlowStroke);
-  resources.loopStroke.setStrokeWidth(0.023);
-  resources.loopStroke.setAlphaf(0.75 * alpha);
-  canvas.drawPath(resources.loopPath, resources.loopStroke);
-  resources.loopStroke.setStrokeWidth(0.012);
-  resources.loopStroke.setAlphaf(0.3 * alpha);
-  canvas.drawPath(resources.edgeOnPath, resources.loopStroke);
-  resources.bracketStroke.setStrokeWidth(0.03);
-  resources.bracketStroke.setAlphaf(0.6 * alpha);
-  canvas.drawPath(resources.bracketPath, resources.bracketStroke);
-  canvas.restore();
-  resources.loopStroke.setStrokeWidth(0.007);
-  resources.loopStroke.setAlphaf(0.32 * alpha * state.coreAlpha);
-  canvas.drawPath(resources.dataStreakPath, resources.loopStroke);
-}
 
 /**
  * Whether a fragment is part of the ball at all, 0..1: the script's slow fragment density thins
@@ -2272,805 +1762,4 @@ export function readShellFragment(stream: number[], offset: number, state: Holog
   state.reading[0] = pool;
   const strength = shown * fragmentStrength(life, id, pool, state);
   return strength < FRAGMENT_FAINTEST ? 0 : strength;
-}
-
-/** A path handed out by a builder, which is what every draw call takes. */
-type DetachedPath = ReturnType<typeof pathOf>;
-
-// ---- lines: comets, spokes, the swoosh --------------------------------------------------
-
-/** Comet arcs from the core to the lower right, each on its own slow clock, sliding with the lower stream. */
-function appendComets(builder: PathBuilder, comets: number[], time: number) {
-  'worklet';
-  let shown = 0;
-  for (let offset = 0; offset < comets.length; offset += COMET_STRIDE) {
-    const life = fraction(time / comets[offset] + comets[offset + 1]);
-    if (life > 0.85) continue;
-    const grow = smooth01(life / 0.15);
-    const fade = 1 - smooth01((life - 0.7) / 0.15);
-    const sweep = comets[offset + 4] * grow;
-    const tail = comets[offset + 4] * (1 - fade);
-    const base = comets[offset + 2] + life * 0.35;
-    const radius = comets[offset + 3];
-    const centreX = CORE_X + Math.cos(base) * radius;
-    const centreY = CORE_Y + Math.sin(base) * radius;
-    if (sweep - tail < 0.05) continue;
-    appendArc(builder, centreX, centreY, radius, base + Math.PI + tail, sweep - tail);
-    shown++;
-  }
-  return shown;
-}
-
-/**
- * Faint radial spokes from the core's rim at 0.14R, fanning over the lower half or toward
- * 9-10 o'clock, as long as `envelope` lets them.
- */
-function appendSpokes(builder: PathBuilder, seed: number, envelope: number) {
-  'worklet';
-  const towardNine = hashInteger(seed) < 0.4;
-  const count = 6;
-  for (let spoke = 0; spoke < count; spoke++) {
-    const clock = towardNine ? 270 + (spoke - 2.5) * 9 : 130 + spoke * 20;
-    const angle = clockRadians(clock + (hashInteger(seed * 7 + spoke) - 0.5) * 8);
-    // each spoke grows outward from the core's rim and shrinks back into it, so nothing pops
-    const reach = (0.31 + 0.4 * hashInteger(seed * 13 + spoke)) * envelope;
-    if (reach < 0.01) continue;
-    pathMoveTo(builder, CORE_X + Math.cos(angle) * 0.14, CORE_Y + Math.sin(angle) * 0.14);
-    pathLineTo(builder, CORE_X + Math.cos(angle) * (0.14 + reach), CORE_Y + Math.sin(angle) * (0.14 + reach));
-  }
-}
-
-/** A fan of hairlines arcing over the core, rising to the right, building up line by line over 1.2 s. */
-function appendSwoosh(builder: PathBuilder, seconds: number) {
-  'worklet';
-  const lines = Math.floor(24 * clamp01(seconds / 1.2));
-  const tilt = -0.52;
-  const cosTilt = Math.cos(tilt);
-  const sinTilt = Math.sin(tilt);
-  for (let line = 0; line < lines; line++) {
-    const radius = 1.2 + line * 0.013;
-    // a circle whose top passes just above the core, rotated so the band rises 30° to the right
-    const localX = 0.05;
-    const localY = radius - 0.12 - line * 0.013;
-    appendArc(
-      builder,
-      CORE_X + localX * cosTilt - localY * sinTilt,
-      CORE_Y + localX * sinTilt + localY * cosTilt,
-      radius,
-      -Math.PI / 2 + tilt - 0.42,
-      0.84,
-    );
-  }
-}
-
-/** Comets always; spokes or the swoosh when the script's epoch calls for them. */
-function drawLines(
-  canvas: HologramCanvas,
-  resources: Resources,
-  scene: HologramPictureScene,
-  state: HologramFrameState,
-) {
-  'worklet';
-  const alpha = state.innerAlpha * state.coreAlpha;
-  if (alpha <= 0) return;
-  const builders = resources.pathBuilders;
-  appendComets(builders.lines, scene.comets, state.time);
-  const script = state.script;
-  if (script.lineKind === 1) appendSpokes(builders.lines, script.lineSeed, script.lineEnvelope);
-  const linePath = pathOf(resources.skia, builders.lines);
-  resources.bodyGlowStroke.setStrokeWidth(0.034);
-  resources.bodyGlowStroke.setAlphaf(0.12 * alpha);
-  canvas.drawPath(linePath, resources.bodyGlowStroke);
-  resources.lineStroke.setStrokeWidth(0.013);
-  resources.lineStroke.setAlphaf(0.7 * alpha);
-  canvas.drawPath(linePath, resources.lineStroke);
-  if (script.lineKind === 2) {
-    appendSwoosh(builders.swoosh, script.lineSeconds);
-    resources.lineStroke.setStrokeWidth(0.006);
-    resources.lineStroke.setAlphaf(0.42 * alpha * script.lineEnvelope);
-    canvas.drawPath(pathOf(resources.skia, builders.swoosh), resources.lineStroke);
-  }
-}
-
-// ---- the core -----------------------------------------------------------------------------
-
-/** The core: the elongated bloom, the hooked ring with its darker middle, the faint 0.3R ring, the bar and a spiky knot. */
-function drawCore(canvas: HologramCanvas, resources: Resources, state: HologramFrameState) {
-  'worklet';
-  const alpha = state.coreAlpha;
-  if (alpha <= 0) return;
-  const brightness = alpha * state.coreDrift;
-  canvas.save();
-  canvas.translate(CORE_X, CORE_Y);
-  canvas.save();
-  canvas.rotate(-45, 0, 0);
-  canvas.scale(0.2, 0.29);
-  resources.coreBloomFill.setAlphaf(clamp01(0.52 * brightness));
-  canvas.drawCircle(0, 0, 1, resources.coreBloomFill);
-  canvas.restore();
-  // the furry knot of spikes on the ring's upper left, re-drawn a few times a second; it shares
-  // the glow below, which softens the ring too
-  const knot = resources.pathBuilders.coreKnot;
-  const step = Math.floor(state.time * 6);
-  for (let spike = 0; spike < 11; spike++) {
-    const angle = (spike / 11) * Math.PI * 2 + hashInteger(step * 11 + spike) * 0.6;
-    const length = 0.03 + 0.05 * hashInteger(step * 17 + spike);
-    pathMoveTo(knot, -0.075, -0.07);
-    pathLineTo(knot, -0.075 + Math.cos(angle) * length, -0.07 + Math.sin(angle) * length);
-  }
-  const knotPath = pathOf(resources.skia, knot);
-  resources.coreGlowStroke.setStrokeWidth(0.075);
-  resources.coreGlowStroke.setAlphaf(0.2 * brightness);
-  canvas.drawPath(resources.coreRingPath, resources.coreGlowStroke);
-  canvas.drawPath(knotPath, resources.coreGlowStroke);
-  resources.coreGlowStroke.setStrokeWidth(0.04);
-  resources.coreGlowStroke.setAlphaf(0.3 * brightness);
-  canvas.drawPath(resources.coreBarPath, resources.coreGlowStroke);
-  canvas.drawPath(resources.coreRingPath, resources.coreGlowStroke);
-  resources.coreRingStroke.setStrokeWidth(0.017);
-  resources.coreRingStroke.setAlphaf(clamp01(0.62 * brightness));
-  canvas.drawPath(resources.coreRingPath, resources.coreRingStroke);
-  resources.coreRingStroke.setStrokeWidth(0.013);
-  resources.coreRingStroke.setAlphaf(clamp01(0.62 * brightness));
-  canvas.drawPath(resources.coreBarPath, resources.coreRingStroke);
-  resources.coreRingStroke.setStrokeWidth(0.009);
-  resources.coreRingStroke.setAlphaf(0.55 * alpha);
-  canvas.drawPath(knotPath, resources.coreRingStroke);
-  canvas.restore();
-}
-
-// ---- the rim ------------------------------------------------------------------------------
-
-/** A truss piece's circuit trace between the rails and its paired hanging strut. */
-function appendTrussDetail(detail: PathBuilder, start: number, trace: number, strut: number) {
-  'worklet';
-  const early = start + 0.045;
-  const late = start + 0.11;
-  const cosEarly = Math.cos(early);
-  const sinEarly = Math.sin(early);
-  const cosLate = Math.cos(late);
-  const sinLate = Math.sin(late);
-  if (trace === 1) {
-    pathMoveTo(detail, cosEarly * 0.955, sinEarly * 0.955);
-    pathLineTo(detail, cosEarly * 1.005, sinEarly * 1.005);
-    pathLineTo(detail, cosLate * 1.005, sinLate * 1.005);
-  } else if (trace === 2) {
-    pathMoveTo(detail, cosEarly * 0.95, sinEarly * 0.95);
-    pathLineTo(detail, cosEarly * 0.99, sinEarly * 0.99);
-    pathLineTo(detail, cosLate * 0.99, sinLate * 0.99);
-    pathLineTo(detail, cosLate * 1.03, sinLate * 1.03);
-  } else if (trace === 3) {
-    pathMoveTo(detail, cosEarly * 1.02, sinEarly * 1.02);
-    pathLineTo(detail, cosLate * 1.02, sinLate * 1.02);
-    pathMoveTo(detail, (cosEarly + cosLate) * 0.4725, (sinEarly + sinLate) * 0.4725);
-    pathLineTo(detail, (cosEarly + cosLate) * 0.5, (sinEarly + sinLate) * 0.5);
-  }
-  if (strut > 0) {
-    // a pair of struts 0.02R apart hanging from the inner rail toward the centre
-    const tangentX = -sinEarly * 0.02;
-    const tangentY = cosEarly * 0.02;
-    const inner = 0.935 - strut;
-    pathMoveTo(detail, cosEarly * 0.935, sinEarly * 0.935);
-    pathLineTo(detail, cosEarly * inner, sinEarly * inner);
-    pathMoveTo(detail, cosEarly * 0.935 + tangentX, sinEarly * 0.935 + tangentY);
-    pathLineTo(detail, cosEarly * inner + tangentX, sinEarly * inner + tangentY);
-  }
-}
-
-/**
- * The segmented ladder ring, in the rolling frame (the canvas is already rotated), split
- * by how bright each part is drawn: the outer rail (the brightest continuous line), the
- * inner rail, the amber haze between them, and the fine rungs, circuit traces and hanging
- * struts. Pieces pop in, lengthen and join as its weight rises, and break back into dashes
- * as it falls.
- */
-function appendTruss(builders: Resources['pathBuilders'], truss: number[], weight: number) {
-  'worklet';
-  let shown = 0;
-  for (let offset = 0; offset < truss.length; offset += TRUSS_PIECE_STRIDE) {
-    const visible = clamp01((weight * 1.15 - truss[offset + 4] * 0.55 - (truss[offset + 5] === 2 ? 0.2 : 0)) / 0.35);
-    if (visible < 0.08) continue;
-    shown++;
-    const start = clockRadians(truss[offset]);
-    const sweep = truss[offset + 1] * DEGREES_TO_RADIANS * visible;
-    appendArc(builders.truss, 0, 0, 1.035, start, sweep);
-    appendArc(builders.trussInner, 0, 0, 0.935, start, sweep);
-    if (visible < 0.5) continue;
-    appendArc(builders.trussHaze, 0, 0, 0.985, start, sweep);
-    const cosStart = Math.cos(start);
-    const sinStart = Math.sin(start);
-    pathMoveTo(builders.trussRungs, cosStart * 0.935, sinStart * 0.935);
-    pathLineTo(builders.trussRungs, cosStart * 1.035, sinStart * 1.035);
-    if (visible < 0.9) continue;
-    appendTrussDetail(builders.trussDetail, start, truss[offset + 2], truss[offset + 3]);
-  }
-  return shown;
-}
-
-/**
- * The rolling rim layer: the ladder truss, the thin ring's ticks and, when the truss
- * leads, the fan of strands on the right.
- */
-function drawTruss(
-  canvas: HologramCanvas,
-  resources: Resources,
-  scene: HologramPictureScene,
-  state: HologramFrameState,
-) {
-  'worklet';
-  const script = state.script;
-  const weight = script.trussWeight * state.rimAlpha;
-  const builders = resources.pathBuilders;
-  canvas.save();
-  canvas.rotate(state.roll, 0, 0);
-  // Built once per weight, not once per frame.
-  //
-  // The ring is built in the rolling frame — the canvas above is already turned — so its shape
-  // depends on `weight` alone, and `weight` is exactly constant except while one rim element
-  // hands over to another, which takes HANDOVER_SECONDS out of an epoch lasting several times
-  // that. Every other frame re-made the same five paths and threw them away: 13% of a frame,
-  // measured, for an answer that had not changed.
-  //
-  // Keyed on the input rather than on what happened last frame, so this is memoisation and not
-  // state: the same frame still draws the same picture whatever came before it, which is what
-  // `draws a frame the same way after other frames` exists to hold us to.
-  const cache = resources.trussCache;
-  if (cache.weight !== weight) {
-    cache.shown = appendTruss(builders, scene.truss, weight);
-    cache.outer = pathOf(resources.skia, builders.truss);
-    cache.inner = pathOf(resources.skia, builders.trussInner);
-    cache.haze = pathOf(resources.skia, builders.trussHaze);
-    cache.rungs = pathOf(resources.skia, builders.trussRungs);
-    cache.detail = pathOf(resources.skia, builders.trussDetail);
-    cache.weight = weight;
-  }
-  const shown = cache.shown;
-  const outerPath = cache.outer;
-  const innerPath = cache.inner;
-  const hazePath = cache.haze;
-  const rungPath = cache.rungs;
-  const detailPath = cache.detail;
-  if (state.rimAlpha > 0) {
-    // the thin ring's ticks roll with the rest of the rim layer, but only show through the
-    // ring's bright stretch from 1 to 5 o'clock: the film has no graduated dial round the limb
-    const ticks = scene.ringTicks;
-    for (let offset = 0; offset < ticks.length; offset += RING_TICK_STRIDE) {
-      const onScreen = fraction((ticks[offset] + state.roll) / 360) * 360;
-      if (onScreen < 30 || onScreen > 150) continue;
-      const angle = clockRadians(ticks[offset]);
-      const half = ticks[offset + 1] * 0.5 * smooth01((onScreen - 30) / 20) * smooth01((150 - onScreen) / 20);
-      if (half < 0.004) continue;
-      pathMoveTo(builders.ringTicks, Math.cos(angle) * (1 - half), Math.sin(angle) * (1 - half));
-      pathLineTo(builders.ringTicks, Math.cos(angle) * (1 + half), Math.sin(angle) * (1 + half));
-    }
-    resources.trussStroke.setStrokeWidth(0.009);
-    resources.trussStroke.setAlphaf((0.15 + 0.6 * script.ringWeight) * state.rimAlpha);
-    canvas.drawPath(pathOf(resources.skia, builders.ringTicks), resources.trussStroke);
-  }
-  if (shown > 0) {
-    // leading, the ladder ring is a bold gold band (shot d, shot b's box-frame ribbon);
-    // faint, its dashes are fine
-    resources.trussHazeStroke.setStrokeWidth(0.18);
-    resources.trussHazeStroke.setAlphaf(0.58 * weight * state.glowGain);
-    canvas.drawPath(hazePath, resources.trussHazeStroke);
-    resources.trussGlowStroke.setStrokeWidth(0.1 + 0.05 * weight);
-    resources.trussGlowStroke.setAlphaf(0.5 * (0.3 + 0.7 * weight) * state.glowGain);
-    canvas.drawPath(outerPath, resources.trussGlowStroke);
-    resources.trussStroke.setStrokeWidth(0.011 + 0.006 * weight);
-    resources.trussStroke.setAlphaf(0.35 + 0.4 * weight);
-    canvas.drawPath(innerPath, resources.trussStroke);
-    resources.trussStroke.setStrokeWidth(0.02 + 0.012 * weight);
-    resources.trussStroke.setAlphaf(0.5 + 0.45 * weight);
-    canvas.drawPath(outerPath, resources.trussStroke);
-    resources.trussCoreStroke.setStrokeWidth(0.008);
-    resources.trussCoreStroke.setAlphaf(0.85 * weight);
-    canvas.drawPath(outerPath, resources.trussCoreStroke);
-    // the rungs are finer than the outer rail, the circuit traces and struts finer still
-    resources.trussStroke.setStrokeWidth(0.016);
-    resources.trussStroke.setAlphaf(0.35 + 0.55 * weight);
-    canvas.drawPath(rungPath, resources.trussStroke);
-    resources.trussStroke.setStrokeWidth(0.006);
-    resources.trussStroke.setAlphaf(0.2 + 0.35 * weight);
-    canvas.drawPath(detailPath, resources.trussStroke);
-  }
-  canvas.restore();
-  // the strand fan turns counter-clockwise at 3.5°/s, as shot d's upper-right rim strands do,
-  // fading out and back on a 14 s cycle
-  const fanCycle = fraction(state.time / 14);
-  const fanAlpha = smooth01(fanCycle / 0.12) * smooth01((1 - fanCycle) / 0.12) * state.rimAlpha;
-  const fanWeight = clamp01((script.trussWeight - 0.35) / 0.5) * fanAlpha;
-  if (fanWeight > 0.02) {
-    canvas.save();
-    canvas.rotate(-5 * fanCycle * 14 * 0.7, 0, 0);
-    resources.trussStroke.setStrokeWidth(0.008);
-    resources.trussStroke.setAlphaf(0.6 * fanWeight);
-    canvas.drawPath(resources.strandFanPath, resources.trussStroke);
-    canvas.restore();
-  }
-}
-
-/** Where the latest burst's chips leave the limb, as a clock angle: the left limb about mid-height. */
-function burstClock(burstCount: number) {
-  'worklet';
-  return 255 + hashInteger(burstCount * 131 + 7) * 35;
-}
-
-/**
- * One crescent strand's radius, the deepest width tier it reaches and the clock angle it is
- * centred on, written into out[0..2]. Calm, the four strands lie between 0.965R and 1.03R; split,
- * they open out to 0.94-1.19R, and the outer two gather toward the upper left.
- */
-function crescentStrandNumbers(strand: number, spread: number, out: number[]) {
-  'worklet';
-  let calm = 0.965;
-  let split = 0.94;
-  let deepestTier = 2;
-  if (strand === 1) {
-    calm = 0.99;
-    split = 1.02;
-    deepestTier = 3;
-  } else if (strand === 2) {
-    calm = 1.012;
-    split = 1.1;
-    deepestTier = 1;
-  } else if (strand === 3) {
-    calm = 1.03;
-    split = 1.19;
-    deepestTier = 0;
-  }
-  out[0] = calm + spread * (split - calm);
-  out[1] = deepestTier;
-  out[2] = 262 + 28 * (strand >= 2 ? spread : 0);
-}
-
-/**
- * Builds the crescent's four strands into the width-tier builders (0 thin, 1 medium,
- * 2 wide, 3 core): the inner strands reach the wide and core tiers, the outer ones only
- * the thin and medium. Tier windows are centred on 8:40.
- *
- * Each strand is a ring of pieces rolling with the rim layer. A piece is drawn in every tier whose
- * window it falls inside, its gaps open as the strand splits, and the pieces near a fresh burst's launch
- * point are knocked out as the chips leave from there.
- *
- * It used to go strand, tier, piece, and work out each piece's numbers — where it has rolled to, how far
- * its gap has opened, its ragged ends and the sine it drifts by — once for every tier it was tried in. It
- * goes strand, piece, tier now, so each piece's are worked out once, and stops at the first tier whose
- * window the piece misses: the windows narrow from the thin tier to the core, each inside the last, so a
- * piece that misses one misses every one after it. The drift's sine is taken only for a piece that is
- * drawn, and not at all while the strands are not drifting, since `radius + 0 * sine` is the radius.
- * Each builder still receives its arcs in the order it always did, strand by strand and piece by piece,
- * and `crescent-loop.spec.ts`, which this is exported for, holds every command to a frozen copy of the
- * old loop.
- *
- * Timed through its caller under the Hermes interpreter on a desktop, with every worklet evaluated and
- * bound as react-native-worklets does it (on a millisecond clock, so roughly): 0.10 to 0.14 ms a frame
- * before, 0.08 to 0.09 after.
- */
-export function appendCrescent(builders: PathBuilder[], pieces: number[], state: HologramFrameState) {
-  'worklet';
-  const spread = state.spread;
-  const time = state.time;
-  const roll = state.roll;
-  const shatterClock = burstClock(state.burstCount);
-  const shatter = state.burstAge < 0.18 ? (1 - state.burstAge / 0.18) * (0.5 + 0.5 * state.burstStrength) : 0;
-  const strandNumbers = [0, 0, 0];
-  let radius = 0;
-  let deepestTier = 0;
-  let strandCentre = 0;
-  let narrowing = 0;
-  let drift = 0;
-  let first = 0;
-  let offset = 0;
-  let sweep = 0;
-  let hash = 0;
-  let shrink = 0;
-  let from = 0;
-  let span = 0;
-  let ragged = 0;
-  let along = 0;
-  let alongFound = false;
-  let turned = 0;
-  let halfWidth = 0;
-  let start = 0;
-  let end = 0;
-  for (let strand = 0; strand < 4; strand++) {
-    crescentStrandNumbers(strand, spread, strandNumbers);
-    radius = strandNumbers[0];
-    deepestTier = strandNumbers[1];
-    strandCentre = strandNumbers[2];
-    // the outer strands, as they split off, shorten as well as gathering toward the upper left
-    narrowing = 1 - 0.4 * (strand >= 2 ? spread : 0);
-    drift = spread * (strand < 2 ? 0.025 : 0.06);
-    first = strand * CRESCENT_PIECES_PER_STRAND * CRESCENT_PIECE_STRIDE;
-    for (let piece = 0; piece < CRESCENT_PIECES_PER_STRAND; piece++) {
-      offset = first + piece * CRESCENT_PIECE_STRIDE;
-      sweep = pieces[offset + 1];
-      hash = pieces[offset + 2];
-      shrink = spread * sweep * (strand < 2 ? 0.1 + 0.45 * hash : 0.25 + 0.6 * hash) * 0.5;
-      from = pieces[offset] + roll + shrink;
-      from -= 360 * Math.floor(from / 360);
-      span = sweep - 2 * shrink;
-      // the window's ends are ragged and belong to the pieces rolling through them, so the
-      // crescent frays out at its tips rather than stopping at a fixed angle
-      ragged = 14 * fraction(hash * 7.3 + strand * 0.37);
-      alongFound = false;
-      // a piece can straddle 12 o'clock: try it at its angle and one turn earlier
-      for (let turn = 0; turn < 2; turn++) {
-        turned = from - 360 * turn;
-        for (let tier = 0; tier <= deepestTier; tier++) {
-          // 70, 56, 40 and 24 degrees of half-width, thin tier to core tier
-          halfWidth = (tier === 0 ? 70 : 72 - tier * 16) * narrowing;
-          start = Math.max(turned, strandCentre - halfWidth + ragged);
-          end = Math.min(turned + span, strandCentre + halfWidth - ragged);
-          if (end - start < 0.6) break;
-          if (shatter > hash && Math.abs((start + end) * 0.5 - shatterClock) < 16) continue;
-          if (!alongFound) {
-            // while he talks the split strands keep streaming outward and back at about 0.1 R/s, as
-            // the film's limb unravels on "Doctor." rather than holding a new shape
-            along = drift === 0 ? radius : radius + drift * Math.sin((time * 0.45 + hash) * 6.283185307179586);
-            alongFound = true;
-          }
-          appendArc(builders[tier], 0, 0, along, clockRadians(start), (end - start) * DEGREES_TO_RADIANS);
-        }
-      }
-    }
-  }
-}
-
-/**
- * The bright crescent on the left limb, 11 o'clock round to 7, pinned in screen
- * space while its breaks roll through it. Four strands in width tiers make a thick
- * tapered band; while he talks they spread to 0.94-1.19R, thin, break up and lose
- * their hot core.
- */
-function drawCrescent(
-  canvas: HologramCanvas,
-  resources: Resources,
-  scene: HologramPictureScene,
-  state: HologramFrameState,
-) {
-  'worklet';
-  const weight = Math.max(state.script.crescentWeight, 0.65 * state.agitation) * state.rimAlpha;
-  if (weight <= 0.01) return;
-  const builders = resources.pathBuilders.crescent;
-  const spread = state.spread;
-  appendCrescent(builders, scene.crescentPieces, state);
-  const thin = pathOf(resources.skia, builders[0]);
-  const medium = pathOf(resources.skia, builders[1]);
-  const wide = pathOf(resources.skia, builders[2]);
-  const core = pathOf(resources.skia, builders[3]);
-  // The bloom holds while the crescent splits. It lights more than half the limb, so dimming it
-  // would pull the measured silhouette in, and the film's does not shrink while he speaks — its
-  // width goes up, if anything. What leaves on "Doctor." is the hot core inside the crescent,
-  // and that is taken out below.
-  resources.limbBloomFill.setAlphaf(clamp01(0.42 * weight));
-  canvas.drawCircle(0, 0, LIMB_BLOOM_RADIUS, resources.limbBloomFill);
-  resources.crescentGlowStroke.setStrokeWidth(0.1 * (1 - 0.5 * spread));
-  resources.crescentGlowStroke.setAlphaf(0.26 * weight);
-  canvas.drawPath(wide, resources.crescentGlowStroke);
-  resources.crescentThinStroke.setStrokeWidth(0.01);
-  resources.crescentThinStroke.setAlphaf(clamp01(0.8 * weight));
-  canvas.drawPath(thin, resources.crescentThinStroke);
-  resources.crescentMediumStroke.setStrokeWidth(0.026 * (1 - 0.45 * spread));
-  resources.crescentMediumStroke.setAlphaf(clamp01(0.8 * weight));
-  canvas.drawPath(medium, resources.crescentMediumStroke);
-  resources.crescentWideStroke.setStrokeWidth(0.056 * (1 - 0.62 * spread));
-  resources.crescentWideStroke.setAlphaf(clamp01(0.85 * weight * (1 - 0.3 * spread)));
-  canvas.drawPath(wide, resources.crescentWideStroke);
-  resources.crescentCoreStroke.setStrokeWidth(0.018 * (1 - 0.5 * spread));
-  resources.crescentCoreStroke.setAlphaf(clamp01(0.9 * weight * (1 - spread) * (1 - spread)));
-  canvas.drawPath(core, resources.crescentCoreStroke);
-}
-
-/**
- * The thin rim ring: a hairline circle at 1R, brightest from 1 to 4 o'clock, on a soft
- * ridge of light just inside the limb — the film's limb ridge (shots d, e, g: the
- * 0.92-1.02R band 1.3-1.6× as bright as the band inside it) — which also shows under a
- * leading ladder ring.
- */
-function drawThinRing(canvas: HologramCanvas, resources: Resources, state: HologramFrameState) {
-  'worklet';
-  const script = state.script;
-  const ridge = script.ringWeight * state.rimAlpha;
-  if (ridge > 0.01) {
-    canvas.save();
-    canvas.rotate(state.roll, 0, 0);
-    resources.limbRidgeFill.setAlphaf(clamp01(ridge));
-    canvas.drawCircle(0, 0, LIMB_RIDGE_RADIUS, resources.limbRidgeFill);
-    canvas.restore();
-  }
-  const weight = script.ringWeight * state.rimAlpha;
-  if (weight <= 0.01) return;
-  resources.thinRingStroke.setStrokeWidth(0.012 + 0.008 * weight);
-  resources.thinRingStroke.setAlphaf(clamp01(0.25 + 0.7 * weight));
-  canvas.drawCircle(0, 0, 1.0, resources.thinRingStroke);
-}
-
-/**
- * While he talks: strands fraying outward off the upper-left limb at about 0.1 R/s,
- * and thin streak arcs at 1.2-1.27R. Each is a slot on its own clock; agitation only
- * decides which slots show, and a slot fades through its length, so nothing pops.
- */
-function drawFray(
-  canvas: HologramCanvas,
-  resources: Resources,
-  scene: HologramPictureScene,
-  state: HologramFrameState,
-) {
-  'worklet';
-  const drive = state.frayDrive;
-  if (drive <= 0.02) return;
-  const builder = resources.pathBuilders.fray;
-  const time = state.time;
-  const fray = scene.fray;
-  for (let offset = 0; offset < fray.length; offset += FRAY_STRIDE) {
-    const gate = clamp01((drive - fray[offset + 4]) * 5);
-    const life = fraction(time * fray[offset + 2] + fray[offset + 3]);
-    const visible = gate * (1 - smooth01((life - 0.55) / 0.35)) * smooth01(life / 0.1);
-    if (visible < 0.08) continue;
-    const sweep = fray[offset + 1] * visible * DEGREES_TO_RADIANS;
-    const centre = clockRadians(fray[offset]);
-    appendArc(builder, 0, 0, 1.0 + 0.17 * life, centre - sweep / 2, sweep);
-  }
-  const arcs = scene.streakArcs;
-  for (let offset = 0; offset < arcs.length; offset += STREAK_ARC_STRIDE) {
-    const gate = clamp01((drive - arcs[offset + 5]) * 4);
-    const life = fraction(time * arcs[offset + 3] + arcs[offset + 4]);
-    const visible = gate * smooth01(life / 0.2) * (1 - smooth01((life - 0.65) / 0.25));
-    if (visible < 0.08) continue;
-    const sweep = arcs[offset + 2] * visible * DEGREES_TO_RADIANS;
-    appendArc(builder, 0, 0, arcs[offset + 1], clockRadians(arcs[offset]) - sweep / 2, sweep);
-  }
-  const streaks = scene.limbStreaks;
-  for (let offset = 0; offset < streaks.length; offset += LIMB_STREAK_STRIDE) {
-    const gate = clamp01((drive - streaks[offset + 4]) * 4);
-    const life = fraction(time * streaks[offset + 2] + streaks[offset + 3]);
-    const visible = gate * smooth01(life / 0.15) * (1 - smooth01((life - 0.6) / 0.3));
-    if (visible < 0.08) continue;
-    const y = streaks[offset];
-    // leaving the limb at about 0.3 R/s, bright head first
-    const head = Math.sqrt(1 - y * y) * 0.96 + 0.3 * life;
-    pathMoveTo(builder, head - streaks[offset + 1] * visible, y);
-    pathLineTo(builder, head, y);
-  }
-  resources.frayStroke.setStrokeWidth(0.011);
-  resources.frayStroke.setAlphaf(0.8);
-  canvas.drawPath(pathOf(resources.skia, builder), resources.frayStroke);
-}
-
-// ---- chip bursts --------------------------------------------------------------------------
-
-/** Appends a slab from its centre, unit tangent and half sizes. */
-function appendSlab(
-  builder: PathBuilder,
-  centreX: number,
-  centreY: number,
-  tangentX: number,
-  tangentY: number,
-  halfTangential: number,
-  halfRadial: number,
-) {
-  'worklet';
-  const alongX = tangentX * halfTangential;
-  const alongY = tangentY * halfTangential;
-  const outX = tangentY * halfRadial;
-  const outY = -tangentX * halfRadial;
-  pathMoveTo(builder, centreX - alongX - outX, centreY - alongY - outY);
-  pathLineTo(builder, centreX + alongX - outX, centreY + alongY - outY);
-  pathLineTo(builder, centreX + alongX + outX, centreY + alongY + outY);
-  pathLineTo(builder, centreX - alongX + outX, centreY - alongY + outY);
-  pathClose(builder);
-}
-
-/**
- * One chip at `clock` and `radius`: a slab and its hot middle, sized from `seed`. While it
- * breaks up (`breakUp` 0..1) it thins and shortens, and a gap opens across its middle that
- * pushes the two halves apart.
- */
-function appendChip(
-  bodies: PathBuilder,
-  cores: PathBuilder,
-  clock: number,
-  radius: number,
-  seed: number,
-  breakUp: number,
-  size: number,
-) {
-  'worklet';
-  const angle = clockRadians(clock);
-  const cosAngle = Math.cos(angle);
-  const sinAngle = Math.sin(angle);
-  const halfTangential = size * (0.11 + 0.055 * hashInteger(seed + 7)) * (1 - 0.35 * breakUp);
-  const halfRadial = size * (0.04 + 0.03 * hashInteger(seed + 11)) * (1 - breakUp) ** 1.5;
-  if (halfRadial < 0.004) return;
-  const gap = breakUp * halfTangential * 0.6;
-  const pieces = breakUp > 0 ? 2 : 1;
-  for (let piece = 0; piece < pieces; piece++) {
-    const pieceHalf = pieces === 1 ? halfTangential : (halfTangential - gap) * 0.5;
-    const shift = pieces === 1 ? 0 : (piece === 0 ? -1 : 1) * (gap + pieceHalf);
-    const centreX = cosAngle * radius - sinAngle * shift;
-    const centreY = sinAngle * radius + cosAngle * shift;
-    appendSlab(bodies, centreX, centreY, -sinAngle, cosAngle, pieceHalf, halfRadial);
-    appendSlab(cores, centreX, centreY, -sinAngle, cosAngle, pieceHalf * 0.8, halfRadial * 0.45);
-  }
-}
-
-/**
- * One chip of a burst: where along the limb it leaves from, how fast, and how big. Chip 0 leads
- * — the big slab the film throws, fastest and furthest — and the rest are half its length or
- * less, spread along the limb round it. A split burst throws its chips at two clocks instead,
- * alternating between them.
- */
-function appendBurstChip(
-  bodies: PathBuilder,
-  cores: PathBuilder,
-  seed: number,
-  chip: number,
-  base: number,
-  split: boolean,
-  age: number,
-  flight: number,
-  breakUp: number,
-  size: number,
-) {
-  'worklet';
-  const upper = split && chip % 2 === 0;
-  const leads = chip === 0;
-  const along = split ? 16 : 52;
-  const centre = split ? (upper ? 300 : 250) : base;
-  const launch = centre + (hashInteger(seed) - 0.5) * along;
-  // they fall away counter-clockwise, down the left side, staying aligned with the limb
-  const clock = launch - (upper ? 14 : 8 + 14 * hashInteger(seed + 5)) * flight;
-  const speed = leads ? 1.6 + 0.7 * hashInteger(seed + 3) : 0.9 + 1.2 * hashInteger(seed + 3);
-  const chipSize = size * (leads ? 1.05 : 0.5 + 0.35 * hashInteger(seed + 9));
-  // they leave a little clear of the limb, as the film's do from the frame they appear
-  appendChip(bodies, cores, clock, 1.04 + speed * age, seed, breakUp, chipSize);
-}
-
-/**
- * The latest burst's rim chips: 3-5 solid, soft-edged slabs breaking off the left limb about
- * mid-height and flying out and down toward 8 o'clock. One leads — a big slab up to 0.33R along
- * the limb, thrown hardest, as the film's f134-137 is — and the others are half its length or
- * less, spread over 50° of limb round it rather than stacked at the same clock. They stay fully
- * lit, as the film's do, for CHIP_HOLD_SECONDS; then each one thins, shortens and snaps in two
- * until it is gone by CHIP_GONE_SECONDS, rather than dimming (a dimming amber slab turns brown
- * on black). Where they leave from, and each chip's size and speed, come from the burst's
- * number, so a burst always looks the same.
- */
-function drawChips(canvas: HologramCanvas, resources: Resources, state: HologramFrameState) {
-  'worklet';
-  const age = state.burstAge;
-  const strength = state.burstStrength;
-  if (age >= CHIP_GONE_SECONDS || strength <= 0) return;
-  const count = state.burstCount;
-  const bodies = resources.pathBuilders.chips;
-  const cores = resources.pathBuilders.chipCores;
-  // a small onset throws three small chips, a loud one five big ones
-  const chips = 3 + Math.round(state.burstReach * 2);
-  const size = 0.78 + 0.22 * state.burstReach;
-  // one burst in three splits between the upper left and the left below mid-height
-  const split = hashInteger(count * 53 + 1) < 0.33;
-  const base = burstClock(count);
-  const flight = age / CHIP_GONE_SECONDS;
-  const breakUp = clamp01((age - CHIP_HOLD_SECONDS) / (CHIP_GONE_SECONDS - CHIP_HOLD_SECONDS));
-  for (let chip = 0; chip < chips; chip++) {
-    appendBurstChip(bodies, cores, count * 211 + chip * 17, chip, base, split, age, flight, breakUp, size);
-  }
-  const bodyPath = pathOf(resources.skia, bodies);
-  const corePath = pathOf(resources.skia, cores);
-  // a soft edge: a faint wide outline, then the solid slab, then its hot middle
-  resources.chipGlowStroke.setStrokeWidth(0.028);
-  resources.chipGlowStroke.setAlphaf(0.5);
-  canvas.drawPath(bodyPath, resources.chipGlowStroke);
-  resources.chipFill.setAlphaf(1);
-  canvas.drawPath(bodyPath, resources.chipFill);
-  resources.chipCoreFill.setAlphaf(0.45);
-  canvas.drawPath(corePath, resources.chipCoreFill);
-}
-
-// ---- rare accents -------------------------------------------------------------------------
-
-/** The jagged lightning filament, re-jagged every film frame, and the very rare two-frame red segment. */
-function drawAccents(canvas: HologramCanvas, resources: Resources, state: HologramFrameState) {
-  'worklet';
-  const script = state.script;
-  const alpha = state.rimAlpha;
-  if (alpha <= 0) return;
-  const builders = resources.pathBuilders;
-  if (script.lineKind === 3) {
-    const filmFrame = Math.floor(state.time * 24);
-    const anchor = clockRadians(40 + 70 * hashInteger(script.lineSeed * 3));
-    // it runs out toward the limb from inside and stops short of it, so it never reads as a protrusion
-    const startX = Math.cos(anchor) * 0.42;
-    const startY = Math.sin(anchor) * 0.42;
-    const length = 0.35 + 0.3 * hashInteger(script.lineSeed * 5);
-    pathMoveTo(builders.lightning, startX, startY);
-    for (let joint = 1; joint <= 8; joint++) {
-      const along = (joint / 8) * length;
-      const jag = (hashInteger(filmFrame * 29 + joint) - 0.5) * 0.07;
-      pathLineTo(
-        builders.lightning,
-        startX + Math.cos(anchor) * along - Math.sin(anchor) * jag,
-        startY + Math.sin(anchor) * along + Math.cos(anchor) * jag,
-      );
-    }
-    resources.lightningStroke.setStrokeWidth(0.008);
-    resources.lightningStroke.setAlphaf(0.85 * alpha * script.lineEnvelope);
-    canvas.drawPath(pathOf(resources.skia, builders.lightning), resources.lightningStroke);
-  }
-  if (script.redVisible) {
-    const angle = clockRadians(360 * hashInteger(script.lineSeed * 7));
-    pathMoveTo(builders.red, Math.cos(angle) * 0.9, Math.sin(angle) * 0.9);
-    pathLineTo(builders.red, Math.cos(angle + 0.12) * 0.9, Math.sin(angle + 0.12) * 0.9);
-    resources.redStroke.setStrokeWidth(0.016);
-    resources.redStroke.setAlphaf(0.9 * alpha);
-    canvas.drawPath(pathOf(resources.skia, builders.red), resources.redStroke);
-  }
-}
-
-/**
- * The ring that blooms out of the core as a pass finishes: one step of the thought, done.
- *
- * Reuses the thin ring's paint, drawn at a growing radius and fading as it goes, so it leaves the
- * sphere rather than sitting on it. Nothing at all when he is not thinking, which is most of the
- * time — the whole function is two comparisons then.
- */
-function drawThinkingPulse(canvas: HologramCanvas, resources: Resources, state: HologramFrameState) {
-  'worklet';
-  const strength = state.thinking * state.pulse;
-  if (strength <= 0) return;
-  const paint = resources.thinRingStroke;
-  paint.setAlphaf(state.thinking * (1 - state.pulse) * 0.9);
-  canvas.drawCircle(0, 0, 0.15 + 1.05 * state.pulse, paint);
-}
-
-/**
- * Draws one frame of the hologram into a size×size square.
- *
- * With `fadeOutside`, his arriving and leaving are left to whoever shows the picture: everything is
- * drawn at full strength, and the caller fades the whole of it by {@link arrivalOf}. That is for a
- * view that lays the body drawn on the GPU beside this picture. Each faded by itself, the two come
- * out brighter wherever they overlap than the drawing does, because Screen-blending two faded layers
- * is not fading the blend of them; faded as one group, over black or nothing, they come out as this
- * layer would have made them.
- */
-export function drawHologram(
-  canvas: HologramCanvas,
-  size: number,
-  frame: HologramFrame,
-  scene: HologramPictureScene,
-  resources: Resources,
-  fadeOutside = false,
-) {
-  'worklet';
-  // start clean: a previous frame that threw mid-way must not leak half-built contours
-  const allPathBuilders = resources.allPathBuilders;
-  for (let i = 0; i < allPathBuilders.length; i++) pathReset(allPathBuilders[i]);
-
-  const state = analyseFrame(frame, size, scene);
-  canvas.save();
-  canvas.translate(size / 2, size / 2);
-  canvas.scale(state.radius, state.radius);
-  // While it arrives, the whole sphere is drawn into a layer and that layer is faded in — one
-  // alpha over everything, rather than every layer carrying its own ramp. The layer costs an
-  // offscreen buffer for as long as this lasts — the first fifth of the vortex (appearance under
-  // 0.2) and the whole of leaving — and no drawing afterwards, though Skia keeps its texture. Not
-  // when the caller fades the picture itself, which is what `fadeOutside` says.
-  const arriving = state.arrival < 1 && !fadeOutside;
-  if (arriving) {
-    resources.arrivalFade.setAlphaf(state.arrival);
-    canvas.saveLayer(resources.arrivalFade);
-  }
-  drawInnerShells(canvas, resources, state);
-  drawLines(canvas, resources, scene, state);
-  drawCore(canvas, resources, state);
-  drawThinRing(canvas, resources, state);
-  drawTruss(canvas, resources, scene, state);
-  drawCrescent(canvas, resources, scene, state);
-  drawFray(canvas, resources, scene, state);
-  drawChips(canvas, resources, state);
-  drawAccents(canvas, resources, state);
-  drawThinkingPulse(canvas, resources, state);
-  if (arriving) canvas.restore();
-  canvas.restore();
 }

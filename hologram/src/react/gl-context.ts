@@ -18,8 +18,8 @@ import type {
  * module as it loads and throws without it, so it is required here only once the module is known
  * to be there; a development client built before the dependency was added draws him without his
  * body. The phone and the watch both require Android 10 or later (`minSdkVersion`), the first on
- * which React Native Screens a view onto its siblings (`mixBlendMode`), which is how the body is
- * laid over Skia's picture.
+ * which React Native Screens a view onto its siblings (`mixBlendMode`), which is how he is laid
+ * onto a background that is not black.
  *
  * **The UI thread draws, through expo-gl's worklet support.** `enableExperimentalWorkletSupport`
  * puts every context the view makes into the UI runtime too, under the same id, and

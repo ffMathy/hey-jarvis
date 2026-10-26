@@ -1,4 +1,18 @@
-import { CORE_X, CORE_Y, type HologramPictureScene, type PathBuilder, type StaticPaths } from '../hologram-drawing';
+import {
+  COMET_STRIDE,
+  CORE_X,
+  CORE_Y,
+  CRESCENT_PIECE_STRIDE,
+  CRESCENT_PIECES_PER_STRAND,
+  FRAY_STRIDE,
+  type HologramPictureScene,
+  LIMB_STREAK_STRIDE,
+  type PathBuilder,
+  RING_TICK_STRIDE,
+  STREAK_ARC_STRIDE,
+  type StaticPaths,
+  TRUSS_PIECE_STRIDE,
+} from '../hologram-drawing';
 import { glslFloat } from './glsl';
 import { PICTURE_VERTEX_PRELUDE } from './picture-glsl';
 
@@ -55,54 +69,53 @@ export interface PathSegments {
 /** How finely a conic is flattened into runs: fine enough that no run is longer than a pixel or two. */
 const CONIC_STEPS = 8;
 
-/** A path's commands flattened into straight runs, each knowing which of its ends are joins. */
-export function flattenPath(builder: PathBuilder): PathSegments {
-  const points: number[][][] = [];
+/** A conic from `start` through its control point to its end, as CONIC_STEPS points after `start`. */
+function conicPoints(start: number[], command: number[]): number[][] {
+  const [, controlX, controlY, endX, endY, weight] = command;
+  const [startX, startY] = start;
+  const points: number[][] = [];
+  for (let step = 1; step <= CONIC_STEPS; step++) {
+    const share = step / CONIC_STEPS;
+    const before = (1 - share) * (1 - share);
+    const middle = 2 * weight * share * (1 - share);
+    const after = share * share;
+    const total = before + middle + after;
+    points.push([
+      (before * startX + middle * controlX + after * endX) / total,
+      (before * startY + middle * controlY + after * endY) / total,
+    ]);
+  }
+  return points;
+}
+
+/** A path's subpaths, each as the points its runs go through: a move starts one. */
+function subpathsOf(builder: PathBuilder): number[][][] {
+  const subpaths: number[][][] = [];
   let current: number[][] = [];
-  let at = [0, 0];
-  let subpathStart = [0, 0];
-  const finish = () => {
-    if (current.length > 1) points.push(current);
-    current = [];
-  };
   for (let index = 0; index < builder.count; index++) {
     const command = builder.commands[index];
     const verb = command[0];
     if (verb === 0) {
-      finish();
-      at = [command[1], command[2]];
-      subpathStart = at;
-      current = [at];
+      if (current.length > 1) subpaths.push(current);
+      current = [[command[1], command[2]]];
     } else if (verb === 1) {
-      at = [command[1], command[2]];
-      current.push(at);
+      current.push([command[1], command[2]]);
     } else if (verb === 3) {
-      const [, controlX, controlY, endX, endY, weight] = command;
-      const [startX, startY] = at;
-      for (let step = 1; step <= CONIC_STEPS; step++) {
-        const share = step / CONIC_STEPS;
-        const before = (1 - share) * (1 - share);
-        const middle = 2 * weight * share * (1 - share);
-        const after = share * share;
-        const total = before + middle + after;
-        current.push([
-          (before * startX + middle * controlX + after * endX) / total,
-          (before * startY + middle * controlY + after * endY) / total,
-        ]);
-      }
-      at = [endX, endY];
-    } else if (verb === 5) {
-      current.push(subpathStart);
-      at = subpathStart;
+      current.push(...conicPoints(current[current.length - 1] ?? [0, 0], command));
     }
   }
-  finish();
+  if (current.length > 1) subpaths.push(current);
+  return subpaths;
+}
+
+/** A path's commands flattened into straight runs, each knowing which of its ends are joins. */
+export function flattenPath(builder: PathBuilder): PathSegments {
   const ends: number[][] = [];
   const joins: number[][] = [];
-  for (const run of points) {
-    const closed = run.length > 2 && run[0][0] === run[run.length - 1][0] && run[0][1] === run[run.length - 1][1];
+  for (const run of subpathsOf(builder)) {
     const last = run.length - 1;
-    for (let point = 1; point < run.length; point++) {
+    const closed = last > 1 && run[0][0] === run[last][0] && run[0][1] === run[last][1];
+    for (let point = 1; point <= last; point++) {
       const hasBefore = point > 1 || closed;
       const hasAfter = point < last || closed;
       ends.push([...run[point - 1], ...run[point]]);
@@ -258,7 +271,7 @@ const COMET_PIECES = 5;
 export function cometsLayer(scene: HologramPictureScene): PictureLayerSource {
   const comets: number[][] = [];
   const sweeps: number[][] = [];
-  for (let offset = 0; offset < scene.comets.length; offset += 5) {
+  for (let offset = 0; offset < scene.comets.length; offset += COMET_STRIDE) {
     for (let piece = 0; piece < COMET_PIECES; piece++) {
       comets.push(scene.comets.slice(offset, offset + 4));
       sweeps.push([scene.comets[offset + 4], piece]);
@@ -421,7 +434,7 @@ export function trussLayer(scene: HologramPictureScene): {
   const ranges: Partial<Record<TrussPart, ShapeRange>> = {};
   TRUSS_PARTS.forEach((part, partIndex) => {
     const first = pieces.length;
-    for (let offset = 0; offset < scene.truss.length; offset += 6) {
+    for (let offset = 0; offset < scene.truss.length; offset += TRUSS_PIECE_STRIDE) {
       const runs = part === 'detail' ? TRUSS_DETAIL_RUNS : 1;
       for (let run = 0; run < runs; run++) {
         pieces.push(scene.truss.slice(offset, offset + 4));
@@ -511,7 +524,7 @@ uniform float halfWidth;
 /** The thin ring's ticks, rolling with the rim but showing only from 1 to 5 o'clock (`drawTruss`). */
 export function ticksLayer(scene: HologramPictureScene): PictureLayerSource {
   const ticks: number[][] = [];
-  for (let offset = 0; offset < scene.ringTicks.length; offset += 2)
+  for (let offset = 0; offset < scene.ringTicks.length; offset += RING_TICK_STRIDE)
     ticks.push(scene.ringTicks.slice(offset, offset + 2));
   return {
     vertexShader: shader(
@@ -545,11 +558,9 @@ uniform float halfWidth;
 /** The crescent's width tiers, thin to core: one range a tier. */
 export const CRESCENT_TIERS = 4;
 
-const CRESCENT_PIECES_PER_STRAND = 14;
-
 /**
  * The bright crescent on the left limb: four strands of pieces rolling through a window pinned in
- * screen space, each piece drawn in every width tier whose window it falls inside (`appendCrescent`).
+ * screen space, each piece drawn in every width tier whose window it falls inside.
  * A shape is one piece of one strand, tried at its angle or a turn earlier, in one tier, as one of
  * the two quads its arc is drawn in.
  */
@@ -561,10 +572,10 @@ export function crescentLayer(scene: HologramPictureScene): { layer: PictureLaye
     const first = pieces.length;
     for (let strand = 0; strand < 4; strand++) {
       for (let piece = 0; piece < CRESCENT_PIECES_PER_STRAND; piece++) {
-        const offset = (strand * CRESCENT_PIECES_PER_STRAND + piece) * 3;
+        const offset = (strand * CRESCENT_PIECES_PER_STRAND + piece) * CRESCENT_PIECE_STRIDE;
         for (let turn = 0; turn < 2; turn++) {
           for (let arcPiece = 0; arcPiece < 2; arcPiece++) {
-            pieces.push(scene.crescentPieces.slice(offset, offset + 3));
+            pieces.push(scene.crescentPieces.slice(offset, offset + CRESCENT_PIECE_STRIDE));
             slots.push([strand, turn, tier, arcPiece]);
           }
         }
@@ -650,17 +661,17 @@ export function frayLayer(scene: HologramPictureScene): PictureLayerSource {
   const rows: number[][] = [];
   const more: number[][] = [];
   const kinds: number[][] = [];
-  for (let offset = 0; offset < scene.fray.length; offset += 5) {
+  for (let offset = 0; offset < scene.fray.length; offset += FRAY_STRIDE) {
     rows.push(scene.fray.slice(offset, offset + 4));
     more.push([scene.fray[offset + 4], 0]);
     kinds.push([0]);
   }
-  for (let offset = 0; offset < scene.streakArcs.length; offset += 6) {
+  for (let offset = 0; offset < scene.streakArcs.length; offset += STREAK_ARC_STRIDE) {
     rows.push(scene.streakArcs.slice(offset, offset + 4));
     more.push(scene.streakArcs.slice(offset + 4, offset + 6));
     kinds.push([1]);
   }
-  for (let offset = 0; offset < scene.limbStreaks.length; offset += 5) {
+  for (let offset = 0; offset < scene.limbStreaks.length; offset += LIMB_STREAK_STRIDE) {
     rows.push(scene.limbStreaks.slice(offset, offset + 4));
     more.push([scene.limbStreaks[offset + 4], 0]);
     kinds.push([2]);

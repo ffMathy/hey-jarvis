@@ -6,8 +6,17 @@ import { VOICE_BAND_COUNT } from '../voice-levels';
 import { buildHologramRows } from './body-rows';
 import { createFlatCamera, placeFlatCamera } from './flat-camera';
 import { FRONT_VIEW } from './fragment-3d';
-import { createGpuBody, drawGpuBody, type HologramGl } from './gpu-body';
+import { createGpuBody, drawGpuBody } from './gpu-body';
 import { HALO_TEXELS } from './halo-union';
+import {
+  BrowserLocation,
+  BrowserObject,
+  type Call,
+  ExpoObject,
+  expoObjects,
+  recordingGl,
+  uncopyable,
+} from './recording-gl.fakes';
 import { buildRowVertices } from './row-vertices';
 
 /**
@@ -16,64 +25,6 @@ import { buildRowVertices } from './row-vertices';
  * the headset's preview draws the same moment with three.js and the raw renderer and compares them
  * to the byte.
  */
-
-type Call = [string, ...unknown[]];
-
-/** A GL object as a browser makes one: an instance of a class of its own, with nothing on it to read. */
-class BrowserObject {}
-
-/** A uniform's location as a browser makes one, named here so a test can tell which uniform a call sets. */
-class BrowserLocation {
-  constructor(readonly name: string) {}
-}
-
-/** A GL object as expo-gl makes one on a device: an instance of a class of its own, with the id expo-gl reads it by. */
-class ExpoObject {
-  constructor(readonly id: number) {}
-}
-
-/** How a context makes its GL objects and its uniforms' locations. */
-interface GlObjects {
-  made(): object;
-  location(name: string): object;
-}
-
-const BROWSER_OBJECTS: GlObjects = { made: () => new BrowserObject(), location: (name) => new BrowserLocation(name) };
-
-function expoObjects(): GlObjects {
-  let made = 0;
-  return { made: () => new ExpoObject(++made), location: () => new ExpoObject(++made) };
-}
-
-/** A context that hands out a fresh object for every create, says yes to every status, and writes every call into `calls`. */
-function recordingGl(calls: Call[], objects = BROWSER_OBJECTS): HologramGl {
-  const answers: Record<string, (...args: unknown[]) => unknown> = {
-    createShader: objects.made,
-    createProgram: objects.made,
-    createBuffer: objects.made,
-    createTexture: objects.made,
-    createFramebuffer: objects.made,
-    createVertexArray: objects.made,
-    getShaderParameter: () => true,
-    getProgramParameter: () => true,
-    getUniformLocation: (_program, name) => objects.location(String(name)),
-    getAttribLocation: (_program, name) => (name === 'corner' ? 0 : 1),
-    checkFramebufferStatus: () => 0x8cd5,
-  };
-  // A Proxy is typed as its target, and the calls are answered by its `get` rather than by the
-  // target's own members, which TypeScript cannot see: every call HologramGl names is answered.
-  return new Proxy(
-    {},
-    {
-      get:
-        (_target, name: string) =>
-        (...args: unknown[]) => {
-          calls.push([name, ...args]);
-          return answers[name]?.(...args);
-        },
-    },
-  ) as HologramGl;
-}
 
 const scene = createHologramScene(SCENE_SEED);
 
@@ -92,17 +43,6 @@ function frameAt(overrides: Partial<HologramFrame>): HologramFrame {
     thinking: 0,
     ...overrides,
   };
-}
-
-/**
- * Where in `value` there is something the worklets runtime would refuse to copy from the JS thread to
- * the UI thread: anything but a primitive, a plain object, an array or a typed array.
- */
-function uncopyable(value: unknown, path: string): string[] {
-  if (typeof value !== 'object' || value === null || ArrayBuffer.isView(value)) return [];
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== Array.prototype) return [path];
-  return Object.entries(value).flatMap(([key, inner]: [string, unknown]) => uncopyable(inner, `${path}.${key}`));
 }
 
 function drawn(calls: Call[], overrides: Partial<HologramFrame>, fade: number, density = 1) {

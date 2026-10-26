@@ -7,7 +7,7 @@
  * (`flat-camera.ts`), placed where the phone's tilt puts the eye (`tilted-view.ts`). The headset draws the same sources through three.js
  * (`vr/src/hologram3d/`); a phone and a watch draw them through `drawGpuBody`.
  *
- * And the rest of him — what was Skia's picture — as shaders too (`gpu-picture.ts`, its layers in
+ * And the rest of him — what was Skia's picture of him — as shaders too (`gpu-picture.ts`, its layers in
  * `picture-layers.ts`), which every device draws through `drawGpuPicture`, and a phone's and a
  * watch's whole frame of both (`gpu-frame.ts`).
  *

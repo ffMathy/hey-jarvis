@@ -1,14 +1,18 @@
-import { orbitPoint, PLAIN_RING_GLYPH, type SatelliteOrbit } from '../agent-work';
+import { PLAIN_RING_GLYPH, type SatelliteOrbit } from '../agent-work';
 import {
   CORE_X,
   CORE_Y,
   type HologramFrameState,
   type HologramPictureScene,
+  LIMB_BLOOM_BAND,
+  LIMB_BLOOM_RADIUS,
+  LIMB_RIDGE_BAND,
+  LIMB_RIDGE_RADIUS,
   SPARKLE_TEXTURE_TEXELS,
   SPHERE_FRACTION,
   staticPathsOf,
 } from '../hologram-drawing';
-import { ASKING_PULSE_SECONDS, GLYPH_STROKE_WIDTH, SCREEN_GLYPH_RADII, SCREEN_ORBIT_RADII } from '../satellite-drawing';
+import { GLYPH_STROKE_WIDTH, screenSatellite } from '../satellite-drawing';
 import {
   ARRAY_BUFFER,
   arrayBuffer,
@@ -72,13 +76,15 @@ import {
 import { sceneSparklePixels } from './sparkle';
 
 /**
- * Everything of him but his body on the GPU, over a bare WebGL 2 context: what was Skia's picture.
+ * Everything of him but his body on the GPU, over a bare WebGL 2 context: what was Skia's picture
+ * of him, until the GPU drew all of him.
  *
- * Drawn layer for layer as the drawing drew it — the inner shells, the lines, the core, the thin
- * ring, the ladder truss, the crescent, the fray, the chips, the accents, the thinking pulse, and
- * the satellites over him — each of Skia's `drawPath` calls one draw here, with the same paint, the
- * same width and the same transform, from the layers in `picture-layers.ts`, whose vertex shaders
- * are the drawing's path builders moved to the GPU. So a frame's JavaScript is a few dozen draws'
+ * Drawn layer for layer as Skia drew it — the inner shells, the lines, the core, the thin ring, the
+ * ladder truss, the crescent, the fray, the chips, the accents, the thinking pulse, and the
+ * satellites over him — each of Skia's `drawPath` calls one draw here, with the same paint, the same
+ * width and the same transform, from the layers in `picture-layers.ts`, whose vertex shaders are the
+ * drawing's path builders moved to the GPU. vr's `hologram-picture.spec.ts` holds it to frames Skia
+ * drew. So a frame's JavaScript is a few dozen draws'
  * uniforms, and nothing it does grows with what is drawn.
  *
  * **Every paint is Screen**, as every one of Skia's was: premultiplied light, blended
@@ -164,31 +170,41 @@ const SHARED_UNIFORMS = [
   'pathDepth',
 ];
 
-/** A layer's quads: four corners a shape, each carrying the shape's numbers, and two triangles a shape. */
-function layerOf(gl: HologramGl, source: PictureLayerSource, buffers?: [string, WebGLBuffer, number][]): PictureLayer {
-  const program = link(gl, source.vertexShader, PICTURE_FRAGMENT_SHADER, [...SHARED_UNIFORMS, ...source.uniforms]);
-  if (source.shapes * 4 > 65535)
-    throw new Error('A layer of the picture has more shapes than a 16-bit index can draw.');
-  const corners = new Float32Array(source.shapes * 8);
-  const index = new Uint16Array(source.shapes * 6);
-  for (let shape = 0; shape < source.shapes; shape++) {
+/** Every shape's four corners, and the two triangles each is drawn as. */
+function quadsOf(shapes: number) {
+  if (shapes * 4 > 65535) throw new Error('A layer of the picture has more shapes than a 16-bit index can draw.');
+  const corners = new Float32Array(shapes * 8);
+  const index = new Uint16Array(shapes * 6);
+  for (let shape = 0; shape < shapes; shape++) {
     corners.set([-1, -1, 1, -1, 1, 1, -1, 1], shape * 8);
     index.set(
       [0, 1, 2, 0, 2, 3].map((corner) => shape * 4 + corner),
       shape * 6,
     );
   }
-  const attributes: [string, WebGLBuffer, number][] = buffers ?? [];
-  if (buffers === undefined) {
-    for (const { name, size, values } of source.attributes) {
-      const spread = new Float32Array(source.shapes * 4 * size);
-      for (let shape = 0; shape < source.shapes; shape++) {
-        const row = values.slice(shape * size, (shape + 1) * size);
-        for (let corner = 0; corner < 4; corner++) spread.set(row, (shape * 4 + corner) * size);
-      }
-      attributes.push([name, arrayBuffer(gl, ARRAY_BUFFER, spread), size]);
-    }
+  return { corners, index };
+}
+
+/** A per-shape attribute uploaded once a corner, so every corner of a shape carries its numbers. */
+function spreadOverCorners(gl: HologramGl, shapes: number, size: number, values: number[]): WebGLBuffer {
+  const spread = new Float32Array(shapes * 4 * size);
+  for (let shape = 0; shape < shapes; shape++) {
+    const row = values.slice(shape * size, (shape + 1) * size);
+    for (let corner = 0; corner < 4; corner++) spread.set(row, (shape * 4 + corner) * size);
   }
+  return arrayBuffer(gl, ARRAY_BUFFER, spread);
+}
+
+/**
+ * A layer's quads: four corners a shape, each carrying the shape's numbers, and two triangles a
+ * shape. `buffers` stands in for the source's attributes where a frame writes them itself.
+ */
+function layerOf(gl: HologramGl, source: PictureLayerSource, buffers?: [string, WebGLBuffer, number][]): PictureLayer {
+  const program = link(gl, source.vertexShader, PICTURE_FRAGMENT_SHADER, [...SHARED_UNIFORMS, ...source.uniforms]);
+  const { corners, index } = quadsOf(source.shapes);
+  const attributes: [string, WebGLBuffer, number][] =
+    buffers ??
+    source.attributes.map(({ name, size, values }) => [name, spreadOverCorners(gl, source.shapes, size, values), size]);
   attributes.push(['corner', arrayBuffer(gl, ARRAY_BUFFER, corners), 2]);
   const made = gl.createVertexArray();
   if (made === null) throw new Error('The picture could not make a vertex array.');
@@ -431,7 +447,7 @@ function useLayerAtCore(gl: HologramGl, picture: GpuPicture, layer: PictureLayer
 }
 
 /**
- * The paint, as Skia's paint is set for a draw: `kind` one of PICTURE_PAINTS, `colour` its RGB as a
+ * The paint, as Skia's paint was set for the draw: `kind` one of PICTURE_PAINTS, `colour` its RGB as a
  * number, `alpha` its alpha. A gradient's colour comes from the gradient, so its paint is the alpha
  * alone; `radialRow`, `radius` and `sweepRow` say which gradients it reads.
  */
@@ -694,8 +710,8 @@ function drawThinRing(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFram
       picture,
       frame,
       state.roll,
-      0.955,
-      0.17 / 2,
+      LIMB_RIDGE_RADIUS,
+      LIMB_RIDGE_BAND / 2,
       PICTURE_PAINTS.radialSweep,
       clamp01(ridge),
       GRADIENTS.ridgeRing.row,
@@ -824,8 +840,8 @@ function drawCrescent(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFram
     picture,
     frame,
     0,
-    0.995,
-    0.25 / 2,
+    LIMB_BLOOM_RADIUS,
+    LIMB_BLOOM_BAND / 2,
     PICTURE_PAINTS.radialSweep,
     clamp01(0.42 * weight),
     GRADIENTS.bloomRing.row,
@@ -1021,81 +1037,123 @@ function holdGlyph(gl: HologramGl, picture: GpuPicture, slot: number, glyph: str
   picture.glyphRuns[slot] = count;
 }
 
-/** One satellite, centred on its place, in glyph radii: its halo, glyph, dot and flare (`drawSatelliteGlyph`). */
-function drawSatellite(
+/** Where a satellite is drawn: its centre in the square, and its glyph's radius there. */
+interface SatellitePlace {
+  centreX: number;
+  centreY: number;
+  glyphRadius: number;
+}
+
+/** A layer set up in a satellite's own frame, in glyph radii round its centre. */
+function useLayerAtSatellite(
+  gl: HologramGl,
+  picture: GpuPicture,
+  layer: PictureLayer,
+  frame: GpuPictureFrame,
+  place: SatellitePlace,
+) {
+  'worklet';
+  const radius = place.glyphRadius;
+  useLayer(gl, picture, layer, radius, 0, 0, radius, place.centreX, place.centreY, 1 / (radius * frame.pixels));
+}
+
+/** A filled disc of `radius` glyph radii at a satellite's centre, as a path of its own. */
+function fillSatelliteDisc(
   gl: HologramGl,
   picture: GpuPicture,
   frame: GpuPictureFrame,
+  place: SatellitePlace,
+  radius: number,
+  colour: number,
+  alpha: number,
+) {
+  'worklet';
+  const disc = picture.disc;
+  beginPath(gl, picture);
+  useLayerAtSatellite(gl, picture, disc, frame, place);
+  setSolid(gl, disc, colour, alpha);
+  const discAt = disc.program.uniforms.disc;
+  if (discAt) gl.uniform3f(discAt, 0, 0, radius);
+  drawShapes(gl, picture, disc, 0, 1);
+}
+
+/** A satellite's glyph from its slot, in the plain stroke and, into a tool call, the flare's. */
+function strokeSatelliteGlyph(
+  gl: HologramGl,
+  picture: GpuPicture,
+  frame: GpuPictureFrame,
+  place: SatellitePlace,
   slot: number,
-  centreX: number,
-  centreY: number,
-  glyphRadius: number,
   light: number,
   flare: number,
 ) {
   'worklet';
-  const localPerPixel = 1 / (glyphRadius * frame.pixels);
-  const disc = picture.disc;
-  const discAt = disc.program.uniforms.disc;
-  for (let halo = 0; halo < 2; halo++) {
-    beginPath(gl, picture);
-    useLayer(gl, picture, disc, glyphRadius, 0, 0, glyphRadius, centreX, centreY, localPerPixel);
-    setSolid(gl, disc, 0xdc5c20, Math.min(1, 0.16 * light * (1 + 1.5 * flare)));
-    if (discAt) gl.uniform3f(discAt, 0, 0, halo === 0 ? 1.15 : 0.7);
-    drawShapes(gl, picture, disc, 0, 1);
-  }
   const glyphs = picture.glyphs;
   for (let pass = 0; pass < (flare > 0 ? 2 : 1); pass++) {
     beginPath(gl, picture);
-    useLayer(gl, picture, glyphs, glyphRadius, 0, 0, glyphRadius, centreX, centreY, localPerPixel);
+    useLayerAtSatellite(gl, picture, glyphs, frame, place);
     setSolid(gl, glyphs, pass === 0 ? 0xff7e28 : 0xff8e3c, pass === 0 ? light * (1 - flare) : light * flare);
     setUniform1(glyphs, gl, 'halfWidth', GLYPH_STROKE_WIDTH / 2);
     setUniform1(glyphs, gl, 'roundCaps', 1);
     drawShapes(gl, picture, glyphs, slot * GLYPH_RUNS, picture.glyphRuns[slot]);
   }
+}
+
+/** The ring a tool call flares out of a satellite, shrinking in as the flare goes. */
+function strokeSatelliteFlare(
+  gl: HologramGl,
+  picture: GpuPicture,
+  frame: GpuPictureFrame,
+  place: SatellitePlace,
+  light: number,
+  flare: number,
+) {
+  'worklet';
+  const arc = picture.arc;
   beginPath(gl, picture);
-  useLayer(gl, picture, disc, glyphRadius, 0, 0, glyphRadius, centreX, centreY, localPerPixel);
-  setSolid(gl, disc, 0xff8e3c, light * (0.6 + 0.4 * flare));
-  if (discAt) gl.uniform3f(discAt, 0, 0, 0.1);
-  drawShapes(gl, picture, disc, 0, 1);
-  if (flare > 0) {
-    const arc = picture.arc;
-    beginPath(gl, picture);
-    useLayer(gl, picture, arc, glyphRadius, 0, 0, glyphRadius, centreX, centreY, localPerPixel);
-    setSolid(gl, arc, 0xff8e3c, light * flare);
-    const uniforms = arc.program.uniforms;
-    if (uniforms.arc) gl.uniform4f(uniforms.arc, 0, 0, 1.75 - 0.95 * flare, 0.07 / 2);
-    if (uniforms.arcEnds) gl.uniform4f(uniforms.arcEnds, 0, Math.PI * 2, ARC_PIECES, 1);
-    drawShapes(gl, picture, arc, 0, ARC_PIECES);
-  }
+  useLayerAtSatellite(gl, picture, arc, frame, place);
+  setSolid(gl, arc, 0xff8e3c, light * flare);
+  const uniforms = arc.program.uniforms;
+  if (uniforms.arc) gl.uniform4f(uniforms.arc, 0, 0, 1.75 - 0.95 * flare, 0.07 / 2);
+  if (uniforms.arcEnds) gl.uniform4f(uniforms.arcEnds, 0, Math.PI * 2, ARC_PIECES, 1);
+  drawShapes(gl, picture, arc, 0, ARC_PIECES);
+}
+
+/** One satellite at its place: its halo, glyph, dot and flare. */
+function drawSatellite(
+  gl: HologramGl,
+  picture: GpuPicture,
+  frame: GpuPictureFrame,
+  place: SatellitePlace,
+  slot: number,
+  light: number,
+  flare: number,
+) {
+  'worklet';
+  const haloAlpha = Math.min(1, 0.16 * light * (1 + 1.5 * flare));
+  fillSatelliteDisc(gl, picture, frame, place, 1.15, 0xdc5c20, haloAlpha);
+  fillSatelliteDisc(gl, picture, frame, place, 0.7, 0xdc5c20, haloAlpha);
+  strokeSatelliteGlyph(gl, picture, frame, place, slot, light, flare);
+  fillSatelliteDisc(gl, picture, frame, place, 0.1, 0xff8e3c, light * (0.6 + 0.4 * flare));
+  if (flare > 0) strokeSatelliteFlare(gl, picture, frame, place, light, flare);
 }
 
 /** Every satellite round the sphere, over him, at the drawing's clock (`drawSatellites`). */
 function drawSatellites(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
   const orbits = frame.satellites;
-  const time = frame.state.time;
-  const pulse = 0.5 + 0.5 * Math.cos((2 * Math.PI * time) / ASKING_PULSE_SECONDS);
   let slot = 0;
   for (let index = 0; index < orbits.length && slot < GLYPH_SLOTS; index++) {
     const orbit = orbits[index];
-    if (orbit === undefined || orbit.level <= 0) continue;
-    const { across, up, towards } = orbitPoint(orbit, time);
-    const nearness = 0.5 + 0.5 * Math.max(-1, Math.min(1, towards));
-    const light = orbit.level * (0.45 + 0.55 * nearness) * (orbit.asking ? 0.55 + 0.45 * pulse : 1);
-    const glyphRadius = SPHERE_FRACTION * SCREEN_GLYPH_RADII * (0.8 + 0.2 * nearness);
+    const satellite = orbit === undefined ? undefined : screenSatellite(orbit, frame.state.time);
+    if (orbit === undefined || satellite === undefined) continue;
     holdGlyph(gl, picture, slot, orbit.glyph);
-    drawSatellite(
-      gl,
-      picture,
-      frame,
-      slot,
-      0.5 + across * SPHERE_FRACTION * SCREEN_ORBIT_RADII,
-      0.5 - up * SPHERE_FRACTION * SCREEN_ORBIT_RADII,
-      glyphRadius,
-      light,
-      orbit.flare,
-    );
+    const place = {
+      centreX: 0.5 + satellite.across * SPHERE_FRACTION,
+      centreY: 0.5 - satellite.up * SPHERE_FRACTION,
+      glyphRadius: satellite.glyphRadii * SPHERE_FRACTION,
+    };
+    drawSatellite(gl, picture, frame, place, slot, satellite.light, orbit.flare);
     slot++;
   }
 }

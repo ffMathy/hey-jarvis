@@ -9,8 +9,8 @@ export function glslFloat(value: number): string {
 }
 
 /**
- * A hex colour as a GLSL vec3 of its raw, encoded bytes — Skia blends the encoded values, with no
- * linearising, so the shaders do too.
+ * A hex colour as a GLSL vec3 of its raw, encoded bytes — he was designed in Skia, which blends the
+ * encoded values with no linearising, so the shaders do too.
  */
 export function glslColour(hex: number): string {
   const channel = (shift: number) => glslFloat(((hex >> shift) & 0xff) / 255);

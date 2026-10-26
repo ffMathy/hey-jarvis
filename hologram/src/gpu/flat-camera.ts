@@ -5,19 +5,19 @@ import type { GpuBodyCamera } from './gpu-body';
 /**
  * The camera for a phone's or a watch's screen: an eye looking at his centre along the view basis's
  * front, from `eyeSquares` of the drawing's square away (Infinity for the phone's own flat look),
- * projecting the plane through his centre so that the drawing's square lands exactly where Skia
- * draws it on the canvas.
+ * projecting the plane through his centre so that the drawing's square lands exactly where the flat
+ * picture of the rest of him (`gpu-picture.ts`) is drawn on the canvas.
  *
- * That last part is what lets the two pictures be laid over each other: the halo light's square
- * stands in that plane, so it covers Skia's square to the pixel whatever the view, and the strokes
- * on that plane land where Skia's would. Off it, the eye's perspective moves them, which is the
+ * That last part is what lets the body and the picture be one: the halo light's square stands in
+ * that plane, so it covers the picture's square to the pixel whatever the view, and the strokes on
+ * that plane land where the picture's would. Off it, the eye's perspective moves them, which is the
  * point of the tilt.
  *
  * The eye's distance is held in squares rather than in his radius, so that as he swells with his
  * voice he grows towards the eye, as he does in a room, rather than the eye backing off with him.
  */
 
-/** Where Skia draws the drawing's square on the GPU's canvas. */
+/** Where the drawing's square is on the canvas. */
 export interface FlatScreen {
   /** The canvas's drawing buffer, in pixels. */
   width: number;

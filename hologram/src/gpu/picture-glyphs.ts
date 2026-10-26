@@ -44,6 +44,41 @@ function isNumberStart(code: number): boolean {
   return (code >= 48 && code <= 57) || code === 45 || code === 46 || code === 43;
 }
 
+function isDigit(code: number): boolean {
+  'worklet';
+  return code >= 48 && code <= 57;
+}
+
+/** Where the run of digits from `at` ends. */
+function digitsEnd(path: string, at: number): number {
+  'worklet';
+  let end = at;
+  while (end < path.length && isDigit(path.charCodeAt(end))) end++;
+  return end;
+}
+
+/**
+ * Where the number starting at `at` ends: a sign, a point or a digit, then digits, one point if
+ * it has not begun with one, and an exponent with its sign.
+ */
+function numberEnd(path: string, at: number): number {
+  'worklet';
+  let end = digitsEnd(path, at + 1);
+  if (path[at] !== '.' && path[end] === '.') end = digitsEnd(path, end + 1);
+  if (path[end] === 'e' || path[end] === 'E') {
+    end++;
+    if (path[end] === '-' || path[end] === '+') end++;
+    end = digitsEnd(path, end);
+  }
+  return end;
+}
+
+/** Whether the digit at `at` is one of an arc's two flags, which are read a digit each. */
+function isArcFlag(command: string, argument: number, code: number): boolean {
+  'worklet';
+  return command.toLowerCase() === 'a' && (argument % 7 === 3 || argument % 7 === 4) && (code === 48 || code === 49);
+}
+
 /**
  * The path's commands and numbers, in order: each command as its letter, each number as a number.
  * An arc's two flags may be written run together ("a1 1 0 01 2 2"), so they are read as single
@@ -62,40 +97,14 @@ function tokens(path: string): (string | number)[] {
       read.push(command);
       argument = 0;
       at++;
-      continue;
-    }
-    if (!isNumberStart(code)) {
+    } else if (!isNumberStart(code)) {
       at++;
-      continue;
-    }
-    const lower = command.toLowerCase();
-    if (lower === 'a' && (argument % 7 === 3 || argument % 7 === 4) && (code === 48 || code === 49)) {
-      read.push(code - 48);
+    } else {
+      const end = isArcFlag(command, argument, code) ? at + 1 : numberEnd(path, at);
+      read.push(Number(path.slice(at, end)));
       argument++;
-      at++;
-      continue;
+      at = end;
     }
-    let end = at + 1;
-    let seenPoint = path[at] === '.';
-    let seenExponent = false;
-    while (end < path.length) {
-      const next = path.charCodeAt(end);
-      if (next >= 48 && next <= 57) {
-        end++;
-      } else if (next === 46 && !seenPoint && !seenExponent) {
-        seenPoint = true;
-        end++;
-      } else if ((next === 101 || next === 69) && !seenExponent) {
-        seenExponent = true;
-        end++;
-        if (path[end] === '-' || path[end] === '+') end++;
-      } else {
-        break;
-      }
-    }
-    read.push(Number(path.slice(at, end)));
-    argument++;
-    at = end;
   }
   return read;
 }
@@ -222,20 +231,156 @@ function numberAt(read: (string | number)[], at: number): number {
   return typeof value === 'number' ? value : Number.NaN;
 }
 
+/** Where the pen is, where its subpath started, the subpath's points so far, and the runs made. */
+interface Pen {
+  x: number;
+  y: number;
+  startX: number;
+  startY: number;
+  points: number[];
+  runs: number[];
+}
+
+/** A move (a new subpath) or a line, to the point at `at`; returns where the next arguments are. */
+function moveOrLine(
+  pen: Pen,
+  read: (string | number)[],
+  at: number,
+  isMove: boolean,
+  originX: number,
+  originY: number,
+) {
+  'worklet';
+  const toX = originX + numberAt(read, at);
+  const toY = originY + numberAt(read, at + 1);
+  if (isMove) {
+    pushSubpath(pen.runs, pen.points, false);
+    pen.points = [toX, toY];
+    pen.startX = toX;
+    pen.startY = toY;
+  } else {
+    pushPoint(pen.points, toX, toY);
+  }
+  pen.x = toX;
+  pen.y = toY;
+  return at + 2;
+}
+
+/** A quadratic Bézier curve to the point at `at + 2`, drawn as the cubic it is. */
+function quadratic(pen: Pen, read: (string | number)[], at: number, originX: number, originY: number) {
+  'worklet';
+  const controlX = originX + numberAt(read, at);
+  const controlY = originY + numberAt(read, at + 1);
+  const toX = originX + numberAt(read, at + 2);
+  const toY = originY + numberAt(read, at + 3);
+  pushCurve(
+    pen.points,
+    pen.x,
+    pen.y,
+    pen.x + ((controlX - pen.x) * 2) / 3,
+    pen.y + ((controlY - pen.y) * 2) / 3,
+    toX + ((controlX - toX) * 2) / 3,
+    toY + ((controlY - toY) * 2) / 3,
+    toX,
+    toY,
+  );
+  pen.x = toX;
+  pen.y = toY;
+  return at + 4;
+}
+
+/** A cubic Bézier curve to the point at `at + 4`. */
+function cubic(pen: Pen, read: (string | number)[], at: number, originX: number, originY: number) {
+  'worklet';
+  const toX = originX + numberAt(read, at + 4);
+  const toY = originY + numberAt(read, at + 5);
+  pushCurve(
+    pen.points,
+    pen.x,
+    pen.y,
+    originX + numberAt(read, at),
+    originY + numberAt(read, at + 1),
+    originX + numberAt(read, at + 2),
+    originY + numberAt(read, at + 3),
+    toX,
+    toY,
+  );
+  pen.x = toX;
+  pen.y = toY;
+  return at + 6;
+}
+
+/** An elliptical arc to the point at `at + 5`. */
+function arc(pen: Pen, read: (string | number)[], at: number, originX: number, originY: number) {
+  'worklet';
+  const toX = originX + numberAt(read, at + 5);
+  const toY = originY + numberAt(read, at + 6);
+  pushArc(
+    pen.points,
+    pen.x,
+    pen.y,
+    numberAt(read, at),
+    numberAt(read, at + 1),
+    numberAt(read, at + 2),
+    numberAt(read, at + 3),
+    numberAt(read, at + 4),
+    toX,
+    toY,
+  );
+  pen.x = toX;
+  pen.y = toY;
+  return at + 7;
+}
+
+/** Closes the subpath back to where it started, and starts the next one there. */
+function close(pen: Pen) {
+  'worklet';
+  if (pen.x !== pen.startX || pen.y !== pen.startY) pushPoint(pen.points, pen.startX, pen.startY);
+  pushSubpath(pen.runs, pen.points, pen.points.length > 4);
+  pen.x = pen.startX;
+  pen.y = pen.startY;
+  pen.points = [pen.x, pen.y];
+}
+
 /**
- * A glyph's runs, GLYPH_RUN_NUMBERS each (see `pushSubpath`), in glyph radii; an empty list for a path
- * that cannot be read, which the caller draws as the plain ring instead, as a glyph Skia could not
- * read was.
+ * One command's arguments from `at`, in `command`'s terms (a lower-case letter is relative to the
+ * pen); returns where the next arguments are, or -1 for a command this cannot draw.
+ */
+function drawCommand(pen: Pen, read: (string | number)[], at: number, command: string): number {
+  'worklet';
+  const lower = command.toLowerCase();
+  const originX = command === lower ? pen.x : 0;
+  const originY = command === lower ? pen.y : 0;
+  if (lower === 'm' || lower === 'l') return moveOrLine(pen, read, at, lower === 'm', originX, originY);
+  if (lower === 'h' || lower === 'v') {
+    if (lower === 'h') pen.x = originX + numberAt(read, at);
+    else pen.y = originY + numberAt(read, at);
+    pushPoint(pen.points, pen.x, pen.y);
+    return at + 1;
+  }
+  if (lower === 'q') return quadratic(pen, read, at, originX, originY);
+  if (lower === 'c') return cubic(pen, read, at, originX, originY);
+  if (lower === 'a') return arc(pen, read, at, originX, originY);
+  return -1;
+}
+
+/** The command further arguments after `command`'s are read as: lines, after a move. */
+function commandAfter(command: string): string {
+  'worklet';
+  if (command === 'M') return 'L';
+  if (command === 'm') return 'l';
+  return command;
+}
+
+/**
+ * A glyph's runs, GLYPH_RUN_NUMBERS each (see `pushSubpath`), in glyph radii; an empty list for a
+ * path that cannot be read, which the caller draws as the plain ring instead, as a glyph Skia could
+ * not read was.
  */
 export function flattenGlyph(path: string): number[] {
   'worklet';
   const read = tokens(path);
-  const runs: number[] = [];
-  let points: number[] = [];
-  let x = 0;
-  let y = 0;
-  let startX = 0;
-  let startY = 0;
+  const pen: Pen = { x: 0, y: 0, startX: 0, startY: 0, points: [], runs: [] };
   let command = '';
   let at = 0;
   while (at < read.length) {
@@ -243,105 +388,14 @@ export function flattenGlyph(path: string): number[] {
     if (typeof token === 'string') {
       command = token;
       at++;
-      if (command === 'Z' || command === 'z') {
-        if (x !== startX || y !== startY) pushPoint(points, startX, startY);
-        pushSubpath(runs, points, points.length > 4);
-        x = startX;
-        y = startY;
-        points = [x, y];
-      }
+      if (command === 'Z' || command === 'z') close(pen);
       continue;
     }
-    const relative = command === command.toLowerCase();
-    const originX = relative ? x : 0;
-    const originY = relative ? y : 0;
-    const lower = command.toLowerCase();
-    if (lower === 'm' || lower === 'l') {
-      const toX = originX + numberAt(read, at);
-      const toY = originY + numberAt(read, at + 1);
-      if (lower === 'l') {
-        pushPoint(points, toX, toY);
-      } else {
-        pushSubpath(runs, points, false);
-        points = [toX, toY];
-        startX = toX;
-        startY = toY;
-        // further pairs after a move are lines
-        command = relative ? 'l' : 'L';
-      }
-      x = toX;
-      y = toY;
-      at += 2;
-    } else if (lower === 'h') {
-      x = originX + numberAt(read, at);
-      pushPoint(points, x, y);
-      at += 1;
-    } else if (lower === 'v') {
-      y = originY + numberAt(read, at);
-      pushPoint(points, x, y);
-      at += 1;
-    } else if (lower === 'q') {
-      const controlX = originX + numberAt(read, at);
-      const controlY = originY + numberAt(read, at + 1);
-      const toX = originX + numberAt(read, at + 2);
-      const toY = originY + numberAt(read, at + 3);
-      pushCurve(
-        points,
-        x,
-        y,
-        x + ((controlX - x) * 2) / 3,
-        y + ((controlY - y) * 2) / 3,
-        toX + ((controlX - toX) * 2) / 3,
-        toY + ((controlY - toY) * 2) / 3,
-        toX,
-        toY,
-      );
-      x = toX;
-      y = toY;
-      at += 4;
-    } else if (lower === 'c') {
-      const toX = originX + numberAt(read, at + 4);
-      const toY = originY + numberAt(read, at + 5);
-      pushCurve(
-        points,
-        x,
-        y,
-        originX + numberAt(read, at),
-        originY + numberAt(read, at + 1),
-        originX + numberAt(read, at + 2),
-        originY + numberAt(read, at + 3),
-        toX,
-        toY,
-      );
-      x = toX;
-      y = toY;
-      at += 6;
-    } else if (lower === 'a') {
-      const toX = originX + numberAt(read, at + 5);
-      const toY = originY + numberAt(read, at + 6);
-      pushArc(
-        points,
-        x,
-        y,
-        numberAt(read, at),
-        numberAt(read, at + 1),
-        numberAt(read, at + 2),
-        numberAt(read, at + 3),
-        numberAt(read, at + 4),
-        toX,
-        toY,
-      );
-      x = toX;
-      y = toY;
-      at += 7;
-    } else {
-      // a number with no command before it: not a path
-      return [];
-    }
+    // a number with no command before it is not a path
+    at = drawCommand(pen, read, at, command);
+    if (at < 0) return [];
+    command = commandAfter(command);
   }
-  pushSubpath(runs, points, false);
-  for (let index = 0; index < runs.length; index++) {
-    if (!Number.isFinite(runs[index])) return [];
-  }
-  return runs;
+  pushSubpath(pen.runs, pen.points, false);
+  return pen.runs.every(Number.isFinite) ? pen.runs : [];
 }

@@ -3,24 +3,17 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 
 /**
- * The line between what a browser may import at startup and what it may not.
+ * The line between what a screen may import at startup and what only the view may.
  *
- * `@shopify/react-native-skia` is only usable in a browser once CanvasKit's WebAssembly has
- * loaded, and it captures what it finds the first time it is evaluated. Import it before then —
- * even indirectly, even for a constant — and `Skia` is undefined for the life of the page, and the
- * first call on it throws. The app's whole arrangement for avoiding that is a lazy `import()` in
- * `jarvis-hologram.web.tsx`, and one eager import from the wrong entry defeats it.
+ * Only the view draws with expo-gl, and on a device loading it asks for its native module as it loads
+ * and throws in a build without one: the view requires it only once it has found the module
+ * (`gl-context.ts`), and a screen that reached it eagerly would skip that check. So `lifecycle.ts` and
+ * `sample.ts`, everything they import, and the `hologram/conversation` entry keep clear of it.
  *
- * That is not a hypothetical. It turned the published site black: a screen reached into
- * `hologram/react` for a number, which pulled the view in with it, and the hologram never drew
- * again. Nothing about it failed loudly — the error was in the browser's console, on a phone.
- *
- * So the rule is a rule, and this is what holds it: `lifecycle.ts` and `sample.ts`, and everything
- * they import, are Skia-free — and so is the `hologram/conversation` entry, for the same reason.
- *
- * They keep clear of expo-gl too. Only the view draws with it, and on a device loading it asks for its
- * native module as it loads and throws in a build without one: the view requires it only once it has
- * found the module (`gl-context.ts`), and a screen that reached it eagerly would skip that check.
+ * It began as the same rule for Skia, which in a browser was only usable once CanvasKit's
+ * WebAssembly had loaded, and it turned the published site black once: a screen reached into
+ * `hologram/react` for a number, which pulled the view in with it. Skia is gone; the entries are
+ * still how a screen reaches the parts it needs without the view.
  *
  * What counts as an import is what Bun's own transpiler keeps of a module: an import, a re-export or a
  * `require` that is not erased as types only.
@@ -52,7 +45,6 @@ function reachableFrom(directory: string, file: string, seen = new Set<string>()
   return seen;
 }
 
-const SKIA = '@shopify/react-native-skia';
 const EXPO_GL = 'expo-gl';
 
 const transpiler = new Bun.Transpiler({ loader: 'tsx' });
@@ -64,39 +56,37 @@ function loads(path: string, name: string): boolean {
     .some((entry) => entry.path === name || entry.path.startsWith(`${name}/`));
 }
 
-/** Whether a module loads Skia or expo-gl, neither of which a screen may reach before the view. */
-function loadsSkiaOrGl(path: string): boolean {
-  return loads(path, SKIA) || loads(path, EXPO_GL);
+/** Whether a module loads expo-gl, which a screen may not reach before the view. */
+function loadsGl(path: string): boolean {
+  return loads(path, EXPO_GL);
 }
 
-describe('what a browser may import before CanvasKit has loaded', () => {
-  it('keeps the lifecycle entry, and everything it reaches, clear of Skia and expo-gl', () => {
+describe('what a screen may import before the view', () => {
+  it('keeps the lifecycle entry, and everything it reaches, clear of expo-gl', () => {
     const reachable = [...reachableFrom(REACT_DIR, 'lifecycle.ts')];
 
     expect(reachable.length).toBeGreaterThan(1);
-    expect(reachable.filter(loadsSkiaOrGl)).toEqual([]);
+    expect(reachable.filter(loadsGl)).toEqual([]);
   });
 
-  it('keeps the sample entry, and everything it reaches, clear of Skia and expo-gl', () => {
+  it('keeps the sample entry, and everything it reaches, clear of expo-gl', () => {
     const reachable = [...reachableFrom(REACT_DIR, 'sample.ts')];
 
     expect(reachable.length).toBeGreaterThan(1);
-    expect(reachable.filter(loadsSkiaOrGl)).toEqual([]);
+    expect(reachable.filter(loadsGl)).toEqual([]);
   });
 
-  it('keeps the conversation entry, and everything it reaches, clear of Skia and expo-gl', () => {
-    // A screen holds the conversation — and plays the greeting it opens with — before CanvasKit has
-    // loaded in a browser, which is the whole reason this entry is not part of `hologram/react`.
+  it('keeps the conversation entry, and everything it reaches, clear of expo-gl', () => {
+    // A screen holds the conversation — and plays the greeting it opens with — whether or not the
+    // view can draw, and the watch's waiting screen before it is shown.
     const reachable = [...reachableFrom(CONVERSATION_DIR, 'index.ts')];
 
     expect(reachable.length).toBeGreaterThan(1);
-    expect(reachable.filter(loadsSkiaOrGl)).toEqual([]);
+    expect(reachable.filter(loadsGl)).toEqual([]);
   });
 
-  it('still has something to protect: the view itself does import Skia, and reaches expo-gl', () => {
-    // If this ever stops being true the tests above have become tautologies, and the real rule —
-    // that the view is only ever reached lazily on web — would be going unchecked.
-    expect(loads(join(REACT_DIR, 'hologram-view.tsx'), SKIA)).toBe(true);
+  it('still has something to protect: the view itself reaches expo-gl, through gl-context alone', () => {
+    // If this ever stops being true the tests above have become tautologies.
     const reachable = [...reachableFrom(REACT_DIR, 'hologram-view.tsx')];
     expect(reachable.filter((path) => loads(path, EXPO_GL)).map((path) => basename(path))).toEqual(['gl-context.ts']);
   });

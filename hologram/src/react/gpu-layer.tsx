@@ -45,8 +45,7 @@ import type { BodyGl } from './gl-contract';
  * **Where the GPU cannot draw him, he is not drawn.** No GL view at all (expo-gl's native module
  * missing from the build, a browser without WebGL 2), a context that is WebGL 1 or OpenGL ES 2, a
  * program that will not compile, a GL view that throws or a warm-up frame the GPU reports an error
- * for: the GL view goes and nothing is pending. There is nothing else to draw him with: the Skia
- * picture that used to stand in for the rest of him is gone. A context lost while he is on screen —
+ * for: the GL view goes and nothing is pending. There is nothing else to draw him with. A context lost while he is on screen —
  * expo-gl's calls on it answering `undefined`, a browser's `webglcontextlost` — takes him away from
  * the next frame, and he is drawn again from the first frame after expo-gl hands a new context over
  * and it has been set up.

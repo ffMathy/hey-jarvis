@@ -6,8 +6,9 @@ import { ORTHOGRAPHIC_EYE_DISTANCE } from './fragment-glsl';
 import { viewBasisTowards } from './view-basis';
 
 /**
- * The camera a phone and a watch lay the GPU body over Skia's picture with, multiplied out on the
- * CPU: wherever the eye is, the drawing's square has to land on the pixels Skia draws it on, on a
+ * The camera a phone and a watch draw his body with, beside the flat picture of the rest of him,
+ * multiplied out on the CPU: wherever the eye is, the drawing's square has to land on the pixels the
+ * picture is drawn on, on a
  * screen that is not square with the square off its centre both ways, so that a sign, an offset or
  * a swapped span shows.
  */
@@ -78,7 +79,7 @@ const EYES: Array<[name: string, eyeSquares: number]> = [
 describe('the flat camera', () => {
   for (const [viewName, basis] of VIEWS) {
     for (const [eyeName, eyeSquares] of EYES) {
-      it(`lays the drawing's square on Skia's, ${viewName}, ${eyeName}`, () => {
+      it(`lays the drawing's square on the picture's, ${viewName}, ${eyeName}`, () => {
         for (const [right, up] of SQUARE_POINTS) {
           const landed = landing(basis, eyeSquares, inBody(basis, right * HALF_SIDE, up * HALF_SIDE, 0));
           expect(landed.x).toBeCloseTo(SCREEN.squareX + (right * SCREEN.squareSide) / 2, 3);

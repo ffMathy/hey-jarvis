@@ -57,8 +57,8 @@ import { sceneSparklePixels } from './sparkle';
 
 /**
  * Jarvis's body on the GPU with nothing but WebGL 2 — no three.js — for a phone or a watch: the
- * headset's three passes, drawn the way the headset's three.js draws them, onto a canvas of its
- * own that the app lays over Skia's picture of the rest of him.
+ * headset's three passes, drawn the way the headset's three.js draws them, over the picture of the
+ * rest of him on the same canvas (`gpu-picture.ts`, `drawGpuFrame`).
  *
  * Per frame:
  * 1. The halo union (`halo-union.ts`) into its RGBA8 target, two squares of `haloTexels` side by
@@ -70,12 +70,11 @@ import { sceneSparklePixels } from './sparkle';
  *    `vr/src/hologram3d/layer-blending.ts` lays the headset's parts over each other: colour
  *    `fade × part + behind × (1 − part)`, alpha `fade × alpha + behind × (1 − alpha)`.
  *
- * What it leaves is premultiplied light over transparent black — the halos and the strokes Screened
- * together and faded by `fade` — with alpha `alphaFromLight` of the brightest channel, for the app
- * to composite over Skia's picture.
+ * What it adds is premultiplied light — the halos and the strokes Screened together and faded by
+ * `fade` — with alpha `alphaFromLight` of the brightest channel, over whatever the canvas holds.
  *
- * Everything here takes the context as an argument, typed as the calls it makes (`HologramGl`), as
- * the drawing takes Skia: a browser's `WebGL2RenderingContext` and expo-gl's
+ * Everything here takes the context as an argument, typed as the calls it makes (`HologramGl`): a
+ * browser's `WebGL2RenderingContext` and expo-gl's
  * `ExpoWebGLRenderingContext` (which extends it) both fit, and the GL enums are numbers here rather
  * than read off the context. `createGpuBody` runs on the JS thread and `drawGpuBody` is a worklet, so
  * on a phone the body crosses from the one runtime to the other: it is plain data so that it can
@@ -115,9 +114,8 @@ export interface GpuBodyFrame {
   density: number;
   /**
    * How much of him shows, 0–1, as the blend's constant colour. 1 on a phone or a watch: the view
-   * fades this canvas and Skia's picture together by `arrivalOf` (see `drawHologram`'s
-   * `fadeOutside`), and a body faded here as well would show at the arrival squared beside a picture
-   * at the arrival. Less than 1 only where nothing outside fades the body: the headset fades its
+   * fades the whole canvas by `arrivalOf`, and a body faded here as well would show at the arrival
+   * squared beside a picture at the arrival. Less than 1 only where nothing outside fades the body: the headset fades its
    * passes by the same constant (arrival × closeRangeFade), and vr's `gpu-body-check.ts` hands that
    * value in.
    */
@@ -196,8 +194,8 @@ export interface GpuBodyOptions {
 /**
  * Compiles the three passes and uploads the scene's rows, the sparkle and the halo target, on
  * whichever thread holds `gl`. Throws when the GPU refuses any of it — a context without GLSL ES
- * 3.00, a shader that will not compile, a target it cannot render into — and the app then draws the
- * body in Skia as it always has, and lets the context go with whatever was made before the refusal.
+ * 3.00, a shader that will not compile, a target it cannot render into — and the app then draws
+ * nothing of him, and lets the context go with whatever was made before the refusal.
  */
 export function createGpuBody(gl: HologramGl, scene: HologramScene, options: GpuBodyOptions = {}): GpuBody {
   const haloTexels = options.haloTexels ?? HALO_TEXELS;
