@@ -186,13 +186,27 @@ export interface SessionSnapshot {
   readonly typing: boolean;
   /** Whether the summoning under way has got as far as dialling. */
   readonly dialled: boolean;
+  /**
+   * Whether he has been dismissed while a tool call runs, and is waiting for it to finish before he
+   * hangs up (see {@link JarvisSession.hangUpAfterWork}).
+   */
+  readonly hangingUp: boolean;
 }
 
 export interface JarvisSession {
-  /** A summoning: the wake word, a select, the assistant gesture. Single-flight: ignored unless idle, ended or failed. */
+  /**
+   * A summoning: the wake word, a select, the assistant gesture. Single-flight: ignored unless idle,
+   * ended or failed — or hanging up after a tool call, which it takes back instead: the microphone
+   * opens again and the conversation goes on.
+   */
   summon(options?: SummonOptions): void;
   /** User dismissal: stop the greeting, end the session (reason 'user'); phase → ended. */
   hangUp(): void;
+  /**
+   * User dismissal that lets his work finish: with a tool call in flight, the microphone is muted at
+   * once and the session ends once nothing is in flight; with none, it is {@link JarvisSession.hangUp}.
+   */
+  hangUpAfterWork(): void;
   /** System ending (hidden, backgrounded, gone): like hangUp, and a late 'error' disconnect is not reported. */
   endQuietly(): void;
   /** Typed line into the connected session (sendUserMessage); ignored unless connected. */

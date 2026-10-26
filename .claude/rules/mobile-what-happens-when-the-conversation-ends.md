@@ -19,7 +19,7 @@ asked for the sheet simply to go. Tapping beside it or pressing back starts it d
 
 **Quiet after a finished request ends it too, from the agent's side.** Its `turnTimeout` of three
 seconds and its `end_call` tool hang up once a request is done and nobody answers, so to the screen it
-is simply the agent hanging up: the app registers no client tool for it. **A finished command does not
-wait for the quiet.** Setting an alarm or switching off a light is told to confirm it in a few words
-and call `end_call` straight away (see `COMMAND_DONE_INSTRUCTIONS` in
-`mcp/mastra/verticals/routing/workflows.ts`), so the call is over the moment he has said it is done.
+is simply the agent hanging up: the app registers no client tool for it. **A finished command waits
+for the quiet too.** Only on the Home Assistant Voice speaker does the agent hang up straight after
+confirming a command (see `COMMAND_DONE_INSTRUCTIONS` in `mcp/mastra/verticals/routing/workflows.ts`);
+on the phone sir dismisses him himself, and may have the next thing to ask already.

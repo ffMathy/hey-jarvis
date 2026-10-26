@@ -303,7 +303,7 @@ export function ConversationScreen({
     onProblem: (message: string, source: ProblemSource) =>
       source === 'session' ? reportSessionFailure(message) : reportProblem(message),
   });
-  const { phase, status, writtenReply, setTyping, summon, sendText, hangUp } = conversation;
+  const { phase, status, writtenReply, setTyping, summon, sendText, hangUpAfterWork, hangingUp } = conversation;
 
   /** The faint camera beside him, and the photo it sends into this conversation. See `use-photo-sending.ts`. */
   const { canSendPhotos, cameraBusy, sendJarvisAPhoto } = usePhotoSending({
@@ -528,12 +528,15 @@ export function ConversationScreen({
     gone,
     leave,
     // Hangs up when the user asks: tapping beside the sheet or pressing back. Dismissed
-    // mid-greeting, he stops talking rather than finishing the sentence to nobody. The quiet after
+    // mid-greeting, he stops talking rather than finishing the sentence to nobody. Dismissed while a
+    // tool call runs, the sheet still goes at once and the microphone is muted, but the call is held
+    // until the work is done, so dismissing him never cuts a command off on its way (see
+    // `hangUpAfterWork` in `hologram/src/jarvis-session.ts`). The quiet after
     // a finished request is not the screen's to judge — the agent ends that call itself, with its
     // `turnTimeout` and `end_call`. Summoned, the end of the conversation is the end of the window
     // as well; opened as an app or in a browser, the screen simply stays, dark and still reachable
     // by a long press. See `conversation-sheet.tsx`.
-    endConversation: hangUp,
+    endConversation: hangUpAfterWork,
     goNow,
   });
   const { hologramSize, canvas, settled } = sheet;
@@ -550,13 +553,20 @@ export function ConversationScreen({
    * and nothing to look at.
    */
   const summonAgain = useCallback(() => {
+    // Summoned while he is still finishing the work he was dismissed during: that conversation is
+    // taken back, listening again, and the sheet comes up with it.
+    if (hangingUp) {
+      summon();
+      comeBack();
+      return;
+    }
     if (isUnderWay(phase) || isLive(status) || startingNow.current) {
       return;
     }
     setLife(NOT_YET_OPEN);
     comeBack();
     void start();
-  }, [start, phase, status, comeBack]);
+  }, [start, phase, status, comeBack, hangingUp, summon]);
 
   // Summoned by the plain assist intent, into the app's own activity: each summoning is a new URL,
   // claimed so it is acted on once. Never in the assistant's window, whose tree hears the activity's
@@ -570,15 +580,16 @@ export function ConversationScreen({
   }, [inAssistantWindow, launchUrl, summonAgain]);
 
   // Put away while he is still talking — the screen timing out over the lock screen does it, after
-  // a summoning from a pocket — he hangs up, because nothing is left on screen to hang up with.
+  // a summoning from a pocket — he hangs up, because nothing is left on screen to hang up with; once
+  // any tool call in flight is done, as when he is dismissed.
   // Only from the window's own tree: the activity's would hear the event as well. See
   // `whenTheAssistantWindowIsPutAway`.
   useEffect(() => {
     if (!inAssistantWindow) {
       return;
     }
-    return whenTheAssistantWindowIsPutAway(hangUp);
-  }, [inAssistantWindow, hangUp]);
+    return whenTheAssistantWindowIsPutAway(hangUpAfterWork);
+  }, [inAssistantWindow, hangUpAfterWork]);
 
   // Summoned into the assistant's own window, which is kept between summonings: every showing after
   // the one this screen opened on is a summoning of its own. See `SHOWING_PROP`.

@@ -195,6 +195,11 @@ interface Attempt<Timer> {
   mode: string;
   /** Whether this app has muted the session's microphone, which the SDK publishes unmuted. */
   microphoneMuted: boolean;
+  /**
+   * Whether sir has dismissed him while a tool call ran (`hangUpAfterWork`): the microphone stays
+   * muted, and the session ends once nothing is in flight.
+   */
+  hangingUp: boolean;
   deadline?: Timer;
   greetingCheck?: Timer;
   /**
@@ -270,7 +275,12 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
   const halfDuplex = createHalfDuplexDetector(now);
   const vadScore = createVadScoreKeeper();
   const toolActivity = createToolActivity({
-    onChange: () => changed(),
+    onChange: (thinking) => {
+      if (!thinking) {
+        finishHangingUp();
+      }
+      changed();
+    },
     setTimeout: schedule,
     clearTimeout: cancel,
   });
@@ -301,6 +311,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     writtenReply: SAYING_NOTHING,
     typing: false,
     dialled: false,
+    hangingUp: false,
   };
 
   /**
@@ -335,6 +346,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       writtenReply: caption.reply,
       typing,
       dialled: current?.dialled ?? false,
+      hangingUp: current?.hangingUp ?? false,
     };
     const moved =
       next.phase !== snapshot.phase ||
@@ -345,7 +357,8 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       next.thinking !== snapshot.thinking ||
       next.writtenReply !== snapshot.writtenReply ||
       next.typing !== snapshot.typing ||
-      next.dialled !== snapshot.dialled;
+      next.dialled !== snapshot.dialled ||
+      next.hangingUp !== snapshot.hangingUp;
     if (!moved) {
       return;
     }
@@ -494,11 +507,13 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
   };
 
   /**
-   * Whether the session's microphone should be muted now. Three things can hold it, and it opens
+   * Whether the session's microphone should be muted now. Four things can hold it, and it opens
    * only when none of them does: the greeting (so the agent does not hear him say it), the keyboard
-   * (the phone's text mode), and the half-duplex fallback while he is speaking.
+   * (the phone's text mode), the half-duplex fallback while he is speaking, and sir having dismissed
+   * him while a tool call finishes (`hangUpAfterWork`).
    */
   const microphoneHeld = (current: Attempt<Timer>) =>
+    current.hangingUp ||
     (current.greeted && current.greeting !== 'over') ||
     typing ||
     (halfDuplexAllowed && halfDuplex.on && current.mode === 'speaking');
@@ -1381,6 +1396,15 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
   };
 
   const summon = (options: SummonOptions = {}) => {
+    const hangingUp = openAttempt();
+    if (hangingUp?.hangingUp) {
+      // Summoned again before the work he was dismissed during has finished: he is taken back,
+      // listening again, rather than hung up on under the new summoning.
+      hangingUp.hangingUp = false;
+      applyMicrophone(hangingUp);
+      changed();
+      return;
+    }
     if (disposed || !(phase === 'idle' || phase === 'ended' || phase === 'failed')) {
       return;
     }
@@ -1405,6 +1429,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       status: 'disconnected',
       mode: 'listening',
       microphoneMuted: false,
+      hangingUp: false,
       heldVoice: 'none',
       pendingContext: [],
     };
@@ -1441,9 +1466,44 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     }
   };
 
+  /**
+   * Dismissed while a tool call runs, he stops listening at once and hangs up only once it is done.
+   *
+   * Hanging up mid-call is what made dismissing him slow: a light switched or an alarm set is a
+   * request the agent is still carrying to the server, and the end of the session can cut it off on
+   * the way. So the microphone is muted the moment sir dismisses him — nothing more of his reaches
+   * the agent — and the session ends the moment nothing is in flight: the same moment the sphere
+   * stops thinking, which already holds a stream of polls together as one thought (see
+   * `KEEP_THINKING_AFTER_LAST_ANSWER_MS`). With nothing in flight it is `hangUp`. The work is bounded
+   * by what bounds every call: each tool call's own timeout, the agent hanging up, and the length a
+   * conversation may last.
+   */
+  const hangUpAfterWork = () => {
+    const current = openAttempt();
+    if (!current) {
+      return;
+    }
+    if (!toolActivity.thinking()) {
+      end(current);
+      return;
+    }
+    current.hangingUp = true;
+    applyMicrophone(current);
+    changed();
+  };
+
+  /** The work he was dismissed during is done, or has gone with the line: now he hangs up. */
+  function finishHangingUp() {
+    const current = openAttempt();
+    if (current?.hangingUp) {
+      end(current);
+    }
+  }
+
   return {
     summon,
     hangUp: endNow,
+    hangUpAfterWork,
     endQuietly: endNow,
     sendText: (text) => {
       const current = openAttempt();

@@ -47,6 +47,8 @@ export interface JarvisConversation extends SessionSnapshot {
   user: UserVoice;
   summon(options?: SummonOptions): void;
   hangUp(): void;
+  /** Dismissal that lets a tool call finish first: see `JarvisSession.hangUpAfterWork`. */
+  hangUpAfterWork(): void;
   endQuietly(): void;
   sendText(text: string): void;
   setTyping(typing: boolean): void;
@@ -152,6 +154,7 @@ export function useJarvisSession(options: JarvisSessionOptions): JarvisConversat
       user: session.user,
       summon: session.summon,
       hangUp: session.hangUp,
+      hangUpAfterWork: session.hangUpAfterWork,
       endQuietly: session.endQuietly,
       sendText: session.sendText,
       setTyping: session.setTyping,
