@@ -11,7 +11,7 @@ import {
   type HaloUnionPlacement,
   haloUnionPlacement,
 } from './halo-union';
-import { buildRowVertices } from './row-vertices';
+import { buildRowVertices, quadsKept } from './row-vertices';
 import { sceneSparklePixels } from './sparkle';
 
 /**
@@ -201,6 +201,8 @@ export interface GpuBody {
   rowCount: number;
   indexCount: number;
   indexType: number;
+  /** Each quad's density key in the index's order, ascending, so a frame draws only the quads its share keeps. */
+  quadKeys: Float32Array;
   /** Written every frame, so a frame allocates as little as it can. */
   fragmentUniforms: FragmentUniforms;
   haloPlacement: HaloUnionPlacement;
@@ -394,6 +396,7 @@ export function createGpuBody(gl: HologramGl, scene: HologramScene, options: Gpu
     rowCount: rows.count,
     indexCount: vertices.index.length,
     indexType: vertices.index instanceof Uint16Array ? UNSIGNED_SHORT : UNSIGNED_INT,
+    quadKeys: vertices.keys,
     fragmentUniforms: createFragmentUniforms(),
     haloPlacement: { texelUnits: 0, radiusFraction: 0 },
     shares: [0, 0, 0],
@@ -432,7 +435,7 @@ function setFragmentUniforms(gl: HologramGl, program: LinkedProgram, uniforms: F
 }
 
 /** The halo union, into its target: each texel keeps the most any halo covers it by. */
-function drawHaloUnion(gl: HologramGl, body: GpuBody, radiusShare: number) {
+function drawHaloUnion(gl: HologramGl, body: GpuBody, radiusShare: number, indexCount: number) {
   'worklet';
   const placement = haloUnionPlacement(radiusShare, body.haloPlacement, body.haloTexels);
   gl.bindFramebuffer(FRAMEBUFFER, body.haloFramebuffer);
@@ -447,11 +450,11 @@ function drawHaloUnion(gl: HologramGl, body: GpuBody, radiusShare: number) {
   setUniform(gl, program.uniforms.texelUnits, placement.texelUnits);
   setUniform(gl, program.uniforms.radiusFraction, placement.radiusFraction);
   gl.bindVertexArray(body.haloUnionArray);
-  gl.drawElements(TRIANGLES, body.indexCount, body.indexType, 0);
+  gl.drawElements(TRIANGLES, indexCount, body.indexType, 0);
 }
 
 /** The strokes, onto the canvas, where each fragment is. */
-function drawStrokes(gl: HologramGl, body: GpuBody, frame: GpuBodyFrame) {
+function drawStrokes(gl: HologramGl, body: GpuBody, frame: GpuBodyFrame, indexCount: number) {
   'worklet';
   const { camera } = frame;
   const program = body.strokes;
@@ -466,7 +469,7 @@ function drawStrokes(gl: HologramGl, body: GpuBody, frame: GpuBodyFrame) {
   gl.bindTexture(TEXTURE_2D, body.sparkle);
   gl.uniform1i(program.uniforms.sparkle, 0);
   gl.bindVertexArray(body.strokeArray);
-  gl.drawElements(TRIANGLES, body.indexCount, body.indexType, 0);
+  gl.drawElements(TRIANGLES, indexCount, body.indexType, 0);
 }
 
 /** The halos' light, onto the canvas, over the drawing's square in the plane through his centre. */
@@ -507,14 +510,16 @@ export function drawGpuBody(gl: HologramGl, body: GpuBody, frame: GpuBodyFrame) 
   gl.clear(COLOR_BUFFER_BIT);
   if (frame.fade > 0 && state.arrival > 0) {
     writeFragmentUniforms(body.fragmentUniforms, state, camera.basis, frame.density, camera.eyeDistance);
-    drawHaloUnion(gl, body, state.radius);
+    // Only the quads the share keeps, which are the index's first: the rest would be shaded only to be hidden.
+    const indexCount = quadsKept(body.quadKeys, frame.density) * 6;
+    drawHaloUnion(gl, body, state.radius, indexCount);
     // Onto the canvas, Screened and faded as one layer: the strokes, then the halos' light.
     gl.bindFramebuffer(FRAMEBUFFER, null);
     gl.viewport(0, 0, camera.width, camera.height);
     gl.blendEquationSeparate(FUNC_ADD, FUNC_ADD);
     gl.blendFuncSeparate(CONSTANT_COLOR, ONE_MINUS_SRC_COLOR, CONSTANT_ALPHA, ONE_MINUS_SRC_ALPHA);
     gl.blendColor(frame.fade, frame.fade, frame.fade, frame.fade);
-    drawStrokes(gl, body, frame);
+    drawStrokes(gl, body, frame, indexCount);
     drawHaloLight(gl, body, frame);
     gl.bindVertexArray(null);
     gl.bindTexture(TEXTURE_2D, null);

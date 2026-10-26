@@ -69,6 +69,14 @@ satellites are in Skia's picture, so they arrive and leave with him.
 - **The density loop** starts once a mount at `STARTING_SHARE` (half), and
   nothing is remembered between mounts: the build time always says there is room
   with the body on the GPU, so the frame-rate ceiling is what holds the share.
+- **A frame draws only the share's quads.** The index lists every row's quad in
+  the order of its density key (`buildRowVertices`), so the rows a share keeps are
+  the index's first, and `drawGpuBody` draws just those (`quadsKept`) in both
+  passes. It used to draw them all and let the shader hide the rest, so at the
+  loop's floor a frame still shaded nearly every vertex of the scene: on
+  SwiftShader at the watch's 340 pixels, 21.3 ms a frame at a share of 0.025
+  against 5.4 ms for the share alone. The headset draws the same index, so the
+  two renderers still match to the byte.
 
 **Set up on the JS thread, drawn on the UI thread, and never both.** expo-gl
 lets the JS runtime and the UI runtime share a context, and records the calls of
