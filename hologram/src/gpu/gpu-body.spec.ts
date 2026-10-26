@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'bun:test';
+import { FEWEST_PARTICLES } from '../density-control';
 import { SCENE_SEED } from '../frame-timing';
 import { analyseFrame, createHologramScene, type HologramFrame } from '../hologram-drawing';
 import { VOICE_BAND_COUNT } from '../voice-levels';
+import { buildHologramRows } from './body-rows';
 import { createFlatCamera, placeFlatCamera } from './flat-camera';
 import { FRONT_VIEW } from './fragment-3d';
 import { createGpuBody, drawGpuBody, type HologramGl } from './gpu-body';
 import { HALO_TEXELS } from './halo-union';
+import { buildRowVertices } from './row-vertices';
 
 /**
  * The raw renderer against a context that only writes down what it is asked: which passes, in what
@@ -102,7 +105,7 @@ function uncopyable(value: unknown, path: string): string[] {
   return Object.entries(value).flatMap(([key, inner]: [string, unknown]) => uncopyable(inner, `${path}.${key}`));
 }
 
-function drawn(calls: Call[], overrides: Partial<HologramFrame>, fade: number) {
+function drawn(calls: Call[], overrides: Partial<HologramFrame>, fade: number, density = 1) {
   const gl = recordingGl(calls);
   const body = createGpuBody(gl, scene);
   calls.length = 0;
@@ -114,7 +117,7 @@ function drawn(calls: Call[], overrides: Partial<HologramFrame>, fade: number) {
     FRONT_VIEW,
     Number.POSITIVE_INFINITY,
   );
-  drawGpuBody(gl, body, { state, density: 1, fade, alphaFromLight: 1, camera });
+  drawGpuBody(gl, body, { state, density, fade, alphaFromLight: 1, camera });
   return body;
 }
 
@@ -200,6 +203,19 @@ describe('the raw renderer', () => {
     expect(between.filter(([name]) => name === 'useProgram').at(-1)?.[1]).toBe(body.strokes.program);
     const lastUse = calls.filter(([name]) => name === 'useProgram').at(-1);
     expect(lastUse?.[1]).toBe(body.haloLight.program);
+  });
+
+  it('draws only the quads the density share keeps, which are the first of the index', () => {
+    const calls: Call[] = [];
+    const body = drawn(calls, {}, 1, FEWEST_PARTICLES);
+    const kept = Array.from(buildRowVertices(buildHologramRows(scene)).keys).filter(
+      (key) => key < Math.fround(FEWEST_PARTICLES),
+    ).length;
+    // A fortieth of the scene, give or take its hash: not the whole of it with the rest hidden.
+    expect(kept).toBeGreaterThan(body.rowCount * 0.02);
+    expect(kept).toBeLessThan(body.rowCount * 0.03);
+    const draws = calls.filter(([name]) => name === 'drawElements');
+    expect(draws.map(([, , count]) => count)).toEqual([kept * 6, kept * 6, 6]);
   });
 
   it('fades by the fade it is handed, not by the arrival, where nothing outside fades it', () => {

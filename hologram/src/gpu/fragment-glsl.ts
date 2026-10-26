@@ -422,7 +422,8 @@ Fragment readStreamFragment() {
 }
 
 Fragment readFragment() {
-  // Rows are in the density share's order, so a share keeps the ones whose key is under it.
+  // A share keeps the rows whose key is under it. The index is in key order, so the phone's and the
+  // watch's renderer draw only those (quadsKept); this hides the rest for a draw of every row.
   if (thinning >= density) return hiddenFragment();
   // An if rather than ?:, which WebGL does not allow on structures.
   if (rest.w < 0.5) return readBodyFragment();

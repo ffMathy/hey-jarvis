@@ -5,9 +5,9 @@ import type { HologramRows } from './body-rows';
  * rows: the halo union once a frame and the strokes once per eye (or once, on a flat screen).
  *
  * Four vertices a row, each carrying the whole row and one corner at ±1, which each draw's vertex
- * shader stretches over whatever that row is this frame, and two triangles a row, in the rows'
- * order. That is what one instance per row drew before — the same arithmetic per vertex, the same
- * triangles in the same order, so the same pixels to the byte — as one draw of 40,672 vertices
+ * shader stretches over whatever that row is this frame, and two triangles a row, in the order of
+ * the rows' density keys (`thinning`) rather than the rows' own: see {@link RowVertices.keys}. That is what one instance per row drew
+ * before — the same arithmetic per vertex and the same triangles — as one draw of 40,672 vertices
  * rather than 10,168 instances of four.
  *
  * Instancing a mesh of a handful of vertices is what the GPU makers' own guidance (Arm's for Mali,
@@ -63,8 +63,40 @@ export interface RowVertices {
   attributes: RowVertexAttribute[];
   /** Two numbers a vertex: its corner at ±1. */
   corner: Float32Array;
-  /** Six a row, 16-bit while the vertices fit one. */
+  /** Six a row, 16-bit while the vertices fit one, a row's quad after another's in ascending `keys`. */
   index: Uint16Array | Uint32Array;
+  /**
+   * Each quad's density key, in the index's order: ascending, so a share keeps the first quads of
+   * the index and none after them (see {@link quadsKept}), and a draw of only those does the work
+   * of the share rather than of the whole scene.
+   *
+   * **That is the watch's frame.** Every row's vertices were shaded every pass, and the shader then
+   * hid the ones over the share, so at the density loop's floor — a fortieth of the rows — a frame
+   * still did nearly all of the vertex work of the whole scene. Measured on SwiftShader at the
+   * watch's 340 pixels: 21.3 ms a frame drawing every row at a share of 0.025, 5.4 ms drawing the
+   * share's alone. The vertices stay in the rows' order, so a vertex is still its row's (the
+   * headset's port check reads them back by row); only which triangles come first changes, and the
+   * headset's geometry and this renderer draw the same index, so their pixels still match to the
+   * byte.
+   */
+  keys: Float32Array;
+}
+
+/**
+ * How many of the index's quads a share keeps: those whose key is under it, as the shader compares
+ * them, in float32 (`thinning >= density` hides a row). A binary search over the sorted keys.
+ */
+export function quadsKept(keys: Float32Array, density: number): number {
+  'worklet';
+  const share = Math.fround(density);
+  let below = 0;
+  let above = keys.length;
+  while (below < above) {
+    const middle = (below + above) >>> 1;
+    if (keys[middle] < share) below = middle + 1;
+    else above = middle;
+  }
+  return below;
 }
 
 /** One row's `size` numbers of `values`, written once for each of its four corners. */
@@ -85,10 +117,17 @@ export function buildRowVertices(rows: HologramRows): RowVertices {
   const vertexCount = rows.count * 4;
   const indexCount = rows.count * TRIANGLES.length;
   const index = vertexCount <= SHORT_INDEX_VERTICES ? new Uint16Array(indexCount) : new Uint32Array(indexCount);
-  for (let row = 0; row < rows.count; row++) {
+  // Stable, so rows with the same key keep the order they had.
+  const order = Array.from({ length: rows.count }, (_, row) => row).sort(
+    (first, second) => rows.thinning[first] - rows.thinning[second] || first - second,
+  );
+  const keys = new Float32Array(rows.count);
+  for (let quad = 0; quad < order.length; quad++) {
+    const row = order[quad];
+    keys[quad] = rows.thinning[row];
     for (let at = 0; at < TRIANGLES.length; at++) {
-      index[row * TRIANGLES.length + at] = row * 4 + TRIANGLES[at];
+      index[quad * TRIANGLES.length + at] = row * 4 + TRIANGLES[at];
     }
   }
-  return { vertexCount, attributes, corner, index };
+  return { vertexCount, attributes, corner, index, keys };
 }
