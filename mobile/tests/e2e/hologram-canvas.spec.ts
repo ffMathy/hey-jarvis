@@ -3,7 +3,7 @@ import { blockExternalRequests } from './external-requests';
 
 /**
  * Jarvis on the GPU, in the phone's web build: all of him — his body and the rest of him, the
- * whorl, the core, the rim and the satellites — is drawn by `hologram/gpu` into one canvas
+ * core, the cage, the aura, the embers and the satellites — is drawn by `hologram/gpu` into one canvas
  * (`hologram-canvas`). Where the browser cannot draw him there is no GL view and nothing of him, and
  * the screen goes on without him. See "His body on the GPU, on a phone and a watch" in `.claude/rules/hologram-his-body-on-the-gpu-on-a-phone-and-a-watch.md`.
  *
@@ -103,7 +103,7 @@ const SETTLED_FRAMES = 50;
 
 /**
  * The least share of his canvas that comes out differently when the eye moves: as it
- * comes in from infinitely far to the phone's, measured at 21%, and as a 15° tip turns him, at 34%.
+ * comes in from infinitely far to the phone's, measured at 22%, and as a 15° tip turns him, at 38%.
  * A tenth is well below either and far above the nothing a view that never moved would differ by.
  */
 const MOVED_EYE_SHARE = 0.1;
@@ -119,9 +119,9 @@ const BEFORE_THE_TIMEOUT_FRAMES = 6;
 
 /**
  * The sphere at its largest, as a radius in sides of the drawing's square: `SPHERE_FRACTION` (0.27)
- * swollen as far as his voice swells him (`SWELL_WITH_VOICE`, 18%). His body is the fragments
- * inside it, and his rim rings it. What lies beyond is the stream flowing out of it and the chips
- * he throws past the limb while he speaks.
+ * swollen as far as his voice swells him (`SWELL_WITH_VOICE`, 18%). His body is the shell of specks
+ * inside it, round the white-hot ring at his core. What lies beyond is the stream flowing out of it,
+ * the cage, the aura and the embers round him, and the chips he throws past the limb while he speaks.
  */
 const SPHERE_AT_LARGEST = 0.27 * 1.18;
 
@@ -523,11 +523,13 @@ test('draws all of him on the GPU where the browser has WebGL 2, centred in the 
   const frames = await takeCanvasFrames(page);
 
   // Every frame after the arrival draws him, from the GPU's own pixels: lit, centred in the canvas,
-  // and the size of the sphere. The share lit was measured at 27–40% over these frames, the light's
-  // centre at most 3.2% of the side from the middle — to the left, where the crescent is — and 86% to
-  // all of the light inside the sphere at its largest, the rest the chips he throws past the limb
-  // while he speaks. Drawn off-centre or at the wrong scale (`FlatScreen` given the wrong square),
-  // he is neither.
+  // and the size of the sphere. Measured over these frames when he was redrawn after the Vision Quest
+  // footage: 56–75% of the canvas lit, the light's centre at most 1.5% of the side from the middle —
+  // a little up and to the left, where his core sits — and 81% to 94% of the light inside the sphere
+  // at its largest, the rest the cage, the aura and the embers round him and the chips he throws past
+  // the limb while he speaks. The worst frame is close to the 0.8 held here: light moving out past
+  // the sphere is a change to how he looks, to be looked at rather than allowed for by lowering it.
+  // Drawn off-centre or at the wrong scale (`FlatScreen` given the wrong square), he is neither.
   expect(frames).toHaveLength(10);
   for (const frame of frames) {
     expect(frame.litShare).toBeGreaterThan(0.05);
@@ -546,8 +548,8 @@ test('draws all of him on the GPU where the browser has WebGL 2, centred in the 
   const inTheSquare = lookOf(onThePage, square);
   expect(inTheSquare.litShare).toBeGreaterThan(0.02);
   expect(inTheSquare.litOutside).toBe(0);
-  // And where the sphere is in that square, not only somewhere in it: all of its light was, at this
-  // moment.
+  // And where the sphere is in that square, not only somewhere in it: 96% of the light the screen
+  // shows was, at this moment, when he was redrawn after the Vision Quest footage.
   expect(shareInsideTheSphere(onThePage, square)).toBeGreaterThan(0.85);
 
   expect(pageErrors).toEqual([]);

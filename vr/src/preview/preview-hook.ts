@@ -124,6 +124,7 @@ export interface PictureFrame {
   presence: number;
   thinking: number;
   hearing?: number;
+  hearingLevel?: number;
 }
 
 /** A satellite round him as `hologram`'s `SatelliteOrbit` has it. */
@@ -173,6 +174,14 @@ export interface PictureFacts {
   /** How far out a satellite's orbit is, and how big its glyph, in his radii at rest. */
   screenOrbitRadii: number;
   screenGlyphRadii: number;
+  /** Where his core is, right of and below his middle, and the radius of its white-hot ring, in his radii. */
+  coreAcross: number;
+  coreDown: number;
+  coreRingRadius: number;
+  /** How fast the core ring's brighter stretches roll round it, clockwise. */
+  rollDegreesPerSecond: number;
+  /** How long his body — and the cage round it — takes to turn once about the vertical. */
+  bodyTurnSeconds: number;
 }
 
 /** Where a satellite is on a screen: across to the right and up, in orbit radii from his centre. */
@@ -181,13 +190,17 @@ export interface PictureOrbitPoint {
   up: number;
 }
 
-/** One moment drawn with the GPU picture, to compare with Skia's picture of it, a PNG in base64. */
-export interface PictureCheckRequest extends PictureMoment {
+/** One moment to draw with the GPU picture as a golden of it, `size` pixels square. */
+export interface PictureGoldenRequest extends PictureMoment {
   size: number;
+}
+
+/** One moment drawn with the GPU picture, to compare with its golden, a PNG in base64. */
+export interface PictureCheckRequest extends PictureGoldenRequest {
   golden: string;
 }
 
-/** How the GPU picture of a moment differs from Skia's, over the RGB of every pixel. */
+/** How the GPU picture of a moment differs from its golden, over the RGB of every pixel. */
 export interface PictureCheck {
   /** Mean absolute difference per channel, 0–255. */
   meanDifference: number;
@@ -249,8 +262,13 @@ export interface HologramPreviewHook {
   pictureFacts(): Promise<PictureFacts>;
   /** Where each of `orbits` is round him at `time`, as `hologram`'s `orbitPoint` puts it. */
   orbitPoints(orbits: PictureOrbit[], time: number): Promise<PictureOrbitPoint[]>;
-  /** Draws one moment with the GPU picture and compares it with Skia's picture of it. */
+  /** Draws one moment with the GPU picture and compares it with its golden. */
   checkPicture(request: PictureCheckRequest): Promise<PictureCheck>;
+  /**
+   * Draws one moment with the GPU picture exactly as {@link checkPicture} compares it, as a PNG in
+   * base64 to keep as its golden: RGB over black, alpha 255, top row first.
+   */
+  pictureGolden(request: PictureGoldenRequest): Promise<string>;
   /**
    * In the room: what he is doing there. With `holdAtSeconds`, the voices driving him stop at that
    * moment of the phase and stay there — he goes on moving — so a picture can be taken of it on an

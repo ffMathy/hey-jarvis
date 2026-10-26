@@ -14,7 +14,7 @@ import { createFrameClock } from '../hologram3d/frame-clock';
 import { RENDERER_PARAMETERS } from '../xr/xr-stage';
 import { checkGpuBody, createRawBody, type RawBody } from './gpu-body-check';
 import { createPhaseDrives, type PhaseDrive, SETTLE_SECONDS } from './phase-drives';
-import { checkPicture, drawPictures, orbitPoints, pictureFacts } from './picture-check';
+import { checkPicture, drawPictures, orbitPoints, pictureFacts, pictureGolden } from './picture-check';
 import { pictureStats } from './picture-stats';
 import { checkPort } from './port-check';
 import type {
@@ -24,6 +24,7 @@ import type {
   PictureCheck,
   PictureCheckRequest,
   PictureFacts,
+  PictureGoldenRequest,
   PictureRequest,
   PortCheck,
   PortCheckRequest,
@@ -72,8 +73,10 @@ export interface Stage {
   drawPictures(request: PictureRequest): DrawnPictures;
   pictureFacts(): PictureFacts;
   orbitPoints: typeof orbitPoints;
-  /** Stops the live loop and compares the GPU picture of a moment with Skia's. */
+  /** Stops the live loop and compares the GPU picture of a moment with its golden. */
   checkPicture(request: PictureCheckRequest): Promise<PictureCheck>;
+  /** Stops the live loop and draws the GPU picture of a moment as a golden of it, a base64 PNG. */
+  pictureGolden(request: PictureGoldenRequest): Promise<string>;
   /** Back to the live loop, from `phase`. */
   resume(): void;
   pause(): void;
@@ -354,6 +357,10 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     checkPicture(request) {
       running = false;
       return checkPicture(renderer, request);
+    },
+    pictureGolden(request) {
+      running = false;
+      return pictureGolden(renderer, request);
     },
     resume() {
       hologram.alphaFactor = alphaFactor;

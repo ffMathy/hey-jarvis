@@ -116,13 +116,33 @@ paths:
   `HOLOGRAM_SCREENS_DIR` when that is set. `hologram-room.spec.ts` logs the
   emulator's frame times, which say nothing about a Quest's.
 - **His picture alone.** `hologram-picture.spec.ts` holds the GPU picture of
-  everything but his body to Skia's goldens of fourteen moments
-  (`fixtures/picture/`), and `hologram-picture-behaviour.spec.ts` carries what
-  were `hologram`'s pixel tests under CanvasKit — of him and of his satellites,
-  with their thresholds as they were — onto it. Both draw through the preview's
-  hook into a target of the stage's own renderer, as the headset draws him, and
-  the behaviour spec measures each picture faded by `arrivalOf` as a view fades
-  it (see "How he is drawn").
+  everything but his body to goldens of fifteen moments that it drew itself
+  when he was redrawn after the Vision Quest footage (`fixtures/picture/`, the
+  moments named in `moments.json`): a regression test, not a judge of the look.
+  `hologram-picture-behaviour.spec.ts` carries what were `hologram`'s pixel
+  tests under CanvasKit — of him and of his satellites — onto it, written again
+  for the new look where they held the old film study (golden with white only
+  in the core ring, the core ring's roll and the cage's turn with his body in
+  place of the rim's roll), each moved threshold saying what it measured. Both
+  draw through the preview's hook into a target of the stage's own renderer, as
+  the headset draws him, and the behaviour spec measures each picture faded by
+  `arrivalOf` as a view fades it (see "How he is drawn").
+- **Drawing the goldens again.** `.scripts/render-picture-goldens.ts` serves
+  the build, opens the preview page in headless Chromium and draws every moment
+  of `moments.json` through the hook's `pictureGolden` — exactly as the spec's
+  `checkPicture` compares it: the size the file names, top row first, RGB over
+  black, alpha 255 — writes `<name>.png`, checks that drawing it again matches
+  what was written in every channel of every pixel, and deletes any golden no
+  moment names. Moments are added, removed or changed in `moments.json` by hand.
+  A golden records how he looked when it was drawn, so drawing them again is a
+  change to his look: made on purpose in the commit that changes it, with the
+  new pictures looked at before they are committed, never to quiet a failing
+  spec. `timeout 300 bunx turbo build --filter=vr` first, then
+  `timeout 300 bun vr/.scripts/render-picture-goldens.ts` from the repository
+  root (`CHROMIUM_EXECUTABLE_PATH` as for the specs). The same build on the same
+  machine draws its goldens to the byte; the spec's limits — a mean of 0.4
+  levels, a 99th percentile of 10, 0.8% of pixels more than 16 apart, mean luma
+  within 0.1 — are what one GPU may differ from another by.
 - **Pictures at a headset's density, nearly.** The emulator's XR framebuffer is
   the window's size in CSS pixels — IWER sets its canvas to `innerWidth` by
   `innerHeight` whatever the device pixel ratio, and its synthetic room would size

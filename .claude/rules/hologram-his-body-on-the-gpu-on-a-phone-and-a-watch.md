@@ -127,4 +127,4 @@ the UI runtime with this Reanimated, the picture's depth and stencil on a
 phone's or a watch's GPU, how long `flushEXP` waits there, how long the pending
 hold lasts on a first launch, and whether the assistant's window loses its
 context between summonings. The phone's web build in Chromium exercises the
-rest, and vr's `hologram-picture.spec.ts` holds the picture to frames Skia drew.
+rest, and vr's `hologram-picture.spec.ts` holds the picture to its own goldens.

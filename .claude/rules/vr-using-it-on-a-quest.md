@@ -56,7 +56,7 @@ listening, a status line saying why and what to do about it.
   controller's grip and let go where it is in the room, or point at something out
   of reach and pinch or pull the trigger, and again where it goes. Let go on the
   drawer and it goes back in. Done, B/Y or the same button again closes it. The
-  next time he works on something you placed, his orange corona lights round it;
+  next time he works on something you placed, his golden corona lights round it;
   point at one — a controller, or an index finger with the others curled — and a
   blue ring and its name say that "turn that on" now means it (see "Entities
   placed in the room" below).

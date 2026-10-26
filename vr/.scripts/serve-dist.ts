@@ -1,5 +1,6 @@
 /**
- * Serves the built headset app the way GitHub Pages does, for the browser tests.
+ * Serves the built headset app the way GitHub Pages does, for the browser tests and for the
+ * scripts that draw on its pages (`render-picture-goldens.ts` serves it with {@link serveBuild}).
  *
  * Under its real sub-path, /hey-jarvis/vr/, and nowhere else. A page that asks for any
  * of its files from the domain root — an absolute asset URL, a wasm fetched from `/` — gets
@@ -33,14 +34,18 @@ export function resolveBuiltFile(buildRoot: string, pathname: string): string | 
   return resolved;
 }
 
-if (import.meta.main) {
-  if (!existsSync(path.join(root, 'index.html'))) {
-    console.error(`${root} has no build in it. Run: bunx turbo build --filter=vr`);
-    process.exit(1);
-  }
+/** Whether `vite build` has written the app where this serves it from. */
+export function isBuilt() {
+  return existsSync(path.join(root, 'index.html'));
+}
 
-  const port = Number(process.argv[2] ?? DEFAULT_PORT);
-  Bun.serve({
+/**
+ * Serves the build on `port` until the server is stopped; 0 takes any free port, and the server
+ * says which. It is listening once this returns, so a script can serve the build in its own process
+ * and open a page on it straight away.
+ */
+export function serveBuild(port: number) {
+  return Bun.serve({
     port,
     async fetch(request) {
       const { pathname } = new URL(request.url);
@@ -56,5 +61,15 @@ if (import.meta.main) {
       return new Response(Bun.file(file));
     },
   });
+}
+
+if (import.meta.main) {
+  if (!isBuilt()) {
+    console.error(`${root} has no build in it. Run: bunx turbo build --filter=vr`);
+    process.exit(1);
+  }
+
+  const port = Number(process.argv[2] ?? DEFAULT_PORT);
+  serveBuild(port);
   console.log(`Serving ${root} at http://localhost:${port}${SITE_PREFIX}`);
 }

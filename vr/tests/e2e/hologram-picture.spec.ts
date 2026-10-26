@@ -1,61 +1,39 @@
 import { readFileSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import type { PictureMoment } from '../../src/preview/preview-hook';
 import { expect, test } from './fixtures';
+import { goldenPath, readPictureMoments } from './picture-moments';
 
 /**
- * The GPU picture of everything but his body, held to Skia's.
+ * The GPU picture of everything but his body, held to its own frames.
  *
- * Skia drew him on every device before `hologram/gpu`'s `drawGpuPicture` replaced it, and its picture
- * of fourteen moments is kept as goldens (`fixtures/picture/<name>.png`, drawn with `fadeOutside`, RGB
- * over black): at rest under each element the rim can lead with, bursts held and breaking, speech
- * thrown into spokes and a swoosh, the thinking pulse, the listening lattice, the arrival, the red
- * flash, lightning and satellites. The preview draws each moment with the GPU picture into a target
- * of its own three.js renderer, exactly as the headset draws it (`picture-check.ts`), and measures
- * how far it is from Skia's.
+ * `hologram/gpu`'s `drawGpuPicture` drew fifteen moments when he was redrawn after the Vision Quest
+ * footage, and they are kept as goldens (`fixtures/picture/<name>.png`, RGB over black, named in
+ * `fixtures/picture/moments.json`): at rest at three times, so the cage has turned with his body,
+ * the core ring's brighter stretches have rolled and the embers have drifted between them; speaking,
+ * with his voice's energy spread evenly, in its low notes (the embers) and in its high ones (the
+ * fray); a burst held and breaking; thinking, with the scan plane and with its pulse blooming out
+ * of the core ring; the listening lattice; the vortex early and late; leaving; and satellites. The
+ * preview draws each moment with the GPU picture into a target of its own three.js renderer, exactly
+ * as the headset draws it (`picture-check.ts`), and measures how far it is from its golden.
  *
- * They cannot agree to the byte — Skia antialiases its paths by analytic coverage on the CPU, the
- * GPU by the distance to each shape in its fragment shader — so what is held is how near they are,
- * as measured when the port was finished: a mean of 0.07–0.29 levels a channel, a 99th percentile
- * of 8 levels at most, under half a percent of pixels with a channel more than 16 apart, and the
- * same brightness overall. The limits are those numbers with a little headroom; a change that needs
- * more is a change to how he looks, and the goldens say what he looked like.
+ * So this is a regression test: it says the picture has not moved from what it was when the goldens
+ * were drawn, not that it is right. The limits are the ones that held the GPU port to Skia's picture
+ * — a mean of 0.4 levels a channel, a 99th percentile of 10, at most 0.8% of pixels a channel more
+ * than 16 apart, and the same brightness overall within 0.1 — and they now leave room only for what
+ * may differ between one GPU and another; the same build on the same machine draws its goldens to
+ * the byte. A change that needs more is a change to how he looks: draw the goldens again with
+ * `.scripts/render-picture-goldens.ts`, deliberately, in the commit that makes it, and look at them
+ * before committing (see "His picture alone" in `.claude/rules/vr-the-browser-tests.md`).
  */
 
-const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'picture');
-
-interface Moments {
-  size: number;
-  moments: (PictureMoment & { name: string })[];
-}
-
-function isMoments(value: unknown): value is Moments {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'size' in value &&
-    typeof value.size === 'number' &&
-    'moments' in value &&
-    Array.isArray(value.moments)
-  );
-}
-
-function readMoments(): Moments {
-  const parsed: unknown = JSON.parse(readFileSync(path.join(FIXTURES, 'moments.json'), 'utf8'));
-  if (!isMoments(parsed)) throw new Error('moments.json is not a size and a list of moments.');
-  return parsed;
-}
-
-test('the GPU picture draws every moment as Skia drew it', async ({ page }) => {
+test('the GPU picture draws every moment as it did when its goldens were drawn', async ({ page }) => {
   const problems: string[] = [];
   page.on('pageerror', (error) => problems.push(error.message));
   await page.goto('/hey-jarvis/vr/preview.html');
   await page.evaluate(() => window.__hologramPreview?.ready);
-  const { size, moments } = readMoments();
-  expect(moments.length).toBe(14);
+  const { size, moments } = readPictureMoments();
+  expect(moments.length).toBe(15);
   for (const { name, frame, satellites } of moments) {
-    const golden = readFileSync(path.join(FIXTURES, `${name}.png`)).toString('base64');
+    const golden = readFileSync(goldenPath(name)).toString('base64');
     const check = await page.evaluate((asked) => window.__hologramPreview?.checkPicture(asked), {
       size,
       frame,
@@ -73,7 +51,7 @@ test('the GPU picture draws every moment as Skia drew it', async ({ page }) => {
     ].join(', ');
     console.log(`${name}: ${found}`);
     // Soft, so a failing run says how every moment came out rather than only the first.
-    expect.soft(check.goldenMeanLuma, `${name}: Skia drew something`).toBeGreaterThan(1);
+    expect.soft(check.goldenMeanLuma, `${name}: the golden has something in it`).toBeGreaterThan(1);
     expect.soft(check.meanDifference, `${name}: ${found}`).toBeLessThanOrEqual(0.4);
     expect.soft(check.percentile99, `${name}: ${found}`).toBeLessThanOrEqual(10);
     expect.soft(check.shareOver16, `${name}: ${found}`).toBeLessThanOrEqual(0.008);
