@@ -116,22 +116,6 @@
       android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
     <!--
-      Asks for the phone to be unlocked when Jarvis is summoned on a locked one,
-      and summons him once it is. See `JarvisUnlockActivity.kt`.
-
-      Shown over the lock screen, since that is the only place it runs, and it
-      draws nothing: the keyguard's own prompt is all sir sees. Not exported,
-      and no task affinity, for the same reasons as the photo activity below.
-    -->
-    <activity
-      android:name="expo.modules.jarvisassistant.JarvisUnlockActivity"
-      android:exported="false"
-      android:excludeFromRecents="true"
-      android:showWhenLocked="true"
-      android:taskAffinity=""
-      android:theme="@android:style/Theme.Translucent.NoTitleBar" />
-
-    <!--
       Lends the camera app the file the photo is written into, and nothing else:
       `res/xml/jarvis_photo_paths.xml` names one cache directory. The authority
       is spelled `PROVIDER_SUFFIX` in `JarvisPhotoActivity.kt` as well.

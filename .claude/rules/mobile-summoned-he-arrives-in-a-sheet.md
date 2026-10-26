@@ -22,31 +22,25 @@ then, that conversation is taken back, listening again, rather than replaced. Th
 has gone is announced by the session itself: every showing sets the surface's `showing` root prop
 (`SHOWING_PROP`) to a new number, which brings the sheet back and opens a new conversation.
 
-**The window going away hangs up too, whoever put it away.** The system hides it on its own: the
-screen timing out over the lock screen does it, because `VoiceInteractionSession.onLockscreenShown`
-is `hide()` by default. Holding the power button works with the phone locked and the screen off, so a
-summoning from a pocket sat there talking, the screen slept, and the window went. The conversation did
-not. Sir unlocked to Jarvis listening and answering, with no sheet and nothing to hang up with. Now
+**Over the lock screen, he stays.** Holding the power button reaches the assistant with the phone
+locked and the screen off, and sir wants exactly that: to talk to him hands-free, phone in pocket.
+But `VoiceInteractionSession.onLockscreenShown` is `hide()` by default, and the lock screen is shown
+again around such a summoning — the screen waking for it, or timing out mid-conversation — so the
+window went, the app hung up with it (below), and all sir heard was "Hello sir, how can I help?". The
+session overrides it to do nothing: the window is drawn above the lock screen, so there is nothing
+to make way for, and sir unlocks to the sheet. `assistant-window.contract.spec.ts` holds it there.
+Not yet seen on a device; `adb logcat -s JarvisAssistant` says when the lock screen was shown.
+`supportsLaunchVoiceAssistFromKeyguard` stays false: it only adds a shortcut on the lock screen.
+
+**The window going away hangs up too, whoever put it away.** The system can hide it on its own, and
+it used to on every return of the lock screen. The conversation did not go with it: sir unlocked to
+Jarvis listening and answering, with no sheet and nothing to hang up with. Now
 every hide except the camera's sends `onAssistantWindowPutAway` (`WINDOW_PUT_AWAY`, pinned by
 `assistant-window.contract.spec.ts`), and the window's tree answers it with `hangUpAfterWork`, as
 a dismissal. React Native is
 paused two seconds later instead of at once. A paused instance stops its timers, and the hang-up
 should not depend on one of them never firing. The activity's tree does not listen, for the reason
 below.
-
-**Summoned on a locked phone, he asks for it to be unlocked first.** Holding the power button
-reaches the assistant whether or not the phone is locked, and the window used to draw the app and
-start a conversation regardless — behind the lock screen, where it could not be seen: sir heard
-"Hello sir, how can I help?" and then nothing, with no sheet to talk to. And Jarvis runs the house,
-which is why `supportsLaunchVoiceAssistFromKeyguard` is false; a conversation on a locked phone would
-be anybody's. So `JarvisVoiceInteractionSession.onShow` checks `isKeyguardLocked` first, and on a
-locked phone draws nothing, starts nothing, asks for no screenshot, and starts `JarvisUnlockActivity`
-instead: an activity shown over the lock screen, drawing nothing, whose only job is
-`KeyguardManager.requestDismissKeyguard` — the fingerprint, face or PIN prompt, or simply the swipe.
-Unlocked, it summons him through `showSession`, exactly as on an unlocked phone; turned down, nothing
-opens. The window is made once, so on a phone first summoned while locked the app is drawn into it at
-the first showing after the unlock. `assistant-window.contract.spec.ts` holds the order in `onShow`
-and the activity's manifest entry. Not yet seen on a device.
 
 **There are two apps on one JavaScript runtime, and a signal has to reach the right one.** The
 assistant's window is a second React Native surface; the app's own activity is often still alive

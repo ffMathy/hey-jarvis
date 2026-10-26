@@ -164,9 +164,9 @@ export async function screenshotOfThisSummoning(): Promise<string | undefined> {
  * Calls back whenever the assistant's window is put away — by sir, by the app, or by the system on
  * its own — other than to make way for the camera, until the return value is called.
  *
- * The system's own is the one that matters. The screen timing out over the lock screen hides the
- * window, and a conversation drawn in it went on listening and answering with nothing on screen to
- * hang up with. Only the tree drawn in the window should listen: the event is the process's, and
+ * The system's own is the one that matters. A window the system hides takes the sheet with it, and a
+ * conversation drawn in it went on listening and answering with nothing on screen to hang up with.
+ * (The lock screen no longer hides it: `onLockscreenShown` keeps it up, for hands-free use.) Only the tree drawn in the window should listen: the event is the process's, and
  * the app's own activity would hear it too.
  *
  * A no-op where the module is absent, which is web and every test.

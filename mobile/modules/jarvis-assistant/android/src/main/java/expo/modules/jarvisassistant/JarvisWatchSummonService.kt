@@ -56,9 +56,7 @@ private const val WAIT_FOR_THE_WINDOW_MS = 2000L
  *   watch's, and the watch is the one being looked at.
  * - **The phone is locked.** Jarvis runs the house, which is why he is not offered on the lock
  *   screen (`supportsLaunchVoiceAssistFromKeyguard` is false), and a summoning from the watch does
- *   not get around that. Any lock screen counts, one that only swipes away included: summoned over
- *   one, the window asks for the phone to be unlocked and opens only after
- *   (`JarvisUnlockActivity`), which would be long after the watch had started talking for itself.
+ *   not get around that. A phone kept unlocked by its watch, through Smart Lock, is not locked.
  * - **Jarvis is not the phone's assistant.** Only the active voice interaction service may open a
  *   session, so there is nothing to open.
  *
@@ -123,9 +121,9 @@ class JarvisWatchSummonService : WearableListenerService() {
     }
   }
 
-  /** Showing a lock screen, as `JarvisVoiceInteractionSession` judges it. */
+  /** Locked behind a PIN, pattern or password — not merely showing a lock screen that swipes away. */
   private fun isLocked(): Boolean {
     val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager ?: return true
-    return keyguard.isKeyguardLocked
+    return keyguard.isDeviceLocked
   }
 }

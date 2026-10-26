@@ -579,8 +579,8 @@ export function ConversationScreen({
     summonAgain();
   }, [inAssistantWindow, launchUrl, summonAgain]);
 
-  // Put away while he is still talking — the screen timing out over the lock screen does it, after
-  // a summoning from a pocket — he hangs up, because nothing is left on screen to hang up with; once
+  // Put away while he is still talking — by the system, on its own — he hangs up, because nothing is
+  // left on screen to hang up with; once
   // any tool call in flight is done, as when he is dismissed.
   // Only from the window's own tree: the activity's would hear the event as well. See
   // `whenTheAssistantWindowIsPutAway`.

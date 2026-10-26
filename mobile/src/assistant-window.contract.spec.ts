@@ -62,8 +62,8 @@ describe('the assistant window handover between Kotlin and TypeScript', () => {
     expect(entry).toMatch(/showing:\s*props\[SHOWING_PROP\]/);
   });
 
-  // Drift here fails quietly as well, and audibly: the window is put away — the screen timing out
-  // over the lock screen does it — and he goes on listening and answering with nothing on screen.
+  // Drift here fails quietly as well, and audibly: the window is put away by the system and he goes
+  // on listening and answering with nothing on screen.
   it('tells the app its window was put away under the event the app listens for', () => {
     // Read rather than imported: the module's `index.ts` imports `expo`, which bun cannot load.
     const javascript = /export const WINDOW_PUT_AWAY = '([^']+)'/.exec(
@@ -75,68 +75,23 @@ describe('the assistant window handover between Kotlin and TypeScript', () => {
   });
 });
 
-const UNLOCK = 'modules/jarvis-assistant/android/src/main/java/expo/modules/jarvisassistant/JarvisUnlockActivity.kt';
-
-const WATCH_SUMMON =
-  'modules/jarvis-assistant/android/src/main/java/expo/modules/jarvisassistant/JarvisWatchSummonService.kt';
-
 /** The body of one Kotlin function, from its signature to the next declaration at the same depth. */
-function readKotlinFunction(file: string, signature: string): string {
-  const source = readSource(file);
+function readKotlinFunction(signature: string): string {
+  const source = readSource(SESSION);
   const start = source.indexOf(signature);
-  expect(start, `${file} should declare ${signature}`).toBeGreaterThanOrEqual(0);
-  const next = source.slice(start + signature.length).search(/\n {2}(?:override |private |internal )?fun /);
+  expect(start, `the session should declare ${signature}`).toBeGreaterThanOrEqual(0);
+  const next = source.slice(start + signature.length).search(/\n {2}(?:\/\*\*|(?:override |private |internal )?fun )/);
   return next < 0 ? source.slice(start) : source.slice(start, start + signature.length + next);
 }
 
-// Summoned on a locked phone, the window used to draw the app and start a conversation behind the
-// lock screen: the greeting played and nothing else could be seen, and a conversation that went on
-// would have been anybody's who held the phone. Nothing about that fails a build.
-describe('a summoning on a locked phone', () => {
-  it('asks for the phone to be unlocked before anything is shown or started', () => {
-    const onShow = readKotlinFunction(SESSION, 'override fun onShow(');
-    const locked = onShow.indexOf('if (isLocked())');
+// Summoned with the phone locked — from a pocket, hands-free — the lock screen is shown again
+// around the summoning, and Android's default answer to that is to hide the window. Hidden, the app
+// hangs up: the greeting played and then nothing. Nothing about that fails a build.
+describe('the assistant window over the lock screen', () => {
+  it('stays up when the lock screen is shown, rather than taking the default hide', () => {
+    const onLockscreenShown = readKotlinFunction('override fun onLockscreenShown(');
 
-    expect(locked, 'onShow should check for the lock screen').toBeGreaterThanOrEqual(0);
-    const lockedBranch = onShow.slice(locked, onShow.indexOf('return', locked));
-    // The unlock prompt is started before the session is retracted, which would make the start illegal.
-    expect(lockedBranch).toMatch(/askToUnlock\(\)[\s\S]*hide\(\)/);
-    // Nothing that starts a conversation, or keeps a screenshot of the lock screen, comes first.
-    for (const starts of ['announceShowing', 'showFlags and SHOW_WITH_SCREENSHOT', 'nextShowing']) {
-      const at = onShow.indexOf(starts);
-      if (at >= 0) {
-        expect(at, `${starts} should come after the lock screen is dealt with`).toBeGreaterThan(locked);
-      }
-    }
-  });
-
-  it('does not draw the app, which starts a conversation as it mounts, into a window made while locked', () => {
-    const onCreateContentView = readKotlinFunction(SESSION, 'override fun onCreateContentView(');
-
-    expect(onCreateContentView).toMatch(/if \(!isLocked\(\)\) \{\s*drawAppInto\(/);
-    expect(onCreateContentView).not.toMatch(/createSurface/);
-  });
-
-  it('judges any lock screen as locked, the same way on the phone and for the watch', () => {
-    expect(readKotlinFunction(SESSION, 'private fun isLocked(')).toMatch(/\.isKeyguardLocked\b/);
-    expect(readKotlinFunction(WATCH_SUMMON, 'private fun isLocked(')).toMatch(/\.isKeyguardLocked\b/);
-  });
-
-  it('unlocks through an activity shown over the lock screen, and summons him once unlocked', () => {
-    const manifest = readSource('modules/jarvis-assistant/android/src/main/AndroidManifest.xml');
-    const entry = /<activity\s+android:name="expo\.modules\.jarvisassistant\.JarvisUnlockActivity"[^>]*\/>/.exec(
-      manifest,
-    )?.[0];
-
-    expect(entry, 'the manifest should declare JarvisUnlockActivity').toBeDefined();
-    expect(entry).toMatch(/android:showWhenLocked="true"/);
-    expect(entry).toMatch(/android:exported="false"/);
-
-    const unlock = readSource(UNLOCK);
-    expect(unlock).toMatch(/requestDismissKeyguard\(/);
-    expect(readKotlinFunction(UNLOCK, 'override fun onDismissSucceeded(')).toMatch(/summonJarvis\(\)/);
-    expect(readKotlinFunction(UNLOCK, 'private fun summonJarvis(')).toMatch(
-      /JarvisVoiceInteractionService\.summon\(\)/,
-    );
+    expect(onLockscreenShown).not.toMatch(/\bhide\(\)/);
+    expect(onLockscreenShown).not.toMatch(/super\.onLockscreenShown\(\)/);
   });
 });

@@ -1,8 +1,6 @@
 package expo.modules.jarvisassistant
 
-import android.app.KeyguardManager
 import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
@@ -48,9 +46,6 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
   /** The surface drawing the app into this window, once there is one. */
   private var surface: ReactSurface? = null
 
-  /** The window's contents, which the surface is drawn into. See {@link onCreateContentView}. */
-  private var content: FrameLayout? = null
-
   /** Set only if this session was what resumed React Native, so only it un-resumes it. */
   private var resumedHost: ReactHost? = null
 
@@ -83,28 +78,15 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
    *
    * Called by the system before {@link onShow}, which is what lets that method know whether there
    * is anything to show and fall back to the activity if there is not.
-   *
-   * **Not on a locked phone.** The app's tree starts a conversation the moment it is mounted, and
-   * on a locked phone that conversation would be behind the lock screen: see {@link onShow}. The
-   * window is made once, so the app is drawn into it at the first showing after the phone is
-   * unlocked instead.
    */
   override fun onCreateContentView(): View {
     val container = FrameLayout(context)
     container.setBackgroundColor(Color.TRANSPARENT)
-    content = container
-    if (!isLocked()) {
-      drawAppInto(container)
-    }
-    return container
-  }
 
-  /** Starts the surface drawing the app into the window. Null, and logged, when it cannot. */
-  private fun drawAppInto(container: FrameLayout): ReactSurface? {
     val host = reactHost()
     if (host == null) {
       Log.w(TAG, "No ReactHost on the application; falling back to opening the app.")
-      return null
+      return container
     }
 
     try {
@@ -112,7 +94,7 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
       val view = created.view
       if (view == null) {
         Log.w(TAG, "The React surface produced no view; falling back to opening the app.")
-        return null
+        return container
       }
 
       container.addView(
@@ -122,35 +104,16 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
       created.start()
       surface = created
       resumeReactNative(host)
-      return created
     } catch (error: RuntimeException) {
       Log.w(TAG, "Could not draw the app into the assistant window; falling back to opening it.", error)
       release()
-      return null
     }
+
+    return container
   }
 
-  /**
-   * **Summoned on a locked phone, he asks for it to be unlocked first.** Holding the power button
-   * reaches the assistant locked or not, and the window used to start a conversation regardless:
-   * sir heard the greeting and then nothing, because what greeted him was behind the lock screen,
-   * with no sheet to talk to. And Jarvis runs the house, so a conversation on a locked phone is one
-   * anybody holding it could have. So a locked phone gets the keyguard's own unlock prompt
-   * (`JarvisUnlockActivity`), and Jarvis is summoned again once it has been unlocked — nothing is
-   * drawn and nothing starts until then.
-   */
   override fun onShow(args: Bundle?, showFlags: Int) {
     super.onShow(args, showFlags)
-
-    if (isLocked()) {
-      // A summoning with no screenshot: the system may still send one, of the lock screen, and that
-      // must never reach a conversation — the one after the unlock asks for its own.
-      SummoningScreenshot.summoned(context, false)
-      askToUnlock()
-      // Strictly after the start above, for the same reason as the fallback below.
-      hide()
-      return
-    }
 
     // The window coming back after the camera is the same summoning, and keeps its screenshot.
     if (args?.getBoolean(BACK_FROM_THE_CAMERA) != true) {
@@ -163,7 +126,7 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
     nextShowing?.invoke()
     nextShowing = null
 
-    val drawing = surface ?: content?.let { drawAppInto(it) }
+    val drawing = surface
     if (drawing != null) {
       makeWindowSeeThrough()
       announceShowing(drawing)
@@ -191,11 +154,10 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
    * clock when nothing is in front. Tearing down happens in {@link onDestroy}, where the system
    * has actually finished with the session.
    *
-   * **Put away by anything but the camera, the conversation goes with it.** The system hides the
-   * window on its own as well — the screen timing out over the lock screen is the common one, since
-   * the default `onLockscreenShown` is `hide()` — and a conversation that carried on from there was
-   * Jarvis listening and answering out of a phone with nothing on it to hang up with: summoned by
-   * accident from a pocket, sir unlocked to a voice and no sheet. So the app is told
+   * **Put away by anything but the camera, the conversation goes with it.** The system can hide the
+   * window on its own as well — it used to on every return of the lock screen, until
+   * {@link onLockscreenShown} kept it up — and a conversation that carried on from there was Jarvis
+   * listening and answering out of a phone with nothing on it to hang up with. So the app is told
    * (`whenPutAway`) and hangs up, and React Native is only paused once it has had a moment to:
    * paused, its timers stop, and the hang-up should not depend on one of them never firing.
    */
@@ -215,6 +177,20 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
       current = null
     }
     super.onHide()
+  }
+
+  /**
+   * Stays up over the lock screen, so Jarvis can be talked to hands-free with the phone in a pocket.
+   *
+   * The system calls this whenever the lock screen is shown while the window is up, and the default
+   * is `hide()`. Holding the power button reaches the assistant with the phone locked, and the lock
+   * screen is shown again around that — the screen waking for it, or timing out mid-conversation —
+   * so the window went, and {@link onHide} hung the conversation up with it: sir heard "Hello sir,
+   * how can I help?" and then nothing. The window is drawn above the lock screen, so there is
+   * nothing to make way for, and sir unlocks to the sheet with something to hang up with.
+   */
+  override fun onLockscreenShown() {
+    Log.i(TAG, "The lock screen was shown; the assistant window stays up.")
   }
 
   /**
@@ -327,35 +303,8 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
       }
     }
     surface = null
-    content?.removeAllViews()
 
     pauseReactNative()
-  }
-
-  /** Whether the lock screen is up, whether or not it asks for a PIN to go away. */
-  private fun isLocked(): Boolean {
-    val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager ?: return false
-    return keyguard.isKeyguardLocked
-  }
-
-  /**
-   * Brings up the lock screen's unlock prompt, over the lock screen, through `JarvisUnlockActivity`,
-   * which summons Jarvis again once the phone is unlocked. Started in the assistant's own task, as
-   * {@link showConversationInTheApp} starts the app, with a plain start kept behind it.
-   */
-  private fun askToUnlock() {
-    val intent = Intent(context, JarvisUnlockActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    try {
-      startAssistantActivity(intent)
-      return
-    } catch (error: RuntimeException) {
-      Log.w(TAG, "Could not ask for the phone to be unlocked in the assistant task; falling back.", error)
-    }
-    try {
-      context.startActivity(intent)
-    } catch (error: RuntimeException) {
-      Log.e(TAG, "Could not ask for the phone to be unlocked for Jarvis.", error)
-    }
   }
 
   /** The process's React Native, or null in a build that has none linked in. */
