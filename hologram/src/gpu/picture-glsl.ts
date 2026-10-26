@@ -1,34 +1,35 @@
-import { CHIP_GONE_SECONDS, CHIP_HOLD_SECONDS } from '../hologram-drawing';
+import { CHIP_GONE_SECONDS, CHIP_HOLD_SECONDS, PICTURE_SHELL_EDGE } from '../hologram-drawing';
 import { glslFloat } from './glsl';
 import { SPARKLE_REPEAT } from './sparkle';
 
 /**
  * The shapes everything of him but his body is drawn from, as GLSL: what was Skia's picture.
  *
- * Every layer of it is a few strokes and fills — circular arcs, straight runs, discs, a gradient
- * ellipse and the chips' slabs — so every layer is drawn from these five shapes, each a quad round
- * the shape with its exact coverage worked out per pixel: a stroke's coverage is a box filter
- * across it a pixel wide, which is what keeps a stroke thinner than a pixel as bright as its area,
- * as Skia's antialiasing does, rather than breaking it into dots. A layer's own vertex shader works
- * out where its shapes are this frame — that is the layer — and hands one of them to `emitSegment`,
- * `emitArcPiece`, `emitDisc` or `emitBox`; the fragment shader here colours it.
+ * Every layer of it is a few strokes and fills — circular arcs, straight runs, discs and the chips'
+ * slabs — so every layer is drawn from these four shapes, each a quad round the shape with its exact
+ * coverage worked out per pixel: a stroke's coverage is a box filter across it a pixel wide, which
+ * is what keeps a stroke thinner than a pixel as bright as its area, as Skia's antialiasing does,
+ * rather than breaking it into dots. A layer's own vertex shader works out where its shapes are this
+ * frame — that is the layer — and hands one of them to `emitSegment`, `emitArcPiece`, `emitDisc` or
+ * `emitBox`; the fragment shader here colours it.
+ *
+ * A shape can be lit less than its paint, corner by corner (`shapeLight`, 1 unless its layer says
+ * otherwise): how the cage's edges twinkle and fade towards his back, and how the embers come and
+ * go, while each layer is still one paint and one path.
  *
  * Everything is in a draw's local frame: the drawing's unit (his resting radius is 1, y down) as
  * Skia's canvas was transformed for that draw, taken to the square the picture fills by `toSquare`.
  * `localPerPixel` is how long a device pixel is in it, which every shape's antialiasing is measured
- * in, so a draw's transform must scale it uniformly; the core's bloom, the one ellipse, is a disc
- * whose coverage is measured with derivatives instead.
+ * in, so a draw's transform must scale it uniformly; a disc's coverage is measured with derivatives
+ * instead, so a disc tolerates any.
  */
-
-/** The shapes, as `shapeKind` carries them to the fragment shader. */
-export const PICTURE_SHAPES = { segment: 1, arc: 2, disc: 3, box: 4, chip: 5 } as const;
 
 /**
- * The paints, as `paintKind` carries them: Skia's paint colour, the sparkle modulating it (the
- * whorl's strokes), a radial gradient modulated by a sweep (the limb's bloom and ridge), a sweep
- * (the thin ring) or a radial gradient alone (the core's bloom).
+ * The paints, as `paintKind` carries them: a plain colour, the sparkle modulating it (the cage's
+ * hairlines, which glitter as they turn through it), or a radial gradient (the core's glow and the
+ * aura), measured from the draw's local origin.
  */
-export const PICTURE_PAINTS = { solid: 0, sparkle: 1, radialSweep: 2, sweep: 3, radial: 4 } as const;
+export const PICTURE_PAINTS = { solid: 0, sparkle: 1, radial: 2 } as const;
 
 /** The constants and helpers both stages share, as the drawing wrote them. */
 const PICTURE_HELPERS = /* glsl */ `
@@ -65,9 +66,8 @@ float hashInteger(float value) {
 `;
 
 /**
- * A burst's chip this frame (\`appendBurstChip\`, \`appendChip\`), as both stages need it: the
- * chips' layer places its quads by it, and the fragment shader fills the union of every slab of a
- * part with it, as Skia filled the path they were all in. False where the slab is not drawn.
+ * A burst's chip this frame (\`appendBurstChip\`, \`appendChip\`), which the chips' layer places
+ * its quads by: thrown from just off the shell's edge. False where the slab is not drawn.
  */
 const CHIP_GLSL = /* glsl */ `
 // The latest burst: its age, number, reach and strength.
@@ -95,13 +95,14 @@ bool chipSlab(float chip, float piece, float middlePart, out vec2 middle, out ve
   float clock = launch - (upper ? 14.0 : 8.0 + 14.0 * hashInteger(seed + 5.0)) * flight;
   float speed = leads ? 1.6 + 0.7 * hashInteger(seed + 3.0) : 0.9 + 1.2 * hashInteger(seed + 3.0);
   float chipSize = size * (leads ? 1.05 : 0.5 + 0.35 * hashInteger(seed + 9.0));
-  float radius = 1.04 + speed * age;
+  float radius = ${glslFloat(PICTURE_SHELL_EDGE + 0.06)} + speed * age;
   float angle = clockRadians(clock);
   vec2 direction = vec2(cos(angle), sin(angle));
-  float halfTangential = chipSize * (0.11 + 0.055 * hashInteger(seed + 7.0)) * (1.0 - 0.35 * breakUp);
-  float halfRadial = chipSize * (0.04 + 0.03 * hashInteger(seed + 11.0)) * pow(1.0 - breakUp, 1.5);
+  // Shards rather than the slabs they were: long and thin, as the film's light is.
+  float halfTangential = chipSize * (0.09 + 0.05 * hashInteger(seed + 7.0)) * (1.0 - 0.35 * breakUp);
+  float halfRadial = chipSize * (0.02 + 0.016 * hashInteger(seed + 11.0)) * pow(1.0 - breakUp, 1.5);
   float pieces = breakUp > 0.0 ? 2.0 : 1.0;
-  if (halfRadial < 0.004 || piece >= pieces) return false;
+  if (halfRadial < 0.003 || piece >= pieces) return false;
   float gap = breakUp * halfTangential * 0.6;
   float pieceHalf = pieces == 1.0 ? halfTangential : (halfTangential - gap) * 0.5;
   float shift = pieces == 1.0 ? 0.0 : (piece == 0.0 ? -1.0 : 1.0) * (gap + pieceHalf);
@@ -130,6 +131,8 @@ flat out vec4 shapeA;
 flat out vec4 shapeB;
 flat out vec4 shapeC;
 flat out float shapeKind;
+// How lit the shape is at this corner, 0 to 1, as a share of its paint: 1 unless its layer says.
+out float shapeLight;
 
 ${PICTURE_HELPERS}
 ${CHIP_GLSL}
@@ -146,6 +149,7 @@ void hide() {
   shapeB = vec4(0.0);
   shapeC = vec4(0.0);
   shapeKind = 0.0;
+  shapeLight = 0.0;
   gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
 }
 
@@ -176,6 +180,7 @@ void emitRun(vec2 from, vec2 to, float halfWidth, float joins, float roundStart,
   shapeA = vec4(from, to);
   shapeB = vec4(halfWidth, roundStart, roundEnd, joins);
   shapeC = vec4(0.0);
+  shapeLight = 1.0;
   place(end + across * corner.y * reach);
 }
 
@@ -228,6 +233,7 @@ void emitArcPiece(
   shapeA = vec4(centre, radius, halfWidth);
   shapeB = vec4(start, sweep, roundStart, roundEnd + 2.0 * whole);
   shapeC = vec4(piece * pieceSweep, (piece + 1.0) * pieceSweep, piece, pieces);
+  shapeLight = 1.0;
   place(centre + vec2(cos(angle), sin(angle)) * (corner.y < 0.0 ? inner : outer));
 }
 
@@ -238,6 +244,7 @@ void emitDisc(vec2 centre, float radius) {
   shapeA = vec4(centre, radius, 0.0);
   shapeB = vec4(0.0);
   shapeC = vec4(0.0);
+  shapeLight = 1.0;
   place(centre + corner * reach);
 }
 
@@ -250,6 +257,7 @@ void emitBox(vec2 centre, vec2 axis, vec2 halfSize, float strokeHalf) {
   shapeA = vec4(centre, axis);
   shapeB = vec4(halfSize, strokeHalf, 0.0);
   shapeC = vec4(0.0);
+  shapeLight = 1.0;
   place(centre + axis * corner.x * (halfSize.x + margin) + normal * corner.y * (halfSize.y + margin));
 }
 `;
@@ -269,7 +277,7 @@ export function pathDepthOf(path: number): number {
 
 /** Texels across a gradient's row, and how many rows the gradients' texture has. */
 export const GRADIENT_TEXELS = 1024;
-export const GRADIENT_ROWS = 8;
+export const GRADIENT_ROWS = 2;
 
 /**
  * The one fragment shader every layer shares: the shape's coverage, the paint, Screen-blended by
@@ -286,8 +294,8 @@ uniform vec4 paintColour;
 uniform int paintKind;
 uniform sampler2D sparkle;
 uniform sampler2D gradients;
-// The radial gradient's row and radius, and the sweep's row.
-uniform vec3 gradient;
+// The radial gradient's row, and the radius it reaches its end at.
+uniform vec2 gradient;
 // Where the path's band of depths starts.
 uniform float pathDepth;
 
@@ -296,12 +304,11 @@ flat in vec4 shapeA;
 flat in vec4 shapeB;
 flat in vec4 shapeC;
 flat in float shapeKind;
+in float shapeLight;
 
 out vec4 colour;
 
 ${PICTURE_HELPERS}
-${CHIP_GLSL}
-uniform float strokeHalf;
 const float PATH_DEPTH_SPAN = ${glslFloat(PATH_DEPTH_SPAN)};
 
 // How much of a pixel a band \`halfPixels\` either side of a line covers, \`distancePixels\` from it:
@@ -400,53 +407,29 @@ float boxCoverage(vec2 point) {
   return boxCoverageOf(point, shapeA.xy, shapeA.zw, shapeB.xy, shapeB.z);
 }
 
-// The union of every slab of one part of a burst, as Skia filled their one path: the most any of them
-// covers a pixel, drawn by the first of them that covers it at all.
-float chipsCoverage(vec2 point) {
-  float own = shapeC.x * 2.0 + shapeC.y;
-  float most = 0.0;
-  for (int index = 0; index < 10; index++) {
-    vec2 middle;
-    vec2 axis;
-    vec2 halfSize;
-    if (!chipSlab(floor(float(index) / 2.0), mod(float(index), 2.0), shapeC.z, middle, axis, halfSize)) continue;
-    float covered = boxCoverageOf(point, middle, axis, halfSize, strokeHalf);
-    if (covered > 0.0 && float(index) < own) return 0.0;
-    most = max(most, covered);
-  }
-  return most;
-}
-
 vec4 gradientAt(float row, float position) {
   float texel = clamp(position, 0.0, 1.0) * ${glslFloat(GRADIENT_TEXELS - 1)} + 0.5;
   return texture(gradients, vec2(texel / ${glslFloat(GRADIENT_TEXELS)}, (row + 0.5) / ${glslFloat(GRADIENT_ROWS)}));
 }
 
-// A sweep gradient's position: from 3 o'clock, clockwise with y down.
-float sweepAt(vec2 point) {
-  float angle = atan(point.y, point.x);
-  return (angle < 0.0 ? angle + TAU : angle) / TAU;
-}
-
 void main() {
-  float covered = shapeKind < 1.5
+  float shapeCovered = shapeKind < 1.5
     ? segmentCoverage(local)
     : shapeKind < 2.5
       ? arcCoverage(local)
       : shapeKind < 3.5
         ? discCoverage(local)
         : boxCoverage(local);
+  // How lit a shape is counts as how much it covers, so where a path's shapes overlap the one
+  // that lights a pixel most is the one painted there.
+  float covered = shapeCovered * clamp(shapeLight, 0.0, 1.0);
   if (covered < 0.001) discard;
   // Within its path's own band of depths, nearer the more it covers: see \`drawShapes\`.
   gl_FragDepth = pathDepth - covered * PATH_DEPTH_SPAN;
   vec4 paint = paintColour;
-  if (paintKind == 1) {
+  if (paintKind == ${PICTURE_PAINTS.sparkle}) {
     paint.rgb *= texture(sparkle, local / ${glslFloat(SPARKLE_REPEAT)}).r;
-  } else if (paintKind == 2) {
-    paint *= gradientAt(gradient.x, length(local) / gradient.y) * gradientAt(gradient.z, sweepAt(local));
-  } else if (paintKind == 3) {
-    paint *= gradientAt(gradient.z, sweepAt(local));
-  } else if (paintKind == 4) {
+  } else if (paintKind == ${PICTURE_PAINTS.radial}) {
     paint *= gradientAt(gradient.x, length(local) / gradient.y);
   }
   colour = paint * covered;

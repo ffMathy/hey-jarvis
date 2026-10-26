@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import { createHologramScene, staticPathsOf } from '../hologram-drawing';
+import { staticPathsOf } from '../hologram-drawing';
 import { flattenPath, STATIC_PATH_NAMES, staticSegmentsLayer } from './picture-layers';
 
 describe('the paths that never change, flattened into runs', () => {
-  const paths = staticPathsOf(createHologramScene(1337).textureSeed);
+  // No longer seeded: since the whorl went, the only paths that never change are the core's marks.
+  const paths = staticPathsOf();
 
   it('flattens every one of them into runs whose joins pair up, each shared by the runs either side', () => {
     for (const name of STATIC_PATH_NAMES) {

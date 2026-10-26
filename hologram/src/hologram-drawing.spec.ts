@@ -5,7 +5,10 @@ import {
   arrivalOf,
   BODY_TURN_SECONDS,
   bodyTurnRadians,
+  CAGE_EDGE_STRIDE,
   createHologramScene,
+  EMBER_RISE,
+  EMBER_STRIDE,
   type HologramFrame,
   PARTICLE_COUNT,
   ROLL_DEGREES_PER_SECOND,
@@ -44,15 +47,16 @@ describe('the hologram', () => {
     }
   });
 
-  it('turns its inner shells against the rim, at the rate the film measured', () => {
+  it("turns its inner shells against the core ring's roll, at the rate the film measured", () => {
     // This used to be checked in the pixels, as "the band round the core must not follow the
     // rim". That band is full of the fragment body, and the body now turns about the vertical
     // axis on purpose, so a rotation estimator pointed at it is reading the body rather than the
     // shells and answers differently as the texture changes — it moved from 2.0 to 2.5 when the
     // halo became a ramp, which says nothing about whether anything follows the rim.
     //
-    // What the design actually promises is here instead: the shells turn the other way from the
-    // rim, at the -2 to -6°/s the film measured (section 3), and the rim rolls the other way.
+    // What the design actually promises is here instead: the shells turn back at the -2 to -6°/s
+    // the film measured (section 3), and the core ring's bright stretches roll the other way, at
+    // the rate the rim it replaced rolled at.
     expect(SHELL_DEGREES_PER_SECOND).toBeLessThan(0);
     expect(SHELL_DEGREES_PER_SECOND).toBeGreaterThanOrEqual(-6);
     expect(ROLL_DEGREES_PER_SECOND).toBeGreaterThan(0);
@@ -113,6 +117,67 @@ describe('how much of him shows', () => {
     expect(arrivalOf(0.1, 1)).toBe(0.5);
     expect(arrivalOf(0.2, 1)).toBe(1);
     expect(arrivalOf(1, 0.3)).toBe(0.3);
+  });
+});
+
+describe('the picture round him', () => {
+  const scene = createHologramScene(SEED);
+  const quiet: HologramFrame = {
+    time: 6,
+    level: 0,
+    bands: new Array(VOICE_BAND_COUNT).fill(0),
+    speaking: false,
+    agitation: 0,
+    burstAge: 10,
+    burstStrength: 0,
+    burstCount: 0,
+    appearance: 1,
+    presence: 1,
+    thinking: 0,
+  };
+  const stateOf = (changes: Partial<HologramFrame>) => analyseFrame({ ...quiet, ...changes }, SIZE, scene);
+
+  it('keeps the cage and the embers well inside his square, which ends about 1.8R out', () => {
+    // They are always there, and he swells by up to a fifth while he talks, so neither may come near
+    // the square's edge: the cage's tail reaches 1.4R at most, and an ember has gone by 1.45R.
+    let farthestNode = 0;
+    for (let offset = 0; offset < scene.cage.length; offset += CAGE_EDGE_STRIDE) {
+      for (const end of [offset, offset + 3]) {
+        farthestNode = Math.max(farthestNode, Math.hypot(scene.cage[end], scene.cage[end + 1], scene.cage[end + 2]));
+      }
+    }
+    let farthestEmber = 0;
+    for (let offset = 0; offset < scene.embers.length; offset += EMBER_STRIDE) {
+      farthestEmber = Math.max(farthestEmber, scene.embers[offset + 1] + (1 + EMBER_RISE) * scene.embers[offset + 2]);
+    }
+
+    expect(scene.cage.length).toBeGreaterThan(100 * CAGE_EDGE_STRIDE);
+    expect(farthestNode).toBeLessThanOrEqual(1.4 + 1e-4);
+    expect(farthestEmber).toBeLessThanOrEqual(1.45 + 1e-4);
+  });
+
+  it('arrives out of the core: the core first, the aura as the particles leave it, the cage last', () => {
+    const early = stateOf({ appearance: 0.12 });
+    const halfway = stateOf({ appearance: 0.5 });
+    const formed = stateOf({});
+
+    expect(early.coreAlpha).toBeGreaterThan(0);
+    expect(early.auraAlpha).toBe(0);
+    expect(halfway.auraAlpha).toBeGreaterThan(0);
+    expect(halfway.cageAlpha).toBe(0);
+    expect([formed.coreAlpha, formed.auraAlpha, formed.cageAlpha]).toEqual([1, 1, 1]);
+  });
+
+  it('dims all but the white-hot ring while he thinks, and shows more embers while he talks', () => {
+    const calm = stateOf({});
+    const thinking = stateOf({ thinking: 1 });
+    const talking = stateOf({ agitation: 1, level: 0.7, speaking: true });
+
+    expect(thinking.coreAlpha).toBe(calm.coreAlpha);
+    expect(thinking.coreGlow).toBeLessThan(calm.coreGlow);
+    expect(thinking.auraAlpha).toBeLessThan(calm.auraAlpha);
+    expect(thinking.cageAlpha).toBeLessThan(calm.cageAlpha);
+    expect(talking.emberShare).toBeGreaterThan(calm.emberShare);
   });
 });
 
