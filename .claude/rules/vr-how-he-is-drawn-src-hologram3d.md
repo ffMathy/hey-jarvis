@@ -153,3 +153,7 @@ its cage turns with his body, it answers speech with activity, spirals in withou
 a flash, leaves nothing behind, stays in its square, and draws each satellite
 where its orbit says — is `tests/e2e/hologram-picture-behaviour.spec.ts`,
 measured on the picture as a view shows it: faded as one layer by `arrivalOf`.
+It also holds the light down the 45° diagonals through his middle to the light
+beside them, over ten idle moments: an arc's pieces once left the pixels there,
+where two of them meet on a circle centred on a pixel corner, unpainted, and the
+aura showed straight dark lines down them.
