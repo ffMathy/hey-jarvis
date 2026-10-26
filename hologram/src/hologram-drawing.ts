@@ -510,16 +510,18 @@ function createRandom(seed: number): Random {
  * is brighter at its edge by projection alone, though only about twice as bright as its middle;
  * {@link SHELL_FACE_DIMMING} does the rest.
  *
- * A speck's distance from his centre is `SPECK_SHELL_OUTER − SPECK_SHELL_DEPTH · u^5` for a
- * uniform `u`, which puts nearly three in four of them in the outer fifth of the shell, where the
- * film's donut is brightest. The outer edge stays inside 0.871R, where the limb fade (full inside
- * it, nothing past 0.94R) begins, so the fade never eats the bright edge.
+ * A speck's distance from his centre is `SPECK_SHELL_OUTER − SPECK_SHELL_DEPTH · u^3.5` for a
+ * uniform `u`, which puts nearly two in three of them in the outer fifth of the shell, where the
+ * film's donut is brightest and its edge a crisp ring of beads, and leaves enough deeper in that the
+ * band reaches in towards the core as the film's does rather than being a thin hoop. The outer edge
+ * stays inside 0.871R, where the limb fade (full inside it, nothing past 0.94R) begins, so the fade
+ * never eats the bright edge.
  */
 const SPECK_SHELL_OUTER = 0.87;
 /** How deep the speck shell is, in R: from 0.49R to its outer edge. */
 const SPECK_SHELL_DEPTH = 0.38;
 /** How sharply the specks gather toward the outside of the shell: the power the uniform draw is raised to. */
-const SPECK_SHELL_GATHER = 5;
+const SPECK_SHELL_GATHER = 3.5;
 /**
  * What the scene's seed is mixed with to seed the body's own generator. The body draws from a
  * generator of its own so that its count and its rejection test, which decide how many randoms it
@@ -546,39 +548,44 @@ function massWeight(y: number) {
  * Where the specks crowd: the film's shell is beaded, with brighter clumps and thinner stretches
  * between them rather than an even pepper. Waves in three dimensions, so a clump is a place on the
  * turning shell and not a column through him that would smear into a streak as he turns. Milder
- * than the old body's: a trough keeps a sixth of its specks rather than none.
+ * than the old body's: a trough keeps over a quarter of its specks rather than none, so the beaded
+ * band has thinner stretches but no holes through it.
  */
 function clusterWeight(x: number, y: number, depth: number) {
   const waves =
     Math.sin(5.3 * x + 2.1 * depth + 1.7) * Math.sin(4.1 * y + 1.9 * x - 0.6) +
     0.6 * Math.sin(9.7 * y + 2.3 * x - 3.1 * depth + 0.4) +
     0.45 * Math.sin(13.1 * x - 7.3 * y + 8.9 * depth + 2.9);
-  return Math.min(1, Math.max(0.16, 0.56 + 0.42 * waves));
+  return Math.min(1, Math.max(0.28, 0.56 + 0.42 * waves));
 }
 
+/** The share of specks that lie along the ring through where they are seen, give or take 17°. */
+const ALONG_THE_RING_SHARE = 0.7;
+
 /**
- * A speck's direction in the plane of the view. A third of those near the rim of the donut as he
- * rests lie along it, which beads its edge into a ring; of the rest a quarter lie near level and
- * the others any way at all.
+ * Which way a speck lies, relative to the ring through where it is seen ({@link ringDirection}):
+ * 0 is along it. The film's specks run round the shell like beads on a necklace, so most lie
+ * within 17° of the ring, and the rest any way at all, so that the shell does not read as combed.
  */
-function pickFragmentAngle(random: Random, x: number, y: number) {
-  if (Math.hypot(x, y) > 0.7 && random() < 0.35) return Math.atan2(y, x) + Math.PI / 2 + (random() - 0.5) * 0.4;
-  if (random() < 0.25) return (random() - 0.5) * 0.42;
+function pickFragmentAngle(random: Random) {
+  if (random() < ALONG_THE_RING_SHARE) return (random() + random() - 1) * 0.3;
   return random() * Math.PI;
 }
 
 /**
- * A speck's length: median 0.05R, 90th percentile 0.09R, and a few long streaks up to 0.22R.
+ * A speck's length: median 0.05R, 90th percentile 0.075R, and one in fifty a streak up to 0.17R.
  *
  * Shorter than the strokes this body was made of — those had a median of 0.083R — because the
- * film's shell is fine glitter, not long amber strokes. Not as short as the film's own, though:
- * the user asked that a spark read as a line rather than as a bead, and a stroke is 0.009-0.011R
- * wide, so at this median a speck is still five times as long as it is wide. Its clock
- * draws it out from nothing and back, so most of what is lit at a moment is shorter still.
+ * film's shell is fine glitter, not long amber strokes, and held close to the median, since a
+ * band of beads strung round him reads as hatching once a tenth of them are twice as long as the
+ * rest. Not as short as the film's own, though: the user asked that a spark read as a line rather
+ * than as a bead, and a stroke is 0.009-0.011R wide, so at this median a speck is still five times
+ * as long as it is wide. Its clock draws it out from nothing and back, so most of what is lit at a
+ * moment is shorter still.
  */
 function pickFragmentLength(random: Random) {
-  if (random() < 0.03) return 0.1 + random() * 0.12;
-  return 0.022 + 0.08 * random() ** 1.5;
+  if (random() < 0.02) return 0.09 + random() * 0.08;
+  return 0.032 + 0.05 * random() ** 1.5;
 }
 
 /**
@@ -601,13 +608,14 @@ function pickGlyph(random: Random) {
 
 /**
  * Brightness class: 0 dim, 1 mid, 2 bright (the bright ones are the white-hot highlights speech
- * thins out). `brightShare` of them are bright and about half mid; every speck on the far side of
- * him is drawn dim whatever its class.
+ * thins out). `brightShare` of them are bright and two in five mid; every speck at the back of the
+ * shell is drawn dim whatever its class ({@link BACK_OF_THE_SHELL}). Dim specks are faint, so the
+ * more of them there are the more see-through the band is between the bright ones.
  */
 function pickBrightness(random: Random, brightShare: number) {
   const roll = random();
   if (roll < brightShare) return 2;
-  return roll < brightShare + 0.48 ? 1 : 0;
+  return roll < brightShare + 0.38 ? 1 : 0;
 }
 
 /**
@@ -652,7 +660,8 @@ function pickGlyphAndLength(random: Random, radius: number, out: number[]) {
 
 /**
  * The fragment body: the film's shell of fine glittering specks. Stride {@link BODY_STRIDE}: x, y,
- * unit direction x, y, length, rate (cycles per second), id (0..1), a code packing the glyph and
+ * unit direction along the ring and out from his middle where it is seen (see
+ * {@link ringDirection}), length, rate (cycles per second), id (0..1), a code packing the glyph and
  * the fragment's class (see {@link FRAGMENT_CODE_GLYPH_STEP}), the order it arrives in while the
  * ball forms (see {@link revealOrder}), and depth. (x, y, depth) is where the speck sits on the
  * shell at rest — a direction uniform over the sphere at a distance from {@link pickShellRadius} —
@@ -687,13 +696,13 @@ function buildBody(random: Random, fragmentCount: number) {
     const depth = Math.sin(longitude) * across;
     const crowding = clusterWeight(x, y, depth);
     // The crowded clumps carry the bright specks, and the dim and mid ones thin out between them.
-    // Deeper in the shell they are dimmer, from a twentieth bright at its inside to a fifth at its
-    // edge, so the light gathers at the edge of the donut, as the film's does.
+    // Deeper in the shell they are dimmer, from a twentieth bright at its inside to three in ten at
+    // its edge, so the light gathers at the edge of the donut, as the film's does.
     const outerness = (radius - (SPECK_SHELL_OUTER - SPECK_SHELL_DEPTH)) / SPECK_SHELL_DEPTH;
-    const brightness = crowding > 0.72 && random() < 0.4 ? 2 : pickBrightness(random, 0.04 + 0.16 * outerness);
+    const brightness = crowding > 0.72 && random() < 0.4 ? 2 : pickBrightness(random, 0.05 + 0.25 * outerness);
     const crowded = brightness === 2 ? crowding : crowding * Math.sqrt(crowding);
     if (random() > massWeight(y) * crowded) continue;
-    const direction = pickFragmentAngle(random, x, y);
+    const direction = pickFragmentAngle(random);
     pickGlyphAndLength(random, radius, shape);
     const pool = random() < 1 / 3 ? 1 : 0;
     const rate = pickFragmentRate(random, pool);
@@ -1389,10 +1398,10 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
     // wrapped to one turn: the canvas takes float32 angles, which would lose the per-frame
     // step of a sphere left mounted for hours
     /**
-     * Somewhere for placeFragment to put its four numbers: made once a frame, not once a fragment.
+     * Somewhere for placeFragment to put its seven numbers: made once a frame, not once a fragment.
      * Only what composes the body from the helpers uses it; the phone's loop keeps its numbers in locals.
      */
-    scratch: [0, 0, 0, 0],
+    scratch: [0, 0, 0, 0, 0, 0, 0],
     /** The same for whether a fragment is lit at all, and what it is; see {@link readFragment}. */
     reading: [0, 0, 0, 0, 0],
     /** And for whether the thinking plane is in the middle of one; see {@link scanned}. */
@@ -1489,11 +1498,23 @@ export function fragmentTier(brightness: number, strength: number, id: number, h
  * for a speck at its place on the shell is its depth over its distance from his centre — leaving
  * the middle of him to the core and the dark between them, from any side and as he turns. Where it
  * is seen, rather than where it sits, so a speck his voice carries in from the ring dims as it
- * comes and the donut holds while he talks. Dimmed means shorter and in a lower tier, since a
- * speck's strength is its length and picks its tier: the specks across the middle are short, dim
- * glints.
+ * comes and the donut holds while he talks.
+ *
+ * Dimmed means fainter and in a lower tier, not shorter: a speck keeps its length, so the specks
+ * across the middle are faint lines rather than dots — the user asked that a spark read as a line
+ * and not a bead — and the band inside the donut is see-through between them.
  */
-export const SHELL_FACE_DIMMING = 0.7;
+export const SHELL_FACE_DIMMING = 0.85;
+
+/**
+ * How far behind the plane through his middle, in R, the back of his shell begins. Every speck
+ * further back than this is drawn in the dim tier, whatever its class, so the back of the shell is
+ * depth rather than clutter. Not from the plane itself: a glowing shell is brightest at its
+ * silhouette, from both sides of it, and cut there the ring of beads round his edge would be half
+ * dim, the specks just behind the limb dark beside the ones just in front of it. Specks this close
+ * behind the plane are only ever seen at the edge of the donut.
+ */
+export const BACK_OF_THE_SHELL = 0.2;
 
 /**
  * What {@link SHELL_FACE_DIMMING} leaves of a speck's light, seen at (`seenX`, `seenY`) in the
@@ -1508,13 +1529,43 @@ export function shellFacing(seenX: number, seenY: number, radiusSquared: number)
 }
 
 /**
- * Where a fragment lands on screen this frame, and how much of it survives the limb and the shell
- * it is seen through ({@link shellFacing}).
+ * Which way a speck lies in the plane of the view, seen at (`seenX`, `seenY`): its row's direction
+ * (`unitX`, `unitY`) is kept relative to the ring through where it is seen — `unitX` along that
+ * ring, clockwise, and `unitY` out from his middle — and this turns it into the view's x and y,
+ * written into `out[at]` and `out[at + 1]`.
  *
- * Writes `x`, `y`, `depth` and `edge` into `out` rather than returning them, because whatever
- * composes the body from it places a couple of thousand fragments a frame, and an object apiece
- * would be a frame's worth of rubbish to collect. It is the definition the GPU's body is held to,
- * and what its CPU reference (`gpu/fragment-3d.ts`) composes the body from.
+ * The film's specks run along the ring like beads on a necklace. A direction held in the plane of
+ * the view would lie along the ring only where the speck rested, and the body turns like a globe,
+ * so a quarter turn later the beads at the edge of the donut would be the ones that had been
+ * crossing his face, lying any way at all. Kept relative to where it is seen, a speck lies along
+ * the ring wherever the turn carries it. At his very middle there is no ring, and the row's
+ * direction is taken as it is.
+ */
+export function ringDirection(seenX: number, seenY: number, unitX: number, unitY: number, out: number[], at: number) {
+  'worklet';
+  const seen = Math.sqrt(seenX * seenX + seenY * seenY);
+  if (seen <= 0) {
+    out[at] = unitX;
+    out[at + 1] = unitY;
+    return;
+  }
+  const outwardX = seenX / seen;
+  const outwardY = seenY / seen;
+  // Along the ring is the outward direction turned a quarter clockwise on screen (y down).
+  out[at] = -outwardY * unitX + outwardX * unitY;
+  out[at + 1] = outwardX * unitX + outwardY * unitY;
+}
+
+/**
+ * Where a fragment lands on screen this frame, how much of it survives the limb, and how much of
+ * its light the shell it is seen through leaves it ({@link shellFacing}).
+ *
+ * Writes `x`, `y`, `depth`, `edge` (the limb's share of its length) and `light` (the shell's share
+ * of its paint) into `out`, and the way the speck lies ({@link ringDirection}) after them, rather
+ * than returning them, because whatever composes the body from it places a couple of thousand
+ * fragments a frame, and an object apiece would be a frame's worth of rubbish to collect. It is the
+ * definition the GPU's body is held to, and what its CPU reference (`gpu/fragment-3d.ts`) composes
+ * the body from.
  */
 export function placeFragment(
   body: number[],
@@ -1525,23 +1576,24 @@ export function placeFragment(
   out: number[],
 ) {
   'worklet';
-  const unitX = body[offset + 2];
-  const unitY = body[offset + 3];
   // Turned about the vertical axis before anything else: the fragment wanders around where it
-  // sits on the turning ball, not around a fixed place on the screen.
+  // sits on the turning ball, not around a fixed place on the screen, and lies along the ring
+  // through where it is seen there.
   const rest = body[offset];
   const restY = body[offset + 1];
   const depthAtRest = body[offset + 9];
   const turnedX = rest * state.bodyCos + depthAtRest * state.bodySin;
+  ringDirection(turnedX, restY, body[offset + 2], body[offset + 3], out, 5);
+  const unitX = out[5];
+  const unitY = out[6];
   const y = restY + unitY * along + unitX * across;
   const x = turnedX + unitX * along - unitY * across;
   out[0] = x;
   out[1] = y;
   out[2] = depthAtRest * state.bodyCos - rest * state.bodySin;
-  // Nothing pops at the limb as it turns out of sight.
-  out[3] =
-    clamp01((0.94 * 0.94 - turnedX * turnedX - y * y) * 8) *
-    shellFacing(x, y, rest * rest + restY * restY + depthAtRest * depthAtRest);
+  // Nothing pops at the limb as it turns out of sight, or as it wanders out past it.
+  out[3] = clamp01((0.94 * 0.94 - x * x - y * y) * 8);
+  out[4] = shellFacing(x, y, rest * rest + restY * restY + depthAtRest * depthAtRest);
 }
 
 /**

@@ -35,8 +35,8 @@ export interface HologramRows {
    */
   rest: Float32Array;
   /**
-   * Body: its direction on screen (x, y), its length, its clock's rate. Stream: its half-length
-   * along its latitude (x, z), unused, its rate.
+   * Body: its direction along the ring and out from his middle where it is seen (`ringDirection`),
+   * its length, its clock's rate. Stream: its half-length along its latitude (x, z), unused, its rate.
    */
   shape: Float32Array;
   /**

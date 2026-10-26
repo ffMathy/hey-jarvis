@@ -27,16 +27,18 @@ export const HALO_TEXELS = 512;
 /**
  * How wide each tier's halo is — twice the distance from its stroke at which its glow is gone — in
  * the drawing's unit, and how strong it is on the stroke, before the voice's glow. Warm gold, the
- * film's falloff round its hot centres. The brighter the tier the wider and stronger its glow, so
- * the bright specks bloom and the dim ones, every speck on the far side of him among them, only
- * warm the dark between them. The widest reaches 0.12R past its stroke, so from the shell's edge
- * at 0.87R no halo gets near the edge of the target at ±1.85R.
+ * film's falloff round its hot centres. The bright specks bloom, each a point of glow of its own;
+ * the mid and dim ones, every speck at the back of the shell among them, only lay a faint warm haze
+ * through the band, so the specks read one by one with the dark between them rather than as one
+ * mass of light. Every halo is as strong as its speck's `light`, so the specks across his middle
+ * hardly glow at all. The widest reaches 0.08R past its stroke, so from the shell's edge at 0.87R
+ * no halo gets near the edge of the target at ±1.85R.
  */
 export const HALO_PAINTS = {
   colour: 0xe08a2c,
-  dim: { width: 0.1, strength: 0.1 },
-  mid: { width: 0.16, strength: 0.32 },
-  bright: { width: 0.24, strength: 0.65 },
+  dim: { width: 0.08, strength: 0.1 },
+  mid: { width: 0.1, strength: 0.14 },
+  bright: { width: 0.16, strength: 0.65 },
 };
 
 /**
@@ -62,6 +64,7 @@ ${GLYPH_GLSL}
 out vec2 local;
 flat out vec4 glyphShape;
 flat out float haloRadius;
+flat out float shellLight;
 
 void main() {
   Fragment fragment = readFragment();
@@ -82,6 +85,7 @@ void main() {
   haloRadius = 0.5 * width * perspective;
   local = corner * (glyphReach(fragment.glyph, halfLength, normalLength) + haloRadius + 1.5 * texelUnits);
   glyphShape = vec4(fragment.glyph, halfLength, normalLength, fragment.tier);
+  shellLight = fragment.light;
 
   // Into the target: the pinned half on the left, the turning half on the right, y up as a
   // texture's rows go.
@@ -98,6 +102,7 @@ precision highp int;
 in vec2 local;
 flat in vec4 glyphShape;
 flat in float haloRadius;
+flat in float shellLight;
 
 out vec4 colour;
 
@@ -106,7 +111,7 @@ ${GLYPH_GLSL}
 void main() {
   float reached = glyphLineDistance(local, glyphShape.x, glyphShape.y, glyphShape.z) / haloRadius;
   if (reached >= 1.0) discard;
-  float covered = pow(1.0 - reached, ${glslFloat(HALO_FALLOFF)});
+  float covered = pow(1.0 - reached, ${glslFloat(HALO_FALLOFF)}) * shellLight;
   float tier = glyphShape.w;
   colour = vec4(tier < 0.5 ? covered : 0.0, tier > 0.5 && tier < 1.5 ? covered : 0.0, tier > 1.5 ? covered : 0.0, 0.0);
 }

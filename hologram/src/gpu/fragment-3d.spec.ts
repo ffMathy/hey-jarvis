@@ -2,8 +2,10 @@ import { describe, expect, it } from 'bun:test';
 import { MATERIALISE_SECONDS, SCENE_SEED } from '../frame-timing';
 import {
   analyseFrame,
+  BACK_OF_THE_SHELL,
   BODY_ID_FIELD,
   BODY_STRIDE,
+  BODY_TURN_SECONDS,
   createHologramScene,
   FRAGMENT_FAINTEST,
   FRAGMENT_WANDER,
@@ -73,6 +75,7 @@ interface PhoneFragment {
   alongX: number;
   alongY: number;
   tier: number;
+  light: number;
   glyph: number;
   group: number;
 }
@@ -91,25 +94,31 @@ function phoneBody(offset: number, state: HologramFrameState): PhoneFragment | n
   const id = body[offset + BODY_ID_FIELD];
   const length = body[offset + 4];
   const hop = fraction(reading[3] * 0.618034 + id * 9.7);
-  const along = (hop - 0.5) * 1.4 * length;
   // How far from his middle the fragment is seen, once the body has turned: it is the limb as it
   // is seen that the voice's wander keeps clear of, wherever on the turning ball the fragment is.
+  // The voice's wander is along the way the fragment lies, so the beads slide round the ring.
   const turnedX = body[offset] * state.bodyCos + body[offset + 9] * state.bodySin;
   const fromCentre = turnedX * turnedX + body[offset + 1] * body[offset + 1];
   const inward = Math.min(1, Math.max(0, (0.76 - fromCentre) * 3.2));
-  const across = (fraction(hop * 23.17) - 0.5) * (FRAGMENT_WANDER + 1.3 * state.agitation * inward);
+  const wander = fraction(hop * 23.17) - 0.5;
+  const along = (hop - 0.5) * 1.4 * length + wander * 1.3 * state.agitation * inward;
+  const across = wander * FRAGMENT_WANDER;
   placeFragment(body, offset, along, across, state, placed);
   const lit = strength * placed[3];
   if (lit < FRAGMENT_FAINTEST) return null;
-  swirlFragment(placed[0], placed[1], body[offset + 2], body[offset + 3], id, state);
+  // It settles lying along the ring through where it is seen, which placeFragment worked out.
+  swirlFragment(placed[0], placed[1], placed[5], placed[6], id, state);
   const drawn = state.swirled[4];
   if (drawn <= 0) return null;
   latticeFragment(state.swirled[0], state.swirled[1], id, state);
   const y = state.listened[1];
   const litHere = lit * scanned(y, state);
   if (litHere < FRAGMENT_FAINTEST) return null;
-  const facing = placed[2] >= 0;
-  const plain = facing ? fragmentTier(reading[4], litHere, id, state.hotShare) : 0;
+  const facing = placed[2] >= -BACK_OF_THE_SHELL;
+  // The shell it is seen through dims its paint, not its length: the light picks its tier, except
+  // where the thinking plane lights it to the brightest at full light.
+  const promoted = state.scanBright[0] > 0 && facing;
+  const plain = facing ? fragmentTier(reading[4], litHere * placed[4], id, state.hotShare) : 0;
   const half = length * 0.5 * litHere * drawn * (1 - LATTICE_STROKE_SHRINK * state.hearing);
   return {
     x: state.listened[0],
@@ -117,7 +126,8 @@ function phoneBody(offset: number, state: HologramFrameState): PhoneFragment | n
     depth: placed[2],
     alongX: state.swirled[2] * half,
     alongY: state.swirled[3] * half,
-    tier: state.scanBright[0] > 0 && facing ? 2 : plain,
+    tier: promoted ? 2 : plain,
+    light: promoted ? 1 : placed[4],
     glyph: reading[1],
     group: reading[2] > 0 ? 1 : 0,
   };
@@ -138,7 +148,7 @@ function phoneStream(offset: number, state: HologramFrameState): PhoneFragment |
   const halfX = stream[offset + 3] * state.streamCos + stream[offset + 4] * state.streamSin;
   const plain = stream[offset + 8] - 3 * state.reading[0];
   const id = stream[offset + 7];
-  const tier = depth < 0 ? 0 : fragmentTier(plain, lit, id, state.hotShare);
+  const tier = depth < -BACK_OF_THE_SHELL ? 0 : fragmentTier(plain, lit, id, state.hotShare);
   swirlFragment(x, y, 1, 0, id, state);
   const drawn = state.swirled[4];
   if (drawn <= 0) return null;
@@ -151,6 +161,7 @@ function phoneStream(offset: number, state: HologramFrameState): PhoneFragment |
     alongX: state.swirled[2] * half,
     alongY: state.swirled[3] * half,
     tier,
+    light: 1,
     glyph: stream[offset + 9],
     group: 0,
   };
@@ -173,6 +184,7 @@ function expectSame(placed: PlacedFragment | null, phone: PhoneFragment | null, 
   expect(placed.axis[0]).toBeCloseTo(alongX, 9);
   expect(-placed.axis[1]).toBeCloseTo(alongY, 9);
   expect(placed.tier).toBe(phone.tier);
+  expect(placed.light).toBeCloseTo(phone.light, 9);
   expect(placed.glyph).toBe(phone.glyph);
   expect(placed.group).toBe(phone.group);
 }
@@ -198,11 +210,10 @@ const IDLE = MOMENTS.idle;
 /**
  * Enough of him lit at each moment that the comparison means something. Fewer while he arrives,
  * and while he thinks: the plane leaves 0.12 of a fragment's strength wherever it is not passing,
- * and since his body became a shell whose specks seen face on keep 0.3 of theirs
- * (SHELL_FACE_DIMMING), what the plane leaves of those is under the faintest that is drawn. About
- * 1300 of the scene's rows are lit then, against 3600 at the other moments.
+ * which is under the faintest that is drawn for all but the strongest. About 2100 of the scene's
+ * rows are lit then, against 3700 at the other moments.
  */
-const FEWEST_COMPARED: Record<string, number> = { arriving: 500, thinking: 1000 };
+const FEWEST_COMPARED: Record<string, number> = { arriving: 500, thinking: 1500 };
 
 describe('a fragment in three dimensions, seen from the front', () => {
   for (const [name, moment] of Object.entries(MOMENTS)) {
@@ -273,6 +284,101 @@ describe('a fragment in three dimensions, seen from the front', () => {
     // Snapped where the eye sees them, the layers line up behind one another; snapped in the plane,
     // perspective pulls each knot out into a streak.
     expect(spread(eyeDistance)).toBeLessThan(0.5 * spread(Number.POSITIVE_INFINITY));
+  });
+});
+
+/** Every body fragment drawn at this moment, seen from the front, with its row's offset. */
+function drawnBody(state: HologramFrameState): { offset: number; placed: PlacedFragment }[] {
+  const drawn: { offset: number; placed: PlacedFragment }[] = [];
+  for (let offset = 0; offset < scene.body.length; offset += BODY_STRIDE) {
+    const placed = placeBodyFragment(scene.body, offset, state, FRONT_VIEW);
+    if (placed !== null) drawn.push({ offset, placed });
+  }
+  return drawn;
+}
+
+/** How far from his middle a fragment is seen from the front, in the view plane. */
+function seenReach(placed: PlacedFragment) {
+  return Math.hypot(placed.plane[0], placed.plane[1]);
+}
+
+/**
+ * The share of the specks drawn beyond `from` R that lie within 20° of the ring through where they
+ * are seen. Measured from where they are drawn, after the inner layer's turn, since that turns their
+ * stroke with them; from the front the view plane's x is the body's and its y the body's flipped.
+ */
+function shareAlongTheRing(state: HologramFrameState, from: number) {
+  let along = 0;
+  let measured = 0;
+  for (const { placed } of drawnBody(state)) {
+    const x = placed.centre[0];
+    const y = -placed.centre[1];
+    const reach = Math.hypot(x, y);
+    const half = Math.hypot(placed.axis[0], placed.axis[1]);
+    if (reach < from || half === 0) continue;
+    measured++;
+    const outward = Math.abs(placed.axis[0] * x - placed.axis[1] * y) / (half * reach);
+    if (outward < Math.sin((20 * Math.PI) / 180)) along++;
+  }
+  return along / measured;
+}
+
+describe('his specks', () => {
+  it('lie along the ring where they are seen, like beads on a necklace, however far he has turned', () => {
+    // A direction held in the view plane lies along the ring only where a speck rested; a quarter
+    // turn later the beads at the edge of the donut would be the ones that had crossed his face.
+    for (const time of [10, 10 + BODY_TURN_SECONDS / 4, 10 + BODY_TURN_SECONDS * 0.6]) {
+      const share = shareAlongTheRing(stateAt({ time }), 0.6);
+      expect(share).toBeGreaterThan(0.55);
+      // And not all of them, so the shell does not read as combed.
+      expect(share).toBeLessThan(0.9);
+    }
+  });
+
+  it('are dimmed seen face on through his shell, not shortened into beads', () => {
+    const faceOn = { light: 0, drawnShare: 0, count: 0 };
+    const edgeOn = { light: 0, drawnShare: 0, count: 0 };
+    for (const { offset, placed } of drawnBody(stateAt(IDLE))) {
+      const reach = seenReach(placed);
+      const tally = reach < 0.3 ? faceOn : reach > 0.8 ? edgeOn : null;
+      if (tally === null) continue;
+      tally.light += placed.light;
+      // How much of its own length is drawn, which its clock and the limb take from it.
+      tally.drawnShare += (2 * length3(placed.axis)) / scene.body[offset + 4];
+      tally.count++;
+    }
+    expect(faceOn.count).toBeGreaterThan(100);
+    expect(edgeOn.count).toBeGreaterThan(500);
+    expect(faceOn.light / faceOn.count).toBeLessThan(0.4);
+    expect(edgeOn.light / edgeOn.count).toBeGreaterThan(0.8);
+    expect(faceOn.drawnShare / faceOn.count).toBeGreaterThan(0.85 * (edgeOn.drawnShare / edgeOn.count));
+  });
+
+  it('stay inside his limb while he talks, however far his voice moves them', () => {
+    const drawn = drawnBody(stateAt(MOMENTS.speaking));
+    expect(drawn.length).toBeGreaterThan(2000);
+    for (const { placed } of drawn) {
+      expect(seenReach(placed)).toBeLessThan(0.94);
+    }
+  });
+
+  it('light the ring of beads round his edge from just behind the limb as from just in front', () => {
+    // Specks a sliver behind the plane through his middle are only ever seen at the edge of the
+    // donut; drawn dim like the rest of the back of the shell, they would leave half the ring dark.
+    const lit = { behind: 0, behindCount: 0, inFront: 0, inFrontCount: 0 };
+    for (const { placed } of drawnBody(stateAt(IDLE))) {
+      const depth = placed.centre[2];
+      if (seenReach(placed) < 0.75 || Math.abs(depth) > 0.15) continue;
+      if (depth < 0) {
+        lit.behindCount++;
+        lit.behind += placed.tier > 0 ? 1 : 0;
+      } else {
+        lit.inFrontCount++;
+        lit.inFront += placed.tier > 0 ? 1 : 0;
+      }
+    }
+    expect(lit.behindCount).toBeGreaterThan(200);
+    expect(lit.behind / lit.behindCount).toBeGreaterThan(0.8 * (lit.inFront / lit.inFrontCount));
   });
 });
 

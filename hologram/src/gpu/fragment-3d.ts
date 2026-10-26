@@ -1,4 +1,5 @@
 import {
+  BACK_OF_THE_SHELL,
   CORE_X,
   CORE_Y,
   FRAGMENT_FAINTEST,
@@ -13,6 +14,7 @@ import {
   latticeTarget,
   readFragment,
   readShellFragment,
+  ringDirection,
   scanned,
   shellFacing,
   swirlFragment,
@@ -66,6 +68,8 @@ export interface PlacedFragment {
   normal: Vector3Tuple;
   /** 0 dim, 1 mid, 2 bright. */
   tier: number;
+  /** How much of its tier's paint it shows: 1 at its own limb, less seen face on through the shell (`shellFacing`). */
+  light: number;
   /** 0 dash, 1 L, 2 bracket, 3 T, 4 Z, 5 ring, 6 cell. */
   glyph: number;
   /** 0 pinned, 1 riding the inner layer, which turns about the core. */
@@ -181,6 +185,7 @@ interface Unfinished {
   axisY: number;
   axisDepth: number;
   tier: number;
+  light: number;
   glyph: number;
   group: number;
 }
@@ -204,6 +209,7 @@ function finish(fragment: Unfinished, state: HologramFrameState, basis: ViewBasi
     axis: intoBody(basis, axisX, axisY, fragment.axisDepth),
     normal: intoBody(basis, normalX, normalY, 0),
     tier: fragment.tier,
+    light: fragment.light,
     glyph: fragment.glyph,
     group: fragment.group,
     plane,
@@ -228,13 +234,10 @@ export function placeBodyFragment(
   const [glyph = 0, turning = 0, cycle = 0, brightness = 0] = [reading[1], reading[2], reading[3], reading[4]];
   const restX = body[offset];
   const restY = body[offset + 1];
-  const unitX = body[offset + 2];
-  const unitY = body[offset + 3];
   const length = body[offset + 4];
   const id = body[offset + 6];
   const restDepth = body[offset + 9];
   const hop = fraction(cycle * 0.618034 + id * 9.7);
-  const along = (hop - 0.5) * 1.4 * length;
 
   // placeFragment: turned about the vertical in the body's frame, then seen in the view plane.
   const turned: Vector3Tuple = [
@@ -245,16 +248,23 @@ export function placeBodyFragment(
   const planeX = dot(turned, basis.right);
   const planeY = -dot(turned, basis.up);
   const depth = dot(turned, basis.front);
-  // His voice lets a fragment re-light further across from where it was the further inside the
-  // limb it is seen, so the silhouette holds while the inside churns.
+  // It lies along the ring through where it is seen: `placeFragment`'s direction.
+  const direction = [0, 0];
+  ringDirection(planeX, planeY, body[offset + 2], body[offset + 3], direction, 0);
+  const [unitX = 0, unitY = 0] = direction;
+  // His voice lets a fragment re-light further from where it was the further inside the limb it is
+  // seen, so the silhouette holds while the inside churns: along the way it lies, so the beads slide
+  // round the ring rather than spilling out of it.
   const inward = clamp01((0.76 - (planeX * planeX + planeY * planeY)) * 3.2);
-  const across = (fraction(hop * 23.17) - 0.5) * (FRAGMENT_WANDER + 1.3 * state.agitation * inward);
+  const wander = fraction(hop * 23.17) - 0.5;
+  const along = (hop - 0.5) * 1.4 * length + wander * 1.3 * state.agitation * inward;
+  const across = wander * FRAGMENT_WANDER;
   const y = planeY + unitY * along + unitX * across;
   const x = planeX + unitX * along - unitY * across;
-  // The limb and the shell it is seen through: `placeFragment`'s edge, in the same order.
-  const edge =
-    clamp01((0.94 * 0.94 - planeX * planeX - y * y) * 8) *
-    shellFacing(x, y, restX * restX + restY * restY + restDepth * restDepth);
+  // The limb, which takes its length, and the shell it is seen through, which takes its light:
+  // `placeFragment`'s edge and light.
+  const edge = clamp01((0.94 * 0.94 - x * x - y * y) * 8);
+  const light = shellFacing(x, y, restX * restX + restY * restY + restDepth * restDepth);
   const lit = strength * edge;
   if (lit < FRAGMENT_FAINTEST) return null;
 
@@ -272,8 +282,10 @@ export function placeBodyFragment(
   // The thinking plane is level: how far down the world's vertical the fragment is.
   const litHere = lit * scanned(-intoBody(basis, latticeX, latticeY, latticeDepth)[1], state);
   if (litHere < FRAGMENT_FAINTEST) return null;
-  const facing = depth >= 0;
-  const plain = facing ? fragmentTier(brightness, litHere, id, state.hotShare) : 0;
+  const facing = depth >= -BACK_OF_THE_SHELL;
+  // The thinking plane lights what it is in the middle of to the brightest tier, at full light.
+  const scanBright = state.scanBright[0] > 0 && facing;
+  const plain = facing ? fragmentTier(brightness, litHere * light, id, state.hotShare) : 0;
   const half = length * 0.5 * litHere * drawn * (1 - LATTICE_STROKE_SHRINK * state.hearing);
   return finish(
     {
@@ -283,7 +295,8 @@ export function placeBodyFragment(
       axisX: directionX * half,
       axisY: directionY * half,
       axisDepth: 0,
-      tier: state.scanBright[0] > 0 && facing ? 2 : plain,
+      tier: scanBright ? 2 : plain,
+      light: scanBright ? 1 : light,
       glyph,
       group: turning > 0 ? 1 : 0,
     },
@@ -328,7 +341,7 @@ export function placeStreamFragment(
     0,
     halfZ * state.streamCos - halfX * state.streamSin,
   ];
-  const tier = depth < 0 ? 0 : fragmentTier(stream[offset + 8] - 3 * pool, lit, id, state.hotShare);
+  const tier = depth < -BACK_OF_THE_SHELL ? 0 : fragmentTier(stream[offset + 8] - 3 * pool, lit, id, state.hotShare);
 
   swirlFragment(planeX, planeY, 1, 0, id, state);
   const [swirledX = 0, swirledY = 0, directionX = 0, directionY = 0, drawn = 0] = state.swirled;
@@ -357,6 +370,7 @@ export function placeStreamFragment(
       axisY: (tangentX * directionY + tangentY * directionX) * size,
       axisDepth: tangentDepth * size,
       tier,
+      light: 1,
       glyph: stream[offset + 9],
       group: 0,
     },

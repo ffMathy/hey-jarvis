@@ -1,4 +1,5 @@
 import {
+  BACK_OF_THE_SHELL,
   CORE_X,
   CORE_Y,
   FRAGMENT_DUTY,
@@ -167,6 +168,7 @@ const float SCAN_HALF_WIDTH = ${glslFloat(SCAN_HALF_WIDTH)};
 const float SCAN_FLOOR = ${glslFloat(SCAN_FLOOR)};
 const float SCAN_BRIGHT_NEARNESS = ${glslFloat(SCAN_BRIGHT_NEARNESS)};
 const float SHELL_FACE_DIMMING = ${glslFloat(SHELL_FACE_DIMMING)};
+const float BACK_OF_THE_SHELL = ${glslFloat(BACK_OF_THE_SHELL)};
 const float STROKE_SHRINK = ${glslFloat(LATTICE_STROKE_SHRINK)};
 const float VORTEX_TWIST = ${glslFloat(VORTEX_TWIST)};
 const float VORTEX_STRETCH = ${glslFloat(VORTEX_STRETCH)};
@@ -180,6 +182,8 @@ struct Fragment {
   vec3 axis;
   vec3 normal;
   float tier;
+  // How much of its tier's paint it shows: less seen face on through the shell.
+  float light;
   float glyph;
   float group;
   // Where it is in the view plane, and its half-length there, before the inner layer's turn.
@@ -188,7 +192,7 @@ struct Fragment {
 };
 
 Fragment hiddenFragment() {
-  return Fragment(false, vec3(0.0), vec3(0.0), vec3(0.0), 0.0, 0.0, 0.0, vec2(0.0), vec2(0.0));
+  return Fragment(false, vec3(0.0), vec3(0.0), vec3(0.0), 0.0, 0.0, 0.0, 0.0, vec2(0.0), vec2(0.0));
 }
 
 float clamp01(float value) {
@@ -199,6 +203,15 @@ float clamp01(float value) {
 float shellFacing(vec2 seen, float radiusSquared) {
   if (radiusSquared <= 0.0) return 1.0;
   return 1.0 - SHELL_FACE_DIMMING * clamp01(1.0 - dot(seen, seen) / radiusSquared);
+}
+
+// Which way a speck lies in the view plane, where it is seen: its row's direction, along the ring
+// through there and out from his middle, turned into the view's x and y. ringDirection.
+vec2 ringDirection(vec2 seen, vec2 unit) {
+  float reach = length(seen);
+  if (reach <= 0.0) return unit;
+  vec2 outward = seen / reach;
+  return vec2(-outward.y * unit.x + outward.x * unit.y, outward.x * unit.x + outward.y * unit.y);
 }
 
 float smooth01(float value) {
@@ -311,7 +324,7 @@ vec3 intoBody(vec2 point, float depth) {
   return point.x * viewRight - point.y * viewUp + depth * viewFront;
 }
 
-Fragment finishFragment(vec3 placed, vec2 axis, float axisDepth, float tier, float glyph, float group) {
+Fragment finishFragment(vec3 placed, vec2 axis, float axisDepth, float tier, float light, float glyph, float group) {
   Fragment fragment = hiddenFragment();
   fragment.visible = true;
   fragment.plane = placed.xy;
@@ -327,6 +340,7 @@ Fragment finishFragment(vec3 placed, vec2 axis, float axisDepth, float tier, flo
   fragment.axis = intoBody(axis, axisDepth);
   fragment.normal = intoBody(normal, 0.0);
   fragment.tier = tier;
+  fragment.light = light;
   fragment.glyph = glyph;
   fragment.group = group;
   return fragment;
@@ -350,19 +364,21 @@ Fragment readBodyFragment() {
   float strength = shown * fragmentStrength(life, id, float(pool));
   if (strength < FAINTEST) return hiddenFragment();
 
-  vec2 unit = shape.xy;
   float fragmentLength = shape.z;
   float hop = fract(cycle * 0.618034 + identity.x);
-  float along = (hop - 0.5) * 1.4 * fragmentLength;
   vec3 turned = vec3(rest.x * bodyTurn.x + rest.z * bodyTurn.y, -rest.y, rest.z * bodyTurn.x - rest.x * bodyTurn.y);
   float planeX = dot(turned, viewRight);
   float planeY = -dot(turned, viewUp);
   float depth = dot(turned, viewFront);
+  vec2 unit = ringDirection(vec2(planeX, planeY), shape.xy);
   float inward = clamp01((0.76 - (planeX * planeX + planeY * planeY)) * 3.2);
-  float across = (fract(hop * 23.17) - 0.5) * (WANDER + 1.3 * agitation * inward);
+  float wander = fract(hop * 23.17) - 0.5;
+  float along = (hop - 0.5) * 1.4 * fragmentLength + wander * 1.3 * agitation * inward;
+  float across = wander * WANDER;
   float y = planeY + unit.y * along + unit.x * across;
   float x = planeX + unit.x * along - unit.y * across;
-  float edge = clamp01((0.94 * 0.94 - planeX * planeX - y * y) * 8.0) * shellFacing(vec2(x, y), dot(rest.xyz, rest.xyz));
+  float edge = clamp01((0.94 * 0.94 - x * x - y * y) * 8.0);
+  float light = shellFacing(vec2(x, y), dot(rest.xyz, rest.xyz));
   float lit = strength * edge;
   if (lit < FAINTEST) return hiddenFragment();
 
@@ -374,11 +390,12 @@ Fragment readBodyFragment() {
   bool scanBright;
   float litHere = lit * scanned(-intoBody(placed.xy, placed.z).y, scanBright);
   if (litHere < FAINTEST) return hiddenFragment();
-  bool facing = depth >= 0.0;
-  float plain = facing ? fragmentTier(brightness, litHere, hashes.y) : 0.0;
-  float tier = scanBright && facing ? 2.0 : plain;
+  bool facing = depth >= -BACK_OF_THE_SHELL;
+  bool promoted = scanBright && facing;
+  float plain = facing ? fragmentTier(brightness, litHere * light, hashes.y) : 0.0;
+  float tier = promoted ? 2.0 : plain;
   float halfLength = fragmentLength * 0.5 * litHere * drawn * (1.0 - STROKE_SHRINK * hearing);
-  return finishFragment(placed, swirled.zw * halfLength, 0.0, tier, float(glyph), float(group));
+  return finishFragment(placed, swirled.zw * halfLength, 0.0, tier, promoted ? 1.0 : light, float(glyph), float(group));
 }
 
 Fragment readStreamFragment() {
@@ -411,7 +428,7 @@ Fragment readStreamFragment() {
     0.0,
     shape.y * streamTurn.x - shape.x * streamTurn.y
   );
-  float tier = depth < 0.0 ? 0.0 : fragmentTier(brightness, lit, hashes.y);
+  float tier = depth < -BACK_OF_THE_SHELL ? 0.0 : fragmentTier(brightness, lit, hashes.y);
 
   float drawn;
   float scale;
@@ -427,7 +444,7 @@ Fragment readStreamFragment() {
     tangentPlane.x * direction.x - tangentPlane.y * direction.y,
     tangentPlane.x * direction.y + tangentPlane.y * direction.x
   ) * size;
-  return finishFragment(placed, axis, tangentDepth * size, tier, float(glyph), 0.0);
+  return finishFragment(placed, axis, tangentDepth * size, tier, 1.0, float(glyph), 0.0);
 }
 
 Fragment readFragment() {

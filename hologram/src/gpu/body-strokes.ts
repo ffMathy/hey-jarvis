@@ -24,15 +24,18 @@ import { SPARKLE_REPEAT } from './sparkle';
  * The film's speck shell runs from deep amber in its dimmest specks through gold to pale gold, and
  * its brightest are white-hot — (255, 229, 174) and hotter at their middles, against a 95th
  * percentile of (245, 198, 132). So the tiers climb that ramp: the dim ones, which are every speck
- * on the far side of him, deep amber and faint, so the back of the shell is depth rather than
- * clutter; the mid ones amber-gold; the bright ones pale gold, with a hot core near white laid over
- * them, which Screens a bright speck at full sparkle to about (255, 248, 223). They are fine,
- * 0.009-0.011R across where the old body's strokes were 0.014-0.0165R: the film's specks are
- * glitter, not strokes.
+ * at the back of the shell, deep amber and faint, so the back of the shell is depth rather than
+ * clutter and the band between the bright specks is see-through, as the film's is; the mid ones
+ * amber-gold; the bright ones pale gold, with a hot core near white laid over them, which Screens a
+ * bright speck at full sparkle to about (255, 248, 223). They are fine, 0.009-0.011R across where
+ * the old body's strokes were 0.014-0.0165R: the film's specks are glitter, not strokes.
+ *
+ * Each is drawn at its fragment's `light` too, which the shell it is seen through takes from a
+ * speck seen face on (`shellFacing`), so the specks across his middle are faint lines.
  */
 export const STROKE_PAINTS = {
-  dim: { colour: 0xb8641e, width: 0.009, alpha: 0.5 },
-  mid: { colour: 0xf5aa48, width: 0.01, alpha: 0.85 },
+  dim: { colour: 0xb8641e, width: 0.009, alpha: 0.32 },
+  mid: { colour: 0xf5aa48, width: 0.01, alpha: 0.9 },
   /** Its alpha is 1 − 0.25 × agitation. */
   bright: { colour: 0xffd27e, width: 0.011, alpha: 1 },
   /** Round-capped, on the bright strokes only; its alpha is 0.9 × (1 − 0.95 × agitation). */
@@ -67,6 +70,8 @@ out vec2 local;
 out vec2 sparklePoint;
 // The glyph, its half-length, its normal's length and its tier.
 flat out vec4 glyphShape;
+// How much of its tier's paint it shows.
+flat out float shellLight;
 
 const float WIDEST_HALF_STROKE = ${glslFloat(STROKE_PAINTS.bright.width / 2)};
 const float THINNEST_PIXELS = ${glslFloat(THINNEST_STROKE_PIXELS)};
@@ -96,6 +101,7 @@ void main() {
   vec2 planeAlong = planeLength > 1e-7 ? fragment.planeAxis / planeLength : vec2(1.0, 0.0);
   sparklePoint = fragment.plane + planeAlong * local.x + vec2(-planeAlong.y, planeAlong.x) * local.y;
   glyphShape = vec4(fragment.glyph, halfLength, normalLength, fragment.tier);
+  shellLight = fragment.light;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(fragment.centre + along * local.x + across * local.y, 1.0);
 }
 `;
@@ -112,6 +118,7 @@ uniform float alphaFromLight;
 in vec2 local;
 in vec2 sparklePoint;
 flat in vec4 glyphShape;
+flat in float shellLight;
 
 out vec4 colour;
 
@@ -162,6 +169,7 @@ void main() {
     // Screen, as the phone lays the hot core over the bright stroke.
     light = light + hot - light * hot;
   }
+  light *= shellLight;
   float brightest = max(light.r, max(light.g, light.b));
   if (brightest <= 0.0) discard;
   colour = vec4(light, alphaFromLight * brightest);
