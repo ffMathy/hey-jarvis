@@ -1135,7 +1135,7 @@ describe('how a request is answered, and when the call may end', () => {
   });
 
   it('still holds the line after a command while a photo is on its way', () => {
-    expect(COMMAND_DONE_INSTRUCTIONS).toContain(`Unless ${WAITING_FOR_A_PHOTO}`);
+    expect(COMMAND_DONE_INSTRUCTIONS).toContain(`unless ${WAITING_FOR_A_PHOTO}: then stop after the confirmation`);
     expect(COMMAND_DONE_INSTRUCTIONS).toContain('call skip_turn instead');
   });
 
