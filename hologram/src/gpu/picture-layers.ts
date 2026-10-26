@@ -438,43 +438,60 @@ uniform float halfWidth;
 
 // ---- chip bursts ------------------------------------------------------------------------------
 
-/** The chips' slabs, then their hot middles: one range each. */
-export const CHIP_PARTS = ['slab', 'middle'] as const;
+/** The chips' streaks whole, then their white-hot cores: one range each. */
+export const CHIP_PARTS = ['streak', 'core'] as const;
+
+/** How many chips a burst throws at most, how many shards each is, and how many pieces a shard breaks into. */
+const CHIPS = 5;
+const SHARDS_A_CHIP = 3;
+const PIECES_A_SHARD = 2;
+
+/** How lit a chip's streak is at its tail, as a share of its head. */
+const STREAK_TAIL_LIGHT = 0.5;
 
 /**
- * The latest burst's chips: up to five slabs thrown off the left of the shell's edge, each snapping
- * in two as it breaks up (`drawChips`, `appendBurstChip`, `appendChip`), a slab and its hot middle
- * apiece.
+ * The latest burst's chips: up to five thrown off the left of the shell's edge, each a few shards of
+ * light — a main streak and two splinters — streaking back from their heads the way they came, each
+ * snapping in two and thinning away as it breaks up (`drawChips`, `chipShard`), a streak and its
+ * white-hot core apiece. They were slabs, and then long thin plates laid along the edge, and read as
+ * panels of a screen; the film's light comes off him in shards and streaks.
  */
 export function chipsLayer(): { layer: PictureLayerSource; ranges: Record<(typeof CHIP_PARTS)[number], ShapeRange> } {
   const shapes: number[][] = [];
   const ranges: Partial<Record<(typeof CHIP_PARTS)[number], ShapeRange>> = {};
   CHIP_PARTS.forEach((part, partIndex) => {
     const first = shapes.length;
-    for (let chip = 0; chip < 5; chip++) for (let piece = 0; piece < 2; piece++) shapes.push([chip, piece, partIndex]);
+    for (let chip = 0; chip < CHIPS; chip++) {
+      for (let shard = 0; shard < SHARDS_A_CHIP; shard++) {
+        for (let piece = 0; piece < PIECES_A_SHARD; piece++) shapes.push([chip, shard, piece, partIndex]);
+      }
+    }
     ranges[part] = { first, count: shapes.length - first };
   });
   return {
     layer: {
       vertexShader: shader(
         `
-in vec3 chipShape;
-uniform float strokeHalf;
+in vec4 chipShape;
+uniform float halfWidth;
 `,
         `
-  // chipShape: which chip, which of its two pieces, and whether this is its slab or its hot middle.
-  vec2 middle;
-  vec2 axis;
-  vec2 halfSize;
-  if (!chipSlab(chipShape.x, chipShape.y, chipShape.z, middle, axis, halfSize)) {
+  // chipShape: which chip, which of its shards, which of that shard's pieces, and whether this is
+  // the whole streak or its white-hot core.
+  vec2 tail;
+  vec2 head;
+  float thinning;
+  float light;
+  if (!chipShard(chipShape.x, chipShape.y, chipShape.z, chipShape.w, tail, head, thinning, light)) {
     hide();
     return;
   }
-  emitBox(middle, axis, halfSize, strokeHalf);
+  emitSegment(tail, head, halfWidth * thinning, 1.0, 1.0);
+  shapeLight = light * (corner.x < 0.0 ? ${glslFloat(STREAK_TAIL_LIGHT)} : 1.0);
 `,
       ),
-      uniforms: ['burst', 'strokeHalf'],
-      attributes: [attribute('chipShape', 3, shapes)],
+      uniforms: ['burst', 'halfWidth'],
+      attributes: [attribute('chipShape', 4, shapes)],
       shapes: shapes.length,
     },
     ranges: ranges as Record<(typeof CHIP_PARTS)[number], ShapeRange>,
