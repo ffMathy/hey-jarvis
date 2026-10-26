@@ -95,3 +95,15 @@ describe('the assistant window over the lock screen', () => {
     expect(onLockscreenShown).not.toMatch(/super\.onLockscreenShown\(\)/);
   });
 });
+
+// The phone in a pocket with earbuds in is what the watch's handover exists for, and that phone is
+// usually locked. Refusing a locked phone sent the conversation out of the watch's speaker instead.
+describe("the watch's handover to a locked phone", () => {
+  it('does not refuse a locked phone', () => {
+    const summon = readSource(
+      'modules/jarvis-assistant/android/src/main/java/expo/modules/jarvisassistant/JarvisWatchSummonService.kt',
+    );
+
+    expect(summon).not.toMatch(/KeyguardManager|isDeviceLocked|isKeyguardLocked/);
+  });
+});
