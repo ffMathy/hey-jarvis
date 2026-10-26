@@ -13,14 +13,18 @@ import { useWindowDimensions } from 'react-native';
 const WATCH_SCALE = 1.25;
 
 /**
- * The share of the screen's resolution the watch draws him at: all of it.
+ * The share of the screen's resolution the watch draws him at: between the phone's and all of it.
  *
  * The phone draws at 0.45 and scales up, which a canvas some five hundred pixels across hides. A
  * watch's is half that, so at the phone's share each spark came out a pixel or less wide and the
- * scale-up smeared it — the user saw him as smudgy and pixelated next to the phone. If drawing every
- * pixel costs the watch frames, the density loop sheds particles rather than the sharpness.
+ * scale-up smeared it — the user saw him as smudgy and pixelated next to the phone.
+ *
+ * At 1 the sparks were sharp, but the watch could not hold its thirty frames a second at any count:
+ * the density loop fell straight to `FEWEST_PARTICLES` and stayed there, so the cost was the pixels
+ * rather than the particles. 0.7 is about half the pixels of that, and two and a half times the
+ * phone's share, with a scale-up of under one and a half.
  */
-export const WATCH_DRAWN_RESOLUTION = 1;
+export const WATCH_DRAWN_RESOLUTION = 0.7;
 
 /**
  * How big the sphere is drawn on this watch.
