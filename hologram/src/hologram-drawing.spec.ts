@@ -94,10 +94,9 @@ describe('the hologram', () => {
 describe('how much of him shows', () => {
   it('is the arrival analyseFrame works out, all the way through arriving, staying and leaving', () => {
     // A guard against analyseFrame working its arrival out again for itself, which could drift.
-    const scene = createHologramScene(SEED);
     const frames = framesFromTheClock();
     const arrivals = frames.map((frame) => arrivalOf(frame.appearance, frame.presence));
-    const analysed = frames.map((frame) => analyseFrame(frame, SIZE, scene).arrival);
+    const analysed = frames.map((frame) => analyseFrame(frame, SIZE).arrival);
 
     expect(arrivals.every((arrival, index) => Object.is(arrival, analysed[index]))).toBe(true);
     // Through all of it: not there, partly there and wholly there.
@@ -137,7 +136,7 @@ describe('the picture round him', () => {
     presence: 1,
     thinking: 0,
   };
-  const stateOf = (changes: Partial<HologramFrame>) => analyseFrame({ ...quiet, ...changes }, SIZE, scene);
+  const stateOf = (changes: Partial<HologramFrame>) => analyseFrame({ ...quiet, ...changes }, SIZE);
 
   /** Every edge of the cage as its two ends. */
   const cageEdges = () => {

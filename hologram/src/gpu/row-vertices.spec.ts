@@ -70,7 +70,7 @@ describe('the rows’ vertices', () => {
         rest: new Float32Array(count * 4),
         shape: new Float32Array(count * 4),
         hashes: new Float32Array(count * 4),
-        identity: new Float32Array(count * 4),
+        identity: new Float32Array(count * 3),
         thinning: new Float32Array(count),
       });
     expect(vertices.index).toBeInstanceOf(Uint16Array);

@@ -37,7 +37,7 @@ export interface PictureTarget {
   texture: Texture;
   target: WebGLRenderTarget;
   /**
-   * Draws `state` (`analyseFrame(frame, 1, scene)`) with `satellites` over it into the target, then
+   * Draws `state` (`analyseFrame(frame, 1)`) with `satellites` over it into the target, then
    * hands three back whatever it was drawing into.
    */
   draw(state: HologramFrameState, satellites: readonly SatelliteOrbit[]): void;

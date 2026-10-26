@@ -42,7 +42,6 @@ import { glslFloat } from './glsl';
 export interface FragmentUniforms {
   [name: string]: { value: number | readonly number[] };
   time: { value: number };
-  bodyShare: { value: number };
   mixShare: { value: number };
   hotShare: { value: number };
   agitation: { value: number };
@@ -64,7 +63,6 @@ export interface FragmentUniforms {
 export function createFragmentUniforms(): FragmentUniforms {
   return {
     time: { value: 0 },
-    bodyShare: { value: 1 },
     mixShare: { value: 0 },
     hotShare: { value: 1 },
     agitation: { value: 0 },
@@ -104,7 +102,6 @@ export function writeFragmentUniforms(
 ) {
   'worklet';
   uniforms.time.value = state.time;
-  uniforms.bodyShare.value = state.bodyShare;
   uniforms.mixShare.value = state.mix;
   uniforms.hotShare.value = state.hotShare;
   uniforms.agitation.value = state.agitation;
@@ -135,7 +132,6 @@ export function writeFragmentUniforms(
 /** The attributes, uniforms and functions of the fragment arithmetic, for a vertex shader. */
 export const FRAGMENT_GLSL = /* glsl */ `
 uniform float time;
-uniform float bodyShare;
 uniform float mixShare;
 uniform float hotShare;
 uniform float agitation;
@@ -158,7 +154,7 @@ uniform float eyeDistance;
 in vec4 rest;
 in vec4 shape;
 in vec4 hashes;
-in vec4 identity;
+in vec3 identity;
 in float thinning;
 
 const float DUTY = ${glslFloat(FRAGMENT_DUTY)};
@@ -222,10 +218,6 @@ float smooth01(float value) {
 // JavaScript's Math.round: halves go up.
 float roundHalfUp(float value) {
   return floor(value + 0.5);
-}
-
-float fragmentShown(float revealOrder) {
-  return clamp01((bodyShare * 1.12 - revealOrder) * 9.0);
 }
 
 float fragmentStrength(float life, float id, float pool) {
@@ -352,16 +344,14 @@ Fragment readBodyFragment() {
   float cycle = floor(cycles);
   float life = cycles - cycle;
   if (life >= DUTY) return hiddenFragment();
-  float shown = fragmentShown(identity.z);
-  if (shown <= 0.0) return hiddenFragment();
   // brightness + 3 × pool + 6 × turning + 12 × glyph, taken apart exactly in integers.
-  int code = int(identity.w + 0.5);
+  int code = int(identity.z + 0.5);
   int glyph = code / 12;
   int kind = code - 12 * glyph;
   int group = kind / 6;
   int pool = (kind - 6 * group) / 3;
   float brightness = float(kind - 6 * group - 3 * pool);
-  float strength = shown * fragmentStrength(life, id, float(pool));
+  float strength = fragmentStrength(life, id, float(pool));
   if (strength < FAINTEST) return hiddenFragment();
 
   float fragmentLength = shape.z;
@@ -403,14 +393,12 @@ Fragment readStreamFragment() {
   float cycles = time * shape.w + hashes.x;
   float life = cycles - floor(cycles);
   if (life >= DUTY) return hiddenFragment();
-  float shown = fragmentShown(identity.z);
-  if (shown <= 0.0) return hiddenFragment();
-  int code = int(identity.w + 0.5);
+  int code = int(identity.z + 0.5);
   int glyph = code / 12;
   int kind = code - 12 * glyph;
   int pool = kind >= 3 ? 1 : 0;
   float brightness = float(kind - 3 * pool);
-  float strength = shown * fragmentStrength(life, id, float(pool));
+  float strength = fragmentStrength(life, id, float(pool));
   if (strength < FAINTEST) return hiddenFragment();
 
   vec3 turned = vec3(

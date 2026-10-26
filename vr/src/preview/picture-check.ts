@@ -5,13 +5,11 @@ import {
   CORE_RING_RADIUS,
   CORE_X,
   CORE_Y,
-  createHologramScene,
   MATERIALISE_SECONDS,
   orbitPoint,
   PLAIN_RING_GLYPH,
   ROLL_DEGREES_PER_SECOND,
   SAMPLE_AGENTS,
-  SCENE_SEED,
   SCREEN_GLYPH_RADII,
   SCREEN_ORBIT_RADII,
   SPHERE_FRACTION,
@@ -40,7 +38,6 @@ import type {
  * headset's is every frame, so a test can tell whether anything one frame draws reaches the next.
  */
 
-const scene = createHologramScene(SCENE_SEED);
 const targets = new Map<number, PictureTarget>();
 
 function targetOf(renderer: WebGLRenderer, size: number): PictureTarget {
@@ -55,7 +52,7 @@ function targetOf(renderer: WebGLRenderer, size: number): PictureTarget {
 /** Draws `moment` into the `size`-pixel target and reads it back: RGBA, premultiplied, bottom row first. */
 function drawMoment(renderer: WebGLRenderer, size: number, moment: PictureMoment): Uint8Array {
   const target = targetOf(renderer, size);
-  target.draw(analyseFrame(moment.frame, 1, scene), moment.satellites ?? NO_SATELLITES);
+  target.draw(analyseFrame(moment.frame, 1), moment.satellites ?? NO_SATELLITES);
   const pixels = new Uint8Array(size * size * 4);
   renderer.readRenderTargetPixels(target.target, 0, 0, size, size, pixels);
   return pixels;
@@ -85,14 +82,10 @@ export function drawPictures(renderer: WebGLRenderer, request: PictureRequest): 
 }
 
 export function pictureFacts(): PictureFacts {
-  // Six numbers an epoch, its start first (see the script in hologram's `hologram-drawing.ts`).
-  const scriptBoundaries: number[] = [];
-  for (let offset = 0; offset < scene.epochs.length; offset += 6) scriptBoundaries.push(scene.epochs[offset]);
   return {
     voiceBandCount: VOICE_BAND_COUNT,
     sphereFraction: SPHERE_FRACTION,
     materialiseSeconds: MATERIALISE_SECONDS,
-    scriptBoundaries,
     plainRingGlyph: PLAIN_RING_GLYPH,
     sampleGlyphs: SAMPLE_AGENTS.map((agent) => agent.glyph),
     screenOrbitRadii: SCREEN_ORBIT_RADII,

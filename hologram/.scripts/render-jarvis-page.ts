@@ -62,7 +62,7 @@ export function createGpuJarvis(scene: HologramScene, side: number): GpuJarvis {
     canvas,
     side,
     draw: (frame) => {
-      const state = analyseFrame(frame, 1, scene);
+      const state = analyseFrame(frame, 1);
       placeFlatCamera(camera, screen, state.radius, FRONT_VIEW, Number.POSITIVE_INFINITY);
       drawGpuFrame(gl, body, picture, { state, density: 1, fade: 1, alphaFromLight: 1, camera }, []);
       const error = gl.getError();

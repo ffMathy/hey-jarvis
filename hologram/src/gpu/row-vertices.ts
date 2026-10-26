@@ -18,7 +18,7 @@ import type { HologramRows } from './body-rows';
  * to 38 and each eye's strokes from about 150 ms to 55, and the browser tests' emulated room, with
  * him in it, from a frame every half second to one every fifth of a second.
  *
- * The price is memory: each row's 68 bytes are held once per corner, 3 MB rather than 0.7 MB, and
+ * The price is memory: each row's 64 bytes are held once per corner, 2.6 MB rather than 0.65 MB, and
  * each vertex reads its own copy. The index is 16-bit while the vertices fit one, as ten thousand
  * rows do, and 32-bit from 16,384 rows on, rather than wrapping round silently or naming the
  * restart index.
@@ -42,7 +42,7 @@ export const ROW_ATTRIBUTES = [
   ['rest', 4],
   ['shape', 4],
   ['hashes', 4],
-  ['identity', 4],
+  ['identity', 3],
   ['thinning', 1],
 ] as const;
 

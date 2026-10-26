@@ -10,7 +10,7 @@
 // the warm volume behind them only a haze — textured with short bright "circuit" strokes,
 // bounded by one dominant rim element at a time (a bright crescent on the left limb, a
 // segmented ladder ring, or a thin ring) and a small hooked ring at the core. The film's
-// large slow protrusions are deliberately not drawn: see the script below. Everything is
+// large slow protrusions are deliberately not drawn: see IDLE MOTION below. Everything is
 // warm orange to amber: no blue, no white, no halo past 1.1R. Measurements and requirements come from the film study
 // (jarvis-reference.md), cited below by section.
 //
@@ -82,12 +82,8 @@
 //   right at 0.1-0.2 R/s and its dimmer back drifts left: the film's counter-streams.
 // - The core's brightness drifts ±3% over about 12 s; comet arcs grow, slide and fade
 //   over 5-9 s each.
-// - A script (a loop of 12 epochs, 3-8 s each, about 59 s in all, plus a second track
-//   on a 41 s period) decides which rim element dominates — the other two stay faintly
-//   present, handing over within 1.2 s — whether spokes, a swoosh or a lightning filament
-//   show, how dense the fragments are (0.9-1.02), and when the red segment flashes.
 //
-//   It used to bring out a protrusion per epoch as well, on two tracks: truss booms, ribbon
+//   A script once brought out a protrusion per epoch, on two tracks: truss booms, ribbon
 //   loops, hook tendrils, streak bundles and pole fans standing off the limb, each growing
 //   over 0.5-1.5 s, holding 1-3 s and dissolving through a hollow outline into sparks. They
 //   are the film's, and they are gone at the user's request: on a phone, where the sphere is
@@ -161,7 +157,7 @@
 //   their arguments and module-level number constants: no module-level mutable state, no closures
 //   over outer values, no Math.random in a frame. Randomness comes from the seeded scene, and
 //   per-cycle variation from an integer hash (in the shaders, as it was here).
-// - The scene is flat number arrays — about a hundred thousand numbers at PARTICLE_COUNT, ten
+// - The scene is flat number arrays — about ninety thousand numbers at PARTICLE_COUNT, nine
 //   to a body row — laid out into the GPU's tables once, when the view mounts. The body's rows lost
 //   two numbers each when the body was first doubled (see buildBody). The sparkle texture and the
 //   whorl are built from a seed rather than carried in the scene. The texture is small (64²) and
@@ -342,8 +338,8 @@ export const PICTURE_SHELL_EDGE = 0.88;
 export const CORE_RING_RADIUS = 0.35;
 
 // Strides of the flat scene tables (the builders describe the fields).
-export const BODY_STRIDE = 10;
-export const STREAM_STRIDE = 11;
+export const BODY_STRIDE = 9;
+export const STREAM_STRIDE = 10;
 /** Where a body row and a stream row keep the fragment's id, which the density share is taken over. */
 export const BODY_ID_FIELD = 6;
 export const STREAM_ID_FIELD = 7;
@@ -351,7 +347,6 @@ export const STREAM_ID_FIELD = 7;
 export const FRAY_STRIDE = 5;
 export const STREAK_ARC_STRIDE = 6;
 export const LIMB_STREAK_STRIDE = 5;
-const EPOCH_STRIDE = 10;
 export const CAGE_EDGE_STRIDE = 10;
 export const EMBER_STRIDE = 7;
 /** Side of the tiled sparkle texture in texels, and how wide a texel is on the sphere: a stroke spans about two. */
@@ -442,13 +437,14 @@ export const FRAGMENT_CODE_GLYPH_STEP = 12;
  * rather than the one the hardware allows, and those are different questions.
  *
  * What it costs on every phone, fast or slow, is the scene: this many fragments times
- * {@link BODY_STRIDE} numbers, built and laid out as the GPU's rows when the view mounts. That is the only part of raising it that nobody can opt out
- * of, and it is worth knowing the size of it: 100,000 numbers, which `createHologramScene` spends
- * about 20 ms building on a desktop under V8 once warm (about 35 on a first, cold call), and about
- * 70 ms under a Hermes compiled ahead of time the way React Native ships it, on the same desktop,
- * against about half that at five thousand. A phone is some multiple of that. It lands as a hitch
- * when the view mounts rather than as a frame rate, so the controller below cannot thin it away —
- * this is the number to look at first if the arrival ever starts feeling late.
+ * {@link BODY_STRIDE} numbers, built and laid out as the GPU's rows when the view mounts. That is
+ * the only part of raising it that nobody can opt out of, and it is worth knowing the size of it:
+ * 90,000 numbers. At 100,000, ten to a row, `createHologramScene` spent about 20 ms building them on
+ * a desktop under V8 once warm (about 35 on a first, cold call), and about 70 ms under a Hermes
+ * compiled ahead of time the way React Native ships it, on the same desktop, against about half
+ * that at five thousand. A phone is some multiple of that. It lands as a hitch when the view mounts
+ * rather than as a frame rate, so the controller below cannot thin it away — this is the number to
+ * look at first if the arrival ever starts feeling late.
  *
  * {@link FEWEST_PARTICLES} in `density-control.ts` is a share of this, so it moves when this does.
  */
@@ -482,9 +478,6 @@ export const FRAGMENT_FAINTEST = 0.1;
  * counts — and near enough that the mass, the clumping and the crowded left half stay put.
  */
 export const FRAGMENT_WANDER = 0.06;
-
-/** The rim element that dominates takes this long to hand over to the next. */
-export const HANDOVER_SECONDS = 1.2;
 
 // ---- scene: random geometry, built once on the JS thread ---------------------------------
 
@@ -662,11 +655,10 @@ function pickGlyphAndLength(random: Random, radius: number, out: number[]) {
  * The fragment body: the film's shell of fine glittering specks. Stride {@link BODY_STRIDE}: x, y,
  * unit direction along the ring and out from his middle where it is seen (see
  * {@link ringDirection}), length, rate (cycles per second), id (0..1), a code packing the glyph and
- * the fragment's class (see {@link FRAGMENT_CODE_GLYPH_STEP}), the order it arrives in while the
- * ball forms (see {@link revealOrder}), and depth. (x, y, depth) is where the speck sits on the
- * shell at rest — a direction uniform over the sphere at a distance from {@link pickShellRadius} —
- * so the rest pose seen face on is its projection, and the body turning about the vertical axis
- * turns the shell like a globe.
+ * the fragment's class (see {@link FRAGMENT_CODE_GLYPH_STEP}), and depth. (x, y, depth) is where the
+ * speck sits on the shell at rest — a direction uniform over the sphere at a distance from
+ * {@link pickShellRadius} — so the rest pose seen face on is its projection, and the body turning
+ * about the vertical axis turns the shell like a globe.
  *
  * A row is no wider than it has to be, since the scene is cloned into the worklet runtime at every
  * mount: the glyph rides in the class code, and the blink phase is a hash of the id rather than a
@@ -718,7 +710,6 @@ function buildBody(random: Random, fragmentCount: number) {
       rate,
       id,
       brightness + 3 * pool + onInnerShell + FRAGMENT_CODE_GLYPH_STEP * shape[0],
-      revealOrder(x, y, id),
       depth,
     );
   }
@@ -731,7 +722,7 @@ function buildBody(random: Random, fragmentCount: number) {
  * right at 0.1-0.2 R/s and its dimmer back drifts left — counter-streams through the bottom of the
  * shell.
  * Stride {@link STREAM_STRIDE}: x, y, z (rest pose), half-length along the latitude x, z, rate,
- * phase, id (at {@link STREAM_ID_FIELD}), brightness + 3 × pool, glyph (0 dash or 1 L), reveal order.
+ * phase, id (at {@link STREAM_ID_FIELD}), brightness + 3 × pool, glyph (0 dash or 1 L).
  */
 function buildStream(random: Random) {
   const stream: number[] = [];
@@ -760,7 +751,6 @@ function buildStream(random: Random) {
       id,
       brightnessCode,
       glyph,
-      revealOrder(restX, restY, id),
     );
   }
   return stream;
@@ -813,36 +803,6 @@ function buildLimbStreaks(random: Random) {
     streaks.push(-0.42 + random() * 0.72, 0.08 + random() * 0.26, 0.75 + random() * 0.7, random(), random() * 0.75);
   }
   return streaks;
-}
-
-/**
- * The slow script: a loop of epochs 3-8 s long, each handing the rim to one dominant
- * element. Stride 6: start, duration, dominant (0 crescent, 1 truss, 2 thin ring),
- * line kind (0 none, 1 radial spokes, 2 swoosh fan, 3 lightning filament), fragment
- * density, red flash time (seconds into the epoch, or -1).
- *
- * It used to schedule a protrusion per epoch as well — a boom, ribbon, tendril or fan
- * standing off the limb. They were the film's, but on a phone they read as an arm
- * swinging out of the ball on a loop, and they are gone.
- */
-function buildScript(random: Random) {
-  const epochs: number[] = [];
-  const dominants = [0, 1, 0, 2, 1, 0, 1, 2, 0, 1, 2, 1];
-  const lineKinds = [0, 0, 1, 0, 2, 0, 3, 1, 0, 2, 3, 0];
-  let start = 0;
-  dominants.forEach((dominant, index) => {
-    const duration = index === 0 ? 7 : 3 + random() * 5;
-    epochs.push(
-      start,
-      duration,
-      dominant,
-      lineKinds[index],
-      0.9 + random() * 0.12,
-      index === 4 || index === 9 ? 0.5 + random() * (duration - 1) : -1,
-    );
-    start += duration;
-  });
-  return { epochs, period: start };
 }
 
 /**
@@ -1082,15 +1042,12 @@ function roundToFiveDecimals(value: number) {
  */
 export function createHologramScene(seed: number, particleCount: number = PARTICLE_COUNT) {
   const random = createRandom(seed);
-  const script = buildScript(random);
   return {
     body: buildBody(createRandom(seed ^ BODY_SEED_MIX), particleCount).map(roundToFiveDecimals),
     stream: buildStream(random).map(roundToFiveDecimals),
     fray: buildFray(random).map(roundToFiveDecimals),
     streakArcs: buildStreakArcs(random).map(roundToFiveDecimals),
     limbStreaks: buildLimbStreaks(random).map(roundToFiveDecimals),
-    epochs: script.epochs.map(roundToFiveDecimals),
-    scriptPeriod: roundToFiveDecimals(script.period),
     // only a seed: the static textures are built straight into paths, never copied to the worklet runtime
     textureSeed: Math.floor(random() * 4294967296),
     // Drawn after the texture's seed, so nothing above is reshuffled by them.
@@ -1103,16 +1060,9 @@ export function createHologramScene(seed: number, particleCount: number = PARTIC
 export type HologramScene = ReturnType<typeof createHologramScene>;
 
 /**
- * The part of a scene {@link analyseFrame} reads: the script, and nothing of the geometry. A frame
- * callback that only analyses frames can capture this where the whole scene, about a hundred
- * thousand numbers, would be copied into the worklet runtime with it.
- */
-export type HologramScript = Pick<HologramScene, 'epochs' | 'scriptPeriod'>;
-
-/**
  * The part of a scene the picture is drawn from: everything but the body and the stream, whose
  * fragments the GPU draws (`hologram/gpu`). A picture worklet captures this rather than the whole
- * scene, so the hundred thousand numbers of the body are never copied into the worklet runtime.
+ * scene, so the ninety thousand numbers of the body are never copied into the worklet runtime.
  */
 export type HologramPictureScene = Omit<HologramScene, 'body' | 'stream'>;
 
@@ -1122,8 +1072,6 @@ export function pictureSceneOf(scene: HologramScene): HologramPictureScene {
     fray: scene.fray,
     streakArcs: scene.streakArcs,
     limbStreaks: scene.limbStreaks,
-    epochs: scene.epochs,
-    scriptPeriod: scene.scriptPeriod,
     textureSeed: scene.textureSeed,
     cage: scene.cage,
     embers: scene.embers,
@@ -1278,30 +1226,6 @@ export function densityKey(id: number) {
   return fraction(id * DENSITY_FROM_ID);
 }
 
-/**
- * The order fragments drop out in when the script thins the body, 0 (last to go) to 1 (first):
- * across from the left and in patches rather than evenly.
- */
-function revealKey(x: number, y: number) {
-  'worklet';
-  const across = clamp01((x + 1.15) / 2.2);
-  const patches = 0.5 + 0.5 * Math.sin(4.1 * x + 1.3) * Math.sin(3.3 * y - 0.7);
-  return clamp01(0.72 * across + 0.28 * patches);
-}
-
-/**
- * The order a fragment leaves the body in when the script thins it, 0..1: high goes first.
- *
- * Worked out once, when the scene is built, because it never changes — it is the
- * film's reveal pattern at the fragment's place, dithered by its id. It used to be
- * worked out inside the frame, which meant two `Math.sin` per fragment per frame,
- * about 3,400 native trig calls a frame on the phone for numbers that were the same
- * every time. That is the one thing in the loop the scene can remember for it.
- */
-function revealOrder(x: number, y: number, id: number) {
-  return 0.55 * revealKey(x, y) + 0.45 * fraction(id * 7.31);
-}
-
 /** Mean of bands[firstBand..endBand), 0 when there are none. */
 function bandAverage(bands: number[], firstBand: number, endBand: number) {
   'worklet';
@@ -1312,64 +1236,6 @@ function bandAverage(bands: number[], firstBand: number, endBand: number) {
     count++;
   }
   return count ? sum / count : 0;
-}
-
-// ---- the script: which rim element dominates -------------------------------------------
-
-/** Offset of the epoch playing at `localTime` seconds into the script's loop. */
-function findEpoch(epochs: number[], localTime: number) {
-  'worklet';
-  for (let offset = epochs.length - EPOCH_STRIDE; offset > 0; offset -= EPOCH_STRIDE) {
-    if (localTime >= epochs[offset]) return offset;
-  }
-  return 0;
-}
-
-/** How strongly a rim element shows when it is (1) or is not (0) the dominant one: the others never quite vanish. */
-function rimTarget(element: number, dominant: number) {
-  'worklet';
-  if (element === dominant) return 1;
-  return element === 0 ? 0.3 : element === 1 ? 0.42 : 0.2;
-}
-
-/**
- * Reads the script at `time`: rim weights (crescent, truss, ring), fragment density, the
- * epoch's line kind and its envelope, and the red flash.
- * Everything is a function of time alone, so it never jumps.
- */
-function readScript(scene: HologramScript, time: number) {
-  'worklet';
-  const epochs = scene.epochs;
-  const period = scene.scriptPeriod;
-  const repeat = Math.floor(time / period);
-  const localTime = time - repeat * period;
-  const offset = findEpoch(epochs, localTime);
-  const previous = offset === 0 ? epochs.length - EPOCH_STRIDE : offset - EPOCH_STRIDE;
-  const start = epochs[offset];
-  const duration = epochs[offset + 1];
-  const intoEpoch = localTime - start;
-  // the very first epoch has nothing before it to hand over from
-  const handover = offset === 0 && repeat === 0 ? 1 : smooth01(intoEpoch / HANDOVER_SECONDS);
-  const dominant = epochs[offset + 2];
-  const previousDominant = epochs[previous + 2];
-  const weights = [0, 0, 0];
-  for (let element = 0; element < 3; element++) {
-    const from = rimTarget(element, previousDominant);
-    weights[element] = from + (rimTarget(element, dominant) - from) * handover;
-  }
-  const redAt = epochs[offset + 5];
-  const density = epochs[previous + 4] + (epochs[offset + 4] - epochs[previous + 4]) * handover;
-  return {
-    crescentWeight: weights[0],
-    trussWeight: weights[1],
-    ringWeight: weights[2],
-    density,
-    lineKind: epochs[offset + 3],
-    lineEnvelope: smooth01(intoEpoch / 1.0) * smooth01((duration - intoEpoch) / 1.0),
-    lineSeconds: intoEpoch,
-    lineSeed: repeat * 31 + offset,
-    redVisible: redAt >= 0 && intoEpoch >= redAt && intoEpoch < redAt + 2 / 24,
-  };
 }
 
 /**
@@ -1388,7 +1254,7 @@ export function arrivalOf(appearance: number, presence: number) {
 }
 
 /** Everything a frame derives from its fields; see the file header for the mapping. */
-export function analyseFrame(frame: HologramFrame, size: number, scene: HologramScript) {
+export function analyseFrame(frame: HologramFrame, size: number) {
   'worklet';
   const time = frame.time;
   // How far on the vortex is: 1 once it is over.
@@ -1403,7 +1269,6 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
   const lowDrive = clamp01((bandAverage(bands, 0, 6) - 0.35) / 0.45);
   const highDrive = clamp01((bandAverage(bands, 14, 24) - 0.2) / 0.45);
   const burstAge = frame.burstAge >= 0 ? frame.burstAge : 10;
-  const script = readScript(scene, time);
   const yaw = time * STREAM_RADIANS_PER_SECOND;
   const bodyYaw = bodyTurnRadians(time);
   // Loudness, not the agitation envelope: the glow follows his voice moment to moment, as the
@@ -1440,7 +1305,6 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
     // And how far the ring has bloomed, in the last stretch of each pass.
     pulse: intoScan > SCAN_SECONDS - PULSE_SECONDS ? (intoScan - (SCAN_SECONDS - PULSE_SECONDS)) / PULSE_SECONDS : 0,
     arrival,
-    bodyShare: script.density,
     // The picture arrives as the vortex does: the core first, on its own; then everything round the
     // shell of specks, carried out of the core with it (`shellReach`, a share of where it settles),
     // so that none of it is ever drawn round a ball that is not there yet — the aura did glow round
@@ -1513,7 +1377,6 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
     streamSin: Math.sin(yaw),
     // the core's brightness drifts a few percent over many seconds; it never beats
     coreDrift: 1 + 0.03 * Math.sin(time * 0.53 + 1.1),
-    script,
   };
 }
 
@@ -1532,18 +1395,9 @@ export type HologramFrameState = ReturnType<typeof analyseFrame>;
 // ---- the volume ---------------------------------------------------------------------------
 
 /**
- * Whether a fragment is part of the ball at all, 0..1: the script's slow fragment density thins
- * them out a little, in the order revealKey gives.
- */
-export function fragmentShown(revealOrder: number, state: HologramFrameState) {
-  'worklet';
-  return clamp01((state.bodyShare * 1.12 - revealOrder) * 9);
-}
-
-/**
  * How lit a fragment is this frame, 0..1 (0 = dark): its clock's fade envelope times its pool's
  * share. Pool 0 (calm) gives up the lowest ids as `mix` rises; pool 1 (fast) lights ids below
- * 2·mix. Whether a fragment is there at all is fragmentShown.
+ * 2·mix.
  *
  * The envelope fades over a third of the lit window at each end rather than the quarter it
  * was. A fragment's paint does not fade with it — only its length does, since a paint is set
@@ -1676,7 +1530,7 @@ export function placeFragment(
   // through where it is seen there.
   const rest = body[offset];
   const restY = body[offset + 1];
-  const depthAtRest = body[offset + 9];
+  const depthAtRest = body[offset + 8];
   const turnedX = rest * state.bodyCos + depthAtRest * state.bodySin;
   ringDirection(turnedX, restY, body[offset + 2], body[offset + 3], out, 5);
   const unitX = out[5];
@@ -1708,7 +1562,7 @@ export function placeFragment(
 export function readFragment(body: number[], offset: number, state: HologramFrameState, into: number[]): number {
   'worklet';
   // Is it lit at all? This is the cheapest question to ask of them: everything below — unpacking
-  // its class, where it sits in the reveal — is work the ones that fail would only throw away.
+  // its class, its pool's share — is work the ones that fail would only throw away.
   // Whether this device can afford it at all is not asked here: that is the density share's, which
   // keeps the fragments whose `densityKey` is under it.
   const id = body[offset + BODY_ID_FIELD];
@@ -1716,8 +1570,6 @@ export function readFragment(body: number[], offset: number, state: HologramFram
   const cycle = Math.floor(cycles);
   const life = cycles - cycle;
   if (life >= FRAGMENT_DUTY) return 0;
-  const shown = fragmentShown(body[offset + 8], state);
-  if (shown <= 0) return 0;
 
   const packed = body[offset + 7];
   const glyph = Math.floor(packed / FRAGMENT_CODE_GLYPH_STEP);
@@ -1726,7 +1578,7 @@ export function readFragment(body: number[], offset: number, state: HologramFram
   // fast pool, plus 6 if it rides the counter-turning shell — so division takes them apart.
   const turning = 3 * Math.floor(code / 6);
   const pool = Math.floor((code - turning * 2) / 3);
-  const strength = shown * fragmentStrength(life, id, pool, state);
+  const strength = fragmentStrength(life, id, pool, state);
   if (strength < FRAGMENT_FAINTEST) return 0;
 
   into[0] = strength;
@@ -1878,10 +1730,8 @@ export function readShellFragment(stream: number[], offset: number, state: Holog
   const cycles = state.time * stream[offset + 5] + stream[offset + 6];
   const life = cycles - Math.floor(cycles);
   if (life >= FRAGMENT_DUTY) return 0;
-  const shown = fragmentShown(stream[offset + 10], state);
-  if (shown <= 0) return 0;
   const pool = stream[offset + 8] >= 3 ? 1 : 0;
   state.reading[0] = pool;
-  const strength = shown * fragmentStrength(life, id, pool, state);
+  const strength = fragmentStrength(life, id, pool, state);
   return strength < FRAGMENT_FAINTEST ? 0 : strength;
 }

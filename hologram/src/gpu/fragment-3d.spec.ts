@@ -60,7 +60,7 @@ function stateAt(moment: Partial<HologramFrame>): HologramFrameState {
     thinking: 0,
     ...moment,
   };
-  return analyseFrame(frame, 1, scene);
+  return analyseFrame(frame, 1);
 }
 
 function fraction(value: number) {
@@ -97,7 +97,7 @@ function phoneBody(offset: number, state: HologramFrameState): PhoneFragment | n
   // How far from his middle the fragment is seen, once the body has turned: it is the limb as it
   // is seen that the voice's wander keeps clear of, wherever on the turning ball the fragment is.
   // The voice's wander is along the way the fragment lies, so the beads slide round the ring.
-  const turnedX = body[offset] * state.bodyCos + body[offset + 9] * state.bodySin;
+  const turnedX = body[offset] * state.bodyCos + body[offset + 8] * state.bodySin;
   const fromCentre = turnedX * turnedX + body[offset + 1] * body[offset + 1];
   const inward = Math.min(1, Math.max(0, (0.76 - fromCentre) * 3.2));
   const wander = fraction(hop * 23.17) - 0.5;
@@ -323,6 +323,19 @@ function shareAlongTheRing(state: HologramFrameState, from: number) {
   return along / measured;
 }
 
+/**
+ * The specks drawn at his edge (beyond 0.75R) within a sliver of 0.15R behind the plane through his
+ * middle, or in front of it: how many there are, and how many of them are lit above the dim tier.
+ */
+function specksAtTheEdge(state: HologramFrameState, behind: boolean) {
+  const sliver = drawnBody(state).filter(({ placed }) => {
+    const depth = placed.centre[2];
+    const isBehind = depth < 0;
+    return seenReach(placed) >= 0.75 && Math.abs(depth) <= 0.15 && isBehind === behind;
+  });
+  return { count: sliver.length, lit: sliver.filter(({ placed }) => placed.tier > 0).length };
+}
+
 describe('his specks', () => {
   it('lie along the ring where they are seen, like beads on a necklace, however far he has turned', () => {
     // A direction held in the view plane lies along the ring only where a speck rested; a quarter
@@ -365,20 +378,11 @@ describe('his specks', () => {
   it('light the ring of beads round his edge from just behind the limb as from just in front', () => {
     // Specks a sliver behind the plane through his middle are only ever seen at the edge of the
     // donut; drawn dim like the rest of the back of the shell, they would leave half the ring dark.
-    const lit = { behind: 0, behindCount: 0, inFront: 0, inFrontCount: 0 };
-    for (const { placed } of drawnBody(stateAt(IDLE))) {
-      const depth = placed.centre[2];
-      if (seenReach(placed) < 0.75 || Math.abs(depth) > 0.15) continue;
-      if (depth < 0) {
-        lit.behindCount++;
-        lit.behind += placed.tier > 0 ? 1 : 0;
-      } else {
-        lit.inFrontCount++;
-        lit.inFront += placed.tier > 0 ? 1 : 0;
-      }
-    }
-    expect(lit.behindCount).toBeGreaterThan(200);
-    expect(lit.behind / lit.behindCount).toBeGreaterThan(0.8 * (lit.inFront / lit.inFrontCount));
+    const state = stateAt(IDLE);
+    const behind = specksAtTheEdge(state, true);
+    const inFront = specksAtTheEdge(state, false);
+    expect(behind.count).toBeGreaterThan(200);
+    expect(behind.lit / behind.count).toBeGreaterThan(0.8 * (inFront.lit / inFront.count));
   });
 });
 

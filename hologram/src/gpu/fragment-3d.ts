@@ -236,7 +236,7 @@ export function placeBodyFragment(
   const restY = body[offset + 1];
   const length = body[offset + 4];
   const id = body[offset + 6];
-  const restDepth = body[offset + 9];
+  const restDepth = body[offset + 8];
   const hop = fraction(cycle * 0.618034 + id * 9.7);
 
   // placeFragment: turned about the vertical in the body's frame, then seen in the view plane.

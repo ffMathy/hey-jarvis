@@ -20,7 +20,7 @@ Browser, in sample mode        getUserMedia ─ AnalyserNode
        └─ hologram/src/voice-levels.ts perceivedLevel + foldSpectrum → 24 log-spaced bands (targets)
             └─ hologram/src/react/hologram-view.tsx  UI thread, every frame: easeLevel/easeBands toward the
                  targets, and advanceVoiceActivity on the *raw* reading → agitation and chip bursts
-                 ├─ hologram/src/hologram-drawing.ts   analyseFrame(frame, …, scene) → what this frame of him is
+                 ├─ hologram/src/hologram-drawing.ts   analyseFrame(frame, …) → what this frame of him is
                  └─ hologram/src/gpu/gpu-frame.ts      drawGpuFrame(gl, body, picture, frame, satellites) → expo-gl's one canvas
 ```
 

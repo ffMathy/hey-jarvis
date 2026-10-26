@@ -26,7 +26,7 @@ Per frame, on the CPU:
    their fixed rates, the lattice eased. This file keeps only what the headset does
    differently: the voice is read every READ_INTERVAL_MS on the clock's own time,
    and the arrival restarts on `arrive()` (`restartArrival`).
-2. **`analyseFrame(frame, 1, scene)`**, which is all the CPU does for the picture:
+2. **`analyseFrame(frame, 1)`**, which is all the CPU does for the picture:
    what it draws is a few dozen draws' uniforms.
 
 On the GPU, in passes whose shaders, rows and arithmetic are `hologram/gpu`'s —
@@ -78,7 +78,7 @@ vertex wave idle); on SwiftShader
 the plain list made the halo union about four times as fast and each eye's
 strokes about three, and it draws the same triangles in the same order, so the
 preview's stills came out the same to the byte. The price is memory: each row is
-held four times, 3 MB rather than 0.7.
+held four times, 2.6 MB rather than 0.65.
 
 Where each fragment is comes from `hologram/gpu`'s `fragment-3d.ts`: the phone's
 per-fragment helpers from `hologram`, with the body turning about the vertical in

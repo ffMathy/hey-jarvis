@@ -108,7 +108,7 @@ export interface GpuBodyCamera {
 
 /** What one frame of the body needs beyond the camera. */
 export interface GpuBodyFrame {
-  /** `analyseFrame(frame, 1, scene)`: at size 1, so `state.radius` is his radius as a share of the drawing's square. */
+  /** `analyseFrame(frame, 1)`: at size 1, so `state.radius` is his radius as a share of the drawing's square. */
   state: HologramFrameState;
   /** The share of the rows to draw (`densityKey` order), 0–1: the GPU's own, not the frame's. */
   density: number;

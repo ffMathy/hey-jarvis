@@ -85,7 +85,7 @@ function referenceRows(
   basis: ViewBasis,
   eyeDistance: number,
 ) {
-  const state = analyseFrame(frame, 1, scene);
+  const state = analyseFrame(frame, 1);
   const placed: (PlacedFragment | null)[] = [];
   for (let offset = 0; offset < scene.body.length; offset += BODY_STRIDE) {
     placed.push(placeBodyFragment(scene.body, offset, state, basis, eyeDistance));

@@ -1,4 +1,4 @@
-import { analyseFrame, createHologramScene, type HologramFrame, SCENE_SEED, SPHERE_FRACTION } from 'hologram';
+import { analyseFrame, type HologramFrame, SPHERE_FRACTION } from 'hologram';
 import { viewBasisTowards } from 'hologram/gpu';
 import { PerspectiveCamera, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -110,8 +110,6 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   controls.enableDamping = true;
   controls.minDistance = 0.4;
   controls.maxDistance = 8;
-  // For working out how large he is drawn; only the script's epochs are read from it.
-  const measuringScene = createHologramScene(SCENE_SEED);
   // The phone's renderer, on a context of its own, made the first time the body is checked.
   let rawBody: RawBody | null = null;
 
@@ -204,7 +202,7 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     const pixels = new Uint8Array(size.x * size.y * 4);
     const context = renderer.getContext();
     context.readPixels(0, 0, size.x, size.y, context.RGBA, context.UNSIGNED_BYTE, pixels);
-    const drawnRadius = (hologram.radius * analyseFrame(frame, 1, measuringScene).radius) / SPHERE_FRACTION;
+    const drawnRadius = (hologram.radius * analyseFrame(frame, 1).radius) / SPHERE_FRACTION;
     const distance = camera.position.length();
     const halfHeight = distance * Math.tan((camera.fov * Math.PI) / 360);
     const centre = new Vector3(0, 0, 0).project(camera);

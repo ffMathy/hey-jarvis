@@ -200,7 +200,7 @@ export function createJarvisHologram3D(renderer: WebGLRenderer, options: JarvisH
     view = viewBasisTowards(centre, head, view);
     const frame = clock.frame();
     lastFrame = frame;
-    const state = analyseFrame(frame, 1, scene);
+    const state = analyseFrame(frame, 1);
     const distance = centre.distanceTo(head);
     const fade = closeRangeFade(distance, radius);
     if (state.arrival <= 0 || fade <= 0) {

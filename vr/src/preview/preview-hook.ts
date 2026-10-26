@@ -166,8 +166,6 @@ export interface PictureFacts {
   /** His radius at rest, as a share of the square's side. */
   sphereFraction: number;
   materialiseSeconds: number;
-  /** Every epoch start in the app's slow script: the moments it changes something. */
-  scriptBoundaries: number[];
   /** The glyph an agent whose vertical draws none wears, and sample mode's own glyphs. */
   plainRingGlyph: string;
   sampleGlyphs: string[];

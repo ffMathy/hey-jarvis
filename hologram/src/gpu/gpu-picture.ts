@@ -279,7 +279,7 @@ export function createGpuPicture(gl: HologramGl, scene: HologramPictureScene): G
 
 /** What one frame of the picture needs. */
 export interface GpuPictureFrame {
-  /** `analyseFrame(frame, 1, scene)`: at size 1, so `state.radius` is his radius as a share of the square. */
+  /** `analyseFrame(frame, 1)`: at size 1, so `state.radius` is his radius as a share of the square. */
   state: HologramFrameState;
   /** The square's side in device pixels, which every stroke's antialiasing is measured in. */
   pixels: number;

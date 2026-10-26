@@ -248,10 +248,9 @@ function JarvisHologramView({
   // The canvas in pixels, which on a device is the size it is laid out at, and whole by
   // construction: see `drawingBufferSide`.
   const laidOutPixels = Math.round(drawnSize * PixelRatio.get());
+  // Handed to the GPU when its context is made, and never captured by the frame callback, since it
+  // is the largest thing the app owns: each frame reads nothing of it.
   const scene = useMemo(() => createHologramScene(SCENE_SEED, particleCount), [particleCount]);
-  // What `analyseFrame` reads of the scene, which is all the GPU's frame needs of it: the frame
-  // callback carries this rather than the whole scene, which is the largest thing the app owns.
-  const script = useMemo(() => ({ epochs: scene.epochs, scriptPeriod: scene.scriptPeriod }), [scene]);
   const noSatellites = useSharedValue<SatelliteOrbit[]>([]);
   const shared = useContext(AgentSatellitesContext);
   const orbits = satellites ?? shared ?? noSatellites;
@@ -407,7 +406,7 @@ function JarvisHologramView({
       view = tiltedView(tiltState.value, camera.value.basis);
     }
     const share = density.value.density;
-    const state = analyseFrame(hologramFrameOf(current), 1, script);
+    const state = analyseFrame(hologramFrameOf(current), 1);
     // His square is the whole canvas.
     const side = drawingBufferSide(drawing.gl, laidOutPixels);
     const screen = { width: side, height: side, squareX: side / 2, squareY: side / 2, squareSide: side };
@@ -576,9 +575,8 @@ const styles = StyleSheet.create({
  * Held still against its parent re-rendering.
  *
  * Every render of this component builds a new frame callback, and Reanimated serialises what a
- * worklet captures when it is created — the scene's script and the GPU's handles here, and before
- * the GPU drew all of him the scene itself. A screen that re-rendered a few times a second for some
- * unrelated reason therefore cost frames, which is exactly what a live readout of the microphone
- * level did. The props are numbers, flags, shared values and memoised objects, so this holds.
+ * worklet captures when it is created — the GPU's handles here, and before the GPU drew all of him
+ * the scene itself. A screen that re-rendered a few times a second for some unrelated reason
+ * therefore cost frames, which is exactly what a live readout of the microphone level did. The props are numbers, flags, shared values and memoised objects, so this holds.
  */
 export const JarvisHologram = memo(JarvisHologramView);

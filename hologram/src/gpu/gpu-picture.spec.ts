@@ -51,7 +51,7 @@ function draw(
   satellites: SatelliteOrbit[] = [],
 ) {
   made.calls.length = 0;
-  const state = analyseFrame(frameAt(overrides), 1, scene);
+  const state = analyseFrame(frameAt(overrides), 1);
   drawGpuPicture(made.gl, made.picture, { state, pixels: 512, satellites });
   return made.calls.splice(0);
 }
@@ -141,7 +141,7 @@ describe('the picture on the GPU', () => {
     const picture = createGpuPicture(gl, scene);
     for (const time of [1, 7.5, 20]) {
       calls.length = 0;
-      const state = analyseFrame(frameAt({ time }), 1, scene);
+      const state = analyseFrame(frameAt({ time }), 1);
       drawGpuPicture(gl, picture, { state, pixels: 512, satellites: [] });
       const turns = calls.filter(
         ([name, location]) =>

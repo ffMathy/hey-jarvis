@@ -11,8 +11,8 @@ import { test as appTest, expect, keepOffline } from './fixtures';
  * called. They cannot say whether it is beautiful; they can say it is golden, that it moves the way
  * it means to — the core ring's brighter stretches rolling round it, the cage turning with his body
  * — that it answers Jarvis's voice with activity, never with a brightness pulse, that it spirals out
- * of its core without a flash, that nothing pops in or out as its slow script moves on, that it
- * stays inside its square, and that his satellites are drawn where their orbits say.
+ * of its core without a flash, that it stays inside its square, and that his satellites are drawn
+ * where their orbits say.
  *
  * They began as `hologram`'s own tests, against Skia's picture under CanvasKit, and moved here with
  * the picture, since there is no GPU under `bun test`. When he was redrawn after the Vision Quest
@@ -367,43 +367,6 @@ function likeness(first: number[], second: number[]): number {
   return both / Math.sqrt(firstOnly * secondOnly);
 }
 
-/** Luminance of every pixel, 0–255. */
-function lumas(pixels: Uint8Array): Float32Array {
-  const values = new Float32Array(pixels.length / 4);
-  for (let pixel = 0; pixel < values.length; pixel++) values[pixel] = luminance(pixels, pixel * 4);
-  return values;
-}
-
-/** How many pixels in each of an 8×8 grid of tiles change by more than 40 luminance between two renders. */
-function changedPerTile(first: Float32Array, second: Float32Array): number[] {
-  const tile = SIZE / 8;
-  const counts = new Array(64).fill(0);
-  for (let pixel = 0; pixel < first.length; pixel++) {
-    if (Math.abs((first[pixel] ?? 0) - (second[pixel] ?? 0)) <= 40) continue;
-    counts[Math.floor(Math.floor(pixel / SIZE) / tile) * 8 + Math.floor((pixel % SIZE) / tile)]++;
-  }
-  return counts;
-}
-
-/**
- * How much more of any one tile changes across the 60 Hz frame step at `time` than across
- * the steps either side of it. Something that pops lights a patch at once; the ordinary
- * churn changes the same patch alike on either side.
- */
-async function largestJumpAt(picture: Picture, time: number): Promise<number> {
-  const frameSeconds = 1 / 60;
-  const renders: Float32Array[] = [];
-  for (const shift of [-1.5, -0.5, 0.5, 1.5]) {
-    renders.push(lumas(await picture.render(silence(picture, Math.max(0, time + shift * frameSeconds)))));
-  }
-  const [first, second, third, fourth] = renders;
-  if (!first || !second || !third || !fourth) throw new Error('Could not render the frames around the boundary');
-  const before = changedPerTile(first, second);
-  const across = changedPerTile(second, third);
-  const after = changedPerTile(third, fourth);
-  return Math.max(...across.map((count, tile) => count - Math.max(before[tile] ?? 0, after[tile] ?? 0)));
-}
-
 /**
  * One preview page for every test in the file, made once a worker: the page takes the emulator some
  * fifteen seconds to open, and the pictures it draws a fraction of a second each. Every picture is
@@ -637,29 +600,13 @@ test.describe('the hologram', () => {
     }
   });
 
-  test('pops nothing in or out at a boundary of its slow script', async ({ picture }) => {
-    // Four renders at each of the script's epoch starts.
-    test.setTimeout(300_000);
-    // The script used to bring the rim's elements in and out — the crescent, the truss, the thin
-    // ring — with lightning and a red flash, and this held that none of them popped. They went with
-    // the old picture, and what the script still moves is how many of the body's specks show, which
-    // this does not draw; so it now holds that nothing the picture draws is tied to a boundary.
-    // Measured when the picture was redrawn: a jump of 4 at most, the churn of the embers and the
-    // cage's twinkle, against the 30 a pop would make.
-    expect(picture.facts.scriptBoundaries.length).toBeGreaterThan(0);
-    for (const boundary of picture.facts.scriptBoundaries) {
-      expect(await largestJumpAt(picture, boundary)).toBeLessThan(30);
-    }
-  });
-
   test('materialises without a flash: no one frame of it turns a tenth of the light on at once', async ({
     picture,
   }) => {
     // Two renders a frame for a hundred and ten frames: the slowest test here by an order.
     test.setTimeout(600_000);
     const { materialiseSeconds } = picture.facts;
-    // The arrival is the vortex over MATERIALISE_SECONDS, and the script-boundary test above never
-    // sees it, because it only walks a formed ball. An arrival so steep it jumped would read
+    // The arrival is the vortex over MATERIALISE_SECONDS. An arrival so steep it jumped would read
     // as a flash: none of its frames may move a tenth of the light on in one.
     //
     // Measured as a share of the same moment fully formed, not of the formed ball at rest.

@@ -99,10 +99,10 @@ function haloTexelsFor(gl: BodyGl): number {
  * his first frame — and with it the rest of the app, whose main thread that is. It is drawn and
  * cleared away before his first frame: nothing of it shows.
  */
-function warmUp(gl: BodyGl, body: GpuBody, picture: GpuPicture, scene: HologramScene) {
+function warmUp(gl: BodyGl, body: GpuBody, picture: GpuPicture) {
   const arrived = createFrameClockState();
   arrived.time = MATERIALISE_SECONDS;
-  const state = analyseFrame(hologramFrameOf(arrived), 1, scene);
+  const state = analyseFrame(hologramFrameOf(arrived), 1);
   const side = Math.max(1, gl.drawingBufferWidth);
   const screen = { width: side, height: side, squareX: side / 2, squareY: side / 2, squareSide: side };
   const camera = placeFlatCamera(createFlatCamera(), screen, state.radius, FRONT_VIEW, Number.POSITIVE_INFINITY);
@@ -170,7 +170,7 @@ export function useGpuLayer({ scene, isForeground }: GpuLayerOptions) {
       try {
         body = createGpuBody(gl, scene, { haloTexels: haloTexelsFor(gl) });
         picture = createGpuPicture(gl, pictureSceneOf(scene));
-        warmUp(gl, body, picture, scene);
+        warmUp(gl, body, picture);
         gl.endFrameEXP();
         // Waits until the GPU has drawn the warm-up, on this thread rather than the UI thread, and
         // says whether it went wrong: the warm-up makes every call a frame makes, so a frame would.

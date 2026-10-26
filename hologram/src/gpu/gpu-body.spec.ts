@@ -49,7 +49,7 @@ function drawn(calls: Call[], overrides: Partial<HologramFrame>, fade: number, d
   const gl = recordingGl(calls);
   const body = createGpuBody(gl, scene);
   calls.length = 0;
-  const state = analyseFrame(frameAt(overrides), 1, scene);
+  const state = analyseFrame(frameAt(overrides), 1);
   const camera = placeFlatCamera(
     createFlatCamera(),
     { width: 600, height: 900, squareX: 300, squareY: 400, squareSide: 540 },
@@ -98,7 +98,7 @@ describe('the raw renderer', () => {
   it('draws the halo union into its target by MAX, then the strokes and the halos’ light Screened and faded', () => {
     const calls: Call[] = [];
     // Halfway arrived, wholly lit: a phone's view fades the body from outside, by the arrival.
-    expect(analyseFrame(frameAt({ appearance: 0.1 }), 1, scene).arrival).toBe(0.5);
+    expect(analyseFrame(frameAt({ appearance: 0.1 }), 1).arrival).toBe(0.5);
     const body = drawn(calls, { appearance: 0.1 }, 1);
     const names = calls.map(([name]) => name);
     const draws = calls.filter(([name]) => name === 'drawElements');
