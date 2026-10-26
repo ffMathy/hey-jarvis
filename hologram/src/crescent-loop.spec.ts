@@ -374,9 +374,7 @@ function compareOver(scene: HologramScene, coverage: Coverage) {
 }
 
 describe('the hand-written crescent loop, against the loop it replaced', () => {
-  const scenes = [
-    { name: "the phone's scene", particleCount: PARTICLE_COUNT },
-  ];
+  const scenes = [{ name: "the phone's scene", particleCount: PARTICLE_COUNT }];
 
   for (const { name, particleCount } of scenes) {
     it(`writes every command bit for bit as it did, in ${name}`, () => {

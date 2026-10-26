@@ -1,11 +1,4 @@
-import {
-  hearsSomeone,
-  moodOf,
-  nextSampleMode,
-  SAMPLE_MODE_LABELS,
-  PARTICLE_COUNT,
-  type SampleMode,
-} from 'hologram';
+import { hearsSomeone, moodOf, nextSampleMode, PARTICLE_COUNT, SAMPLE_MODE_LABELS, type SampleMode } from 'hologram';
 import { JarvisHologram } from 'hologram/react';
 import { FrameRate, ModeToast, useSimulatedUser, useSimulatedVoice } from 'hologram/react/sample';
 import { useState } from 'react';
