@@ -30,8 +30,9 @@ import type { BodyGl } from './gl-contract';
  *
  * **Set up on the JS thread, drawn on the UI thread.** The body and the picture compile their
  * programs and upload their tables with queries that block until the GPU answers, so they are made
- * once per context in `onContextCreate`, which is where the context is handed over, once a frame
- * drawn to warm the driver up has been waited for. They are plain data, and cross to the UI thread
+ * once per context on the JS thread, in the render after `onContextCreate` hands the context over —
+ * after the screen's own effects, so the conversation is not kept waiting — once a frame drawn to
+ * warm the driver up has been waited for. They are plain data, and cross to the UI thread
  * through a shared value with the context's id; the frame callback finds the context by that id and
  * draws on the clock it has just stepped. From the handover on, the JS thread never calls GL again:
  * see `gl-context.ts`.
@@ -76,6 +77,12 @@ interface HandedDrawing {
   contextId: number;
   body: GpuBody;
   picture: GpuPicture;
+}
+
+/** A context expo-gl has handed over, with the id it is found by on the drawing thread. */
+interface AdoptedContext {
+  gl: BodyGl;
+  contextId: number;
 }
 
 /** What a GPU frame draws with. */
@@ -157,6 +164,10 @@ export function useGpuLayer({ scene, isForeground }: GpuLayerOptions) {
     })();
   }, [layer]);
 
+  // The context expo-gl last handed over, which he is set up in once the render it causes has been
+  // committed: see the effect below.
+  const [adopted, setAdopted] = useState<AdoptedContext | null>(null);
+
   const onContextCreate = useCallback(
     (gl: BodyGl) => {
       const contextId = adoptGlContext(gl);
@@ -165,28 +176,41 @@ export function useGpuLayer({ scene, isForeground }: GpuLayerOptions) {
         giveUp();
         return;
       }
-      let body: GpuBody;
-      let picture: GpuPicture;
-      try {
-        body = createGpuBody(gl, scene, { haloTexels: haloTexelsFor(gl) });
-        picture = createGpuPicture(gl, pictureSceneOf(scene));
-        warmUp(gl, body, picture, scene);
-        gl.endFrameEXP();
-        // Waits until the GPU has drawn the warm-up, on this thread rather than the UI thread, and
-        // says whether it went wrong: the warm-up makes every call a frame makes, so a frame would.
-        if (gl.getError() !== gl.NO_ERROR) {
-          throw new Error('The GPU reported an error for his warm-up frame.');
-        }
-      } catch (refusal) {
-        // A shader's info log, where it was one; said once, since a device that refuses will refuse again.
-        console.warn('Jarvis is not drawn: the GPU could not draw him.', refusal);
-        giveUp();
-        return;
-      }
-      handed.value = { contextId, body, picture };
+      setAdopted({ gl, contextId });
     },
-    [scene, giveUp, handed],
+    [giveUp],
   );
+
+  // Setting him up compiles his programs and waits on the GPU, a second or more where the GPU is
+  // slow, on the thread the screen runs on. So it is not done as the GL view mounts but in a render
+  // of its own after it: React runs the effects of the commit the screen mounted in — the
+  // conversation dialling, the greeting asked for — before it renders again, so those start first
+  // rather than waiting behind his shaders.
+  useEffect(() => {
+    if (adopted === null) {
+      return;
+    }
+    const { gl, contextId } = adopted;
+    let body: GpuBody;
+    let picture: GpuPicture;
+    try {
+      body = createGpuBody(gl, scene, { haloTexels: haloTexelsFor(gl) });
+      picture = createGpuPicture(gl, pictureSceneOf(scene));
+      warmUp(gl, body, picture, scene);
+      gl.endFrameEXP();
+      // Waits until the GPU has drawn the warm-up, on this thread rather than the UI thread, and
+      // says whether it went wrong: the warm-up makes every call a frame makes, so a frame would.
+      if (gl.getError() !== gl.NO_ERROR) {
+        throw new Error('The GPU reported an error for his warm-up frame.');
+      }
+    } catch (refusal) {
+      // A shader's info log, where it was one; said once, since a device that refuses will refuse again.
+      console.warn('Jarvis is not drawn: the GPU could not draw him.', refusal);
+      giveUp();
+      return;
+    }
+    handed.value = { contextId, body, picture };
+  }, [adopted, scene, giveUp, handed]);
 
   // Pending again on every arrival the GL view is there for, for at most GPU_READY_TIMEOUT_MS.
   useEffect(() => {

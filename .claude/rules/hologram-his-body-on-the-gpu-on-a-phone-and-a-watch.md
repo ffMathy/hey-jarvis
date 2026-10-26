@@ -95,9 +95,12 @@ stencil, which gives each of up to 255 paths 256 steps of coverage.
 **Set up on the JS thread, drawn on the UI thread, and never both.** expo-gl
 lets the JS runtime and the UI runtime share a context, and records the calls of
 both into one batch with no lock, so a GL call from each at once is a native
-crash rather than an exception. `onContextCreate` runs on the JS thread: it
-checks for WebGL 2, calls `createGpuBody` and `createGpuPicture` — their compile
-and link checks wait for the GPU, which is fine there — draws one frame of all of
+crash rather than an exception. `onContextCreate` runs on the JS thread and
+checks for WebGL 2; the render after it, once the screen's own effects have run —
+so the conversation dials and the greeting is asked for first, rather than
+waiting a second or more behind his shaders on a slow GPU — calls `createGpuBody`
+and `createGpuPicture` (their compile and link checks wait for the GPU, which is
+fine there), draws one frame of all of
 him at density nought so the driver finishes compiling while he is still
 pending, calls `endFrameEXP`, and waits for that frame with `getError`, so the UI
 thread's first `flushEXP` finds it done rather than holding up Android's main
