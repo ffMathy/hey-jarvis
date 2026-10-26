@@ -12,6 +12,9 @@ interface MirroredSphere {
 /**
  * Him as he is on the phone, while the phone holds the conversation this watch was summoned for.
  *
+ * `onEnded` is called when the phone says the conversation is over — the agent hung up, or sir
+ * dismissed him there — so the watch can leave as the phone's sheet does.
+ *
  * The phone sends a frame of its sphere a dozen times a second (`use-watch-mirror.ts` in `mobile/`),
  * and this hands the frames to the watch's sphere: his volume and spectrum through the readers it
  * polls, and whether he is talking, listening or thinking as the props it renders from. So he moves
@@ -20,7 +23,7 @@ interface MirroredSphere {
  * Only while `following`. When the phone says he has stopped, or goes quiet for
  * {@link MIRROR_STALE_MS}, he comes to rest.
  */
-export function usePhoneMirror(following: boolean): MirroredSphere {
+export function usePhoneMirror(following: boolean, onEnded: () => void): MirroredSphere {
   const mirror = useMemo(() => createSphereMirror(Date.now), []);
   const [frame, setFrame] = useState<MirrorFrame>(() => mirror.current(Date.now()));
 
@@ -35,6 +38,9 @@ export function usePhoneMirror(following: boolean): MirroredSphere {
       if (mirror.receive(received, Date.now())) {
         setFrame(mirror.current(Date.now()));
       }
+      if (mirror.hasEnded()) {
+        onEnded();
+      }
       // A phone gone out of range says nothing, so silence is looked for too.
       clearTimeout(stale);
       stale = setTimeout(() => setFrame(mirror.current(Date.now())), MIRROR_STALE_MS + 1);
@@ -43,7 +49,7 @@ export function usePhoneMirror(following: boolean): MirroredSphere {
       stop();
       clearTimeout(stale);
     };
-  }, [following, mirror]);
+  }, [following, mirror, onEnded]);
 
   const voice = useMemo(
     () => ({ listening: frame.listening, speaking: frame.speaking, ...mirror.voice }),

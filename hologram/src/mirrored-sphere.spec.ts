@@ -118,6 +118,33 @@ describe('the watch, mirroring the phone', () => {
     expect(mirror.voice.getVolume()).toBe(0);
   });
 
+  it('says the conversation is over when the phone says it has stopped', () => {
+    const mirror = createSphereMirror(() => 1000);
+    mirror.receive(encodeMirrorFrame(phoneSphereAt(0.5, 0.2)), 1000);
+    expect(mirror.hasEnded()).toBe(false);
+
+    mirror.receive([], 1000);
+
+    expect(mirror.hasEnded()).toBe(true);
+  });
+
+  it('does not take the phone going quiet for the conversation being over', () => {
+    const mirror = createSphereMirror(() => 1000 + MIRROR_STALE_MS + 1);
+    mirror.receive(encodeMirrorFrame(phoneSphereAt(0.5, 0.2)), 1000);
+
+    expect(mirror.current(1000 + MIRROR_STALE_MS + 1)).toEqual(MIRROR_AT_REST);
+    expect(mirror.hasEnded()).toBe(false);
+  });
+
+  it('follows the phone again once it sends a frame after stopping', () => {
+    const mirror = createSphereMirror(() => 2000);
+    mirror.receive([], 1000);
+
+    mirror.receive(encodeMirrorFrame(phoneSphereAt(0.5, 0.2)), 2000);
+
+    expect(mirror.hasEnded()).toBe(false);
+  });
+
   it('ignores a message that is not a frame', () => {
     const mirror = createSphereMirror(() => 1000);
 

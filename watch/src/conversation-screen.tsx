@@ -3,7 +3,7 @@ import { useJarvisSession } from 'hologram/conversation';
 import { JarvisHologram } from 'hologram/react';
 import { useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { BackHandler, StyleSheet, Text, View } from 'react-native';
 import { type FastNetwork, holdFastNetwork, releaseFastNetwork } from '../modules/jarvis-network';
 import { askThePhoneToAnswer } from '../modules/jarvis-phone';
 import { capCallVolume } from '../modules/jarvis-volume';
@@ -125,7 +125,9 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
   });
   const { status, summon, endQuietly } = conversation;
   // The phone's sphere, while the phone holds the conversation: drawn here in place of the watch's own.
-  const mirrored = usePhoneMirror(onThePhone && isForeground);
+  // Once the phone says it is over, the watch leaves for the watch face, as the phone's sheet slides
+  // away: left on the screen, he looked as if he were still listening.
+  const mirrored = usePhoneMirror(onThePhone && isForeground, leaveForTheWatchFace);
   const sphere = onThePhone ? mirrored : conversation;
   const size = useWatchHologramSize();
   // Handing these over is what turns the density loop on at all — the drawing skips it
@@ -219,6 +221,14 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
       ) : null}
     </View>
   );
+}
+
+/**
+ * Back to the watch face. On Android 12 and later the root activity is moved to the back rather than
+ * finished, so the app goes to the background and the screen's foreground effect does the rest.
+ */
+function leaveForTheWatchFace() {
+  BackHandler.exitApp();
 }
 
 const styles = StyleSheet.create({
