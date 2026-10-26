@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import type { PictureFacts, PictureFrame, PictureMoment, PictureOrbit } from '../../src/preview/preview-hook';
-import { expect, test } from './fixtures';
+import { test as appTest, expect, keepOffline } from './fixtures';
 
 /**
  * The hologram's picture of everything but his body, drawn for real on the GPU.
@@ -333,9 +333,28 @@ async function largestJumpAt(picture: Picture, time: number): Promise<number> {
   return Math.max(...across.map((count, tile) => count - Math.max(before[tile] ?? 0, after[tile] ?? 0)));
 }
 
+/**
+ * One preview page for every test in the file, made once a worker: the page takes the emulator some
+ * fifteen seconds to open, and the pictures it draws a fraction of a second each. Every picture is
+ * drawn from nothing but its own frame, so nothing one test draws reaches another (the test that
+ * nothing leaks between frames says so); a failed test gets a fresh worker, and a fresh page, anyway.
+ */
+const test = appTest.extend<Record<never, never>, { picture: Picture }>({
+  picture: [
+    async ({ browser }, use, workerInfo) => {
+      // A worker's page is not made by Playwright's own `page` fixture, so it is given the
+      // project's base URL by hand.
+      const page = await browser.newPage({ baseURL: workerInfo.project.use.baseURL });
+      await keepOffline(page);
+      await use(await openPicture(page));
+      await page.close();
+    },
+    { scope: 'worker' },
+  ],
+});
+
 test.describe('the hologram', () => {
-  test('draws something, and something golden rather than white or blue', async ({ page }) => {
-    const picture = await openPicture(page);
+  test('draws something, and something golden rather than white or blue', async ({ picture }) => {
     const pixels = await picture.render(speech(5, 0.7, spectrum(picture, 'low', 0.7)));
     const colour = colourCounts(picture, pixels);
 
@@ -346,25 +365,22 @@ test.describe('the hologram', () => {
     expect(colour.nearWhite).toBeLessThanOrEqual(8);
   });
 
-  test('moves while Jarvis is silent, so an idle screen still looks alive', async ({ page }) => {
-    const picture = await openPicture(page);
+  test('moves while Jarvis is silent, so an idle screen still looks alive', async ({ picture }) => {
     expect(
       difference(await picture.render(silence(picture, 1)), await picture.render(silence(picture, 2.5))),
     ).toBeGreaterThan(1);
   });
 
-  test('draws the same frame the same way every time', async ({ page }) => {
-    const picture = await openPicture(page);
+  test('draws the same frame the same way every time', async ({ picture }) => {
     const frame = speech(4.2, 0.5, spectrum(picture, 'high', 0.5));
     expect(difference(await picture.render(frame), await picture.render(frame))).toBe(0);
   });
 
   test('draws a frame the same way after other frames on the same target, so nothing leaks between frames', async ({
-    page,
+    picture,
   }) => {
     // The page draws every picture of a size into the one target, with the one GpuPicture, as the
     // headset draws every frame of him: what twenty other frames leave behind would show here.
-    const picture = await openPicture(page);
     const frame = speech(4.2, 0.5, spectrum(picture, 'high', 0.5), 0.07, 12);
     const first = await picture.render(frame);
     for (let step = 0; step < 20; step++) {
@@ -376,10 +392,11 @@ test.describe('the hologram', () => {
     expect(difference(first, await picture.render(frame))).toBe(0);
   });
 
-  test('shows speech as activity: chips thrown beyond the limb, and more change than when calm', async ({ page }) => {
+  test('shows speech as activity: chips thrown beyond the limb, and more change than when calm', async ({
+    picture,
+  }) => {
     // Some forty renders, which SwiftShader draws on the CPU.
     test.setTimeout(300_000);
-    const picture = await openPicture(page);
     const bands = evenBands(picture, 0.7);
     for (const time of [6, 13.4, 22.8]) {
       // a protrusion the script has out at this moment is there in both, so count what the burst adds
@@ -418,8 +435,7 @@ test.describe('the hologram', () => {
     expect(agitatedChange).toBeGreaterThan(calmChange * 1.3);
   });
 
-  test('shows which frequencies are sounding while he talks, not just that he is talking', async ({ page }) => {
-    const picture = await openPicture(page);
+  test('shows which frequencies are sounding while he talks, not just that he is talking', async ({ picture }) => {
     // Same moment, same overall level and agitation; only where the energy sits differs.
     const low = await picture.render(speech(7, 0.7, spectrum(picture, 'low', 0.9)));
     const high = await picture.render(speech(7, 0.7, spectrum(picture, 'high', 0.9)));
@@ -438,8 +454,7 @@ test.describe('the hologram', () => {
     expect(difference(low, high)).toBeGreaterThan(0.45);
   });
 
-  test('turns its rim clockwise at the film rate', async ({ page }) => {
-    const picture = await openPicture(page);
+  test('turns its rim clockwise at the film rate', async ({ picture }) => {
     // The film's rim layer rolls at 10-12°/s, so 5-6° in half a second, whichever element
     // leads: on the script this seed builds, the crescent leads at 3 s, the thin ring at
     // 19 s and the ladder ring at 36 s, each well clear of its handover.
@@ -453,8 +468,7 @@ test.describe('the hologram', () => {
     }
   });
 
-  test('arrives as a vortex out of its core, and nothing else', async ({ page }) => {
-    const picture = await openPicture(page);
+  test('arrives as a vortex out of its core, and nothing else', async ({ picture }) => {
     // The whole of the arrival, at the user's asking: no point of light, no sparks, no spoked
     // dial — his particles leave the core, nearest first, and spiral out to where they sit.
     const at = (appearance: number) => picture.render({ ...silence(picture, 3), appearance });
@@ -472,9 +486,8 @@ test.describe('the hologram', () => {
   });
 
   test('says the greeting while it arrives without throwing anything off a limb that is not there yet', async ({
-    page,
+    picture,
   }) => {
-    const picture = await openPicture(page);
     // The greeting plays during the vortex. Chips, fraying and the split crescent are what speech
     // does to a formed ball; early in the vortex there is no limb for them to leave, so a frame
     // spoken over must look like the same frame in silence.
@@ -487,21 +500,21 @@ test.describe('the hologram', () => {
   });
 
   test('brings its rim elements and protrusions in and out smoothly, with nothing popping at a script boundary', async ({
-    page,
+    picture,
   }) => {
     // Four renders at each of the script's epoch starts.
     test.setTimeout(300_000);
-    const picture = await openPicture(page);
     expect(picture.facts.scriptBoundaries.length).toBeGreaterThan(0);
     for (const boundary of picture.facts.scriptBoundaries) {
       expect(await largestJumpAt(picture, boundary)).toBeLessThan(30);
     }
   });
 
-  test('materialises without a flash: no one frame of it turns a tenth of the light on at once', async ({ page }) => {
+  test('materialises without a flash: no one frame of it turns a tenth of the light on at once', async ({
+    picture,
+  }) => {
     // Two renders a frame for a hundred and ten frames: the slowest test here by an order.
     test.setTimeout(600_000);
-    const picture = await openPicture(page);
     const { materialiseSeconds } = picture.facts;
     // The arrival is the vortex over MATERIALISE_SECONDS, and the script-boundary test above never
     // sees it, because it only walks a formed ball. An arrival so steep it jumped would read
@@ -528,8 +541,7 @@ test.describe('the hologram', () => {
     expect(worst).toBeLessThan(0.1);
   });
 
-  test('thinks without glowing, so a thought is never mistaken for a word', async ({ page }) => {
-    const picture = await openPicture(page);
+  test('thinks without glowing, so a thought is never mistaken for a word', async ({ picture }) => {
     // Speech brightens the ball by 40% and more, deliberately. A thought must not, or the two
     // states say the same thing to anyone glancing at the screen.
     for (const time of [5.4, 6.3, 7.2]) {
@@ -540,8 +552,7 @@ test.describe('the hologram', () => {
     }
   });
 
-  test('leaves by shrinking and fading, and leaves nothing of him behind', async ({ page }) => {
-    const picture = await openPicture(page);
+  test('leaves by shrinking and fading, and leaves nothing of him behind', async ({ picture }) => {
     // The way out is the way in, run backwards and quicker: the whole sphere fades and draws back
     // toward the middle rather than being cut off where it stands. The drawing does the drawing
     // back; the fade is the view's, laid over the whole picture as one layer by its arrival, which
@@ -553,16 +564,18 @@ test.describe('the hologram', () => {
     const background = luminance(gone, 0);
 
     expect(halfway).toBeLessThan(here * 0.75);
-    // Nothing of him: every pixel back to the screen behind.
+    // Nothing of him: every pixel back to the screen behind. One expectation over the farthest of
+    // them, rather than sixty-five thousand, each of which Playwright reports on its own.
+    let farthest = 0;
     for (let index = 0; index < gone.length; index += 4) {
-      expect(Math.abs(luminance(gone, index) - background)).toBeLessThan(0.5);
+      farthest = Math.max(farthest, Math.abs(luminance(gone, index) - background));
     }
+    expect(farthest).toBeLessThan(0.5);
   });
 
-  test('stays inside its square even at full volume, chips and all', async ({ page }) => {
+  test('stays inside its square even at full volume, chips and all', async ({ picture }) => {
     // Twenty renders of him at his loudest.
     test.setTimeout(300_000);
-    const picture = await openPicture(page);
     // Strict again, and the round trip is worth recording. It began this way and held at
     // SPHERE_FRACTION 0.27. The user then asked for Jarvis as wide as the screen, and at 0.35 the
     // chips thrown to about 1.6R on a syllable were cut off in mid-air — so the rule was loosened
@@ -652,15 +665,13 @@ function sameBytes(first: Uint8Array, second: Uint8Array): boolean {
 }
 
 test.describe('the satellites on a screen', () => {
-  test('draw nothing when there are none', async ({ page }) => {
-    const picture = await openPicture(page);
+  test('draw nothing when there are none', async ({ picture }) => {
     const added = await satellitesAdded(picture, []);
     expect(litPixels(added)).toBe(0);
     expect(added.every((value) => value === 0)).toBe(true);
   });
 
-  test('draw the glyph each is sent where its orbit says, and nothing at his centre', async ({ page }) => {
-    const picture = await openPicture(page);
+  test('draw the glyph each is sent where its orbit says, and nothing at his centre', async ({ picture }) => {
     const glyphs = glyphsOf(picture);
     for (const [index, glyph] of glyphs.entries()) {
       const drawn = orbit(picture, { glyph, turn: index / glyphs.length });
@@ -675,8 +686,7 @@ test.describe('the satellites on a screen', () => {
     }
   });
 
-  test('are dimmer passing behind him than in front of him', async ({ page }) => {
-    const picture = await openPicture(page);
+  test('are dimmer passing behind him than in front of him', async ({ picture }) => {
     const front = orbit(picture, { turn: 0.25 });
     const behind = orbit(picture, { turn: 0.75 });
     const [frontAt, behindAt] = await picture.whereOnCanvas([front, behind], 0);
@@ -688,15 +698,13 @@ test.describe('the satellites on a screen', () => {
     expect(frontAt.y).toBeGreaterThan(behindAt.y);
   });
 
-  test('flare with a ring going out from the glyph as a tool is called', async ({ page }) => {
-    const picture = await openPicture(page);
+  test('flare with a ring going out from the glyph as a tool is called', async ({ picture }) => {
     expect(litPixels(await satellitesAdded(picture, [orbit(picture, { flare: 0.6 })]))).toBeGreaterThan(
       litPixels(await satellitesAdded(picture, [orbit(picture)])),
     );
   });
 
-  test('draw a different picture for each glyph they are sent', async ({ page }) => {
-    const picture = await openPicture(page);
+  test('draw a different picture for each glyph they are sent', async ({ picture }) => {
     const glyphs = glyphsOf(picture);
     const pictures = new Set<string>();
     for (const glyph of glyphs) {
@@ -706,8 +714,9 @@ test.describe('the satellites on a screen', () => {
     expect(pictures.size).toBe(glyphs.length);
   });
 
-  test('draw a glyph the drawing cannot read as the plain ring, since its agent is still at work', async ({ page }) => {
-    const picture = await openPicture(page);
+  test('draw a glyph the drawing cannot read as the plain ring, since its agent is still at work', async ({
+    picture,
+  }) => {
     const unreadable = await satellitesAdded(picture, [orbit(picture, { glyph: 'M 0 0 L' })]);
     const plain = await satellitesAdded(picture, [orbit(picture, { glyph: picture.facts.plainRingGlyph })]);
 
@@ -715,8 +724,7 @@ test.describe('the satellites on a screen', () => {
     expect(sameBytes(unreadable, plain)).toBe(true);
   });
 
-  test('are not drawn once they have gone out', async ({ page }) => {
-    const picture = await openPicture(page);
+  test('are not drawn once they have gone out', async ({ picture }) => {
     const added = await satellitesAdded(picture, [orbit(picture, { level: 0 })]);
     expect(litPixels(added)).toBe(0);
     expect(added.every((value) => value === 0)).toBe(true);
