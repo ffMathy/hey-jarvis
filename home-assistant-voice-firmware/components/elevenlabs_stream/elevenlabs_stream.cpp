@@ -59,6 +59,15 @@ static const uint32_t I2S_DRAIN_SETTLE_MS = 200;
 // ElevenLabs then streams faster than real time and the buffer stays ahead.
 static const uint32_t REPLY_PREBUFFER_BYTES = 48000;
 
+// What the agent is told about where this conversation is happening, as a contextual
+// update: a note that starts no turn. The agent is shared with the phone, the watch, the
+// headset and telephone calls, and only on this speaker does a finished command end the
+// call at once -- there is no screen to dismiss and nobody holding a phone, so the line
+// would otherwise stay open until the silence hangs up on it. The routing instructions
+// for a finished command (COMMAND_DONE_INSTRUCTIONS in
+// mcp/mastra/verticals/routing/workflows.ts) name this note word for word.
+static const char *const DEVICE_NOTE = "This conversation is on the Home Assistant Voice speaker.";
+
 // Hard ceiling on how long audio may sit in the prebuffer. Whatever is held is released
 // once this elapses, even if the size threshold was never met, so a short turn can never
 // be swallowed. Comfortably under the point where a listener notices a delayed reply.
@@ -835,6 +844,7 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
       if (conversation_id) { //we don't listen right now temporarily - this has always been disabled, since we are only testing playback for the initial message right now.
         this->conversation_id_ = conversation_id;
         ESP_LOGI(TAG, "PARSE_JSON_BUF: Conversation initiated: %s", conversation_id);
+        this->send_device_note();
         
         // Store audio formats
         if (agent_output_format) {
@@ -1218,6 +1228,16 @@ void ElevenLabsStream::send_conversation_init() {
   ESP_LOGD(TAG, "SEND_CONV_INIT: Sending conversation init: %s", message.c_str());
   this->send_websocket_message(message);
   ESP_LOGD(TAG, "SEND_CONV_INIT: Conversation init sent");
+}
+
+// Tells the agent which device it is talking through (see DEVICE_NOTE). Sent once the
+// conversation exists, since a contextual update before it has nowhere to go.
+void ElevenLabsStream::send_device_note() {
+  std::string message = json::build_json([](JsonObject root) {
+    root["type"] = "contextual_update";
+    root["text"] = DEVICE_NOTE;
+  });
+  this->send_websocket_message(message);
 }
 
 // Sends a ping message to the ElevenLabs WebSocket for keepalive.
