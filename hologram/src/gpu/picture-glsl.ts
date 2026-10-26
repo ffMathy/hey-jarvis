@@ -191,7 +191,9 @@ void emitSegment(vec2 from, vec2 to, float halfWidth, float roundStart, float ro
 
 // One of \`pieces\` equal pieces of a circular arc from \`start\` through \`sweep\` radians (y down, so
 // a positive sweep is clockwise): an arc is drawn as several quads so that none of them covers much
-// more than the band itself, and each draws only the angles that are its own, so they never overlap.
+// more than the band itself. Each quad's sides run straight out from the centre along its own first
+// and last angle, and a piece's neighbour starts on the very line it ends on, so the quads never
+// overlap and every pixel between them is the rasteriser's to give to one or the other.
 void emitArcPiece(
   vec2 centre,
   float radius,
@@ -232,7 +234,7 @@ void emitArcPiece(
   shapeKind = 2.0;
   shapeA = vec4(centre, radius, halfWidth);
   shapeB = vec4(start, sweep, roundStart, roundEnd + 2.0 * whole);
-  shapeC = vec4(piece * pieceSweep, (piece + 1.0) * pieceSweep, piece, pieces);
+  shapeC = vec4(piece, pieces, 0.0, 0.0);
   shapeLight = 1.0;
   place(centre + vec2(cos(angle), sin(angle)) * (corner.y < 0.0 ? inner : outer));
 }
@@ -359,26 +361,28 @@ float arcCoverage(vec2 point) {
   float roundEnd = shapeB.w - 2.0 * whole;
   vec2 offset = point - centre;
   float fromCentre = length(offset);
+  // The pieces' quads meet edge to edge, so a pixel is drawn by whichever quad the rasteriser gave it
+  // to, and no piece asks which of them the pixel's angle belongs to. It used to: a pixel whose centre
+  // lay on the line two pieces meet on — every pixel on a 45-degree diagonal through a circle centred
+  // on a pixel corner, as the aura is — was rasterised by one quad while the angle, worked out in
+  // floating point, gave it to the other, so neither painted it, and the aura showed a dark line
+  // down each lower diagonal.
+  if (whole > 0.5) return band((fromCentre - radius) / localPerPixel, halfPixels);
   // How far round from the start this pixel is, 0 to a turn.
   float turned = mod(atan(offset.y, offset.x) - start, TAU);
-  // Each piece draws its own share of the angles, and the ends' pieces the gap past them, the
-  // start's piece the half nearer the start.
-  float isFirst = shapeC.z < 0.5 ? 1.0 : 0.0;
-  float isLast = shapeC.z > shapeC.w - 1.5 ? 1.0 : 0.0;
-  float gapMiddle = sweep + (TAU - sweep) * 0.5;
-  bool inside = turned <= sweep;
-  bool owned = (turned >= shapeC.x && turned < shapeC.y)
-    || (isLast > 0.5 && turned >= sweep && (whole > 0.5 || turned < gapMiddle))
-    || (whole < 0.5 && isFirst > 0.5 && turned >= gapMiddle);
-  if (!owned) return 0.0;
-  if (whole > 0.5) return band((fromCentre - radius) / localPerPixel, halfPixels);
-  if (inside) {
+  if (turned <= sweep) {
     float covered = band((fromCentre - radius) / localPerPixel, halfPixels);
     if (roundStart < 0.5) covered *= clamp(turned * fromCentre / localPerPixel + 0.5, 0.0, 1.0);
     if (roundEnd < 0.5) covered *= clamp((sweep - turned) * fromCentre / localPerPixel + 0.5, 0.0, 1.0);
     return covered;
   }
+  // Past the arc's ends only the end pieces' quads reach, and each draws its own end: the gap past
+  // the arc is split at its middle, the start's piece taking the half nearer the start.
+  float gapMiddle = sweep + (TAU - sweep) * 0.5;
   bool nearStart = turned >= gapMiddle;
+  bool isFirst = shapeC.x < 0.5;
+  bool isLast = shapeC.x > shapeC.y - 1.5;
+  if (nearStart ? !isFirst : !isLast) return 0.0;
   float endAngle = nearStart ? start : start + sweep;
   float isRound = nearStart ? roundStart : roundEnd;
   if (isRound > 0.5) {

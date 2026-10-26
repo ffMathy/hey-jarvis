@@ -11,8 +11,10 @@ import {
   EMBER_STRIDE,
   type HologramFrame,
   PARTICLE_COUNT,
+  PICTURE_SHELL_EDGE,
   ROLL_DEGREES_PER_SECOND,
   SHELL_DEGREES_PER_SECOND,
+  swirlFragment,
 } from './hologram-drawing';
 import { VOICE_BAND_COUNT } from './voice-levels';
 
@@ -137,35 +139,87 @@ describe('the picture round him', () => {
   };
   const stateOf = (changes: Partial<HologramFrame>) => analyseFrame({ ...quiet, ...changes }, SIZE, scene);
 
+  /** Every edge of the cage as its two ends. */
+  const cageEdges = () => {
+    const edges: number[][][] = [];
+    for (let offset = 0; offset < scene.cage.length; offset += CAGE_EDGE_STRIDE) {
+      edges.push([scene.cage.slice(offset, offset + 3), scene.cage.slice(offset + 3, offset + 6)]);
+    }
+    return edges;
+  };
+
   it('keeps the cage and the embers well inside his square, which ends about 1.8R out', () => {
     // They are always there, and he swells by up to a fifth while he talks, so neither may come near
-    // the square's edge: the cage's tail reaches 1.4R at most, and an ember has gone by 1.45R.
-    let farthestNode = 0;
-    for (let offset = 0; offset < scene.cage.length; offset += CAGE_EDGE_STRIDE) {
-      for (const end of [offset, offset + 3]) {
-        farthestNode = Math.max(farthestNode, Math.hypot(scene.cage[end], scene.cage[end + 1], scene.cage[end + 2]));
-      }
-    }
+    // the square's edge: the cage reaches 1.4R at most, and an ember has gone by 1.45R.
+    const farthestNode = Math.max(...cageEdges().flatMap((ends) => ends.map((end) => Math.hypot(...end))));
     let farthestEmber = 0;
     for (let offset = 0; offset < scene.embers.length; offset += EMBER_STRIDE) {
       farthestEmber = Math.max(farthestEmber, scene.embers[offset + 1] + (1 + EMBER_RISE) * scene.embers[offset + 2]);
     }
 
-    expect(scene.cage.length).toBeGreaterThan(100 * CAGE_EDGE_STRIDE);
     expect(farthestNode).toBeLessThanOrEqual(1.4 + 1e-4);
     expect(farthestEmber).toBeLessThanOrEqual(1.45 + 1e-4);
   });
 
-  it('arrives out of the core: the core first, the aura as the particles leave it, the cage last', () => {
+  it("weaves the cage densely round the shell of specks, as the film's wireframe hugs it", () => {
+    const edges = cageEdges();
+    const middles = edges.map(([from = [], to = []]) =>
+      Math.hypot(...from.map((value, axis) => (value + (to[axis] ?? 0)) / 2)),
+    );
+    const hugging = middles.filter((middle) => middle >= 0.85 && middle <= 1.2);
+
+    // Twice the 132 edges it had when it first replaced the Age of Ultron rim, which read as sparse.
+    expect(edges.length).toBeGreaterThan(250);
+    expect(hugging.length / edges.length).toBeGreaterThan(0.75);
+  });
+
+  it('trails nothing below him that could read as a limb: the lines there are single strokes', () => {
+    // The tail it used to trail was a chain with a branch off it, which read as legs. Below the
+    // cage's shell, which hugs the specks to 1.2R, no point is now the end of more than one edge.
+    const below = cageEdges()
+      .flat()
+      .filter((end) => (end[1] ?? 0) > 1.2);
+    const keys = below.map((end) => end.join(','));
+
+    expect(below.length).toBeGreaterThan(0);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('arrives out of the core: the core first, on its own, the aura with his body, the cage last', () => {
     const early = stateOf({ appearance: 0.12 });
-    const halfway = stateOf({ appearance: 0.5 });
+    // the vortex has yet to carry any of the specks out of the core: nothing to glow round
+    const gathered = stateOf({ appearance: 0.35 });
+    const halfway = stateOf({ appearance: 0.6 });
     const formed = stateOf({});
 
     expect(early.coreAlpha).toBeGreaterThan(0);
-    expect(early.auraAlpha).toBe(0);
+    expect([early.auraAlpha, early.cageAlpha, gathered.auraAlpha, gathered.cageAlpha]).toEqual([0, 0, 0, 0]);
+    expect(gathered.coreAlpha).toBeGreaterThan(0.9);
     expect(halfway.auraAlpha).toBeGreaterThan(0);
-    expect(halfway.cageAlpha).toBe(0);
-    expect([formed.coreAlpha, formed.auraAlpha, formed.cageAlpha]).toEqual([1, 1, 1]);
+    expect(halfway.cageAlpha).toBeGreaterThan(0);
+    expect(halfway.cageAlpha).toBeLessThan(halfway.auraAlpha);
+    expect([formed.coreAlpha, formed.auraAlpha, formed.cageAlpha, formed.shellReach]).toEqual([1, 1, 1, 1]);
+  });
+
+  it('carries the aura, the cage and the embers out of the core with his shell of specks', () => {
+    // The aura is brightest on the shell's edge at rest. While he arrives it is carried out with the
+    // specks, lying among those the vortex has brought out so far: between where it has brought one
+    // from the middle of the shell and one from its edge, give or take 0.07R. An id whose share of
+    // the vortex's order is the middle one, as most of the shell's is.
+    const id = 0.5 / 3.91;
+    const reachOf = (state: ReturnType<typeof stateOf>, x: number) => {
+      swirlFragment(x, 0, 1, 0, id, state);
+      return Math.hypot(state.swirled[0] ?? 0, state.swirled[1] ?? 0);
+    };
+    for (let appearance = 0.3; appearance <= 1; appearance += 0.025) {
+      const state = stateOf({ appearance });
+      const edge = reachOf(state, PICTURE_SHELL_EDGE);
+      const middle = reachOf(state, 0.6);
+      const aura = PICTURE_SHELL_EDGE * state.shellReach;
+
+      expect(aura).toBeGreaterThan(Math.min(edge, middle) - 0.07);
+      expect(aura).toBeLessThan(Math.max(edge, middle) + 0.07);
+    }
   });
 
   it('dims all but the white-hot ring while he thinks, and shows more embers while he talks', () => {
