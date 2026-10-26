@@ -349,6 +349,22 @@ function useLayerFlat(gl: HologramGl, picture: GpuPicture, layer: PictureLayer, 
   useLayer(gl, picture, layer, radius, 0, 0, radius, 0.5, 0.5, 1 / (radius * frame.pixels));
 }
 
+/**
+ * A layer in the drawing's unit frame shrunk towards his centre by as much as the vortex has yet to
+ * carry his shell of specks out of the core (`shellReach`), so that what is drawn round the shell is
+ * carried out with it as he arrives, and is in the drawing's unit frame once he has.
+ *
+ * The cage's lines and the embers keep their width as they are carried out (their half widths are
+ * divided by the reach), so their light grows with how far out they are rather than with the area
+ * they span: grown in both, the cage's light rose so steeply at the end of the vortex that a frame
+ * of it turned a tenth of the picture's light on at once.
+ */
+function useLayerRoundTheShell(gl: HologramGl, picture: GpuPicture, layer: PictureLayer, frame: GpuPictureFrame) {
+  'worklet';
+  const scale = frame.state.radius * frame.state.shellReach;
+  useLayer(gl, picture, layer, scale, 0, 0, scale, 0.5, 0.5, 1 / (scale * frame.pixels));
+}
+
 /** A layer in the drawing's unit frame moved to the core, as `canvas.translate(CORE_X, CORE_Y)` moves it. */
 function useLayerAtCore(gl: HologramGl, picture: GpuPicture, layer: PictureLayer, frame: GpuPictureFrame) {
   'worklet';
@@ -472,7 +488,8 @@ const AURA_LIGHT = 0.24;
 /**
  * The soft warm bloom round him (`AURA_INNER` to `AURA_OUTER`), painted as the band its gradient
  * lights rather than as a disc, so the middle stays see-through. It answers his voice only as much as
- * his sparks' glow does (`glowGain`).
+ * his sparks' glow does (`glowGain`). While he arrives it spreads out of the core with his shell of
+ * specks, its gradient shrunk with the frame it is drawn in.
  */
 function drawAura(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
@@ -481,7 +498,7 @@ function drawAura(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   if (alpha <= 0) return;
   const layer = picture.arc;
   beginPath(gl, picture);
-  useLayerFlat(gl, picture, layer, frame);
+  useLayerRoundTheShell(gl, picture, layer, frame);
   setRadialPaint(gl, layer, clamp01(alpha), GRADIENTS.aura.row, GRADIENTS.aura.radius);
   drawCircle(gl, picture, (AURA_INNER + AURA_OUTER) / 2, (AURA_OUTER - AURA_INNER) / 2, 0, 0);
 }
@@ -509,9 +526,9 @@ function strokeCoreRing(
 }
 
 /**
- * The core: a glowing disc, the faint hooked ring and bar across it, and round it the white-hot
- * ring — the brightest thing in him — drawn as a warm glow, a gold body and a near-white line, with
- * the short tick it puts out at its upper right.
+ * The core: a glow, mostly see-through, at its brightest just inside the white-hot ring and blooming
+ * out of it both ways; the faint hooked ring and bar across it; and the ring itself — the brightest
+ * thing in him — a thin gold body under a crisper near-white line.
  */
 function drawCore(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
@@ -523,23 +540,17 @@ function drawCore(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   const disc = picture.disc;
   beginPath(gl, picture);
   useLayerAtCore(gl, picture, disc, frame);
-  setRadialPaint(gl, disc, clamp01(0.75 * glow), GRADIENTS.coreGlow.row, GRADIENTS.coreGlow.radius);
+  setRadialPaint(gl, disc, clamp01(glow), GRADIENTS.coreGlow.row, GRADIENTS.coreGlow.radius);
   if (disc.program.uniforms.disc) gl.uniform3f(disc.program.uniforms.disc, 0, 0, GRADIENTS.coreGlow.radius);
   drawShapes(gl, picture, disc, 0, 1);
 
   const paths = picture.paths;
   useLayerAtCore(gl, picture, picture.segments, frame);
-  strokeStatic(gl, picture, paths.coreRing, 0.014 / 2, 1, PALE_GOLD, 0.45 * glow);
-  strokeStatic(gl, picture, paths.coreBar, 0.01 / 2, 1, PALE_GOLD, 0.3 * glow);
+  strokeStatic(gl, picture, paths.coreRing, 0.01 / 2, 1, PALE_GOLD, 0.24 * glow);
+  strokeStatic(gl, picture, paths.coreBar, 0.008 / 2, 1, PALE_GOLD, 0.16 * glow);
 
-  // Screened over the glow under them these come to about (251, 234, 177) where the ring is
-  // brightest, the film's hottest pixels being (255, 229, 174): near-white, never white.
-  strokeCoreRing(gl, picture, frame, 0.08 / 2, GLOW, 0.35 * brightness);
-  strokeCoreRing(gl, picture, frame, 0.03 / 2, GOLD, clamp01(0.9 * brightness));
-  strokeCoreRing(gl, picture, frame, 0.011 / 2, WHITE_HOT, clamp01(0.45 * brightness));
-  useLayerAtCore(gl, picture, picture.segments, frame);
-  strokeStatic(gl, picture, paths.coreTick, 0.02 / 2, 1, GOLD, clamp01(0.85 * brightness));
-  strokeStatic(gl, picture, paths.coreTick, 0.008 / 2, 1, WHITE_HOT, clamp01(0.4 * brightness));
+  strokeCoreRing(gl, picture, frame, 0.024 / 2, GOLD, clamp01(0.7 * brightness));
+  strokeCoreRing(gl, picture, frame, 0.009 / 2, WHITE_HOT, clamp01(0.9 * brightness));
 }
 
 // ---- round him: the cage and the embers -------------------------------------------------------
@@ -558,22 +569,27 @@ function strokeCage(
   const layer = picture.cage;
   const state = frame.state;
   beginPath(gl, picture);
-  useLayerFlat(gl, picture, layer, frame);
+  useLayerRoundTheShell(gl, picture, layer, frame);
   setPaint(gl, layer, kind, colour, alpha);
   const turn = layer.program.uniforms.bodyTurn;
   if (turn) gl.uniform2f(turn, state.bodyCos, state.bodySin);
   setUniform1(layer, gl, 'time', state.time);
-  setUniform1(layer, gl, 'halfWidth', halfWidth);
+  setUniform1(layer, gl, 'halfWidth', halfWidth / state.shellReach);
   drawShapes(gl, picture, layer, 0, layer.shapes);
 }
 
-/** The cage round him: a faint glow under hairlines that glitter as they turn. */
+/**
+ * The cage round him: hairlines that glow, a soft warm glow under an amber line, and a gold core
+ * along it that glitters as it turns. Gold, not pale gold: where it crosses the brightest specks on
+ * his limb a paler one Screened them past near-white, which only his core's ring may reach.
+ */
 function drawCage(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
   const alpha = frame.state.cageAlpha;
   if (alpha <= 0) return;
-  strokeCage(gl, picture, frame, 0.028 / 2, PICTURE_PAINTS.solid, GLOW, 0.22 * alpha);
-  strokeCage(gl, picture, frame, 0.009 / 2, PICTURE_PAINTS.sparkle, GOLD, clamp01(alpha));
+  strokeCage(gl, picture, frame, 0.06 / 2, PICTURE_PAINTS.solid, GLOW, 0.32 * alpha);
+  strokeCage(gl, picture, frame, 0.02 / 2, PICTURE_PAINTS.solid, AMBER, 0.7 * alpha);
+  strokeCage(gl, picture, frame, 0.012 / 2, PICTURE_PAINTS.sparkle, GOLD, clamp01(alpha));
 }
 
 /** The embers, in one paint and width. */
@@ -589,11 +605,11 @@ function strokeEmbers(
   const layer = picture.embers;
   const state = frame.state;
   beginPath(gl, picture);
-  useLayerFlat(gl, picture, layer, frame);
+  useLayerRoundTheShell(gl, picture, layer, frame);
   setSolid(gl, layer, colour, alpha);
   setUniform1(layer, gl, 'time', state.time);
   setUniform1(layer, gl, 'share', state.emberShare);
-  setUniform1(layer, gl, 'halfWidth', halfWidth);
+  setUniform1(layer, gl, 'halfWidth', halfWidth / state.shellReach);
   drawShapes(gl, picture, layer, 0, layer.shapes);
 }
 

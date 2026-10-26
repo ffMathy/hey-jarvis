@@ -119,7 +119,7 @@ export function flattenPath(builder: PathBuilder): PathSegments {
 }
 
 /** The static paths' names, in the order their runs are laid out. */
-export const STATIC_PATH_NAMES = ['coreRing', 'coreBar', 'coreTick'] as const satisfies readonly (keyof StaticPaths)[];
+export const STATIC_PATH_NAMES = ['coreRing', 'coreBar'] as const satisfies readonly (keyof StaticPaths)[];
 
 export type StaticPathName = (typeof STATIC_PATH_NAMES)[number];
 
@@ -247,7 +247,8 @@ const CAGE_SWAY = 0.012;
  * turns a fragment) and seen straight on. Every edge twinkles on its own slow clock and is fainter
  * towards his back, and fainter again where it lies across his face rather than round him, so the
  * cage reads as round him rather than over him. Each edge is lit at both ends (`shapeLight`), so
- * an edge running from his front to his back fades along itself.
+ * an edge running from his front to his back fades along itself, and so does one whose far end the
+ * scene lights less than its near one: the lines trailing below him fade away as they leave him.
  */
 export function cageLayer(scene: HologramPictureScene): PictureLayerSource {
   const froms: number[][] = [];
@@ -256,14 +257,14 @@ export function cageLayer(scene: HologramPictureScene): PictureLayerSource {
   for (let offset = 0; offset < scene.cage.length; offset += CAGE_EDGE_STRIDE) {
     froms.push(scene.cage.slice(offset, offset + 3));
     tos.push(scene.cage.slice(offset + 3, offset + 6));
-    clocks.push(scene.cage.slice(offset + 6, offset + 9));
+    clocks.push(scene.cage.slice(offset + 6, offset + 10));
   }
   return {
     vertexShader: shader(
       `
 in vec3 edgeFrom;
 in vec3 edgeTo;
-in vec3 edgeClock;
+in vec4 edgeClock;
 uniform vec2 bodyTurn;
 uniform float time;
 uniform float halfWidth;
@@ -284,20 +285,21 @@ vec3 turnedNode(vec3 node) {
 float nodeLight(vec3 turned) {
   float front = smooth01((turned.z + 1.2) / 2.4);
   float aside = smooth01((length(turned.xy) - 0.3) / 0.55);
-  return (0.5 + 0.5 * front) * (0.2 + 0.8 * aside);
+  return (0.6 + 0.4 * front) * (0.25 + 0.75 * aside);
 }
 `,
       `
-  // edgeClock: its twinkle's rate (cycles a second) and phase, and the edge's weight.
+  // edgeClock: its twinkle's rate (cycles a second) and phase, the edge's weight, and how lit its
+  // far end is as a share of its near one's.
   vec3 from = turnedNode(edgeFrom);
   vec3 to = turnedNode(edgeTo);
   float twinkle = 0.55 + 0.45 * smooth01(0.5 + 0.5 * sin((time * edgeClock.x + edgeClock.y) * TAU));
   emitSegment(from.xy, to.xy, halfWidth, 1.0, 1.0);
-  shapeLight = edgeClock.z * twinkle * nodeLight(corner.x < 0.0 ? from : to);
+  shapeLight = edgeClock.z * twinkle * (corner.x < 0.0 ? nodeLight(from) : edgeClock.w * nodeLight(to));
 `,
     ),
     uniforms: ['bodyTurn', 'time', 'halfWidth'],
-    attributes: [attribute('edgeFrom', 3, froms), attribute('edgeTo', 3, tos), attribute('edgeClock', 3, clocks)],
+    attributes: [attribute('edgeFrom', 3, froms), attribute('edgeTo', 3, tos), attribute('edgeClock', 4, clocks)],
     shapes: froms.length,
   };
 }

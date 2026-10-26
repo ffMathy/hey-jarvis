@@ -352,7 +352,7 @@ export const FRAY_STRIDE = 5;
 export const STREAK_ARC_STRIDE = 6;
 export const LIMB_STREAK_STRIDE = 5;
 const EPOCH_STRIDE = 10;
-export const CAGE_EDGE_STRIDE = 9;
+export const CAGE_EDGE_STRIDE = 10;
 export const EMBER_STRIDE = 7;
 /** Side of the tiled sparkle texture in texels, and how wide a texel is on the sphere: a stroke spans about two. */
 export const SPARKLE_TEXTURE_TEXELS = 64;
@@ -836,67 +836,122 @@ function buildScript(random: Random) {
   return { epochs, period: start };
 }
 
-/** How many nodes the cage's shell has, how many anchors tie it to the specks, and how far the tail reaches. */
-const CAGE_NODES = 72;
-const CAGE_ANCHORS = 9;
-const CAGE_TAIL_REACH = 1.4;
+/**
+ * The cage's make-up: the nodes of its shell, the nodes farther out that its long chords run
+ * between, the anchors that tie it to the specks, and the lines trailing below him. CAGE_REACH is
+ * the farthest any of it reaches, in R.
+ */
+const CAGE_NODES = 150;
+const CAGE_OUTER_NODES = 26;
+const CAGE_ANCHORS = 12;
+const CAGE_TRAILS = 5;
+const CAGE_REACH = 1.4;
+/** The longest edge between two of the shell's nodes, in R: the film's are short and jagged. */
+const CAGE_LONGEST_MESH_EDGE = 0.42;
+/** The longest spike from an outer node down to the shell's, and the longest chord between two outer nodes. */
+const CAGE_LONGEST_SPIKE = 0.55;
+const CAGE_LONGEST_CHORD = 0.9;
 
-/** A cage edge as a row: both ends (y down, z towards the eye at rest), its twinkle's rate and phase, and its weight. */
-function pushCageEdge(edges: number[], random: Random, from: number[], to: number[], weight: number) {
-  edges.push(from[0], from[1], from[2], to[0], to[1], to[2], 0.05 + random() * 0.13, random(), weight);
+/**
+ * A cage edge as a row: both ends (y down, z towards the eye at rest), its twinkle's rate and phase,
+ * its weight, and how lit its far end is as a share of its near one's: 1, lit evenly along it, but
+ * for a line that fades away as it leaves him.
+ */
+function pushCageEdge(edges: number[], random: Random, from: number[], to: number[], weight: number, farLight = 1) {
+  edges.push(from[0], from[1], from[2], to[0], to[1], to[2], 0.05 + random() * 0.13, random(), weight, farLight);
 }
 
-/** A node of the cage's lumpy shell, 0.95-1.31R out: more of them over the top, as the film's is fullest above. */
-function pickCageNode(random: Random): number[] {
+/**
+ * A direction for the cage, as a unit vector: more of them over the top, as the film's wireframe is
+ * fullest above (y runs down, so a negative height is over the top).
+ */
+function pickCageDirection(random: Random): number[] {
   for (;;) {
     const height = random() * 2 - 1;
     const around = random() * Math.PI * 2;
     const ring = Math.sqrt(1 - height * height);
-    const direction = [Math.cos(around) * ring, height, Math.sin(around) * ring];
-    // y runs down, so a negative height is over the top
     if (random() > 0.62 - 0.38 * height) continue;
-    // lumpy rather than round: the reach swells and dips with the direction, and a little at random
-    const lump =
-      0.5 + 0.5 * Math.sin(2.3 * direction[0] + 1.1) * Math.sin(3.1 * direction[1] - 0.4 + 1.7 * direction[2]);
-    const radius = 0.95 + 0.36 * Math.min(1, Math.max(0, 0.7 * lump + 0.3 * random()));
-    return direction.map((component) => component * radius);
+    return [Math.cos(around) * ring, height, Math.sin(around) * ring];
   }
 }
 
 /**
- * The cage: the film's loose angular wireframe round the shell of specks — straight hairlines
- * between nodes, making jagged triangles and polylines. Seeded nodes on a lumpy shell 0.95-1.31R
- * out, each joined to its two or three nearest; a few anchors running down to the specks' edge;
- * and a tail trailing below him to no more than {@link CAGE_TAIL_REACH}. It is in three dimensions
- * and turns with the body (`gpu/picture-layers.ts`), always there and calm: nothing grows out of
- * it or swings away, which is what the user disliked in the protrusions it replaces.
- *
- * Stride {@link CAGE_EDGE_STRIDE}: from x, y, z, to x, y, z, twinkle rate (cycles a second), its
- * phase, and the edge's weight. y runs down the screen and z towards the eye at rest, as the body's.
+ * A node of the cage's lumpy shell, hugging the shell of specks: 0.9-1.2R out, most of them inside
+ * 1.1R. Lumpy rather than round, the reach swelling and dipping with the direction and a little at
+ * random.
  */
-function buildCage(random: Random) {
-  const nodes: number[][] = [];
-  while (nodes.length < CAGE_NODES) nodes.push(pickCageNode(random));
-  const edges: number[] = [];
+function pickCageNode(random: Random): number[] {
+  const direction = pickCageDirection(random);
+  const lump = 0.5 + 0.5 * Math.sin(2.3 * direction[0] + 1.1) * Math.sin(3.1 * direction[1] - 0.4 + 1.7 * direction[2]);
+  const out = Math.min(1, Math.max(0, 0.55 * lump + 0.45 * random()));
+  const radius = 0.9 + 0.3 * out ** 1.6;
+  return direction.map((component) => component * radius);
+}
+
+/**
+ * A node farther out than the shell's, 1.18R to just inside {@link CAGE_REACH}: where the long chords
+ * run. Never under him, where a node so far out, joined down to the shell, would hang off him.
+ */
+function pickOuterCageNode(random: Random): number[] {
+  const radius = 1.18 + random() * (CAGE_REACH - 0.02 - 1.18);
+  for (;;) {
+    const direction = pickCageDirection(random);
+    if (direction[1] < 0.4) return direction.map((component) => component * radius);
+  }
+}
+
+/** The nodes of `among` nearest to `node`, nearest first, as their indices and how far each is. */
+function nearestCageNodes(node: number[], among: number[][]) {
+  return among
+    .map((other, otherIndex) => ({
+      otherIndex,
+      distance: Math.hypot(...node.map((value, axis) => value - other[axis])),
+    }))
+    .filter(({ distance }) => distance > 0)
+    .sort((first, second) => first.distance - second.distance);
+}
+
+/** The nodes of the cage's shell, each joined to its two or three nearest by edges no longer than the mesh's. */
+function pushCageMesh(edges: number[], random: Random, nodes: number[][]) {
   const joined = new Set<string>();
   nodes.forEach((node, index) => {
-    const nearest = nodes
-      .map((other, otherIndex) => ({
-        otherIndex,
-        distance: Math.hypot(...node.map((value, axis) => value - other[axis])),
-      }))
-      .filter(({ otherIndex }) => otherIndex !== index)
-      .sort((first, second) => first.distance - second.distance);
     const neighbours = random() < 0.6 ? 3 : 2;
-    for (const { otherIndex, distance } of nearest.slice(0, neighbours)) {
+    for (const { otherIndex, distance } of nearestCageNodes(node, nodes).slice(0, neighbours)) {
       const key = `${Math.min(index, otherIndex)}:${Math.max(index, otherIndex)}`;
-      // a chord much longer than the cage's mesh would cut across his face
-      if (joined.has(key) || distance > 0.75) continue;
+      // an edge much longer than the mesh's would cut across his face
+      if (joined.has(key) || distance > CAGE_LONGEST_MESH_EDGE) continue;
       joined.add(key);
       pushCageEdge(edges, random, node, nodes[otherIndex], 0.75 + 0.25 * random());
     }
   });
-  // anchors: down from a node to the specks' edge, a little to one side of straight in
+}
+
+/**
+ * The cage farther out: each outer node joined to its one or two nearest outer nodes by long
+ * straight chords, which make loose polylines and the odd wide triangle wrapping round him well
+ * clear of the specks, as the film's outer lines do, and most of them tied down to the shell by a
+ * single spike to its nearest node there. They are a little fainter than the mesh, which is where
+ * the film's wireframe is brightest.
+ */
+function pushCageOuterMesh(edges: number[], random: Random, nodes: number[][], outerNodes: number[][]) {
+  const joined = new Set<string>();
+  outerNodes.forEach((node, index) => {
+    const chords = random() < 0.5 ? 2 : 1;
+    for (const { otherIndex, distance } of nearestCageNodes(node, outerNodes).slice(0, chords)) {
+      const key = `${Math.min(index, otherIndex)}:${Math.max(index, otherIndex)}`;
+      if (joined.has(key) || distance > CAGE_LONGEST_CHORD) continue;
+      joined.add(key);
+      pushCageEdge(edges, random, node, outerNodes[otherIndex], 0.5 + 0.3 * random());
+    }
+    const [nearest] = nearestCageNodes(node, nodes);
+    if (random() < 0.65 && nearest !== undefined && nearest.distance <= CAGE_LONGEST_SPIKE) {
+      pushCageEdge(edges, random, node, nodes[nearest.otherIndex], 0.6 + 0.25 * random());
+    }
+  });
+}
+
+/** Anchors: down from a node to the specks' edge, a little to one side of straight in. */
+function pushCageAnchors(edges: number[], random: Random, nodes: number[][]) {
   for (let anchor = 0; anchor < CAGE_ANCHORS; anchor++) {
     const node = nodes[Math.floor(random() * nodes.length)];
     const length = Math.hypot(...node);
@@ -905,33 +960,62 @@ function buildCage(random: Random) {
     const foot = aside.map((value) => (value / asideLength) * PICTURE_SHELL_EDGE * (0.93 + 0.07 * random()));
     pushCageEdge(edges, random, node, foot, 0.5 + 0.2 * random());
   }
-  // the tail: a chain from under the specks down and a little to the left, with a branch off it
-  let previous = [0.06, PICTURE_SHELL_EDGE * 0.97, 0.08];
-  const chain: number[][] = [];
-  for (let step = 0; step < 5; step++) {
-    const next = [
-      previous[0] - 0.04 + (random() - 0.5) * 0.16,
-      previous[1] + 0.1 + random() * 0.04,
-      (random() - 0.5) * 0.24,
+}
+
+/**
+ * The trails: a few long lines from all round the bottom of the shell of specks, sweeping down past
+ * the bottom of him towards the far side and fading away as they go, as the lines trailing below
+ * the film's sphere taper off. Each is on its own and none branches, and they start all round him
+ * rather than from one side, so that however his body has turned they never close up into one line;
+ * and having faded by the time they pass each other, they never meet in a point below him either.
+ * The chain of edges it replaces, with a branch off it, read as a limb hanging off him.
+ */
+function pushCageTrails(edges: number[], random: Random) {
+  for (let trail = 0; trail < CAGE_TRAILS; trail++) {
+    const around = ((trail + 0.4 * random()) / CAGE_TRAILS) * Math.PI * 2;
+    // from 25-55 degrees off the bottom of the shell
+    const tilt = (25 + random() * 30) * DEGREES_TO_RADIANS;
+    const startRadius = PICTURE_SHELL_EDGE * (0.95 + 0.05 * random());
+    const from = [
+      Math.cos(around) * Math.sin(tilt) * startRadius,
+      Math.cos(tilt) * startRadius,
+      Math.sin(around) * Math.sin(tilt) * startRadius,
     ];
-    const reach = Math.hypot(...next);
-    const kept = reach > CAGE_TAIL_REACH ? next.map((value) => (value * CAGE_TAIL_REACH) / reach) : next;
-    pushCageEdge(edges, random, previous, kept, 0.85);
-    chain.push(kept);
-    previous = kept;
+    // down towards straight below him, ending short of it on its own side or past it on the far one
+    const beyond = around + Math.PI + (random() - 0.5) * 1.2;
+    const aside = (random() - 0.35) * 0.5;
+    const depth = 1.15 + random() * 0.2;
+    const to = [Math.cos(beyond) * aside, depth, Math.sin(beyond) * aside];
+    const reach = Math.hypot(...to);
+    const kept = reach > CAGE_REACH - 0.02 ? to.map((value) => (value * (CAGE_REACH - 0.02)) / reach) : to;
+    pushCageEdge(edges, random, from, kept, 0.75 + 0.2 * random(), 0);
   }
-  const fork = chain[1];
-  const branch = [fork[0] + 0.14 + random() * 0.08, fork[1] + 0.12, fork[2] + (random() - 0.5) * 0.2];
-  pushCageEdge(edges, random, fork, branch, 0.7);
-  // and the tail is tied into the cage where it leaves it
-  const top = chain[0];
-  const nearestNode = nodes.reduce((best, node) =>
-    Math.hypot(...node.map((value, axis) => value - top[axis])) <
-    Math.hypot(...best.map((value, axis) => value - top[axis]))
-      ? node
-      : best,
-  );
-  pushCageEdge(edges, random, top, nearestNode, 0.7);
+}
+
+/**
+ * The cage: the film's loose angular wireframe round the shell of specks — straight hairlines
+ * between nodes, making jagged triangles and polylines. Seeded nodes on a lumpy shell hugging the
+ * specks, 0.9-1.2R out, each joined to its two or three nearest by short edges; nodes farther out
+ * joined down to it and to each other by long straight chords; a few anchors running down to the
+ * specks' edge; and a few long lines tapering below him, none of it reaching past
+ * {@link CAGE_REACH}. It is in three dimensions and turns with the body (`gpu/picture-layers.ts`),
+ * always there and calm: nothing grows out of it or swings away, which is what the user disliked in
+ * the protrusions it replaces.
+ *
+ * Stride {@link CAGE_EDGE_STRIDE}: from x, y, z, to x, y, z, twinkle rate (cycles a second), its
+ * phase, the edge's weight, and how lit its far end is as a share of its near one's. y runs down the
+ * screen and z towards the eye at rest, as the body's.
+ */
+function buildCage(random: Random) {
+  const nodes: number[][] = [];
+  while (nodes.length < CAGE_NODES) nodes.push(pickCageNode(random));
+  const outerNodes: number[][] = [];
+  while (outerNodes.length < CAGE_OUTER_NODES) outerNodes.push(pickOuterCageNode(random));
+  const edges: number[] = [];
+  pushCageMesh(edges, random, nodes);
+  pushCageOuterMesh(edges, random, nodes, outerNodes);
+  pushCageAnchors(edges, random, nodes);
+  pushCageTrails(edges, random);
   return edges;
 }
 
@@ -1131,8 +1215,11 @@ export function sparklePixels(seed: number) {
 /**
  * The marks of the core: inside its white-hot ring ({@link CORE_RING_RADIUS}) a hooked ring of radius
  * 0.1R with a stem curling in, and a bar across short enough to stay inside it — the film's glowing
- * disc has faint marks like these across it — and the short tick the film's ring puts out at its
- * upper right, drawn as hot as the ring.
+ * disc has faint marks like these across it.
+ *
+ * The ring used to put out a short tick at its upper right, where one of the film's frames shows a
+ * spark leave it. Held still on him, it read as a glitch in the ring rather than as a spark, and it
+ * is gone.
  */
 function buildCoreGlyph() {
   const ring = makePathBuilder();
@@ -1145,15 +1232,10 @@ function buildCoreGlyph() {
   const bar = makePathBuilder();
   pathMoveTo(bar, -0.22, 0.012);
   pathLineTo(bar, 0.22, 0.012);
-  const tickAngle = -38 * DEGREES_TO_RADIANS;
-  const tick = makePathBuilder();
-  pathMoveTo(tick, Math.cos(tickAngle) * CORE_RING_RADIUS, Math.sin(tickAngle) * CORE_RING_RADIUS);
-  pathLineTo(tick, CORE_RING_RADIUS + 0.1, -0.235);
-  pathLineTo(tick, CORE_RING_RADIUS + 0.15, -0.228);
-  return { coreRing: ring, coreBar: bar, coreTick: tick };
+  return { coreRing: ring, coreBar: bar };
 }
 
-/** The paths that never change, as commands: the core's marks — its hooked ring, its bar and its ring's tick. */
+/** The paths that never change, as commands: the core's marks — its hooked ring and its bar. */
 export function staticPathsOf() {
   return buildCoreGlyph();
 }
@@ -1331,6 +1413,14 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
   const radius = size * SPHERE_FRACTION * (LEAVING_SMALLEST + (1 - LEAVING_SMALLEST) * presence) * (1 + swell);
   const intoScan = time - Math.floor(time / SCAN_SECONDS) * SCAN_SECONDS;
   const thinking = clamp01(frame.thinking);
+  // How far the vortex has carried his shell of specks out of the core, 0 to 1. By swirlFragment's
+  // law a fragment leaves once the swirl passes 0.6 of its order — 0.9 of its reach and a tenth of
+  // its id's hash — and has settled 0.4 later, so the middle of the shell is on its way out at about
+  // 0.35 and its edge has settled by 0.95. This follows the shell between the two, over that whole
+  // stretch: the outer layers it carries out are much of the picture's light, and following the
+  // edge alone, which travels in the last 0.4, they came on so steeply that a frame of them turned
+  // most of a tenth of the light on at once.
+  const shellOut = smooth01((swirl - 0.35) / 0.6);
   return {
     time,
     radius,
@@ -1342,9 +1432,12 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
     pulse: intoScan > SCAN_SECONDS - PULSE_SECONDS ? (intoScan - (SCAN_SECONDS - PULSE_SECONDS)) / PULSE_SECONDS : 0,
     arrival,
     bodyShare: script.density,
-    // The picture arrives as the vortex does: the core first, the aura as the particles leave it,
-    // the cage and the embers last, round a ball that is already there. The core is half the
-    // picture's light, so it comes up over the first 0.4 of the vortex rather than all at once:
+    // The picture arrives as the vortex does: the core first, on its own; then everything round the
+    // shell of specks, carried out of the core with it (`shellReach`, a share of where it settles),
+    // so that none of it is ever drawn round a ball that is not there yet — the aura did glow round
+    // nothing when it came up with the core, and the cage hung round nothing coming up after it.
+    // The aura brightens as the specks are carried out, and the cage and the embers come up a
+    // little behind it. The core comes up over the first 0.4 of the vortex rather than all at once:
     // over a quarter, under the view's own fade, a frame of it turned 8% of the light on at once.
     //
     // Everything but the core's ring recedes while he thinks, so that the plane sweeping through
@@ -1352,8 +1445,10 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
     // the sweep is one more thing happening among several — which is how the first version of
     // thinking looked, and why it did not read as a different state at all.
     coreAlpha: smooth01(swirl / 0.4),
-    auraAlpha: (1 - 0.5 * thinking) * smooth01((swirl - 0.15) / 0.6),
-    cageAlpha: (1 - 0.5 * thinking) * smooth01((swirl - 0.55) / 0.45),
+    auraAlpha: (1 - 0.5 * thinking) * shellOut,
+    // From the 0.04 swirlFragment starts every fragment at, to 1.
+    shellReach: 0.04 + 0.96 * shellOut,
+    cageAlpha: (1 - 0.5 * thinking) * smooth01((swirl - 0.4) / 0.6),
     // The core's glowing disc dims while he listens as well as while he thinks, so the lattice is
     // what is seen.
     coreGlow: (1 - 0.4 * thinking) * (1 - 0.3 * hearing),
