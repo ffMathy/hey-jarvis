@@ -552,11 +552,10 @@ describe('the hologram', () => {
     }
   });
 
-  it('can be built with far fewer particles, which is what makes a watch cheaper to mount', () => {
+  it('can be built with far fewer particles, which is what makes a smaller scene cheaper to mount', () => {
     // The scene is built, put in the share's order and serialised into the worklet runtime at mount,
-    // whatever share of it is drawn. That cost cannot be steered away from, which is why the watch's
-    // screens pass `WATCH_PARTICLE_COUNT` as the view's `particleCount` rather than relying on a
-    // lower share.
+    // whatever share of it is drawn. That cost cannot be steered away from, which is why the view
+    // takes a `particleCount` rather than relying on a lower share.
     const watchSized = createHologramScene(SEED, 1200);
 
     expect(watchSized.body.length).toBeLessThan(createHologramScene(SEED).body.length);

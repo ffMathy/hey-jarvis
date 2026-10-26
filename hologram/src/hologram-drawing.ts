@@ -501,27 +501,6 @@ export const FRAGMENT_CODE_GLYPH_STEP = 12;
 export const PARTICLE_COUNT = 10000;
 
 /**
- * How many fragments the watch's scene is built from.
- *
- * A fraction of the phone's {@link PARTICLE_COUNT}. Building the scene costs this many fragments,
- * built into the GPU's rows at mount, and that is not something the controller can steer away
- * from. It also moves where the floor falls: `FEWEST_PARTICLES` is a share, so on a watch it is 125
- * fragments rather than 250.
- *
- * It is a ceiling rather than a count: what is actually drawn starts far below this and only comes
- * up if the frame rate allows — see `watch/src/watch-density.ts`, which wires the controller in.
- *
- * Here rather than in the watch app so that anything rendering the watch's Jarvis — the README's
- * clip, in `.scripts/render-showcase.ts` — draws him at exactly the most the watch can hold.
- *
- * It was 1200, and that was the ceiling the watch actually sat at: the sphere ran "super smooth,
- * almost too smooth", with frames to spare and nowhere to spend them. Half the phone's scene now,
- * with the loop holding thirty frames a second (`WATCH_PACE` in `density-control.ts`) rather than forty, so what a
- * watch can afford is decided by the watch rather than by this number.
- */
-export const WATCH_PARTICLE_COUNT = 5000;
-
-/**
  * Turns a fragment's id into where it sits in the thinning, 0-1.
  *
  * Large, because an id is *already* a fraction — `buildBody` takes one straight from the random

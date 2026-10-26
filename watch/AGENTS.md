@@ -30,7 +30,7 @@ watch/
     ├── phone-settings.ts         # the credentials, and the asking that gets them
     ├── phone-mirror.ts           # the phone's sphere, drawn here while the phone holds the conversation
     ├── microphone-permission.ts  # PermissionsAndroid
-    ├── watch-density.ts          # the watch's pace, and letting the drawing find its own count (the ceiling is `WATCH_PARTICLE_COUNT`, in `hologram`)
+    ├── watch-density.ts          # the watch's pace, and letting the drawing find its own count (the ceiling is the phone's `PARTICLE_COUNT`, in `hologram`)
     └── watch-screen.ts           # how big the sphere is drawn on a round screen
 ```
 
@@ -132,8 +132,19 @@ canvas Screened over Skia's picture of the rest of him (see "His body on the GPU
 [`hologram/AGENTS.md`](../hologram/AGENTS.md)). It needs Android 10, which every watch this app installs
 on has (its `minSdk` is 30), and a GPU that gives OpenGL ES 3. **There is no other body:** on a watch
 whose GPU gives ES 2, or whose shaders will not compile, he is drawn without one, and the rest of him
-arrives after a wait of at most 800 ms. Unlike the phone it shows him **straight on**: it passes no
-`tilt`, so the eye is infinitely far, a flat projection of the body.
+arrives after a wait of at most 800 ms. Like the phone it passes `tilt`, so turning the wrist turns
+the view round him (see "Tilt to look around" in [`hologram/AGENTS.md`](../hologram/AGENTS.md)).
+
+**He is drawn at the screen's full resolution** (`WATCH_DRAWN_RESOLUTION` in `watch-screen.ts`), where
+the phone draws at 0.45 and scales up. The watch's sphere is about half the phone's in pixels, so at
+the phone's share each spark was a pixel or less wide and the scale-up smeared it; the user saw him
+as smudgy next to the phone. What drawing every pixel costs the watch's GPU has not been measured: if
+it costs frames, the density loop sheds particles rather than sharpness.
+
+**Its ceiling is the phone's** (`PARTICLE_COUNT`, 10,000): the watch's screens leave `particleCount`
+at its default, and `WATCH_PACE`'s thirty frames a second decides how much of it a watch draws. The
+cost no loop can steer away from is building that scene when the view mounts, twice what the watch's
+own 5,000 cost, so a later arrival is the first thing to look for.
 
 The view behind both canvases paints the black. The halo target is sized to the canvas, a texel to a
 pixel, rather than the headset's 512 a side.
@@ -160,7 +171,7 @@ Not yet verified, and only a real watch can say:
 - **With Gemini installed.** The emulator images ship no assistant, so the picker listed only Jarvis. A Pixel Watch lists Gemini too; choosing Jarvis should replace it, but that has not been seen.
 - **The physical button.** The emulator's long press arrived as two `ASSIST` starts a moment apart, where the key event arrived as one. It may be how the emulator injects a long press; the real app has to treat a repeat as the same summoning either way, as the phone app's `createAssistLaunchClaim` already does.
 - **The handover, and the conversation.** Both are new and neither has run on hardware. They typecheck, the four spellings of the two message paths are checked against each other by a test, and CI compiles the Kotlin on every push — and none of that is the same as two devices in the same room. What a real pair would settle, in order: whether the phone's `CapabilityClient` lookup finds the watch when the watch app has never been opened; whether Play Services starts `JarvisPhoneListenerService` for a message on that path with the app force-stopped; whether `EncryptedSharedPreferences` survives a watch reboot; and whether a Wear OS microphone gives WebRTC enough to hold a conversation with, which is the one question none of the code can answer.
-- **Whether the GPU body draws on a watch at all.** Whether its GPU gives OpenGL ES 3 — the first Pixel Watch's Mali-T720 may not, and would then show him without a body — whether expo-gl's worklet support draws from the UI thread there, and what two `TextureView`s and the GPU's passes cost the watch. The waiting screen's readout says how fast he is drawn, and how many sparks.
+- **Whether the GPU body draws on a watch at all.** Whether its GPU gives OpenGL ES 3 — the first Pixel Watch's Mali-T720 may not, and would then show him without a body — whether expo-gl's worklet support draws from the UI thread there, what two `TextureView`s and the GPU's passes cost the watch at full resolution, and how the tilt feels on a wrist. The waiting screen's readout says how fast he is drawn, and how many sparks.
 
 ## Getting it onto a watch
 

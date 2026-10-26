@@ -13,8 +13,8 @@
  * `prepare-device-art.sh`, and `device-art/NOTICE.md` says where each came from and under what
  * licence — including that the watch clips inherit CC BY-SA 4.0 from the frame in them.
  *
- * **Each device is drawn at the most particles it can hold** — `PARTICLE_COUNT` on the phone and
- * `WATCH_PARTICLE_COUNT` on the watch — never at a number chosen here. On a device the density loop
+ * **Each device is drawn at the most particles it can hold** — `PARTICLE_COUNT`, on the phone and
+ * the watch alike — never at a number chosen here. On a device the density loop
  * draws a share of that ceiling, whatever the device can afford; nothing here has to hold a frame
  * rate, so it draws all of it, which is the best he can look on each. The user asked for exactly
  * that, after the clips were rendered at a fixed 1300 on both and showed a sparser Jarvis than
@@ -55,7 +55,6 @@ import {
   SCENE_SEED,
   type SimulatedMood,
   THOUGHT_FADE_SECONDS,
-  WATCH_PARTICLE_COUNT,
 } from '../src/index';
 import { createPerformance, findLoudestMoment, stillMoment } from './simulated-performance';
 
@@ -802,7 +801,7 @@ async function main() {
   // device can hold. See the file header.
   const phoneScene = createHologramScene(SCENE_SEED, PARTICLE_COUNT);
   const phoneResources = createHologramResources(skia, phoneScene);
-  const watchScene = createHologramScene(SCENE_SEED, WATCH_PARTICLE_COUNT);
+  const watchScene = createHologramScene(SCENE_SEED, PARTICLE_COUNT);
   const watchResources = createHologramResources(skia, watchScene);
 
   const typeface = skia.Typeface.MakeFreeTypeFaceFromData(

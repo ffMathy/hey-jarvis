@@ -648,7 +648,7 @@ background, and where the group is Screened onto it is isolated too: a view with
 nothing but a background colour is flattened away on Fabric, and the Screen
 would take the nearest view that groups anything as its backdrop — in the
 conversation sheet the pressable that fills it, which drew the Screen through
-two sheet-sized layers. Inside it the scaled view (`DRAWN_RESOLUTION`) is the
+two sheet-sized layers. Inside it the scaled view (`drawnResolution`: 0.45 on a phone, 1 on a watch) is the
 group the two canvases are composed in: isolated, rendered into a texture of its
 own at the drawn size on Android (`renderToHardwareTextureAndroid`), faded by
 the arrival (`arrivalOf`, written each frame), and on a background that is not
@@ -716,7 +716,7 @@ watch's GPU, how long the pending hold lasts on a first launch, and whether the
 assistant's window loses its context between summonings. The phone's web build
 in Chromium exercises the rest.
 
-## Tilt to look around, on the phone
+## Tilt to look around, on the phone and the watch
 
 `tilt.ts` turns the phone's gravity — Reanimated's GRAVITY sensor, read every
 `TILT_SENSOR_INTERVAL_MS` — into where the eye is round him (`tiltFront`) and how
@@ -742,8 +742,8 @@ it allocates nothing, and the front is written into the state's own array.
   nothing jumps when readings come back.
 - **The eye is `PHONE_EYE_DISTANCE` of his resting radii away while readings
   arrive**, and infinitely far — a flat projection, straight on — while none do,
-  eased between the two over `EYE_DISTANCE_FADE_SECONDS`. The watch and a desktop
-  browser never step it, and stay infinitely far.
+  eased between the two over `EYE_DISTANCE_FADE_SECONDS`. A desktop browser never
+  steps it, and stays infinitely far.
 - **It is handed out in sides of the drawing's square** (`PHONE_EYE_SQUARES`), the
   unit `placeFlatCamera` takes it in, so that as he swells with his voice he grows
   towards the eye rather than the eye backing off with him. The camera draws an eye
