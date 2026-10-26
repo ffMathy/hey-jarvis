@@ -10,6 +10,8 @@
  * in front of you.
  */
 
+import type { SessionEnding } from './session-contract';
+
 /** When nothing has answered by `GIVE_UP_CONNECTING_AFTER_MS`. The phone's words, exactly. */
 export const DEADLINE_PROBLEM = 'Jarvis did not answer. ElevenLabs may be unreachable, or the settings may be wrong.';
 
@@ -37,12 +39,6 @@ export const UNREACHABLE_PROBLEM = 'Jarvis could not be reached.';
 
 /** The phone's, for a conversation that ended with an error and no message. */
 export const ENDED_UNEXPECTEDLY_PROBLEM = 'The conversation with Jarvis ended unexpectedly.';
-
-/**
- * What LiveKit's room closing reads as, through the SDK: `LiveKit connection state changed to
- * disconnected`. Matched loosely, since only its meaning is relied on.
- */
-const LIVEKIT_ROOM_CLOSED = /livekit connection state changed to disconnected/i;
 
 /**
  * Anything that looks like a credential. A message is never shown with one in it — the SDK's and
@@ -107,11 +103,16 @@ export function describeStartFailure(error: unknown, offline = OFFLINE_PROBLEM):
   return safely(messageOf(error), UNREACHABLE_PROBLEM);
 }
 
-/** Why an open conversation ended with `reason: 'error'`. */
-export function describeDisconnect(message: string | undefined): string {
-  const said = message?.trim() ?? '';
-  if (LIVEKIT_ROOM_CLOSED.test(said)) {
+/**
+ * Why an open conversation ended with `reason: 'error'`.
+ *
+ * LiveKit giving up on the room is told by the context the SDK closes it with
+ * (`connection_state_changed`), never by its message — "LiveKit connection state changed to
+ * disconnected", which describes LiveKit's internals and is not shown. Any other message is passed on.
+ */
+export function describeDisconnect(ending: Pick<SessionEnding, 'message' | 'context'>): string {
+  if (ending.context?.type === 'connection_state_changed') {
     return DROPPED_PROBLEM;
   }
-  return safely(said, ENDED_UNEXPECTEDLY_PROBLEM);
+  return safely(ending.message?.trim() ?? '', ENDED_UNEXPECTEDLY_PROBLEM);
 }

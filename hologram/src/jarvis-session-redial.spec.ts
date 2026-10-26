@@ -62,7 +62,7 @@ describe('a dropped line', () => {
     first.options.onMessage({ role: 'user', message: 'Turn on the kitchen lights.' });
     first.options.onMessage({ role: 'ai', message: 'Of course, sir.' });
 
-    first.drop(LIVEKIT_GAVE_UP);
+    first.drop(LIVEKIT_GAVE_UP, 'connection_state_changed');
     expect(phone.session.phase).toBe('connecting');
     expect(phone.session.snapshot.status).toBe('connecting');
     expect(phone.tokens.requests).toHaveLength(2);
@@ -107,7 +107,7 @@ describe('a dropped line', () => {
   it('keeps trying, backing off, while the phone is offline, and is live again once it is back', async () => {
     const phone = onAPhone();
     await phone.goLive();
-    phone.sdk.latest.drop(LIVEKIT_GAVE_UP);
+    phone.sdk.latest.drop(LIVEKIT_GAVE_UP, 'connection_state_changed');
 
     phone.tokens.goOffline();
     await settle();
@@ -132,7 +132,7 @@ describe('a dropped line', () => {
   it('dials again when a redial fails to start, and drops nothing the failed one reports afterwards', async () => {
     const phone = onAPhone();
     await phone.goLive();
-    phone.sdk.latest.drop(LIVEKIT_GAVE_UP);
+    phone.sdk.latest.drop(LIVEKIT_GAVE_UP, 'connection_state_changed');
     phone.tokens.grant();
     await settle();
 
@@ -155,7 +155,7 @@ describe('a dropped line', () => {
   it('gives up after a while, saying in words that the connection dropped, and lets go of the call', async () => {
     const phone = onAPhone();
     await phone.goLive();
-    phone.sdk.latest.drop(LIVEKIT_GAVE_UP);
+    phone.sdk.latest.drop(LIVEKIT_GAVE_UP, 'connection_state_changed');
 
     await phone.clock.advance(REDIAL_GIVE_UP_AFTER_MS - 1);
     expect(phone.session.phase).toBe('connecting');
@@ -170,7 +170,7 @@ describe('a dropped line', () => {
   it('stops redialling when hung up on', async () => {
     const phone = onAPhone();
     await phone.goLive();
-    phone.sdk.latest.drop(LIVEKIT_GAVE_UP);
+    phone.sdk.latest.drop(LIVEKIT_GAVE_UP, 'connection_state_changed');
 
     phone.session.hangUp();
     phone.tokens.grant();
@@ -217,7 +217,7 @@ describe('a call that is over', () => {
     const phone = onAPhone();
     await phone.goLive();
 
-    phone.sdk.latest.drop('Quota exceeded');
+    phone.sdk.latest.drop('Quota exceeded', 'close');
 
     expect(phone.session.phase).toBe('failed');
     expect(phone.events.problems).toEqual(['Quota exceeded']);

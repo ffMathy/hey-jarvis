@@ -52,6 +52,7 @@ const routingReportSchema = z.object({
   instructions: z.string(),
   completedTaskResults: z.array(completedTaskResultSchema).optional(),
   taskIdsInProgress: z.array(z.string()).optional(),
+  requestFinished: z.boolean().optional(),
 });
 
 export type RoutingReport = z.infer<typeof routingReportSchema>;
@@ -105,29 +106,14 @@ export function parseRoutingReport(result: unknown): RoutingReport | undefined {
 }
 
 /**
- * The closing report: every task has finished and the request is done. The DAG
- * states it two ways at once, and either is enough — an empty in-progress list,
- * or the instruction that says so in words.
+ * The closing report, from a poll or from a route call that finished before it returned: the one
+ * whose `requestFinished` is true.
  *
- * The empty list only counts on a poll's report. A routing acknowledgement whose
- * plan had not landed in time also carries an empty list, and it means the
- * opposite: nothing has finished, because nothing has started.
+ * Read from that flag alone. An empty in-progress list is no sign of it — a poll that ran out
+ * while the plan was still being written has one too, and nothing has even started then.
  */
 export function isFinalReport(report: RoutingReport | undefined): boolean {
-  if (!report) {
-    return false;
-  }
-  return report.taskIdsInProgress?.length === 0 || saysAllTasksCompleted(report);
-}
-
-/**
- * Whether a report closes the request in words, which is the only way a route call's can: its
- * empty in-progress list may only mean the plan had not landed yet.
- */
-function saysAllTasksCompleted(report: RoutingReport | undefined): boolean {
-  // Anchored, because the mid-flight instruction contains the closing one's words:
-  // "More tasks have finished since last time, but not all tasks have completed yet."
-  return report !== undefined && /^\s*all tasks have completed/i.test(report.instructions);
+  return report?.requestFinished === true;
 }
 
 export type RoutingLoopStepKind = 'route' | 'poll';
@@ -247,10 +233,8 @@ export function readRoutingLoop(messages: ServerMessage[]): RoutingLoop {
     deliveredTaskIds,
     undeliveredTaskIds: [...announced].filter((id) => !delivered.has(id)),
     failedCalls: steps.filter((step) => step.state === 'failure'),
-    // The route call itself closes a request that finished before it returned, and says so in words.
-    finished:
-      polls.some((step) => isFinalReport(step.report)) ||
-      steps.some((step) => step.kind === 'route' && saysAllTasksCompleted(step.report)),
+    // The route call itself closes a request that finished before it returned.
+    finished: steps.some((step) => isFinalReport(step.report)),
   };
 }
 

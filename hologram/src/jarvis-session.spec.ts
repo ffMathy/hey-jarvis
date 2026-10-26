@@ -406,7 +406,7 @@ describe('when a summoning fails', () => {
     const harness = createHarness();
     await harness.goLive();
 
-    harness.sdk.latest.drop('LiveKit connection state changed to disconnected');
+    harness.sdk.latest.drop('LiveKit connection state changed to disconnected', 'connection_state_changed');
     expect(harness.events.problems).toEqual([]);
     expect(harness.orphanSweeps).toBe(1);
     await harness.clock.advance(2_000);
@@ -421,12 +421,12 @@ describe('when a summoning fails', () => {
   it('passes on the SDK’s reason for any other error ending, unless it could carry a credential', async () => {
     const quota = createHarness();
     await quota.goLive();
-    quota.sdk.latest.drop('Quota exceeded');
+    quota.sdk.latest.drop('Quota exceeded', 'close');
     expect(quota.events.problems).toEqual(['Quota exceeded']);
 
     const leaky = createHarness();
     await leaky.goLive();
-    leaky.sdk.latest.drop('wss://livekit.example/rtc?access_token=eyJhbGciOiJIUzI1NiJ9.payload');
+    leaky.sdk.latest.drop('wss://livekit.example/rtc?access_token=eyJhbGciOiJIUzI1NiJ9.payload', 'close');
     expect(leaky.events.problems).toEqual(['The conversation with Jarvis ended unexpectedly.']);
   });
 
@@ -490,6 +490,7 @@ describe('ending a summoning', () => {
     harness.sdk.latest.options.onDisconnect({
       reason: 'error',
       message: 'LiveKit connection state changed to disconnected',
+      context: { type: 'connection_state_changed' },
     });
     expect(harness.events.problems).toEqual([]);
     expect(harness.session.phase).toBe('ended');
@@ -500,10 +501,11 @@ describe('ending a summoning', () => {
     await harness.goLive();
 
     harness.session.endQuietly();
-    harness.sdk.latest.drop('LiveKit connection state changed to disconnected');
+    harness.sdk.latest.drop('LiveKit connection state changed to disconnected', 'connection_state_changed');
     harness.sdk.latest.options.onDisconnect({
       reason: 'error',
       message: 'LiveKit connection state changed to disconnected',
+      context: { type: 'connection_state_changed' },
     });
 
     expect(harness.session.phase).toBe('ended');

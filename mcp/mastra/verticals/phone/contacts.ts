@@ -233,6 +233,76 @@ export function rankContacts(contacts: Contact[], query: string, limit: number):
 }
 
 /**
+ * The parts of a failed Google request that say why it failed.
+ *
+ * googleapis throws a `GaxiosError` whose `response` holds the HTTP status and
+ * the parsed body. An API refusal has an AIP-193 body — `error.status` is the
+ * canonical code (`PERMISSION_DENIED`), `error.details[]` carries an `ErrorInfo`
+ * whose `reason` names the cause (`SERVICE_DISABLED`,
+ * `ACCESS_TOKEN_SCOPE_INSUFFICIENT`), and the legacy `error.errors[].reason`
+ * says the same in older words (`accessNotConfigured`). A refresh the OAuth
+ * token endpoint refuses has an RFC 6749 body instead, whose `error` is a bare
+ * code such as `invalid_grant`.
+ */
+const googleFailureSchema = z.object({
+  response: z.object({ status: z.number(), data: z.unknown() }),
+});
+
+const reasonedEntriesSchema = z.array(z.object({ reason: z.string().optional() })).optional();
+
+/** An API refusal's body (AIP-193). */
+const googleApiErrorBodySchema = z.object({
+  error: z.object({
+    status: z.string().optional(),
+    details: reasonedEntriesSchema,
+    errors: reasonedEntriesSchema,
+  }),
+});
+
+/** The OAuth token endpoint's refusal body (RFC 6749 §5.2). */
+const oauthErrorBodySchema = z.object({ error: z.string() });
+
+/** Reasons Google gives for a request to an API the project has not enabled. */
+const SERVICE_DISABLED_REASONS = new Set(['SERVICE_DISABLED', 'accessNotConfigured']);
+
+/** Reasons Google gives for a token that does not carry the scope a request needs. */
+const SCOPE_REASONS = new Set(['ACCESS_TOKEN_SCOPE_INSUFFICIENT', 'insufficientPermissions']);
+
+/** Why Google refused a contacts request, as far as setup can fix it. */
+function classifyGoogleFailure(error: unknown): 'serviceDisabled' | 'missingScope' | undefined {
+  const failure = googleFailureSchema.safeParse(error);
+  if (!failure.success) {
+    return undefined;
+  }
+  const { status, data } = failure.data.response;
+
+  const oauthError = oauthErrorBodySchema.safeParse(data);
+  if (oauthError.success) {
+    return oauthError.data.error === 'invalid_grant' ? 'missingScope' : undefined;
+  }
+
+  const apiError = googleApiErrorBodySchema.safeParse(data);
+  const reasons = apiError.success
+    ? [...(apiError.data.error.details ?? []), ...(apiError.data.error.errors ?? [])].flatMap(({ reason }) =>
+        reason ? [reason] : [],
+      )
+    : [];
+
+  // Checked before the scope case: Google reports a disabled API as a 403
+  // PERMISSION_DENIED too, so only the reason tells the two apart.
+  if (reasons.some((reason) => SERVICE_DISABLED_REASONS.has(reason))) {
+    return 'serviceDisabled';
+  }
+
+  const isPermissionDenied = status === 403 || (apiError.success && apiError.data.error.status === 'PERMISSION_DENIED');
+  if (isPermissionDenied || reasons.some((reason) => SCOPE_REASONS.has(reason))) {
+    return 'missingScope';
+  }
+
+  return undefined;
+}
+
+/**
  * Turns the two first-run setup failures into errors that say what to do.
  *
  * The contacts scope is newer than the Google credentials most installs already
@@ -242,11 +312,9 @@ export function rankContacts(contacts: Contact[], query: string, limit: number):
  */
 function describeContactsFailure(error: unknown): unknown {
   const message = extractErrorMessage(error) ?? '';
+  const failure = classifyGoogleFailure(error);
 
-  // Checked before the scope case: Google reports a disabled API as a 403 too,
-  // and its message can carry both sets of keywords. This one is the more
-  // specific diagnosis, so it wins when both match.
-  if (/has not been used|is disabled|SERVICE_DISABLED|accessNotConfigured/i.test(message)) {
+  if (failure === 'serviceDisabled') {
     return new Error(
       `The Google People API is not enabled for this project: ${message}\n` +
         '\n' +
@@ -255,7 +323,7 @@ function describeContactsFailure(error: unknown): unknown {
     );
   }
 
-  if (/insufficient|scope|forbidden|PERMISSION_DENIED|invalid_grant/i.test(message)) {
+  if (failure === 'missingScope') {
     return new Error(
       `Google rejected the contacts request: ${message}\n` +
         '\n' +

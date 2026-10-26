@@ -199,9 +199,19 @@ test.describe('Mastra API Endpoints', () => {
 test.describe('Studio UI Integrity', () => {
   test('should load without critical JavaScript errors', async ({ page }) => {
     const jsErrors: string[] = [];
+    // API calls that fail without configured external services: never answered, or refused.
+    const unservedRequests: string[] = [];
 
     page.on('pageerror', (error) => {
       jsErrors.push(error.message);
+    });
+    page.on('requestfailed', (request) => {
+      unservedRequests.push(`${request.url()} (${request.failure()?.errorText ?? 'failed'})`);
+    });
+    page.on('response', (response) => {
+      if (response.status() === 401 || response.status() === 403) {
+        unservedRequests.push(`${response.url()} (${response.status()})`);
+      }
     });
 
     const containerIP = await getContainerIP();
@@ -209,16 +219,15 @@ test.describe('Studio UI Integrity', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    // Filter out non-critical errors from API calls that fail without configured external services
-    const criticalErrors = jsErrors.filter((err) => {
-      if (err.includes('Failed to fetch') || err.includes('NetworkError')) return false;
-      if (err.includes('401') || err.includes('403')) return false;
-      return true;
-    });
+    // Each unserved request may surface as one uncaught error; any error beyond those is the Studio's own.
+    const criticalErrors = jsErrors.slice(unservedRequests.length);
 
     await page.screenshot({ path: path.join(SCREENSHOTS_DIR, 'studio-no-js-errors.png'), fullPage: true });
 
-    expect(criticalErrors, `Unexpected JS errors: ${criticalErrors.join(', ')}`).toHaveLength(0);
+    expect(
+      criticalErrors,
+      `Unexpected JS errors: ${jsErrors.join(', ')} (unserved requests: ${unservedRequests.join(', ') || 'none'})`,
+    ).toHaveLength(0);
   });
 
   test('should not have broken network requests for static assets', async ({ page }) => {

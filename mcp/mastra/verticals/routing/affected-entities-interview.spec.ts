@@ -36,6 +36,7 @@ import { forgetPhotos } from '../vision/photos.js';
 import { setRoutingClassifierForTest } from './classifier.js';
 import { type RoutingEvent, RoutingProgress, resetRoutingRuntime } from './controller.js';
 import { PLANNER_AGENT_ID } from './planner.js';
+import { listOpenQuestions } from './questions.js';
 import {
   getNextInstructionsWorkflow,
   instructionsOutputSchema,
@@ -154,17 +155,10 @@ async function poll() {
   return instructionsOutputSchema.parse(await executeTool(pollTool, {}));
 }
 
-/** The openings a response has when it closes a request, wherever in it they come. */
-const CLOSING_OPENINGS = ['All tasks have completed', 'The request could not be completed'];
-
 /** Polls until a response closes the request, the way the voice agent does. */
 async function pollUntilClosed() {
   const responses = [await poll()];
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const latest = responses[responses.length - 1];
-    if ([...CLOSING_OPENINGS, 'Part of this request'].some((opening) => latest.instructions.includes(opening))) {
-      break;
-    }
+  for (let attempt = 0; attempt < 20 && !responses[responses.length - 1].requestFinished; attempt += 1) {
     responses.push(await poll());
   }
   return responses;
@@ -279,7 +273,7 @@ describe('a light switched by voice, with the headset watching', () => {
     await executeTool(routeTool, { userQuery: REQUEST, async: false });
 
     let first = await poll();
-    for (let attempt = 0; attempt < 10 && first.instructions.startsWith('Still processing'); attempt += 1) {
+    for (let attempt = 0; attempt < 10 && !first.requestFinished; attempt += 1) {
       first = await poll();
     }
 
@@ -325,7 +319,7 @@ describe('a lamp chosen by answering the question that asked which', () => {
   /** The planner: a task for the request, and an answer for the reply to its question. */
   function scriptedPlannerWithAnswers() {
     return createScriptedModel(({ transcript }) => {
-      const waitingQuestionId = transcript.match(/id "(q\d+)", asked by/)?.[1];
+      const waitingQuestionId = listOpenQuestions()[0]?.id;
       if (waitingQuestionId && transcript.includes(CHOICE)) {
         return {
           text: JSON.stringify({
@@ -356,8 +350,8 @@ describe('a lamp chosen by answering the question that asked which', () => {
         [PLANNER_AGENT_ID]: await scriptedAgent(PLANNER_AGENT_ID, scriptedPlannerWithAnswers().model),
         internetOfThings: await scriptedAgent(
           'internetOfThings',
-          createScriptedModel(({ transcript }) =>
-            transcript.includes('light.sofa_lamp')
+          createScriptedModel(({ toolResults }) =>
+            toolResults.length > 0
               ? { text: 'Turned on the sofa lamp.' }
               : { toolCalls: [{ toolName: 'chooseLamp', input: {} }] },
           ).model,

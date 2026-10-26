@@ -62,14 +62,33 @@ describe('explaining a failed summoning', () => {
     expect(describeStartFailure('wss://livekit/rtc?access_token=abc')).toBe(UNREACHABLE_PROBLEM);
   });
 
-  it('says the connection dropped instead of LiveKit’s sentence about its state', () => {
-    expect(describeDisconnect('LiveKit connection state changed to disconnected')).toBe(DROPPED_PROBLEM);
+  it('says the connection dropped when LiveKit gave up on the room, instead of LiveKit’s sentence about its state', () => {
+    expect(
+      describeDisconnect({
+        message: 'LiveKit connection state changed to disconnected',
+        context: { type: 'connection_state_changed' },
+      }),
+    ).toBe(DROPPED_PROBLEM);
+  });
+
+  it('tells a dropped room by its context, not by its message', () => {
+    expect(describeDisconnect({ message: 'anything at all', context: { type: 'connection_state_changed' } })).toBe(
+      DROPPED_PROBLEM,
+    );
+    expect(
+      describeDisconnect({ message: 'LiveKit connection state changed to disconnected', context: { type: 'close' } }),
+    ).toBe('LiveKit connection state changed to disconnected');
   });
 
   it('passes any other ending on, or the phone’s words when it came with none', () => {
-    expect(describeDisconnect('Maximum conversation duration exceeded')).toBe('Maximum conversation duration exceeded');
-    expect(describeDisconnect(undefined)).toBe(ENDED_UNEXPECTEDLY_PROBLEM);
-    expect(describeDisconnect('')).toBe(ENDED_UNEXPECTEDLY_PROBLEM);
-    expect(describeDisconnect('token eyJhbGciOiJIUzI1NiJ9 expired')).toBe(ENDED_UNEXPECTEDLY_PROBLEM);
+    const closed = { type: 'close' };
+    expect(describeDisconnect({ message: 'Maximum conversation duration exceeded', context: closed })).toBe(
+      'Maximum conversation duration exceeded',
+    );
+    expect(describeDisconnect({ context: closed })).toBe(ENDED_UNEXPECTEDLY_PROBLEM);
+    expect(describeDisconnect({ message: '', context: closed })).toBe(ENDED_UNEXPECTEDLY_PROBLEM);
+    expect(describeDisconnect({ message: 'token eyJhbGciOiJIUzI1NiJ9 expired', context: closed })).toBe(
+      ENDED_UNEXPECTEDLY_PROBLEM,
+    );
   });
 });
