@@ -2,7 +2,6 @@ import { describe, expect, it } from 'bun:test';
 import { GIVE_UP_CONNECTING_AFTER_MS } from './conversation-life';
 import { HEADSET_PARTICIPANT_NAME } from './conversation-token';
 import { DEADLINE_PROBLEM, DROPPED_PROBLEM, MICROPHONE_PROBLEM, UNREACHABLE_PROBLEM } from './failure-text';
-import { MATERIALISE_SECONDS } from './frame-timing';
 import { GREETING_GRACE_SECONDS, WITHOUT_FIRST_MESSAGE } from './greeting-handover';
 import { REDIAL_GIVE_UP_AFTER_MS } from './jarvis-session';
 import { createHarness, HEADSET_OFFLINE_PROBLEM, settle } from './jarvis-session.fakes';
@@ -124,51 +123,6 @@ describe('summoning Jarvis', () => {
     expect(events.phases).toEqual(['greeting', 'live']);
   });
 
-  it('dials behind his arrival too, asking the agent not to greet before the recording has played', async () => {
-    const { session, tokens, greeting, sdk, clock } = createHarness({
-      greetAfterArrivalMs: undefined,
-    });
-
-    session.summon();
-    tokens.grant();
-    await settle();
-    expect(greeting.plays).toBe(0);
-    expect(sdk.dials).toHaveLength(1);
-    expect(sdk.latest.spoken?.overrides).toEqual(WITHOUT_FIRST_MESSAGE);
-
-    const conversation = sdk.latest.conversation;
-    await sdk.latest.connect();
-    expect(conversation.muting).toEqual([true]);
-    expect(session.phase).toBe('greeting');
-
-    await clock.advance(MATERIALISE_SECONDS * 1000);
-    expect(greeting.plays).toBe(1);
-    greeting.allow();
-    await clock.advance(greeting.durationMilliseconds);
-    expect(conversation.muting).toEqual([true, false]);
-    expect(session.phase).toBe('live');
-  });
-
-  it('opens the microphone of a conversation dialled during his arrival when the recording is refused', async () => {
-    const { session, tokens, greeting, sdk, clock } = createHarness({
-      greetAfterArrivalMs: undefined,
-    });
-
-    session.summon();
-    tokens.grant();
-    await settle();
-    const conversation = sdk.latest.conversation;
-    await sdk.latest.connect();
-
-    await clock.advance(MATERIALISE_SECONDS * 1000);
-    greeting.refuse();
-    await settle();
-
-    expect(sdk.dials).toHaveLength(1);
-    expect(conversation.muting).toEqual([true, false]);
-    expect(session.phase).toBe('live');
-  });
-
   it('lets the agent greet for himself when the browser refuses the recording', async () => {
     const { session, tokens, greeting, sdk } = createHarness();
 
@@ -210,25 +164,11 @@ describe('summoning Jarvis', () => {
     expect(session.phase).toBe('connecting');
   });
 
-  it('greets only once he has finished arriving, while the token is asked for at once', async () => {
-    const { session, tokens, greeting, clock } = createHarness({ greetAfterArrivalMs: undefined });
+  it('greets the moment a slow route is up, with no wait for his arrival after it', async () => {
+    const { session, greeting, clock } = createHarness({}, { waitsForRoute: true });
 
     session.summon();
-    expect(tokens.requests).toHaveLength(1);
-    expect(greeting.plays).toBe(0);
-
-    await clock.advance(MATERIALISE_SECONDS * 1000 - 1);
-    expect(greeting.plays).toBe(0);
-
-    await clock.advance(1);
-    expect(greeting.plays).toBe(1);
-  });
-
-  it('counts a slow route towards the arrival rather than waiting it out again', async () => {
-    const { session, greeting, clock } = createHarness({ greetAfterArrivalMs: undefined }, { waitsForRoute: true });
-
-    session.summon();
-    await clock.advance(MATERIALISE_SECONDS * 1000 + 300);
+    await clock.advance(300);
     expect(greeting.plays).toBe(0);
 
     greeting.routeReady();
@@ -236,12 +176,13 @@ describe('summoning Jarvis', () => {
     expect(greeting.plays).toBe(1);
   });
 
-  it('never greets when hung up on before he has finished arriving', async () => {
-    const { session, greeting, clock } = createHarness({ greetAfterArrivalMs: undefined });
+  it('never greets when hung up on while waiting for a route', async () => {
+    const { session, greeting } = createHarness({}, { waitsForRoute: true });
 
     session.summon();
     session.hangUp();
-    await clock.advance(MATERIALISE_SECONDS * 1000);
+    greeting.routeReady();
+    await settle();
 
     expect(greeting.plays).toBe(0);
   });

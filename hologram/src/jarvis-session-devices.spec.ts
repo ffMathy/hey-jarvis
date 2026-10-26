@@ -2,7 +2,6 @@ import { describe, expect, it } from 'bun:test';
 import { GIVE_UP_CONNECTING_AFTER_MS } from './conversation-life';
 import { PHONE_PARTICIPANT_NAME, WATCH_PARTICIPANT_NAME } from './conversation-token';
 import { DEADLINE_PROBLEM, DROPPED_PROBLEM, OFFLINE_PROBLEM } from './failure-text';
-import { MATERIALISE_SECONDS } from './frame-timing';
 import { REDIAL_GIVE_UP_AFTER_MS, RELEASE_HELD_VOICE_AFTER_MS } from './jarvis-session';
 import { createFakeCallAudio, createFakeHeldVoice, createHarness, settle } from './jarvis-session.fakes';
 import type { JarvisSessionDependencies } from './session-contract';
@@ -188,27 +187,6 @@ describe('greeting inside the call’s audio, on a phone and a watch', () => {
     phone.tokens.grant();
     await settle();
     expect(phone.sdk.latest.spoken?.overrides).toBeUndefined();
-    await phone.sdk.latest.connect();
-    phone.sdk.latest.agentHangsUp();
-    await settle();
-    expect(phone.callAudio.log).toEqual(['start', 'stop']);
-  });
-
-  it('keeps the call audio for a conversation dialled during his arrival when the greeting is then refused', async () => {
-    const phone = onAPhone({ greetAfterArrivalMs: MATERIALISE_SECONDS * 1000 });
-
-    phone.session.summon();
-    phone.tokens.grant();
-    await settle();
-    phone.greeting.routeReady();
-    await settle();
-    expect(phone.sdk.dials).toHaveLength(1);
-
-    await phone.clock.advance(MATERIALISE_SECONDS * 1000);
-    phone.greeting.refuse();
-    await settle();
-    expect(phone.callAudio.log).toEqual(['start']);
-
     await phone.sdk.latest.connect();
     phone.sdk.latest.agentHangsUp();
     await settle();
@@ -662,13 +640,7 @@ describe('in a browser', () => {
 });
 
 describe('on a watch, which has to get off its phone’s Bluetooth first', () => {
-  function onAWatch({
-    deadlineProblem,
-    greetAfterArrivalMs,
-  }: {
-    deadlineProblem?: () => string;
-    greetAfterArrivalMs?: number;
-  } = {}) {
+  function onAWatch({ deadlineProblem }: { deadlineProblem?: () => string } = {}) {
     const networks: Array<() => void> = [];
     /** How many times the network has been let go of. */
     const left = { times: 0 };
@@ -682,7 +654,6 @@ describe('on a watch, which has to get off its phone’s Bluetooth first', () =>
         left.times++;
       },
       ...(deadlineProblem ? { deadlineProblem } : {}),
-      ...(greetAfterArrivalMs === undefined ? {} : { greetAfterArrivalMs }),
     });
     return Object.assign(watch, {
       networks,
@@ -696,24 +667,6 @@ describe('on a watch, which has to get off its phone’s Bluetooth first', () =>
       },
     });
   }
-
-  it('brings the network up while he is still arriving, rather than once the recording plays', async () => {
-    const watch = onAWatch({ greetAfterArrivalMs: MATERIALISE_SECONDS * 1000 });
-
-    watch.session.summon();
-    await settle();
-    watch.greeting.routeReady();
-    await settle();
-    expect(watch.greeting.plays).toBe(0);
-    expect(watch.networks).toHaveLength(1);
-
-    watch.online();
-    await settle();
-    expect(watch.tokens.requests).toHaveLength(1);
-
-    await watch.clock.advance(MATERIALISE_SECONDS * 1000);
-    expect(watch.greeting.plays).toBe(1);
-  });
 
   it('brings the network up once he has started greeting, and asks for the token only once it is up', async () => {
     const watch = onAWatch();

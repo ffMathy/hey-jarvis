@@ -592,8 +592,6 @@ export function createHarness(
     greeting: greeting.player,
     events: events.events,
     connectionDelay: { default: 0, android: 0 },
-    // Greeting at once, so a spec about anything but the arrival need not wait it out first.
-    greetAfterArrivalMs: 0,
     halfDuplex: true,
     offlineProblem: HEADSET_OFFLINE_PROBLEM,
     fetch: tokens.fetch,

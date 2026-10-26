@@ -54,9 +54,9 @@ async function answerTokenRequest(route: Route, status: number, body: unknown): 
  * Leaves the room's connection open and unanswered, so the conversation is still being dialled for
  * as long as a test looks.
  *
- * The session dials the moment the token is in, while he is still arriving, and the recording waits
- * for the arrival. A room closed at once, as `blockExternalRequests` closes it, fails the summoning
- * before he has arrived, and a failed summoning does not greet.
+ * The session dials the moment the token is in, behind the greeting. A room closed at once, as
+ * `blockExternalRequests` closes it, fails the summoning while he greets, and a failed summoning
+ * stops the greeting.
  */
 async function keepDialling(page: Page): Promise<void> {
   await page.routeWebSocket(/^wss?:\/\/(?!localhost[:/]|127\.0\.0\.1[:/])/, () => undefined);
@@ -391,7 +391,7 @@ test('greets you from the recording while the conversation is still being dialle
   await configureElevenLabs(page);
 
   // "Hello sir, how can I help?" — the firmware's recording, bundled into the export and played
-  // once he has arrived, while the session is dialled behind it rather than after it. That the
+  // the moment he is summoned, while the session is dialled behind it rather than after it. That the
   // session is then asked for no first message of its own travels over LiveKit's data channel,
   // which this suite never answers;
   // `greeting-handover.spec.ts` in `hologram` pins the override itself.
