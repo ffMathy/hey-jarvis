@@ -23,6 +23,6 @@ watch/
     ├── phone-settings.ts         # the credentials, and the asking that gets them
     ├── phone-mirror.ts           # the phone's sphere, drawn here while the phone holds the conversation
     ├── microphone-permission.ts  # PermissionsAndroid
-    ├── watch-density.ts          # the watch's pace, and letting the drawing find its own count (the ceiling is `WATCH_PARTICLE_COUNT`, in `hologram`)
+    ├── watch-density.ts          # the watch's pace, and letting the drawing find its own count (the ceiling is the phone's `PARTICLE_COUNT`, in `hologram`)
     └── watch-screen.ts           # how big the sphere is drawn on a round screen
 ```

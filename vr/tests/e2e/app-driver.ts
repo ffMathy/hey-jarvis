@@ -276,8 +276,8 @@ async function untilGreeting(page: Page): Promise<boolean> {
  * gets a token still fails to connect.
  *
  * **An answer that fails the summoning races the greeting unless it is held.** The session asks for
- * the token the moment he is summoned and plays the greeting only once he has arrived, on the wall
- * clock (`greetAfterArrivalMs` in hologram's `jarvis-session.ts`), and a token refused before then
+ * the token the moment he is summoned and plays the greeting once the browser has answered for the
+ * recording (`jarvis-session.ts` in hologram), and a token refused before then
  * ends the summoning with no greeting at all — the session's rule, pinned in its own specs. Answered
  * at once, which came first was decided by how busy the machine was: while SwiftShader took half a
  * second over each of his frames, the answer reached the page after the greeting had started; once

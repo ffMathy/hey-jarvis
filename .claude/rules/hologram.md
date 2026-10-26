@@ -28,7 +28,7 @@ Each topic is a rule of its own, under the same paths:
 - [Worklets](hologram-worklets.md)
 - [A second renderer: the headset](hologram-a-second-renderer-the-headset.md)
 - [His body on the GPU, on a phone and a watch](hologram-his-body-on-the-gpu-on-a-phone-and-a-watch.md)
-- [Tilt to look around, on the phone](hologram-tilt-to-look-around-on-the-phone.md)
+- [Tilt to look around, on the phone and the watch](hologram-tilt-to-look-around-on-the-phone-and-the-watch.md)
 - [Tests](hologram-tests.md)
 
 ## Hanging up after a finished request

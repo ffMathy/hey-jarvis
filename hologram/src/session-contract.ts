@@ -391,13 +391,6 @@ export interface JarvisSessionDependencies<Timer> {
    */
   giveUpConnectingAfterMs?: number;
   /**
-   * How long after a summoning the greeting may start playing, in milliseconds:
-   * `MATERIALISE_SECONDS` when left out, so "Hello sir" is heard once the arrival vortex has
-   * finished bringing him out of the core, not while it is still spinning. Time spent switching
-   * into call audio or waiting for a headset's route counts towards it.
-   */
-  greetAfterArrivalMs?: number;
-  /**
    * The audio the call runs in, on a device that has to switch into it before the greeting (see
    * {@link CallAudio}). Let go once nothing uses it: at once when no conversation was dialled, and
    * otherwise once the conversation has finished ending.

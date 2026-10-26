@@ -21,8 +21,8 @@ still or icon from them** until they draw the body on a GPU — in a headless br
 
 ## Particle count
 
-**ALWAYS render at the most particles the depicted device can hold** — `PARTICLE_COUNT` for the
-phone, `WATCH_PARTICLE_COUNT` for the watch, both exported from `hologram`. **NEVER** a fixed
+**ALWAYS render at the most particles the depicted device can hold** — `PARTICLE_COUNT`, exported
+from `hologram`, which the phone and the watch share. **NEVER** a fixed
 number chosen in the script.
 
 On a device the density loop draws whatever share of that ceiling it can afford; offline nothing has
@@ -30,7 +30,7 @@ to hold a frame rate, so a render draws all of it. The README clips were once re
 1300 on both devices, a fraction of what either draws, and showed a sparser Jarvis than the apps.
 
 ❌ `createHologramScene(1337, 1300)`
-✅ `createHologramScene(1337, PARTICLE_COUNT)` for the phone, `createHologramScene(1337, WATCH_PARTICLE_COUNT)` for the watch
+✅ `createHologramScene(1337, PARTICLE_COUNT)`, for the phone and the watch alike
 
 A device whose ceiling lives in its app belongs in `hologram` instead, so the render can import it.
 

@@ -1,17 +1,10 @@
-import {
-  hearsSomeone,
-  moodOf,
-  nextSampleMode,
-  SAMPLE_MODE_LABELS,
-  type SampleMode,
-  WATCH_PARTICLE_COUNT,
-} from 'hologram';
+import { hearsSomeone, moodOf, nextSampleMode, PARTICLE_COUNT, SAMPLE_MODE_LABELS, type SampleMode } from 'hologram';
 import { JarvisHologram } from 'hologram/react';
 import { FrameRate, ModeToast, useSimulatedUser, useSimulatedVoice } from 'hologram/react/sample';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useWatchDensity } from './watch-density';
-import { useWatchHologramSize } from './watch-screen';
+import { useWatchHologramSize, WATCH_DRAWN_RESOLUTION } from './watch-screen';
 
 interface WaitingForThePhoneProps {
   /** Whether the last ask found a phone at all, which is the only thing worth saying differently. */
@@ -63,11 +56,12 @@ export function WaitingForThePhone({ isPhoneInRange }: WaitingForThePhoneProps) 
           voice={voice}
           user={user}
           thinking={mode === 'thinking'}
-          particleCount={WATCH_PARTICLE_COUNT}
           frameRate={frameRate}
           buildMilliseconds={buildMilliseconds}
           particleShare={particleShare}
           pace={pace}
+          drawnResolution={WATCH_DRAWN_RESOLUTION}
+          tilt
           background="#000000"
         />
       </Pressable>
@@ -76,7 +70,7 @@ export function WaitingForThePhone({ isPhoneInRange }: WaitingForThePhoneProps) 
         frameRate={frameRate}
         buildMilliseconds={buildMilliseconds}
         particleShare={particleShare}
-        particles={WATCH_PARTICLE_COUNT}
+        particles={PARTICLE_COUNT}
         withBuildTime={false}
         style={styles.frameRate}
       />

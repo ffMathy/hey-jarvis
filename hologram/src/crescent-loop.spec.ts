@@ -10,7 +10,6 @@ import {
   makePathBuilder,
   PARTICLE_COUNT,
   type PathBuilder,
-  WATCH_PARTICLE_COUNT,
 } from './hologram-drawing';
 import { VOICE_BAND_COUNT } from './voice-levels';
 
@@ -375,10 +374,7 @@ function compareOver(scene: HologramScene, coverage: Coverage) {
 }
 
 describe('the hand-written crescent loop, against the loop it replaced', () => {
-  const scenes = [
-    { name: "the phone's scene", particleCount: PARTICLE_COUNT },
-    { name: "the watch's scene", particleCount: WATCH_PARTICLE_COUNT },
-  ];
+  const scenes = [{ name: "the phone's scene", particleCount: PARTICLE_COUNT }];
 
   for (const { name, particleCount } of scenes) {
     it(`writes every command bit for bit as it did, in ${name}`, () => {

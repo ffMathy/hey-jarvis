@@ -1,4 +1,4 @@
-import { type ElevenLabsSettings, isLive, WATCH_PARTICIPANT_NAME, WATCH_PARTICLE_COUNT } from 'hologram';
+import { type ElevenLabsSettings, isLive, WATCH_PARTICIPANT_NAME } from 'hologram';
 import { useJarvisSession } from 'hologram/conversation';
 import { JarvisHologram } from 'hologram/react';
 import { useIsForeground } from 'hologram/react/lifecycle';
@@ -10,7 +10,7 @@ import { capCallVolume } from '../modules/jarvis-volume';
 import { requestMicrophoneAccess } from './microphone-permission';
 import { usePhoneMirror } from './phone-mirror';
 import { useWatchDensity } from './watch-density';
-import { useWatchHologramSize } from './watch-screen';
+import { useWatchHologramSize, WATCH_DRAWN_RESOLUTION } from './watch-screen';
 
 interface ConversationScreenProps {
   /** The credentials the phone handed over. There is no conversation without them. */
@@ -110,7 +110,7 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
     onProblem: (message: string) => setProblem(message),
     // Off the phone's Bluetooth proxy before anything goes out, token request included: WebRTC's
     // audio does not get through it, which is why the watch used to connect and then say nothing.
-    // Asked once his greeting is ready to play, so the network comes up while he arrives. See
+    // Asked as his greeting is asked for, so the network comes up while he speaks. See
     // `modules/jarvis-network`.
     untilOnline: async () => {
       network.current = await holdFastNetwork(WAIT_FOR_FAST_NETWORK_MS);
@@ -202,11 +202,12 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
           voice={sphere.voice}
           user={sphere.user}
           thinking={sphere.thinking}
-          particleCount={WATCH_PARTICLE_COUNT}
           frameRate={frameRate}
           buildMilliseconds={buildMilliseconds}
           particleShare={particleShare}
           pace={pace}
+          drawnResolution={WATCH_DRAWN_RESOLUTION}
+          tilt
           background="#000000"
         />
       </View>

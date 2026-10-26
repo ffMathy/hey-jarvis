@@ -3,6 +3,7 @@
 export {
   EVALUATION_WEBHOOK_ROUTE,
   type EvaluationWebhookDependencies,
+  WEBHOOKS_PATH,
   whyEvaluationFixesAreOff,
 } from './evaluation-webhook.js';
 export {

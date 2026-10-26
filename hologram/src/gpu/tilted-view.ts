@@ -20,7 +20,7 @@ export interface EyeView {
   eyeSquares: number;
 }
 
-/** Straight on from infinitely far, as the flat drawing shows him: the watch, a desktop browser, a phone not asked to tilt. */
+/** Straight on from infinitely far, as the flat drawing shows him: a desktop browser, a device not asked to tilt. */
 export const STRAIGHT_ON: EyeView = { basis: FRONT_VIEW, eyeSquares: Number.POSITIVE_INFINITY };
 
 /** His centre, which the eye looks at: the body's frame is centred on him. */

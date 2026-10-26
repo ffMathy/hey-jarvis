@@ -158,12 +158,6 @@ export const WATCH_PACE: DensityPace = {
  * floor rises with it, and a phone that could manage three hundred would be pinned above what it
  * can draw and stutter for ever.
  *
- * A watch is the one place this lands somewhere else, knowingly. The watch's screens build a scene
- * of `WATCH_PARTICLE_COUNT`, 5000, so a fortieth of it is 125 fragments rather than 250, and
- * nothing here can tell the difference: this module imports nothing and never sees a count, only a
- * share. It is the right trade there anyway — on a watch the floor is a last resort rather than a
- * resting place.
- *
  * **It is a floor, not a destination.** Ending up here used to be routine — see `steerDensity` for
  * the single measurement that could send the whole sphere down to it — and that was a bug rather
  * than this constant doing its job.

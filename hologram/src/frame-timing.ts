@@ -8,12 +8,7 @@
  * imported without React Native, Reanimated and Skia; these are plain numbers and import nothing.
  */
 
-/**
- * How long the view takes to count appearance from 0 to 1: the vortex bringing him out of the core.
- *
- * Here rather than beside the drawing so the session can read it without reaching Skia: the
- * greeting waits for the vortex to finish before it plays (`jarvis-session.ts`).
- */
+/** How long the view takes to count appearance from 0 to 1: the vortex bringing him out of the core. */
 export const MATERIALISE_SECONDS = 0.7;
 
 /**

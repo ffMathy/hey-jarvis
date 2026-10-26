@@ -20,9 +20,9 @@ import {
   type PhotoMediaType,
 } from '../vision/index.js';
 import {
-  EVALUATION_WEBHOOK_ROUTE,
   type EvaluationWebhookDependencies,
   registerEvaluationWebhookApi,
+  WEBHOOKS_PATH,
 } from './evaluation-webhook.js';
 
 /**
@@ -184,8 +184,8 @@ export const MCP_PATH = '/api/mcp';
  * stranger sends is read (`claimSlotBeforeReading`), and a slot request reads its own body, a
  * kilobyte at most (`readSlotRequest`).
  *
- * The ElevenLabs post-call webhook reads its own body too, as the bytes it was signed over (see
- * `evaluation-webhook.ts`); parsed as JSON first, it could not be verified.
+ * Every webhook under {@link WEBHOOKS_PATH} reads its own body too, as the bytes its sender signed
+ * (see `evaluation-webhook.ts`); parsed as JSON first, it could not be verified.
  *
  * **Compared in lower case**, because Express matches routes without regard to case:
  * `/API/PHOTOS/SLOTS` reaches the slot endpoint all the same, and a skip that missed it would let
@@ -198,7 +198,7 @@ export function readsItsOwnBody(path: string): boolean {
     lowerCasePath === MCP_PATH ||
     lowerCasePath.startsWith(`${MCP_PATH}/`) ||
     lowerCasePath.startsWith(`${PHOTO_UPLOAD_PATH}/`) ||
-    lowerCasePath.replace(/\/+$/, '') === EVALUATION_WEBHOOK_ROUTE
+    lowerCasePath.startsWith(`${WEBHOOKS_PATH}/`)
   );
 }
 

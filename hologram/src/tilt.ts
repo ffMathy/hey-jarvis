@@ -4,8 +4,8 @@ import { SPHERE_FRACTION } from './hologram-drawing';
  * Tilt to look around: the phone's gravity, as Reanimated's GRAVITY sensor reports it, turned into
  * where the eye is round him, and how far away it is.
  *
- * Only the phone does this. The watch shows him straight on, and so does a desktop browser, which
- * has no sensor; neither ever steps this state.
+ * The phone and the watch do this. A desktop browser, which has no sensor, shows him straight on
+ * and never steps this state.
  *
  * **Built for the phone's UI thread, like the frame clock.** The view steps it once a frame inside
  * its own `modify`, beside the clock's, with the latest reading as positional arguments, so a frame

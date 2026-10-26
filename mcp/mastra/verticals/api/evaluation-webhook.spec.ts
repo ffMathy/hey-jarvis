@@ -12,6 +12,7 @@ import {
   parseSignatureHeader,
   registerEvaluationWebhookApi,
   WEBHOOK_SECRET_VARIABLE,
+  WEBHOOKS_PATH,
   whyEvaluationFixesAreOff,
 } from './evaluation-webhook.js';
 import { readsItsOwnBody } from './routes.js';
@@ -249,6 +250,12 @@ describe('readsItsOwnBody', () => {
     expect(readsItsOwnBody(EVALUATION_WEBHOOK_ROUTE)).toBe(true);
     expect(readsItsOwnBody(EVALUATION_WEBHOOK_ROUTE.toUpperCase())).toBe(true);
     expect(readsItsOwnBody(`${EVALUATION_WEBHOOK_ROUTE}/`)).toBe(true);
-    expect(readsItsOwnBody('/api/elevenlabs/other')).toBe(false);
+    expect(readsItsOwnBody('/api/elevenlabs/post-call')).toBe(false);
+  });
+
+  it('leaves every webhook body to its route, so each can check its own signature', () => {
+    expect(EVALUATION_WEBHOOK_ROUTE.startsWith(`${WEBHOOKS_PATH}/`)).toBe(true);
+    expect(readsItsOwnBody(`${WEBHOOKS_PATH}/someone-else/event`)).toBe(true);
+    expect(readsItsOwnBody('/webhooksnot/elevenlabs')).toBe(false);
   });
 });

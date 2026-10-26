@@ -13,6 +13,16 @@ import { useWindowDimensions } from 'react-native';
 const WATCH_SCALE = 1.25;
 
 /**
+ * The share of the screen's resolution the watch draws him at: all of it.
+ *
+ * The phone draws at 0.45 and scales up, which a canvas some five hundred pixels across hides. A
+ * watch's is half that, so at the phone's share each spark came out a pixel or less wide and the
+ * scale-up smeared it — the user saw him as smudgy and pixelated next to the phone. If drawing every
+ * pixel costs the watch frames, the density loop sheds particles rather than the sharpness.
+ */
+export const WATCH_DRAWN_RESOLUTION = 1;
+
+/**
  * How big the sphere is drawn on this watch.
  *
  * The whole screen and then some, unlike the phone, where it shares the screen with other things.

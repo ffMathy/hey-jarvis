@@ -9,7 +9,7 @@ paths:
 
 ElevenLabs scores every finished conversation against the criteria in `platformSettings.evaluation` of
 `elevenlabs/src/assets/agent-config.json`, and posts the result with the full transcript to the agent's
-post-call webhook — `POST /api/elevenlabs/post-call` on this server (`verticals/api/evaluation-webhook.ts`).
+post-call webhook — `POST /webhooks/elevenlabs/post-call` on this server (`verticals/api/evaluation-webhook.ts`).
 A conversation that failed a criterion (`failure`; `unknown` is not one) starts an **unattended** coding
 session (`startImplementationSession` with `unattended: true`) with the failed criteria, the evaluator's
 reasons, ElevenLabs' summary and the whole transcript, tool calls and results included
@@ -27,7 +27,7 @@ itself running. The only thing he hears is the usual notice that the pull reques
 agent's `startCodingSession` tool cannot start an unattended session: only the webhook does.
 
 - **Signed, not authenticated by Access.** ElevenLabs cannot present a Cloudflare Access service token, so
-  the path needs its own **Bypass** application, as `/api/photos/*` does (see [MCP Server Access](mcp-mcp-server-access.md#mcp-server-access)).
+  the path sits under `/webhooks/*`, which has a **Bypass** application, as `/api/photos/*` does (see [MCP Server Access](mcp-mcp-server-access.md#mcp-server-access)).
   The request's `ElevenLabs-Signature` (`t=<seconds>,v0=<HMAC-SHA256 of "<seconds>.<body>">`) is the
   credential: a request without a well-formed signature from the last thirty minutes is answered `401`
   before its body is read, and one whose body does not match is answered `401` after. The body is read
@@ -48,12 +48,14 @@ agent's `startCodingSession` tool cannot start an unattended session: only the w
 
 **Setting it up:**
 1. In the ElevenLabs dashboard, create a workspace webhook (HMAC authentication) for
-   `https://<your MCP hostname>/api/elevenlabs/post-call`, and keep its secret and its id in the
+   `https://<your MCP hostname>/webhooks/elevenlabs/post-call`, and keep its secret and its id in the
    `ElevenLabs` item of the `Jarvis` vault as `Post-call webhook secret` and `Post-call webhook ID`.
 2. `HEY_JARVIS_ELEVENLABS_WEBHOOK_SECRET` is resolved from `mcp/op.optional.env`; without it the server
    logs one warning at startup and answers every post-call webhook `503`.
-3. Add a Cloudflare Access application for `<your MCP hostname>/api/elevenlabs/post-call` with a single
-   **Bypass** policy (include: Everyone).
+3. Add a Cloudflare Access application for `<your MCP hostname>/webhooks/*` with a single **Bypass**
+   policy (include: Everyone). Every webhook lives under `/webhooks/` (`WEBHOOKS_PATH`), so this one
+   application covers this one and any added later; each guards itself with its sender's signature, and
+   reads its own body to check it (`readsItsOwnBody`).
 4. `HEY_JARVIS_ELEVENLABS_POST_CALL_WEBHOOK_ID` is resolved from `elevenlabs/op.optional.env`, and
    `bunx turbo deploy --filter=elevenlabs` sets it as the production agent's
    `workspaceOverrides.webhooks.postCallWebhookId` (`withPostCallWebhook` in `elevenlabs/src/main.ts`).

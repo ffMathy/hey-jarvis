@@ -50,9 +50,12 @@ sends a CORS preflight (`OPTIONS`) before each.
 conversation that ElevenLabs, asked with this server's own API key, reports as in progress on
 Jarvis's agent; sending the photo needs the slot's token, 128 random bits handed straight to the
 phone, good for five minutes and one photo, and claimed before a byte of the body is read (see
-[Vision Vertical](mcp-vision-vertical.md#vision-vertical)). Nothing else under `/api` is reachable without Access, but `/api/live` and the ElevenLabs post-call
-webhook, `/api/elevenlabs/post-call`, which needs a Bypass application of its own and is guarded by
-ElevenLabs' HMAC signature instead (see [Fixing Failed ElevenLabs Evaluations](mcp-fixing-failed-elevenlabs-evaluations.md#fixing-failed-elevenlabs-evaluations)).
+[Vision Vertical](mcp-vision-vertical.md#vision-vertical)). Nothing else under `/api` is reachable without Access, but `/api/live`.
+
+**`/webhooks/*` must bypass Access too.** Every webhook is served under it — today only ElevenLabs'
+post-call webhook, `/webhooks/elevenlabs/post-call` — so one self-hosted application for
+`<your MCP hostname>/webhooks/*` with a single **Bypass** policy covers them all. Each is guarded by its
+sender's signature instead: for ElevenLabs, an HMAC signature (see [Fixing Failed ElevenLabs Evaluations](mcp-fixing-failed-elevenlabs-evaluations.md#fixing-failed-elevenlabs-evaluations)).
 
 **Rate-limit the slot endpoint at Cloudflare as well.** The server limits the checks it sends
 ElevenLabs per address (an IPv6 /48), 6 a minute, and 30 for the whole process (see **The

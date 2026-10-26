@@ -9,7 +9,6 @@ import {
   describeStartFailure,
   describeTokenFailure,
 } from './failure-text';
-import { MATERIALISE_SECONDS } from './frame-timing';
 import { isGreetingOver, WITHOUT_FIRST_MESSAGE } from './greeting-handover';
 import { createGreetingReaders } from './greeting-voice';
 import { createHalfDuplexDetector } from './half-duplex';
@@ -147,13 +146,11 @@ interface Attempt<Timer> {
   textOnly: boolean;
   greeting: GreetingState;
   /**
-   * Whether the recording actually played, which is what switches the agent's first message off —
-   * or, on a device that dials behind the greeting, will play once he has arrived: such a device
-   * dials during the arrival rather than after it (see `playOnceArrived`).
+   * Whether he greets from the recording, which is what switches the agent's first message off: set
+   * the moment the recording is asked to play, since the session dials while it plays (see
+   * `playWhileDialling`).
    */
   greeted: boolean;
-  /** When he was summoned, on `now()`'s clock: when his arrival vortex started. */
-  summonedAt: number;
   /** When the recording was asked for, on `now()`'s clock. */
   askedAt: number;
   /** Told once the greeting has started or will not, and then forgotten. */
@@ -200,8 +197,6 @@ interface Attempt<Timer> {
   microphoneMuted: boolean;
   deadline?: Timer;
   greetingCheck?: Timer;
-  /** Holds the recording back until he has finished arriving: see `playOnceArrived`. */
-  arrivalWait?: Timer;
   /**
    * What sir said while it connected (see `HeldVoice`): not kept, being kept, or handed over.
    */
@@ -238,7 +233,7 @@ interface PendingContext {
  * away mid-sentence over a non-fatal server message while his voice played on.
  *
  * On summon, the greeting starts and the token is requested at the same moment, so the handshake
- * overlaps him speaking. The session is dialled behind the greeting — during his arrival, even —
+ * overlaps him speaking. The session is dialled behind the greeting, the moment the token is in,
  * and muted from `onConversationCreated` until he has finished, so the agent never hears him as
  * the user. What once clipped him when dialled behind on a
  * phone was the switch into call mode a second into the recording; on a device with call audio
@@ -257,7 +252,6 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
   const offlineProblem = dependencies.offlineProblem;
   const deadlineProblem = dependencies.deadlineProblem ?? (() => DEADLINE_PROBLEM);
   const giveUpConnectingAfterMs = dependencies.giveUpConnectingAfterMs ?? GIVE_UP_CONNECTING_AFTER_MS;
-  const greetAfterArrivalMs = dependencies.greetAfterArrivalMs ?? MATERIALISE_SECONDS * 1000;
   const findRoom = dependencies.findRoom ?? (() => undefined);
   const followVoice = dependencies.followAgentVoice;
   const removeOrphanedAudio = dependencies.removeOrphanedAudio;
@@ -604,10 +598,6 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     if (current.greetingCheck !== undefined) {
       cancel(current.greetingCheck);
       current.greetingCheck = undefined;
-    }
-    if (current.arrivalWait !== undefined) {
-      cancel(current.arrivalWait);
-      current.arrivalWait = undefined;
     }
     if (current.heldVoiceRelease !== undefined) {
       cancel(current.heldVoiceRelease);
@@ -1008,7 +998,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     if (!isCurrent(current) || current.dialled || current.credential === undefined) {
       return;
     }
-    // Asking and already counted as greeted is dialling while he arrives: see `playOnceArrived`.
+    // Asking and already counted as greeted is dialling while he greets: see `playWhileDialling`.
     if (current.greeting === 'preparing' || (current.greeting === 'asking' && !current.greeted)) {
       return;
     }
@@ -1199,6 +1189,10 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     if (current.greeting === 'playing') {
       lastHeardAt = now();
     }
+    if (current.greeting === 'asking' && !current.dialled) {
+      // Refused or never answered before anything was dialled: the agent keeps its own first message.
+      current.greeted = false;
+    }
     current.greeting = 'over';
     if (current.greetingCheck !== undefined) {
       cancel(current.greetingCheck);
@@ -1268,7 +1262,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     if (!playing) {
       // Refused: the agent keeps its own first message, so he is never left not greeting at all.
       // Nor is there a greeting left to hold the call's audio for; the conversation starts its own —
-      // unless one was already dialled behind the arrival, which is about to take it over.
+      // unless one was already dialled behind it, which is about to take it over.
       if (current.callAudio === 'greeting' && !current.dialled) {
         releaseCallAudio(current);
       }
@@ -1298,40 +1292,18 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
   };
 
   /**
-   * Plays the recording once he has fully arrived: not before `greetAfterArrivalMs` have passed
-   * since he was summoned, so "Hello sir" is heard when the vortex has finished bringing him out of
-   * the core rather than while it is still spinning. Whatever was waited on before this — the
-   * call's audio, a headset's route — counts towards it. The clock that gives up on the greeting
-   * starts again once it is asked for: the wait was not him being late.
-   *
-   * Only the sound waits. The token is already on its way (asked for at the summoning), and a
-   * device that brings up a network first (`untilOnline`) starts doing so now rather than once
-   * the recording plays, so the arrival costs the connection nothing it did not cost before.
-   *
-   * The session dials now too, rather than once the player has answered, counting him as greeted already: the agent is
-   * asked not to greet and the microphone stays muted until the recording is over. Should the
-   * browser then refuse the recording, the agent stays quiet until sir speaks — the price of
-   * connecting while he arrives instead of after.
+   * Plays the recording and dials at once, rather than once the player has answered, counting him
+   * as greeted already: the agent is asked not to greet and the microphone stays muted until the
+   * recording is over. A device that brings up a network first (`untilOnline`) starts doing so now
+   * too. Should the browser then refuse the recording, the agent stays quiet until sir speaks — the
+   * price of connecting while he greets instead of after.
    */
-  const playOnceArrived = (current: Attempt<Timer>) => {
-    const play = () => {
-      current.askedAt = now();
-      playGreeting(current);
-    };
-    const remainingMs = greetAfterArrivalMs - (now() - current.summonedAt);
-    if (remainingMs <= 0) {
-      play();
-      return;
-    }
+  const playWhileDialling = (current: Attempt<Timer>) => {
+    current.askedAt = now();
     startReaching(current);
     current.greeted = true;
     dialWhenReady(current);
-    current.arrivalWait = schedule(() => {
-      current.arrivalWait = undefined;
-      if (isCurrent(current) && current.greeting === 'asking') {
-        play();
-      }
-    }, remainingMs);
+    playGreeting(current);
   };
 
   /**
@@ -1345,7 +1317,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
     scheduleGreetingCheck(current);
     changed();
     if (!greeting.untilAudible) {
-      playOnceArrived(current);
+      playWhileDialling(current);
       return;
     }
     let audible: Promise<void>;
@@ -1360,7 +1332,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
         if (!isCurrent(current) || current.greeting !== 'asking') {
           return;
         }
-        playOnceArrived(current);
+        playWhileDialling(current);
       });
   };
 
@@ -1418,7 +1390,6 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       textOnly,
       greeting: textOnly ? 'over' : 'asking',
       greeted: false,
-      summonedAt: now(),
       askedAt: now(),
       onGreetingAnswered: options.onGreetingAnswered,
       reaching: false,

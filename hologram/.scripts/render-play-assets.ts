@@ -53,7 +53,6 @@ import {
   type SimulatedMood,
   SPHERE_FRACTION,
   THOUGHT_FADE_SECONDS,
-  WATCH_PARTICLE_COUNT,
 } from '../src/index';
 import { createPerformance, findLoudestMoment, type SimulatedFrame, stillMoment } from './simulated-performance';
 
@@ -280,7 +279,7 @@ const ASSETS: Asset[] = [
     width: WATCH_SIDE,
     height: WATCH_SIDE,
     largestBytes: 8 * ONE_MEGABYTE,
-    particles: WATCH_PARTICLE_COUNT,
+    particles: PARTICLE_COUNT,
     mood: undefined,
   },
   {
@@ -288,7 +287,7 @@ const ASSETS: Asset[] = [
     width: WATCH_SIDE,
     height: WATCH_SIDE,
     largestBytes: 8 * ONE_MEGABYTE,
-    particles: WATCH_PARTICLE_COUNT,
+    particles: PARTICLE_COUNT,
     mood: 'speaking',
   },
   {
@@ -296,7 +295,7 @@ const ASSETS: Asset[] = [
     width: WATCH_SIDE,
     height: WATCH_SIDE,
     largestBytes: 8 * ONE_MEGABYTE,
-    particles: WATCH_PARTICLE_COUNT,
+    particles: PARTICLE_COUNT,
     mood: 'speaking',
     loudest: true,
   },
@@ -305,7 +304,7 @@ const ASSETS: Asset[] = [
     width: WATCH_SIDE,
     height: WATCH_SIDE,
     largestBytes: 8 * ONE_MEGABYTE,
-    particles: WATCH_PARTICLE_COUNT,
+    particles: PARTICLE_COUNT,
     mood: 'thinking',
   },
 ];

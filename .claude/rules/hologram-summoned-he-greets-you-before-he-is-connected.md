@@ -50,8 +50,8 @@ easy to break:
   `greeting-player.ts` reports the recording as unplayable, and the agent keeps its own first
   message. A browser plays the recording with expo-audio (`greeting-player.web.ts`).
 - **And the session connects while he speaks, on every device.** The token is fetched beside him
-  and the session is dialled the moment it arrives — during his arrival, before the recording has
-  even started — muted until he has finished,
+  and the session is dialled the moment it arrives — while the recording is still being asked
+  for, even — muted until he has finished,
   and not at all if he was hung up on. It used to be held back until he had finished on a phone,
   because dialling behind him clipped him there; what clipped him was LiveKit switching into call
   mode a second into the recording, and that switch is now made before he speaks (above), so the
