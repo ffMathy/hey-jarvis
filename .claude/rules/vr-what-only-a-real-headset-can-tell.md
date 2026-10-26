@@ -41,8 +41,9 @@ paths:
   hit-test fan returns depth hits; whether anchors resolve in time; how fast the
   grid builds on the XR2 Gen 2; whether 1.6 m, the 35° cone and the height rule
   feel right.
-- **Drawing.** What CanvasKit costs on its GPU surface, and whether copying its
-  picture into three's context every frame stalls at 72/90 Hz; the halo and stroke
+- **Drawing.** What the picture's few dozen draws into its 512-pixel target cost
+  on a Quest's GPU each frame, and whether switching into that target and back
+  costs a tiled GPU more than it should at 72/90 Hz; the halo and stroke
   passes' cost at 0.8, 1.6 and 2.6 m; the alpha factor in a bright and a dim room;
   whether 1.2-pixel hot cores shimmer; whether the projection layer composites as
   the spec says; stereo comfort; whether `updateTargetFrameRate` behaves; whether

@@ -51,7 +51,7 @@ interface FrameLoop {
   onFrame(timeSincePreviousFrame: number | null, inputs: ViewInputs): boolean;
   /** What the view does when the app comes back to the foreground. */
   backInFront(): void;
-  /** What the picture hands `drawHologram`. */
+  /** What the frame of him is drawn from. */
   picture(): HologramFrame;
 }
 

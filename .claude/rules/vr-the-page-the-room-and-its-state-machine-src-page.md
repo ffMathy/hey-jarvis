@@ -19,8 +19,9 @@ them: the key, getting ready, **Allow the microphone**, **Enter your room**.
   own stream (`page/microphone.ts`, with `src/wake/`'s permission check and
   microphone) and keeps it for the Enter tap. A refused microphone gets
   instructions for allowing it again.
-- **Getting ready** runs the preparations `main.ts` hands over — the wake engine's
-  `prepare` and CanvasKit — with one progress bar weighted by what each fetches.
+- **Getting ready** runs the preparations `main.ts` hands over — today only the
+  wake engine's `prepare`, since he is drawn with shaders that come with the
+  room's code — with one progress bar weighted by what each fetches.
   A failure offers to try again, retrying only what failed.
 - **Settings are the phone's,** under hologram's `ELEVENLABS_SETTINGS_STORAGE_KEY`,
   in `localStorage`. **Check and save** mints one token as `jarvis-vr` before
@@ -89,7 +90,7 @@ only user activation there is inside the room.
   four samples a pixel; foveation 0.3), and the preview's renderers are made the
   same way. The samples are for the room's plain triangles — the tokens, the
   reticle, the arrow, a canvas's plane seen edge on — whose edges nothing else
-  smooths; his strokes and CanvasKit's picture smooth themselves and are drawn
+  smooths; his strokes and his picture smooth themselves and are drawn
   exactly as before, since fragments are still shaded once a pixel, and the
   canvases' outlines are smoothed in their pictures (see "Text in the room" below).
   Meta recommends four samples on Quest's tiled GPUs as nearly free. With WebXR
@@ -143,5 +144,6 @@ canceller, and the SDK's elements and their volume), the room's
 planes, meshes, labels, triangles and grid, where he was placed, the entities
 (known, placed, found in this room, anchors located, coronas lit, what is pointed
 at), frame rates, his
-CPU and CanvasKit time and surface, the granted session features and the WebGL
+CPU time and the main thread's share of it spent drawing his picture
+(`picture`), the granted session features and the WebGL
 extensions of interest.

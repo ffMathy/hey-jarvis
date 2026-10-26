@@ -4,7 +4,6 @@
   "private": true,
   "main": "index.ts",
   "scripts": {
-    "initialize": "cd .. && bash mobile/.scripts/initialize.sh",
     "typecheck": "tsgo --noEmit --project tsconfig.json",
     "lint": "cd .. && bunx biome check --write mobile",
     "format": "cd .. && bunx biome format --write mobile",
@@ -14,12 +13,10 @@
     "test": "cd .. && bash mobile/.scripts/test.sh",
     "e2e": "bunx playwright test --config playwright.config.ts",
     "start": "bunx expo start --dev-client",
-    "android": "bash ../.scripts/install-skia.sh && bash .scripts/initialize.sh && bunx expo run:android",
-    "eas-build-post-install": "bash ../.scripts/install-skia.sh && bash .scripts/initialize.sh",
+    "android": "bunx expo run:android",
     "native:prebuild": "bunx expo prebuild --platform android",
     "env:local": "cd .. && bash ./.scripts/generate-env-local.sh mobile/op.env"
   },
-  "//scripts": "`android` and `eas-build-post-install` are the two paths that skip Turbo, so they have to name both halves of Skia's setup themselves. `../.scripts/install-skia.sh` puts the prebuilt native libraries into the installed package \u2014 shared with the watch, which is why it is a single root task rather than each app's own step \u2014 and `.scripts/initialize.sh` copies this app's own `canvaskit.wasm`. Everything else reaches both through `turbo initialize`.",
   "dependencies": {
     "@elevenlabs/client": "1.24.0",
     "@elevenlabs/react-native": "1.2.26",
@@ -27,7 +24,6 @@
     "@livekit/react-native": "2.12.0",
     "@livekit/react-native-expo-plugin": "1.0.2",
     "@livekit/react-native-webrtc": "144.1.2",
-    "@shopify/react-native-skia": "2.6.2",
     "expo": "57.0.20",
     "expo-audio": "57.0.5",
     "expo-dev-client": "57.0.18",

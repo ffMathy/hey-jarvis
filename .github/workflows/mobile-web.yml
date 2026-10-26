@@ -11,7 +11,7 @@ name: Mobile Web
 #   /hey-jarvis/pr/<n>/vr/       pull request <n>'s headset app
 #
 # What is at the root is the real phone app: the same conversation screen, the
-# same hologram, drawn by CanvasKit instead of native Skia. Taking over the assist
+# same hologram, drawn with WebGL 2 instead of a phone's OpenGL ES. Taking over the assist
 # gesture is Android's alone and the app says so when it is on web, so the page
 # is for looking at Jarvis and talking to him, not for replacing your assistant.
 #
@@ -112,15 +112,6 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
-
-      # `setup-skia-web` copies canvaskit.wasm into mobile/public/, which the export
-      # publishes as-is. The file is gitignored — it comes from the Skia package
-      # rather than the repository — so without this the site goes up without it,
-      # the browser's fetch for it returns the 404 page, instantiating that throws,
-      # and the hologram's error boundary holds its space empty. Which is exactly
-      # how the first published page looked: everything but Jarvis.
-      - name: Fetch CanvasKit
-        run: bunx turbo initialize --filter=mobile
 
       # First, so a headset app that does not build fails the run before the phone
       # app's slower export. `turbo build` also runs its initialize (the wasm into

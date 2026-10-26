@@ -58,8 +58,8 @@ export default defineConfig({
   retries: IN_CI ? 1 : 0,
   workers: 1,
   reporter: IN_CI ? 'github' : [['html', { open: 'never' }]],
-  // The room is drawn by SwiftShader on the CPU in a headless browser, three WebGL contexts
-  // deep — the emulated passthrough, CanvasKit and the app's own — so frames are slow.
+  // The room is drawn by SwiftShader on the CPU in a headless browser, two WebGL contexts
+  // deep — the emulated passthrough and the app's own — so frames are slow.
   timeout: 180000,
   use: {
     baseURL: `http://localhost:${PORT}`,

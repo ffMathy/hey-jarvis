@@ -7,12 +7,13 @@ paths:
 
 > Part of [Hologram](hologram.md). Paths in it are relative to `hologram/` unless they say otherwise.
 
-The headset draws the body in three dimensions on the GPU and the rest of him
-with CanvasKit, as the phone and the watch do with Skia, and every device's body
-is composed from the per-fragment helpers. The GPU half — the fragment arithmetic
-and its CPU reference, the rows, and the halo union, strokes and halos' light —
-is `hologram/gpu`, which the headset draws through three.js and a phone or a
-watch through `drawGpuBody`. So the main entry exports what that needs:
+The headset draws all of him on the GPU, as the phone and the watch do: the body
+in three dimensions, and the rest of him — the picture — flat, on a quad in his
+view plane. Every device's body is composed from the per-fragment helpers. Both
+halves are `hologram/gpu`: the headset wraps the body's shader sources in three.js
+materials and draws the picture with `drawGpuPicture` into a render target on
+three.js's own context (`vr/src/hologram3d/picture-target.ts`), and a phone or a
+watch draws both with `drawGpuFrame`. So the main entry exports what that needs:
 `analyseFrame` and its `HologramFrameState`, the per-fragment helpers
 (`readFragment`, `fragmentStrength`, `placeFragment`, `swirlFragment`,
 `latticeFragment`, `scanned`, `densityKey` and the rest), the body's and the
@@ -23,18 +24,15 @@ body's and the stream's rows, so a picture worklet never carries them.
 frame callback that only analyses frames can capture that rather than the whole
 scene.
 
-**Fading him from outside the drawing.** The drawing fades him in and out
-through a layer of its own, at `arrivalOf(appearance, presence)` — the arrival
-`analyseFrame` works out, exported so nothing keeps a copy of it that drifts.
-The phone's view, which lays the body drawn on the GPU beside the Skia picture,
-cannot fade the two separately: Screen-blending two faded layers is brighter where they overlap
-than fading the blend of them. So `drawHologram(…, fadeOutside)` skips that layer
-and the view fades the group of both by `arrivalOf` instead — the GPU body in
-it drawn with `fade: 1`, or it would come out at the arrival squared — which
-over black or over nothing comes out within a few levels of the layer's own fade
-(`hologram-drawing.spec.ts` holds it to four). At rest there is no layer, and the
-two draw the same bytes. The drawing never paints a background — the view does,
-with `drawColor` inside its own layer — so leaving one out is the view's to do.
+**Fading him from outside the drawing.** The GPU draws him unfaded, and whoever
+shows him fades him by `arrivalOf(appearance, presence)` — the arrival
+`analyseFrame` works out, exported so nothing keeps a copy of it that drifts. A
+phone or a watch fades its one canvas by it; the headset fades its passes and
+the picture's quad by it (times its close-range fade) through the blend's
+constant colour. Fading the body and the picture each before Screening them
+together would come out brighter where they overlap than fading them as one, so
+neither renderer does. Nothing in the drawing paints a background either: that
+is the view's.
 
 The frame clock is one implementation, `frame-clock.ts`, stepped by both: a
 state made once (`createFrameClockState`), the gate that holds back a step
@@ -58,11 +56,7 @@ Its conversation is the same session the phone and the watch hold theirs in
 directly: the headset hands it its browser parts — his track analysed on the
 app's `AudioContext`, the greeting's `<audio>` element, the orphaned audio a
 dropped call leaves on a page that lives for hours — through
-`createHeadsetSession` in `vr/src/conversation/`. A renderer drawing over CanvasKit — the headset's view-plane picture, and the phone's own web build —
-takes its resources from `createReleasableHologramResources` and calls `release()` once each
-frame has been flushed or recorded: CanvasKit's objects live in the WebAssembly heap, which nothing
-garbage-collects, and the drawing makes a few dozen paths a frame. On a device the JSI objects free
-themselves and the view keeps the plain `createHologramResources`. `roomOfConversation`
+`createHeadsetSession` in `vr/src/conversation/`. `roomOfConversation`
 takes each app's own `Room` guard rather than importing `livekit-client`,
 because an `instanceof` is only true against the copy the app's SDK built the
 room from.

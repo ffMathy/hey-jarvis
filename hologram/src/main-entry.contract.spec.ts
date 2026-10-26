@@ -3,15 +3,15 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * What the main entry may import: its own siblings, and the plain numbers of Skia's enums.
+ * What the main entry may import: its own siblings, and nothing else as a value.
  *
- * That rule is what lets the one drawing, the one frame clock and the one conversation run in four
- * places — native Skia on a phone and a watch, CanvasKit in a browser, CanvasKit headless in these
- * tests, and the headset, which has no React at all (`.claude/rules/hologram-the-rule-that-makes-this-package-work.md`, "The rule that makes
- * this package work"). A value imported from anywhere else is a module every one of them has to load:
- * React Native's root under `bun test`, React on the headset, Skia before CanvasKit has loaded in a
- * browser. It loads fine wherever it was written, and fails in the other three — on a device, the
- * worklets have captured it by then.
+ * That rule is what lets the one scene, the one frame clock and the one conversation run in four
+ * places — a Reanimated worklet on a phone and a watch, a browser, these tests, and the headset,
+ * which has no React at all (`.claude/rules/hologram-the-rule-that-makes-this-package-work.md`, "The
+ * rule that makes this package work"). A value imported from anywhere else is a module every one of
+ * them has to load: React Native's root under `bun test`, React on the headset. It loads fine
+ * wherever it was written, and fails in the other three — on a device, the worklets have captured it
+ * by then.
  *
  * So the rule is checked rather than remembered. Every module directly in this folder is parsed by
  * Bun's own transpiler, and every import and re-export it keeps is listed — static, dynamic or by
@@ -25,13 +25,6 @@ import { join } from 'node:path';
  */
 
 const MAIN_ENTRY_DIR = import.meta.dir;
-
-/**
- * The one module from outside the main entry it may take values from: Skia's enums, from the package's
- * type module rather than its root, which imports React Native. Plain numbers, with no imports of
- * their own, so they load anywhere a type would.
- */
-const SKIA_ENUMS = '@shopify/react-native-skia/lib/module/skia/types';
 
 const transpiler = new Bun.Transpiler({ loader: 'ts' });
 
@@ -52,13 +45,13 @@ const SIBLINGS = new Set(
     .filter((path) => path !== './index'),
 );
 
-/** Whether a value may come from `path`: a module directly in this folder, or Skia's enums. */
+/** Whether a value may come from `path`: a module directly in this folder. */
 function mayImportValueFrom(path: string): boolean {
-  return path === SKIA_ENUMS || SIBLINGS.has(path);
+  return SIBLINGS.has(path);
 }
 
 describe('the main entry', () => {
-  it("takes values from nothing but its own modules and Skia's enums", () => {
+  it('takes values from nothing but its own modules', () => {
     const modules = mainEntryModules();
     const forbidden = modules.flatMap((name) =>
       valueImportsOf(readFileSync(join(MAIN_ENTRY_DIR, name), 'utf8'))
@@ -72,7 +65,7 @@ describe('the main entry', () => {
   });
 
   it('tells a module of its own from another entry, a barrel or anything outside', () => {
-    for (const path of ['./tilt', './hologram-drawing', SKIA_ENUMS]) {
+    for (const path of ['./tilt', './hologram-drawing']) {
       expect({ path, allowed: mayImportValueFrom(path) }).toEqual({ path, allowed: true });
     }
     for (const path of [
@@ -83,20 +76,22 @@ describe('the main entry', () => {
       './index',
       '.',
       '../x',
-      '@shopify/react-native-skia',
+      'react-native',
       'hologram',
     ]) {
       expect({ path, allowed: mayImportValueFrom(path) }).toEqual({ path, allowed: false });
     }
   });
 
-  it("still has something to protect: the drawing takes Skia's enums as values and Skia itself as types", () => {
+  it('still has something to protect: a module takes a sibling as a value, and another one only as types', () => {
     // If the scan stopped seeing value imports, or started counting type-only ones, the test above
-    // would pass or fail for the wrong reason. The drawing has one of each from Skia.
-    const drawing = readFileSync(join(MAIN_ENTRY_DIR, 'hologram-drawing.ts'), 'utf8');
+    // would pass or fail for the wrong reason.
+    const satellites = readFileSync(join(MAIN_ENTRY_DIR, 'satellite-drawing.ts'), 'utf8');
+    const dropped = readFileSync(join(MAIN_ENTRY_DIR, 'connection-drop.ts'), 'utf8');
 
-    expect(drawing).toContain("import type { SkCanvas, Skia } from '@shopify/react-native-skia';");
-    expect(valueImportsOf(drawing)).toEqual([SKIA_ENUMS]);
+    expect(valueImportsOf(satellites)).toEqual(['./agent-work']);
+    expect(dropped).toContain("import type { SessionEnding } from './session-contract';");
+    expect(valueImportsOf(dropped)).toEqual([]);
   });
 
   it('counts every import not marked as a type, and nothing that is', () => {

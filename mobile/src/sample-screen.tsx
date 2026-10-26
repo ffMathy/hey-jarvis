@@ -1,4 +1,5 @@
 import { hearsSomeone, moodOf, nextSampleMode, PARTICLE_COUNT, SAMPLE_MODE_LABELS, type SampleMode } from 'hologram';
+import { JarvisHologram } from 'hologram/react';
 import { LEAVING_SECONDS, useAgentSatellites } from 'hologram/react/lifecycle';
 import { FrameRate, ModeToast, useSimulatedUser, useSimulatedVoice } from 'hologram/react/sample';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -11,7 +12,6 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { dismissAssistantWindow } from '../modules/jarvis-assistant';
-import { JarvisHologram } from './jarvis-hologram';
 import { SAMPLE_CANVAS, SampleSheet, sampleHologramSize } from './sample-sheet';
 import { useSparkDensity } from './spark-density';
 import { theme } from './theme';

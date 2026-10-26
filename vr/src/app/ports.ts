@@ -171,7 +171,7 @@ export interface HologramPort {
   /** 0–1; 0 once he has gone after `leaving`. */
   readonly presence: number;
   radius: number;
-  readonly diagnostics?: { cpuMilliseconds: number; density: number; canvasKitMilliseconds: number; surface: string };
+  readonly diagnostics?: { cpuMilliseconds: number; density: number; pictureMilliseconds: number };
   dispose(): void;
 }
 

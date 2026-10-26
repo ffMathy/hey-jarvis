@@ -5,7 +5,6 @@
  * drive him (the frame clock's drive), place him (his radius) and preview him on a desktop.
  */
 
-export { loadPainter, type Painter } from './canvaskit';
 export { DISTANCE_AHEAD_METRES, HOLOGRAM_RADIUS_METRES } from './dimensions';
 export type { HologramDrive } from './frame-clock';
 export {

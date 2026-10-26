@@ -17,7 +17,7 @@ import { glslFloat } from './glsl';
  * those as separate paths, whose halos Screen over each other rather than union.
  */
 
-/** Texels across each half of the target: the same as Skia's picture on the headset, so the halos are as sharp. */
+/** Texels across each half of the target: the same as the picture on the headset, so the halos are as sharp. */
 export const HALO_TEXELS = 512;
 
 /** What one ring of a halo contributes: each tier's strength below is scaled by it. */

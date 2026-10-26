@@ -10,12 +10,11 @@
     "format": "cd .. && bunx biome format --write hologram",
     "test": "cd .. && bash hologram/.scripts/test.sh"
   },
-  "//peer": "Whichever app is Jarvis brings its own copy of these; both of them depend on all ten directly. Skia is only a type import in the main entry, but the react entry calls into it, and into expo-gl for the GPU body's view alone, only once it has found expo-gl's native module in the build; and the conversation entry calls into the ElevenLabs SDK (its client's `Conversation.startSession`, which must be the very copy `@elevenlabs/react-native` registers its session strategy on \u2014 `mobile/src/agent-audio-track.contract.spec.ts` checks it is) and, for the recorded greeting, LiveKit's audio session and hologram's own native player (expo) on a device, expo-audio in a browser. The native player is why this package has an expo-module.config.json: both apps autolink it.",
+  "//peer": "Whichever app is Jarvis brings its own copy of these; both of them depend on all nine directly. The react entry calls into expo-gl, to draw him, only once it has found expo-gl's native module in the build; and the conversation entry calls into the ElevenLabs SDK (its client's `Conversation.startSession`, which must be the very copy `@elevenlabs/react-native` registers its session strategy on \u2014 `mobile/src/agent-audio-track.contract.spec.ts` checks it is) and, for the recorded greeting, LiveKit's audio session and hologram's own native player (expo) on a device, expo-audio in a browser. The native player is why this package has an expo-module.config.json: both apps autolink it.",
   "peerDependencies": {
     "@elevenlabs/client": "*",
     "@elevenlabs/react-native": "*",
     "@livekit/react-native": "*",
-    "@shopify/react-native-skia": "*",
     "expo": "*",
     "expo-audio": "*",
     "expo-gl": "*",
@@ -27,7 +26,6 @@
     "@elevenlabs/client": "1.24.0",
     "@elevenlabs/react-native": "1.2.26",
     "@livekit/react-native": "2.12.0",
-    "@shopify/react-native-skia": "2.6.2",
     "@types/react": "19.2.18",
     "bun-types": "1.3.14",
     "expo": "57.0.20",
@@ -46,8 +44,7 @@
     "./react": "./src/react/index.ts",
     "./react/lifecycle": "./src/react/lifecycle.ts",
     "./react/sample": "./src/react/sample.ts",
-    "./react/hologram-view": "./src/react/hologram-view.tsx",
     "./assets/*": "./assets/*"
   },
-  "//exports": "Four entries, and the split matters: '.' is the design, the voice tracking, the ElevenLabs credentials and the conversation's framework-free parts, importing nothing from outside the package but types and the plain values of Skia's enums, so it runs headless in the tests, under CanvasKit in a browser, and in a client with no React at all. './gpu' is his body on the GPU \u2014 the headset's passes as shader sources, the CPU reference they are held to, the view-basis maths, and a renderer over a bare WebGL 2 context \u2014 under the main entry's rule (the context is handed in), so the headset draws it through three.js and a phone or a watch through expo-gl while neither is ever imported here. './react' is the view, which needs React, Reanimated and Skia for real, and expo-gl for the GPU body, which it loads on a device only once expo-gl's native module is found, and in a browser with the lazily imported './react/hologram-view'. './conversation' needs React and the ElevenLabs SDK but deliberately not Skia, so a screen can hold a conversation before CanvasKit has loaded. './react/sample' is sample mode's clock-made voice, mood toast and frame-rate readout, Skia-free like './react/lifecycle' so a browser screen can import it before CanvasKit has loaded. './react/hologram-view' is for the browser build's lazy import() only \u2014 CanvasKit has to finish loading before anything Skia-backed is even imported. './assets/*' is the files themselves, for a bundler that takes a file as a URL rather than as Metro's asset id: the headset imports the greeting as `hologram/assets/greeting.mp3?url` and never reaches './conversation', whose greeting player is Metro's."
+  "//exports": "Four entries, and the split matters: '.' is the design, the voice tracking, the ElevenLabs credentials and the conversation's framework-free parts, importing nothing from outside the package but types, so it runs headless in the tests, in a browser, and in a client with no React at all. './gpu' is all of him on the GPU \u2014 his body's passes and the picture of the rest of him as shader sources, the CPU reference they are held to, the view-basis maths, and a renderer over a bare WebGL 2 context \u2014 under the main entry's rule (the context is handed in), so the headset draws it through three.js and a phone or a watch through expo-gl while neither is ever imported here. './react' is the view, which needs React and Reanimated for real, and expo-gl, which it loads on a device only once expo-gl's native module is found. './conversation' needs React and the ElevenLabs SDK but deliberately not expo-gl, so a screen can hold a conversation whether or not the view can draw. './react/sample' is sample mode's clock-made voice, mood toast and frame-rate readout, and './react/lifecycle' the screen-level pieces, both clear of expo-gl for the same reason. './assets/*' is the files themselves, for a bundler that takes a file as a URL rather than as Metro's asset id: the headset imports the greeting as `hologram/assets/greeting.mp3?url` and never reaches './conversation', whose greeting player is Metro's."
 }

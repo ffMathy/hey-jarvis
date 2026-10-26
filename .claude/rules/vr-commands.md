@@ -17,5 +17,5 @@ bunx turbo serve --filter=vr                    # Vite's dev server on the LAN (
 timeout 3600 bun vr/.scripts/render-demo.ts     # the demo video, after a build (see "The demo video")
 ```
 
-`serve` does not run `initialize`; run that once first, or CanvasKit's wasm is
-missing and the room opens empty.
+`serve` does not run `initialize`; run that once first, or onnxruntime-web's
+wasm is missing and the page never gets ready.

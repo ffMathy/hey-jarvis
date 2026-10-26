@@ -30,8 +30,8 @@
  * **It does not see the GPU's half**, which happens after the frame's calls are issued. So the frame
  * rate is kept as a backstop rather than a target: two windows running behind it set a ceiling the
  * count may not climb past (see {@link BELOW_WHERE_IT_FELL}), which catches a device whose GPU runs
- * out of room before its building does. With the body on the GPU that is the usual case: building
- * is Skia's picture of the rest of him and the calls that issue the GPU's frame, so the build time
+ * out of room before its building does. With all of him on the GPU that is the usual case: building
+ * is the calls that issue the GPU's frame, so the build time
  * says there is room and the ceiling is what holds the share. And with no build time to go on —
  * nothing timed yet — the loop steers by the frame rate.
  *
@@ -388,8 +388,8 @@ function clamp(value: number, lowest: number, highest: number): number {
  * The share the loop starts at: half of all of him.
  *
  * The loop steers by how long a frame's JavaScript takes (see {@link BUILD_BUDGET_MS}), and with his
- * body on the GPU that is Skia's picture of the rest of him and the calls that issue the GPU's frame
- * — well under a millisecond, whatever the share. So the build time always says there is room, the
+ * body on the GPU that is the calls that issue the GPU's frame — well under a millisecond, whatever
+ * the share. So the build time always says there is room, the
  * share climbs at {@link RISING_PER_SECOND}, and the frame-rate ceiling is what stops it. Starting at
  * {@link FEWEST_PARTICLES} would spend six seconds climbing to where any GPU that draws him at all
  * could start; half is where the loop would settle on a GPU too weak for all of him.

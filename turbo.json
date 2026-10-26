@@ -135,7 +135,7 @@
       "outputs": []
     },
     "mobile#e2e": {
-      "dependsOn": ["^transit", "lint", "typecheck", "initialize"],
+      "dependsOn": ["^transit", "lint", "typecheck"],
       "outputs": ["playwright-report/**", "test-results/**", "dist/**"]
     },
     // Never cached: every package's `initialize` installs something outside the repository
@@ -146,23 +146,9 @@
       "cache": false,
       "outputs": []
     },
-    "//#install-skia": {
-      "cache": false,
-      "outputs": []
-    },
-    "mobile#initialize": {
-      "cache": false,
-      "outputs": [],
-      "dependsOn": ["//#install-skia"]
-    },
-    "watch#initialize": {
-      "cache": false,
-      "outputs": [],
-      "dependsOn": ["//#install-skia"]
-    },
     // Copies the WebAssembly into vr/public/vendor/, which is gitignored. A cache hit
     // would replay the log and restore no files, and the build after it would publish a site
-    // with no CanvasKit — so, like the phone's and the watch's, it always runs.
+    // with no CanvasKit — so it always runs.
     "vr#initialize": {
       "cache": false,
       "outputs": []

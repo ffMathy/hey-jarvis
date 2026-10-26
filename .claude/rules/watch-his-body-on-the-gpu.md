@@ -7,12 +7,12 @@ paths:
 
 > Part of [Wear OS App](watch.md). Paths in it are relative to `watch/` unless they say otherwise.
 
-The watch draws his body on the GPU, as the phone does: `hologram/gpu`'s renderer through expo-gl, on a
-canvas Screened over Skia's picture of the rest of him (see "His body on the GPU" in
+The watch draws all of him on the GPU, as the phone does: `hologram/gpu`'s renderer through expo-gl,
+his body and the rest of him in one canvas (see "His body on the GPU" in
 [`.claude/rules/hologram-his-body-on-the-gpu-on-a-phone-and-a-watch.md`](hologram-his-body-on-the-gpu-on-a-phone-and-a-watch.md)). It needs Android 10, which every watch this app installs
-on has (its `minSdk` is 30), and a GPU that gives OpenGL ES 3. **There is no other body:** on a watch
-whose GPU gives ES 2, or whose shaders will not compile, he is drawn without one, and the rest of him
-arrives after a wait of at most 800 ms. Like the phone it passes `tilt`, so turning the wrist turns
+on has (its `minSdk` is 30), and a GPU that gives OpenGL ES 3. **There is nothing else to draw him
+with:** on a watch whose GPU gives ES 2, or whose shaders will not compile, he is not drawn at all, and
+the screen goes on without him after a wait of at most 800 ms (`GPU_READY_TIMEOUT_MS`). Like the phone it passes `tilt`, so turning the wrist turns
 the view round him (see "Tilt to look around" in [`.claude/rules/hologram-tilt-to-look-around-on-the-phone-and-the-watch.md`](hologram-tilt-to-look-around-on-the-phone-and-the-watch.md)).
 
 **He is drawn at 0.6 of the screen's resolution** (`WATCH_DRAWN_RESOLUTION` in `watch-screen.ts`),
@@ -28,10 +28,10 @@ at its default, and `WATCH_PACE`'s thirty frames a second decides how much of it
 cost no loop can steer away from is building that scene when the view mounts, twice what the watch's
 own 5,000 cost, so a later arrival is the first thing to look for.
 
-The view behind both canvases paints the black. The halo target is sized to the canvas, a texel to a
+The view behind the canvas paints the black. The halo target is sized to the canvas, a texel to a
 pixel, rather than the headset's 512 a side.
 
-Read off the watch's Android bundle, exported unminified and without bytecode, the GPU body's
+Read off the watch's Android bundle, exported unminified and without bytecode, the GPU's
 UI-thread code compiles into worklets exactly as the phone's does, and autolinking links `ExpoGL` here
 too; the phone's notes ("His body on the GPU" in [`.claude/rules/mobile-his-body-on-the-gpu-and-tilting-the-phone-to-look.md`](mobile-his-body-on-the-gpu-and-tilting-the-phone-to-look.md)) say what
 was checked. None of it has run on a watch.

@@ -5,7 +5,7 @@
  * In the main entry, and apart from the view that uses them, so that anything else drawing him —
  * the headset's frame loop, the preview and showcase scripts — steps him by the same numbers
  * rather than by copies of them. The view itself lives in `hologram/react`, which cannot be
- * imported without React Native, Reanimated and Skia; these are plain numbers and import nothing.
+ * imported without React Native, Reanimated and expo-gl; these are plain numbers and import nothing.
  */
 
 /** How long the view takes to count appearance from 0 to 1: the vortex bringing him out of the core. */
@@ -19,7 +19,7 @@ export const MATERIALISE_SECONDS = 0.7;
  * is shared rather than guessed at twice.
  *
  * `hologram/react/lifecycle` hands it on to the screens that wait for it (see
- * `react/leaving.ts`), since they need it before Skia is loadable.
+ * `react/leaving.ts`), since they need it without the view.
  */
 export const LEAVING_SECONDS = 0.45;
 

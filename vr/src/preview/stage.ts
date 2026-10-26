@@ -9,17 +9,22 @@ import {
   DISTANCE_AHEAD_METRES,
   type HologramDrive,
   type JarvisHologram3D,
-  type Painter,
 } from '../hologram3d';
 import { createFrameClock } from '../hologram3d/frame-clock';
 import { RENDERER_PARAMETERS } from '../xr/xr-stage';
 import { checkGpuBody, createRawBody, type RawBody } from './gpu-body-check';
 import { createPhaseDrives, type PhaseDrive, SETTLE_SECONDS } from './phase-drives';
+import { checkPicture, drawPictures, orbitPoints, pictureFacts } from './picture-check';
 import { pictureStats } from './picture-stats';
 import { checkPort } from './port-check';
 import type {
+  DrawnPictures,
   GpuBodyCheck,
   GpuBodyCheckRequest,
+  PictureCheck,
+  PictureCheckRequest,
+  PictureFacts,
+  PictureRequest,
   PortCheck,
   PortCheckRequest,
   PreviewPhase,
@@ -50,7 +55,7 @@ export interface Stage {
   setAlphaFactor(share: number): void;
   setView(view: StageView): void;
   /** Stops the live loop, draws one still from a fresh arrival, and measures it. */
-  still(request: StillRequest): Promise<StillResult>;
+  still(request: StillRequest): StillResult;
   /**
    * Stops the live loop and draws a stereo pair for parallel viewing — the left eye's picture on
    * the left — `separation` metres apart, as a base64 PNG.
@@ -62,7 +67,13 @@ export interface Stage {
    * Stops the live loop and draws the body at one moment and view, from a fresh arrival, with the
    * headset's three.js passes and with the phone's raw renderer, and compares the two.
    */
-  checkGpuBody(request: GpuBodyCheckRequest): Promise<GpuBodyCheck>;
+  checkGpuBody(request: GpuBodyCheckRequest): GpuBodyCheck;
+  /** Stops the live loop and draws moments with the GPU picture into a target of the stage's renderer. */
+  drawPictures(request: PictureRequest): DrawnPictures;
+  pictureFacts(): PictureFacts;
+  orbitPoints: typeof orbitPoints;
+  /** Stops the live loop and compares the GPU picture of a moment with Skia's. */
+  checkPicture(request: PictureCheckRequest): Promise<PictureCheck>;
   /** Back to the live loop, from `phase`. */
   resume(): void;
   pause(): void;
@@ -78,12 +89,12 @@ function eyeDirection(angle: number, elevation: number) {
 }
 
 /** A fresh hologram on `renderer`, which does not thin itself: every preview frame is drawn in full. */
-function newHologram(renderer: WebGLRenderer, painter: Painter) {
-  return createJarvisHologram3D(renderer, { assetBase: new URL(document.baseURI), painter, densityBackstop: false });
+function newHologram(renderer: WebGLRenderer) {
+  return createJarvisHologram3D(renderer, { densityBackstop: false });
 }
 
 /** The desktop stage: a three.js canvas with a camera you can drag round him, and the live phase loop. */
-export async function createStage(canvas: HTMLCanvasElement, painter: Painter): Promise<Stage> {
+export function createStage(canvas: HTMLCanvasElement): Stage {
   // As the headset's renderer is set up, multisampling included, plus a drawing buffer kept after
   // compositing so a test can read the pixels back and a screenshot catches the frame.
   const renderer = new WebGLRenderer({ ...RENDERER_PARAMETERS, canvas, preserveDrawingBuffer: true });
@@ -101,7 +112,7 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
   // The phone's renderer, on a context of its own, made the first time the body is checked.
   let rawBody: RawBody | null = null;
 
-  let hologram = await newHologram(renderer, painter);
+  let hologram = newHologram(renderer);
   scene.add(hologram.object);
   const satellites = createRoomSatellites();
   scene.add(satellites.object);
@@ -208,10 +219,10 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
   }
 
   /** A fresh hologram — no voice tracker, thought or lattice carried over — stepped to the moment asked for. */
-  async function prepareStill(request: StillRequest) {
+  function prepareStill(request: StillRequest) {
     running = false;
     hologram.dispose();
-    hologram = await newHologram(renderer, painter);
+    hologram = newHologram(renderer);
     hologram.alphaFactor = request.alphaFactor ?? ALPHA_FROM_LIGHT;
     scene.add(hologram.object);
     resize();
@@ -221,7 +232,7 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
   }
 
   async function stereo(request: StillRequest, separation: number): Promise<string> {
-    await prepareStill(request);
+    prepareStill(request);
     // Drawn for the centre eye once, as a headset's frame is, then seen from each eye.
     frameFrom(request.view, 0);
     hologram.update(0, drives[request.phase].drive, { position: camera.position, orientation: camera.quaternion });
@@ -254,10 +265,10 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
     lens.updateMatrixWorld();
   }
 
-  async function checkBody(request: GpuBodyCheckRequest): Promise<GpuBodyCheck> {
+  function checkBody(request: GpuBodyCheckRequest): GpuBodyCheck {
     running = false;
     // A hologram of the check's own, so the stage's is left as it was.
-    const checked = await newHologram(renderer, painter);
+    const checked = newHologram(renderer);
     try {
       const size = renderer.getDrawingBufferSize(new Vector2());
       const lens = new PerspectiveCamera(request.fieldOfView, size.x / size.y, 0.05, 100);
@@ -274,8 +285,8 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
     }
   }
 
-  async function still(request: StillRequest): Promise<StillResult> {
-    await prepareStill(request);
+  function still(request: StillRequest): StillResult {
+    prepareStill(request);
     const drive = drives[request.phase];
     frameFrom(request.view, request.eyeOffset ?? 0);
     render(0, drive.drive);
@@ -294,7 +305,7 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
         presence: frame.presence,
       },
       updateMilliseconds: hologram.diagnostics.cpuMilliseconds,
-      canvasKitMilliseconds: hologram.diagnostics.canvasKitMilliseconds,
+      pictureMilliseconds: hologram.diagnostics.pictureMilliseconds,
     };
   }
 
@@ -334,6 +345,16 @@ export async function createStage(canvas: HTMLCanvasElement, painter: Painter): 
       );
     },
     checkGpuBody: checkBody,
+    drawPictures(request) {
+      running = false;
+      return drawPictures(renderer, request);
+    },
+    pictureFacts,
+    orbitPoints,
+    checkPicture(request) {
+      running = false;
+      return checkPicture(renderer, request);
+    },
     resume() {
       hologram.alphaFactor = alphaFactor;
       frameFrom('front', 0);

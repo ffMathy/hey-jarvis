@@ -27,13 +27,13 @@ src/satellites/            seeing him work: where each satellite is round him (t
 src/wake/                  "Hey Jarvis": the microphone, the worklet, the onnxruntime-web worker, the watchdog
 src/room/                  where he stands: room snapshots, the occupancy grid, placement and its worker
 src/conversation/          hologram's session with the headset's parts: the greeting, his track, his voice from where he stands, orphaned audio
-src/hologram3d/            Jarvis in 3D: the frame clock, the body's strokes and the halo union as three.js
-                           draws hologram/gpu's passes, CanvasKit
+src/hologram3d/            Jarvis in 3D: the frame clock, and hologram/gpu's picture, body strokes and halo
+                           union as three.js draws them
 src/preview/               the preview page
 public/models/             the openWakeWord models and their LICENCE.txt (committed)
-public/vendor/             canvaskit.wasm and onnxruntime-web's wasm (gitignored; see initialize)
+public/vendor/             onnxruntime-web's wasm and glue (gitignored; see initialize)
 tests/e2e/                 Playwright: the emulated headset and room, and the specs
-.scripts/initialize.sh     copies the wasm out of node_modules into public/vendor/
+.scripts/initialize.sh     copies onnxruntime-web's wasm out of node_modules into public/vendor/
 .scripts/build.sh          vite build into ../dist/vr
 .scripts/test.sh           bun test over every *.spec.ts outside tests/e2e
 .scripts/serve-dist.ts     serves the build under /hey-jarvis/vr/ for the browser tests

@@ -15,8 +15,6 @@
   },
   "dependencies": {
     "@elevenlabs/client": "1.24.0",
-    "@shopify/react-native-skia": "2.6.2",
-    "canvaskit-wasm": "0.41.0",
     "hologram": "workspace:*",
     "livekit-client": "2.22.2",
     "onnxruntime-web": "1.30.0",

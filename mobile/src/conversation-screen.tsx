@@ -10,6 +10,7 @@ import {
   type SessionPhase,
 } from 'hologram';
 import { useJarvisSession } from 'hologram/conversation';
+import { JarvisHologram } from 'hologram/react';
 import { LEAVING_SECONDS } from 'hologram/react/lifecycle';
 import { useSimulatedVoice } from 'hologram/react/sample';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -19,7 +20,6 @@ import { roomOfConversation } from './agent-audio-track';
 import { createAssistLaunchClaim } from './assist-link';
 import { CameraButton } from './camera-button';
 import { ConversationFrame, useConversationSheet } from './conversation-sheet';
-import { JarvisHologram } from './jarvis-hologram';
 import { followJarvisVoice, useJarvisVoice } from './jarvis-voice';
 import { requestMicrophoneAccess } from './microphone-permission';
 import { usePreferredHeadset } from './preferred-microphone';

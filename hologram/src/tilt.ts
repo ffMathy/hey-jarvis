@@ -9,8 +9,8 @@ import { SPHERE_FRACTION } from './hologram-drawing';
  *
  * **Built for the phone's UI thread, like the frame clock.** The view steps it once a frame inside
  * its own `modify`, beside the clock's, with the latest reading as positional arguments, so a frame
- * allocates nothing; and only the GPU body reads it, never the Skia picture, so a reading arriving
- * does not rebuild the picture. Every function here closes over nothing but module-level constants
+ * allocates nothing; and only the body's camera reads it, never the flat picture round it, so the
+ * picture is drawn the same whichever way the phone is held. Every function here closes over nothing but module-level constants
  * and the worklets declared above it — see `.claude/rules/hologram-worklets.md`, "Worklets".
  *
  * Device coordinates are Reanimated's: x right, y up the screen, z out of the screen towards the

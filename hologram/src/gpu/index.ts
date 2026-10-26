@@ -7,6 +7,10 @@
  * (`flat-camera.ts`), placed where the phone's tilt puts the eye (`tilted-view.ts`). The headset draws the same sources through three.js
  * (`vr/src/hologram3d/`); a phone and a watch draw them through `drawGpuBody`.
  *
+ * And the rest of him — what was Skia's picture of him — as shaders too (`gpu-picture.ts`, its layers in
+ * `picture-layers.ts`), which every device draws through `drawGpuPicture`, and a phone's and a
+ * watch's whole frame of both (`gpu-frame.ts`).
+ *
  * Like the main entry, nothing here imports a value from outside the package — no three.js, no
  * React, no expo-gl — so it runs under `bun test`, in a browser and in a worklet.
  */
@@ -17,6 +21,8 @@ export * from './fragment-3d';
 export * from './fragment-glsl';
 export * from './glsl';
 export * from './gpu-body';
+export * from './gpu-frame';
+export * from './gpu-picture';
 export * from './halo-light';
 export * from './halo-union';
 export * from './row-vertices';

@@ -11,9 +11,9 @@ import { HALO_PAINTS } from './halo-union';
  * groups' tiers are separate paths, so all six are Screened over each other, and the light they
  * make together is one minus what all six leave.
  *
- * Shared by both renderers that show it: the headset's view-plane quad, which Screens it over
- * CanvasKit's picture, and the raw renderer (`gpu-body.ts`), which draws it over transparent black
- * for a phone or a watch to lay over Skia's.
+ * Shared by both renderers that show it: the headset's view-plane quad, which Screens it over the
+ * picture of the rest of him, and the raw renderer (`gpu-body.ts`), which Screens it over the same
+ * picture on a phone's or a watch's canvas.
  */
 
 /**

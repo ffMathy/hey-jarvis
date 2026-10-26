@@ -14,8 +14,8 @@ and 3S are the target; Quest 2 and Pro work, without the room scan.
    and checks them by minting a token before keeping them. They are the phone's
    settings, stored the phone's way on the same origin, so a browser that has
    the phone's web build set up already has them.
-2. **Getting ready.** The wake-word models and CanvasKit load with a progress
-   bar while you read the page.
+2. **Getting ready.** The wake-word models load with a progress bar while you
+   read the page.
 3. **Allow the microphone** — the first tap. Skipped when the browser says the
    permission is already granted.
 4. **Enter your room** — the second tap.

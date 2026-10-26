@@ -86,11 +86,11 @@ test('in the emulated living room, 1.6 m ahead, through three phases', async ({ 
     });
   }
 
-  const { intervals, updates, canvasKit, frames } = await roomStatus(page);
+  const { intervals, updates, pictures, frames } = await roomStatus(page);
   const timings = [
     `${frames} frames`,
     `median interval ${median(intervals).toFixed(1)} ms`,
-    `median update ${median(updates).toFixed(1)} ms (CanvasKit ${median(canvasKit).toFixed(1)} ms)`,
+    `median update ${median(updates).toFixed(1)} ms (picture ${median(pictures).toFixed(1)} ms)`,
   ].join(', ');
   testInfo.annotations.push({ type: 'emulator frame times (SwiftShader, not a Quest)', description: timings });
   console.log(`Emulator frame times (SwiftShader on a CPU, not a Quest): ${timings}`);

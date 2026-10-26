@@ -21,7 +21,7 @@ art="hologram/.scripts/device-art"
 # Pixel frame is 1410 px across — and shrinking it by three and a half times while drawing is what
 # put a jagged edge round the watch's screen. Reduced to 2:1 here, with a proper filter, the
 # renderer's own scaling has almost nothing left to do. Keep this at twice PHONE_WIDTH and
-# WATCH_WIDTH in `render-showcase.ts`.
+# WATCH_WIDTH in `render-showcase-page.ts`.
 export ART_WIDTH=840
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -41,7 +41,8 @@ curl -sSL -A "$agent" "$commons/6/61/Google_Pixel_Watch_3-45_%28Matte_Black_%2B_
 echo "Fetching Roboto Light from Google Fonts..."
 # Asked for by stylesheet rather than by a direct link, because the direct links are versioned and
 # hashed and go stale. A plain curl user agent is what makes Google answer with a TrueType file
-# instead of the WOFF2 a browser would get, and TrueType is what Skia can load.
+# instead of the WOFF2 a browser would get: one plain TrueType file, which the renders' page loads as
+# it is and any font tool can read.
 roboto=$(curl -sS "https://fonts.googleapis.com/css2?family=Roboto:wght@300" -H "User-Agent: curl/7.0" | grep -oE 'https://[^)]+\.ttf' | head -1)
 if [ -z "$roboto" ]; then
   echo "Google Fonts did not answer with a TrueType URL." >&2
@@ -169,9 +170,9 @@ canvas.convert('RGB').resize((WIDE, TALL), Image.LANCZOS).save(os.path.join(art,
 # ---- and what the renderer needs to know about them ------------------------------------------
 # The showcase carries the screen windows as fractions of each frame's size. They are printed here,
 # measured from the art itself, so that updating the art means copying six numbers rather than
-# guessing at them. See SCREEN in `render-showcase.ts`.
+# guessing at them. See SCREEN in `render-showcase-page.ts`.
 print()
-print('Screen windows, as fractions — check these against SCREEN in render-showcase.ts:')
+print('Screen windows, as fractions — check these against SCREEN in render-showcase-page.ts:')
 
 display = re.search(r'display\s*\{([^}]*)\}', open(os.path.join(work, 'pixel-10-pro.layout')).read())
 said = {key: int(value) for key, value in re.findall(r'(\w+)\s+(\d+)', display.group(1))}

@@ -5,7 +5,6 @@ import { greetingRecordingUrl } from './conversation/greeting-recording';
 import type { SpatialVoice } from './conversation/spatial-voice';
 import { initialDebugState, publishDebugState } from './debug-hook';
 import { sampleEntityStorage } from './entities/sample-entities';
-import type { Painter } from './hologram3d/canvaskit';
 import { createBrowserMicrophoneKeeper } from './page/microphone';
 import { type RoomOutcome, startPage } from './page/page';
 import type { PreparationTask } from './page/preparation';
@@ -79,42 +78,11 @@ const microphone = createBrowserMicrophoneKeeper(microphoneProfile);
 const greetingElement = new Audio();
 const greeting = createGreetingPlayer(greetingRecordingUrl(), () => greetingElement);
 
-/**
- * CanvasKit's download is about 8 MB, a third of the wake word's; the two weight the page's one
- * progress bar by what each has to fetch.
- */
-const CANVASKIT_BYTES = 8_100_000;
 const WAKE_BYTES = Object.values(WAKE_FILES).reduce((sum, file) => sum + file.bytes, 0);
 
-let painterLoading: Promise<Painter> | undefined;
-
-/**
- * CanvasKit and the Skia API over it, loaded once for the page and every room after it — or
- * loaded again after a failure, which is what the page's "Try getting ready again" is for.
- */
-function loadPainterOnce(): Promise<Painter> {
-  if (painterLoading === undefined) {
-    const loading = import('./hologram3d/canvaskit').then(({ loadPainter }) =>
-      loadPainter(new URL('vendor/', assetBase)),
-    );
-    painterLoading = loading;
-    loading.catch(() => {
-      if (painterLoading === loading) painterLoading = undefined;
-    });
-  }
-  return painterLoading;
-}
-
+/** Only the wake word has anything to fetch: he is drawn with shaders that come with the room's code. */
 const preparations: PreparationTask[] = [
   { name: 'the wake-word models', weight: WAKE_BYTES, run: (onProgress) => wake.prepare(onProgress) },
-  {
-    name: 'his drawing',
-    weight: CANVASKIT_BYTES,
-    run: async (onProgress) => {
-      await loadPainterOnce();
-      onProgress(1);
-    },
-  },
 ];
 
 let listeningAudio: AudioContext | undefined;
@@ -211,8 +179,6 @@ function sharedRoomOptions(modules: RoomModules, onInside: () => void) {
   return {
     createHologram: async (renderer) => {
       return createJarvisHologram3D(renderer, {
-        assetBase,
-        painter: loadPainterOnce(),
         // A film is shot on a faked clock, a frame of it however long the emulator took to draw it,
         // while the emulator says its display runs at 90 Hz: every frame of it would read as dropped.
         densityBackstop: !flags.has('film'),

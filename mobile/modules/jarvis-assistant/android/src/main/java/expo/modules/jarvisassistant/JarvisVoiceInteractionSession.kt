@@ -60,10 +60,9 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
   /**
    * Asks for a hardware-accelerated window, before there is anything in it.
    *
-   * **This is the difference between a hologram and a slideshow here.** A window put up by a
-   * service is not hardware-accelerated by default — only an activity's is — so without this flag
-   * Skia rasterises every frame of the sphere on the CPU, a thousand strokes and their halos and a
-   * full-canvas shadow, sixty times a second. The same drawing that a phone's GPU does not notice.
+   * **This is the difference between a hologram and an empty sheet here.** A window put up by a
+   * service is not hardware-accelerated by default — only an activity's is — and Jarvis is drawn
+   * into expo-gl's GL view, a `TextureView`, which draws nothing at all in a window that is not.
    *
    * It has to be here rather than in {@link onShow}: hardware acceleration is decided when the
    * window is attached, and a flag added afterwards is simply ignored.

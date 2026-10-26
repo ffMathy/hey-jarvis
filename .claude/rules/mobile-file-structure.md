@@ -20,7 +20,8 @@ paths:
 ├── failure-text.ts               # what each failure says, in words rather than the SDK's
 ├── written-caption.ts            # which of his lines are written down: text mode, and the text-only session
 ├── react/                        # `hologram/react`, the half that needs a framework
-│   ├── hologram-view.tsx         # Skia canvas, Reanimated clocks, reading the voice every frame
+│   ├── hologram-view.tsx         # Reanimated clocks, reading the voice every frame
+│   ├── gpu-layer.tsx             # the one GL canvas all of him is drawn into, and waiting for the GPU
 │   └── is-foreground.ts          # stops the clock and the microphone when nobody is looking
 └── conversation/                 # `hologram/conversation`, the half that needs the ElevenLabs SDK
     ├── session.ts                # useJarvisSession: the session, the SDK, the greeting's player, the call's audio
@@ -54,9 +55,6 @@ mobile/
     ├── assistant-window.ts       # the window the assistant gesture opens, and retracting it
     ├── sample-screen.tsx         # sample mode: Jarvis alone, tapped to walk through his moods
     ├── sample-sheet.tsx          # the sheet he arrives in when summoned, and why he waits for it to settle
-    ├── jarvis-hologram.tsx       # the hologram on Android …
-    ├── jarvis-hologram.web.tsx   # … and in a browser, once CanvasKit has loaded
-    │                              #   (both are two lines over `hologram/react`)
     ├── hologram-size.ts          # how big it is drawn on this screen
     ├── spark-density.ts          # how many particles this phone can manage
     ├── jarvis-voice.ts           # following Jarvis's track for the session on Android: tapped and analysed …

@@ -23,8 +23,7 @@
  *
  * **It used to halve on one such window, and for good,** on the grounds that flickering back up
  * would only find the cliff again. But a summon is full of hitches that are no GPU falling behind:
- * nothing compiles his shaders before his first frame, CanvasKit compiles its own programs as it
- * first meets each kind of path, the display switches from 72 Hz to 90 as he is summoned, and
+ * nothing compiles his shaders before his first frame, the display switches from 72 Hz to 90 as he is summoned, and
  * placement, the greeting and the call all start in the same second or two. Three late frames in
  * any third of a second of that thinned him for the rest of the room, and nothing ever gave the
  * particles back. So now:

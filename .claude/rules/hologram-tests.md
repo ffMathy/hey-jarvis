@@ -7,28 +7,30 @@ paths:
 
 > Part of [Hologram](hologram.md). Paths in it are relative to `hologram/` unless they say otherwise.
 
-`bunx turbo test --filter=hologram` — headless, offline, no device. The suite
-pins Skia's picture of everything but his body: byte-identical frames for a
-given time and voice, containment inside the canvas, how the sphere moves when
-spoken to, and that no state leaks between frames. His body is pinned through
-its CPU reference (`gpu/fragment-3d.spec.ts`: where every fragment lands, the
-lattice's layers and knots, the thinking plane climbing), and the GPU's passes
-against a context that writes its calls down (`gpu/gpu-body.spec.ts`); whether
-the GPU's pixels agree is vr's browser tests' to say.
+`bunx turbo test --filter=hologram` — headless, offline, no device. It has no
+GPU, so it pins what can be pinned without one: the scene and what each frame of
+him is (`hologram-drawing.spec.ts`), where the satellites are
+(`satellite-drawing.spec.ts`), his body through its CPU reference
+(`gpu/fragment-3d.spec.ts`: where every fragment lands, the lattice's layers and
+knots, the thinking plane climbing), the picture's glyphs and paths flattened
+into runs (`gpu/picture-glyphs.spec.ts`, `gpu/picture-layers.spec.ts`), and the
+GPU's passes — the body's and the picture's — against a context that writes its
+calls down (`gpu/gpu-body.spec.ts`, `gpu/gpu-picture.spec.ts`, both over
+`gpu/recording-gl.fakes.ts`).
 
-`crescent-loop.spec.ts` holds the hand-written crescent loop to a frozen copy of
-the one it replaced, in the pattern of `frame-clock.spec.ts`: every state the
-loop branches on, in the phone's scene and the watch's, at times from 0 to far
-past an hour, negative, NaN and infinite, built both ways into builders kept
-between frames, with `Object.is` on every number of every command.
+What he looks like drawn is vr's browser tests' to say, in Chromium on the same
+`hologram/gpu`: the body against the headset's three.js to the byte
+(`hologram-gpu-body.spec.ts`), the picture against frames Skia drew before it
+went (`hologram-picture.spec.ts`), and how the picture behaves — golden, moving,
+answering his voice, arriving without a flash, staying inside its square — in
+the tests that used to draw it through CanvasKit here
+(`hologram-picture-behaviour.spec.ts`).
 
-What it cannot see is speed on a device. CanvasKit here rasterises on the CPU,
-under Bun's JavaScript engine with its JIT, and a phone or a watch does neither:
-it paints on the GPU, and builds the picture under Hermes with no JIT, which on a
-desktop harness cost about twelve times per particle what V8 with its JIT pays.
-A headless millisecond says which way the pixels went, not how fast Jarvis will
-be. Judge a change made for speed on a device, with sample mode's readout of the
-frame rate and the build time.
+What none of it can see is speed on a device. SwiftShader in a headless Chromium
+rasterises on the CPU, and a phone or a watch has a GPU of its own and builds a
+frame under Hermes with no JIT. A headless millisecond says which way the pixels
+went, not how fast Jarvis will be. Judge a change made for speed on a device,
+with sample mode's readout of the frame rate and the build time.
 
 The on-device check that goes with it lives in the phone app
 (`mobile/.scripts/verify-hologram-on-emulator.sh`) because it needs an emulator.

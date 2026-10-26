@@ -10,10 +10,10 @@ paths:
 ```
 hologram               the design, the voice tracking, the ElevenLabs credentials, and the
                        conversation's framework-free parts — no framework
-hologram/gpu           his body on the GPU: the headset's passes and a renderer over a bare
-                       WebGL 2 context — no framework either
+hologram/gpu           all of him on the GPU: his body's passes, the picture of the rest of
+                       him, and a renderer over a bare WebGL 2 context — no framework either
 hologram/react         the same sphere as a React Native view you can render
-                       (plus ./react/lifecycle and ./react/sample, which are Skia-free)
+                       (plus ./react/lifecycle and ./react/sample, which keep clear of expo-gl)
 hologram/conversation  the hook a React Native screen holds its conversation with
 hologram/assets/*      the files themselves (the greeting, the icons), for a bundler that takes
                        a file as a URL
@@ -23,7 +23,7 @@ The split is the whole architecture of this package, and the rule below is why
 it exists. Reach for `hologram` when you want to know what Jarvis looks like,
 how loud someone is, or what it takes to reach his agent; `hologram/react` when
 you want him on a screen; `hologram/conversation` when you want him talking;
-`hologram/gpu` when you want his body, which only a GPU draws.
+`hologram/gpu` when you want him drawn, which only a GPU does.
 
 **Why the ElevenLabs half is in here rather than in a package of its own.** It
 was briefly its own workspace package, and that was one package too many: the

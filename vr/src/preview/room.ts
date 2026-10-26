@@ -1,5 +1,5 @@
 import { PerspectiveCamera, Scene, WebGLRenderer } from 'three';
-import { createJarvisHologram3D, DISTANCE_AHEAD_METRES, type JarvisHologram3D, type Painter } from '../hologram3d';
+import { createJarvisHologram3D, DISTANCE_AHEAD_METRES, type JarvisHologram3D } from '../hologram3d';
 import { type CentreEye, centreEyeOf, pointAhead } from '../xr/viewer-pose';
 import { FOVEATION, RENDERER_PARAMETERS } from '../xr/xr-stage';
 import { createPhaseDrives } from './phase-drives';
@@ -30,7 +30,7 @@ function keep(list: number[], value: number) {
  *
  * A renderer of its own, as the app's room has, so the desktop stage's GL context is left alone.
  */
-export function createPreviewRoom(painter: Painter): PreviewRoom {
+export function createPreviewRoom(): PreviewRoom {
   let entered = false;
   let phase: PreviewPhase = 'greeting';
   let secondsIntoPhase = 0;
@@ -41,7 +41,7 @@ export function createPreviewRoom(painter: Painter): PreviewRoom {
   let placedAt: RoomPoint | null = null;
   let headAtPlacement: RoomPoint | null = null;
   const drives = createPhaseDrives(() => secondsIntoPhase);
-  const timings: RoomTimings = { frames: 0, intervals: [], updates: [], canvasKit: [] };
+  const timings: RoomTimings = { frames: 0, intervals: [], updates: [], pictures: [] };
 
   function setPhase(next: PreviewPhase, holdAt = Number.POSITIVE_INFINITY) {
     phase = next;
@@ -59,9 +59,7 @@ export function createPreviewRoom(painter: Painter): PreviewRoom {
     renderer.setClearColor(0x000000, 0);
     renderer.xr.enabled = true;
     renderer.xr.setReferenceSpaceType('local-floor');
-    const shown = await createJarvisHologram3D(renderer, {
-      assetBase: new URL(document.baseURI),
-      painter,
+    const shown = createJarvisHologram3D(renderer, {
       // Every frame alike in the preview: the emulator's frame times say nothing about a headset's.
       densityBackstop: false,
     });
@@ -95,7 +93,7 @@ export function createPreviewRoom(painter: Painter): PreviewRoom {
       secondsIntoPhase = Math.min(holdAtSeconds, secondsIntoPhase + deltaSeconds);
       shown.update(deltaSeconds, drives[phase].drive, eye);
       keep(timings.updates, shown.diagnostics.cpuMilliseconds);
-      keep(timings.canvasKit, shown.diagnostics.canvasKitMilliseconds);
+      keep(timings.pictures, shown.diagnostics.pictureMilliseconds);
       renderer.render(scene, camera);
       timings.frames += 1;
     };
@@ -123,7 +121,7 @@ export function createPreviewRoom(painter: Painter): PreviewRoom {
         ...timings,
         intervals: [...timings.intervals],
         updates: [...timings.updates],
-        canvasKit: [...timings.canvasKit],
+        pictures: [...timings.pictures],
         entered,
         phase,
         secondsIntoPhase,

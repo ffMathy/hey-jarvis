@@ -20,8 +20,8 @@ Browser, in sample mode        getUserMedia ─ AnalyserNode
        └─ hologram/src/voice-levels.ts perceivedLevel + foldSpectrum → 24 log-spaced bands (targets)
             └─ hologram/src/react/hologram-view.tsx  UI thread, every frame: easeLevel/easeBands toward the
                  targets, and advanceVoiceActivity on the *raw* reading → agitation and chip bursts
-                 ├─ hologram/src/hologram-drawing.ts   drawHologram(canvas, size, frame, scene, resources) → Skia Picture (all but his body)
-                 └─ hologram/src/gpu/gpu-body.ts       drawGpuBody(gl, body, frame) → expo-gl's canvas over it, Screened
+                 ├─ hologram/src/hologram-drawing.ts   analyseFrame(frame, …, scene) → what this frame of him is
+                 └─ hologram/src/gpu/gpu-frame.ts      drawGpuFrame(gl, body, picture, frame, satellites) → expo-gl's one canvas
 ```
 
 Every source hands the hologram the same two readings — a volume, and 1024 bytes of spectrum across 100–8000 Hz on Web Audio's decibel scale — so the drawing never knows which it is listening to. **Every source also computes them the same way**, with `hologram/src/voice-analysis.ts`: the volume is the RMS of the last 40 ms on both platforms, so `QUIETEST_SPEECH` means one thing everywhere and `speech-floor.web.ts` is the phone's number.

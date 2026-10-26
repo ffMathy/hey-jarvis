@@ -19,14 +19,17 @@ import type {
  * object, and it comes back under a new id so that it is treated as the new context it is.
  */
 
-/** What the body's canvas asks of the browser: premultiplied light over transparent black, as on a device, and nothing it does not read. */
+/**
+ * What his canvas asks of the browser: premultiplied light over transparent black, as on a device,
+ * and the depth and stencil buffers the picture keeps each path's coverage in (`gpu-picture.ts`).
+ */
 const CONTEXT_ATTRIBUTES: WebGLContextAttributes = {
   alpha: true,
   premultipliedAlpha: true,
   // A device's context has no multisampling either; the browser's would only cost fill.
   antialias: false,
-  depth: false,
-  stencil: false,
+  depth: true,
+  stencil: true,
   preserveDrawingBuffer: false,
 };
 
@@ -50,15 +53,15 @@ export const BodyGlView: BodyGlViewComponent =
 
 /**
  * expo-gl's browser GLView falls back to WebGL 1 without a word where WebGL 2 is refused, which
- * cannot draw the body. A context lost is forgotten at once, so the next frame finds nothing and
- * the body is not drawn; the browser then restores it, and the GLView hands it over again.
+ * cannot draw him. A context lost is forgotten at once, so the next frame finds nothing and he is
+ * not drawn; the browser then restores it, and the GLView hands it over again.
  *
- * **Read as Display P3, as Skia's canvas is.** React Native Skia tags its web canvas's drawing
- * buffer `display-p3` while drawing the same sRGB paint numbers into it, so a browser that manages
- * colour reads the rest of him as P3. Left sRGB, the body's canvas would show the same paint as
- * another colour beside it — his body paler and yellower than the rim, the core and the halos Skia
- * draws round it. Set here, on every context adopted, restored ones included, before the body is
- * made in it; a browser without the property tags neither canvas.
+ * **Read as Display P3, as the web build has always shown him.** React Native Skia, which drew the
+ * rest of him in a browser until the GPU drew all of him, tagged its canvas's drawing buffer
+ * `display-p3` while drawing the same sRGB paint numbers into it, so a browser that manages colour
+ * read him as P3, and the body's canvas was tagged to match. The one canvas keeps the tag, so the
+ * published site looks as it did. Set here, on every context adopted, restored ones included,
+ * before anything is made in it; a browser without the property shows him in sRGB.
  */
 export const adoptGlContext: AdoptGlContext = (gl) => {
   if (!(gl instanceof WebGL2RenderingContext)) {

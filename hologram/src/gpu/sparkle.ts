@@ -8,7 +8,7 @@ import {
 
 /**
  * The sparkle the body's mid and bright strokes are modulated by, for a GPU pass: the drawing's own
- * texels (`sparklePixels`, the very bytes Skia's image shader tiles), fixed in the drawing's unit
+ * texels (`sparklePixels`, the very bytes the picture's strokes are tiled with), fixed in the drawing's unit
  * space so strokes move through it and glint where the phone's do.
  *
  * Uploaded as a 64×64 RGBA8 texture, repeated both ways and filtered linearly without mipmaps, as
@@ -18,7 +18,7 @@ import {
 /** How far apart its repeats are, in the drawing's unit. */
 export const SPARKLE_REPEAT = SPARKLE_TEXTURE_TEXELS * SPARKLE_TEXEL_SIZE;
 
-/** The sparkle's RGBA bytes for a scene, as `createHologramResources` makes them. */
-export function sceneSparklePixels(scene: HologramScene): Uint8Array {
+/** The sparkle's RGBA bytes for a scene. */
+export function sceneSparklePixels(scene: Pick<HologramScene, 'textureSeed'>): Uint8Array {
   return sparklePixels(scene.textureSeed ^ SPARKLE_SEED_MIX);
 }

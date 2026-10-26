@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 /**
  * What lets `hologram/gpu` run in four places — under `bun test`, in the headset's browser beside
- * three.js, in the phone's web build beside CanvasKit, and in a Reanimated worklet beside expo-gl —
+ * three.js, in the phone's web build, and in a Reanimated worklet beside expo-gl —
  * is that it reaches for none of them: every value it imports is the package's own, and the context
  * it draws with is handed in. One `import { … } from 'three'` here would put three.js in the phone's
  * bundle and break the worklet; this is what keeps it out.
@@ -14,7 +14,7 @@ import { join } from 'node:path';
  * — static, dynamic, by `require` or for its side effects — has to be a sibling here or one of the
  * main entry's modules. Never a barrel: `..` and `../index` reach back through the main entry's index
  * to everything it exports, and that cycle leaves what a worklet captured undefined. Never another
- * entry either: `../react` and `../conversation` are React and Skia, and the `../gpu` folder is this
+ * entry either: `../react` and `../conversation` are React and expo-gl, and the `../gpu` folder is this
  * one's own barrel.
  */
 
