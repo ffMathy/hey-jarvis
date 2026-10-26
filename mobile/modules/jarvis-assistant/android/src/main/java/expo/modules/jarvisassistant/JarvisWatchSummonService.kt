@@ -1,6 +1,5 @@
 package expo.modules.jarvisassistant
 
-import android.app.KeyguardManager
 import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -54,9 +53,6 @@ private const val WAIT_FOR_THE_WINDOW_MS = 2000L
  *
  * - **No Bluetooth headset connected.** Then the phone's speaker is no more private than the
  *   watch's, and the watch is the one being looked at.
- * - **The phone is locked.** Jarvis runs the house, which is why he is not offered on the lock
- *   screen (`supportsLaunchVoiceAssistFromKeyguard` is false), and a summoning from the watch does
- *   not get around that. A phone kept unlocked by its watch, through Smart Lock, is not locked.
  * - **Jarvis is not the phone's assistant.** Only the active voice interaction service may open a
  *   session, so there is nothing to open.
  *
@@ -81,7 +77,9 @@ class JarvisWatchSummonService : WearableListenerService() {
 
   /** On the main thread, where the session's `onShow` also runs. */
   private fun answer(watch: String, reply: TaskCompletionSource<ByteArray>) {
-    if (!hasBluetoothHeadset() || isLocked()) {
+    // Locked or not: a phone in a pocket with earbuds in is exactly where the conversation belongs,
+    // and the window stays up over the lock screen (`JarvisVoiceInteractionSession.onLockscreenShown`).
+    if (!hasBluetoothHeadset()) {
       reply.setResult(NOT_ANSWERING)
       return
     }
@@ -119,11 +117,5 @@ class JarvisWatchSummonService : WearableListenerService() {
     return audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
       it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
     }
-  }
-
-  /** Locked behind a PIN, pattern or password — not merely showing a lock screen that swipes away. */
-  private fun isLocked(): Boolean {
-    val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager ?: return true
-    return keyguard.isDeviceLocked
   }
 }

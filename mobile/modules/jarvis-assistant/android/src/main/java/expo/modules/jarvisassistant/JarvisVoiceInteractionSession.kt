@@ -154,11 +154,10 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
    * clock when nothing is in front. Tearing down happens in {@link onDestroy}, where the system
    * has actually finished with the session.
    *
-   * **Put away by anything but the camera, the conversation goes with it.** The system hides the
-   * window on its own as well — the screen timing out over the lock screen is the common one, since
-   * the default `onLockscreenShown` is `hide()` — and a conversation that carried on from there was
-   * Jarvis listening and answering out of a phone with nothing on it to hang up with: summoned by
-   * accident from a pocket, sir unlocked to a voice and no sheet. So the app is told
+   * **Put away by anything but the camera, the conversation goes with it.** The system can hide the
+   * window on its own as well — it used to on every return of the lock screen, until
+   * {@link onLockscreenShown} kept it up — and a conversation that carried on from there was Jarvis
+   * listening and answering out of a phone with nothing on it to hang up with. So the app is told
    * (`whenPutAway`) and hangs up, and React Native is only paused once it has had a moment to:
    * paused, its timers stop, and the hang-up should not depend on one of them never firing.
    */
@@ -178,6 +177,20 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
       current = null
     }
     super.onHide()
+  }
+
+  /**
+   * Stays up over the lock screen, so Jarvis can be talked to hands-free with the phone in a pocket.
+   *
+   * The system calls this whenever the lock screen is shown while the window is up, and the default
+   * is `hide()`. Holding the power button reaches the assistant with the phone locked, and the lock
+   * screen is shown again around that — the screen waking for it, or timing out mid-conversation —
+   * so the window went, and {@link onHide} hung the conversation up with it: sir heard "Hello sir,
+   * how can I help?" and then nothing. The window is drawn above the lock screen, so there is
+   * nothing to make way for, and sir unlocks to the sheet with something to hang up with.
+   */
+  override fun onLockscreenShown() {
+    Log.i(TAG, "The lock screen was shown; the assistant window stays up.")
   }
 
   /**

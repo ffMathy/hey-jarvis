@@ -22,11 +22,19 @@ then, that conversation is taken back, listening again, rather than replaced. Th
 has gone is announced by the session itself: every showing sets the surface's `showing` root prop
 (`SHOWING_PROP`) to a new number, which brings the sheet back and opens a new conversation.
 
-**The window going away hangs up too, whoever put it away.** The system hides it on its own: the
-screen timing out over the lock screen does it, because `VoiceInteractionSession.onLockscreenShown`
-is `hide()` by default. Holding the power button works with the phone locked and the screen off, so a
-summoning from a pocket sat there talking, the screen slept, and the window went. The conversation did
-not. Sir unlocked to Jarvis listening and answering, with no sheet and nothing to hang up with. Now
+**Over the lock screen, he stays.** Holding the power button reaches the assistant with the phone
+locked and the screen off, and sir wants exactly that: to talk to him hands-free, phone in pocket.
+But `VoiceInteractionSession.onLockscreenShown` is `hide()` by default, and the lock screen is shown
+again around such a summoning — the screen waking for it, or timing out mid-conversation — so the
+window went, the app hung up with it (below), and all sir heard was "Hello sir, how can I help?". The
+session overrides it to do nothing: the window is drawn above the lock screen, so there is nothing
+to make way for, and sir unlocks to the sheet. `assistant-window.contract.spec.ts` holds it there.
+Not yet seen on a device; `adb logcat -s JarvisAssistant` says when the lock screen was shown.
+`supportsLaunchVoiceAssistFromKeyguard` stays false: it only adds a shortcut on the lock screen.
+
+**The window going away hangs up too, whoever put it away.** The system can hide it on its own, and
+it used to on every return of the lock screen. The conversation did not go with it: sir unlocked to
+Jarvis listening and answering, with no sheet and nothing to hang up with. Now
 every hide except the camera's sends `onAssistantWindowPutAway` (`WINDOW_PUT_AWAY`, pinned by
 `assistant-window.contract.spec.ts`), and the window's tree answers it with `hangUpAfterWork`, as
 a dismissal. React Native is
