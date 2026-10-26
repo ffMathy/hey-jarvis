@@ -1,172 +1,159 @@
-// The J.A.R.V.I.S. hologram: the golden sphere of light that stands in for Tony
-// Stark's AI in the Avengers: Age of Ultron lab scene. This is what he is made of — the seeded
-// scene, the paths that never change — and what each frame of him is (analyseFrame); the GPU
-// draws him from it, his body in `gpu/gpu-body.ts` and every layer below in `gpu/gpu-picture.ts`,
-// whose draw functions carry the layers' names.
+// The J.A.R.V.I.S. hologram: the golden sphere of light that stands in for Tony Stark's AI. This is
+// what he is made of — the seeded scene, the paths that never change — and what each frame of him
+// is (analyseFrame); the GPU draws him from it, his body in `gpu/gpu-body.ts` and every layer under
+// it in `gpu/gpu-picture.ts`, whose draw functions carry the layers' names.
 //
 // WHAT IT DEPICTS
-// The film's J.A.R.V.I.S.: a round, glowing, translucent amber ball, brightest at its core
-// and never dark inside — a see-through cloud of small lights rather than a painted surface,
-// the warm volume behind them only a haze — textured with short bright "circuit" strokes,
-// bounded by one dominant rim element at a time (a bright crescent on the left limb, a
-// segmented ladder ring, or a thin ring) and a small hooked ring at the core. The film's
-// large slow protrusions are deliberately not drawn: see IDLE MOTION below. Everything is
-// warm orange to amber: no blue, no white, no halo past 1.1R. Measurements and requirements come from the film study
-// (jarvis-reference.md), cited below by section.
+// J.A.R.V.I.S. as the Vision Quest footage shows him close up, in the scene where he dies. It is the
+// reference for how he looks: wherever it and the Avengers: Age of Ultron lab scene the drawing was
+// first made from disagree, it wins. Measured on 26 of its frames, with S the outer edge of his
+// shell of specks (about 0.88R here), the film shows:
+// - a white-hot thin ring round his core at about 0.4 S, the brightest thing in him, round a glowing
+//   disc a little less bright than the ring, with faint marks across it;
+// - a shell of fine glittering specks from about 0.5 S to S, points and short dashes, pale gold to
+//   white. Seen face on it is a bright beaded donut, brightest near its outer edge, with a darker,
+//   see-through band between it and the core's ring;
+// - a loose angular wireframe of straight hairlines between nodes, making jagged triangles and
+//   polylines. It wraps the shell out to 1.5-1.8 S, is densest at the upper right and trails a tail
+//   downward, and it flickers from frame to frame while the whole holds its shape;
+// - embers: tiny golden flecks drifting in the space round him, some of them streaked;
+// - bloom round all of it, falling from luma 150 at S to about half that by 2.4 S;
+// - colour from white-hot through pale gold and gold to deep amber: its hottest pixels are
+//   (255,229,174), its 95th percentile (245,198,132), its 90th (234,180,111), its median (178,105,32);
+// - and calm: about 6 luma of change per film frame over 256 px.
+// The drawing keeps all of him inside his square, whose edge is about 1.85R from his middle at rest,
+// so its wireframe and its bloom stop shorter than the film's. Elsewhere it departs from the film
+// only where the user asked it to: see WHAT THE USER ASKED FOR below.
 //
-// LAYERS, drawn back to front by `gpu/gpu-picture.ts` (unit space, R = 1, y down; clock angles in
-// degrees clockwise from 12 o'clock)
-//   (no warm volume)    The film's ball is a lit cloud, and this drawing used to paint one: a
-//                       textured circle of amber haze under everything, arriving patch by patch
-//                       while the ball formed. It is gone, at the user's asking — "I just want
-//                       the particles to speak for themselves". Nothing lights the places where
-//                       no fragment lands now, so the ball is see-through to the background
-//                       between its strokes and reads as a swarm rather than as a surface. That
-//                       is a deliberate departure from the film study's section 6.4, which wants
-//                       an opaque volume and under 5% of the disc dark; do not read the dark
-//                       between the particles as a regression and paint it back in.
-//   drawInnerShells     the whorl: two wide spiral arms winding out of the core to 0.76R,
-//                       furry with short fragments across them, plus the long loop rising 37°
-//                       past the core, the saturated ")" arc at 0.57R and the faint near half of
-//                       the edge-on ellipse — all of it turning the other way; and data streaks
-//   (the body)          the fragment body is not drawn here: PARTICLE_COUNT fragments inside
-//                       0.94R and a 168-fragment turning shell in the lower hemisphere, with
-//                       their halos, drawn in three dimensions on the GPU by `hologram/gpu` and
-//                       laid over this picture. The scene's body and stream tables, and the
-//                       per-fragment helpers below (readFragment, placeFragment, swirlFragment,
-//                       latticeFragment and the rest), are what it is drawn from and held to.
-//   drawLines           comet arcs curling from the core to the lower right; radial spokes
-//                       or a swoosh fan of hairlines when the script calls for them
-//   drawCore            elongated bloom with a darker middle, the hooked 0.1R ring softened by
-//                       its glow, the bar, and a furry knot of spikes on the ring's upper left,
-//                       re-drawn 6 times a second
-//   drawThinRing        a hairline circle at 1R, brightest from 1 to 4 o'clock, over a lumpy ridge
-//                       of light just inside the limb that rolls with the rim layer, painted as
-//                       a band rather than a disc (see LIMB_RIDGE_BAND)
-//   drawTruss           the rolling rim layer: the ladder truss (a hot outer rail at 1.035R, a
-//                       finer inner rail at 0.935R, amber haze between them, fine rungs about
-//                       every 9°, circuit traces, paired hanging struts, 190° of arc in three
-//                       pieces), the thin ring's ticks where they pass 1-5 o'clock, and the fan
-//                       of strands on the right
-//   drawCrescent        the bright left crescent from 11 o'clock round to 7: four strands in
-//                       width tiers (glow, thin #dca131, medium, wide, #ffda53 core) and a
-//                       tight limb bloom (a radial ring profile times a sweep mask, painted
-//                       as a band round the limb rather than as a disc — see LIMB_BLOOM_BAND)
-//   drawFray            while he talks: strands fraying off the upper-left limb, streak arcs
-//                       at 1.2-1.27R, and horizontal streaks slipping out of the right limb
-//                       equator at 9 o'clock and a shorter, finer one at the upper left; then the
-//                       ribbon loop, hook tendril, streak bundle and pole fan (glowing rails,
-//                       never quite regular)
-//   drawChips           the latest burst's rim chips: solid amber slabs that break up rather
-//                       than fade
-//   drawAccents         the jagged lightning filament and the very rare two-frame red segment
+// LAYERS, back to front (unit space, R = 1, y down; clock angles in degrees clockwise from 12 o'clock)
+//   drawAura          the film's bloom: a soft warm band round him, see-through inside AURA_INNER,
+//                     brightest on the shell's edge and gone by AURA_OUTER. It is painted as a band,
+//                     so the middle of him is never filled.
+//   drawCore          the core: a glow, mostly see-through, round the white-hot ring at
+//                     CORE_RING_RADIUS; the faint hooked ring and bar across it (staticPathsOf); and
+//                     the ring itself, nested strokes up to a near-white line, its brighter stretches
+//                     rolling round it.
+//   drawCage          the wireframe (buildCage): hairlines between seeded nodes round the shell of
+//                     specks, longer lines further out and a few trailing away below him. It is in
+//                     three dimensions and turns with the body, and each edge twinkles on its own slow
+//                     clock.
+//   drawEmbers        the embers (buildEmbers): flecks drifting out from the shell's edge and a little
+//                     upward, each on its own clock, some of them streaked.
+//   drawFray          while he talks: strands fraying off the upper left of the shell's edge, streak
+//                     arcs a little further out, and streaks slipping out of its right.
+//   drawChips         the latest burst's chips: slabs of light thrown off the shell's edge on a
+//                     syllable, which break up rather than fade.
+//   drawThinkingPulse while he thinks: a ring blooming out of the core's ring as each pass of the scan
+//                     plane ends.
+//   drawSatellites    the agents at work for him, circling him (`satellite-drawing.ts`). The headset
+//                     draws its own in the room instead.
+//   (the body)        over all of it, on the GPU in three dimensions (`hologram/gpu`): up to
+//                     PARTICLE_COUNT specks on a shell from about half his radius out (buildBody),
+//                     each tier with a soft halo of its own, and the stream, specks below the core
+//                     turning on a clock of their own (buildStream). The scene's body and stream
+//                     tables, and the per-fragment helpers below (readFragment, placeFragment,
+//                     swirlFragment, latticeFragment and the rest), are what it is drawn from and
+//                     held to.
 //
-// IDLE MOTION (section 3; nothing breathes, pulses or flickers as a whole)
-// - The outer rim layer rolls clockwise in the screen plane at 11°/s: the truss, the thin
-//   ring's ticks, and the breaks in the crescent's strands (the crescent's brightness
-//   itself stays on the left, where the film shows it).
-// - The inner layer — the whorl, the loop, the ")" arc and half of the fragments between
-//   0.3R and 0.62R — turns counter-clockwise at 5°/s about the core;
-//   the strand fan turns counter-clockwise at 3.5°/s and fades in and out on a 14 s cycle.
-//   Nothing outside 0.62R turns either way: that band is where the film's body stands still,
-//   and it is the pinned fragments in it that have to hold the picture there.
-// - The rest of the fragment body does not turn. Each fragment lives on its own clock, lit for
-//   0.18-0.4 s, growing out of nothing and shrinking back into it over a third of that, and
-//   re-lighting up to FRAGMENT_WANDER along or across from where it was — about a tenth renewed
-//   per film frame, as measured, which with twice as many fragments is what makes the idle ball
-//   read as alive rather than as a still picture: 4.2 luma of change per 1/24 s over the 256 px
-//   square, against 1.6 before, where the film shows 5-10. (That figure hardly moves with the
-//   window it is measured over — 4.18, 4.21, 4.21, 4.15 at 6, 8, 10 and 16 s — because in
-//   silence every clock here runs at a fixed rate.) Below
-//   the core, a shell turns about the vertical axis at 0.21 rad/s, so its front drifts
-//   right at 0.1-0.2 R/s and its dimmer back drifts left: the film's counter-streams.
-// - The core's brightness drifts ±3% over about 12 s; comet arcs grow, slide and fade
-//   over 5-9 s each.
+// IDLE MOTION (nothing breathes, pulses or flickers as a whole)
+// - The body turns about the vertical axis like a globe (BODY_RADIANS_PER_SECOND), and the cage turns
+//   with it. Over half of the specks seen between 0.3R and 0.62R from his middle also ride an inner
+//   layer that counter-turns about the core in the plane of the view (SHELL_DEGREES_PER_SECOND). The
+//   stream turns about the vertical on its own clock (STREAM_RADIANS_PER_SECOND), so its front drifts
+//   right and its dimmer back drifts left: counter-streams through the bottom of the shell.
+// - Every speck lives on its own clock. It grows out of nothing and shrinks back into it over a third
+//   of the time it is lit, and re-lights a little along or across from where it was. The clocks run
+//   slower than the film's on purpose (pickFragmentRate): at the film's rate the phone read as a
+//   sizzle.
+// - The core ring's brighter stretches roll clockwise round it (ROLL_DEGREES_PER_SECOND), and the
+//   core's brightness drifts a few percent over many seconds. It never beats.
+// - Each edge of the cage twinkles on its own slow clock, and each ember drifts out on its own.
+// - Nothing is scheduled: no loop decides what shows or when.
 //
-//   A script once brought out a protrusion per epoch, on two tracks: truss booms, ribbon
-//   loops, hook tendrils, streak bundles and pole fans standing off the limb, each growing
-//   over 0.5-1.5 s, holding 1-3 s and dissolving through a hollow outline into sparks. They
-//   are the film's, and they are gone at the user's request: on a phone, where the sphere is
-//   small and the loop comes round every minute, they read as an arm swinging out of the ball
-//   in the same pattern rather than as the scenery of Tony's lab.
-//
-// HOW THE FRAME DRIVES IT (see analyseFrame). The film's sphere does not brighten or
-// swell with his voice, so neither does this one: disc brightness while talking stays
-// within a few percent of silence and the silhouette within 1%. Speech shows as activity.
-//   time        drives every clock above; every rate is fixed, so nothing depends on
-//               level × time and nothing jumps.
-//   level       deliberately unused: loudness has no counterpart in the film.
-//   speaking    unused too: agitation already says whether he is talking, and a flag that
-//               flips within one frame would make the sphere jump.
-//   agitation   held back until the vortex has all but formed him (appearance 0.6-1), then drives:
-//               - mix = 0.5·agitation: calm fragments whose ids fall below mix fade out and
-//                 fast fragments (lit 0.06-0.14 s) whose ids fall below 2·mix fade in. Half
-//                 and no more, because the two make up for each other exactly at that share
-//                 and not past it; so the count lit, and the brightness, hold while the churn
-//                 nearly doubles: over the check's recorded line, 4.18 luma per 1/24 s silent
-//                 against 7.77 while he talks, both measured over the first six seconds of it.
-//                 (Unlike the silent figure the speaking one does depend on that window, because
-//                 the recording falls quiet: over sixteen seconds it reads 6.07 against 4.15,
-//                 still half again as much, and the drawing this replaced degraded the same way.)
-//                 Each
-//                 fragment also re-lights up to a fifth of a radius from where it was, less so
-//                 the nearer the limb it is — the silhouette must not move with his voice
-//               - hotShare = 1 − 0.35·agitation: the share of bright fragments still drawn
-//                 bright. Their hot cores all but go (−95%), which is what takes the film's
-//                 luma-200 highlights out on "Doctor." while the strokes stay bright
-//               - spread = agitation·(0.7 + 0.3·low), low = clamp((mean of bands 0-5 −
-//                 0.35) / 0.45): the crescent's strands move from 0.965-1.03R out to
-//                 0.94/1.02/1.10/1.19R, thin (wide tier −62%, medium −45%), open gaps, the
-//                 outer two gather 28° toward the upper left and shorten 40%, and every strand
-//                 keeps streaming out and back at about 0.1 R/s. Its hot core fades as
-//                 (1 − spread)², while its limb bloom holds, so the silhouette does not shrink;
-//                 the crescent shows at no less than
-//                 0.65·agitation even when another element leads
-//               - fray = agitation·(0.55 + 0.45·high), high = clamp((mean of bands 14-23 −
-//                 0.2) / 0.45): which fray strands (drifting out 0.12R per cycle), streak
-//                 arcs and right-limb streaks (0.3 R/s) show; each is a slot on its own clock
-//                 that agitation only lets through, fading by length
+// HOW THE FRAME DRIVES IT (see analyseFrame). The film's sphere holds its brightness and its size
+// while he talks and shows speech as activity, and so does this one, except for the swell and the
+// tenth of a glow the user asked for.
+//   time        drives every clock above. Every rate is fixed, so nothing depends on level × time
+//               and nothing jumps.
+//   level       his loudness, eased: most of the swell (SWELL_WITH_VOICE) and part of the glow
+//               (GLOW_WITH_VOICE), so he breathes with the sentence.
+//   bands       the low ones bring more of the embers out and the high ones more of the fray, so the
+//               picture answers low and high notes differently.
+//   speaking    unused: agitation already says whether he is talking, and a flag that flips within
+//               one frame would make the sphere jump.
+//   agitation   held back until the vortex has all but formed him (appearance 0.6-1), then:
+//               - mix: calm specks hand over to fast ones, half of them and no more, so the count
+//                 lit and the brightness hold while the churn rises;
+//               - each speck re-lights further along the way it lies, less so the nearer the limb
+//                 it is, so the silhouette holds;
+//               - hotShare: some of the bright specks step down, and the hot cores all but go;
+//               - the fray, and more of the embers;
+//               - the rest of the swell and of the glow.
 //   burstAge, burstStrength, burstCount
-//               while burstAge < 0.2 s the latest burst's 3 + round(2·strength) chips are drawn
-//               (the strength as the tracker gave it): #f59a30 slabs with a hot middle and a soft
-//               edge, leaving the left limb about mid-height (clock 255-290°, or split between
-//               250° and 300° for one burst in three, chosen by hashing burstCount) from 1.04R.
-//               One leads, up to 0.33R along the limb by 0.14R across and thrown at 1.6-2.3 R/s;
-//               the others are half its length or less at 0.9-2.1 R/s, spread over 50° of limb
-//               round it rather than stacked at one clock. A small onset throws three, a loud
-//               one five. All of them fall 8-22° counter-clockwise toward 8 o'clock. Fully lit
-//               for 0.13 s, then each thins, shortens and snaps in two until it is gone at
-//               0.2 s. For 0.18 s the crescent loses pieces within 16° of the launch point.
-//               Bursts come in flurries of four a quarter of a second apart and then rest for
-//               0.6 s (the tracker's rule). On the check's recorded line that works out at
-//               1.33 bursts a second of speech, so chips are on screen for about a third of
-//               the frames he speaks in — the density of the film's "Doctor.", which shows
-//               them in 10 of its 37 frames. How many onsets the line offers is set by the
-//               tracker's ONSET_RISE, which cannot fall much further without a swell counting
-//               as an onset. Only the latest burst is ever still in flight.
-//   appearance  0-1 over MATERIALISE_SECONDS: the vortex. The sphere is full size from the start
-//               and its particles leave the core on their own clocks, nearest first, spiralling
-//               out a turn and a half as streaks along their path before they settle where they
-//               sit (see swirlFragment); the core shows first, the whorl winds up with them and
-//               the rim fades in last. It moves only the particles already being drawn, so the
-//               scene's count and the density share hold throughout. There is no other arrival:
-//               the film's point of light, sparks and spoked dial are gone at the user's asking.
+//               the chips, drawn while burstAge is under CHIP_GONE_SECONDS and fully lit for
+//               CHIP_HOLD_SECONDS. The strength says how far they go and how many there are, and the
+//               count where they leave from. Bursts come in flurries with rests between them: the
+//               tracker's rule (`voice-levels.ts`).
+//   appearance  0-1 over MATERIALISE_SECONDS: the vortex. The specks leave the core on their own
+//               clocks, nearest first, spiralling out a turn and a half as streaks before they settle
+//               (swirlFragment). The core shows first, and the aura, the cage and the embers are
+//               carried out with the shell (shellReach) rather than drawn round a ball that is not
+//               there yet. It moves only the specks already being drawn, so the scene's count and the
+//               density share hold throughout.
+//   presence    0-1, and 1 unless he is leaving: he fades and shrinks to LEAVING_SMALLEST, without
+//               the vortex running backwards.
+//   thinking    a plane sweeps up through him (SCAN_SECONDS), lighting what it passes, and a ring
+//               blooms out of the core at the end of each pass. Everything but the core's ring
+//               recedes.
+//   hearing, hearingLevel
+//               someone is talking to him: the specks snap onto a slowly turning hexagonal lattice
+//               that breathes with their voice (latticeFragment), and the core's glow dims so the
+//               lattice is what is seen.
+//
+// WHAT THE USER ASKED FOR
+// The film leads the look, but where the user has asked for something, that wins. Each request is
+// written up where it is made, and a change must keep them all:
+// - Nothing fills him. A textured haze used to lie under everything, and it went at the user's asking
+//   ("I just want the particles to speak for themselves"), so he is see-through between his light.
+//   The aura is a band and the core's glow mostly see-through for the same reason. Do not paint a
+//   volume back in, and do not read the dark between the specks as a regression.
+// - No protrusions. A script once stood truss booms, ribbon loops, hook tendrils, streak bundles and
+//   pole fans off his limb, one per epoch. On a phone, where he is small and the loop came round every
+//   minute, they read as an arm swinging out of the ball in the same pattern. Nothing grows out of him
+//   and dissolves: the cage is always there, and calm.
+// - He arrives as a vortex out of his core and in no other way. The film's point of light, sparks and
+//   spoked dial are gone at the user's asking, and nothing flashes as he forms: no one frame may turn
+//   a tenth of his light on at once.
+// - PARTICLE_COUNT stays a ceiling of ten thousand: at fifteen thousand he read as a mass.
+// - Calm: "overwhelming calm and compute power", never a sizzle. The specks' clocks are slower than
+//   the film's (pickFragmentRate), and every twinkle is slow.
+// - His glow answers his voice by a tenth (GLOW_WITH_VOICE), a number asked for in both directions
+//   six times. Speech shows as movement.
+// - He swells with his voice (SWELL_WITH_VOICE), and his body turns like a globe
+//   (BODY_RADIANS_PER_SECOND), both asked for over the film.
+// - Listening is the lattice (LATTICE_SPACING), chosen from five candidates, and thinking is the scan
+//   plane (SCAN_SECONDS), asked to be "something completely different".
+// - A speck reads as a line, not a bead: the median one is at least five times as long as it is wide
+//   (pickFragmentLength).
 //
 // PERFORMANCE AND WORKLET RULES
 // - analyseFrame and every per-fragment helper are worklets ('worklet' directive) that use only
 //   their arguments and module-level number constants: no module-level mutable state, no closures
 //   over outer values, no Math.random in a frame. Randomness comes from the seeded scene, and
 //   per-cycle variation from an integer hash (in the shaders, as it was here).
-// - The scene is flat number arrays — about ninety thousand numbers at PARTICLE_COUNT, nine
-//   to a body row — laid out into the GPU's tables once, when the view mounts. The body's rows lost
-//   two numbers each when the body was first doubled (see buildBody). The sparkle texture and the
-//   whorl are built from a seed rather than carried in the scene. The texture is small (64²) and
-//   built with table lookups and separable noise, because this runs on the JS thread at every
-//   mount, on a phone, under an interpreter with no JIT.
+// - The body's per-frame arithmetic is written three times: in the helpers here, in its CPU reference
+//   (`gpu/fragment-3d.ts`) and in GLSL (`gpu/fragment-glsl.ts`), and `gpu/fragment-3d.spec.ts`
+//   composes a fourth copy from the helpers. A change to one is a change to all of them. A change to
+//   the scene's data needs none.
+// - The scene is flat number arrays — about ninety thousand numbers at PARTICLE_COUNT, nine to a body
+//   row — laid out into the GPU's tables once, when the view mounts. The sparkle texture is built
+//   from a seed rather than carried in the scene. It is small (64²) and built from an integer hash
+//   of each texel, because this runs on the JS thread at every mount, on a phone, under an
+//   interpreter with no JIT.
 // - Every paint is Screen, so faint overlapping strokes add up like light: glow comes from nested
-//   strokes, gradients and the prebuilt texture, with no blur. It is drawn over black.
-// - A gradient that is transparent over most of the disc is painted as a band, not a disc
-//   (LIMB_BLOOM_BAND), which keeps the widest paints affordable.
+//   strokes, gradients, the halos and the prebuilt texture, with no blur. It is drawn over black.
+// - A gradient that is transparent over most of the disc is painted as a band, not a disc (see
+//   AURA_INNER), which keeps the widest paints affordable.
 /** What one frame of the hologram is drawn from. */
 export interface HologramFrame {
   /** Seconds since the hologram mounted, accumulated per frame. All motion derives from this. */
@@ -220,11 +207,13 @@ export interface HologramFrame {
  * makes it half again wider (see `useWholeScreenHologramSize`), so this fraction times that is a
  * sphere about 0.6 of the screen across — which is what you actually see.
  *
- * The room is for what leaves him. Chips are thrown to about 1.6R on a syllable and the sphere is
- * swollen by up to SWELL_WITH_VOICE while that happens, so the drawing needs something near 1.9R
- * of square around the middle or they are cut off in mid-air. It had 1.56R, and the user saw
- * exactly that: "some of the particles that flow outwards are clipped ... its particles should be
- * able to extend further out without being clipped." It has 2.1R now.
+ * The room is for what lies round him and what leaves him: the cage, the aura and the embers round
+ * his shell of specks, and the fray and the chips he throws off it while he talks, with the sphere
+ * swollen by up to SWELL_WITH_VOICE as he does. A square cut close round the sphere clips them in
+ * mid-air. It once left 1.56R round the middle, and the user saw exactly that: "some of the
+ * particles that flow outwards are clipped ... its particles should be able to extend further out
+ * without being clipped." At this fraction it leaves about 1.85R, and nothing he draws reaches its
+ * edge.
  *
  * Paying for that in canvas rather than in sphere is deliberate, and it is nearly free: the GPU
  * only shades what is drawn, and the drawn things are all sized from the sphere. What the extra
@@ -238,9 +227,10 @@ export const SPHERE_FRACTION = 0.27;
  */
 export const ROLL_DEGREES_PER_SECOND = 11;
 /**
- * The inner layer turns the other way (shot d: -1.6 to -5.4°/s): the whorl, the loop, and half
- * of the shell's fragments between 0.3R and 0.62R — the band the whorl itself turns in, and the
- * only band the rim-roll check lets drift.
+ * The inner layer turns the other way, about the core in the plane of the view: over half of the
+ * specks seen between 0.3R and 0.62R from his middle ride it (see buildBody), so the middle of him
+ * drifts against the globe's turn. It winds up as the vortex brings him out (`shellTurn` in
+ * analyseFrame). The Age of Ultron footage measured its inner layer at -1.6 to -5.4°/s.
  */
 export const SHELL_DEGREES_PER_SECOND = -5;
 /** The lower hemisphere's equatorial shell turns about the vertical axis, which reads as a sideways stream. */
@@ -264,9 +254,9 @@ export function bodyTurnRadians(time: number) {
 /**
  * How much brighter the whole drawing gets while Jarvis speaks. **A tenth, at the user's asking.**
  *
- * Back to the film, after a long way round. The film's sphere holds its brightness to within about
- * 3% through "Doctor." and shows speech as *behaviour*: fragments turning over faster, the
- * crescent splitting, the limb fraying, slabs of light breaking off on syllable onsets. This
+ * Back to the film, after a long way round. The Age of Ultron footage's sphere holds its brightness
+ * to within about 3% through "Doctor." and shows speech as *behaviour*: fragments turning over
+ * faster, its limb fraying, slabs of light breaking off on syllable onsets. This
  * drawing pinned that, then departed from it — the user could not tell on a phone whether he was
  * talking, so a glow went in at 0.3, and then 0.8, 2.4, 1.6, 1.1 and 1.35 as each version was seen
  * on a real screen. With the sphere now most of the screen wide and the sparks drawn out into
@@ -275,7 +265,7 @@ export function bodyTurnRadians(time: number) {
  *
  * It was set to 0 first, which is the film exactly, and the user then asked for a tenth back — so
  * what is here is a hint rather than a signal, under the few percent the film itself varies by.
- * The rest of what speech does is untouched by it: the swell, the spread, the fray, the chips and
+ * The rest of what speech does is untouched by it: the swell, the fray, the embers, the chips and
  * the churn are all movement, and movement is what says he is talking.
  *
  * It is a number rather than a deleted mechanism precisely because it has been asked for in both
@@ -288,9 +278,9 @@ export const GLOW_FROM_ENVELOPE = 0.65;
  * How much bigger the whole sphere grows at full voice.
  *
  * The film's holds its radius to within 1%, and the drawing used to as well — a sphere that
- * swells with the voice was exactly the "level meter" the film study warned against. This is
- * the user's call, after the glow alone still read as too quiet a signal on a phone: it
- * pulsates now, and 8% is enough to see without the silhouette lurching.
+ * swells with the voice was exactly the "level meter" the Age of Ultron film study warned against.
+ * This is the user's call, after the glow alone still read as too quiet a signal on a phone: it
+ * pulsates now.
  */
 export const SWELL_WITH_VOICE = 0.18;
 /** How small the sphere has shrunk to by the time he has gone. */
@@ -303,9 +293,11 @@ export const LEAVING_SMALLEST = 0.55;
  * Chosen from five candidates rendered side by side: drifting clusters, orbital rings, ripples, a
  * galaxy's arms and this. It replaced a ring of ticks round the outside of the ball,
  * which read as a decoration rather than as him paying attention.
+ *
+ * This is how far apart the lattice's points are.
  */
-/** How far apart the lattice's points are, and how fast it turns, in radians a second. */
 export const LATTICE_SPACING = 0.11;
+/** How fast the lattice turns, in radians a second. */
 export const LATTICE_TURN = 0.12;
 /** How much the lattice's spacing swells at full voice, and how quickly it breathes, in radians a second. */
 export const LATTICE_BREATH = 0.18;
@@ -408,11 +400,6 @@ export const FRAGMENT_DUTY = 0.6;
  */
 export const FRAGMENT_CODE_GLYPH_STEP = 12;
 /**
- * The multiplier that turns a fragment's id into its blink phase. Any multiplier with a long
- * fractional part scatters a uniform id into a uniform phase; this one is far from every other
- * multiplier the id is hashed by, so no two of its uses line up.
- */
-/**
  * How many fragments the body has when the phone can afford all of them.
  *
  * A ceiling rather than a count: what is actually drawn is whatever share of these the phone can
@@ -461,14 +448,19 @@ export const PARTICLE_COUNT = 10000;
  */
 const DENSITY_FROM_ID = 733.1357;
 
+/**
+ * The multiplier that turns a fragment's id into its blink phase. Any multiplier with a long
+ * fractional part scatters a uniform id into a uniform phase; this one is far from every other
+ * multiplier the id is hashed by, so no two of its uses line up.
+ */
 export const FRAGMENT_PHASE_FROM_ID = 37.9;
 /**
- * How lit a fragment must be to be drawn at all. Below this it is a tenth of its length under a
- * paint that does not fade with it, so it costs a path verb and shows a dot. It is also how
- * abruptly a fragment arrives — the paint is set once for the whole tier, so a fragment cut off
- * at this strength appears at full colour, however short — and with twice as many fragments,
- * both of those matter: much higher and every arrival is a step rather than a fade; much lower
- * and a twentieth of the frame's verbs go on strokes too short to see.
+ * How lit a fragment must be to be drawn at all. Below this it is a tenth of its length in a paint
+ * that does not fade with it, so it costs a stroke and shows a dot. It is also how abruptly a
+ * fragment arrives — its tier's paint is the same however lit it is, so a fragment cut off at this
+ * strength appears at full colour, however short — and both of those matter: much higher and
+ * every arrival is a step rather than a fade; much lower and the frame spends its strokes on ones
+ * too short to see.
  */
 export const FRAGMENT_FAINTEST = 0.1;
 /**
@@ -1337,16 +1329,16 @@ export function analyseFrame(frame: HologramFrame, size: number) {
     swirled: [0, 0, 0, 0, 0],
     agitation,
     // Half the calm fragments hand over to fast ones at full agitation, so the turnover rises
-    // by about half (the film's churn on "Doctor." rises from 8 to 13 per frame). Half and no
-    // more, because pool 1 lights the ids below 2·mix: at this share, and only at this share,
+    // by about half (the Age of Ultron footage's churn on "Doctor." rises from 8 to 13 per frame).
+    // Half and no more, because pool 1 lights the ids below 2·mix: at this share, and only at this share,
     // the fragments pool 1 lights make up for the ones pool 0 puts out at every agitation.
     // Past it pool 1 runs out of ids to light and the body thins while he talks — which dims
     // the ball, and, with fewer strokes going out and coming back, makes it churn less rather
     // than more, which is the opposite of what speech is supposed to look like.
     mix: 0.5 * agitation,
-    // A third of the bright fragments step down while he talks, and the hot cores that make the
-    // film's luma-200 highlights go almost entirely (section 4.2: they drop by about 70%). The
-    // strokes themselves stay bright: it is the hot pixels that leave, not the texture.
+    // A third of the bright fragments step down while he talks, and their hot cores go almost
+    // entirely, as the Age of Ultron footage's luma-200 highlights drop by about 70% on "Doctor.".
+    // The strokes themselves stay bright: it is the hot pixels that leave, not the texture.
     hotShare: 1 - 0.35 * agitation,
     frayDrive: agitation * (0.55 + 0.45 * highDrive),
     burstAge,
@@ -1354,8 +1346,6 @@ export function analyseFrame(frame: HologramFrame, size: number) {
     // how far the burst throws, and how many chips
     burstReach: clamp01(frame.burstStrength),
     burstCount: Math.floor(frame.burstCount),
-    // wrapped to one turn: the canvas takes float32 angles, which would lose the per-frame
-    // step of a sphere left mounted for hours
     /**
      * Somewhere for placeFragment to put its seven numbers: made once a frame, not once a fragment.
      * Only what composes the body from the helpers uses it; the phone's loop keeps its numbers in locals.
@@ -1367,11 +1357,13 @@ export function analyseFrame(frame: HologramFrame, size: number) {
     scanBright: [0],
     bodyCos: Math.cos(bodyYaw),
     bodySin: Math.sin(bodyYaw),
-    /** What the halos and the volume multiply their alpha by: 1 in silence, up to 1 + GLOW_WITH_VOICE. */
+    /** What the halos and the aura multiply their alpha by: 1 in silence, up to 1 + GLOW_WITH_VOICE. */
     glowGain: 1 + GLOW_WITH_VOICE * (GLOW_FROM_ENVELOPE * agitation + (1 - GLOW_FROM_ENVELOPE) * voice),
-    // how far the core ring's brighter stretches have rolled round it
+    // How far the core ring's brighter stretches have rolled round it. This and the inner layer's
+    // turn are wrapped to one turn: the GPU takes float32 numbers, which would lose the per-frame
+    // step of a sphere left mounted for hours.
     roll: fraction((time * ROLL_DEGREES_PER_SECOND) / 360) * 360,
-    // the whorl winds up with the vortex, settling to its own slow turn as the particles do
+    // the inner layer winds up with the vortex, settling to its own slow turn as the specks do
     shellTurn: fraction((time * SHELL_DEGREES_PER_SECOND - 540 * settle * settle) / 360) * 360,
     streamCos: Math.cos(yaw),
     streamSin: Math.sin(yaw),
@@ -1387,12 +1379,12 @@ export function analyseFrame(frame: HologramFrame, size: number) {
  * some other way — the headset's draws the body in three dimensions on the GPU — so that it takes
  * the same state from the same frame instead of keeping a copy of this arithmetic that drifts.
  * Its `radius` is in the units of the `size` it was analysed at, `roll` and `shellTurn` are in
- * degrees because that is what a canvas takes, and `scan` is a height measured downward, as every y
- * in this file is.
+ * degrees because that is what Skia's canvas took when it drew him, and `scan` is a height measured
+ * downward, as every y in this file is.
  */
 export type HologramFrameState = ReturnType<typeof analyseFrame>;
 
-// ---- the volume ---------------------------------------------------------------------------
+// ---- the fragments ------------------------------------------------------------------------
 
 /**
  * How lit a fragment is this frame, 0..1 (0 = dark): its clock's fade envelope times its pool's
@@ -1400,8 +1392,8 @@ export type HologramFrameState = ReturnType<typeof analyseFrame>;
  * 2·mix.
  *
  * The envelope fades over a third of the lit window at each end rather than the quarter it
- * was. A fragment's paint does not fade with it — only its length does, since a paint is set
- * once for the whole tier's path — so the fade is how quickly a lit stroke arrives in the
+ * was. A fragment's paint does not fade with it — only its length does, since its tier's paint is
+ * the same however lit it is — so the fade is how quickly a lit stroke arrives in the
  * pixels it covers, and with the fragment clocks running half again as fast as before, a
  * quarter of the window had come down to three frames and each arrival showed as a step.
  */
@@ -1414,7 +1406,7 @@ export function fragmentStrength(life: number, id: number, pool: number, state: 
 }
 
 /**
- * Which body builder a fragment goes to: 0 dim, 1 mid, 2 bright. Fading fragments and
+ * Which tier a fragment is drawn in: 0 dim, 1 mid, 2 bright. Fading fragments and
  * thinned-out hot ones step down.
  */
 export function fragmentTier(brightness: number, strength: number, id: number, hotShare: number) {
@@ -1554,7 +1546,7 @@ export function placeFragment(
  * fail first are the ones that cost least to ask.
  *
  * Returns the strength, or 0 for a fragment that is not drawn, and writes what the caller needs
- * into `into`: strength, glyph, which pair of builders it belongs to, which blink it is on, and its
+ * into `into`: strength, glyph, whether it rides the inner layer, which blink it is on, and its
  * brightness tier. An array rather than an object because whatever composes the body from it asks it
  * of thousands of fragments a frame, and it is the array {@link HologramFrameState.reading} keeps
  * for exactly that reason. It is the definition the GPU's body is held to (`gpu/fragment-3d.ts`).

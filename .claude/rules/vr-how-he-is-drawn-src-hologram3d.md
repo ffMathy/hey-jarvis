@@ -36,8 +36,8 @@ materials, targets and meshes:
 
 3. **The picture** (`picture-target.ts`), once a frame, before either eye:
    `hologram/gpu`'s `drawGpuPicture` — everything flat that the phone draws, the
-   whorl, the core, the rim, the truss, the crescent, the fray, the chips, the
-   pulse, everything but the body and the stream — into a 512-pixel
+   aura, the core, the cage, the embers, the fray, the chips, the pulse,
+   everything but the body and the stream — into a 512-pixel
    `WebGLRenderTarget` with a depth and a stencil buffer, which the picture needs
    (`gpu-picture.ts` says why). It is drawn with raw GL calls on
    `renderer.getContext()`: three's state is reset (`renderer.resetState()`)

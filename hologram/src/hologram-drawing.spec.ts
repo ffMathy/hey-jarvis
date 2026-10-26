@@ -34,9 +34,7 @@ describe('the hologram', () => {
 
   it('turns its body about the vertical axis, once every BODY_TURN_SECONDS', () => {
     // The ball itself turning is what says it is alive, so the rate is pinned rather than left
-    // to a constant nobody would notice going to zero. It is a globe spin, not a roll in the
-    // screen plane, so it leaves no single angle for the rim check below to find — which is why
-    // that check no longer looks at the body at all.
+    // to a constant nobody would notice going to zero.
     expect(bodyTurnRadians(0)).toBe(0);
     expect(bodyTurnRadians(BODY_TURN_SECONDS)).toBeCloseTo(2 * Math.PI, 6);
     expect(bodyTurnRadians(BODY_TURN_SECONDS / 4)).toBeCloseTo(Math.PI / 2, 6);
@@ -49,16 +47,16 @@ describe('the hologram', () => {
     }
   });
 
-  it("turns its inner shells against the core ring's roll, at the rate the film measured", () => {
+  it("turns its inner layer against the core ring's roll, at the rate the film measured", () => {
     // This used to be checked in the pixels, as "the band round the core must not follow the
     // rim". That band is full of the fragment body, and the body now turns about the vertical
     // axis on purpose, so a rotation estimator pointed at it is reading the body rather than the
-    // shells and answers differently as the texture changes — it moved from 2.0 to 2.5 when the
-    // halo became a ramp, which says nothing about whether anything follows the rim.
+    // inner layer and answers differently as the texture changes — it moved from 2.0 to 2.5 when
+    // the halo became a ramp, which says nothing about whether anything follows the rim.
     //
-    // What the design actually promises is here instead: the shells turn back at the -2 to -6°/s
-    // the film measured (section 3), and the core ring's bright stretches roll the other way, at
-    // the rate the rim it replaced rolled at.
+    // What the design actually promises is here instead: the inner layer turns back at the -2 to
+    // -6°/s the Age of Ultron footage measured, and the core ring's bright stretches roll the other
+    // way, at the rate the rim it replaced rolled at.
     expect(SHELL_DEGREES_PER_SECOND).toBeLessThan(0);
     expect(SHELL_DEGREES_PER_SECOND).toBeGreaterThanOrEqual(-6);
     expect(ROLL_DEGREES_PER_SECOND).toBeGreaterThan(0);
@@ -71,7 +69,7 @@ describe('the hologram', () => {
     const watchSized = createHologramScene(SEED, 1200);
 
     expect(watchSized.body.length).toBeLessThan(createHologramScene(SEED).body.length);
-    // And it is still him: the rim, the stream and the rest do not thin with the body.
+    // And it is still him: the stream, the cage and the rest do not thin with the body.
     expect(watchSized.stream.length).toBe(createHologramScene(SEED).stream.length);
     expect(watchSized.body.length).toBeGreaterThan(0);
   });
@@ -80,7 +78,7 @@ describe('the hologram', () => {
     // Nothing about the scene knows what a phone can hold, so a renderer with no frame to hit can
     // ask for whatever it likes above the apps' ceiling — see `hologram/.scripts/render-showcase.ts`,
     // which does exactly that for its cover. The parameter is the *body*, which is nearly all of
-    // him; the rim, the stream and the rest are fixed, so this asks that more were asked for and
+    // him; the stream, the cage and the rest are fixed, so this asks that more were asked for and
     // more arrived, rather than for an exact multiple.
     const asked = PARTICLE_COUNT * 1.3;
     const bigger = createHologramScene(SEED, asked);

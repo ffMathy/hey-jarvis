@@ -80,8 +80,8 @@ handed. The satellites are in the picture, so they arrive and leave with him.
   two renderers still match to the byte.
 
 **A path paints each pixel once, at the most it covers it.** Skia stroked a
-path once, so where its pieces overlap — a polyline's joins, a crescent's
-strands — the overlap is not lit twice. The picture draws a path as many shapes,
+path once, so where its pieces overlap — a polyline's joins, two edges of the
+cage crossing — the overlap is not lit twice. The picture draws a path as many shapes,
 so `drawShapes` draws each twice: first only into the depth buffer, each
 fragment nearer the more it covers, then in colour where the depth is equal,
 with a stencil value of the path's own stopping a tie painting twice. Painting

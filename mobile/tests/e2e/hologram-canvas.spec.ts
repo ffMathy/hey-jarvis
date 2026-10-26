@@ -120,8 +120,8 @@ const BEFORE_THE_TIMEOUT_FRAMES = 6;
 /**
  * The sphere at its largest, as a radius in sides of the drawing's square: `SPHERE_FRACTION` (0.27)
  * swollen as far as his voice swells him (`SWELL_WITH_VOICE`, 18%). His body is the shell of specks
- * inside it, round the white-hot ring at his core. What lies beyond is the stream flowing out of it,
- * the cage, the aura and the embers round him, and the chips he throws past the limb while he speaks.
+ * inside it, round the white-hot ring at his core. What lies beyond it is the cage, the aura and the
+ * embers round him, and the fray and the chips he throws past the limb while he speaks.
  */
 const SPHERE_AT_LARGEST = 0.27 * 1.18;
 
