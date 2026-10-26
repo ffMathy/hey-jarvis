@@ -432,9 +432,10 @@ test.describe('the hologram', () => {
     // hottest pixels (255,229,174), its median (178,105,32) — and the only thing in him near white
     // is the thin ring round his core, at 0.35R. So, where the old film study allowed no white at
     // all, white is now allowed there and nowhere else in the picture; the shell of white-hot specks
-    // round it is the body's, which this does not draw. Measured when the picture was redrawn, over
-    // these three moments: 0 pixels bluer than red, red 2.9 times blue, and not one pixel with all
-    // three channels over 230 anywhere — the ring's hottest is about (253,244,196).
+    // round it is the body's, which this does not draw. Measured when his cage, core ring and chips
+    // were last redrawn, over these three moments: 0 pixels bluer than red, red 2.7 times blue, and
+    // not one pixel with all three channels over 230 anywhere — the ring's hottest is about
+    // (251,240,205).
     for (const frame of [
       speech(5, 0.7, spectrum(picture, 'low', 0.7)),
       speech(45.3, 0.6, evenBands(picture, 0.55), 0.05, 4),
@@ -519,8 +520,9 @@ test.describe('the hologram', () => {
     // Some forty renders, which SwiftShader draws on the CPU.
     test.setTimeout(300_000);
     const bands = evenBands(picture, 0.7);
-    // Measured when the picture was redrawn: a burst adds 470–540 bright pixels beyond the left
-    // limb, the talking sphere changes 2.4 times as much as the calm one and the agitated one 1.7.
+    // Measured when his cage, core ring and chips were last redrawn: a burst adds 410–460 bright
+    // pixels beyond the left limb, the talking sphere changes 2.0 times as much as the calm one and
+    // the agitated one 1.6.
     for (const time of [6, 13.4, 22.8]) {
       // the cage and the embers are round him in both, so count what the burst adds
       const calm = brightBeyondLeftLimb(picture, await picture.render(silence(picture, time)));
@@ -565,7 +567,8 @@ test.describe('the hologram', () => {
     // **0.15, where it was 0.45, because the old picture answered with something far bigger.** Its
     // low notes split the crescent, a band of light round a third of the rim, and that measured
     // 0.63. The embers and the fray that answer them now are hairlines and flecks, and measured
-    // 0.21–0.25 over these moments when the picture was redrawn. It keeps its teeth: the same
+    // 0.20–0.24 over these moments when his cage, core ring and chips were last redrawn (0.21–0.25
+    // when the picture was first redrawn after the Vision Quest footage). It keeps its teeth: the same
     // spectrum drawn twice differs by exactly 0, which is what ignoring the bands would score, and
     // it sits under the least of them rather than at it, because a threshold a test clears by
     // three percent is a threshold that fails on the next unrelated thing.
@@ -585,12 +588,12 @@ test.describe('the hologram', () => {
     // round his core, which is the picture's one steady turn of its own.
     //
     // Those stretches are faint beside what does not roll — the hooked ring and bar inside it, the
-    // tick it puts out, the way its thin white line falls on the pixel grid — and lining two
-    // pictures up as they are finds that still part, at no turn at all. So the ring is taken
-    // round one whole roll first, and its mean, which is everything that does not roll, is taken
-    // away from each picture before they are lined up; six pairs, two seconds apart, are lined up
-    // together. Measured when the picture was redrawn: 21–22° in the two seconds, against the 22°
-    // the rate says, and 18–26° for single pairs.
+    // way its thin white line falls on the pixel grid — and lining two pictures up as they are
+    // finds that still part, at no turn at all. So the ring is taken round one whole roll first,
+    // and its mean, which is everything that does not roll, is taken away from each picture before
+    // they are lined up; six pairs, two seconds apart, are lined up together. Measured when his
+    // cage, core ring and chips were last redrawn: 22° in the two seconds, against the 22° the rate
+    // says, and 20–24° for single pairs.
     const { rollDegreesPerSecond } = picture.facts;
     expect(rollDegreesPerSecond).toBeGreaterThan(0);
     const rollSeconds = 360 / rollDegreesPerSecond;
@@ -624,10 +627,11 @@ test.describe('the hologram', () => {
     // body, as the body's specks do. Seen flat, half a turn later it is its own mirror image —
     // what was on his left is on his right — and a whole turn later it is itself again; the
     // twinkling of its lines and the embers drifting through it keep either from being exact.
-    // Measured where it is (0.95–1.31R, its tail to 1.4R), with the aura taken out: 0.41–0.52 alike
-    // with its mirror half a turn later and 0.00–0.09 with itself, 0.54–0.62 alike with itself a
-    // turn later and 0.00–0.11 with its mirror. A cage that stood still, or turned at any other
-    // rate, would be like neither.
+    // Measured over the band it is in — its weave at 0.9–1.25R, with spikes to about 1.36R and its
+    // trails to 1.4R — with the aura taken out, when his cage, core ring and chips were last
+    // redrawn: 0.59–0.66 alike with its mirror half a turn later and -0.03–0.09 with itself,
+    // 0.76–0.78 alike with itself a turn later and -0.02–0.06 with its mirror. A cage that stood
+    // still, or turned at any other rate, would be like neither.
     const { bodyTurnSeconds } = picture.facts;
     const cage = (pixels: Uint8Array, mirrored: boolean) => bandAgainstItsRings(picture, pixels, 0.95, 1.45, mirrored);
     for (const time of [3, 19.5]) {
@@ -699,9 +703,10 @@ test.describe('the hologram', () => {
     // Comparing each frame with itself at appearance 1 divides out everything time drives — the
     // ring's roll, the cage's turn, the embers — and leaves exactly what this test is about: how
     // fast the ball itself arrives. It is the stricter measure of the two, since the denominator is
-    // no longer a ball brighter than the one being walked past. The core is half the picture's
-    // light, so it comes up over the first 0.4 of the vortex: measured when the picture was
-    // redrawn, the steepest frame moves 0.05 of the light on, seven frames in.
+    // no longer a ball brighter than the one being walked past. The core comes up over the first
+    // 0.4 of the vortex, and what is round the shell is carried out with the specks after it, so
+    // neither comes on at once: measured when his cage, core ring and chips were last redrawn, the
+    // steepest frame moves 0.056 of the light on, 33 frames in, as the shell's outer layers come out.
     let previous = 0;
     let worst = 0;
     for (let frame = 1; frame <= Math.round(60 * (materialiseSeconds + 0.4)); frame++) {
@@ -720,8 +725,8 @@ test.describe('the hologram', () => {
     // A thought must not brighten him, or a thought and a word say the same thing to anyone
     // glancing at the screen. Speech hardly brightens the picture now — the sparks' glow follows the
     // voice by only a tenth, at the user's asking — so a thought dims it instead: everything but
-    // the core ring recedes, so the plane sweeping through him is what is seen. Measured when the
-    // picture was redrawn, inside 0.95R: 26 thinking, 42–43 calm, 43–44 speaking.
+    // the core ring recedes, so the plane sweeping through him is what is seen. Measured when his
+    // cage, core ring and chips were last redrawn, inside 0.95R: 28 thinking, 48 calm, 47 speaking.
     for (const time of [5.4, 6.3, 7.2]) {
       const calm = discBrightness(picture, await picture.render(silence(picture, time)));
       const thought = discBrightness(picture, await picture.render({ ...silence(picture, time), thinking: 1 }));
@@ -763,9 +768,10 @@ test.describe('the hologram', () => {
     // cuts a chip is the screen itself, where an edge cannot be seen.
     //
     // The band is the square's last 2%, from about 1.78R to its edge at 1.85R; the screen ends at
-    // about 1.37R. Measured when the picture was redrawn, at full volume through every burst age
-    // here: none of the band lit, and nothing lit past 1.68R — the cage, the aura and the embers
-    // swell with his voice like everything drawn in his radius, and the embers are the farthest.
+    // about 1.37R. Measured when his cage, core ring and chips were last redrawn, at full volume
+    // through every burst age here: none of the band lit, and nothing lit past 1.63R — the cage,
+    // the aura and the embers swell with his voice like everything drawn in his radius, and the
+    // embers are the farthest.
     // The ten-pixel allowance is kept for a chip or an ember that reaches the band, and it is the
     // thing to re-measure, rather than widen, the next time this trips. A rim — or the aura, or the
     // cage — running off the canvas is an arc, not a spray, and would light far more of it.
