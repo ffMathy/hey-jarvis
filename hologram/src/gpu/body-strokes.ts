@@ -20,14 +20,23 @@ import { SPARKLE_REPEAT } from './sparkle';
 /**
  * The tiers' paints: colour, full width in the drawing's unit (the shaders use halves) and alpha.
  * The mid, bright and hot strokes vary in brightness along their length with the sparkle (`sparkle.ts`).
+ *
+ * The film's speck shell runs from deep amber in its dimmest specks through gold to pale gold, and
+ * its brightest are white-hot — (255, 229, 174) and hotter at their middles, against a 95th
+ * percentile of (245, 198, 132). So the tiers climb that ramp: the dim ones, which are every speck
+ * on the far side of him, deep amber and faint, so the back of the shell is depth rather than
+ * clutter; the mid ones amber-gold; the bright ones pale gold, with a hot core near white laid over
+ * them, which Screens a bright speck at full sparkle to about (255, 248, 223). They are fine,
+ * 0.009-0.011R across where the old body's strokes were 0.014-0.0165R: the film's specks are
+ * glitter, not strokes.
  */
 export const STROKE_PAINTS = {
-  dim: { colour: 0xcc6e2c, width: 0.014, alpha: 0.62 },
-  mid: { colour: 0xf87026, width: 0.0155, alpha: 0.85 },
+  dim: { colour: 0xb8641e, width: 0.009, alpha: 0.5 },
+  mid: { colour: 0xf5aa48, width: 0.01, alpha: 0.85 },
   /** Its alpha is 1 − 0.25 × agitation. */
-  bright: { colour: 0xff7e28, width: 0.0165, alpha: 1 },
-  /** Round-capped, on the bright strokes only; its alpha is 0.8 × (1 − 0.95 × agitation). */
-  hot: { colour: 0xff8e3c, width: 0.007, alpha: 0.8 },
+  bright: { colour: 0xffd27e, width: 0.011, alpha: 1 },
+  /** Round-capped, on the bright strokes only; its alpha is 0.9 × (1 − 0.95 × agitation). */
+  hot: { colour: 0xfff2d4, width: 0.007, alpha: 0.9 },
 };
 
 /**

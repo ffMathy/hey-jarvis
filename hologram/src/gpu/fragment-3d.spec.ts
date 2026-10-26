@@ -92,7 +92,10 @@ function phoneBody(offset: number, state: HologramFrameState): PhoneFragment | n
   const length = body[offset + 4];
   const hop = fraction(reading[3] * 0.618034 + id * 9.7);
   const along = (hop - 0.5) * 1.4 * length;
-  const fromCentre = body[offset] ** 2 + body[offset + 1] ** 2;
+  // How far from his middle the fragment is seen, once the body has turned: it is the limb as it
+  // is seen that the voice's wander keeps clear of, wherever on the turning ball the fragment is.
+  const turnedX = body[offset] * state.bodyCos + body[offset + 9] * state.bodySin;
+  const fromCentre = turnedX * turnedX + body[offset + 1] * body[offset + 1];
   const inward = Math.min(1, Math.max(0, (0.76 - fromCentre) * 3.2));
   const across = (fraction(hop * 23.17) - 0.5) * (FRAGMENT_WANDER + 1.3 * state.agitation * inward);
   placeFragment(body, offset, along, across, state, placed);
@@ -192,11 +195,19 @@ function compareEveryRow(state: HologramFrameState): number {
 
 const IDLE = MOMENTS.idle;
 
+/**
+ * Enough of him lit at each moment that the comparison means something. Fewer while he arrives,
+ * and while he thinks: the plane leaves 0.12 of a fragment's strength wherever it is not passing,
+ * and since his body became a shell whose specks seen face on keep 0.3 of theirs
+ * (SHELL_FACE_DIMMING), what the plane leaves of those is under the faintest that is drawn. About
+ * 1300 of the scene's rows are lit then, against 3600 at the other moments.
+ */
+const FEWEST_COMPARED: Record<string, number> = { arriving: 500, thinking: 1000 };
+
 describe('a fragment in three dimensions, seen from the front', () => {
   for (const [name, moment] of Object.entries(MOMENTS)) {
     it(`is exactly where the phone draws it: ${name}`, () => {
-      // Enough of him lit that the comparison means something.
-      expect(compareEveryRow(stateAt(moment))).toBeGreaterThan(name === 'arriving' ? 500 : 2000);
+      expect(compareEveryRow(stateAt(moment))).toBeGreaterThan(FEWEST_COMPARED[name] ?? 2000);
     });
   }
 

@@ -11,6 +11,7 @@ import {
   SCAN_BRIGHT_NEARNESS,
   SCAN_FLOOR,
   SCAN_HALF_WIDTH,
+  SHELL_FACE_DIMMING,
   VORTEX_STRETCH,
   VORTEX_TWIST,
 } from '../hologram-drawing';
@@ -165,6 +166,7 @@ const float WANDER = ${glslFloat(FRAGMENT_WANDER)};
 const float SCAN_HALF_WIDTH = ${glslFloat(SCAN_HALF_WIDTH)};
 const float SCAN_FLOOR = ${glslFloat(SCAN_FLOOR)};
 const float SCAN_BRIGHT_NEARNESS = ${glslFloat(SCAN_BRIGHT_NEARNESS)};
+const float SHELL_FACE_DIMMING = ${glslFloat(SHELL_FACE_DIMMING)};
 const float STROKE_SHRINK = ${glslFloat(LATTICE_STROKE_SHRINK)};
 const float VORTEX_TWIST = ${glslFloat(VORTEX_TWIST)};
 const float VORTEX_STRETCH = ${glslFloat(VORTEX_STRETCH)};
@@ -191,6 +193,12 @@ Fragment hiddenFragment() {
 
 float clamp01(float value) {
   return clamp(value, 0.0, 1.0);
+}
+
+// What is left of a speck's light seen through his shell where it is seen: shellFacing.
+float shellFacing(vec2 seen, float radiusSquared) {
+  if (radiusSquared <= 0.0) return 1.0;
+  return 1.0 - SHELL_FACE_DIMMING * clamp01(1.0 - dot(seen, seen) / radiusSquared);
 }
 
 float smooth01(float value) {
@@ -346,15 +354,16 @@ Fragment readBodyFragment() {
   float fragmentLength = shape.z;
   float hop = fract(cycle * 0.618034 + identity.x);
   float along = (hop - 0.5) * 1.4 * fragmentLength;
-  float inward = clamp01((0.76 - dot(rest.xy, rest.xy)) * 3.2);
-  float across = (fract(hop * 23.17) - 0.5) * (WANDER + 1.3 * agitation * inward);
   vec3 turned = vec3(rest.x * bodyTurn.x + rest.z * bodyTurn.y, -rest.y, rest.z * bodyTurn.x - rest.x * bodyTurn.y);
   float planeX = dot(turned, viewRight);
   float planeY = -dot(turned, viewUp);
   float depth = dot(turned, viewFront);
+  float inward = clamp01((0.76 - (planeX * planeX + planeY * planeY)) * 3.2);
+  float across = (fract(hop * 23.17) - 0.5) * (WANDER + 1.3 * agitation * inward);
   float y = planeY + unit.y * along + unit.x * across;
   float x = planeX + unit.x * along - unit.y * across;
-  float lit = strength * clamp01((0.94 * 0.94 - planeX * planeX - y * y) * 8.0);
+  float edge = clamp01((0.94 * 0.94 - planeX * planeX - y * y) * 8.0) * shellFacing(vec2(x, y), dot(rest.xyz, rest.xyz));
+  float lit = strength * edge;
   if (lit < FAINTEST) return hiddenFragment();
 
   float drawn;

@@ -14,6 +14,7 @@ import {
   readFragment,
   readShellFragment,
   scanned,
+  shellFacing,
   swirlFragment,
 } from '../hologram-drawing';
 
@@ -234,8 +235,6 @@ export function placeBodyFragment(
   const restDepth = body[offset + 9];
   const hop = fraction(cycle * 0.618034 + id * 9.7);
   const along = (hop - 0.5) * 1.4 * length;
-  const inward = clamp01((0.76 - (restX * restX + restY * restY)) * 3.2);
-  const across = (fraction(hop * 23.17) - 0.5) * (FRAGMENT_WANDER + 1.3 * state.agitation * inward);
 
   // placeFragment: turned about the vertical in the body's frame, then seen in the view plane.
   const turned: Vector3Tuple = [
@@ -246,9 +245,17 @@ export function placeBodyFragment(
   const planeX = dot(turned, basis.right);
   const planeY = -dot(turned, basis.up);
   const depth = dot(turned, basis.front);
+  // His voice lets a fragment re-light further across from where it was the further inside the
+  // limb it is seen, so the silhouette holds while the inside churns.
+  const inward = clamp01((0.76 - (planeX * planeX + planeY * planeY)) * 3.2);
+  const across = (fraction(hop * 23.17) - 0.5) * (FRAGMENT_WANDER + 1.3 * state.agitation * inward);
   const y = planeY + unitY * along + unitX * across;
   const x = planeX + unitX * along - unitY * across;
-  const lit = strength * clamp01((0.94 * 0.94 - planeX * planeX - y * y) * 8);
+  // The limb and the shell it is seen through: `placeFragment`'s edge, in the same order.
+  const edge =
+    clamp01((0.94 * 0.94 - planeX * planeX - y * y) * 8) *
+    shellFacing(x, y, restX * restX + restY * restY + restDepth * restDepth);
+  const lit = strength * edge;
   if (lit < FRAGMENT_FAINTEST) return null;
 
   swirlFragment(x, y, unitX, unitY, id, state);
