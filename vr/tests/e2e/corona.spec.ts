@@ -14,7 +14,7 @@ import { bundle, expect, keepOffline, keepPicture } from './fixtures';
  *
  * The pictures are for a person to judge whether it reads as his light — warm, a ring and a scan —
  * over black and over a room. The measurements hold the parts of that a regression would break: the
- * colour is his amber and not white or red, the middle is left clear, the band travels up through
+ * colour is his gold and not white or red, the middle is left clear, the band travels up through
  * it on his thinking scan's time, the bloom comes at the end of each pass, it fades with its level,
  * and a far one is drawn no smaller than its least apparent size.
  *
@@ -115,11 +115,16 @@ test('is his warm light, with its middle left clear, over black and over a room'
     const { middle } = rim;
     expect(Math.abs(rim.offset), `where the rim is over ${background}`).toBeLessThan(3);
     if (background === 'black') {
-      // Amber: red well up, green about half of it, little blue — neither white nor red.
+      // His gold: red well up, green and blue under it as the Vision Quest footage has them — from
+      // its median (178,105,32), green 0.59 of red, to its hottest (255,229,174), green 0.9 and
+      // blue 0.68 of red — neither white nor red. The corona is lit in his strokes' paints, and
+      // when they went from orange to the footage's gold it went with them: measured then at
+      // (150,121,70), green 0.81 and blue 0.47 of red, where the orange had been held under 0.7
+      // and 0.35.
       expect(red).toBeGreaterThan(110);
-      expect(green / red).toBeGreaterThan(0.3);
-      expect(green / red).toBeLessThan(0.7);
-      expect(blue / red).toBeLessThan(0.35);
+      expect(green / red).toBeGreaterThan(0.45);
+      expect(green / red).toBeLessThan(0.9);
+      expect(blue / red).toBeLessThan(0.65);
       expect(luma(middle)).toBeLessThan(25);
     } else {
       // Over the grey, the rim is warmer and brighter than the room, and the middle is the room.
@@ -207,7 +212,15 @@ test('lights several entities about a room at once', async ({ page }, testInfo) 
       const [red, , blue] = rim.pixel;
       // Turned to the eye, not to the picture: off to the side, the rim is where the shader puts it.
       expect(Math.abs(rim.offset), `where corona ${index} is over ${background}`).toBeLessThan(4);
-      expect(red - blue, `corona ${index} over ${background}`).toBeGreaterThan(background === 'black' ? 40 : 25);
+      if (background === 'black') {
+        // His gold, as above, even the far and the half-lit one. Red less blue was held over 40
+        // while he was orange; gold has more blue in it, and the half-lit one measured
+        // (67,53,30) when he turned gold — blue 0.45 of red, the others 0.39–0.47.
+        expect(red, `corona ${index} over black`).toBeGreaterThan(50);
+        expect(blue / red, `corona ${index} over black`).toBeLessThan(0.65);
+      } else {
+        expect(red - blue, `corona ${index} over grey`).toBeGreaterThan(25);
+      }
     }
   }
   expect(problems).toEqual([]);

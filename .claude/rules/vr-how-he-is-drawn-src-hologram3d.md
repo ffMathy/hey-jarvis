@@ -140,14 +140,16 @@ Known deviations from the phone: strokes of one tier that cross add up rather th
 forming a union, so the arrival's first half-second and the listening knots are a
 little hotter; everything the picture draws is flat in the view plane.
 
-**The picture is held to Skia's.** Skia drew it on every device before
-`hologram/gpu` did, and `tests/e2e/hologram-picture.spec.ts` draws fourteen
-moments with it through `picture-target.ts` (the preview's `checkPicture`) and
-compares them with Skia's goldens (`tests/e2e/fixtures/picture/`, drawn with
-`fadeOutside`, RGB over black): a mean of 0.07–0.29 levels a channel, a 99th
-percentile of at most 8, at most 0.5% of pixels a channel more than 16 apart,
-and the mean luma within 0.02 of Skia's. The behaviour that was `hologram`'s
-pixel tests under CanvasKit — it moves, answers speech with activity, spirals in
-without a flash, leaves nothing behind, stays in its square, and draws each
-satellite where its orbit says — is `tests/e2e/hologram-picture-behaviour.spec.ts`,
+**The picture is held to its own goldens.** `tests/e2e/hologram-picture.spec.ts`
+draws fifteen moments with it through `picture-target.ts` (the preview's
+`checkPicture`) and compares them with frames it drew itself when he was redrawn
+after the Vision Quest footage (`tests/e2e/fixtures/picture/`, RGB over black,
+drawn by `.scripts/render-picture-goldens.ts`; see "The browser tests"): a mean
+of at most 0.4 levels a channel, a 99th percentile of at most 10, at most 0.8% of
+pixels a channel more than 16 apart, and the mean luma within 0.1. Drawn again on
+the machine that drew them, they match to the byte. The behaviour that was
+`hologram`'s pixel tests under CanvasKit — it is golden, its core ring rolls and
+its cage turns with his body, it answers speech with activity, spirals in without
+a flash, leaves nothing behind, stays in its square, and draws each satellite
+where its orbit says — is `tests/e2e/hologram-picture-behaviour.spec.ts`,
 measured on the picture as a view shows it: faded as one layer by `arrivalOf`.

@@ -17,7 +17,7 @@ headset, 1.6 m ahead; there a select moves on to the next phase. It is what the
 browser tests photograph and measure, through `window.__hologramPreview`
 (`preview-hook.ts`) — including his picture alone, drawn into a target of the
 stage's renderer exactly as the headset draws it (`picture-check.ts`:
-`drawPictures`, `checkPicture`, `pictureFacts`, `orbitPoints`).
+`drawPictures`, `checkPicture`, `pictureGolden`, `pictureFacts`, `orbitPoints`).
 
 **Testing the glyphs** (`satellites-panel.ts`). Under the controls, a button for every vertical's
 glyph, read at build time from the server's own glyph files (`mcp/mastra/verticals/agent-glyphs.ts`

@@ -73,8 +73,9 @@ three's order — the halo union into its own target, then the strokes, then the
 halos' light, Screened and faded as one layer — and whether the pixels agree is
 a browser's to say: vr's `hologram-gpu-body.spec.ts` draws the same moments both
 ways in Chromium, from the matrices three drew with, and fails on one byte
-apart. The picture draws what Skia drew, layer for layer, and vr's
-`hologram-picture.spec.ts` holds it to frames Skia drew before it went. Here,
+apart. The picture's pixels are a browser's to judge as well: vr's
+`hologram-picture.spec.ts` holds them to frames it drew itself when it was last
+redrawn on purpose. Here,
 `gpu-body.spec.ts` and `gpu-picture.spec.ts` check the passes, their targets and
 their blending against a context that writes its calls down.
 
