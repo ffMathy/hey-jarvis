@@ -11,8 +11,8 @@ import { test as appTest, expect, keepOffline } from './fixtures';
  * called. They cannot say whether it is beautiful; they can say it is golden, that it moves the way
  * it means to — the core ring's brighter stretches rolling round it, the cage turning with his body
  * — that it answers Jarvis's voice with activity, never with a brightness pulse, that it spirals out
- * of its core without a flash, that it stays inside its square, and that his satellites are drawn
- * where their orbits say.
+ * of its core without a flash, that it stays inside its square, that no seam is left where two
+ * pieces of a circle meet, and that his satellites are drawn where their orbits say.
  *
  * They began as `hologram`'s own tests, against Skia's picture under CanvasKit, and moved here with
  * the picture, since there is no GPU under `bun test`. When he was redrawn after the Vision Quest
@@ -242,6 +242,36 @@ function edgeLitShare(pixels: Uint8Array, band: number): number {
   return lit / count;
 }
 
+/** The four 45° diagonals out of the middle of the square, as a pixel's step across and down. */
+const DIAGONALS = [
+  [1, 1],
+  [-1, 1],
+  [1, -1],
+  [-1, -1],
+] as const;
+
+/**
+ * Luminance summed along the 45° diagonal out of the square's middle that steps `across` and
+ * `down`, from 0.15 to 0.85 of the half side, and summed over the pixels beside it: for each of its
+ * pixels, the mean of the four two pixels away along its row and its column, either way. Those are
+ * as far out from the middle as the diagonal on average, so a glow round the middle that fades
+ * outward drops out, and a line one pixel wide down the diagonal is all that tells the two apart.
+ */
+function diagonalAgainstBeside(pixels: Uint8Array, across: number, down: number) {
+  const half = SIZE / 2;
+  const at = (x: number, y: number) => luminance(pixels, (y * SIZE + x) * 4);
+  let on = 0;
+  let beside = 0;
+  for (let step = Math.floor(half * 0.15); step < Math.floor(half * 0.85); step++) {
+    // The pixel whose centre is on the diagonal out of the corner the four middle pixels share.
+    const x = across > 0 ? half + step : half - 1 - step;
+    const y = down > 0 ? half + step : half - 1 - step;
+    on += at(x, y);
+    beside += (at(x + 2, y) + at(x - 2, y) + at(x, y + 2) + at(x, y - 2)) / 4;
+  }
+  return { on, beside };
+}
+
 /** Where his white-hot core ring is the one thing allowed to come near white: inside this many radii. */
 const WHITE_HOT_REACH = 0.45;
 
@@ -445,6 +475,42 @@ test.describe('the hologram', () => {
     }
 
     expect(difference(first, await picture.render(frame))).toBe(0);
+  });
+
+  test('paints every pixel where two pieces of a circle meet, so no straight line runs through his aura', async ({
+    picture,
+  }) => {
+    // A circle is drawn as a ring of quads, and a pixel between two of them is the rasteriser's to
+    // give to one or the other. Each piece used to work out, in floating point, which of them a
+    // pixel's angle belonged to, and paint only its own. On a circle centred on a pixel's corner —
+    // the aura's, round the middle of the square — every pixel on a 45° diagonal lies on the line
+    // two pieces meet on, and there the rasteriser gave it to one piece and the angle to the other,
+    // so neither painted it: faint straight lines ran down his lower diagonals. So the light along
+    // each diagonal is held to the light just beside it.
+    //
+    // One picture says too little: a cage line or an ember lying across a diagonal moved one
+    // picture's share anywhere from 0.84 to 1.29 when this was written. Summed over these ten formed
+    // idle moments, the lower right, lower left, upper right and upper left diagonals measured 0.963,
+    // 1.020, 0.957 and 0.978 of the light beside them; with the shader that left the lines, 0.444,
+    // 0.518, 0.929 and 0.978. Within a tenth either way tells the two apart with room to spare.
+    const pictures: Uint8Array[] = [];
+    for (const time of [1, 3, 5.4, 6, 7.2, 11.5, 19.5, 30, 45.5, 60.2]) {
+      pictures.push(await picture.render(silence(picture, time)));
+    }
+    for (const [across, down] of DIAGONALS) {
+      let on = 0;
+      let beside = 0;
+      for (const pixels of pictures) {
+        const line = diagonalAgainstBeside(pixels, across, down);
+        on += line.on;
+        beside += line.beside;
+      }
+      const share = on / beside;
+      const which = `the diagonal stepping ${across} across and ${down} down`;
+
+      expect(share, which).toBeGreaterThan(0.9);
+      expect(share, which).toBeLessThan(1.1);
+    }
   });
 
   test('shows speech as activity: chips thrown beyond the limb, and more change than when calm', async ({
