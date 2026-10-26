@@ -1,5 +1,7 @@
 import {
   CAGE_EDGE_STRIDE,
+  CORE_X,
+  CORE_Y,
   EMBER_RISE,
   EMBER_STRIDE,
   FRAY_STRIDE,
@@ -247,6 +249,13 @@ uniform vec3 disc;
 const CAGE_SWAY = 0.006;
 
 /**
+ * How near his core, in R, the cage may pass and still be drawn at all, and over how much farther it
+ * comes back to its full light: clear of the white-hot ring (`CORE_RING_RADIUS`) and its bloom.
+ */
+const CAGE_CORE_CLEARANCE = 0.42;
+const CAGE_CORE_FADE = 0.15;
+
+/**
  * The cage: straight hairlines between nodes round the shell of specks, in three dimensions, turned
  * with his body about the vertical (`bodyTurn`, his body's cosine and sine, as `placeFragment`
  * turns a fragment) and seen straight on. Every edge twinkles on its own slow clock and is fainter
@@ -254,6 +263,11 @@ const CAGE_SWAY = 0.006;
  * cage reads as round him rather than over him. Each edge is lit at both ends (`shapeLight`), so
  * an edge running from his front to his back fades along itself, and so does one whose far end the
  * scene lights less than its near one: the lines trailing below him fade away as they leave him.
+ *
+ * And none of it crosses his core: an edge that passes over it, seen flat, is not drawn, and one that
+ * passes near it is faint, so the white-hot ring and the haze inside it are seen clear of the cage,
+ * as the film's are. Lines turning with his body across the ring, at their own rate, also hid the
+ * ring's own slow roll.
  */
 export function cageLayer(scene: HologramPictureScene): PictureLayerSource {
   const froms: number[][] = [];
@@ -292,15 +306,28 @@ float nodeLight(vec3 turned) {
   float aside = smooth01((length(turned.xy) - 0.3) / 0.55);
   return (0.6 + 0.4 * front) * (0.25 + 0.75 * aside);
 }
+
+// How near an edge, seen flat, comes to his core.
+float nearestToTheCore(vec2 from, vec2 to) {
+  vec2 core = vec2(${glslFloat(CORE_X)}, ${glslFloat(CORE_Y)});
+  vec2 run = to - from;
+  float share = clamp(dot(core - from, run) / max(dot(run, run), 1e-6), 0.0, 1.0);
+  return length(from + run * share - core);
+}
 `,
       `
   // edgeClock: its twinkle's rate (cycles a second) and phase, the edge's weight, and how lit its
   // far end is as a share of its near one's.
   vec3 from = turnedNode(edgeFrom);
   vec3 to = turnedNode(edgeTo);
+  float clearOfTheCore = smooth01((nearestToTheCore(from.xy, to.xy) - ${glslFloat(CAGE_CORE_CLEARANCE)}) / ${glslFloat(CAGE_CORE_FADE)});
+  if (clearOfTheCore <= 0.0) {
+    hide();
+    return;
+  }
   float twinkle = 0.55 + 0.45 * smooth01(0.5 + 0.5 * sin((time * edgeClock.x + edgeClock.y) * TAU));
   emitSegment(from.xy, to.xy, halfWidth, 1.0, 1.0);
-  shapeLight = edgeClock.z * twinkle * (corner.x < 0.0 ? nodeLight(from) : edgeClock.w * nodeLight(to));
+  shapeLight = clearOfTheCore * edgeClock.z * twinkle * (corner.x < 0.0 ? nodeLight(from) : edgeClock.w * nodeLight(to));
 `,
     ),
     uniforms: ['bodyTurn', 'time', 'halfWidth'],
