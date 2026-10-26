@@ -614,9 +614,10 @@ imported with `?url`.
   asked. What clipped the phone's recording was Android switching into call mode
   mid-greeting, and the headset's microphone is already open for the wake word
   with the processing the call asks for, so nothing switches here.
-  The session dials while he is still arriving, and mutes from `onConversationCreated` until he has finished, so the agent never
+  The session dials the moment the token is in, while the greeting plays, and
+  mutes from `onConversationCreated` until he has finished, so the agent never
   hears the greeting.
-- **A recording refused after dialling.** Dialled during the arrival, the agent
+- **A recording refused after dialling.** Dialled behind the greeting, the agent
   was already told not to greet, so it stays quiet until sir speaks.
 - **A refused recording.** Refused before anything was dialled, the session sends no override, so the agent keeps its
   own first message. A recording the browser never answers for is given up on by
