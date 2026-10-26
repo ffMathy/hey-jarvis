@@ -21,10 +21,11 @@ const WATCH_SCALE = 1.25;
  *
  * At 1 the sparks were sharp, but the watch could not hold its thirty frames a second at any count:
  * the density loop fell straight to `FEWEST_PARTICLES` and stayed there, so the cost was the pixels
- * rather than the particles. 0.7 is about half the pixels of that, and two and a half times the
- * phone's share, with a scale-up of under one and a half.
+ * rather than the particles. At 0.7, about half those pixels, it was still laggy, though less.
+ * 0.6 is about a third of full resolution's pixels, still nearly twice the phone's share, with a
+ * scale-up of one and two thirds.
  */
-export const WATCH_DRAWN_RESOLUTION = 0.7;
+export const WATCH_DRAWN_RESOLUTION = 0.6;
 
 /**
  * How big the sphere is drawn on this watch.

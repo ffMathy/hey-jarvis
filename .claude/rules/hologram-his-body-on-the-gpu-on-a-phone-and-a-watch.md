@@ -39,7 +39,7 @@ background, and where the group is Screened onto it is isolated too: a view with
 nothing but a background colour is flattened away on Fabric, and the Screen
 would take the nearest view that groups anything as its backdrop — in the
 conversation sheet the pressable that fills it, which drew the Screen through
-two sheet-sized layers. Inside it the scaled view (`drawnResolution`: 0.45 on a phone, 0.7 on a watch) is the
+two sheet-sized layers. Inside it the scaled view (`drawnResolution`: 0.45 on a phone, 0.6 on a watch) is the
 group the two canvases are composed in: isolated, rendered into a texture of its
 own at the drawn size on Android (`renderToHardwareTextureAndroid`), faded by
 the arrival (`arrivalOf`, written each frame), and on a background that is not
