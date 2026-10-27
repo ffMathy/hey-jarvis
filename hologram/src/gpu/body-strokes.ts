@@ -21,24 +21,26 @@ import { SPARKLE_REPEAT } from './sparkle';
  * The tiers' paints: colour, full width in the drawing's unit (the shaders use halves) and alpha.
  * The mid, bright and hot strokes vary in brightness along their length with the sparkle (`sparkle.ts`).
  *
- * The old body fused with the film's: the dim and mid tiers are the old body's deep orange and
- * as wide as its strokes were (0.014-0.0155R), so the fill that packs his middle reads as dense as
- * the old body did — the user liked that better than the film's fine glitter — and the bright tier
- * is the film's pale gold, with a hot core near white laid over it, which Screens a bright speck at
- * full sparkle to about (255, 248, 223): the film's white-hot highlights, (255, 229, 174) and hotter
- * at their middles. Every speck at the back of the ball is drawn dim, so it is depth rather than
- * clutter.
+ * The old body fused with the film's: the dim and mid tiers are as wide as the old body's strokes
+ * were (0.014-0.0155R), so the fill that packs his middle reads as dense as the old body did — the
+ * user liked that better than the film's fine glitter. Their colours are Age of Ultron's, at the
+ * user's asking ("too yellow — I liked the old reddish tint"): copper and red-orange tiers at hue
+ * 19-25°, as the old body's were, and a bright tier of orange with an orange-white hot core laid
+ * over it, never white. Screen stacking lifts what is drawn to about 30°, where the film's close-ups
+ * sit (hue 26°, saturation 0.59, R:G:B 1:0.69:0.43, their hottest pixels (253, 223, 193)), so the
+ * hottest specks are orange-white rather than the pale gold that stacked to (255, 254, 237). Every
+ * speck at the back of the ball is drawn dim, so it is depth rather than clutter.
  *
  * Each is drawn at its fragment's `light` too, which takes a little from a speck seen face on
  * (`shellFacing`), so the beads round his edge lead.
  */
 export const STROKE_PAINTS = {
-  dim: { colour: 0xcc6e2c, width: 0.014, alpha: 0.6 },
-  mid: { colour: 0xf88a30, width: 0.0155, alpha: 0.88 },
+  dim: { colour: 0xbc5626, width: 0.014, alpha: 0.6 },
+  mid: { colour: 0xec6624, width: 0.0155, alpha: 0.88 },
   /** Its alpha is 1 − 0.25 × agitation. */
-  bright: { colour: 0xffd27e, width: 0.0155, alpha: 1 },
+  bright: { colour: 0xff8e40, width: 0.0155, alpha: 1 },
   /** Round-capped, on the bright strokes only; its alpha is 0.9 × (1 − 0.95 × agitation). */
-  hot: { colour: 0xfff2d4, width: 0.007, alpha: 0.9 },
+  hot: { colour: 0xffb88c, width: 0.007, alpha: 0.9 },
 };
 
 /**

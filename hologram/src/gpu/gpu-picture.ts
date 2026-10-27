@@ -74,13 +74,13 @@ import { sceneSparklePixels } from './sparkle';
 
 /**
  * Everything of him but his body on the GPU, over a bare WebGL 2 context: the picture the body is
- * drawn over, after the film's J.A.R.V.I.S. as Vision Quest shows him close up.
+ * drawn over, after the film's J.A.R.V.I.S. as Vision Quest shows him close up, in Age of Ultron's
+ * colours and with its ringed eye.
  *
- * Drawn layer by layer: the aura round him, the core — its glowing disc, the faint marks across it
- * and the white-hot ring round it — the cage of hairlines turning with his body, the ladder truss
- * rolling round his edge, the embers drifting
- * off him, and while he talks the fray and the chips; the thinking pulse; and the satellites over
- * him. Each layer is a few draws, each with one paint and one width, from the layers in
+ * Drawn layer by layer: the aura round him, the core — its glowing disc, the ringed eye and faint
+ * bar across it and the white-hot ring round it — the cage of hairlines turning with his body, the
+ * ladder truss rolling round his edge, the embers drifting off him, and while he talks the fray and
+ * the chips; the thinking pulse; and the satellites over him. Each layer is a few draws, each with one paint and one width, from the layers in
  * `picture-layers.ts`, whose vertex shaders work out where everything is this frame. So a frame's
  * JavaScript is a couple of dozen draws' uniforms, and nothing it does grows with what is drawn.
  *
@@ -123,15 +123,18 @@ const GLYPH_SLOTS = 8;
 const GLYPH_RUNS = 160;
 
 /**
- * The film's colours, measured on its close-ups: its hottest pixels (255,229,174), its 95th
- * percentile (245,198,132), its 90th (234,180,111), its median (178,105,32). White-hot at the heart
- * of what is brightest, pale gold and gold through the light, amber, and a warm orange glow round it.
+ * Age of Ultron's colours, which the user asked for over Vision Quest's paler gold ("too yellow — I
+ * liked the old reddish tint"). Measured on its close-ups: a weighted hue of 26°, saturation 0.59,
+ * R:G:B 1:0.69:0.43, its hottest pixels (253,223,193), its 90th percentile (224,170,107), its median
+ * (160,98,54). Vision Quest's disc is paler (hue 33°, median (218,163,96)). White-hot here is an
+ * orange-white, still the palest paint in him so the core's ring stays the hottest thing; then pale
+ * orange and orange through the light, a deeper orange, and a red-orange glow round it.
  */
-const WHITE_HOT = 0xfff2d4;
-const PALE_GOLD = 0xffdc96;
-const GOLD = 0xffc25a;
-const AMBER = 0xf59a3c;
-const GLOW = 0xe08a2c;
+const WHITE_HOT = 0xffe2c4;
+const PALE_ORANGE = 0xffbc80;
+const ORANGE = 0xff9a46;
+const DEEP_ORANGE = 0xec7432;
+const GLOW = 0xd65a22;
 
 /** What `createGpuPicture` makes, as plain data, so a worklet can carry it (see `GpuBody`). */
 export interface GpuPicture {
@@ -522,8 +525,10 @@ function strokeCoreRing(
 
 /**
  * The core: a glow, mostly see-through, at its brightest just inside the white-hot ring and blooming
- * out of it both ways; the faint hooked ring and bar across it; and the ring itself — the brightest
- * thing in him — a thin gold body under a crisper near-white line.
+ * out of it both ways; Age of Ultron's small ringed eye inside it, its rings an orange body under a
+ * pale orange line, never white, so it reads under the glow without outshining the ring; a faint
+ * bar across it; and the ring itself — the brightest thing in him — a thin orange body under a
+ * crisper orange-white line.
  */
 function drawCore(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
@@ -541,10 +546,11 @@ function drawCore(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
 
   const paths = picture.paths;
   useLayerAtCore(gl, picture, picture.segments, frame);
-  strokeStatic(gl, picture, paths.coreRing, 0.01 / 2, PALE_GOLD, 0.24 * glow);
-  strokeStatic(gl, picture, paths.coreBar, 0.008 / 2, PALE_GOLD, 0.16 * glow);
+  strokeStatic(gl, picture, paths.coreRing, 0.024 / 2, ORANGE, 0.3 * glow);
+  strokeStatic(gl, picture, paths.coreRing, 0.01 / 2, PALE_ORANGE, 0.6 * glow);
+  strokeStatic(gl, picture, paths.coreBar, 0.008 / 2, PALE_ORANGE, 0.16 * glow);
 
-  strokeCoreRing(gl, picture, frame, 0.024 / 2, GOLD, clamp01(0.7 * brightness));
+  strokeCoreRing(gl, picture, frame, 0.024 / 2, ORANGE, clamp01(0.7 * brightness));
   strokeCoreRing(gl, picture, frame, 0.009 / 2, WHITE_HOT, clamp01(0.9 * brightness));
 }
 
@@ -574,7 +580,7 @@ function strokeCage(
 }
 
 /**
- * The cage round him: hairlines, as the film's wireframe is — a fine pale gold line that glitters
+ * The cage round him: hairlines, as the film's wireframe is — a fine pale orange line that glitters
  * as it turns, over a glow much fainter and not much wider, so a line blooms a little and never
  * reads as a bar. It was a gold line on an amber one on a glow five times its width, and read as
  * thick glowing bars. On its own it never reaches near-white; where it crosses one of his white-hot
@@ -585,7 +591,7 @@ function drawCage(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   const alpha = frame.state.cageAlpha;
   if (alpha <= 0) return;
   strokeCage(gl, picture, frame, 0.034 / 2, PICTURE_PAINTS.solid, GLOW, 0.15 * alpha);
-  strokeCage(gl, picture, frame, 0.011 / 2, PICTURE_PAINTS.sparkle, PALE_GOLD, clamp01(0.9 * alpha));
+  strokeCage(gl, picture, frame, 0.011 / 2, PICTURE_PAINTS.sparkle, PALE_ORANGE, clamp01(0.9 * alpha));
 }
 
 /** How far either side of the middle of the truss its haze reaches: from rail to rail, and no further. */
@@ -614,9 +620,11 @@ function strokeTruss(
 
 /**
  * The ladder truss round his edge (`buildTruss`): the old rim's squares, always there and recoloured
- * into the cage's palette — a faint glow haze filling each box, a fine gold inner rail, a gold outer
- * rail under a pale gold hot line, gold rungs closing the boxes, and the circuit traces and struts
- * finer still. It comes and goes with the cage, carried out with the shell as he arrives.
+ * into the cage's palette — a trace of glow in each box, open as the film's ladder is, a fine orange
+ * inner rail, an orange outer rail under a pale orange hot line, orange rungs closing the boxes, and
+ * the circuit traces and struts finer still. It comes and goes with the cage, carried out with the
+ * shell as he arrives. The haze filled each box at 0.42 of the glow once, and in the copper paints
+ * that read as a solid band round him.
  */
 function drawTruss(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
@@ -624,12 +632,12 @@ function drawTruss(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) 
   if (alpha <= 0) return;
   const parts = picture.trussParts;
   const glow = frame.state.glowGain;
-  strokeTruss(gl, picture, frame, parts.haze, TRUSS_HAZE_HALF_WIDTH, GLOW, clamp01(0.42 * alpha * glow));
-  strokeTruss(gl, picture, frame, parts.inner, 0.014 / 2, GOLD, clamp01(0.7 * alpha));
-  strokeTruss(gl, picture, frame, parts.outer, 0.026 / 2, GOLD, clamp01(0.85 * alpha));
-  strokeTruss(gl, picture, frame, parts.outer, 0.008 / 2, PALE_GOLD, clamp01(0.85 * alpha));
-  strokeTruss(gl, picture, frame, parts.rung, 0.016 / 2, GOLD, clamp01(0.85 * alpha));
-  strokeTruss(gl, picture, frame, parts.detail, 0.006 / 2, AMBER, clamp01(0.5 * alpha));
+  strokeTruss(gl, picture, frame, parts.haze, TRUSS_HAZE_HALF_WIDTH, GLOW, clamp01(0.15 * alpha * glow));
+  strokeTruss(gl, picture, frame, parts.inner, 0.014 / 2, ORANGE, clamp01(0.7 * alpha));
+  strokeTruss(gl, picture, frame, parts.outer, 0.026 / 2, ORANGE, clamp01(0.85 * alpha));
+  strokeTruss(gl, picture, frame, parts.outer, 0.008 / 2, PALE_ORANGE, clamp01(0.85 * alpha));
+  strokeTruss(gl, picture, frame, parts.rung, 0.016 / 2, ORANGE, clamp01(0.85 * alpha));
+  strokeTruss(gl, picture, frame, parts.detail, 0.006 / 2, DEEP_ORANGE, clamp01(0.5 * alpha));
 }
 
 /** The embers, in one paint and width. */
@@ -653,13 +661,13 @@ function strokeEmbers(
   drawShapes(gl, picture, layer, 0, layer.shapes);
 }
 
-/** The embers drifting off him: a warm glow round a pale gold fleck. */
+/** The embers drifting off him: a warm glow round a pale orange fleck. */
 function drawEmbers(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
   const alpha = frame.state.cageAlpha;
   if (alpha <= 0) return;
   strokeEmbers(gl, picture, frame, 0.032 / 2, GLOW, 0.32 * alpha);
-  strokeEmbers(gl, picture, frame, 0.011 / 2, PALE_GOLD, clamp01(alpha));
+  strokeEmbers(gl, picture, frame, 0.011 / 2, PALE_ORANGE, clamp01(alpha));
 }
 
 // ---- while he talks ---------------------------------------------------------------------------
@@ -690,7 +698,7 @@ function drawFray(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
   if (frame.state.frayDrive <= 0.02) return;
   strokeFray(gl, picture, frame, 0.02 / 2, GLOW, 0.22);
-  strokeFray(gl, picture, frame, 0.0065 / 2, GOLD, 0.75);
+  strokeFray(gl, picture, frame, 0.0065 / 2, ORANGE, 0.75);
 }
 
 /** The chips' streaks, or their cores, in one paint and width. */
@@ -715,14 +723,14 @@ function strokeChips(
   drawShapes(gl, picture, layer, part.first, part.count);
 }
 
-/** The latest burst's shards of light: a soft glow, a gold streak, and its white-hot core (`drawChips`). */
+/** The latest burst's shards of light: a soft glow, an orange streak, and its white-hot core (`drawChips`). */
 function drawChips(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
   const state = frame.state;
   if (state.burstAge >= CHIP_GONE_SECONDS || state.burstStrength <= 0) return;
   const parts = picture.chipParts;
   strokeChips(gl, picture, frame, parts.streak, 0.045 / 2, GLOW, 0.35);
-  strokeChips(gl, picture, frame, parts.streak, 0.017 / 2, GOLD, 0.95);
+  strokeChips(gl, picture, frame, parts.streak, 0.017 / 2, ORANGE, 0.95);
   strokeChips(gl, picture, frame, parts.core, 0.007 / 2, WHITE_HOT, 0.55);
 }
 
@@ -757,7 +765,7 @@ function drawThinkingPulse(gl: HologramGl, picture: GpuPicture, frame: GpuPictur
   const radius = CORE_RING_RADIUS + (PULSE_REACH - CORE_RING_RADIUS) * state.pulse;
   const strength = state.thinking * (1 - state.pulse);
   strokePulse(gl, picture, frame, radius, 0.05 / 2, GLOW, 0.3 * strength);
-  strokePulse(gl, picture, frame, radius, 0.012 / 2, GOLD, 0.85 * strength);
+  strokePulse(gl, picture, frame, radius, 0.012 / 2, ORANGE, 0.85 * strength);
 }
 
 // ---- satellites -------------------------------------------------------------------------------
@@ -842,7 +850,7 @@ function strokeSatelliteGlyph(
   for (let pass = 0; pass < (flare > 0 ? 2 : 1); pass++) {
     beginPath(gl, picture);
     useLayerAtSatellite(gl, picture, glyphs, frame, place);
-    setSolid(gl, glyphs, pass === 0 ? AMBER : GOLD, pass === 0 ? light * (1 - flare) : light * flare);
+    setSolid(gl, glyphs, pass === 0 ? DEEP_ORANGE : ORANGE, pass === 0 ? light * (1 - flare) : light * flare);
     setUniform1(glyphs, gl, 'halfWidth', GLYPH_STROKE_WIDTH / 2);
     drawShapes(gl, picture, glyphs, slot * GLYPH_RUNS, picture.glyphRuns[slot]);
   }
@@ -861,7 +869,7 @@ function strokeSatelliteFlare(
   const arc = picture.arc;
   beginPath(gl, picture);
   useLayerAtSatellite(gl, picture, arc, frame, place);
-  setSolid(gl, arc, GOLD, light * flare);
+  setSolid(gl, arc, ORANGE, light * flare);
   drawCircle(gl, picture, 1.75 - 0.95 * flare, 0.07 / 2, 0, 0);
 }
 
@@ -880,7 +888,7 @@ function drawSatellite(
   fillSatelliteDisc(gl, picture, frame, place, 1.15, GLOW, haloAlpha);
   fillSatelliteDisc(gl, picture, frame, place, 0.7, GLOW, haloAlpha);
   strokeSatelliteGlyph(gl, picture, frame, place, slot, light, flare);
-  fillSatelliteDisc(gl, picture, frame, place, 0.1, GOLD, light * (0.6 + 0.4 * flare));
+  fillSatelliteDisc(gl, picture, frame, place, 0.1, ORANGE, light * (0.6 + 0.4 * flare));
   if (flare > 0) strokeSatelliteFlare(gl, picture, frame, place, light, flare);
 }
 

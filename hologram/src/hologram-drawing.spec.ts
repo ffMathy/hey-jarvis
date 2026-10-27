@@ -3,20 +3,28 @@ import { advanceFrameClock, createFrameClockState, hologramFrameOf, restartArriv
 import {
   analyseFrame,
   arrivalOf,
+  BODY_STRIDE,
   BODY_TURN_SECONDS,
   bodyTurnRadians,
   CAGE_EDGE_STRIDE,
   CAGE_LONGEST_SPIKE,
   CAGE_SHELL_OUTER,
   CAGE_WOVEN_REACH,
+  CORE_X,
+  CORE_Y,
   createHologramScene,
+  createRandom,
   EMBER_RISE,
   EMBER_STRIDE,
+  FRAGMENT_CODE_GLYPH_STEP,
+  GYRO_ARCS,
   type HologramFrame,
   PARTICLE_COUNT,
   PICTURE_SHELL_EDGE,
+  pushGyroSpeck,
   RIM_ROLL_DEGREES_PER_SECOND,
   ROLL_DEGREES_PER_SECOND,
+  ridesTheWhorl,
   SHELL_DEGREES_PER_SECOND,
   swirlFragment,
   TRUSS_INNER_RAIL,
@@ -93,6 +101,84 @@ describe('the hologram', () => {
     expect(bigger.body.length).toBeGreaterThan(createHologramScene(SEED).body.length);
     // Every fragment is the same number of values wide, so the count is exactly proportional.
     expect(bigger.body.length).toBe(Math.round(createHologramScene(SEED).body.length * 1.3));
+  });
+});
+
+/** A body table's rows, each where it rests seen face on, relative to the core, with its class. */
+function rowsOf(body: number[]) {
+  const rows: { fromTheCore: number; clockDegrees: number; innerLayer: boolean; bright: boolean; glyph: number }[] = [];
+  for (let offset = 0; offset < body.length; offset += BODY_STRIDE) {
+    const x = body[offset] - CORE_X;
+    const y = body[offset + 1] - CORE_Y;
+    const code = body[offset + 7];
+    const kind = code % FRAGMENT_CODE_GLYPH_STEP;
+    rows.push({
+      fromTheCore: Math.hypot(x, y),
+      // clockwise from 12 o'clock, y down
+      clockDegrees: ((Math.atan2(x, -y) * 180) / Math.PI + 360) % 360,
+      innerLayer: ridesTheWhorl(code),
+      bright: kind % 3 === 2,
+      glyph: Math.floor(code / FRAGMENT_CODE_GLYPH_STEP),
+    });
+  }
+  return rows;
+}
+
+describe('his middle: the whorl and the gyroscope', () => {
+  const rows = rowsOf(createHologramScene(SEED).body);
+  const innerLayer = rows.filter((row) => row.innerLayer);
+
+  it('still has exactly PARTICLE_COUNT specks, however many go to the whorl and the gyroscope', () => {
+    // Their rows come out of the fill's and the shell's: ten thousand at most, as the user asked.
+    expect(rows.length).toBe(PARTICLE_COUNT);
+    // Over four in ten ride the inner layer (measured 43.6%), and the rest still fill the ball.
+    expect(innerLayer.length / rows.length).toBeGreaterThan(0.35);
+    expect(innerLayer.length / rows.length).toBeLessThan(0.5);
+  });
+
+  it("winds the whorl's arms out from just outside the core's eye, with no knot inside it", () => {
+    // "The spiral is too sharp": its arms began at 0.04R and knotted into a white S inside the core's
+    // ring, 119 specks inside 0.06R. They begin at 0.1R now, so only an arm's spread reaches in.
+    const inside = (reach: number) => innerLayer.filter((row) => row.fromTheCore < reach).length;
+    // measured 0 inside 0.06R, and 3 inside 0.08R
+    expect(inside(0.06)).toBeLessThanOrEqual(5);
+    expect(inside(0.08)).toBeLessThanOrEqual(15);
+    // and the arms are there just outside it (measured 251 between 0.1R and 0.2R)
+    expect(innerLayer.filter((row) => row.fromTheCore >= 0.1 && row.fromTheCore < 0.2).length).toBeGreaterThan(150);
+  });
+
+  it("lights few of the whorl's specks, so the swirl is mid-toned and never white", () => {
+    // Three in ten of its specks were bright, each with a hot core, and its arms clipped to white.
+    // Measured 6.0% of the inner layer, with the gyroscope's brighter strands among them.
+    const bright = innerLayer.filter((row) => row.bright).length;
+    expect(bright / innerLayer.length).toBeLessThan(0.1);
+  });
+
+  it("lays the gyroscope's strands on its arcs round the core, on the inner layer, clear of the core's ring", () => {
+    const random = createRandom(SEED);
+    const body: number[] = [];
+    const shape = [0, 0];
+    for (let speck = 0; speck < 3000; speck++) pushGyroSpeck(random, body, shape);
+    const specks = rowsOf(body);
+    // Within 0.03R of the arc's radius (measured 0.020R at most), and inside its sweep.
+    const liesOn = (speck: (typeof specks)[number], [radius, from, sweep]: (typeof GYRO_ARCS)[number]) =>
+      Math.abs(speck.fromTheCore - radius) <= 0.03 && (speck.clockDegrees - from + 360) % 360 <= sweep + 0.5;
+
+    for (const speck of specks) {
+      // On the inner layer, so the arcs turn with the swirl and stay arcs however far the globe turns.
+      expect(speck.innerLayer).toBe(true);
+      // A dash: a strand reads as a line.
+      expect(speck.glyph).toBe(0);
+      expect(GYRO_ARCS.some((arc) => liesOn(speck, arc))).toBe(true);
+      // Never inside 0.45R, round the core's ring, which is Vision Quest's (measured 0.51R at the
+      // nearest), and never out past the shell's edge.
+      expect(speck.fromTheCore).toBeGreaterThan(0.45);
+      expect(speck.fromTheCore).toBeLessThan(PICTURE_SHELL_EDGE);
+    }
+    // Every arc has its strands (measured 936, 575 and 1489 of the 3000).
+    for (const arc of GYRO_ARCS) {
+      expect(specks.filter((speck) => liesOn(speck, arc)).length).toBeGreaterThan(300);
+    }
   });
 });
 

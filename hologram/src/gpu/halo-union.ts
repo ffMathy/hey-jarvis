@@ -26,14 +26,16 @@ export const HALO_TEXELS = 512;
 
 /**
  * How wide each tier's halo is — twice the distance from its stroke at which its glow is gone — in
- * the drawing's unit, and how strong it is on the stroke, before the voice's glow. Warm orange-gold.
+ * the drawing's unit, and how strong it is on the stroke, before the voice's glow. Red-orange, as
+ * Age of Ultron's glow is and redder than the specks, so his edge and the haze round him are the
+ * reddest of him.
  * The bright specks bloom, each a point of glow of its own; the mid and dim ones lay a broad warm
  * haze through him, as the old body's halos did, which is much of how packed he looks. Every halo is
  * as strong as its speck's `light`. The widest reaches 0.08R past its stroke, so from the shell's
  * edge at 0.87R no halo gets near the edge of the target at ±1.85R.
  */
 export const HALO_PAINTS = {
-  colour: 0xdc7426,
+  colour: 0xd0561c,
   dim: { width: 0.11, strength: 0.18 },
   mid: { width: 0.12, strength: 0.24 },
   bright: { width: 0.16, strength: 0.65 },

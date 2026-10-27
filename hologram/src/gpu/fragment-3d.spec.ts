@@ -371,8 +371,9 @@ describe('his specks', () => {
       tally.count++;
     }
     expect(faceOn.count).toBeGreaterThan(100);
-    // Enough at the edge to measure: three in ten of his specks are the whorl's, round the core,
-    // so the edge holds fewer than it did (measured 448 here).
+    // Enough at the edge to measure: over four in ten of his specks ride the inner layer instead —
+    // the whorl's and the gyroscope's, round the core — so the edge holds fewer than it did
+    // (measured 426 here).
     expect(edgeOn.count).toBeGreaterThan(400);
     expect(faceOn.light / faceOn.count).toBeGreaterThan(0.7);
     expect(edgeOn.light / edgeOn.count).toBeGreaterThan(0.8);
@@ -394,7 +395,8 @@ describe('his specks', () => {
     const state = stateAt(IDLE);
     const behind = specksAtTheEdge(state, true);
     const inFront = specksAtTheEdge(state, false);
-    // Enough to measure: fewer since three in ten specks went to the whorl (measured 175).
+    // Enough to measure: fewer since over four in ten specks went to the whorl and the gyroscope
+    // (measured 190).
     expect(behind.count).toBeGreaterThan(150);
     expect(behind.lit / behind.count).toBeGreaterThan(0.8 * (inFront.lit / inFront.count));
   });

@@ -1,13 +1,22 @@
-// The J.A.R.V.I.S. hologram: the golden sphere of light that stands in for Tony Stark's AI. This is
+// The J.A.R.V.I.S. hologram: the copper-orange sphere of light that stands in for Tony Stark's AI. This is
 // what he is made of — the seeded scene, the paths that never change — and what each frame of him
 // is (analyseFrame); the GPU draws him from it, his body in `gpu/gpu-body.ts` and every layer under
 // it in `gpu/gpu-picture.ts`, whose draw functions carry the layers' names.
 //
 // WHAT IT DEPICTS
-// J.A.R.V.I.S. as the Vision Quest footage shows him close up, in the scene where he dies. It is the
-// reference for how he looks: wherever it and the Avengers: Age of Ultron lab scene the drawing was
-// first made from disagree, it wins. Measured on 26 of its frames, with S the outer edge of his
-// shell of specks (about 0.88R here), the film shows:
+// A hybrid of two films' J.A.R.V.I.S., at the user's asking. Vision Quest, close up in the scene where
+// he dies, leads what he is made of: the ring, the shell, the cage and the bloom below. Avengers: Age
+// of Ultron, the lab scene the drawing was first made from, leads his colour and gives four parts:
+// - its red-orange: its close-ups measure a weighted hue of 26°, saturation 0.59, R:G:B
+//   1:0.69:0.43, median (160,98,54) and hottest pixels (253,223,193), never white;
+// - its soft swirl: one broad, mid-toned sweep of strands through his middle, at about 0.3-0.63R,
+//   never a white S;
+// - its small ringed eye at the core: two nested rings at 0.05-0.06R and 0.09-0.11R round a darker
+//   hole, never white;
+// - its gyroscope: bundles of 2-5 thin parallel strands on arcs round the core, ring light at
+//   0.50-0.60R over about half the clock and an arc at 0.67-0.7R;
+// and its ladder's boxes are open. Measured on 26 frames of Vision Quest, with S the outer edge of
+// his shell of specks (about 0.88R here), that film shows:
 // - a white-hot thin ring round his core at about 0.4 S, the brightest thing in him, round a glowing
 //   disc a little less bright than the ring, with faint marks across it;
 // - a shell of fine glittering specks from about 0.5 S to S, points and short dashes, pale gold to
@@ -19,7 +28,10 @@
 // - embers: tiny golden flecks drifting in the space round him, some of them streaked;
 // - bloom round all of it, falling from luma 150 at S to about half that by 2.4 S;
 // - colour from white-hot through pale gold and gold to deep amber: its hottest pixels are
-//   (255,229,174), its 95th percentile (245,198,132), its 90th (234,180,111), its median (178,105,32);
+//   (255,229,174), its 95th percentile (245,198,132), its 90th (234,180,111), its median (178,105,32).
+//   The drawing takes Age of Ultron's redder colour instead: over idle and speaking at 400 px it
+//   measures a weighted hue of about 30°, saturation 0.64, R:G:B 1:0.71:0.38, its hottest pixels
+//   orange-white rather than white, and his middle the palest of him and his edge the reddest;
 // - and calm: about 6 luma of change per film frame over 256 px.
 // The drawing keeps all of him inside his square, whose edge is about 1.85R from his middle at rest,
 // so its wireframe and its bloom stop shorter than the film's. Elsewhere it departs from the film
@@ -31,19 +43,21 @@
 //                     brightest on the shell's edge and gone by AURA_OUTER. It is painted as a band,
 //                     so the middle of him is never filled.
 //   drawCore          the core: a glow, mostly see-through, round the white-hot ring at
-//                     CORE_RING_RADIUS; the faint hooked ring and bar across it (staticPathsOf); and
-//                     the ring itself, nested strokes up to a near-white line, its brighter stretches
+//                     CORE_RING_RADIUS; Age of Ultron's small ringed eye inside it, a hooked ring at
+//                     0.1R round a ring at 0.06R, and a faint bar across it (staticPathsOf); and the
+//                     ring itself, nested strokes up to an orange-white line, its brighter stretches
 //                     rolling round it.
 //   drawCage          the wireframe (buildCage): hairlines between seeded nodes round the shell of
 //                     specks, longer lines further out and a few trailing away below him. It is in
 //                     three dimensions and turns with the body, and each edge twinkles on its own slow
 //                     clock.
 //   drawTruss         the old rim's ladder truss (buildTruss), at the user's asking: a hot outer rail
-//                     at TRUSS_OUTER_RAIL and a finer inner one at TRUSS_INNER_RAIL, a faint haze
-//                     between them, rungs about every 9° making its boxes, circuit traces and pairs
-//                     of short struts hanging inward, along about 190° of his edge in three stretches.
-//                     Recoloured into the cage's pale gold, always there, and rolling clockwise in the
-//                     plane of the view on its own clock (RIM_ROLL_DEGREES_PER_SECOND).
+//                     at TRUSS_OUTER_RAIL and a finer inner one at TRUSS_INNER_RAIL, rungs about
+//                     every 9° making its boxes, open as Age of Ultron's ladder is with only a trace
+//                     of glow in them, circuit traces and pairs of short struts hanging inward, along
+//                     about 190° of his edge in three stretches. Recoloured into the cage's pale
+//                     orange, always there, and rolling clockwise in the plane of the view on its own
+//                     clock (RIM_ROLL_DEGREES_PER_SECOND).
 //   drawEmbers        the embers (buildEmbers): flecks drifting out from the shell's edge and a little
 //                     upward, each on its own clock, some of them streaked.
 //   drawFray          while he talks: strands fraying off the upper left of the shell's edge, streak
@@ -56,11 +70,14 @@
 //   drawSatellites    the agents at work for him, circling him (`satellite-drawing.ts`). The headset
 //                     draws its own in the room instead.
 //   (the body)        over all of it, on the GPU in three dimensions (`hologram/gpu`): up to
-//                     PARTICLE_COUNT specks: the old body's whorl, two spiral arms of specks held in
-//                     the view plane and winding out of the core (pushWhorlSpeck); a fill through the
-//                     ball as the old body's was; and the film's shell from about half his radius
-//                     out (buildBody). Each tier has a soft halo of its own, and the stream, specks below the core
-//                     turning on a clock of their own (buildStream). The scene's body and stream
+//                     PARTICLE_COUNT specks: the old body's whorl, two soft spiral arms of specks
+//                     held in the view plane and winding out of the core from 0.1R, Age of Ultron's
+//                     swirl (pushWhorlSpeck); its gyroscope, strands of specks on arcs at 0.53R and
+//                     0.67R round the core, held in the view plane with the whorl (pushGyroSpeck); a
+//                     fill through the ball as the old body's was; and the film's shell from about
+//                     half his radius out (buildBody). Each tier has a soft halo of its own, and the
+//                     stream, specks below the core turning on a clock of their own (buildStream).
+//                     The scene's body and stream
 //                     tables, and the per-fragment helpers below (readFragment, placeFragment,
 //                     swirlFragment, latticeFragment and the rest), are what it is drawn from and
 //                     held to.
@@ -122,13 +139,23 @@
 //               lattice is what is seen.
 //
 // WHAT THE USER ASKED FOR
-// The film leads the look, but where the user has asked for something, that wins. Each request is
+// The films lead the look, but where the user has asked for something, that wins. Each request is
 // written up where it is made, and a change must keep them all:
 // - Dense, as the old body was. The film's hollow shell left a dark donut round the core, and the
 //   user preferred how packed the old body looked, so most of his specks fill the ball again
-//   (BODY_FILL_SHARE), in the old body's wider strokes, deep orange tiers and broad halos, and his
-//   middle is dimmed only a little (SHELL_FACE_DIMMING). The film's shell still lies round them, so
-//   his edge is the brightest of him, and its gold and white-hot highlights stay.
+//   (BODY_FILL_SHARE), in the old body's wider strokes, copper and orange tiers and broad halos, and
+//   his middle is dimmed only a little (SHELL_FACE_DIMMING). The film's shell still lies round them,
+//   so his edge is the brightest of him, and its orange and orange-white highlights stay.
+// - Reddish, not yellow: "The light is also too yellow - I liked the old reddish tint." Every paint
+//   is Age of Ultron's copper and red-orange (`gpu/body-strokes.ts`, `gpu/halo-union.ts`,
+//   `gpu/gpu-picture.ts`, `gpu/picture-gradients.ts`), and white-hot is an orange-white. Over idle and
+//   speaking at 400 px his weighted hue is 30.3° (it was 37.6°), G/R 0.71 (0.82), and near-white
+//   is 1.1% of his light (6.8%): his hottest pixels are orange-white, never pure white.
+// - The spiral is soft: "The spiral is too sharp." The whorl is Age of Ultron's broad, mid-toned
+//   swirl of strands (pushWhorlSpeck), from just outside the core's eye: along its arms it measures
+//   a mean luma of 201 (it was 234), 1.33 times the gaps between them (1.45), and at most 9%
+//   of its centre line is white in any band, where 84-94% was inside the core's ring. It is still a
+//   spiral, plainly, at phone size: soften it, never lose it.
 // - Nothing but particles fills him. A textured haze used to lie under everything, and it went at the
 //   user's asking ("I just want the particles to speak for themselves"). The aura is a band and the
 //   core's glow mostly see-through for the same reason. Do not paint a volume back in: the density
@@ -518,7 +545,7 @@ export const FRAGMENT_WANDER = 0.06;
 type Random = () => number;
 
 /** A Mulberry32-style seeded generator: the same seed always builds the same hologram. */
-function createRandom(seed: number): Random {
+export function createRandom(seed: number): Random {
   let state = seed >>> 0 || 1;
   return () => {
     state = (state + 0x6d2b79f5) >>> 0;
@@ -731,17 +758,29 @@ function pickFragmentRate(random: Random, pool: number) {
 }
 
 /**
- * A speck's shape and how long it is, written into out[0] and out[1]. However it hops, a speck
- * stays inside the limb: `radius` is its distance from his centre, which is the furthest from it
- * that turning can ever show it.
+ * The longest a speck `radius` from his centre may be drawn and still stay inside the limb however
+ * it hops: that distance is the furthest from his centre that turning can ever show it.
  */
+function limbCap(radius: number) {
+  return (1.02 - radius) / 1.1;
+}
+
+/** A speck's shape and how long it is, written into out[0] and out[1], no longer than {@link limbCap}. */
 function pickGlyphAndLength(random: Random, radius: number, out: number[]) {
   const glyph = pickGlyph(random);
   out[0] = glyph;
   out[1] = Math.max(
     0.012,
-    Math.min(glyph === 6 ? 0.04 + random() * 0.07 : pickFragmentLength(random), (1.02 - radius) / 1.1),
+    Math.min(glyph === 6 ? 0.04 + random() * 0.07 : pickFragmentLength(random), limbCap(radius)),
   );
+}
+
+/**
+ * Stretches the speck `shape` holds by `stretch`, so it reads as a line, but never past
+ * {@link limbCap} — unless it was already longer, as the shortest specks may be.
+ */
+function stretchSpeck(shape: number[], radius: number, stretch: number) {
+  shape[1] = Math.min(shape[1] * stretch, Math.max(shape[1], limbCap(radius)));
 }
 
 /**
@@ -795,26 +834,47 @@ function pushBodyRow(
 
 /**
  * The whorl: the old body's spiral through his middle, two arms winding out of the core, which the
- * user liked and asked to have back made of specks rather than painted. A share of his specks
- * ({@link WHORL_SHARE}) lie along the arms, held in the plane of the view and turning about the
- * core with the inner layer ({@link SHELL_DEGREES_PER_SECOND}), so the arms stay arms whichever way
- * the globe has turned. Furry, as the old arms were: most specks run along an arm and the rest
- * cross it.
+ * user liked and asked to have back made of specks rather than painted. A share of the body's draws
+ * ({@link WHORL_SHARE}; about 36% of its rows, since a draw for the fill or the shell is kept only
+ * about half the time and one for the whorl always) lie along the arms, held in the plane of the
+ * view and turning about the core with the inner layer ({@link SHELL_DEGREES_PER_SECOND}), so the
+ * arms stay arms whichever way the globe has turned.
+ *
+ * It is Age of Ultron's soft swirl, at the user's asking ("the spiral is too sharp"): one broad,
+ * mid-toned sweep made of strands, never white. Its arms stood 1.45 times as bright as the gaps
+ * between them and clipped to white in a tight S inside the core's ring, because their specks
+ * crowded the core, three in ten were bright, and the arm was narrowest there. Now the arms start
+ * outside the core's eye, their specks are spread evenly along them, few are bright and those keep
+ * to the arm's centre line, and the arm is broader, with a soft skirt round it.
  */
-const WHORL_SHARE = 0.3;
-/** The share of the whorl's specks that are bright, so its arms read through the fill. */
-const WHORL_BRIGHT_SHARE = 0.3;
-/** How far out of the core the arms wind, in R, and how many turns they make on the way. */
-const WHORL_START = 0.04;
+const WHORL_SHARE = 0.22;
+/** The share of the whorl's specks on an arm's centre line that are bright, falling off across it. */
+const WHORL_BRIGHT_SHARE = 0.06;
+/** How far out of the core the arms wind, in R, from just outside its eye, and how many turns they make. */
+const WHORL_START = 0.1;
 const WHORL_REACH = 0.78;
 const WHORL_TURNS = 1.1;
-/** The share of the whorl's specks that run along their arm, give or take 15°; the rest cross it. */
-const WHORL_ALONG_SHARE = 0.75;
+/**
+ * How the specks are spread along an arm: `out = random() ** WHORL_OUT_POWER`. The arm's length
+ * per step of `out` grows about seven times from its start to its end, so an even `out` crowded the
+ * start of the arm 19 times as densely as its end; this brings that down to about 4.
+ */
+const WHORL_OUT_POWER = 0.72;
+/** The share of the whorl's specks that run along their arm, give or take 15°, as strands; the rest cross it. */
+const WHORL_ALONG_SHARE = 0.9;
+/** How far across its arm a speck lies, in R: a spread of INNER + OUTER × out, widening as it winds out. */
+const WHORL_SPREAD_INNER = 0.04;
+const WHORL_SPREAD_OUTER = 0.065;
+/** The share of the whorl's specks spread further across the arm, and how many times as far: its soft skirt. */
+const WHORL_SKIRT_SHARE = 0.3;
+const WHORL_SKIRT_SPREAD = 2;
+/** The whorl's specks are drawn this much longer than a body speck, so an arm reads as strands. */
+const WHORL_STRETCH = 1.3;
 
 /** A whorl speck: its place on an arm and the way it lies, pushed as a row of the body. */
 function pushWhorlSpeck(random: Random, body: number[], shape: number[]) {
   const arm = random() < 0.5 ? 0 : Math.PI;
-  const out = random();
+  const out = random() ** WHORL_OUT_POWER;
   const reach = WHORL_START + (WHORL_REACH - WHORL_START) * out;
   const angle = arm + WHORL_TURNS * 2 * Math.PI * out;
   const cos = Math.cos(angle);
@@ -823,7 +883,9 @@ function pushWhorlSpeck(random: Random, body: number[], shape: number[]) {
   const runX = (WHORL_REACH - WHORL_START) * cos - reach * WHORL_TURNS * 2 * Math.PI * sin;
   const runY = (WHORL_REACH - WHORL_START) * sin + reach * WHORL_TURNS * 2 * Math.PI * cos;
   const run = Math.hypot(runX, runY);
-  const across = (random() + random() + random() - 1.5) * (0.025 + 0.045 * out);
+  const narrow = WHORL_SPREAD_INNER + WHORL_SPREAD_OUTER * out;
+  const spread = random() < WHORL_SKIRT_SHARE ? narrow * WHORL_SKIRT_SPREAD : narrow;
+  const across = (random() + random() + random() - 1.5) * spread;
   const x = CORE_X + reach * cos - (runY / run) * across;
   const y = CORE_Y + reach * sin + (runX / run) * across;
   const crossing = random() < WHORL_ALONG_SHARE ? 0 : Math.PI / 2;
@@ -836,7 +898,11 @@ function pushWhorlSpeck(random: Random, body: number[], shape: number[]) {
   const outwardY = y / seen;
   const spot = [x, y, (random() * 2 - 1) * 0.06];
   pickGlyphAndLength(random, seen, shape);
-  const brightness = pickBrightness(random, WHORL_BRIGHT_SHARE);
+  stretchSpeck(shape, seen, WHORL_STRETCH);
+  // How far off the arm's centre line, in standard deviations of the narrow spread (the sum of three
+  // uniforms has a standard deviation of a half): the bright specks keep to the centre line.
+  const deviations = across / (0.5 * narrow);
+  const brightness = pickBrightness(random, WHORL_BRIGHT_SHARE * Math.exp(-0.5 * deviations * deviations));
   pushBodyRow(
     random,
     body,
@@ -845,6 +911,90 @@ function pushWhorlSpeck(random: Random, body: number[], shape: number[]) {
     outwardX * lieX + outwardY * lieY,
     shape,
     brightness,
+    6,
+  );
+}
+
+/** One of the gyroscope's arcs: its radius from the core in R, its first clock degree and its sweep in degrees. */
+type GyroArc = readonly [radius: number, from: number, sweep: number];
+
+/**
+ * The gyroscope: Age of Ultron's arcs round the core, each a bundle of thin strands, as its lab
+ * shots show them (ring light at 0.50-0.60R over about half the clock, an arc at 0.67-0.7R). Specks
+ * laid along them on the whorl's inner layer, so they turn with the swirl and stay arcs whichever way
+ * the globe has turned. Clear of the core's ring at {@link CORE_RING_RADIUS}, which is Vision Quest's,
+ * and inside the shell's edge.
+ */
+export const GYRO_ARCS: readonly GyroArc[] = [
+  [0.53, 300, 110],
+  [0.53, 105, 70],
+  [0.67, 20, 140],
+];
+/** How long the arcs are together, radius by sweep: an arc is picked in proportion to its length. */
+const GYRO_LENGTH = GYRO_ARCS.reduce((total, [radius, , sweep]) => total + radius * sweep, 0);
+/** The share of the body's draws that go to the arcs: about 8% of his rows. */
+const GYRO_SHARE = 0.06;
+/** The share of the arcs' specks that are bright. */
+const GYRO_BRIGHT_SHARE = 0.15;
+/** Strands per arc, and how far apart they lie, in R. */
+const GYRO_STRANDS = 3;
+const GYRO_STRAND_GAP = 0.016;
+/** How much of each end of an arc thins out, as a share of its sweep. */
+const GYRO_END_FADE = 0.15;
+/** The arcs' specks are drawn this much longer than a body speck, so a strand reads as a line. */
+const GYRO_STRETCH = 1.5;
+
+/** One of the gyroscope's arcs, picked in proportion to its length. */
+function pickGyroArc(random: Random) {
+  let left = random() * GYRO_LENGTH;
+  for (const arc of GYRO_ARCS) {
+    left -= arc[0] * arc[2];
+    if (left <= 0) return arc;
+  }
+  return GYRO_ARCS[GYRO_ARCS.length - 1];
+}
+
+/** How far along its arc a speck lies, from 0 to 1, thinning out over {@link GYRO_END_FADE} at each end. */
+function pickAlongTheArc(random: Random) {
+  let along = random();
+  while (random() > Math.min(1, along / GYRO_END_FADE) * Math.min(1, (1 - along) / GYRO_END_FADE)) along = random();
+  return along;
+}
+
+/**
+ * A gyroscope speck: on one strand of one arc, lying along it, pushed as a row of the inner layer.
+ * {@link buildBody} gives the arcs {@link GYRO_SHARE} of its draws; exported so the arcs can be held
+ * to their own shape apart from the whorl that shares their layer.
+ */
+export function pushGyroSpeck(random: Random, body: number[], shape: number[]) {
+  const [radius, from, sweep] = pickGyroArc(random);
+  const along = pickAlongTheArc(random);
+  const strand = Math.floor(random() * GYRO_STRANDS) - (GYRO_STRANDS - 1) / 2;
+  const reach = radius + strand * GYRO_STRAND_GAP + (random() - 0.5) * 0.008;
+  // clock degrees, clockwise from 12 o'clock with y down
+  const clock = (from + sweep * along) * DEGREES_TO_RADIANS;
+  const x = CORE_X + reach * Math.sin(clock);
+  const y = CORE_Y - reach * Math.cos(clock);
+  const turn = (random() - 0.5) * 0.3;
+  const lieX = Math.cos(clock + turn);
+  const lieY = Math.sin(clock + turn);
+  // Kept relative to the ring through where it is seen, as every body row is (ringDirection).
+  const seen = Math.hypot(x, y) || 1;
+  const outwardX = x / seen;
+  const outwardY = y / seen;
+  const spot = [x, y, (random() * 2 - 1) * 0.06];
+  pickGlyphAndLength(random, seen, shape);
+  // a dash, so a strand reads as a line
+  shape[0] = 0;
+  stretchSpeck(shape, seen, GYRO_STRETCH);
+  pushBodyRow(
+    random,
+    body,
+    spot,
+    -outwardY * lieX + outwardX * lieY,
+    outwardX * lieX + outwardY * lieY,
+    shape,
+    pickBrightness(random, GYRO_BRIGHT_SHARE),
     6,
   );
 }
@@ -868,8 +1018,10 @@ function pushWhorlSpeck(random: Random, body: number[], shape: number[]) {
  * cycles twice as fast and only shows while he talks, standing in for calm fragments
  * whose ids it takes over — so the count lit, and the brightness, stay the same.
  *
- * The whorl's specks ({@link WHORL_SHARE}) ride the counter-turning inner layer instead of the
- * globe's turn, so the spiral through his middle drifts against the rest of him.
+ * The whorl's and the gyroscope's specks ({@link WHORL_SHARE}, {@link GYRO_SHARE}) ride the
+ * counter-turning inner layer instead of the globe's turn, so the spiral and the arcs through his
+ * middle drift against the rest of him. Both take their rows out of the fill's and the shell's, so the
+ * body still has exactly `fragmentCount` rows.
  */
 function buildBody(random: Random, fragmentCount: number) {
   const body: number[] = [];
@@ -878,6 +1030,10 @@ function buildBody(random: Random, fragmentCount: number) {
   while (body.length < fragmentCount * BODY_STRIDE) {
     if (random() < WHORL_SHARE) {
       pushWhorlSpeck(random, body, shape);
+      continue;
+    }
+    if (random() < GYRO_SHARE) {
+      pushGyroSpeck(random, body, shape);
       continue;
     }
     pickBodyPlace(random, spot);
@@ -1256,7 +1412,7 @@ export const EMBER_RISE = 0.3;
 const EMBER_SEED_MIX = 0x27d4eb2f;
 
 /**
- * The embers: tiny golden flecks drifting out from the shell's edge and a little upward, each on its
+ * The embers: tiny orange flecks drifting out from the shell's edge and a little upward, each on its
  * own slow clock, fading in and out and gone before {@link EMBER_FARTHEST}. A quarter of them are
  * streaked. Which of them show depends on a threshold each holds: {@link EMBERS_IN_SILENCE} of them
  * while he is quiet, more while he talks, and all of them on the low notes of his voice
@@ -1464,9 +1620,11 @@ export function sparklePixels(seed: number) {
 }
 
 /**
- * The marks of the core: inside its white-hot ring ({@link CORE_RING_RADIUS}) a hooked ring of radius
- * 0.1R with a stem curling in, and a bar across short enough to stay inside it — the film's glowing
- * disc has faint marks like these across it.
+ * The marks of the core: inside its white-hot ring ({@link CORE_RING_RADIUS}) Age of Ultron's small
+ * ringed eye — a hooked ring of radius 0.1R with a stem curling in, round a closed ring of 0.06R, as
+ * the film's lab shots show two nested rings at 0.05-0.06R and 0.09-0.11R round a darker hole — and
+ * a bar across short enough to stay inside the white-hot ring, as Vision Quest's glowing disc has
+ * faint marks across it.
  *
  * The ring used to put out a short tick at its upper right, where one of the film's frames shows a
  * spark leave it. Held still on him, it read as a glitch in the ring rather than as a spark, and it
@@ -1480,13 +1638,15 @@ function buildCoreGlyph() {
   pathMoveTo(ring, Math.cos(endAngle) * 0.1, Math.sin(endAngle) * 0.1);
   pathLineTo(ring, 0.012, -0.055);
   pathLineTo(ring, 0.03, -0.02);
+  // the eye's inner ring, a run of its own (appendArc starts with a move)
+  appendArc(ring, 0, 0, 0.06, 0, 2 * Math.PI);
   const bar = makePathBuilder();
   pathMoveTo(bar, -0.22, 0.012);
   pathLineTo(bar, 0.22, 0.012);
   return { coreRing: ring, coreBar: bar };
 }
 
-/** The paths that never change, as commands: the core's marks — its hooked ring and its bar. */
+/** The paths that never change, as commands: the core's marks — its ringed eye and its bar. */
 export function staticPathsOf() {
   return buildCoreGlyph();
 }

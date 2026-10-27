@@ -64,7 +64,7 @@ function glyphIcon(glyph: string): HTMLCanvasElement {
     context.lineWidth = 0.15;
     context.lineCap = 'round';
     context.lineJoin = 'round';
-    context.strokeStyle = '#ff7e28';
+    context.strokeStyle = '#ff8e40';
     context.stroke(new Path2D(glyph));
   }
   return icon;

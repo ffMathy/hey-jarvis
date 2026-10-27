@@ -31,43 +31,46 @@ function stopsAtRadii(reach: number, stops: readonly [radius: number, colour: st
 
 /**
  * The glow inside the white-hot ring and the ring's own bloom. Inside, the film's disc is a warm
- * glowing haze that fills the ring: at its brightest just inside the ring, golden there, and falling
- * away to about half the ring's light at the middle, a deeper gold, which leaves what lies behind it
- * showing through. On the ring it blooms both ways, inward into that haze and outward into the band
- * between the core and the shell of specks, which it leaves dark and see-through, as the film's is.
+ * glowing haze that fills the ring: at its brightest just inside the ring, a pale orange there, and
+ * falling away to about half the ring's light at the middle, a deeper copper, which leaves what lies
+ * behind it showing through. On the ring it blooms both ways, inward into that haze and outward into
+ * the band between the core and the shell of specks, which it leaves dark and see-through, as the
+ * film's is. It is the palest of him, as both films have his middle, and still orange rather than
+ * gold (Age of Ultron's colour, see `gpu-picture.ts`).
  *
- * It has been both ways wrong. Pale gold and nearly as bright at the middle as at the ring, it read
- * as an opaque coin laid over him; then faint amber at a fifth of the ring's light, the inside of
- * the ring was a dark hole where the film's glows.
+ * It has been both ways wrong. Pale and nearly as bright at the middle as at the ring, it read as
+ * an opaque coin laid over him; then faint amber at a fifth of the ring's light, the inside of the
+ * ring was a dark hole where the film's glows.
  */
 const CORE_GLOW = stopsAtRadii(CORE_GLOW_REACH, [
-  [0, '#eea85676'],
-  [0.12, '#f1ac5a7c'],
-  [0.22, '#f5b66290'],
-  [CORE_RING_RADIUS - 0.07, '#f9c06eac'],
-  [CORE_RING_RADIUS - 0.025, '#fdcc80cc'],
-  [CORE_RING_RADIUS, '#ffd48cd8'],
-  [CORE_RING_RADIUS + 0.025, '#fcbc6aa0'],
-  [CORE_RING_RADIUS + 0.06, '#f0a04658'],
-  [CORE_RING_RADIUS + 0.11, '#e48e321c'],
-  [CORE_GLOW_REACH, '#e08a2c00'],
+  [0, '#e07c3c76'],
+  [0.12, '#e4823f7c'],
+  [0.22, '#ea8a4690'],
+  [CORE_RING_RADIUS - 0.07, '#f0964eac'],
+  [CORE_RING_RADIUS - 0.025, '#f8a85ecc'],
+  [CORE_RING_RADIUS, '#ffb878d8'],
+  [CORE_RING_RADIUS + 0.025, '#f08e4aa0'],
+  [CORE_RING_RADIUS + 0.06, '#e4743458'],
+  [CORE_RING_RADIUS + 0.11, '#d8642a1c'],
+  [CORE_GLOW_REACH, '#d45a2200'],
 ]);
 
 /**
  * The aura: nothing inside {@link AURA_INNER}, rising to its brightest on the shell's edge, and
- * falling off softly to nothing at {@link AURA_OUTER}, warm gold where it is brightest and deep
- * amber at its far edge, as the film's bloom is near-white at its heart and orange in its falloff.
+ * falling off softly to nothing at {@link AURA_OUTER}, orange where it is brightest and a deep red
+ * copper at its far edge, as Age of Ultron's bloom reddens in its falloff: the aura is the reddest
+ * of him.
  */
 const AURA = stopsAtRadii(AURA_OUTER, [
-  [0, '#e08a2c00'],
-  [AURA_INNER, '#e08a2c00'],
-  [0.62, '#e8923410'],
-  [PICTURE_SHELL_EDGE - 0.08, '#f09c3e8c'],
-  [PICTURE_SHELL_EDGE, '#f4a246ff'],
-  [0.98, '#ec963ac0'],
-  [1.12, '#e08a2c5c'],
-  [1.3, '#cc74241c'],
-  [AURA_OUTER, '#b8641e00'],
+  [0, '#d45a2200'],
+  [AURA_INNER, '#d45a2200'],
+  [0.62, '#dc642810'],
+  [PICTURE_SHELL_EDGE - 0.08, '#e672308c'],
+  [PICTURE_SHELL_EDGE, '#ea7834ff'],
+  [0.98, '#e26c2ec0'],
+  [1.12, '#d45a225c'],
+  [1.3, '#bc4c1a1c'],
+  [AURA_OUTER, '#a4401600'],
 ]);
 
 /** A `#rrggbb` or `#rrggbbaa` colour as four channels from 0 to 1, not premultiplied. */
