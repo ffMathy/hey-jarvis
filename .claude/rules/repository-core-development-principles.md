@@ -25,3 +25,4 @@
 - [`parallel-task-execution`](parallel-task-execution.md) - Run independent steps as parallel background tasks
 - [`turbo-commands`](turbo-commands.md) - Always run tasks through Turborepo
 - [`validation`](validation.md) - When and how to run tests, linting, and builds
+- [`show-progress-in-pictures`](show-progress-in-pictures.md) - Send rendered images of every step of a visual change
