@@ -10,7 +10,9 @@ import { BrowserLocation, type Call, ExpoObject, expoObjects, recordingGl, uncop
 /**
  * The picture of everything but his body against a context that only writes down what it is asked:
  * what it compiles, how each path is drawn and blended, and what it leaves set. Whether its pixels
- * are Skia's picture of him is the headset's browser tests' to say, against frames Skia drew.
+ * are still what they were when he was last redrawn on purpose is the headset's browser tests' to
+ * say (vr's `hologram-picture.spec.ts`), against goldens `vr/.scripts/render-picture-goldens.ts`
+ * drew from it.
  */
 
 const scene = pictureSceneOf(createHologramScene(SCENE_SEED));

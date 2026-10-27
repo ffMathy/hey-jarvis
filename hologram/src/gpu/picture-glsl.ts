@@ -34,7 +34,6 @@ export const PICTURE_PAINTS = { solid: 0, sparkle: 1, radial: 2 } as const;
 
 /** The constants and helpers both stages share, as the drawing wrote them. */
 const PICTURE_HELPERS = /* glsl */ `
-const float PI = 3.141592653589793;
 const float TAU = 6.283185307179586;
 const float DEGREES = 0.017453292519943295;
 

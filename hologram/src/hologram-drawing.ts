@@ -1091,7 +1091,8 @@ export function createHologramScene(seed: number, particleCount: number = PARTIC
     fray: buildFray(random).map(roundToFiveDecimals),
     streakArcs: buildStreakArcs(random).map(roundToFiveDecimals),
     limbStreaks: buildLimbStreaks(random).map(roundToFiveDecimals),
-    // only a seed: the static textures are built straight into paths, never copied to the worklet runtime
+    // only a seed: the sparkle's texels are built from it wherever they are uploaded (gpu/sparkle.ts,
+    // and vr's sparkle texture), never copied to the worklet runtime
     textureSeed: Math.floor(random() * 4294967296),
     // Each from a generator of its own, as the body is, so that nothing drawn from the one above —
     // taken out or added — reshuffles them, nor they it.

@@ -135,17 +135,17 @@ export interface ShapeRange {
  * Runs from anywhere — the static paths, and the satellites' glyphs — each its two ends and which
  * of them it shares with the runs either side. A run joins them round, as Skia's round join does and
  * indistinguishably from its mitre on curves as gentle as these, and an end that is its path's own
- * takes the paint's cap.
+ * is round too: every path drawn this way — the core's hooked ring and bar, and the glyphs — has
+ * round caps.
  */
 export const SEGMENTS_VERTEX_SHADER = shader(
   `
 in vec4 ends;
 in float joins;
 uniform float halfWidth;
-uniform float roundCaps;
 `,
   `
-  emitRun(ends.xy, ends.zw, halfWidth, joins, roundCaps, roundCaps);
+  emitRun(ends.xy, ends.zw, halfWidth, joins, 1.0, 1.0);
 `,
 );
 
@@ -165,7 +165,7 @@ export function staticSegmentsLayer(paths: StaticPaths): {
   return {
     layer: {
       vertexShader: SEGMENTS_VERTEX_SHADER,
-      uniforms: ['halfWidth', 'roundCaps'],
+      uniforms: ['halfWidth'],
       attributes: [attribute('ends', 4, ends), attribute('joins', 1, joins)],
       shapes: ends.length,
     },

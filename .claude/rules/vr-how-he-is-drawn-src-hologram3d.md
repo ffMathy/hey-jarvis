@@ -52,11 +52,12 @@ materials, targets and meshes:
    still. The target is read bottom row first, as every framebuffer is, which is
    the right way up for the quad's own coordinates, so nothing is flipped.
 4. **The halo union** (`halo-union.ts`), once a frame, before either eye: every lit
-   fragment's halo as a capsule, MAX-blended into a 1024×512 byte target (R/G/B =
-   dim/mid/bright coverage; the pinned fragments in the left half, the inner
-   layer's in the right, as the phone paints them as separate paths). Stacked one
-   by one, the halos were a flat orange coin; the phone strokes each tier's halos
-   as one path, so they are a union.
+   fragment's halo as a soft glow round its stroke — full on the stroke, falling as
+   (1 − d/r)² to nothing at its tier's radius, times the speck's light — MAX-blended
+   into a 1024×512 byte target (R/G/B = how much the dim, mid and bright halos light
+   each spot; the pinned fragments in the left half, the inner layer's in the right,
+   as separate layers). Stacked one by one, the halos would be a flat coin over his
+   middle; unioned, they make one smooth envelope that leaves it see-through.
 5. **Per eye, the view-plane quad** (`view-plane-quad.ts`): the picture's target
    Screened with the halos' light, facing the centre eye, and faded with the rest
    of him by his arrival (`arrivalOf`) through the blend. It is the whole square,

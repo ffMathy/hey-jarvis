@@ -233,7 +233,7 @@ export function createGpuPicture(gl: HologramGl, scene: HologramPictureScene): G
   const glyphJoins = glyphBuffer(1);
   const glyphSource: PictureLayerSource = {
     vertexShader: SEGMENTS_VERTEX_SHADER,
-    uniforms: ['halfWidth', 'roundCaps'],
+    uniforms: ['halfWidth'],
     attributes: [],
     shapes: GLYPH_SLOTS * GLYPH_RUNS,
   };
@@ -308,38 +308,36 @@ function beginPath(gl: HologramGl, picture: GpuPicture) {
 }
 
 /**
- * Sets a layer up for a draw: its program, its shapes, the draw's transform — `a`…`f` the local
- * frame in the square's own frame (0 to 1, y down), as a canvas matrix's six numbers — and its paint.
- * `localPerPixel` is how long a device pixel is in the local frame.
+ * Sets a layer up for a draw: its program, its shapes, and the draw's transform — the local frame
+ * scaled by `scale` about `originX`, `originY` in the square's own frame (0 to 1, y down). Every
+ * layer is drawn upright and unsquashed, so a scale and an origin are all a transform is; the
+ * stroke widths are measured in device pixels of the square, `pixels` across.
  */
 function useLayer(
   gl: HologramGl,
   picture: GpuPicture,
   layer: PictureLayer,
-  a: number,
-  b: number,
-  c: number,
-  d: number,
-  e: number,
-  f: number,
-  localPerPixel: number,
+  scale: number,
+  originX: number,
+  originY: number,
+  pixels: number,
 ) {
   'worklet';
   const uniforms = layer.program.uniforms;
   gl.useProgram(layer.program.program);
   gl.bindVertexArray(layer.array);
   const matrix = picture.matrix;
-  matrix[0] = a;
-  matrix[1] = b;
+  matrix[0] = scale;
+  matrix[1] = 0;
   matrix[2] = 0;
-  matrix[3] = c;
-  matrix[4] = d;
+  matrix[3] = 0;
+  matrix[4] = scale;
   matrix[5] = 0;
-  matrix[6] = e;
-  matrix[7] = f;
+  matrix[6] = originX;
+  matrix[7] = originY;
   matrix[8] = 1;
   if (uniforms.toSquare) gl.uniformMatrix3fv(uniforms.toSquare, false, matrix);
-  if (uniforms.localPerPixel) gl.uniform1f(uniforms.localPerPixel, localPerPixel);
+  if (uniforms.localPerPixel) gl.uniform1f(uniforms.localPerPixel, 1 / (scale * pixels));
   if (uniforms.sparkle) gl.uniform1i(uniforms.sparkle, 0);
   if (uniforms.gradients) gl.uniform1i(uniforms.gradients, 1);
 }
@@ -347,8 +345,7 @@ function useLayer(
 /** A layer in the drawing's unit frame (R = 1, y down), its origin at his centre. */
 function useLayerFlat(gl: HologramGl, picture: GpuPicture, layer: PictureLayer, frame: GpuPictureFrame) {
   'worklet';
-  const radius = frame.state.radius;
-  useLayer(gl, picture, layer, radius, 0, 0, radius, 0.5, 0.5, 1 / (radius * frame.pixels));
+  useLayer(gl, picture, layer, frame.state.radius, 0.5, 0.5, frame.pixels);
 }
 
 /**
@@ -363,26 +360,14 @@ function useLayerFlat(gl: HologramGl, picture: GpuPicture, layer: PictureLayer, 
  */
 function useLayerRoundTheShell(gl: HologramGl, picture: GpuPicture, layer: PictureLayer, frame: GpuPictureFrame) {
   'worklet';
-  const scale = frame.state.radius * frame.state.shellReach;
-  useLayer(gl, picture, layer, scale, 0, 0, scale, 0.5, 0.5, 1 / (scale * frame.pixels));
+  useLayer(gl, picture, layer, frame.state.radius * frame.state.shellReach, 0.5, 0.5, frame.pixels);
 }
 
 /** A layer in the drawing's unit frame moved to the core, as `canvas.translate(CORE_X, CORE_Y)` moves it. */
 function useLayerAtCore(gl: HologramGl, picture: GpuPicture, layer: PictureLayer, frame: GpuPictureFrame) {
   'worklet';
   const radius = frame.state.radius;
-  useLayer(
-    gl,
-    picture,
-    layer,
-    radius,
-    0,
-    0,
-    radius,
-    0.5 + radius * CORE_X,
-    0.5 + radius * CORE_Y,
-    1 / (radius * frame.pixels),
-  );
+  useLayer(gl, picture, layer, radius, 0.5 + radius * CORE_X, 0.5 + radius * CORE_Y, frame.pixels);
 }
 
 /** A paint of one colour, `kind` solid or sparkle: `colour` its RGB as a number, `alpha` its alpha. */
@@ -441,13 +426,12 @@ function drawShapes(gl: HologramGl, picture: GpuPicture, layer: PictureLayer, fi
   gl.drawElements(TRIANGLES, count * 6, UNSIGNED_SHORT, first * 12);
 }
 
-/** One of the paths that never change, stroked: `halfWidth` either side, its ends round or butt. */
+/** One of the paths that never change, stroked: `halfWidth` either side, with round ends. */
 function strokeStatic(
   gl: HologramGl,
   picture: GpuPicture,
   range: ShapeRange,
   halfWidth: number,
-  roundCaps: number,
   colour: number,
   alpha: number,
 ) {
@@ -455,7 +439,6 @@ function strokeStatic(
   const layer = picture.segments;
   setSolid(gl, layer, colour, alpha);
   setUniform1(layer, gl, 'halfWidth', halfWidth);
-  setUniform1(layer, gl, 'roundCaps', roundCaps);
   beginPath(gl, picture);
   drawShapes(gl, picture, layer, range.first, range.count);
 }
@@ -548,8 +531,8 @@ function drawCore(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
 
   const paths = picture.paths;
   useLayerAtCore(gl, picture, picture.segments, frame);
-  strokeStatic(gl, picture, paths.coreRing, 0.01 / 2, 1, PALE_GOLD, 0.24 * glow);
-  strokeStatic(gl, picture, paths.coreBar, 0.008 / 2, 1, PALE_GOLD, 0.16 * glow);
+  strokeStatic(gl, picture, paths.coreRing, 0.01 / 2, PALE_GOLD, 0.24 * glow);
+  strokeStatic(gl, picture, paths.coreBar, 0.008 / 2, PALE_GOLD, 0.16 * glow);
 
   strokeCoreRing(gl, picture, frame, 0.024 / 2, GOLD, clamp01(0.7 * brightness));
   strokeCoreRing(gl, picture, frame, 0.009 / 2, WHITE_HOT, clamp01(0.9 * brightness));
@@ -581,11 +564,11 @@ function strokeCage(
 }
 
 /**
- * The cage round him: hairlines, as the film's wireframe is — a fine gold line that glitters as it
- * turns, over a glow much fainter and not much wider, so a line blooms a little and never reads as
- * a bar. It was a gold line on an amber one on a glow five times its width, and read as thick
- * glowing bars. Gold, not pale gold: where it crosses the brightest specks on his limb a paler one
- * Screened them past near-white, which only his core's ring may reach.
+ * The cage round him: hairlines, as the film's wireframe is — a fine pale gold line that glitters
+ * as it turns, over a glow much fainter and not much wider, so a line blooms a little and never
+ * reads as a bar. It was a gold line on an amber one on a glow five times its width, and read as
+ * thick glowing bars. On its own it never reaches near-white; where it crosses one of his white-hot
+ * specks it Screens it nearer white, as the film's bright specks are.
  */
 function drawCage(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
@@ -767,8 +750,7 @@ function useLayerAtSatellite(
   place: SatellitePlace,
 ) {
   'worklet';
-  const radius = place.glyphRadius;
-  useLayer(gl, picture, layer, radius, 0, 0, radius, place.centreX, place.centreY, 1 / (radius * frame.pixels));
+  useLayer(gl, picture, layer, place.glyphRadius, place.centreX, place.centreY, frame.pixels);
 }
 
 /** A filled disc of `radius` glyph radii at a satellite's centre, as a path of its own. */
@@ -808,7 +790,6 @@ function strokeSatelliteGlyph(
     useLayerAtSatellite(gl, picture, glyphs, frame, place);
     setSolid(gl, glyphs, pass === 0 ? AMBER : GOLD, pass === 0 ? light * (1 - flare) : light * flare);
     setUniform1(glyphs, gl, 'halfWidth', GLYPH_STROKE_WIDTH / 2);
-    setUniform1(glyphs, gl, 'roundCaps', 1);
     drawShapes(gl, picture, glyphs, slot * GLYPH_RUNS, picture.glyphRuns[slot]);
   }
 }
