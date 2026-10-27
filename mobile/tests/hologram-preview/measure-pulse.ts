@@ -3,8 +3,8 @@
  *
  * The film's Jarvis does not brighten or swell as he gets louder — his sphere
  * stays the same size and the same brightness, and speech shows as *activity*:
- * fragments turning over faster, the bright crescent splitting, the limb fraying,
- * and chips breaking off the rim on syllable onsets and in the gaps after them.
+ * fragments turning over faster, the limb fraying and embers drifting off it, and
+ * chips breaking off the limb on syllable onsets and in the gaps after them.
  * So this does not look for a brightness pulse. It looks for movement, and it
  * guards against a pulse appearing.
  *

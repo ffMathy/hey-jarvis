@@ -107,10 +107,10 @@ function placement(scratch: PlacementScratch, centre: Vector3, basis: ViewBasis,
  * Jarvis in three dimensions, for a three.js scene in a headset or on a desktop canvas.
  *
  * Per frame on the CPU: the phone's frame clock and `analyseFrame`. On the GPU, all through
- * three's own context: the picture of the layers that are flat — the whorl, the core, the rim, the
- * chips, which leave the body out — into a target of its own, the halo union once, then per eye
- * the view-plane quad (the picture Screened with the halos) and the body's strokes where they
- * really are. See .claude/rules/vr-how-he-is-drawn-src-hologram3d.md.
+ * three's own context: the picture of the layers that are flat — the aura, the core, the cage, the
+ * embers, the fray and the chips, which leave the body out — into a target of its own, the halo
+ * union once, then per eye the view-plane quad (the picture Screened with the halos) and the body's
+ * strokes where they really are. See .claude/rules/vr-how-he-is-drawn-src-hologram3d.md.
  */
 export function createJarvisHologram3D(renderer: WebGLRenderer, options: JarvisHologramOptions = {}): JarvisHologram3D {
   const scene = createHologramScene(SCENE_SEED);
@@ -200,7 +200,7 @@ export function createJarvisHologram3D(renderer: WebGLRenderer, options: JarvisH
     view = viewBasisTowards(centre, head, view);
     const frame = clock.frame();
     lastFrame = frame;
-    const state = analyseFrame(frame, 1, scene);
+    const state = analyseFrame(frame, 1);
     const distance = centre.distanceTo(head);
     const fade = closeRangeFade(distance, radius);
     if (state.arrival <= 0 || fade <= 0) {

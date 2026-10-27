@@ -1,4 +1,4 @@
-import { analyseFrame, createHologramScene, type HologramScene, SCENE_SEED } from 'hologram';
+import { analyseFrame, createHologramScene, SCENE_SEED } from 'hologram';
 import {
   createGpuBody,
   drawGpuBody,
@@ -26,7 +26,6 @@ import type { GpuBodyCheck } from './preview-hook';
 export interface RawBody {
   canvas: HTMLCanvasElement;
   gl: WebGL2RenderingContext;
-  scene: HologramScene;
   body: GpuBody;
 }
 
@@ -41,8 +40,7 @@ export function createRawBody(renderer: WebGLRenderer): RawBody {
   const canvas = document.createElement('canvas');
   const gl = canvas.getContext('webgl2', attributes);
   if (gl === null) throw new Error('There is no WebGL 2 context for the raw renderer.');
-  const scene = createHologramScene(SCENE_SEED);
-  return { canvas, gl, scene, body: createGpuBody(gl, scene) };
+  return { canvas, gl, body: createGpuBody(gl, createHologramScene(SCENE_SEED)) };
 }
 
 /** One of his parts, found by its material, which is narrowed to the raw shader every part of him is drawn with. */
@@ -166,7 +164,7 @@ export function checkGpuBody(
     raw.canvas.height = size.y;
   }
   drawGpuBody(raw.gl, raw.body, {
-    state: analyseFrame(frame, 1, raw.scene),
+    state: analyseFrame(frame, 1),
     density: numberUniform(material, 'density'),
     // Both of three's parts are faded by the same constant colour (see layer-blending.ts).
     fade: material.blendColor.r,

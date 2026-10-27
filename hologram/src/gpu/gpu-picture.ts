@@ -1,13 +1,13 @@
 import { PLAIN_RING_GLYPH, type SatelliteOrbit } from '../agent-work';
 import {
+  AURA_INNER,
+  AURA_OUTER,
+  CHIP_GONE_SECONDS,
+  CORE_RING_RADIUS,
   CORE_X,
   CORE_Y,
   type HologramFrameState,
   type HologramPictureScene,
-  LIMB_BLOOM_BAND,
-  LIMB_BLOOM_RADIUS,
-  LIMB_RIDGE_BAND,
-  LIMB_RIDGE_RADIUS,
   SPARKLE_TEXTURE_TEXELS,
   SPHERE_FRACTION,
   staticPathsOf,
@@ -54,59 +54,52 @@ import { GRADIENTS, pictureGradientPixels } from './picture-gradients';
 import {
   ARC_PIECES,
   arcLayer,
+  type CHIP_PARTS,
+  cageLayer,
   chipsLayer,
-  cometsLayer,
-  crescentLayer,
   discLayer,
+  embersLayer,
   frayLayer,
-  knotLayer,
-  lightningLayer,
   type PictureLayerSource,
   SEGMENTS_VERTEX_SHADER,
   type ShapeRange,
   type StaticPathName,
-  segmentLayer,
-  spokesLayer,
   staticSegmentsLayer,
-  swooshLayer,
-  type TrussPart,
-  ticksLayer,
-  trussLayer,
 } from './picture-layers';
 import { sceneSparklePixels } from './sparkle';
 
 /**
- * Everything of him but his body on the GPU, over a bare WebGL 2 context: what was Skia's picture
- * of him, until the GPU drew all of him.
+ * Everything of him but his body on the GPU, over a bare WebGL 2 context: the picture the body is
+ * drawn over, after the film's J.A.R.V.I.S. as Vision Quest shows him close up, in Age of Ultron's
+ * colours and with its ringed eye.
  *
- * Drawn layer for layer as Skia drew it — the inner shells, the lines, the core, the thin ring, the
- * ladder truss, the crescent, the fray, the chips, the accents, the thinking pulse, and the
- * satellites over him — each of Skia's `drawPath` calls one draw here, with the same paint, the same
- * width and the same transform, from the layers in `picture-layers.ts`, whose vertex shaders are the
- * drawing's path builders moved to the GPU. vr's `hologram-picture.spec.ts` holds it to frames Skia
- * drew. So a frame's JavaScript is a few dozen draws'
- * uniforms, and nothing it does grows with what is drawn.
+ * Drawn layer by layer: the aura round him, the core — its glowing disc, the ringed eye and faint
+ * bar across it and the white-hot ring round it — the cage of hairlines turning with his body, the
+ * embers drifting off him, and while he talks the fray and the chips; the thinking pulse; and the satellites over him. Each layer is a few draws, each with
+ * one paint and one width, from the layers in `picture-layers.ts`, whose vertex shaders work out
+ * where everything is this frame. So a frame's JavaScript is a couple of dozen draws' uniforms, and
+ * nothing it does grows with what is drawn.
  *
- * **Every paint is Screen**, as every one of Skia's was: premultiplied light, blended
- * `ONE, ONE_MINUS_SRC_COLOR` (alpha `ONE, ONE_MINUS_SRC_ALPHA`), which is Screen with the paint's
- * coverage folded in exactly as Skia's antialiasing folds it.
+ * **Every paint is Screen**: premultiplied light, blended `ONE, ONE_MINUS_SRC_COLOR` (alpha `ONE,
+ * ONE_MINUS_SRC_ALPHA`), which is Screen with the paint's coverage folded in exactly as Skia's
+ * antialiasing folded it, when Skia drew this picture.
  *
  * **A path is one coverage, as Skia's is.** Skia strokes a path once, so where its runs overlap —
- * a polyline's joins, two comets crossing — the overlap is not lit twice. Here a path is several
- * shapes, so each path's draws take a stencil value of their own and paint only pixels that path
- * has not painted yet: the stencil test is `NOTEQUAL` its value, and a pixel painted is set to it.
- * The values count up from 1 each frame, the stencil cleared to 0 with the colour and again if a
+ * a polyline's joins, two edges of the cage crossing — the overlap is not lit twice. Here a path is
+ * several shapes, so each path's draws take a stencil value of their own and paint only pixels that
+ * path has not painted yet: the stencil test is `NOTEQUAL` its value, and a pixel painted is set to
+ * it. The values count up from 1 each frame, the stencil cleared to 0 with the colour and again if a
  * frame ever ran past 255 paths, so the canvas needs a stencil buffer.
  *
- * **And where its shapes overlap, the one that covers a pixel most is the one painted.** The first
- * to reach a pixel would otherwise take it, and the faint antialiased edge of one strand of the
- * crescent, reaching a pixel before the strand lying over it, left a dark seam inside the stroke.
- * So each draw is made twice (`drawShapes`): into the depth buffer alone, each fragment nearer the
- * more it covers, and then in colour where the depth is equal, which is the fragment that covered
- * most; the stencil still stops a tie painting twice. Each path draws in a band of depths nearer
- * than every earlier path's, so the depth buffer, cleared to 1 with the colour, needs clearing only
- * with the stencil, and the canvas needs a depth buffer as well. expo-gl's on Android asks for 16
- * bits, which leaves each path's band 256 steps of coverage.
+ * **And where its shapes overlap, the one that lights a pixel most is the one painted.** The first
+ * to reach a pixel would otherwise take it, and the faint antialiased edge of one stroke, reaching a
+ * pixel before the stroke lying over it, left a dark seam inside the stroke. So each draw is made
+ * twice (`drawShapes`): into the depth buffer alone, each fragment nearer the more it covers, and
+ * then in colour where the depth is equal, which is the fragment that covered most; the stencil
+ * still stops a tie painting twice. Each path draws in a band of depths nearer than every earlier
+ * path's, so the depth buffer, cleared to 1 with the colour, needs clearing only with the stencil,
+ * and the canvas needs a depth buffer as well. expo-gl's on Android asks for 16 bits, which leaves
+ * each path's band 256 steps of coverage.
  *
  * Like the body (`gpu-body.ts`), it is made on the JS thread (`createGpuPicture`), as plain data a
  * worklet can carry, and drawn by a worklet (`drawGpuPicture`) on whichever thread holds the
@@ -125,27 +118,32 @@ interface PictureLayer {
 const GLYPH_SLOTS = 8;
 const GLYPH_RUNS = 160;
 
+/**
+ * Age of Ultron's colours, which the user asked for over Vision Quest's paler gold ("too yellow — I
+ * liked the old reddish tint"). Measured on its close-ups: a weighted hue of 26°, saturation 0.59,
+ * R:G:B 1:0.69:0.43, its hottest pixels (253,223,193), its 90th percentile (224,170,107), its median
+ * (160,98,54). Vision Quest's disc is paler (hue 33°, median (218,163,96)). White-hot here is an
+ * orange-white, still the palest paint in him so the core's ring stays the hottest thing; then pale
+ * orange and orange through the light, a deeper orange, and a red-orange glow round it.
+ */
+const WHITE_HOT = 0xffe2c4;
+const PALE_ORANGE = 0xffbc80;
+const ORANGE = 0xff9a46;
+const DEEP_ORANGE = 0xec7432;
+const GLOW = 0xd65a22;
+
 /** What `createGpuPicture` makes, as plain data, so a worklet can carry it (see `GpuBody`). */
 export interface GpuPicture {
   segments: PictureLayer;
   glyphs: PictureLayer;
   arc: PictureLayer;
   disc: PictureLayer;
-  segment: PictureLayer;
-  comets: PictureLayer;
-  spokes: PictureLayer;
-  swoosh: PictureLayer;
-  knot: PictureLayer;
-  truss: PictureLayer;
-  ticks: PictureLayer;
-  crescent: PictureLayer;
+  cage: PictureLayer;
+  embers: PictureLayer;
   fray: PictureLayer;
   chips: PictureLayer;
-  lightning: PictureLayer;
   paths: Record<StaticPathName, ShapeRange>;
-  trussParts: Record<TrussPart, ShapeRange>;
-  crescentTiers: ShapeRange[];
-  chipParts: Record<'slab' | 'middle', ShapeRange>;
+  chipParts: Record<(typeof CHIP_PARTS)[number], ShapeRange>;
   sparkle: WebGLTexture;
   gradients: WebGLTexture;
   /** The glyphs' runs, written as the satellites change, and the glyph each slot holds now. */
@@ -226,9 +224,7 @@ function layerOf(gl: HologramGl, source: PictureLayerSource, buffers?: [string, 
  * whichever thread holds `gl`. Throws when the GPU refuses any of it, as `createGpuBody` does.
  */
 export function createGpuPicture(gl: HologramGl, scene: HologramPictureScene): GpuPicture {
-  const statics = staticSegmentsLayer(staticPathsOf(scene.textureSeed));
-  const truss = trussLayer(scene);
-  const crescent = crescentLayer(scene);
+  const statics = staticSegmentsLayer(staticPathsOf());
   const chips = chipsLayer();
 
   // The glyphs draw with the static runs' shader, from buffers of their own that a frame rewrites.
@@ -241,7 +237,7 @@ export function createGpuPicture(gl: HologramGl, scene: HologramPictureScene): G
   const glyphJoins = glyphBuffer(1);
   const glyphSource: PictureLayerSource = {
     vertexShader: SEGMENTS_VERTEX_SHADER,
-    uniforms: ['halfWidth', 'roundCaps'],
+    uniforms: ['halfWidth'],
     attributes: [],
     shapes: GLYPH_SLOTS * GLYPH_RUNS,
   };
@@ -259,17 +255,7 @@ export function createGpuPicture(gl: HologramGl, scene: HologramPictureScene): G
     sceneSparklePixels(scene),
   );
   const gradients = texture(gl, CLAMP_TO_EDGE);
-  gl.texImage2D(
-    TEXTURE_2D,
-    0,
-    RGBA8,
-    GRADIENT_TEXELS,
-    GRADIENT_ROWS,
-    0,
-    RGBA,
-    UNSIGNED_BYTE,
-    pictureGradientPixels(scene.textureSeed),
-  );
+  gl.texImage2D(TEXTURE_2D, 0, RGBA8, GRADIENT_TEXELS, GRADIENT_ROWS, 0, RGBA, UNSIGNED_BYTE, pictureGradientPixels());
   gl.bindTexture(TEXTURE_2D, null);
 
   return {
@@ -280,20 +266,11 @@ export function createGpuPicture(gl: HologramGl, scene: HologramPictureScene): G
     ]),
     arc: layerOf(gl, arcLayer()),
     disc: layerOf(gl, discLayer()),
-    segment: layerOf(gl, segmentLayer()),
-    comets: layerOf(gl, cometsLayer(scene)),
-    spokes: layerOf(gl, spokesLayer()),
-    swoosh: layerOf(gl, swooshLayer()),
-    knot: layerOf(gl, knotLayer()),
-    truss: layerOf(gl, truss.layer),
-    ticks: layerOf(gl, ticksLayer(scene)),
-    crescent: layerOf(gl, crescent.layer),
+    cage: layerOf(gl, cageLayer(scene)),
+    embers: layerOf(gl, embersLayer(scene)),
     fray: layerOf(gl, frayLayer(scene)),
     chips: layerOf(gl, chips.layer),
-    lightning: layerOf(gl, lightningLayer()),
     paths: statics.ranges,
-    trussParts: truss.ranges,
-    crescentTiers: crescent.tiers,
     chipParts: chips.ranges,
     sparkle: carried(sparkle),
     gradients: carried(gradients),
@@ -308,7 +285,7 @@ export function createGpuPicture(gl: HologramGl, scene: HologramPictureScene): G
 
 /** What one frame of the picture needs. */
 export interface GpuPictureFrame {
-  /** `analyseFrame(frame, 1, scene)`: at size 1, so `state.radius` is his radius as a share of the square. */
+  /** `analyseFrame(frame, 1)`: at size 1, so `state.radius` is his radius as a share of the square. */
   state: HologramFrameState;
   /** The square's side in device pixels, which every stroke's antialiasing is measured in. */
   pixels: number;
@@ -319,26 +296,6 @@ export interface GpuPictureFrame {
 function clamp01(value: number) {
   'worklet';
   return value > 0 ? (value > 1 ? 1 : value) : 0;
-}
-
-function smooth01(value: number) {
-  'worklet';
-  const clamped = value < 0 ? 0 : value > 1 ? 1 : value;
-  return clamped * clamped * (3 - 2 * clamped);
-}
-
-function fraction(value: number) {
-  'worklet';
-  return value - Math.floor(value);
-}
-
-function hashInteger(value: number) {
-  'worklet';
-  let mixed = Math.imul(value | 0, 0x9e3779b1);
-  mixed ^= mixed >>> 15;
-  mixed = Math.imul(mixed, 0x85ebca77);
-  mixed ^= mixed >>> 13;
-  return (mixed >>> 0) / 4294967296;
 }
 
 /** Starts a path: its draws paint only the pixels no earlier path of this frame's has. */
@@ -355,126 +312,94 @@ function beginPath(gl: HologramGl, picture: GpuPicture) {
 }
 
 /**
- * Sets a layer up for a draw: its program, its shapes, the draw's transform — `a`…`f` the local
- * frame in the square's own frame (0 to 1, y down), as a canvas matrix's six numbers — and its paint.
- * `localPerPixel` is how long a device pixel is in the local frame.
+ * Sets a layer up for a draw: its program, its shapes, and the draw's transform — the local frame
+ * scaled by `scale` about `originX`, `originY` in the square's own frame (0 to 1, y down). Every
+ * layer is drawn upright and unsquashed, so a scale and an origin are all a transform is; the
+ * stroke widths are measured in device pixels of the square, `pixels` across.
  */
 function useLayer(
   gl: HologramGl,
   picture: GpuPicture,
   layer: PictureLayer,
-  a: number,
-  b: number,
-  c: number,
-  d: number,
-  e: number,
-  f: number,
-  localPerPixel: number,
+  scale: number,
+  originX: number,
+  originY: number,
+  pixels: number,
 ) {
   'worklet';
   const uniforms = layer.program.uniforms;
   gl.useProgram(layer.program.program);
   gl.bindVertexArray(layer.array);
   const matrix = picture.matrix;
-  matrix[0] = a;
-  matrix[1] = b;
+  matrix[0] = scale;
+  matrix[1] = 0;
   matrix[2] = 0;
-  matrix[3] = c;
-  matrix[4] = d;
+  matrix[3] = 0;
+  matrix[4] = scale;
   matrix[5] = 0;
-  matrix[6] = e;
-  matrix[7] = f;
+  matrix[6] = originX;
+  matrix[7] = originY;
   matrix[8] = 1;
   if (uniforms.toSquare) gl.uniformMatrix3fv(uniforms.toSquare, false, matrix);
-  if (uniforms.localPerPixel) gl.uniform1f(uniforms.localPerPixel, localPerPixel);
+  if (uniforms.localPerPixel) gl.uniform1f(uniforms.localPerPixel, 1 / (scale * pixels));
   if (uniforms.sparkle) gl.uniform1i(uniforms.sparkle, 0);
   if (uniforms.gradients) gl.uniform1i(uniforms.gradients, 1);
 }
 
-/** A layer in the drawing's unit frame turned `degrees` clockwise about `pivotX`, `pivotY`, as `canvas.rotate` turns it. */
-function useLayerTurned(
-  gl: HologramGl,
-  picture: GpuPicture,
-  layer: PictureLayer,
-  frame: GpuPictureFrame,
-  degrees: number,
-  pivotX: number,
-  pivotY: number,
-) {
-  'worklet';
-  const radius = frame.state.radius;
-  const angle = (degrees * Math.PI) / 180;
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-  const offsetX = pivotX - cos * pivotX + sin * pivotY;
-  const offsetY = pivotY - sin * pivotX - cos * pivotY;
-  useLayer(
-    gl,
-    picture,
-    layer,
-    radius * cos,
-    radius * sin,
-    -radius * sin,
-    radius * cos,
-    0.5 + radius * offsetX,
-    0.5 + radius * offsetY,
-    1 / (radius * frame.pixels),
-  );
-}
-
-/** A layer in the drawing's unit frame, untransformed. */
+/** A layer in the drawing's unit frame (R = 1, y down), its origin at his centre. */
 function useLayerFlat(gl: HologramGl, picture: GpuPicture, layer: PictureLayer, frame: GpuPictureFrame) {
   'worklet';
-  useLayerTurned(gl, picture, layer, frame, 0, 0, 0);
+  useLayer(gl, picture, layer, frame.state.radius, 0.5, 0.5, frame.pixels);
+}
+
+/**
+ * A layer in the drawing's unit frame shrunk towards his centre by as much as the vortex has yet to
+ * carry his shell of specks out of the core (`shellReach`), so that what is drawn round the shell is
+ * carried out with it as he arrives, and is in the drawing's unit frame once he has.
+ *
+ * The cage's lines and the embers keep their width as they are carried out (their half widths are
+ * divided by the reach), so their light grows with how far out they are rather than with the area
+ * they span: grown in both, the cage's light rose so steeply at the end of the vortex that a frame
+ * of it turned a tenth of the picture's light on at once.
+ */
+function useLayerRoundTheShell(gl: HologramGl, picture: GpuPicture, layer: PictureLayer, frame: GpuPictureFrame) {
+  'worklet';
+  useLayer(gl, picture, layer, frame.state.radius * frame.state.shellReach, 0.5, 0.5, frame.pixels);
 }
 
 /** A layer in the drawing's unit frame moved to the core, as `canvas.translate(CORE_X, CORE_Y)` moves it. */
 function useLayerAtCore(gl: HologramGl, picture: GpuPicture, layer: PictureLayer, frame: GpuPictureFrame) {
   'worklet';
   const radius = frame.state.radius;
-  useLayer(
-    gl,
-    picture,
-    layer,
-    radius,
-    0,
-    0,
-    radius,
-    0.5 + radius * CORE_X,
-    0.5 + radius * CORE_Y,
-    1 / (radius * frame.pixels),
-  );
+  useLayer(gl, picture, layer, radius, 0.5 + radius * CORE_X, 0.5 + radius * CORE_Y, frame.pixels);
 }
 
-/**
- * The paint, as Skia's paint was set for the draw: `kind` one of PICTURE_PAINTS, `colour` its RGB as a
- * number, `alpha` its alpha. A gradient's colour comes from the gradient, so its paint is the alpha
- * alone; `radialRow`, `radius` and `sweepRow` say which gradients it reads.
- */
-function setPaint(
-  gl: HologramGl,
-  layer: PictureLayer,
-  kind: number,
-  colour: number,
-  alpha: number,
-  radialRow: number,
-  radius: number,
-  sweepRow: number,
-) {
+/** A paint of one colour, `kind` solid or sparkle: `colour` its RGB as a number, `alpha` its alpha. */
+function setPaint(gl: HologramGl, layer: PictureLayer, kind: number, colour: number, alpha: number) {
   'worklet';
   const uniforms = layer.program.uniforms;
-  const isGradient = kind >= PICTURE_PAINTS.radialSweep;
-  const red = isGradient ? 1 : ((colour >> 16) & 0xff) / 255;
-  const green = isGradient ? 1 : ((colour >> 8) & 0xff) / 255;
-  const blue = isGradient ? 1 : (colour & 0xff) / 255;
+  const red = ((colour >> 16) & 0xff) / 255;
+  const green = ((colour >> 8) & 0xff) / 255;
+  const blue = (colour & 0xff) / 255;
   if (uniforms.paintColour) gl.uniform4f(uniforms.paintColour, red * alpha, green * alpha, blue * alpha, alpha);
   if (uniforms.paintKind) gl.uniform1i(uniforms.paintKind, kind);
-  if (uniforms.gradient) gl.uniform3f(uniforms.gradient, radialRow, radius, sweepRow);
 }
 
 function setSolid(gl: HologramGl, layer: PictureLayer, colour: number, alpha: number) {
   'worklet';
-  setPaint(gl, layer, PICTURE_PAINTS.solid, colour, alpha, 0, 1, 0);
+  setPaint(gl, layer, PICTURE_PAINTS.solid, colour, alpha);
+}
+
+/**
+ * A radial gradient's paint, measured from the draw's local origin: its colour comes from the
+ * gradient's `row`, which reaches its end at `radius`, so the paint is the alpha alone.
+ */
+function setRadialPaint(gl: HologramGl, layer: PictureLayer, alpha: number, row: number, radius: number) {
+  'worklet';
+  const uniforms = layer.program.uniforms;
+  if (uniforms.paintColour) gl.uniform4f(uniforms.paintColour, alpha, alpha, alpha, alpha);
+  if (uniforms.paintKind) gl.uniform1i(uniforms.paintKind, PICTURE_PAINTS.radial);
+  if (uniforms.gradient) gl.uniform2f(uniforms.gradient, row, radius);
 }
 
 function setUniform1(layer: PictureLayer, gl: HologramGl, name: string, value: number) {
@@ -505,99 +430,75 @@ function drawShapes(gl: HologramGl, picture: GpuPicture, layer: PictureLayer, fi
   gl.drawElements(TRIANGLES, count * 6, UNSIGNED_SHORT, first * 12);
 }
 
-/** One of the paths that never change, stroked: `halfWidth` either side, its ends round or butt. */
+/** One of the paths that never change, stroked: `halfWidth` either side, with round ends. */
 function strokeStatic(
   gl: HologramGl,
   picture: GpuPicture,
   range: ShapeRange,
   halfWidth: number,
-  roundCaps: number,
-  kind: number,
   colour: number,
   alpha: number,
 ) {
   'worklet';
   const layer = picture.segments;
-  setPaint(gl, layer, kind, colour, alpha, 0, 1, 0);
+  setSolid(gl, layer, colour, alpha);
   setUniform1(layer, gl, 'halfWidth', halfWidth);
-  setUniform1(layer, gl, 'roundCaps', roundCaps);
   beginPath(gl, picture);
   drawShapes(gl, picture, layer, range.first, range.count);
 }
 
-// ---- the volume -------------------------------------------------------------------------------
-
 /**
- * The inner layer, turning the other way from the rim: the whorl, the loop, the ")" bracket and the
- * edge-on ellipse, then the data streaks on the pinned body (`drawInnerShells`).
+ * A whole circle of the arc layer, as the path begun last, in whatever frame and paint the layer was
+ * set up with: centred on that frame's origin, `radius` across, `halfWidth` either side, its
+ * brighter and dimmer stretches `lumps` apart and rolled `lumpTurn` radians round (none at 0).
  */
-function drawInnerShells(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
+function drawCircle(
+  gl: HologramGl,
+  picture: GpuPicture,
+  radius: number,
+  halfWidth: number,
+  lumps: number,
+  lumpTurn: number,
+) {
   'worklet';
-  const state = frame.state;
-  const alpha = state.innerAlpha;
-  if (alpha <= 0) return;
-  const paths = picture.paths;
-  const solid = PICTURE_PAINTS.solid;
-  const sparkle = PICTURE_PAINTS.sparkle;
-  useLayerTurned(gl, picture, picture.segments, frame, state.shellTurn, CORE_X, CORE_Y);
-  strokeStatic(gl, picture, paths.whorl, 0.115 / 2, 1, solid, 0xd8651e, 0.26 * alpha);
-  strokeStatic(gl, picture, paths.whorlOuter, 0.082 / 2, 1, solid, 0xd8651e, 0.17 * alpha);
-  strokeStatic(gl, picture, paths.whorl, 0.04 / 2, 1, sparkle, 0xf47126, 0.95 * alpha);
-  strokeStatic(gl, picture, paths.whorlOuter, 0.028 / 2, 1, sparkle, 0xf47126, 0.7 * alpha);
-  strokeStatic(gl, picture, paths.whorl, 0.013 / 2, 1, sparkle, 0xff8c38, 0.6 * alpha * (1 - 0.5 * state.agitation));
-  strokeStatic(gl, picture, paths.whorlTicks, 0.01 / 2, 1, sparkle, 0xf47126, 0.6 * alpha);
-  strokeStatic(gl, picture, paths.loop, 0.056 / 2, 1, solid, 0xdc6820, 0.14 * alpha);
-  strokeStatic(gl, picture, paths.loop, 0.023 / 2, 0, solid, 0xe6862f, 0.75 * alpha);
-  strokeStatic(gl, picture, paths.edgeOn, 0.012 / 2, 0, solid, 0xe6862f, 0.3 * alpha);
-  strokeStatic(gl, picture, paths.bracket, 0.03 / 2, 1, solid, 0xe68727, 0.6 * alpha);
-  useLayerFlat(gl, picture, picture.segments, frame);
-  strokeStatic(gl, picture, paths.dataStreaks, 0.007 / 2, 0, solid, 0xe6862f, 0.32 * alpha * state.coreAlpha);
+  const layer = picture.arc;
+  const uniforms = layer.program.uniforms;
+  if (uniforms.arc) gl.uniform4f(uniforms.arc, 0, 0, radius, halfWidth);
+  if (uniforms.arcEnds) gl.uniform4f(uniforms.arcEnds, 0, Math.PI * 2, ARC_PIECES, 0);
+  if (uniforms.arcLumps) gl.uniform2f(uniforms.arcLumps, lumps, lumpTurn);
+  drawShapes(gl, picture, layer, 0, ARC_PIECES);
 }
 
-/** Comets always; spokes or the swoosh when the script's epoch calls for them (`drawLines`). */
-function drawLines(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
+// ---- the aura -----------------------------------------------------------------------------------
+
+/** How strong the aura is at its brightest, on the shell's edge. */
+const AURA_LIGHT = 0.24;
+
+/**
+ * The soft warm bloom round him (`AURA_INNER` to `AURA_OUTER`), painted as the band its gradient
+ * lights rather than as a disc, so the middle stays see-through. It answers his voice only as much as
+ * his sparks' glow does (`glowGain`). While he arrives it spreads out of the core with his shell of
+ * specks, its gradient shrunk with the frame it is drawn in.
+ */
+function drawAura(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
   const state = frame.state;
-  const alpha = state.innerAlpha * state.coreAlpha;
+  const alpha = AURA_LIGHT * state.auraAlpha * state.glowGain;
   if (alpha <= 0) return;
-  const script = state.script;
-  const spokes = script.lineKind === 1;
-  // The comets and the spokes are one path: a glow under it, then the line.
-  for (let pass = 0; pass < 2; pass++) {
-    const halfWidth = pass === 0 ? 0.034 / 2 : 0.013 / 2;
-    const roundCaps = pass === 0 ? 1 : 0;
-    const colour = pass === 0 ? 0xdc6820 : 0xec9440;
-    const strength = pass === 0 ? 0.12 * alpha : 0.7 * alpha;
-    beginPath(gl, picture);
-    useLayerFlat(gl, picture, picture.comets, frame);
-    setSolid(gl, picture.comets, colour, strength);
-    setUniform1(picture.comets, gl, 'time', state.time);
-    setUniform1(picture.comets, gl, 'halfWidth', halfWidth);
-    setUniform1(picture.comets, gl, 'roundCaps', roundCaps);
-    drawShapes(gl, picture, picture.comets, 0, picture.comets.shapes);
-    if (spokes) {
-      useLayerFlat(gl, picture, picture.spokes, frame);
-      setSolid(gl, picture.spokes, colour, strength);
-      setUniform1(picture.spokes, gl, 'lineSeed', script.lineSeed);
-      setUniform1(picture.spokes, gl, 'envelope', script.lineEnvelope);
-      setUniform1(picture.spokes, gl, 'halfWidth', halfWidth);
-      setUniform1(picture.spokes, gl, 'roundCaps', roundCaps);
-      drawShapes(gl, picture, picture.spokes, 0, picture.spokes.shapes);
-    }
-  }
-  if (script.lineKind === 2) {
-    beginPath(gl, picture);
-    useLayerFlat(gl, picture, picture.swoosh, frame);
-    setSolid(gl, picture.swoosh, 0xec9440, 0.42 * alpha * script.lineEnvelope);
-    setUniform1(picture.swoosh, gl, 'lines', Math.floor(24 * clamp01(script.lineSeconds / 1.2)));
-    setUniform1(picture.swoosh, gl, 'halfWidth', 0.006 / 2);
-    drawShapes(gl, picture, picture.swoosh, 0, picture.swoosh.shapes);
-  }
+  const layer = picture.arc;
+  beginPath(gl, picture);
+  useLayerRoundTheShell(gl, picture, layer, frame);
+  setRadialPaint(gl, layer, clamp01(alpha), GRADIENTS.aura.row, GRADIENTS.aura.radius);
+  drawCircle(gl, picture, (AURA_INNER + AURA_OUTER) / 2, (AURA_OUTER - AURA_INNER) / 2, 0, 0);
 }
 
 // ---- the core -----------------------------------------------------------------------------------
 
-function strokeKnot(
+/** How much dimmer the white-hot ring's dimmest stretches are than its brightest. */
+const CORE_RING_LUMPS = 0.3;
+
+/** One of the white-hot ring's nested strokes round the core, its brighter stretches rolling round it. */
+function strokeCoreRing(
   gl: HologramGl,
   picture: GpuPicture,
   frame: GpuPictureFrame,
@@ -606,320 +507,152 @@ function strokeKnot(
   alpha: number,
 ) {
   'worklet';
-  const layer = picture.knot;
+  const layer = picture.arc;
   beginPath(gl, picture);
   useLayerAtCore(gl, picture, layer, frame);
   setSolid(gl, layer, colour, alpha);
-  setUniform1(layer, gl, 'knotStep', Math.floor(frame.state.time * 6));
-  setUniform1(layer, gl, 'halfWidth', halfWidth);
-  setUniform1(layer, gl, 'roundCaps', 1);
-  drawShapes(gl, picture, layer, 0, layer.shapes);
+  drawCircle(gl, picture, CORE_RING_RADIUS, halfWidth, CORE_RING_LUMPS, (frame.state.roll * Math.PI) / 180);
 }
 
-/** The core: the elongated bloom, the hooked ring, the bar and the spiky knot (`drawCore`). */
+/**
+ * The core: a glow, mostly see-through, at its brightest just inside the white-hot ring and blooming
+ * out of it both ways; Age of Ultron's small ringed eye inside it, its rings an orange body under a
+ * pale orange line, never white, so it reads under the glow without outshining the ring; a faint
+ * bar across it; and the ring itself — the brightest thing in him — a thin orange body under a
+ * crisper orange-white line.
+ */
 function drawCore(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
   const state = frame.state;
   const alpha = state.coreAlpha;
   if (alpha <= 0) return;
   const brightness = alpha * state.coreDrift;
-  const radius = state.radius;
-  // The bloom: a unit disc turned -45° and squashed to 0.2 by 0.29 at the core.
-  const angle = (-45 * Math.PI) / 180;
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
+  const glow = brightness * state.coreGlow;
   const disc = picture.disc;
   beginPath(gl, picture);
-  useLayer(
-    gl,
-    picture,
-    disc,
-    radius * cos * 0.2,
-    radius * sin * 0.2,
-    -radius * sin * 0.29,
-    radius * cos * 0.29,
-    0.5 + radius * CORE_X,
-    0.5 + radius * CORE_Y,
-    1 / (radius * frame.pixels),
-  );
-  setPaint(
-    gl,
-    disc,
-    PICTURE_PAINTS.radial,
-    0,
-    clamp01(0.52 * brightness),
-    GRADIENTS.coreBloom.row,
-    GRADIENTS.coreBloom.radius,
-    0,
-  );
-  if (disc.program.uniforms.disc) gl.uniform3f(disc.program.uniforms.disc, 0, 0, 1);
+  useLayerAtCore(gl, picture, disc, frame);
+  setRadialPaint(gl, disc, clamp01(glow), GRADIENTS.coreGlow.row, GRADIENTS.coreGlow.radius);
+  if (disc.program.uniforms.disc) gl.uniform3f(disc.program.uniforms.disc, 0, 0, GRADIENTS.coreGlow.radius);
   drawShapes(gl, picture, disc, 0, 1);
 
   const paths = picture.paths;
-  const solid = PICTURE_PAINTS.solid;
   useLayerAtCore(gl, picture, picture.segments, frame);
-  strokeStatic(gl, picture, paths.coreRing, 0.075 / 2, 1, solid, 0xec8c2c, 0.2 * brightness);
-  strokeKnot(gl, picture, frame, 0.075 / 2, 0xec8c2c, 0.2 * brightness);
-  useLayerAtCore(gl, picture, picture.segments, frame);
-  strokeStatic(gl, picture, paths.coreBar, 0.04 / 2, 1, solid, 0xec8c2c, 0.3 * brightness);
-  strokeStatic(gl, picture, paths.coreRing, 0.04 / 2, 1, solid, 0xec8c2c, 0.3 * brightness);
-  strokeStatic(gl, picture, paths.coreRing, 0.017 / 2, 1, solid, 0xffa440, clamp01(0.62 * brightness));
-  strokeStatic(gl, picture, paths.coreBar, 0.013 / 2, 1, solid, 0xffa440, clamp01(0.62 * brightness));
-  strokeKnot(gl, picture, frame, 0.009 / 2, 0xffa440, 0.55 * alpha);
+  strokeStatic(gl, picture, paths.coreRing, 0.024 / 2, ORANGE, 0.3 * glow);
+  strokeStatic(gl, picture, paths.coreRing, 0.01 / 2, PALE_ORANGE, 0.6 * glow);
+  strokeStatic(gl, picture, paths.coreBar, 0.008 / 2, PALE_ORANGE, 0.16 * glow);
+
+  strokeCoreRing(gl, picture, frame, 0.024 / 2, ORANGE, clamp01(0.7 * brightness));
+  strokeCoreRing(gl, picture, frame, 0.009 / 2, WHITE_HOT, clamp01(0.9 * brightness));
 }
 
-// ---- the rim ------------------------------------------------------------------------------------
+// ---- round him: the cage and the embers -------------------------------------------------------
 
-/**
- * A circle, or an arc of one, in the drawing's unit frame turned `degrees` about the centre: the
- * limb's bands, the thin ring and the thinking pulse.
- */
-function strokeCircle(
+/** The cage's hairlines, in one paint and width, turned with his body. */
+function strokeCage(
   gl: HologramGl,
   picture: GpuPicture,
   frame: GpuPictureFrame,
-  degrees: number,
-  radius: number,
   halfWidth: number,
   kind: number,
-  alpha: number,
-  radialRow: number,
-  radialRadius: number,
-  sweepRow: number,
-) {
-  'worklet';
-  const layer = picture.arc;
-  beginPath(gl, picture);
-  useLayerTurned(gl, picture, layer, frame, degrees, 0, 0);
-  setPaint(gl, layer, kind, 0, alpha, radialRow, radialRadius, sweepRow);
-  const uniforms = layer.program.uniforms;
-  if (uniforms.arc) gl.uniform4f(uniforms.arc, 0, 0, radius, halfWidth);
-  if (uniforms.arcEnds) gl.uniform4f(uniforms.arcEnds, 0, Math.PI * 2, ARC_PIECES, 0);
-  drawShapes(gl, picture, layer, 0, ARC_PIECES);
-}
-
-/** The thin rim ring and the limb ridge under it (`drawThinRing`). */
-function drawThinRing(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
-  'worklet';
-  const state = frame.state;
-  const script = state.script;
-  const ridge = script.ringWeight * state.rimAlpha;
-  if (ridge > 0.01) {
-    strokeCircle(
-      gl,
-      picture,
-      frame,
-      state.roll,
-      LIMB_RIDGE_RADIUS,
-      LIMB_RIDGE_BAND / 2,
-      PICTURE_PAINTS.radialSweep,
-      clamp01(ridge),
-      GRADIENTS.ridgeRing.row,
-      GRADIENTS.ridgeRing.radius,
-      GRADIENTS.ridgeLumps.row,
-    );
-  }
-  const weight = ridge;
-  if (weight <= 0.01) return;
-  strokeCircle(
-    gl,
-    picture,
-    frame,
-    0,
-    1,
-    (0.012 + 0.008 * weight) / 2,
-    PICTURE_PAINTS.sweep,
-    clamp01(0.25 + 0.7 * weight),
-    0,
-    1,
-    GRADIENTS.thinRing.row,
-  );
-}
-
-function strokeTruss(
-  gl: HologramGl,
-  picture: GpuPicture,
-  frame: GpuPictureFrame,
-  part: ShapeRange,
-  weight: number,
-  halfWidth: number,
   colour: number,
   alpha: number,
 ) {
   'worklet';
-  const layer = picture.truss;
-  beginPath(gl, picture);
-  useLayerTurned(gl, picture, layer, frame, frame.state.roll, 0, 0);
-  setSolid(gl, layer, colour, alpha);
-  setUniform1(layer, gl, 'weight', weight);
-  setUniform1(layer, gl, 'halfWidth', halfWidth);
-  drawShapes(gl, picture, layer, part.first, part.count);
-}
-
-/** The rolling rim layer: the ladder truss, the thin ring's ticks and the strand fan (`drawTruss`). */
-function drawTruss(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
-  'worklet';
-  const state = frame.state;
-  const script = state.script;
-  const weight = script.trussWeight * state.rimAlpha;
-  const parts = picture.trussParts;
-  if (state.rimAlpha > 0) {
-    const ticks = picture.ticks;
-    beginPath(gl, picture);
-    useLayerTurned(gl, picture, ticks, frame, state.roll, 0, 0);
-    setSolid(gl, ticks, 0xf49838, (0.15 + 0.6 * script.ringWeight) * state.rimAlpha);
-    setUniform1(ticks, gl, 'roll', state.roll);
-    setUniform1(ticks, gl, 'halfWidth', 0.009 / 2);
-    drawShapes(gl, picture, ticks, 0, ticks.shapes);
-  }
-  // Pieces under the weight that shows them are hidden by the shader, as appendTruss skips them.
-  const glow = state.glowGain;
-  strokeTruss(gl, picture, frame, parts.haze, weight, 0.18 / 2, 0x99561a, 0.58 * weight * glow);
-  strokeTruss(
-    gl,
-    picture,
-    frame,
-    parts.outer,
-    weight,
-    (0.1 + 0.05 * weight) / 2,
-    0xc9812c,
-    0.5 * (0.3 + 0.7 * weight) * glow,
-  );
-  strokeTruss(gl, picture, frame, parts.inner, weight, (0.011 + 0.006 * weight) / 2, 0xf49838, 0.35 + 0.4 * weight);
-  strokeTruss(gl, picture, frame, parts.outer, weight, (0.02 + 0.012 * weight) / 2, 0xf49838, 0.5 + 0.45 * weight);
-  strokeTruss(gl, picture, frame, parts.outer, weight, 0.008 / 2, 0xffae46, 0.85 * weight);
-  strokeTruss(gl, picture, frame, parts.rung, weight, 0.016 / 2, 0xf49838, 0.35 + 0.55 * weight);
-  strokeTruss(gl, picture, frame, parts.detail, weight, 0.006 / 2, 0xf49838, 0.2 + 0.35 * weight);
-  // the strand fan turns counter-clockwise at 3.5°/s, fading out and back on a 14 s cycle
-  const fanCycle = fraction(state.time / 14);
-  const fanAlpha = smooth01(fanCycle / 0.12) * smooth01((1 - fanCycle) / 0.12) * state.rimAlpha;
-  const fanWeight = clamp01((script.trussWeight - 0.35) / 0.5) * fanAlpha;
-  if (fanWeight > 0.02) {
-    useLayerTurned(gl, picture, picture.segments, frame, -5 * fanCycle * 14 * 0.7, 0, 0);
-    strokeStatic(gl, picture, picture.paths.strandFan, 0.008 / 2, 0, PICTURE_PAINTS.solid, 0xf49838, 0.6 * fanWeight);
-  }
-}
-
-function strokeCrescent(
-  gl: HologramGl,
-  picture: GpuPicture,
-  frame: GpuPictureFrame,
-  tier: ShapeRange,
-  shatter: number,
-  shatterClock: number,
-  halfWidth: number,
-  colour: number,
-  alpha: number,
-) {
-  'worklet';
-  const layer = picture.crescent;
+  const layer = picture.cage;
   const state = frame.state;
   beginPath(gl, picture);
-  useLayerFlat(gl, picture, layer, frame);
-  setSolid(gl, layer, colour, alpha);
-  setUniform1(layer, gl, 'spread', state.spread);
+  useLayerRoundTheShell(gl, picture, layer, frame);
+  setPaint(gl, layer, kind, colour, alpha);
+  const turn = layer.program.uniforms.bodyTurn;
+  if (turn) gl.uniform2f(turn, state.bodyCos, state.bodySin);
   setUniform1(layer, gl, 'time', state.time);
-  setUniform1(layer, gl, 'roll', state.roll);
-  setUniform1(layer, gl, 'halfWidth', halfWidth);
-  const location = layer.program.uniforms.shatter;
-  if (location) gl.uniform2f(location, shatter, shatterClock);
-  drawShapes(gl, picture, layer, tier.first, tier.count);
-}
-
-/** The bright crescent on the left limb and the limb bloom behind it (`drawCrescent`). */
-function drawCrescent(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
-  'worklet';
-  const state = frame.state;
-  const weight = Math.max(state.script.crescentWeight, 0.65 * state.agitation) * state.rimAlpha;
-  if (weight <= 0.01) return;
-  const spread = state.spread;
-  const shatterClock = 255 + hashInteger(state.burstCount * 131 + 7) * 35;
-  const shatter = state.burstAge < 0.18 ? (1 - state.burstAge / 0.18) * (0.5 + 0.5 * state.burstStrength) : 0;
-  strokeCircle(
-    gl,
-    picture,
-    frame,
-    0,
-    LIMB_BLOOM_RADIUS,
-    LIMB_BLOOM_BAND / 2,
-    PICTURE_PAINTS.radialSweep,
-    clamp01(0.42 * weight),
-    GRADIENTS.bloomRing.row,
-    GRADIENTS.bloomRing.radius,
-    GRADIENTS.bloomMask.row,
-  );
-  const tiers = picture.crescentTiers;
-  strokeCrescent(
-    gl,
-    picture,
-    frame,
-    tiers[2],
-    shatter,
-    shatterClock,
-    (0.1 * (1 - 0.5 * spread)) / 2,
-    0xe07a1a,
-    0.26 * weight,
-  );
-  strokeCrescent(gl, picture, frame, tiers[0], shatter, shatterClock, 0.01 / 2, 0xdca131, clamp01(0.8 * weight));
-  strokeCrescent(
-    gl,
-    picture,
-    frame,
-    tiers[1],
-    shatter,
-    shatterClock,
-    (0.026 * (1 - 0.45 * spread)) / 2,
-    0xf09430,
-    clamp01(0.8 * weight),
-  );
-  strokeCrescent(
-    gl,
-    picture,
-    frame,
-    tiers[2],
-    shatter,
-    shatterClock,
-    (0.056 * (1 - 0.62 * spread)) / 2,
-    0xfba838,
-    clamp01(0.85 * weight * (1 - 0.3 * spread)),
-  );
-  strokeCrescent(
-    gl,
-    picture,
-    frame,
-    tiers[3],
-    shatter,
-    shatterClock,
-    (0.018 * (1 - 0.5 * spread)) / 2,
-    0xffc244,
-    clamp01(0.9 * weight * (1 - spread) * (1 - spread)),
-  );
-}
-
-/** While he talks: strands fraying off the limb, streak arcs and streaks off the right limb (`drawFray`). */
-function drawFray(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
-  'worklet';
-  const state = frame.state;
-  const drive = state.frayDrive;
-  if (drive <= 0.02) return;
-  const layer = picture.fray;
-  beginPath(gl, picture);
-  useLayerFlat(gl, picture, layer, frame);
-  setSolid(gl, layer, 0xf0943a, 0.8);
-  setUniform1(layer, gl, 'drive', drive);
-  setUniform1(layer, gl, 'time', state.time);
-  setUniform1(layer, gl, 'halfWidth', 0.011 / 2);
+  setUniform1(layer, gl, 'halfWidth', halfWidth / state.shellReach);
   drawShapes(gl, picture, layer, 0, layer.shapes);
 }
 
-// ---- chip bursts ------------------------------------------------------------------------------
+/**
+ * The cage round him: hairlines, as the film's wireframe is — a fine pale orange line that glitters
+ * as it turns, over a glow much fainter and not much wider, so a line blooms a little and never
+ * reads as a bar. It was a gold line on an amber one on a glow five times its width, and read as
+ * thick glowing bars. On its own it never reaches near-white; where it crosses one of his white-hot
+ * specks it Screens it nearer white, as the film's bright specks are.
+ */
+function drawCage(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
+  'worklet';
+  const alpha = frame.state.cageAlpha;
+  if (alpha <= 0) return;
+  strokeCage(gl, picture, frame, 0.034 / 2, PICTURE_PAINTS.solid, GLOW, 0.15 * alpha);
+  strokeCage(gl, picture, frame, 0.011 / 2, PICTURE_PAINTS.sparkle, PALE_ORANGE, clamp01(0.9 * alpha));
+}
 
-function fillChips(
+/** The embers, in one paint and width. */
+function strokeEmbers(
+  gl: HologramGl,
+  picture: GpuPicture,
+  frame: GpuPictureFrame,
+  halfWidth: number,
+  colour: number,
+  alpha: number,
+) {
+  'worklet';
+  const layer = picture.embers;
+  const state = frame.state;
+  beginPath(gl, picture);
+  useLayerRoundTheShell(gl, picture, layer, frame);
+  setSolid(gl, layer, colour, alpha);
+  setUniform1(layer, gl, 'time', state.time);
+  setUniform1(layer, gl, 'share', state.emberShare);
+  setUniform1(layer, gl, 'halfWidth', halfWidth / state.shellReach);
+  drawShapes(gl, picture, layer, 0, layer.shapes);
+}
+
+/** The embers drifting off him: a warm glow round a pale orange fleck. */
+function drawEmbers(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
+  'worklet';
+  const alpha = frame.state.cageAlpha;
+  if (alpha <= 0) return;
+  strokeEmbers(gl, picture, frame, 0.032 / 2, GLOW, 0.32 * alpha);
+  strokeEmbers(gl, picture, frame, 0.011 / 2, PALE_ORANGE, clamp01(alpha));
+}
+
+// ---- while he talks ---------------------------------------------------------------------------
+
+/** The fray's strands and streaks, in one paint and width. */
+function strokeFray(
+  gl: HologramGl,
+  picture: GpuPicture,
+  frame: GpuPictureFrame,
+  halfWidth: number,
+  colour: number,
+  alpha: number,
+) {
+  'worklet';
+  const layer = picture.fray;
+  const state = frame.state;
+  beginPath(gl, picture);
+  useLayerFlat(gl, picture, layer, frame);
+  setSolid(gl, layer, colour, alpha);
+  setUniform1(layer, gl, 'drive', state.frayDrive);
+  setUniform1(layer, gl, 'time', state.time);
+  setUniform1(layer, gl, 'halfWidth', halfWidth);
+  drawShapes(gl, picture, layer, 0, layer.shapes);
+}
+
+/** While he talks: strands fraying off the shell's edge, streak arcs and streaks off its right (`drawFray`). */
+function drawFray(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
+  'worklet';
+  if (frame.state.frayDrive <= 0.02) return;
+  strokeFray(gl, picture, frame, 0.02 / 2, GLOW, 0.22);
+  strokeFray(gl, picture, frame, 0.0065 / 2, ORANGE, 0.75);
+}
+
+/** The chips' streaks, or their cores, in one paint and width. */
+function strokeChips(
   gl: HologramGl,
   picture: GpuPicture,
   frame: GpuPictureFrame,
   part: ShapeRange,
-  strokeHalf: number,
+  halfWidth: number,
   colour: number,
   alpha: number,
 ) {
@@ -929,84 +662,55 @@ function fillChips(
   beginPath(gl, picture);
   useLayerFlat(gl, picture, layer, frame);
   setSolid(gl, layer, colour, alpha);
-  setUniform1(layer, gl, 'strokeHalf', strokeHalf);
+  setUniform1(layer, gl, 'halfWidth', halfWidth);
   const location = layer.program.uniforms.burst;
   if (location) gl.uniform4f(location, state.burstAge, state.burstCount, state.burstReach, state.burstStrength);
   drawShapes(gl, picture, layer, part.first, part.count);
 }
 
-/** The latest burst's chips: a soft edge, the slab, its hot middle (`drawChips`). */
+/** The latest burst's shards of light: a soft glow, an orange streak, and its white-hot core (`drawChips`). */
 function drawChips(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
   const state = frame.state;
-  if (state.burstAge >= 0.2 || state.burstStrength <= 0) return;
+  if (state.burstAge >= CHIP_GONE_SECONDS || state.burstStrength <= 0) return;
   const parts = picture.chipParts;
-  fillChips(gl, picture, frame, parts.slab, 0.028 / 2, 0xf08a28, 0.5);
-  fillChips(gl, picture, frame, parts.slab, 0, 0xf59430, 1);
-  fillChips(gl, picture, frame, parts.middle, 0, 0xffa840, 0.45);
+  strokeChips(gl, picture, frame, parts.streak, 0.045 / 2, GLOW, 0.35);
+  strokeChips(gl, picture, frame, parts.streak, 0.017 / 2, ORANGE, 0.95);
+  strokeChips(gl, picture, frame, parts.core, 0.007 / 2, WHITE_HOT, 0.55);
 }
 
-// ---- rare accents -----------------------------------------------------------------------------
+// ---- while he thinks --------------------------------------------------------------------------
 
-/** The jagged lightning filament and the very rare red segment (`drawAccents`). */
-function drawAccents(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
+/** How far out of the core the thinking pulse has bloomed by the time it has gone, in R. */
+const PULSE_REACH = 1.2;
+
+/** A stroke of the thinking pulse, round the core. */
+function strokePulse(
+  gl: HologramGl,
+  picture: GpuPicture,
+  frame: GpuPictureFrame,
+  radius: number,
+  halfWidth: number,
+  colour: number,
+  alpha: number,
+) {
   'worklet';
-  const state = frame.state;
-  const script = state.script;
-  const alpha = state.rimAlpha;
-  if (alpha <= 0) return;
-  if (script.lineKind === 3) {
-    const layer = picture.lightning;
-    beginPath(gl, picture);
-    useLayerFlat(gl, picture, layer, frame);
-    setSolid(gl, layer, 0xc39568, 0.85 * alpha * script.lineEnvelope);
-    setUniform1(layer, gl, 'lineSeed', script.lineSeed);
-    setUniform1(layer, gl, 'filmFrame', Math.floor(state.time * 24));
-    setUniform1(layer, gl, 'halfWidth', 0.008 / 2);
-    drawShapes(gl, picture, layer, 0, layer.shapes);
-  }
-  if (script.redVisible) {
-    const layer = picture.segment;
-    const angle = ((360 * hashInteger(script.lineSeed * 7) - 90) * Math.PI) / 180;
-    beginPath(gl, picture);
-    useLayerFlat(gl, picture, layer, frame);
-    setSolid(gl, layer, 0xb3470f, 0.9 * alpha);
-    const location = layer.program.uniforms.segment;
-    if (location) {
-      gl.uniform4f(
-        location,
-        Math.cos(angle) * 0.9,
-        Math.sin(angle) * 0.9,
-        Math.cos(angle + 0.12) * 0.9,
-        Math.sin(angle + 0.12) * 0.9,
-      );
-    }
-    setUniform1(layer, gl, 'halfWidth', 0.016 / 2);
-    setUniform1(layer, gl, 'roundCaps', 0);
-    drawShapes(gl, picture, layer, 0, 1);
-  }
+  const layer = picture.arc;
+  beginPath(gl, picture);
+  useLayerAtCore(gl, picture, layer, frame);
+  setSolid(gl, layer, colour, alpha);
+  drawCircle(gl, picture, radius, halfWidth, 0, 0);
 }
 
-/** The ring that blooms out of the core as a thought's pass finishes (`drawThinkingPulse`). */
+/** The ring that blooms out of the core's white-hot ring as a thought's pass finishes (`drawThinkingPulse`). */
 function drawThinkingPulse(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
   const state = frame.state;
   if (state.thinking * state.pulse <= 0) return;
-  // The thin ring's paint, at the width the thin ring was last drawn at.
-  const ringWeight = state.script.ringWeight * state.rimAlpha;
-  strokeCircle(
-    gl,
-    picture,
-    frame,
-    0,
-    0.15 + 1.05 * state.pulse,
-    (0.012 + 0.008 * ringWeight) / 2,
-    PICTURE_PAINTS.sweep,
-    state.thinking * (1 - state.pulse) * 0.9,
-    0,
-    1,
-    GRADIENTS.thinRing.row,
-  );
+  const radius = CORE_RING_RADIUS + (PULSE_REACH - CORE_RING_RADIUS) * state.pulse;
+  const strength = state.thinking * (1 - state.pulse);
+  strokePulse(gl, picture, frame, radius, 0.05 / 2, GLOW, 0.3 * strength);
+  strokePulse(gl, picture, frame, radius, 0.012 / 2, ORANGE, 0.85 * strength);
 }
 
 // ---- satellites -------------------------------------------------------------------------------
@@ -1053,8 +757,7 @@ function useLayerAtSatellite(
   place: SatellitePlace,
 ) {
   'worklet';
-  const radius = place.glyphRadius;
-  useLayer(gl, picture, layer, radius, 0, 0, radius, place.centreX, place.centreY, 1 / (radius * frame.pixels));
+  useLayer(gl, picture, layer, place.glyphRadius, place.centreX, place.centreY, frame.pixels);
 }
 
 /** A filled disc of `radius` glyph radii at a satellite's centre, as a path of its own. */
@@ -1092,9 +795,8 @@ function strokeSatelliteGlyph(
   for (let pass = 0; pass < (flare > 0 ? 2 : 1); pass++) {
     beginPath(gl, picture);
     useLayerAtSatellite(gl, picture, glyphs, frame, place);
-    setSolid(gl, glyphs, pass === 0 ? 0xff7e28 : 0xff8e3c, pass === 0 ? light * (1 - flare) : light * flare);
+    setSolid(gl, glyphs, pass === 0 ? DEEP_ORANGE : ORANGE, pass === 0 ? light * (1 - flare) : light * flare);
     setUniform1(glyphs, gl, 'halfWidth', GLYPH_STROKE_WIDTH / 2);
-    setUniform1(glyphs, gl, 'roundCaps', 1);
     drawShapes(gl, picture, glyphs, slot * GLYPH_RUNS, picture.glyphRuns[slot]);
   }
 }
@@ -1112,11 +814,8 @@ function strokeSatelliteFlare(
   const arc = picture.arc;
   beginPath(gl, picture);
   useLayerAtSatellite(gl, picture, arc, frame, place);
-  setSolid(gl, arc, 0xff8e3c, light * flare);
-  const uniforms = arc.program.uniforms;
-  if (uniforms.arc) gl.uniform4f(uniforms.arc, 0, 0, 1.75 - 0.95 * flare, 0.07 / 2);
-  if (uniforms.arcEnds) gl.uniform4f(uniforms.arcEnds, 0, Math.PI * 2, ARC_PIECES, 1);
-  drawShapes(gl, picture, arc, 0, ARC_PIECES);
+  setSolid(gl, arc, ORANGE, light * flare);
+  drawCircle(gl, picture, 1.75 - 0.95 * flare, 0.07 / 2, 0, 0);
 }
 
 /** One satellite at its place: its halo, glyph, dot and flare. */
@@ -1131,10 +830,10 @@ function drawSatellite(
 ) {
   'worklet';
   const haloAlpha = Math.min(1, 0.16 * light * (1 + 1.5 * flare));
-  fillSatelliteDisc(gl, picture, frame, place, 1.15, 0xdc5c20, haloAlpha);
-  fillSatelliteDisc(gl, picture, frame, place, 0.7, 0xdc5c20, haloAlpha);
+  fillSatelliteDisc(gl, picture, frame, place, 1.15, GLOW, haloAlpha);
+  fillSatelliteDisc(gl, picture, frame, place, 0.7, GLOW, haloAlpha);
   strokeSatelliteGlyph(gl, picture, frame, place, slot, light, flare);
-  fillSatelliteDisc(gl, picture, frame, place, 0.1, 0xff8e3c, light * (0.6 + 0.4 * flare));
+  fillSatelliteDisc(gl, picture, frame, place, 0.1, ORANGE, light * (0.6 + 0.4 * flare));
   if (flare > 0) strokeSatelliteFlare(gl, picture, frame, place, light, flare);
 }
 
@@ -1177,15 +876,12 @@ export function drawGpuPicture(gl: HologramGl, picture: GpuPicture, frame: GpuPi
   gl.activeTexture(TEXTURE0 + 1);
   gl.bindTexture(TEXTURE_2D, picture.gradients);
   gl.activeTexture(TEXTURE0);
-  drawInnerShells(gl, picture, frame);
-  drawLines(gl, picture, frame);
+  drawAura(gl, picture, frame);
   drawCore(gl, picture, frame);
-  drawThinRing(gl, picture, frame);
-  drawTruss(gl, picture, frame);
-  drawCrescent(gl, picture, frame);
+  drawCage(gl, picture, frame);
+  drawEmbers(gl, picture, frame);
   drawFray(gl, picture, frame);
   drawChips(gl, picture, frame);
-  drawAccents(gl, picture, frame);
   drawThinkingPulse(gl, picture, frame);
   drawSatellites(gl, picture, frame);
   gl.disable(STENCIL_TEST);

@@ -20,8 +20,9 @@ calls down (`gpu/gpu-body.spec.ts`, `gpu/gpu-picture.spec.ts`, both over
 
 What he looks like drawn is vr's browser tests' to say, in Chromium on the same
 `hologram/gpu`: the body against the headset's three.js to the byte
-(`hologram-gpu-body.spec.ts`), the picture against frames Skia drew before it
-went (`hologram-picture.spec.ts`), and how the picture behaves — golden, moving,
+(`hologram-gpu-body.spec.ts`), the picture against frames it drew itself when
+it was last redrawn on purpose (`hologram-picture.spec.ts`, whose goldens vr's
+`.scripts/render-picture-goldens.ts` draws), and how the picture behaves — warm, moving,
 answering his voice, arriving without a flash, staying inside its square — in
 the tests that used to draw it through CanvasKit here
 (`hologram-picture-behaviour.spec.ts`).

@@ -49,7 +49,7 @@ export function createFlatCamera(): GpuBodyCamera {
 
 /**
  * Fills `camera` for this frame. `radiusShare` is his radius as a share of the square
- * (`analyseFrame(frame, 1, scene).radius`), `basis` the view plane in the body's frame
+ * (`analyseFrame(frame, 1).radius`), `basis` the view plane in the body's frame
  * (`inFrame(viewBasisTowards(...), bodyFrame(front))`, or FRONT_VIEW straight on), and `eyeSquares`
  * how far the eye is in square sides — on a phone the tilt's `tiltEyeSquares`, already in them.
  * Infinity draws him with the phone's flat projection, and so does an eye ORTHOGRAPHIC_EYE_DISTANCE

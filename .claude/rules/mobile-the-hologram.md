@@ -7,9 +7,9 @@ paths:
 
 > Part of [Mobile App](mobile.md). Paths in it are relative to `mobile/` unless they say otherwise.
 
-The conversation screen is built around Jarvis as the film drew him: the golden sphere from the *Avengers: Age of Ultron* lab scene. A round, see-through, warm amber ball, brightest at its core and never dark inside, textured with short bright strokes, bounded by one rim element at a time — a bright crescent on the left limb, a segmented ladder ring, or a thin ring — and a hooked ring at the core. The film's slow protrusions are deliberately not drawn: on a phone they read as an arm swinging out of the ball on a loop, and the user asked for them gone. It turns on its own — the body about the vertical axis, the rim rolling the other way — it spirals out of its core when it first appears, and when Jarvis talks it grows agitated, glows and swells.
+The conversation screen is built around Jarvis as a hybrid of two films shows him: the *Vision Quest* footage, close up, gives what he is made of — a white-hot ring round a mostly see-through core, a shell of fine glittering specks that reads face on as a bright beaded donut, a loose wireframe of copper hairlines round it, embers drifting off it and a soft bloom — and *Age of Ultron* gives his red-orange colour, his soft swirl, the small ringed eye at his core and the gyroscope's arcs round it. He is copper and orange throughout, orange-white at his hottest, and see-through between his light. Nothing protrudes from him: on a phone the slow protrusions of the first film he was drawn from read as an arm swinging out of the ball on a loop, and the user asked for them gone. He turns on his own — the body and its wireframe about the vertical axis, like a globe — spirals out of his core when he first appears, and when Jarvis talks he grows agitated, swells, and glows a little.
 
-None of those numbers are a guess. The proportions, the colours, the rotation speeds, what changes while Jarvis speaks and the order the ball assembles itself in were all measured frame by frame from the scene itself, and `hologram/src/hologram-drawing.ts` cites that study section by section beside the code each finding produced.
+The footage was measured frame by frame for his proportions, colours and churn. The measurements are at the top of `hologram/src/hologram-drawing.ts`, and the look's parts and what the user asked to keep are in [`hologram-what-he-looks-like.md`](hologram-what-he-looks-like.md).
 
 ```
 Android, in a conversation     Jarvis's WebRTC track ─ modules/jarvis-audio (AudioTap) ─ tapped-voice.ts ─ hologram/src/voice-analysis.ts
@@ -20,7 +20,7 @@ Browser, in sample mode        getUserMedia ─ AnalyserNode
        └─ hologram/src/voice-levels.ts perceivedLevel + foldSpectrum → 24 log-spaced bands (targets)
             └─ hologram/src/react/hologram-view.tsx  UI thread, every frame: easeLevel/easeBands toward the
                  targets, and advanceVoiceActivity on the *raw* reading → agitation and chip bursts
-                 ├─ hologram/src/hologram-drawing.ts   analyseFrame(frame, …, scene) → what this frame of him is
+                 ├─ hologram/src/hologram-drawing.ts   analyseFrame(frame, …) → what this frame of him is
                  └─ hologram/src/gpu/gpu-frame.ts      drawGpuFrame(gl, body, picture, frame, satellites) → expo-gl's one canvas
 ```
 

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { SCENE_SEED } from '../frame-timing';
-import { analyseFrame, createHologramScene, type HologramFrame, LATTICE_PULL } from '../hologram-drawing';
+import { analyseFrame, type HologramFrame, LATTICE_PULL } from '../hologram-drawing';
 import { VOICE_BAND_COUNT } from '../voice-levels';
 import { FRONT_VIEW } from './fragment-3d';
 import {
@@ -10,8 +9,6 @@ import {
   writeFragmentUniforms,
 } from './fragment-glsl';
 import { glslColour, glslFloat } from './glsl';
-
-const scene = createHologramScene(SCENE_SEED);
 
 function frameAt(overrides: Partial<HologramFrame>): HologramFrame {
   return {
@@ -51,7 +48,7 @@ describe('GLSL literals', () => {
 describe('the fragment uniforms', () => {
   it('carry the frame’s state, with the turns worked out on the CPU in double precision', () => {
     const uniforms = createFragmentUniforms();
-    const state = analyseFrame(frameAt({ agitation: 0.6, hearing: 1, hearingLevel: 0.5, thinking: 0.4 }), 1, scene);
+    const state = analyseFrame(frameAt({ agitation: 0.6, hearing: 1, hearingLevel: 0.5, thinking: 0.4 }), 1);
     writeFragmentUniforms(uniforms, state, FRONT_VIEW, 0.5, 7.25);
     expect(uniforms.time.value).toBe(state.time);
     expect(uniforms.mixShare.value).toBe(state.mix);
@@ -61,13 +58,21 @@ describe('the fragment uniforms', () => {
     const shell = (state.shellTurn * Math.PI) / 180;
     expect(uniforms.shellTurn.value[0]).toBeCloseTo(Math.cos(shell), 12);
     expect(uniforms.shellTurn.value[1]).toBeCloseTo(Math.sin(shell), 12);
+    // the gyroscope's rocking, which this frame's agitation sets going, and the truss's roll
+    expect(Math.abs(state.gyroSway)).toBeGreaterThan(1);
+    const sway = (state.gyroSway * Math.PI) / 180;
+    expect(uniforms.gyroSway.value[0]).toBeCloseTo(Math.cos(sway), 12);
+    expect(uniforms.gyroSway.value[1]).toBeCloseTo(Math.sin(sway), 12);
+    const rim = (state.rimRoll * Math.PI) / 180;
+    expect(uniforms.rimTurn.value[0]).toBeCloseTo(Math.cos(rim), 12);
+    expect(uniforms.rimTurn.value[1]).toBeCloseTo(Math.sin(rim), 12);
     expect(uniforms.lattice.value[3]).toBeCloseTo(state.hearing * LATTICE_PULL, 12);
     expect(uniforms.eyeDistance.value).toBe(7.25);
   });
 
   it('stand the eye far off, in a number float32 holds, when it is infinitely far', () => {
     const uniforms = createFragmentUniforms();
-    writeFragmentUniforms(uniforms, analyseFrame(frameAt({}), 1, scene), FRONT_VIEW, 1, Number.POSITIVE_INFINITY);
+    writeFragmentUniforms(uniforms, analyseFrame(frameAt({}), 1), FRONT_VIEW, 1, Number.POSITIVE_INFINITY);
     expect(uniforms.eyeDistance.value).toBe(ORTHOGRAPHIC_EYE_DISTANCE);
     expect(Math.fround(ORTHOGRAPHIC_EYE_DISTANCE)).toBe(ORTHOGRAPHIC_EYE_DISTANCE);
   });

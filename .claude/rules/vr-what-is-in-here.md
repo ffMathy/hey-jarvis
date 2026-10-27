@@ -36,7 +36,8 @@ tests/e2e/                 Playwright: the emulated headset and room, and the sp
 .scripts/initialize.sh     copies onnxruntime-web's wasm out of node_modules into public/vendor/
 .scripts/build.sh          vite build into ../dist/vr
 .scripts/test.sh           bun test over every *.spec.ts outside tests/e2e
-.scripts/serve-dist.ts     serves the build under /hey-jarvis/vr/ for the browser tests
+.scripts/serve-dist.ts     serves the build under /hey-jarvis/vr/ for the browser tests and the scripts
+.scripts/render-picture-goldens.ts  draws the goldens his picture is held to (see "The browser tests")
 .scripts/render-demo.ts    renders the demo video (demo-shot.ts: the shot and camera; demo-soundtrack.ts: his voice
                            from where he stands; demo-encode.ts: where the greeting goes, and ffmpeg)
 ```

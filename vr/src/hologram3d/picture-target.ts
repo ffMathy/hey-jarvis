@@ -37,7 +37,7 @@ export interface PictureTarget {
   texture: Texture;
   target: WebGLRenderTarget;
   /**
-   * Draws `state` (`analyseFrame(frame, 1, scene)`) with `satellites` over it into the target, then
+   * Draws `state` (`analyseFrame(frame, 1)`) with `satellites` over it into the target, then
    * hands three back whatever it was drawing into.
    */
   draw(state: HologramFrameState, satellites: readonly SatelliteOrbit[]): void;
@@ -99,9 +99,9 @@ export function createPictureRenderTarget(size: number): WebGLRenderTarget {
 }
 
 /**
- * A `size`-pixel target, drawn into with `hologram/gpu`'s picture on three's own context: the inner
- * shells, the lines, the core, the rim, the truss, the crescent, the fray, the chips — every layer
- * of the phone's drawing that leaves his body out. His body is drawn in three dimensions beside it.
+ * A `size`-pixel target, drawn into with `hologram/gpu`'s picture on three's own context: the aura,
+ * the core, the cage, the embers, the fray, the chips and the thinking pulse — every layer of the
+ * phone's drawing that leaves his body out. His body is drawn in three dimensions beside it.
  *
  * It is cleared to transparent black every frame and drawn unfaded: every layer of
  * him is premultiplied light Screened over that, which is the light alone, and the quad fades it with

@@ -2,14 +2,13 @@ import { glslColour } from './glsl';
 import { HALO_PAINTS } from './halo-union';
 
 /**
- * The halos' light: how the halo union's coverage (`halo-union.ts`) becomes what the phone's Screen
- * blend makes of its halo paths.
+ * The halos' light: how the halo union's glow (`halo-union.ts`) becomes light, Screened.
  *
- * Each tier's halos on the phone are one path stroked once in HALO_PAINTS.colour at the tier's
- * strength times the voice's glow, Screened over what is there; Screen leaves `1 − paint` of the
- * light behind, so a tier covering a pixel by `c` leaves `1 − colour × share × c` of it. The two
- * groups' tiers are separate paths, so all six are Screened over each other, and the light they
- * make together is one minus what all six leave.
+ * Each tier's halos are one layer of glow in HALO_PAINTS.colour at the tier's strength times the
+ * voice's glow, Screened over what is there; Screen leaves `1 − paint` of the light behind, so a
+ * tier whose glow at a pixel is `c` leaves `1 − colour × share × c` of it. The two groups' tiers are
+ * separate layers, so all six are Screened over each other, and the light they make together is
+ * one minus what all six leave.
  *
  * Shared by both renderers that show it: the headset's view-plane quad, which Screens it over the
  * picture of the rest of him, and the raw renderer (`gpu-body.ts`), which Screens it over the same
@@ -33,7 +32,7 @@ vec3 through(float covered, float share) {
   return vec3(1.0) - HALO * (share * covered);
 }
 
-// The halo union's two groups, each tier Screened over the rest as the phone's paths are.
+// The halo union's two groups, each tier Screened over the rest.
 vec3 haloGlow(vec2 coordinate) {
   vec3 pinned = texture(halo, vec2(coordinate.x * 0.5, coordinate.y)).rgb;
   vec3 turning = texture(halo, vec2(0.5 + coordinate.x * 0.5, coordinate.y)).rgb;

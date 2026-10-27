@@ -1,9 +1,11 @@
 import {
+  BACK_OF_THE_SHELL,
   CORE_X,
   CORE_Y,
   FRAGMENT_FAINTEST,
   FRAGMENT_WANDER,
   fragmentTier,
+  GYRO_GROUP,
   type HologramFrameState,
   LATTICE_BREATH,
   LATTICE_PULL,
@@ -13,8 +15,14 @@ import {
   latticeTarget,
   readFragment,
   readShellFragment,
+  ringDirection,
   scanned,
+  shellFacing,
   swirlFragment,
+  TRUSS_GROUP,
+  TRUSS_THINKING_DIM,
+  thoughtTurn,
+  turnOfGroup,
 } from '../hologram-drawing';
 
 /**
@@ -65,11 +73,16 @@ export interface PlacedFragment {
   normal: Vector3Tuple;
   /** 0 dim, 1 mid, 2 bright. */
   tier: number;
+  /** How much of its tier's paint it shows: 1 at its own limb, less seen face on through the shell (`shellFacing`). */
+  light: number;
   /** 0 dash, 1 L, 2 bracket, 3 T, 4 Z, 5 ring, 6 cell. */
   glyph: number;
-  /** 0 pinned, 1 riding the inner layer, which turns about the core. */
+  /**
+   * 0 pinned to the globe; or held in the view plane and turned in it — 1 the whorl's inner layer, 2
+   * the gyroscope's arcs, 3 the truss (`fragmentGroup`, `turnOfGroup`).
+   */
   group: number;
-  /** Where it is in the view plane (x right, y down) before the inner layer's turn. */
+  /** Where it is in the view plane (x right, y down) before its group's turn. */
   plane: [number, number];
 }
 
@@ -153,13 +166,13 @@ function onLattice(
 }
 
 /**
- * Turns a point of the view plane by the inner layer's turn about the core, as
- * `canvas.rotate(shellTurn, CORE_X, CORE_Y)` does: clockwise on screen, y down.
+ * Turns a point of the view plane about (`pivotX`, `pivotY`) by a group's turn, as
+ * `canvas.rotate(degrees, pivotX, pivotY)` does: clockwise on screen, y down.
  */
-function turnAboutCore(x: number, y: number, cos: number, sin: number): [number, number] {
-  const fromCoreX = x - CORE_X;
-  const fromCoreY = y - CORE_Y;
-  return [CORE_X + fromCoreX * cos - fromCoreY * sin, CORE_Y + fromCoreX * sin + fromCoreY * cos];
+function turnAbout(x: number, y: number, pivotX: number, pivotY: number, cos: number, sin: number): [number, number] {
+  const fromPivotX = x - pivotX;
+  const fromPivotY = y - pivotY;
+  return [pivotX + fromPivotX * cos - fromPivotY * sin, pivotY + fromPivotX * sin + fromPivotY * cos];
 }
 
 /** A vector of the view plane (x right, y down) plus a depth, in the body's frame. */
@@ -180,21 +193,28 @@ interface Unfinished {
   axisY: number;
   axisDepth: number;
   tier: number;
+  light: number;
   glyph: number;
   group: number;
+  /** How far its row rests from the core, in R, which says which way a gyroscope's arc rocks. */
+  fromCore: number;
 }
 
-/** The last step every fragment shares: the inner layer's turn, then out of the plane into the body's frame. */
+/**
+ * The last step every fragment shares: its group's turn in the view plane — about his middle for
+ * the truss, about the core for the rest — then out of the plane into the body's frame.
+ */
 function finish(fragment: Unfinished, state: HologramFrameState, basis: ViewBasis): PlacedFragment {
   let { x, y, axisX, axisY } = fragment;
   let normalX = -axisY * 0.55;
   let normalY = axisX * 0.55;
   const plane: [number, number] = [x, y];
-  if (fragment.group === 1) {
-    const radians = (state.shellTurn * Math.PI) / 180;
+  if (fragment.group > 0) {
+    const radians = (turnOfGroup(fragment.group, fragment.fromCore, state) * Math.PI) / 180;
     const cos = Math.cos(radians);
     const sin = Math.sin(radians);
-    [x, y] = turnAboutCore(x, y, cos, sin);
+    const aboutCore = fragment.group !== TRUSS_GROUP;
+    [x, y] = turnAbout(x, y, aboutCore ? CORE_X : 0, aboutCore ? CORE_Y : 0, cos, sin);
     [axisX, axisY] = [axisX * cos - axisY * sin, axisX * sin + axisY * cos];
     [normalX, normalY] = [normalX * cos - normalY * sin, normalX * sin + normalY * cos];
   }
@@ -203,10 +223,33 @@ function finish(fragment: Unfinished, state: HologramFrameState, basis: ViewBasi
     axis: intoBody(basis, axisX, axisY, fragment.axisDepth),
     normal: intoBody(basis, normalX, normalY, 0),
     tier: fragment.tier,
+    light: fragment.light,
     glyph: fragment.glyph,
     group: fragment.group,
     plane,
   };
+}
+
+/**
+ * Where a body row rests this frame, in the view plane (x right, y down) and its depth:
+ * `placeFragment`'s turn about the vertical in the body's frame, then seen in the view plane — or,
+ * in a group held in the view plane, as it rests there.
+ */
+function restInThePlane(
+  restX: number,
+  restY: number,
+  restDepth: number,
+  group: number,
+  state: HologramFrameState,
+  basis: ViewBasis,
+): Vector3Tuple {
+  if (group > 0) return [restX, restY, restDepth];
+  const turned: Vector3Tuple = [
+    restX * state.bodyCos + restDepth * state.bodySin,
+    -restY,
+    restDepth * state.bodyCos - restX * state.bodySin,
+  ];
+  return [dot(turned, basis.right), -dot(turned, basis.up), dot(turned, basis.front)];
 }
 
 /**
@@ -224,49 +267,58 @@ export function placeBodyFragment(
   const reading = state.reading;
   const strength = readFragment(body, offset, state, reading);
   if (strength <= 0) return null;
-  const [glyph = 0, turning = 0, cycle = 0, brightness = 0] = [reading[1], reading[2], reading[3], reading[4]];
+  const [glyph = 0, group = 0, cycle = 0, brightness = 0] = [reading[1], reading[2], reading[3], reading[4]];
   const restX = body[offset];
   const restY = body[offset + 1];
-  const unitX = body[offset + 2];
-  const unitY = body[offset + 3];
   const length = body[offset + 4];
   const id = body[offset + 6];
-  const restDepth = body[offset + 9];
+  const restDepth = body[offset + 8];
   const hop = fraction(cycle * 0.618034 + id * 9.7);
-  const along = (hop - 0.5) * 1.4 * length;
-  const inward = clamp01((0.76 - (restX * restX + restY * restY)) * 3.2);
-  const across = (fraction(hop * 23.17) - 0.5) * (FRAGMENT_WANDER + 1.3 * state.agitation * inward);
 
-  // placeFragment: turned about the vertical in the body's frame, then seen in the view plane.
-  const turned: Vector3Tuple = [
-    restX * state.bodyCos + restDepth * state.bodySin,
-    -restY,
-    restDepth * state.bodyCos - restX * state.bodySin,
-  ];
-  const planeX = dot(turned, basis.right);
-  const planeY = -dot(turned, basis.up);
-  const depth = dot(turned, basis.front);
+  const [planeX, planeY, depth] = restInThePlane(restX, restY, restDepth, group, state, basis);
+  // It lies along the ring through where it is seen: `placeFragment`'s direction.
+  const direction = [0, 0];
+  ringDirection(planeX, planeY, body[offset + 2], body[offset + 3], direction, 0);
+  // While he thinks it lies some way dealt afresh at each blink: `thoughtTurn`.
+  const scatter = thoughtTurn(hop, group, state);
+  const [ringX = 0, ringY = 0] = direction;
+  const unitX = ringX * Math.cos(scatter) - ringY * Math.sin(scatter);
+  const unitY = ringX * Math.sin(scatter) + ringY * Math.cos(scatter);
+  // His voice lets a fragment re-light further from where it was the further inside the limb it is
+  // seen, so the silhouette holds while the inside churns: along the way it lies, so the beads slide
+  // round the ring rather than spilling out of it. The gyroscope's arcs rock instead.
+  const inward = group === GYRO_GROUP ? 0 : clamp01((0.76 - (planeX * planeX + planeY * planeY)) * 3.2);
+  const wander = fraction(hop * 23.17) - 0.5;
+  const along = (hop - 0.5) * 1.4 * length + wander * 1.3 * state.agitation * inward;
+  // The truss's specks slide only along their rails and rungs, and lie past the limb on purpose.
+  const truss = group === TRUSS_GROUP;
+  const across = truss ? 0 : wander * FRAGMENT_WANDER;
   const y = planeY + unitY * along + unitX * across;
   const x = planeX + unitX * along - unitY * across;
-  const lit = strength * clamp01((0.94 * 0.94 - planeX * planeX - y * y) * 8);
+  // The limb, which takes its length, and the shell it is seen through, which takes its light:
+  // `placeFragment`'s edge and light.
+  const edge = truss ? 1 : clamp01((0.94 * 0.94 - x * x - y * y) * 8);
+  const shellLight = shellFacing(x, y, restX * restX + restY * restY + restDepth * restDepth);
+  // The truss is not put out by the thinking plane as the rest of him is: it recedes instead.
+  const light = truss ? shellLight * (1 - TRUSS_THINKING_DIM * state.thinking) : shellLight;
+  const lit = strength * edge;
   if (lit < FRAGMENT_FAINTEST) return null;
 
   swirlFragment(x, y, unitX, unitY, id, state);
   const [swirledX = 0, swirledY = 0, directionX = 0, directionY = 0, drawn = 0] = state.swirled;
   if (drawn <= 0) return null;
-  const [latticeX, latticeY, latticeDepth] = onLattice(
-    swirledX,
-    swirledY,
-    depth * vortexScale(x, y, id, state),
-    id,
-    state,
-    eyeDistance,
-  );
+  // The truss keeps its squares while he listens: never snapped onto the lattice.
+  const vortexDepth = depth * vortexScale(x, y, id, state);
+  const [latticeX, latticeY, latticeDepth] = truss
+    ? [swirledX, swirledY, vortexDepth]
+    : onLattice(swirledX, swirledY, vortexDepth, id, state, eyeDistance);
   // The thinking plane is level: how far down the world's vertical the fragment is.
-  const litHere = lit * scanned(-intoBody(basis, latticeX, latticeY, latticeDepth)[1], state);
+  const litHere = truss ? lit : lit * scanned(-intoBody(basis, latticeX, latticeY, latticeDepth)[1], state);
   if (litHere < FRAGMENT_FAINTEST) return null;
-  const facing = depth >= 0;
-  const plain = facing ? fragmentTier(brightness, litHere, id, state.hotShare) : 0;
+  const facing = depth >= -BACK_OF_THE_SHELL;
+  // The thinking plane lights what it is in the middle of to the brightest tier, at full light.
+  const scanBright = !truss && state.scanBright[0] > 0 && facing;
+  const plain = facing ? fragmentTier(brightness, litHere * light, id, state.hotShare) : 0;
   const half = length * 0.5 * litHere * drawn * (1 - LATTICE_STROKE_SHRINK * state.hearing);
   return finish(
     {
@@ -276,9 +328,11 @@ export function placeBodyFragment(
       axisX: directionX * half,
       axisY: directionY * half,
       axisDepth: 0,
-      tier: state.scanBright[0] > 0 && facing ? 2 : plain,
+      tier: scanBright ? 2 : plain,
+      light: scanBright ? 1 : light,
       glyph,
-      group: turning > 0 ? 1 : 0,
+      group,
+      fromCore: Math.hypot(restX - CORE_X, restY - CORE_Y),
     },
     state,
     basis,
@@ -321,7 +375,7 @@ export function placeStreamFragment(
     0,
     halfZ * state.streamCos - halfX * state.streamSin,
   ];
-  const tier = depth < 0 ? 0 : fragmentTier(stream[offset + 8] - 3 * pool, lit, id, state.hotShare);
+  const tier = depth < -BACK_OF_THE_SHELL ? 0 : fragmentTier(stream[offset + 8] - 3 * pool, lit, id, state.hotShare);
 
   swirlFragment(planeX, planeY, 1, 0, id, state);
   const [swirledX = 0, swirledY = 0, directionX = 0, directionY = 0, drawn = 0] = state.swirled;
@@ -350,8 +404,10 @@ export function placeStreamFragment(
       axisY: (tangentX * directionY + tangentY * directionX) * size,
       axisDepth: tangentDepth * size,
       tier,
+      light: 1,
       glyph: stream[offset + 9],
       group: 0,
+      fromCore: 0,
     },
     state,
     basis,

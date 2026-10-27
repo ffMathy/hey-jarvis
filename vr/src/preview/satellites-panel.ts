@@ -64,7 +64,7 @@ function glyphIcon(glyph: string): HTMLCanvasElement {
     context.lineWidth = 0.15;
     context.lineCap = 'round';
     context.lineJoin = 'round';
-    context.strokeStyle = '#ff7e28';
+    context.strokeStyle = '#ff8e40';
     context.stroke(new Path2D(glyph));
   }
   return icon;
@@ -96,7 +96,7 @@ function startPhoneView(canvas: HTMLCanvasElement, orbits: () => SatelliteOrbit[
     gl.clearStencil(0);
     gl.depthMask(true);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
-    const state = analyseFrame(clock.frame(), 1, scene);
+    const state = analyseFrame(clock.frame(), 1);
     drawGpuPicture(gl, picture, { state, pixels: canvas.width, satellites: orbits() });
     // The picture is drawn unfaded; the phone fades the canvas he is on as he arrives, and so does this.
     canvas.style.opacity = String(state.arrival);

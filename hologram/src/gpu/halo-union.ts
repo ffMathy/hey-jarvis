@@ -2,34 +2,51 @@ import { FRAGMENT_GLSL, GLYPH_GLSL } from './fragment-glsl';
 import { glslFloat } from './glsl';
 
 /**
- * The particle halos, as the phone paints them: a union per tier, not a pile.
+ * The particle halos: the soft glow round his specks, a union per tier, not a pile.
  *
- * Each tier's halos on the phone are one path stroked once, so where a hundred of them overlap the
- * paint still lands on the pixel once. Stacked one by one they would add up to a flat saturated
- * orange coin over most of the disc, more than twice as bright on average as the phone's union. So
- * the halos are drawn once a frame, before any eye, into a small target with MAX blending: red,
- * green and blue are how much of each spot the dim, mid and bright halos cover, and the halos' light
- * (`halo-light.ts`) turns that coverage into light the way the phone's Screen blend does.
+ * In the film everything glows — near-white at the hot centres, falling off through orange — and a
+ * speck's halo is that glow: a radial falloff from its stroke, full on the stroke and nothing at
+ * the tier's radius, rather than the flat capsule it used to be. Each tier's halos are unioned, not
+ * summed: stacked one by one, a hundred overlapping halos would add up to a flat saturated coin
+ * over most of the disc, and the user wants the middle of him to stay see-through between his
+ * light. So the halos are drawn once a frame, before any eye, into a small target with MAX
+ * blending: red, green and blue are how much of each spot the dim, mid and bright halos light, and
+ * the halos' light (`halo-light.ts`) turns that into light the way a Screen blend would. Unioned,
+ * the soft halos make one smooth envelope of glow round the bright shell, highest where the
+ * specks crowd and gone a halo's radius past the last of them.
  *
- * They are drawn in the view plane, as the phone's are, each where the centre eye sees its stroke:
- * scaled by the perspective of its depth, so the halo lies under the stroke. The pinned fragments
- * and the ones riding the inner layer go in two halves of the target, because the phone paints
- * those as separate paths, whose halos Screen over each other rather than union.
+ * They are drawn in the view plane, each where the centre eye sees its stroke: scaled by the
+ * perspective of its depth, so the halo lies under the stroke. The globe's fragments and the ones
+ * held in the view plane (the whorl's, the arcs' and the truss's) go in two halves of the target,
+ * because they are separate layers, whose halos Screen over each other rather than union.
  */
 
 /** Texels across each half of the target: the same as the picture on the headset, so the halos are as sharp. */
 export const HALO_TEXELS = 512;
 
-/** What one ring of a halo contributes: each tier's strength below is scaled by it. */
-const HALO_RING_SHARE = 0.52;
-
-/** How wide each tier's halo is, in the drawing's unit, and how strong, before the voice's glow. */
+/**
+ * How wide each tier's halo is — twice the distance from its stroke at which its glow is gone — in
+ * the drawing's unit, and how strong it is on the stroke, before the voice's glow. Red-orange, as
+ * Age of Ultron's glow is and redder than the specks, so his edge and the haze round him are the
+ * reddest of him.
+ * The bright specks bloom, each a point of glow of its own; the mid and dim ones lay a broad warm
+ * haze through him, as the old body's halos did, which is much of how packed he looks. Every halo is
+ * as strong as its speck's `light`. The widest reaches 0.08R past its stroke, so from the shell's
+ * edge at 0.87R no halo gets near the edge of the target at ±1.85R.
+ */
 export const HALO_PAINTS = {
-  colour: 0xdc5c20,
-  dim: { width: 0.115, strength: 0.3 * HALO_RING_SHARE },
-  mid: { width: 0.12, strength: 0.34 * HALO_RING_SHARE },
-  bright: { width: 0.115, strength: 0.38 * HALO_RING_SHARE },
+  colour: 0xd0561c,
+  dim: { width: 0.11, strength: 0.18 },
+  mid: { width: 0.12, strength: 0.24 },
+  bright: { width: 0.16, strength: 0.65 },
 };
+
+/**
+ * How a halo's glow falls off across its radius: `(1 − d/r)^HALO_FALLOFF` at a distance `d` from
+ * its stroke. Squared, it is a soft peak rather than a plateau, so where specks crowd the union is
+ * a smooth glow brightest on the specks, and where they are sparse each one is a point of bloom.
+ */
+const HALO_FALLOFF = 2;
 
 export const HALO_UNION_VERTEX_SHADER = /* glsl */ `
 precision highp float;
@@ -47,6 +64,7 @@ ${GLYPH_GLSL}
 out vec2 local;
 flat out vec4 glyphShape;
 flat out float haloRadius;
+flat out float shellLight;
 
 void main() {
   Fragment fragment = readFragment();
@@ -63,15 +81,17 @@ void main() {
   vec2 along = halfLength > 1e-7 ? axis / halfLength : vec2(1.0, 0.0);
   vec2 across = vec2(-along.y, along.x);
   float normalLength = length(fragment.normal) * perspective;
-  haloRadius = 0.5 * (fragment.tier > 0.5 && fragment.tier < 1.5 ? ${glslFloat(HALO_PAINTS.mid.width)} : ${glslFloat(HALO_PAINTS.dim.width)}) * perspective;
+  float width = fragment.tier > 1.5 ? ${glslFloat(HALO_PAINTS.bright.width)} : (fragment.tier > 0.5 ? ${glslFloat(HALO_PAINTS.mid.width)} : ${glslFloat(HALO_PAINTS.dim.width)});
+  haloRadius = 0.5 * width * perspective;
   local = corner * (glyphReach(fragment.glyph, halfLength, normalLength) + haloRadius + 1.5 * texelUnits);
   glyphShape = vec4(fragment.glyph, halfLength, normalLength, fragment.tier);
+  shellLight = fragment.light;
 
-  // Into the target: the pinned half on the left, the turning half on the right, y up as a
-  // texture's rows go.
+  // Into the target: the globe's half on the left, and every group held in the view plane — the
+  // whorl, the arcs and the truss — in the right, y up as a texture's rows go.
   vec2 point = centre + along * local.x + across * local.y;
   vec2 share = vec2(0.5 + point.x * radiusFraction, 0.5 - point.y * radiusFraction);
-  gl_Position = vec4(share.x - 1.0 + fragment.group, 2.0 * share.y - 1.0, 0.0, 1.0);
+  gl_Position = vec4(share.x - 1.0 + min(fragment.group, 1.0), 2.0 * share.y - 1.0, 0.0, 1.0);
 }
 `;
 
@@ -82,16 +102,16 @@ precision highp int;
 in vec2 local;
 flat in vec4 glyphShape;
 flat in float haloRadius;
+flat in float shellLight;
 
 out vec4 colour;
 
 ${GLYPH_GLSL}
 
 void main() {
-  float texel = max(length(fwidth(local)) * 0.70710678, 1e-6);
-  float edgeDistance = glyphLineDistance(local, glyphShape.x, glyphShape.y, glyphShape.z) - haloRadius;
-  float covered = clamp(0.5 - edgeDistance / texel, 0.0, 1.0);
-  if (covered <= 0.0) discard;
+  float reached = glyphLineDistance(local, glyphShape.x, glyphShape.y, glyphShape.z) / haloRadius;
+  if (reached >= 1.0) discard;
+  float covered = pow(1.0 - reached, ${glslFloat(HALO_FALLOFF)}) * shellLight;
   float tier = glyphShape.w;
   colour = vec4(tier < 0.5 ? covered : 0.0, tier > 0.5 && tier < 1.5 ? covered : 0.0, tier > 1.5 ? covered : 0.0, 0.0);
 }
