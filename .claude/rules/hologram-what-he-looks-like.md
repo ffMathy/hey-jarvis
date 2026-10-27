@@ -25,6 +25,10 @@ does to it.
   (`buildStream`).
 - **The cage:** the film's loose wireframe, hairlines between seeded nodes round the shell, in
   three dimensions and turning with the body (`buildCage`, `drawCage`).
+- **The truss:** the old rim's ladder truss round his edge, its boxes between a hot outer rail
+  (`TRUSS_OUTER_RAIL`) and a finer inner one (`TRUSS_INNER_RAIL`), in the cage's pale gold, always
+  there and rolling clockwise on its own clock (`RIM_ROLL_DEGREES_PER_SECOND`, `rimRoll`)
+  (`buildTruss`, `drawTruss`).
 - **The embers:** golden flecks drifting out from the shell's edge, more of them while he talks
   (`buildEmbers`, `drawEmbers`).
 - **The aura:** the film's bloom, a soft warm band round him, see-through in the middle
@@ -44,6 +48,9 @@ does to it.
   volume or haze painted under them; the density is the specks'.
 - **No protrusions.** Nothing grows out of him and dissolves in a repeating pattern; the cage is
   always there, and calm.
+- **The squares near his edge stay** ("I'd also like to still have the weird squares near the edge
+  of the hologram"): the truss is always drawn, between `TRUSS_INNER_RAIL` and `TRUSS_OUTER_RAIL`, so
+  it never stands off him. The script that chose between it, a crescent and a thin ring is gone.
 - **He arrives as a vortex out of his core** and in no other way, and nothing flashes as he forms.
 - **Ten thousand particles at most** (`PARTICLE_COUNT`): fifteen thousand read as a mass.
 - **Calm, never a sizzle:** the specks' clocks are slower than the film's (`pickFragmentRate`),

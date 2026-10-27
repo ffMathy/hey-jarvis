@@ -38,6 +38,12 @@
 //                     specks, longer lines further out and a few trailing away below him. It is in
 //                     three dimensions and turns with the body, and each edge twinkles on its own slow
 //                     clock.
+//   drawTruss         the old rim's ladder truss (buildTruss), at the user's asking: a hot outer rail
+//                     at TRUSS_OUTER_RAIL and a finer inner one at TRUSS_INNER_RAIL, a faint haze
+//                     between them, rungs about every 9° making its boxes, circuit traces and pairs
+//                     of short struts hanging inward, along about 190° of his edge in three stretches.
+//                     Recoloured into the cage's pale gold, always there, and rolling clockwise in the
+//                     plane of the view on its own clock (RIM_ROLL_DEGREES_PER_SECOND).
 //   drawEmbers        the embers (buildEmbers): flecks drifting out from the shell's edge and a little
 //                     upward, each on its own clock, some of them streaked.
 //   drawFray          while he talks: strands fraying off the upper left of the shell's edge, streak
@@ -71,6 +77,7 @@
 // - The core ring's brighter stretches roll clockwise round it (ROLL_DEGREES_PER_SECOND), and the
 //   core's brightness drifts a few percent over many seconds. It never beats.
 // - Each edge of the cage twinkles on its own slow clock, and each ember drifts out on its own.
+// - The truss rolls clockwise round his edge in the plane of the view (RIM_ROLL_DEGREES_PER_SECOND).
 // - Nothing is scheduled: no loop decides what shows or when.
 //
 // HOW THE FRAME DRIVES IT (see analyseFrame). The film's sphere holds its brightness and its size
@@ -99,7 +106,7 @@
 //               tracker's rule (`voice-levels.ts`).
 //   appearance  0-1 over MATERIALISE_SECONDS: the vortex. The specks leave the core on their own
 //               clocks, nearest first, spiralling out a turn and a half as streaks before they settle
-//               (swirlFragment). The core shows first, and the aura, the cage and the embers are
+//               (swirlFragment). The core shows first, and the aura, the cage, the truss and the embers are
 //               carried out with the shell (shellReach) rather than drawn round a ball that is not
 //               there yet. It moves only the specks already being drawn, so the scene's count and the
 //               density share hold throughout.
@@ -129,6 +136,10 @@
 //   pole fans off his limb, one per epoch. On a phone, where he is small and the loop came round every
 //   minute, they read as an arm swinging out of the ball in the same pattern. Nothing grows out of him
 //   and dissolves: the cage is always there, and calm.
+// - The squares round his edge stay: "I'd also like to still have the weird squares near the edge
+//   of the hologram". The old rim's ladder truss is drawn always (drawTruss), in the cage's palette,
+//   between TRUSS_INNER_RAIL and TRUSS_OUTER_RAIL, so it never stands off him. The script that once
+//   chose between it, a crescent and a thin ring is gone, and so are those two.
 // - He arrives as a vortex out of his core and in no other way. The film's point of light, sparks and
 //   spoked dial are gone at the user's asking, and nothing flashes as he forms: no one frame may turn
 //   a tenth of his light on at once.
@@ -349,6 +360,20 @@ export const STREAK_ARC_STRIDE = 6;
 export const LIMB_STREAK_STRIDE = 5;
 export const CAGE_EDGE_STRIDE = 10;
 export const EMBER_STRIDE = 7;
+export const TRUSS_PIECE_STRIDE = 4;
+/**
+ * The ladder truss round his edge (buildTruss, `drawTruss`): its hot outer rail and its finer inner
+ * one, in R, with the rungs across between them making its boxes. Everything of it lies between the
+ * two but the struts, which hang a little inward from the inner rail over his edge: nothing of it
+ * stands off him, so it never reads as something growing out of him.
+ */
+export const TRUSS_OUTER_RAIL = 1.035;
+export const TRUSS_INNER_RAIL = 0.935;
+/**
+ * The truss rolls clockwise in the plane of the view on a clock of its own, `rimRoll`: one turn in
+ * about 33 s, the rate it rolled at before the Vision footage replaced it, and the core ring's.
+ */
+export const RIM_ROLL_DEGREES_PER_SECOND = 11;
 /** Side of the tiled sparkle texture in texels, and how wide a texel is on the sphere: a stroke spans about two. */
 export const SPARKLE_TEXTURE_TEXELS = 64;
 export const SPARKLE_TEXEL_SIZE = 0.018;
@@ -1184,6 +1209,41 @@ function buildEmbers(random: Random) {
   return embers;
 }
 
+/** What the scene's seed is mixed with to seed the truss's own generator (see {@link CAGE_SEED_MIX}). */
+const TRUSS_SEED_MIX = 0x165667b1;
+/** The truss's three stretches of arc, in clock degrees: about 190° of his edge in all. */
+const TRUSS_ARCS = [
+  [280, 380],
+  [195, 245],
+  [62, 102],
+];
+
+/**
+ * The ladder truss round his edge, as the old rim had it: pieces of about 9° meeting end to end along
+ * three stretches of arc ({@link TRUSS_ARCS}), each a box between the rails with a rung at its start,
+ * some carrying a circuit trace and some a pair of short struts hanging inward from the inner rail.
+ * In the frame it rolls in (`rimRoll`), the GPU drawing every piece every frame.
+ *
+ * Stride {@link TRUSS_PIECE_STRIDE}: start (clock degrees), sweep (degrees), circuit trace (0 none,
+ * 1 L, 2 Z, 3 T) and hanging strut length (R, 0 for none).
+ */
+function buildTruss(random: Random) {
+  const truss: number[] = [];
+  for (const [from, to] of TRUSS_ARCS) {
+    let degrees = from;
+    while (degrees < to - 4) {
+      // pieces meet end to end, so the rails run on unbroken with rungs across them
+      const sweep = Math.min(to - degrees, 8 + random() * 3);
+      const trace = random() < 0.45 ? 0 : 1 + Math.floor(random() * 3);
+      // short, so that a strut stays in the shell's edge and never reaches into his face
+      const strut = random() < 0.22 ? 0.04 + random() * 0.04 : 0;
+      truss.push(degrees, sweep, trace, strut);
+      degrees += sweep;
+    }
+  }
+  return truss;
+}
+
 /**
  * Builds the hologram's random geometry once. Deterministic for a given seed; plain data only.
  *
@@ -1209,6 +1269,7 @@ export function createHologramScene(seed: number, particleCount: number = PARTIC
     // taken out or added — reshuffles them, nor they it.
     cage: buildCage(createRandom(seed ^ CAGE_SEED_MIX)).map(roundToFiveDecimals),
     embers: buildEmbers(createRandom(seed ^ EMBER_SEED_MIX)).map(roundToFiveDecimals),
+    truss: buildTruss(createRandom(seed ^ TRUSS_SEED_MIX)).map(roundToFiveDecimals),
   };
 }
 
@@ -1231,6 +1292,7 @@ export function pictureSceneOf(scene: HologramScene): HologramPictureScene {
     textureSeed: scene.textureSeed,
     cage: scene.cage,
     embers: scene.embers,
+    truss: scene.truss,
   };
 }
 
@@ -1527,6 +1589,8 @@ export function analyseFrame(frame: HologramFrame, size: number) {
     // turn are wrapped to one turn: the GPU takes float32 numbers, which would lose the per-frame
     // step of a sphere left mounted for hours.
     roll: fraction((time * ROLL_DEGREES_PER_SECOND) / 360) * 360,
+    // And how far the truss round his edge has rolled, on its own clock.
+    rimRoll: fraction((time * RIM_ROLL_DEGREES_PER_SECOND) / 360) * 360,
     // the inner layer winds up with the vortex, settling to its own slow turn as the specks do
     shellTurn: fraction((time * SHELL_DEGREES_PER_SECOND - 540 * settle * settle) / 360) * 360,
     streamCos: Math.cos(yaw),
