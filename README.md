@@ -4,9 +4,9 @@ An intelligent voice assistant for home automation, powered by AI agents and cus
 
 <img width="1280" height="640" alt="Jarvis" src="./docs/jarvis.png" />
 
-## Jarvis, summoned
+## On your phone and watch
 
-Hold the power button on the phone and Jarvis comes up over whatever you were doing; on the watch he is the whole screen. Here he spirals out of his core while he says his greeting, speaks, listens to somebody talking to him, works through what they said, and then goes — each phase named in the clip as it plays.
+Hold the power button and he comes up over whatever you were doing. On the watch he is the whole screen.
 
 <p align="center">
   <picture>
@@ -20,23 +20,11 @@ Hold the power button on the phone and Jarvis comes up over whatever you were do
   </picture>
 </p>
 
-One sphere, drawn once. Both devices bundle the same [`hologram`](./hologram) package, which is why there is no version of him that is only on the phone. These clips are that same drawing rendered frame by frame at the most particles each device is allowed — 10,000 on the phone, 5,000 on the watch, where on a device the density loop draws whatever share of that it can afford — by [`hologram/.scripts/render-showcase.ts`](./hologram/.scripts/render-showcase.ts):
+<sub>Watch clips are CC BY-SA 4.0 because of the device frame. See [NOTICE](./hologram/.scripts/device-art/NOTICE.md).</sub>
 
-```bash
-bun hologram/.scripts/render-showcase.ts
-```
+## In your room
 
-Those are animated WebP at 40 fps and 95% quality, rendered at twice the width they are shown at, with a 40 fps GIF behind them for anything that will not animate one — **a README cannot show a video**, because GitHub renders neither a `<video>` element from a file in a repository nor a video served from `raw`. The full-size VP9 copies are here to download: [phone](./docs/jarvis-on-a-phone.webm), [watch](./docs/jarvis-on-a-watch.webm).
-
-All three are transparent outside the device, so they sit on a light page as happily as a dark one.
-
-The picture at the top is the same drawing again: one still, mid-sentence, at the phone's full 10,000 particles — the most a phone is ever *allowed*, which is a ceiling rather than what one draws: on a phone the density loop settles at whatever share of it that phone can afford. It is 1280×640, which is what GitHub wants for a repository's social preview, so the same file serves as both.
-
-The devices are real frames rather than drawings: Google's own Pixel 10 Pro device art, and a community vector of a Pixel Watch 3 — Google publishes art for every Pixel phone and none for its watch. [`hologram/.scripts/device-art/NOTICE.md`](./hologram/.scripts/device-art/NOTICE.md) says where each came from and under what licence, **including that the two watch clips are themselves CC BY-SA 4.0** because the frame in them is.
-
-## Jarvis in your room
-
-On a Meta Quest he stands in the room with you. Say "Hey Jarvis" and he appears where there is space for him — worked out from the headset's own scan of the room — greets you, speaks from where he stands, and holds the same conversation as the phone. This is the [`vr`](./vr) app in Meta's headset emulator and one of its scanned rooms (the grey is the scan, standing in for passthrough): waiting for the wake word, arriving, then a walk up to him and once round him while he listens, thinks and speaks.
+Say "Hey Jarvis" on a Meta Quest and he appears where there is space for him. [Open it on the headset](https://ffmathy.github.io/hey-jarvis/vr/).
 
 <p align="center">
   <picture>
@@ -45,11 +33,7 @@ On a Meta Quest he stands in the room with you. Say "Hey Jarvis" and he appears 
   </picture>
 </p>
 
-The clip above is silent — a README can show an animated image but no video. **The full video, with his voice coming from where he stands, is [docs/jarvis-in-a-room.webm](./docs/jarvis-in-a-room.webm)**: download it and play it with headphones. It is rendered frame by frame from the real app with [`vr/.scripts/render-demo.ts`](./vr/.scripts/render-demo.ts):
-
-```bash
-bun vr/.scripts/render-demo.ts --out docs/jarvis-in-a-room.webm --readme
-```
+🔊 [Watch it with sound](./docs/jarvis-in-a-room.webm)
 
 ## Architecture
 
@@ -57,48 +41,28 @@ bun vr/.scripts/render-demo.ts --out docs/jarvis-in-a-room.webm --readme
 ESP32 Voice Hardware  ←→  Home Assistant  ←→  MCP Server (Mastra AI)  ←→  ElevenLabs Voice
 ```
 
-## Projects
-
-| Project | Description |
-|---------|-------------|
-| [**mcp**](./mcp) | Mastra AI-powered MCP server with 15+ agents across 20 domains (weather, shopping, IoT, calendar, etc.) |
-| [**elevenlabs**](./elevenlabs) | CLI for deploying and testing the ElevenLabs voice agent |
-| [**home-assistant-voice-firmware**](./home-assistant-voice-firmware) | ESPHome firmware for ESP32 voice devices with ElevenLabs streaming |
-| [**mobile**](./mobile) | Expo app that registers as the phone's default assistant, so the power button summons Jarvis |
-| [**watch**](./watch) | The same thing on a Wear OS watch |
-| [**hologram**](./hologram) | The sphere itself, and the voice tracking behind it — platform-free, and bundled by every app |
-| [**vr**](./vr) | Jarvis in your room: a WebXR page for Meta Quest — say "Hey Jarvis" and he appears where there is space, in passthrough, and holds the conversation — [open it on the headset](https://ffmathy.github.io/hey-jarvis/vr/) |
-
-Getting the app onto a phone and a paired watch goes through Google Play — published only when a release is cut from `main`, to the closed test: [**docs/play-store.md**](./docs/play-store.md) covers the upload key, the publisher account and the secrets each needs. The signing and the workflow are in place; what is not is an open Play developer account, which is where that document starts.
+| Project | What it is |
+|---------|------------|
+| [**mcp**](./mcp) | Mastra MCP server with 15+ agents (weather, shopping, IoT, calendar, …) |
+| [**elevenlabs**](./elevenlabs) | Deploys and tests the ElevenLabs voice agent |
+| [**home-assistant-voice-firmware**](./home-assistant-voice-firmware) | ESPHome firmware for ESP32 voice devices |
+| [**hologram**](./hologram) | The sphere and its voice tracking, shared by every app |
+| [**mobile**](./mobile) | Phone app: the power button summons Jarvis |
+| [**watch**](./watch) | The same on Wear OS |
+| [**vr**](./vr) | WebXR app for Meta Quest |
 
 ## Quick Start
 
-Open in a DevContainer — all dependencies are pre-installed.
+Open in the DevContainer, then:
 
 ```bash
-bunx turbo serve --filter=mcp                              # Start MCP server + playground
-bunx turbo deploy --filter=elevenlabs                       # Deploy voice agent
-bunx turbo serve --filter=home-assistant-voice-firmware     # Flash firmware over WiFi
+bunx turbo serve --filter=mcp                              # MCP server + playground
+bunx turbo deploy --filter=elevenlabs                      # Deploy the voice agent
+bunx turbo serve --filter=home-assistant-voice-firmware    # Flash firmware over WiFi
+
+bunx turbo test              # Mocked tests, no credentials
+bunx turbo test:integration  # Tests against real services
+bunx turbo lint
 ```
 
-## Development
-
-- **Build system**: Turborepo monorepo
-- **Package manager**: Bun
-- **Code quality**: Biome (formatting + linting), TypeScript strict mode
-- **Commits**: Conventional Commits enforced via commitlint in a git hook
-- **Secrets**: 1Password CLI — Turborepo tasks inject credentials via `op run`
-- **CI/CD**: GitHub Actions with DevContainer, a release (tag and GitHub Release) for every merge to main
-- **Supply chain**: Bun-only installs, exact version pins, a 7-day release cooldown, no dependency install scripts, SHA-pinned Actions — see [Supply Chain Security](./.claude/rules/supply-chain-security.md)
-
-```bash
-bunx turbo test              # Mocked tests — no credentials needed
-bunx turbo test:integration  # The tests that call real services
-bunx turbo lint              # Lint everything
-bunx biome check --write .   # Format + lint
-```
-
-CI runs `turbo test` on every push. `turbo test:integration` never runs on
-GitHub Actions — only when you run it yourself.
-
-Each project's development guidelines are a rule in [`.claude/rules/`](./.claude/rules/), named after the project.
+Publishing to Google Play: [docs/play-store.md](./docs/play-store.md). Development conventions: [`.claude/rules/`](./.claude/rules/).
