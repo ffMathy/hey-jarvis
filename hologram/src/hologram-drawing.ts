@@ -370,10 +370,12 @@ export const CHIP_GONE_SECONDS = 0.2;
  */
 export const PICTURE_SHELL_EDGE = 0.88;
 /**
- * The white-hot ring round his core, in R from the core: the brightest thing in him, at about 0.4 of
- * the film's S. The thinking pulse blooms out of it.
+ * The white-hot ring round his core, in R from the core: the brightest thing in him. Vision Quest's
+ * is at about 0.4 of its S (0.35R here), and Age of Ultron's core is a small eye; the user found the
+ * Vision Quest size too big in the hybrid, so it is tighter, which also gives the swirl room round
+ * it. The thinking pulse blooms out of it.
  */
-export const CORE_RING_RADIUS = 0.35;
+export const CORE_RING_RADIUS = 0.22;
 
 // Strides of the flat scene tables (the builders describe the fields).
 export const BODY_STRIDE = 9;

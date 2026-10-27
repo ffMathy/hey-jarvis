@@ -38,16 +38,20 @@ function stopsAtRadii(reach: number, stops: readonly [radius: number, colour: st
  * film's is. It is the palest of him, as both films have his middle, and still orange rather than
  * gold (Age of Ultron's colour, see `gpu-picture.ts`).
  *
+ * Inside the ring its stops are shares of the ring's radius, so the haze keeps its shape whatever
+ * size the ring is; outside, the bloom's are distances from the ring, since a bloom is as wide
+ * whatever it rings.
+ *
  * It has been both ways wrong. Pale and nearly as bright at the middle as at the ring, it read as
  * an opaque coin laid over him; then faint amber at a fifth of the ring's light, the inside of the
  * ring was a dark hole where the film's glows.
  */
 const CORE_GLOW = stopsAtRadii(CORE_GLOW_REACH, [
   [0, '#e07c3c76'],
-  [0.12, '#e4823f7c'],
-  [0.22, '#ea8a4690'],
-  [CORE_RING_RADIUS - 0.07, '#f0964eac'],
-  [CORE_RING_RADIUS - 0.025, '#f8a85ecc'],
+  [0.34 * CORE_RING_RADIUS, '#e4823f7c'],
+  [0.63 * CORE_RING_RADIUS, '#ea8a4690'],
+  [0.8 * CORE_RING_RADIUS, '#f0964eac'],
+  [0.93 * CORE_RING_RADIUS, '#f8a85ecc'],
   [CORE_RING_RADIUS, '#ffb878d8'],
   [CORE_RING_RADIUS + 0.025, '#f08e4aa0'],
   [CORE_RING_RADIUS + 0.06, '#e4743458'],

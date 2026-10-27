@@ -17,7 +17,7 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
 
 ## His parts
 
-- **The core:** a white-hot thin ring (`CORE_RING_RADIUS`), the brightest thing in him and an
+- **The core:** a white-hot thin ring at 0.22R (`CORE_RING_RADIUS`), the brightest thing in him and an
   orange-white rather than white, round a glow that is mostly see-through, with Age of Ultron's
   small ringed eye inside it — a hooked ring at 0.1R round a ring at 0.06R, never white — and a
   faint bar across it (`buildCoreGlyph`, `drawCore`).
@@ -56,6 +56,8 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
 
 ## What the user asked for, which a change must keep
 
+- **A small core.** Vision Quest's ring at 0.35R read too big in the hybrid; the user asked for it
+  smaller, and it sits at 0.22R. Do not grow it back.
 - **Dense, as the old body was.** The film's hollow shell alone left a dark donut round the core,
   and the user liked how packed the old body looked better: his middle is filled with specks and
   dimmed only a little (`SHELL_FACE_DIMMING`). Do not hollow him out again.

@@ -430,7 +430,7 @@ test.describe('the hologram', () => {
   }) => {
     // His colour is Age of Ultron's red-orange — its close-ups' median (160,98,54), their hottest
     // pixels (253,223,193) — and the only thing in him near white is the thin ring round his core,
-    // at 0.35R, which Vision Quest gives him. So white is allowed there and nowhere else in the
+    // at CORE_RING_RADIUS (0.22R), which Vision Quest gives him. So white is allowed there and nowhere else in the
     // picture; the shell of hot specks round it is the body's, which this does not draw, and the
     // eye inside the ring is never white. Measured when his palette went from Vision Quest's gold
     // back to Age of Ultron's colour, over these three moments: 0 pixels bluer than red, red 3.2
