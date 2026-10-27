@@ -14,14 +14,16 @@ flare on every tool call and fold back into him when done (`.claude/rules/vr-see
 
 | State | When |
 | --- | --- |
-| `planned` | `delegation_start`: the plan names it, before anything runs |
+| `planned` | `delegation_start`: the moment routing knows the request's agents (`announcePlan` in `runChains`), before the plan is registered and before a direct answer is tried |
 | `working` | the first chunk its agent streams (`delegation_working`), once |
 | `tool` | every `tool-call` chunk its agent streams: a moment, and it is still `working` after it |
 | `asking` | it suspended on a question sir can answer; `failed` when it cannot be asked |
 | `answered` / `failed` | `delegation_end`, failed for an error or an empty answer; and every delegation still outstanding when the run ends or fails |
 
 The delegation id is the plan's step id, which carries the plan's own id, so it is unique across
-requests. `delegation_working` is read off the same `workflow-step-output` chunks as slow tools and
+requests. A direct answer (the classifier's fast route) is reported as that same delegation, so a
+satellite is out while it is tried, and one that declines leaves the plan to carry on the very
+delegation it announced. `delegation_working` is read off the same `workflow-step-output` chunks as slow tools and
 affected entities (`asWorkingEvents`), and off a resumed agent's own stream when an answer is carried
 back. As with affected entities, none of it reaches the voice agent.
 

@@ -1054,7 +1054,26 @@ function newPlanId(): string {
 }
 
 /**
- * Registers a plan and runs it.
+ * Names every delegation of a plan as outstanding, before a single step has run.
+ *
+ * Done the moment routing knows which agents the request needs -- before the plan is registered,
+ * and before a direct answer is tried -- so the first poll can already name the whole of the work,
+ * and the satellite of each agent at work comes out round Jarvis on sir's devices while the plan
+ * is still being set up rather than once its first step starts.
+ */
+function announcePlan(progress: RoutingProgress, plan: RoutingPlan): void {
+  for (const [delegationId, agentId] of plan.agentByStepId) {
+    progress.handle({
+      type: 'delegation_start',
+      delegationId,
+      taskId: plan.taskIdByStepId.get(delegationId) ?? agentId,
+      agentId,
+    });
+  }
+}
+
+/**
+ * Registers a plan and runs it. Its delegations have already been announced (`announcePlan`).
  *
  * Registering before running is what puts the plan in Studio whether or not the run goes
  * well: a request that fails half way is exactly the one worth looking at.
@@ -1064,27 +1083,15 @@ async function runPlan(
   sessionId: string,
   progress: RoutingProgress,
   userQuery: string,
-  chains: PlannedChain[],
+  plan: RoutingPlan,
   signal: AbortSignal,
 ): Promise<void> {
-  const plan = buildRoutingPlan(newPlanId(), chains);
   await mastra.addDynamicWorkflows(plan.graphs);
   logger.info('Registered a routing plan', {
     planId: plan.id,
     delegations: plan.delegationCount,
     elapsedMs: progress.elapsedMs(),
   });
-
-  // Every delegation is outstanding from here, before a single step has run, so the first
-  // poll can already name the whole of the work.
-  for (const [delegationId, agentId] of plan.agentByStepId) {
-    progress.handle({
-      type: 'delegation_start',
-      delegationId,
-      taskId: plan.taskIdByStepId.get(delegationId) ?? agentId,
-      agentId,
-    });
-  }
 
   const run = await mastra.getWorkflowById(plan.id).createRun();
   const cancelRun = async () => {
@@ -1108,9 +1115,8 @@ async function runPlan(
  *
  * The plan is the same one-agent chain the request would have run anyway, so a declined or failed
  * direct answer costs the round trip it tried and nothing else: the agent then does what it would
- * have done. Reported as the chain's own task, so a poll reads it like any other delegation. It is
- * started and ended together once the answer is in, which is a matter of milliseconds -- and one
- * that declines then leaves nothing half-reported behind for the plan to contradict.
+ * have done. Reported as the plan's own delegation, already announced, so a poll reads it like any
+ * other, and one that declines leaves the plan to carry on the very delegation it was trying.
  *
  * What the answer read or changed is reported with it, before its result, as the agent's own tool
  * results would have reported it: no agent streams a tool result here for `asAffectedEntityEvents`
@@ -1123,13 +1129,13 @@ async function runDirectOrPlan(
   sessionId: string,
   progress: RoutingProgress,
   userQuery: string,
-  chains: PlannedChain[],
+  plan: RoutingPlan,
   direct: DirectAnswer,
   signal: AbortSignal,
 ): Promise<void> {
-  const [delegation] = chains[0]?.delegations ?? [];
-  if (!delegation) {
-    return runPlan(mastra, sessionId, progress, userQuery, chains, signal);
+  const [delegationId] = plan.agentByStepId.keys();
+  if (delegationId === undefined) {
+    return runPlan(mastra, sessionId, progress, userQuery, plan, signal);
   }
 
   let outcome: DirectAnswerOutcome | undefined;
@@ -1143,11 +1149,9 @@ async function runDirectOrPlan(
     });
   }
   if (outcome === undefined || signal.aborted) {
-    return signal.aborted ? undefined : runPlan(mastra, sessionId, progress, userQuery, chains, signal);
+    return signal.aborted ? undefined : runPlan(mastra, sessionId, progress, userQuery, plan, signal);
   }
 
-  const delegationId = `direct-${delegation.taskId}`;
-  progress.handle({ type: 'delegation_start', delegationId, taskId: delegation.taskId, agentId: delegation.agentId });
   if (outcome.entities.length > 0) {
     progress.handle({ type: 'delegation_affected_entities', delegationId, entities: outcome.entities });
   }
@@ -1447,8 +1451,11 @@ function followThePhotoWait(progress: RoutingProgress, decision: RoutingDecision
   }
 }
 
-/** Runs a request's new work: answered directly when it can be, as a plan otherwise. */
-function runChains(
+/**
+ * Runs a request's new work: answered directly when it can be, as a plan otherwise -- its agents
+ * announced first, either way, since which they are is known from here.
+ */
+async function runChains(
   mastra: Mastra,
   sessionId: string,
   progress: RoutingProgress,
@@ -1457,9 +1464,11 @@ function runChains(
   direct: DirectAnswer | undefined,
   signal: AbortSignal,
 ): Promise<void> {
+  const plan = buildRoutingPlan(newPlanId(), chains);
+  announcePlan(progress, plan);
   return direct
-    ? runDirectOrPlan(mastra, sessionId, progress, userQuery, chains, direct, signal)
-    : runPlan(mastra, sessionId, progress, userQuery, chains, signal);
+    ? runDirectOrPlan(mastra, sessionId, progress, userQuery, plan, direct, signal)
+    : runPlan(mastra, sessionId, progress, userQuery, plan, signal);
 }
 
 /**
