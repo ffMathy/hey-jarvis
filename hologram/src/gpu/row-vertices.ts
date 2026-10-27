@@ -99,35 +99,83 @@ export function quadsKept(keys: Float32Array, density: number): number {
   return below;
 }
 
-/** One row's `size` numbers of `values`, written once for each of its four corners. */
+// Laying the rows out runs on the JS thread at every mount, under an interpreter on a phone, where
+// each number moved by JavaScript costs far more than an engine's own copy of a whole run of them.
+// So the vertices are written in runs, with `copyWithin`, rather than a number at a time.
+
+/**
+ * One row's `size` numbers of `values`, written once for each of its four corners.
+ *
+ * The numbers are copied in all at once, packed at the front, and each row then moves its own out
+ * to its first corner and doubles that twice over the next three: three copies a row, and nothing
+ * made for them. It goes from the last row to the first because a row's corners start at four times
+ * where its numbers lie packed, so a row writes only from there on — past the packed numbers of
+ * every row still to move, which are all nearer the front — and nothing is overwritten before it
+ * has been moved. A view of each row's numbers to `set` from, as this used to take, made fifty
+ * thousand small objects for the scene's five attributes.
+ */
 function onEveryCorner(values: Float32Array, size: number): Float32Array {
   const rows = values.length / size;
   const spread = new Float32Array(values.length * 4);
-  for (let row = 0; row < rows; row++) {
-    const value = values.subarray(row * size, (row + 1) * size);
-    for (let corner = 0; corner < 4; corner++) spread.set(value, (row * 4 + corner) * size);
+  spread.set(values);
+  for (let row = rows - 1; row >= 0; row--) {
+    const packed = row * size;
+    const firstCorner = packed * 4;
+    spread.copyWithin(firstCorner, packed, packed + size);
+    spread.copyWithin(firstCorner + size, firstCorner, firstCorner + size);
+    spread.copyWithin(firstCorner + 2 * size, firstCorner, firstCorner + 2 * size);
   }
   return spread;
 }
 
+/** Every row's corners at ±1: the same eight numbers a row, copied in runs that double each time. */
+function cornersOf(rowCount: number) {
+  const corner = new Float32Array(rowCount * CORNERS.length);
+  if (rowCount === 0) return corner;
+  corner.set(CORNERS);
+  for (let filled = CORNERS.length; filled < corner.length; filled *= 2) corner.copyWithin(filled, 0, filled);
+  return corner;
+}
+
+/**
+ * Where each row's quad goes in the index: in ascending order of the rows' density keys, and of the
+ * rows' own order where two keys are the same — what a stable sort of the rows by key gives. The
+ * keys are sorted as numbers, which an engine does natively, and each row then takes the next place
+ * still free among those of its key, in the order the rows come in, which is what keeps a tie in
+ * row order. A sort of the rows themselves called back into JavaScript for each of its hundred and
+ * thirty thousand comparisons.
+ */
+function placesByKey(thinning: Float32Array) {
+  const sortedKeys = thinning.slice().sort();
+  // each key's first place, which becomes the next one free as rows take them
+  const nextFree = new Map<number, number>();
+  for (let place = sortedKeys.length - 1; place >= 0; place--) nextFree.set(sortedKeys[place], place);
+  const places = new Uint32Array(thinning.length);
+  for (let row = 0; row < thinning.length; row++) {
+    const key = thinning[row];
+    const place = nextFree.get(key);
+    if (place === undefined) throw new Error(`row ${row}'s density key ${key} is not among the sorted keys`);
+    places[row] = place;
+    nextFree.set(key, place + 1);
+  }
+  return places;
+}
+
 export function buildRowVertices(rows: HologramRows): RowVertices {
   const attributes = ROW_ATTRIBUTES.map(([name, size]) => ({ name, size, values: onEveryCorner(rows[name], size) }));
-  const corner = new Float32Array(rows.count * CORNERS.length);
-  for (let row = 0; row < rows.count; row++) corner.set(CORNERS, row * CORNERS.length);
+  const corner = cornersOf(rows.count);
   const vertexCount = rows.count * 4;
   const indexCount = rows.count * TRIANGLES.length;
   const index = vertexCount <= SHORT_INDEX_VERTICES ? new Uint16Array(indexCount) : new Uint32Array(indexCount);
-  // Stable, so rows with the same key keep the order they had.
-  const order = Array.from({ length: rows.count }, (_, row) => row).sort(
-    (first, second) => rows.thinning[first] - rows.thinning[second] || first - second,
-  );
+  const { thinning } = rows;
+  const places = placesByKey(thinning);
   const keys = new Float32Array(rows.count);
-  for (let quad = 0; quad < order.length; quad++) {
-    const row = order[quad];
-    keys[quad] = rows.thinning[row];
-    for (let at = 0; at < TRIANGLES.length; at++) {
-      index[quad * TRIANGLES.length + at] = row * 4 + TRIANGLES[at];
-    }
+  for (let row = 0; row < rows.count; row++) {
+    const quad = places[row];
+    keys[quad] = thinning[row];
+    const firstIndex = quad * TRIANGLES.length;
+    const firstVertex = row * 4;
+    for (let at = 0; at < TRIANGLES.length; at++) index[firstIndex + at] = firstVertex + TRIANGLES[at];
   }
   return { vertexCount, attributes, corner, index, keys };
 }
