@@ -15,9 +15,13 @@ import {
   type HologramFrame,
   PARTICLE_COUNT,
   PICTURE_SHELL_EDGE,
+  RIM_ROLL_DEGREES_PER_SECOND,
   ROLL_DEGREES_PER_SECOND,
   SHELL_DEGREES_PER_SECOND,
   swirlFragment,
+  TRUSS_INNER_RAIL,
+  TRUSS_OUTER_RAIL,
+  TRUSS_PIECE_STRIDE,
 } from './hologram-drawing';
 import { VOICE_BAND_COUNT } from './voice-levels';
 
@@ -147,6 +151,38 @@ describe('the picture round him', () => {
     }
     return edges;
   };
+
+  it('keeps the truss on his edge: boxes between its rails, short struts hanging inward, nothing standing off him', () => {
+    // "I'd also like to still have the weird squares near the edge of the hologram" — and nothing may
+    // stand off him, so the rails stay inside 0.93-1.05R and a strut only ever hangs inward, short.
+    const { truss } = scene;
+    expect(TRUSS_INNER_RAIL).toBeGreaterThanOrEqual(0.93);
+    expect(TRUSS_OUTER_RAIL).toBeLessThanOrEqual(1.05);
+    let degrees = 0;
+    let struts = 0;
+    for (let offset = 0; offset < truss.length; offset += TRUSS_PIECE_STRIDE) {
+      const [, sweep, trace, strut] = truss.slice(offset, offset + TRUSS_PIECE_STRIDE);
+      degrees += sweep;
+      // a box is wider than it is deep, as the old truss's were
+      expect(sweep).toBeGreaterThan(4);
+      expect(sweep).toBeLessThanOrEqual(11);
+      expect([0, 1, 2, 3]).toContain(trace);
+      if (strut > 0) struts++;
+      expect(TRUSS_INNER_RAIL - strut).toBeGreaterThan(PICTURE_SHELL_EDGE - 0.05);
+    }
+    expect(degrees).toBeGreaterThan(180);
+    expect(degrees).toBeLessThan(200);
+    expect(struts).toBeGreaterThan(0);
+  });
+
+  it('rolls the truss clockwise on a clock of its own, one turn in about 33 s', () => {
+    const state = (time: number) => stateOf({ time });
+    expect(RIM_ROLL_DEGREES_PER_SECOND).toBeGreaterThan(0);
+    expect(state(0).rimRoll).toBe(0);
+    expect(state(2).rimRoll).toBeCloseTo(2 * RIM_ROLL_DEGREES_PER_SECOND, 6);
+    // wrapped to one turn, as the core ring's roll is, so a sphere left up for hours keeps its step
+    expect(state(3600).rimRoll).toBeLessThan(360);
+  });
 
   it('keeps the cage and the embers well inside his square, which ends about 1.8R out', () => {
     // They are always there, and he swells by up to a fifth while he talks, so neither may come near
