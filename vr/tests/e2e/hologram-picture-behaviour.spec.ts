@@ -425,17 +425,17 @@ const test = appTest.extend<Record<never, never>, { picture: Picture }>({
 });
 
 test.describe('the hologram', () => {
-  test('draws something golden: never bluer than red, and white-hot only in the ring round its core', async ({
+  test('draws something red-orange: never bluer than red, and white-hot only in the ring round its core', async ({
     picture,
   }) => {
-    // The Vision Quest footage runs from white-hot through pale gold and gold to deep amber — its
-    // hottest pixels (255,229,174), its median (178,105,32) — and the only thing in him near white
-    // is the thin ring round his core, at 0.35R. So, where the old film study allowed no white at
-    // all, white is now allowed there and nowhere else in the picture; the shell of white-hot specks
-    // round it is the body's, which this does not draw. Measured when his cage, core ring and chips
-    // were last redrawn, over these three moments: 0 pixels bluer than red, red 2.7 times blue, and
-    // not one pixel with all three channels over 230 anywhere — the ring's hottest is about
-    // (251,240,205).
+    // His colour is Age of Ultron's red-orange — its close-ups' median (160,98,54), their hottest
+    // pixels (253,223,193) — and the only thing in him near white is the thin ring round his core,
+    // at 0.35R, which Vision Quest gives him. So white is allowed there and nowhere else in the
+    // picture; the shell of hot specks round it is the body's, which this does not draw, and the
+    // eye inside the ring is never white. Measured when his palette went from Vision Quest's gold
+    // back to Age of Ultron's colour, over these three moments: 0 pixels bluer than red, red 3.2
+    // times blue (2.7 in the gold), and not one pixel with all three channels over 230 anywhere —
+    // the ring's hottest is about (250,229,190), where the gold's was (251,240,205).
     for (const frame of [
       speech(5, 0.7, spectrum(picture, 'low', 0.7)),
       speech(45.3, 0.6, evenBands(picture, 0.55), 0.05, 4),

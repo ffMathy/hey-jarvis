@@ -115,16 +115,16 @@ test('is his warm light, with its middle left clear, over black and over a room'
     const { middle } = rim;
     expect(Math.abs(rim.offset), `where the rim is over ${background}`).toBeLessThan(3);
     if (background === 'black') {
-      // His gold: red well up, green and blue under it as the Vision Quest footage has them — from
-      // its median (178,105,32), green 0.59 of red, to its hottest (255,229,174), green 0.9 and
-      // blue 0.68 of red — neither white nor red. The corona is lit in his strokes' paints, and
-      // when they went from orange to the footage's gold it went with them: measured then at
-      // (150,121,70), green 0.81 and blue 0.47 of red, where the orange had been held under 0.7
-      // and 0.35.
+      // His red-orange: red well up, green a little over half of it and little blue, as Age of
+      // Ultron's close-ups have him — median (160,98,54), R:G:B 1:0.69:0.43 — neither white, nor
+      // red, nor the gold the user found too yellow. The corona is lit in his strokes' and halos'
+      // paints and follows them: in Vision Quest's gold it measured (150,121,70), green 0.81 and
+      // blue 0.47 of red, and back in Age of Ultron's colour (148,83,37), green 0.56 and blue 0.25,
+      // so it is held again under the 0.7 and 0.35 the orange was held to before the gold.
       expect(red).toBeGreaterThan(110);
       expect(green / red).toBeGreaterThan(0.45);
-      expect(green / red).toBeLessThan(0.9);
-      expect(blue / red).toBeLessThan(0.65);
+      expect(green / red).toBeLessThan(0.7);
+      expect(blue / red).toBeLessThan(0.35);
       expect(luma(middle)).toBeLessThan(25);
     } else {
       // Over the grey, the rim is warmer and brighter than the room, and the middle is the room.
