@@ -239,15 +239,17 @@ export function placeBodyFragment(
   const restDepth = body[offset + 8];
   const hop = fraction(cycle * 0.618034 + id * 9.7);
 
-  // placeFragment: turned about the vertical in the body's frame, then seen in the view plane.
+  // placeFragment: turned about the vertical in the body's frame, then seen in the view plane — or,
+  // on the whorl, held in the view plane as it rests.
   const turned: Vector3Tuple = [
     restX * state.bodyCos + restDepth * state.bodySin,
     -restY,
     restDepth * state.bodyCos - restX * state.bodySin,
   ];
-  const planeX = dot(turned, basis.right);
-  const planeY = -dot(turned, basis.up);
-  const depth = dot(turned, basis.front);
+  const onWhorl = turning > 0;
+  const planeX = onWhorl ? restX : dot(turned, basis.right);
+  const planeY = onWhorl ? restY : -dot(turned, basis.up);
+  const depth = onWhorl ? restDepth : dot(turned, basis.front);
   // It lies along the ring through where it is seen: `placeFragment`'s direction.
   const direction = [0, 0];
   ringDirection(planeX, planeY, body[offset + 2], body[offset + 3], direction, 0);

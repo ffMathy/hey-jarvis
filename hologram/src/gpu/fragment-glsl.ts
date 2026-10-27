@@ -357,9 +357,11 @@ Fragment readBodyFragment() {
   float fragmentLength = shape.z;
   float hop = fract(cycle * 0.618034 + identity.x);
   vec3 turned = vec3(rest.x * bodyTurn.x + rest.z * bodyTurn.y, -rest.y, rest.z * bodyTurn.x - rest.x * bodyTurn.y);
-  float planeX = dot(turned, viewRight);
-  float planeY = -dot(turned, viewUp);
-  float depth = dot(turned, viewFront);
+  // The whorl's specks are held in the view plane as they rest: placeFragment.
+  bool onWhorl = group > 0;
+  float planeX = onWhorl ? rest.x : dot(turned, viewRight);
+  float planeY = onWhorl ? rest.y : -dot(turned, viewUp);
+  float depth = onWhorl ? rest.z : dot(turned, viewFront);
   vec2 unit = ringDirection(vec2(planeX, planeY), shape.xy);
   float inward = clamp01((0.76 - (planeX * planeX + planeY * planeY)) * 3.2);
   float wander = fract(hop * 23.17) - 0.5;

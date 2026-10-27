@@ -50,9 +50,10 @@
 //   drawSatellites    the agents at work for him, circling him (`satellite-drawing.ts`). The headset
 //                     draws its own in the room instead.
 //   (the body)        over all of it, on the GPU in three dimensions (`hologram/gpu`): up to
-//                     PARTICLE_COUNT specks, most of them filling the ball as the old body's did and
-//                     the rest on the film's shell from about half his radius out (buildBody), each
-//                     tier with a soft halo of its own, and the stream, specks below the core
+//                     PARTICLE_COUNT specks: the old body's whorl, two spiral arms of specks held in
+//                     the view plane and winding out of the core (pushWhorlSpeck); a fill through the
+//                     ball as the old body's was; and the film's shell from about half his radius
+//                     out (buildBody). Each tier has a soft halo of its own, and the stream, specks below the core
 //                     turning on a clock of their own (buildStream). The scene's body and stream
 //                     tables, and the per-fragment helpers below (readFragment, placeFragment,
 //                     swirlFragment, latticeFragment and the rest), are what it is drawn from and
@@ -60,8 +61,8 @@
 //
 // IDLE MOTION (nothing breathes, pulses or flickers as a whole)
 // - The body turns about the vertical axis like a globe (BODY_RADIANS_PER_SECOND), and the cage turns
-//   with it. Over half of the specks seen between 0.3R and 0.62R from his middle also ride an inner
-//   layer that counter-turns about the core in the plane of the view (SHELL_DEGREES_PER_SECOND). The
+//   with it. The whorl's specks ride an inner layer instead, held in the plane of the view and
+//   counter-turning about the core (SHELL_DEGREES_PER_SECOND), so the spiral stays a spiral. The
 //   stream turns about the vertical on its own clock (STREAM_RADIANS_PER_SECOND), so its front drifts
 //   right and its dimmer back drifts left: counter-streams through the bottom of the shell.
 // - Every speck lives on its own clock. It grows out of nothing and shrinks back into it over a third
@@ -235,9 +236,9 @@ export const SPHERE_FRACTION = 0.27;
  */
 export const ROLL_DEGREES_PER_SECOND = 11;
 /**
- * The inner layer turns the other way, about the core in the plane of the view: over half of the
- * specks seen between 0.3R and 0.62R from his middle ride it (see buildBody), so the middle of him
- * drifts against the globe's turn. It winds up as the vortex brings him out (`shellTurn` in
+ * The inner layer turns the other way, about the core in the plane of the view: the whorl's
+ * specks ride it, held in that plane (see buildBody), so the spiral through his middle drifts
+ * against the globe's turn. It winds up as the vortex brings him out (`shellTurn` in
  * analyseFrame). The Age of Ultron footage measured its inner layer at -1.6 to -5.4°/s.
  */
 export const SHELL_DEGREES_PER_SECOND = -5;
@@ -733,6 +734,97 @@ function pickBodyBrightness(random: Random, crowding: number, brightShare: numbe
 }
 
 /**
+ * Writes a body row: the place in `spot` (x, y, depth), the direction it lies relative to the ring
+ * through where it is seen, the glyph and length in `shape`, and its own clock. A whorl row is on
+ * the inner layer (`whorl` 6, see {@link ridesTheWhorl}).
+ *
+ * Rounded as each row is written rather than in a pass of its own once the table is built, as the
+ * smaller tables are: over ninety thousand numbers, that pass and the second array it made were up
+ * to a tenth of the scene's cost. The code is a whole number and needs no rounding.
+ */
+function pushBodyRow(
+  random: Random,
+  body: number[],
+  spot: number[],
+  unitX: number,
+  unitY: number,
+  shape: number[],
+  brightness: number,
+  whorl = 0,
+) {
+  const pool = random() < 1 / 3 ? 1 : 0;
+  const rate = pickFragmentRate(random, pool);
+  const id = random();
+  body.push(
+    roundToFiveDecimals(spot[0]),
+    roundToFiveDecimals(spot[1]),
+    roundToFiveDecimals(unitX),
+    roundToFiveDecimals(unitY),
+    roundToFiveDecimals(shape[1]),
+    roundToFiveDecimals(rate),
+    roundToFiveDecimals(id),
+    brightness + 3 * pool + whorl + FRAGMENT_CODE_GLYPH_STEP * shape[0],
+    roundToFiveDecimals(spot[2]),
+  );
+}
+
+/**
+ * The whorl: the old body's spiral through his middle, two arms winding out of the core, which the
+ * user liked and asked to have back made of specks rather than painted. A share of his specks
+ * ({@link WHORL_SHARE}) lie along the arms, held in the plane of the view and turning about the
+ * core with the inner layer ({@link SHELL_DEGREES_PER_SECOND}), so the arms stay arms whichever way
+ * the globe has turned. Furry, as the old arms were: most specks run along an arm and the rest
+ * cross it.
+ */
+const WHORL_SHARE = 0.3;
+/** The share of the whorl's specks that are bright, so its arms read through the fill. */
+const WHORL_BRIGHT_SHARE = 0.3;
+/** How far out of the core the arms wind, in R, and how many turns they make on the way. */
+const WHORL_START = 0.04;
+const WHORL_REACH = 0.78;
+const WHORL_TURNS = 1.1;
+/** The share of the whorl's specks that run along their arm, give or take 15°; the rest cross it. */
+const WHORL_ALONG_SHARE = 0.75;
+
+/** A whorl speck: its place on an arm and the way it lies, pushed as a row of the body. */
+function pushWhorlSpeck(random: Random, body: number[], shape: number[]) {
+  const arm = random() < 0.5 ? 0 : Math.PI;
+  const out = random();
+  const reach = WHORL_START + (WHORL_REACH - WHORL_START) * out;
+  const angle = arm + WHORL_TURNS * 2 * Math.PI * out;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  // The arm's direction there, and a spread across it that widens as it winds out.
+  const runX = (WHORL_REACH - WHORL_START) * cos - reach * WHORL_TURNS * 2 * Math.PI * sin;
+  const runY = (WHORL_REACH - WHORL_START) * sin + reach * WHORL_TURNS * 2 * Math.PI * cos;
+  const run = Math.hypot(runX, runY);
+  const across = (random() + random() + random() - 1.5) * (0.025 + 0.045 * out);
+  const x = CORE_X + reach * cos - (runY / run) * across;
+  const y = CORE_Y + reach * sin + (runX / run) * across;
+  const crossing = random() < WHORL_ALONG_SHARE ? 0 : Math.PI / 2;
+  const turn = crossing + (random() - 0.5) * 0.5;
+  const lieX = (runX / run) * Math.cos(turn) - (runY / run) * Math.sin(turn);
+  const lieY = (runX / run) * Math.sin(turn) + (runY / run) * Math.cos(turn);
+  // Kept relative to the ring through where it is seen, as every body row is (ringDirection).
+  const seen = Math.hypot(x, y) || 1;
+  const outwardX = x / seen;
+  const outwardY = y / seen;
+  const spot = [x, y, (random() * 2 - 1) * 0.06];
+  pickGlyphAndLength(random, seen, shape);
+  const brightness = pickBrightness(random, WHORL_BRIGHT_SHARE);
+  pushBodyRow(
+    random,
+    body,
+    spot,
+    -outwardY * lieX + outwardX * lieY,
+    outwardX * lieX + outwardY * lieY,
+    shape,
+    brightness,
+    6,
+  );
+}
+
+/**
  * The fragment body: the film's shell of fine glittering specks. Stride {@link BODY_STRIDE}: x, y,
  * unit direction along the ring and out from his middle where it is seen (see
  * {@link ringDirection}), length, rate (cycles per second), id (0..1), a code packing the glyph and
@@ -751,45 +843,29 @@ function pickBodyBrightness(random: Random, crowding: number, brightShare: numbe
  * cycles twice as fast and only shows while he talks, standing in for calm fragments
  * whose ids it takes over — so the count lit, and the brightness, stay the same.
  *
- * Over half of the specks that rest between 0.3R and 0.62R from the middle of the view ride the
- * counter-turning inner layer as well as the globe's turn, so the middle of him drifts against the
- * rest.
+ * The whorl's specks ({@link WHORL_SHARE}) ride the counter-turning inner layer instead of the
+ * globe's turn, so the spiral through his middle drifts against the rest of him.
  */
 function buildBody(random: Random, fragmentCount: number) {
   const body: number[] = [];
   const shape = [0, 0];
   const spot = [0, 0, 0, 0, 0];
   while (body.length < fragmentCount * BODY_STRIDE) {
+    if (random() < WHORL_SHARE) {
+      pushWhorlSpeck(random, body, shape);
+      continue;
+    }
     pickBodyPlace(random, spot);
     const x = spot[0];
     const y = spot[1];
     const depth = spot[2];
-    const radius = Math.sqrt(x * x + y * y + depth * depth);
     const crowding = clusterWeight(x, y, depth);
     const brightness = pickBodyBrightness(random, crowding, spot[3]);
     const crowded = brightness === 2 ? crowding : crowding * Math.sqrt(crowding);
     if (random() > massWeight(y) * crowded) continue;
     const direction = pickFragmentAngle(random, spot[4]);
-    pickGlyphAndLength(random, radius, shape);
-    const pool = random() < 1 / 3 ? 1 : 0;
-    const rate = pickFragmentRate(random, pool);
-    const id = random();
-    const seenFromMiddle = Math.hypot(x, y);
-    const onInnerShell = seenFromMiddle > 0.3 && seenFromMiddle < 0.62 && random() < 0.55 ? 6 : 0;
-    // Rounded as each row is written rather than in a pass of its own once the table is built, as
-    // the smaller tables are: over ninety thousand numbers, that pass and the second array it made
-    // were up to a tenth of the scene's cost. The code is a whole number and needs no rounding.
-    body.push(
-      roundToFiveDecimals(x),
-      roundToFiveDecimals(y),
-      roundToFiveDecimals(Math.cos(direction)),
-      roundToFiveDecimals(Math.sin(direction)),
-      roundToFiveDecimals(shape[1]),
-      roundToFiveDecimals(rate),
-      roundToFiveDecimals(id),
-      brightness + 3 * pool + onInnerShell + FRAGMENT_CODE_GLYPH_STEP * shape[0],
-      roundToFiveDecimals(depth),
-    );
+    pickGlyphAndLength(random, Math.sqrt(x * x + y * y + depth * depth), shape);
+    pushBodyRow(random, body, spot, Math.cos(direction), Math.sin(direction), shape, brightness);
   }
   return body;
 }
@@ -1661,6 +1737,15 @@ export function ringDirection(seenX: number, seenY: number, unitX: number, unitY
 }
 
 /**
+ * Whether a body row's class code (see {@link FRAGMENT_CODE_GLYPH_STEP}) puts it on the whorl: the
+ * inner layer, held in the plane of the view rather than turned with the globe.
+ */
+export function ridesTheWhorl(code: number) {
+  'worklet';
+  return code - FRAGMENT_CODE_GLYPH_STEP * Math.floor(code / FRAGMENT_CODE_GLYPH_STEP) >= 6;
+}
+
+/**
  * Where a fragment lands on screen this frame, how much of it survives the limb, and how much of
  * its light the shell it is seen through leaves it ({@link shellFacing}).
  *
@@ -1686,7 +1771,11 @@ export function placeFragment(
   const rest = body[offset];
   const restY = body[offset + 1];
   const depthAtRest = body[offset + 8];
-  const turnedX = rest * state.bodyCos + depthAtRest * state.bodySin;
+  // The whorl's specks are held in the plane of the view and turn only with the inner layer, so
+  // its arms stay arms however far the globe has turned.
+  const turnCos = ridesTheWhorl(body[offset + 7]) ? 1 : state.bodyCos;
+  const turnSin = ridesTheWhorl(body[offset + 7]) ? 0 : state.bodySin;
+  const turnedX = rest * turnCos + depthAtRest * turnSin;
   ringDirection(turnedX, restY, body[offset + 2], body[offset + 3], out, 5);
   const unitX = out[5];
   const unitY = out[6];
@@ -1694,7 +1783,7 @@ export function placeFragment(
   const x = turnedX + unitX * along - unitY * across;
   out[0] = x;
   out[1] = y;
-  out[2] = depthAtRest * state.bodyCos - rest * state.bodySin;
+  out[2] = depthAtRest * turnCos - rest * turnSin;
   // Nothing pops at the limb as it turns out of sight, or as it wanders out past it.
   out[3] = clamp01((0.94 * 0.94 - x * x - y * y) * 8);
   out[4] = shellFacing(x, y, rest * rest + restY * restY + depthAtRest * depthAtRest);

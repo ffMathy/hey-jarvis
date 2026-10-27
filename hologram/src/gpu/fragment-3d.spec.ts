@@ -18,6 +18,7 @@ import {
   placeFragment,
   readFragment,
   readShellFragment,
+  ridesTheWhorl,
   STREAM_STRIDE,
   scanned,
   swirlFragment,
@@ -97,7 +98,10 @@ function phoneBody(offset: number, state: HologramFrameState): PhoneFragment | n
   // How far from his middle the fragment is seen, once the body has turned: it is the limb as it
   // is seen that the voice's wander keeps clear of, wherever on the turning ball the fragment is.
   // The voice's wander is along the way the fragment lies, so the beads slide round the ring.
-  const turnedX = body[offset] * state.bodyCos + body[offset + 8] * state.bodySin;
+  // The whorl's specks do not turn with the globe: they are held in the view plane as they rest.
+  const turnedX = ridesTheWhorl(body[offset + 7])
+    ? body[offset]
+    : body[offset] * state.bodyCos + body[offset + 8] * state.bodySin;
   const fromCentre = turnedX * turnedX + body[offset + 1] * body[offset + 1];
   const inward = Math.min(1, Math.max(0, (0.76 - fromCentre) * 3.2));
   const wander = fraction(hop * 23.17) - 0.5;
@@ -270,7 +274,8 @@ describe('a fragment in three dimensions, seen from the front', () => {
       let count = 0;
       for (let offset = 0; offset < scene.body.length; offset += BODY_STRIDE * 3) {
         const placed = placeBodyFragment(scene.body, offset, state, FRONT_VIEW, distance);
-        if (placed === null) continue;
+        // The whorl lies in the plane through his middle, where perspective streaks nothing.
+        if (placed === null || placed.group === 1) continue;
         const seen = seenLarger(placed.centre[2], eyeDistance);
         const x = placed.plane[0] * seen;
         const y = placed.plane[1] * seen;
@@ -355,6 +360,8 @@ describe('his specks', () => {
     const faceOn = { light: 0, drawnShare: 0, count: 0 };
     const edgeOn = { light: 0, drawnShare: 0, count: 0 };
     for (const { offset, placed } of drawnBody(stateAt(IDLE))) {
+      // The globe's specks: the whorl's lie flat in the view plane and are never dimmed.
+      if (placed.group === 1) continue;
       const reach = seenReach(placed);
       const tally = reach < 0.3 ? faceOn : reach > 0.8 ? edgeOn : null;
       if (tally === null) continue;
@@ -364,7 +371,9 @@ describe('his specks', () => {
       tally.count++;
     }
     expect(faceOn.count).toBeGreaterThan(100);
-    expect(edgeOn.count).toBeGreaterThan(500);
+    // Enough at the edge to measure: three in ten of his specks are the whorl's, round the core,
+    // so the edge holds fewer than it did (measured 448 here).
+    expect(edgeOn.count).toBeGreaterThan(400);
     expect(faceOn.light / faceOn.count).toBeGreaterThan(0.7);
     expect(edgeOn.light / edgeOn.count).toBeGreaterThan(0.8);
     expect(faceOn.light / faceOn.count).toBeLessThan(0.9 * (edgeOn.light / edgeOn.count));
@@ -385,7 +394,8 @@ describe('his specks', () => {
     const state = stateAt(IDLE);
     const behind = specksAtTheEdge(state, true);
     const inFront = specksAtTheEdge(state, false);
-    expect(behind.count).toBeGreaterThan(200);
+    // Enough to measure: fewer since three in ten specks went to the whorl (measured 175).
+    expect(behind.count).toBeGreaterThan(150);
     expect(behind.lit / behind.count).toBeGreaterThan(0.8 * (inFront.lit / inFront.count));
   });
 });
