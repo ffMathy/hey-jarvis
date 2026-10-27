@@ -567,7 +567,8 @@ function pickShellPlace(random: Random, out: number[]) {
   out[0] = Math.cos(longitude) * across;
   out[1] = height * radius;
   out[2] = Math.sin(longitude) * across;
-  return out;
+  out[3] = shellBrightShare(radius);
+  out[4] = ALONG_THE_RING_SHARE;
 }
 
 /**
@@ -581,7 +582,18 @@ function pickFillPlace(random: Random, out: number[]) {
   out[0] = Math.cos(angle) * seen;
   out[1] = Math.sin(angle) * seen;
   out[2] = (random() * 2 - 1) * Math.sqrt(BODY_FILL_RADIUS * BODY_FILL_RADIUS - seen * seen);
-  return out;
+  out[3] = FILL_BRIGHT_SHARE;
+  out[4] = FILL_ALONG_THE_RING_SHARE;
+}
+
+/**
+ * Where a body speck lies, in the fill ({@link BODY_FILL_SHARE} of them) or on the shell, written
+ * into `out` as x, y, depth, the share of its kind that is bright, and the share that lies along
+ * the ring.
+ */
+function pickBodyPlace(random: Random, out: number[]) {
+  if (random() < BODY_FILL_SHARE) pickFillPlace(random, out);
+  else pickShellPlace(random, out);
 }
 
 /**
@@ -707,6 +719,20 @@ function pickGlyphAndLength(random: Random, radius: number, out: number[]) {
 }
 
 /**
+ * The share of a shell speck that is bright: deeper in the shell they are dimmer, from a twentieth
+ * at its inside to three in ten at its edge, so the light gathers at his edge, as the film's does.
+ * The fill is lit as the old body was instead ({@link FILL_BRIGHT_SHARE}).
+ */
+function shellBrightShare(radius: number) {
+  return 0.05 + 0.25 * clamp01((radius - SPECK_SHELL_INNER) / SPECK_SHELL_DEPTH);
+}
+
+/** A body speck's brightness class: the crowded clumps carry the bright specks, and the rest are lit at `brightShare`. */
+function pickBodyBrightness(random: Random, crowding: number, brightShare: number) {
+  return crowding > 0.72 && random() < 0.4 ? 2 : pickBrightness(random, brightShare);
+}
+
+/**
  * The fragment body: the film's shell of fine glittering specks. Stride {@link BODY_STRIDE}: x, y,
  * unit direction along the ring and out from his middle where it is seen (see
  * {@link ringDirection}), length, rate (cycles per second), id (0..1), a code packing the glyph and
@@ -732,25 +758,18 @@ function pickGlyphAndLength(random: Random, radius: number, out: number[]) {
 function buildBody(random: Random, fragmentCount: number) {
   const body: number[] = [];
   const shape = [0, 0];
-  const spot = [0, 0, 0];
+  const spot = [0, 0, 0, 0, 0];
   while (body.length < fragmentCount * BODY_STRIDE) {
-    const filling = random() < BODY_FILL_SHARE;
-    const place = filling ? pickFillPlace(random, spot) : pickShellPlace(random, spot);
-    const x = place[0];
-    const y = place[1];
-    const depth = place[2];
+    pickBodyPlace(random, spot);
+    const x = spot[0];
+    const y = spot[1];
+    const depth = spot[2];
     const radius = Math.sqrt(x * x + y * y + depth * depth);
     const crowding = clusterWeight(x, y, depth);
-    // The crowded clumps carry the bright specks, and the dim and mid ones thin out between them.
-    // Deeper in the shell they are dimmer, from a twentieth bright at its inside to three in ten at
-    // its edge, so the light gathers at the edge of the donut, as the film's does; the fill is lit
-    // as the old body was, an eighth of it bright.
-    const outerness = clamp01((radius - SPECK_SHELL_INNER) / SPECK_SHELL_DEPTH);
-    const brightShare = filling ? FILL_BRIGHT_SHARE : 0.05 + 0.25 * outerness;
-    const brightness = crowding > 0.72 && random() < 0.4 ? 2 : pickBrightness(random, brightShare);
+    const brightness = pickBodyBrightness(random, crowding, spot[3]);
     const crowded = brightness === 2 ? crowding : crowding * Math.sqrt(crowding);
     if (random() > massWeight(y) * crowded) continue;
-    const direction = pickFragmentAngle(random, filling ? FILL_ALONG_THE_RING_SHARE : ALONG_THE_RING_SHARE);
+    const direction = pickFragmentAngle(random, spot[4]);
     pickGlyphAndLength(random, radius, shape);
     const pool = random() < 1 / 3 ? 1 : 0;
     const rate = pickFragmentRate(random, pool);
