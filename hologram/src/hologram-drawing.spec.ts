@@ -17,19 +17,24 @@ import {
   EMBER_RISE,
   EMBER_STRIDE,
   FRAGMENT_CODE_GLYPH_STEP,
+  FRAGMENT_GROUP_STEP,
+  fragmentGroup,
   GYRO_ARCS,
+  GYRO_GIMBAL_SPLIT,
+  GYRO_GROUP,
   type HologramFrame,
   PARTICLE_COUNT,
   PICTURE_SHELL_EDGE,
   pushGyroSpeck,
   RIM_ROLL_DEGREES_PER_SECOND,
   ROLL_DEGREES_PER_SECOND,
-  ridesTheInnerLayer,
+  readFragment,
   SHELL_DEGREES_PER_SECOND,
   swirlFragment,
   TRUSS_INNER_RAIL,
   TRUSS_OUTER_RAIL,
   TRUSS_PIECE_STRIDE,
+  turnOfGroup,
   WHORL_REACH,
   WHORL_START,
   WHORL_TURNS,
@@ -114,6 +119,7 @@ function rowsOf(body: number[]) {
     y: number;
     fromTheCore: number;
     clockDegrees: number;
+    group: number;
     innerLayer: boolean;
     bright: boolean;
     glyph: number;
@@ -129,7 +135,9 @@ function rowsOf(body: number[]) {
       fromTheCore: Math.hypot(x, y),
       // clockwise from 12 o'clock, y down
       clockDegrees: ((Math.atan2(x, -y) * 180) / Math.PI + 360) % 360,
-      innerLayer: ridesTheInnerLayer(code),
+      group: fragmentGroup(code),
+      // the whorl's and the gyroscope's: round the core, held in the plane of the view
+      innerLayer: fragmentGroup(code) === 1 || fragmentGroup(code) === GYRO_GROUP,
       bright: kind % 3 === 2,
       glyph: Math.floor(code / FRAGMENT_CODE_GLYPH_STEP),
     });
@@ -255,8 +263,9 @@ describe('his middle: the whorl and the gyroscope', () => {
       Math.abs(speck.fromTheCore - radius) <= 0.03 && (speck.clockDegrees - from + 360) % 360 <= sweep + 0.5;
 
     for (const speck of specks) {
-      // On the inner layer, so the arcs turn with the swirl and stay arcs however far the globe turns.
-      expect(speck.innerLayer).toBe(true);
+      // In a group of their own, held in the view plane as the whorl is, so the arcs turn with the
+      // swirl, rock with his voice and stay arcs however far the globe turns.
+      expect(speck.group).toBe(GYRO_GROUP);
       // A dash: a strand reads as a line.
       expect(speck.glyph).toBe(0);
       expect(GYRO_ARCS.some((arc) => liesOn(speck, arc))).toBe(true);
@@ -268,6 +277,106 @@ describe('his middle: the whorl and the gyroscope', () => {
     // Every arc has its strands (measured 936, 575 and 1489 of the 3000).
     for (const arc of GYRO_ARCS) {
       expect(specks.filter((speck) => liesOn(speck, arc)).length).toBeGreaterThan(300);
+    }
+  });
+});
+
+describe('the gyroscope while he talks', () => {
+  const frameAt = (time: number, agitation: number): HologramFrame => ({
+    time,
+    level: agitation * 0.6,
+    bands: new Array(VOICE_BAND_COUNT).fill(0.3),
+    speaking: agitation > 0,
+    agitation,
+    burstAge: 10,
+    burstStrength: 0,
+    burstCount: 0,
+    appearance: 1,
+    presence: 1,
+    thinking: 0,
+  });
+  const inner = GYRO_GIMBAL_SPLIT - 0.07;
+  const outer = GYRO_GIMBAL_SPLIT + 0.07;
+  /** The smallest angle between two turns, in degrees. */
+  const apart = (first: number, second: number) => Math.abs(((first - second + 540) % 360) - 180);
+
+  it('turns the arcs with the whorl while he is silent', () => {
+    for (const time of [3, 7.7, 12.1, 40.25]) {
+      const state = analyseFrame(frameAt(time, 0), SIZE);
+      // no sway at all (a zero of either sign)
+      expect(state.gyroSway === 0).toBe(true);
+      expect(turnOfGroup(GYRO_GROUP, inner, state)).toBe(state.shellTurn);
+      expect(turnOfGroup(GYRO_GROUP, outer, state)).toBe(state.shellTurn);
+    }
+  });
+
+  it('rocks the arcs with his voice, calmly, the inner ones against the outer like a gimbal', () => {
+    // "The arcs around his core need to also move when talking." Analytic in the frame, so nothing
+    // is remembered between frames: at full agitation the sway swings 25-45° either way of the
+    // whorl's turn and never moves faster than a calm 1.5° a frame at 60 fps.
+    const sways: number[] = [];
+    for (let frame = 0; frame <= 60 * 20; frame++) {
+      const state = analyseFrame(frameAt(10 + frame / 60, 1), SIZE);
+      sways.push(state.gyroSway);
+      expect(apart(turnOfGroup(GYRO_GROUP, inner, state), state.shellTurn + state.gyroSway)).toBeLessThan(1e-9);
+      expect(apart(turnOfGroup(GYRO_GROUP, outer, state), state.shellTurn - state.gyroSway)).toBeLessThan(1e-9);
+      // only the arcs rock: the whorl turns as it did
+      expect(turnOfGroup(1, inner, state)).toBe(state.shellTurn);
+    }
+    expect(Math.max(...sways)).toBeGreaterThan(25);
+    expect(Math.min(...sways)).toBeLessThan(-25);
+    expect(Math.max(...sways.map(Math.abs))).toBeLessThan(45);
+    const steps = sways.slice(1).map((sway, index) => Math.abs(sway - (sways[index] ?? 0)));
+    expect(Math.max(...steps)).toBeLessThan(1.5);
+  });
+
+  it('eases the rocking in with his voice rather than jumping to it', () => {
+    // Half as agitated, half the sway, so the eased envelope is what brings it in.
+    let largest = 0;
+    for (let time = 10; time < 14; time += 0.1) {
+      const full = analyseFrame(frameAt(time, 1), SIZE);
+      const half = analyseFrame(frameAt(time, 0.5), SIZE);
+      expect(half.gyroSway).toBeCloseTo(full.gyroSway / 2, 9);
+      largest = Math.max(largest, Math.abs(full.gyroSway));
+    }
+    expect(largest).toBeGreaterThan(20);
+  });
+});
+
+describe("a body row's class code", () => {
+  it('packs brightness, pool, group and glyph so that each comes back out, for every group', () => {
+    // brightness 0-2 + 3 × pool + FRAGMENT_GROUP_STEP × group, under the glyph's step
+    expect(FRAGMENT_CODE_GLYPH_STEP).toBeGreaterThan(2 + 3 + FRAGMENT_GROUP_STEP * 3);
+    // At full agitation both pools light an id of 0.531, whose blink is a fifth of the way through.
+    const state = analyseFrame(
+      {
+        time: 0,
+        level: 0,
+        bands: [],
+        speaking: true,
+        agitation: 1,
+        burstAge: 10,
+        burstStrength: 0,
+        burstCount: 0,
+        appearance: 1,
+        presence: 1,
+        thinking: 0,
+      },
+      SIZE,
+    );
+    const reading = [0, 0, 0, 0, 0];
+    for (let group = 0; group <= 3; group++) {
+      for (let pool = 0; pool <= 1; pool++) {
+        for (let brightness = 0; brightness <= 2; brightness++) {
+          for (let glyph = 0; glyph <= 6; glyph++) {
+            const code = brightness + 3 * pool + FRAGMENT_GROUP_STEP * group + FRAGMENT_CODE_GLYPH_STEP * glyph;
+            expect(fragmentGroup(code)).toBe(group);
+            const row = [0.5, 0.1, 1, 0, 0.05, 1, 0.531, code, 0];
+            expect(readFragment(row, 0, state, reading)).toBeGreaterThan(0);
+            expect([reading[1], reading[2], reading[4]]).toEqual([glyph, group, brightness]);
+          }
+        }
+      }
     }
   });
 });

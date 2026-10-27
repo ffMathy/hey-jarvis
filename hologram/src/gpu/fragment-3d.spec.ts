@@ -6,9 +6,10 @@ import {
   BODY_ID_FIELD,
   BODY_STRIDE,
   BODY_TURN_SECONDS,
+  CORE_X,
+  CORE_Y,
   createHologramScene,
   FRAGMENT_FAINTEST,
-  FRAGMENT_WANDER,
   fragmentTier,
   type HologramFrame,
   type HologramFrameState,
@@ -18,10 +19,10 @@ import {
   placeFragment,
   readFragment,
   readShellFragment,
-  ridesTheInnerLayer,
   STREAM_STRIDE,
   scanned,
   swirlFragment,
+  turnOfGroup,
 } from '../hologram-drawing';
 import { VOICE_BAND_COUNT } from '../voice-levels';
 import {
@@ -79,6 +80,8 @@ interface PhoneFragment {
   light: number;
   glyph: number;
   group: number;
+  /** How far its row rests from the core: which way a gyroscope's arc rocks. */
+  fromCore: number;
 }
 
 /**
@@ -95,19 +98,7 @@ function phoneBody(offset: number, state: HologramFrameState): PhoneFragment | n
   const id = body[offset + BODY_ID_FIELD];
   const length = body[offset + 4];
   const hop = fraction(reading[3] * 0.618034 + id * 9.7);
-  // How far from his middle the fragment is seen, once the body has turned: it is the limb as it
-  // is seen that the voice's wander keeps clear of, wherever on the turning ball the fragment is.
-  // The voice's wander is along the way the fragment lies, so the beads slide round the ring.
-  // The whorl's specks do not turn with the globe: they are held in the view plane as they rest.
-  const turnedX = ridesTheInnerLayer(body[offset + 7])
-    ? body[offset]
-    : body[offset] * state.bodyCos + body[offset + 8] * state.bodySin;
-  const fromCentre = turnedX * turnedX + body[offset + 1] * body[offset + 1];
-  const inward = Math.min(1, Math.max(0, (0.76 - fromCentre) * 3.2));
-  const wander = fraction(hop * 23.17) - 0.5;
-  const along = (hop - 0.5) * 1.4 * length + wander * 1.3 * state.agitation * inward;
-  const across = wander * FRAGMENT_WANDER;
-  placeFragment(body, offset, along, across, state, placed);
+  placeFragment(body, offset, hop, state, placed);
   const lit = strength * placed[3];
   if (lit < FRAGMENT_FAINTEST) return null;
   // It settles lying along the ring through where it is seen, which placeFragment worked out.
@@ -133,7 +124,8 @@ function phoneBody(offset: number, state: HologramFrameState): PhoneFragment | n
     tier: promoted ? 2 : plain,
     light: promoted ? 1 : placed[4],
     glyph: reading[1],
-    group: reading[2] > 0 ? 1 : 0,
+    group: reading[2],
+    fromCore: Math.hypot(body[offset] - CORE_X, body[offset + 1] - CORE_Y),
   };
 }
 
@@ -168,6 +160,7 @@ function phoneStream(offset: number, state: HologramFrameState): PhoneFragment |
     light: 1,
     glyph: stream[offset + 9],
     group: 0,
+    fromCore: 0,
   };
 }
 
@@ -175,14 +168,14 @@ function length3(vector: Vector3Tuple) {
   return Math.hypot(vector[0], vector[1], vector[2]);
 }
 
-function expectSame(placed: PlacedFragment | null, phone: PhoneFragment | null, stateTurn: number) {
+function expectSame(placed: PlacedFragment | null, phone: PhoneFragment | null, state: HologramFrameState) {
   expect(placed === null).toBe(phone === null);
   if (placed === null || phone === null) return;
   expect(placed.plane[0]).toBeCloseTo(phone.x, 9);
   expect(placed.plane[1]).toBeCloseTo(phone.y, 9);
-  // In the plane of the view the stroke is exactly the phone's, turned with the inner layer when
-  // it rides it (the phone turns the canvas under it instead).
-  const turn = placed.group === 1 ? (stateTurn * Math.PI) / 180 : 0;
+  // In the plane of the view the stroke is exactly the phone's, turned with its group when it is
+  // held in the view plane (the phone turns the canvas under it instead).
+  const turn = (turnOfGroup(phone.group, phone.fromCore, state) * Math.PI) / 180;
   const alongX = phone.alongX * Math.cos(turn) - phone.alongY * Math.sin(turn);
   const alongY = phone.alongX * Math.sin(turn) + phone.alongY * Math.cos(turn);
   expect(placed.axis[0]).toBeCloseTo(alongX, 9);
@@ -198,12 +191,12 @@ function compareEveryRow(state: HologramFrameState): number {
   let drawn = 0;
   for (let offset = 0; offset < scene.body.length; offset += BODY_STRIDE) {
     const phone = phoneBody(offset, state);
-    expectSame(placeBodyFragment(scene.body, offset, state, FRONT_VIEW), phone, state.shellTurn);
+    expectSame(placeBodyFragment(scene.body, offset, state, FRONT_VIEW), phone, state);
     if (phone !== null) drawn++;
   }
   for (let offset = 0; offset < scene.stream.length; offset += STREAM_STRIDE) {
     const phone = phoneStream(offset, state);
-    expectSame(placeStreamFragment(scene.stream, offset, state, FRONT_VIEW), phone, state.shellTurn);
+    expectSame(placeStreamFragment(scene.stream, offset, state, FRONT_VIEW), phone, state);
     if (phone !== null) drawn++;
   }
   return drawn;
@@ -274,8 +267,8 @@ describe('a fragment in three dimensions, seen from the front', () => {
       let count = 0;
       for (let offset = 0; offset < scene.body.length; offset += BODY_STRIDE * 3) {
         const placed = placeBodyFragment(scene.body, offset, state, FRONT_VIEW, distance);
-        // The whorl lies in the plane through his middle, where perspective streaks nothing.
-        if (placed === null || placed.group === 1) continue;
+        // The whorl and the arcs lie in the plane through his middle, where perspective streaks nothing.
+        if (placed === null || placed.group > 0) continue;
         const seen = seenLarger(placed.centre[2], eyeDistance);
         const x = placed.plane[0] * seen;
         const y = placed.plane[1] * seen;
@@ -360,8 +353,8 @@ describe('his specks', () => {
     const faceOn = { light: 0, drawnShare: 0, count: 0 };
     const edgeOn = { light: 0, drawnShare: 0, count: 0 };
     for (const { offset, placed } of drawnBody(stateAt(IDLE))) {
-      // The globe's specks: the whorl's lie flat in the view plane and are never dimmed.
-      if (placed.group === 1) continue;
+      // The globe's specks: the whorl's and the arcs' lie flat in the view plane and are never dimmed.
+      if (placed.group > 0) continue;
       const reach = seenReach(placed);
       const tally = reach < 0.3 ? faceOn : reach > 0.8 ? edgeOn : null;
       if (tally === null) continue;

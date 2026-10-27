@@ -2,10 +2,15 @@ import {
   BACK_OF_THE_SHELL,
   CORE_X,
   CORE_Y,
+  FRAGMENT_CODE_GLYPH_STEP,
   FRAGMENT_DUTY,
   FRAGMENT_FAINTEST,
+  FRAGMENT_GROUP_STEP,
   FRAGMENT_WANDER,
+  GYRO_GIMBAL_SPLIT,
+  GYRO_GROUP,
   type HologramFrameState,
+  INNER_LAYER_GROUP,
   LATTICE_PULL,
   LATTICE_STROKE_SHRINK,
   LATTICE_TURN,
@@ -13,6 +18,7 @@ import {
   SCAN_FLOOR,
   SCAN_HALF_WIDTH,
   SHELL_FACE_DIMMING,
+  TRUSS_GROUP,
   VORTEX_STRETCH,
   VORTEX_TWIST,
 } from '../hologram-drawing';
@@ -53,6 +59,8 @@ export interface FragmentUniforms {
   bodyTurn: { value: [number, number] };
   streamTurn: { value: [number, number] };
   shellTurn: { value: [number, number] };
+  gyroSway: { value: [number, number] };
+  rimTurn: { value: [number, number] };
   lattice: { value: [number, number, number, number] };
   viewRight: { value: [number, number, number] };
   viewUp: { value: [number, number, number] };
@@ -74,6 +82,8 @@ export function createFragmentUniforms(): FragmentUniforms {
     bodyTurn: { value: [1, 0] },
     streamTurn: { value: [1, 0] },
     shellTurn: { value: [1, 0] },
+    gyroSway: { value: [1, 0] },
+    rimTurn: { value: [1, 0] },
     lattice: { value: [1, 0, 0.11, 0] },
     viewRight: { value: [1, 0, 0] },
     viewUp: { value: [0, 1, 0] },
@@ -114,6 +124,10 @@ export function writeFragmentUniforms(
   uniforms.streamTurn.value = [state.streamCos, state.streamSin];
   const shellRadians = (state.shellTurn * Math.PI) / 180;
   uniforms.shellTurn.value = [Math.cos(shellRadians), Math.sin(shellRadians)];
+  const swayRadians = (state.gyroSway * Math.PI) / 180;
+  uniforms.gyroSway.value = [Math.cos(swayRadians), Math.sin(swayRadians)];
+  const rimRadians = (state.rimRoll * Math.PI) / 180;
+  uniforms.rimTurn.value = [Math.cos(rimRadians), Math.sin(rimRadians)];
   // The lattice's turn is worked out here in double precision, as latticeTarget does, rather than
   // from a float32 clock on the GPU.
   const latticeRadians = state.time * LATTICE_TURN;
@@ -142,7 +156,11 @@ uniform float scanHeight;
 uniform float density;
 uniform vec2 bodyTurn;
 uniform vec2 streamTurn;
+// The groups' turns in the view plane, as cosine and sine: the inner layer's, the gyroscope's
+// rocking on top of it, and the truss's roll (turnOfGroup).
 uniform vec2 shellTurn;
+uniform vec2 gyroSway;
+uniform vec2 rimTurn;
 uniform vec4 lattice;
 uniform vec3 viewRight;
 uniform vec3 viewUp;
@@ -170,6 +188,12 @@ const float VORTEX_TWIST = ${glslFloat(VORTEX_TWIST)};
 const float VORTEX_STRETCH = ${glslFloat(VORTEX_STRETCH)};
 const float LAYER_SHARE = ${glslFloat(LATTICE_LAYER_SHARE)};
 const vec2 CORE = vec2(${glslFloat(CORE_X)}, ${glslFloat(CORE_Y)});
+const int GLYPH_STEP = ${FRAGMENT_CODE_GLYPH_STEP};
+const int GROUP_STEP = ${FRAGMENT_GROUP_STEP};
+const int INNER_LAYER_GROUP = ${INNER_LAYER_GROUP};
+const int GYRO_GROUP = ${GYRO_GROUP};
+const int TRUSS_GROUP = ${TRUSS_GROUP};
+const float GIMBAL_SPLIT = ${glslFloat(GYRO_GIMBAL_SPLIT)};
 
 struct Fragment {
   bool visible;
@@ -182,7 +206,7 @@ struct Fragment {
   float light;
   float glyph;
   float group;
-  // Where it is in the view plane, and its half-length there, before the inner layer's turn.
+  // Where it is in the view plane, and its half-length there, before its group's turn.
   vec2 plane;
   vec2 planeAxis;
 };
@@ -308,25 +332,38 @@ float scanned(float heightDown, out bool bright) {
   return 1.0 - thinking * (1.0 - SCAN_FLOOR) * (1.0 - nearness * nearness);
 }
 
-vec2 turnVector(vec2 vector) {
-  return vec2(vector.x * shellTurn.x - vector.y * shellTurn.y, vector.x * shellTurn.y + vector.y * shellTurn.x);
+// A vector of the view plane turned by turn (cosine, sine): clockwise on screen, y down.
+vec2 turnVector(vec2 vector, vec2 turn) {
+  return vec2(vector.x * turn.x - vector.y * turn.y, vector.x * turn.y + vector.y * turn.x);
+}
+
+// A group's turn in the view plane (turnOfGroup): the inner layer's; the gyroscope's arcs rocked on
+// top of it, those inside GIMBAL_SPLIT of the core one way and the rest the other; the truss's roll.
+vec2 turnOfGroup(int group, float fromCore) {
+  if (group == INNER_LAYER_GROUP) return shellTurn;
+  if (group == GYRO_GROUP) return turnVector(shellTurn, fromCore < GIMBAL_SPLIT ? gyroSway : vec2(gyroSway.x, -gyroSway.y));
+  return rimTurn;
 }
 
 vec3 intoBody(vec2 point, float depth) {
   return point.x * viewRight - point.y * viewUp + depth * viewFront;
 }
 
-Fragment finishFragment(vec3 placed, vec2 axis, float axisDepth, float tier, float light, float glyph, float group) {
+// The last step every fragment shares: its group's turn in the view plane — about his middle for
+// the truss, about the core for the rest — then out of the plane into the body's frame.
+Fragment finishFragment(vec3 placed, vec2 axis, float axisDepth, float tier, float light, float glyph, int group, float fromCore) {
   Fragment fragment = hiddenFragment();
   fragment.visible = true;
   fragment.plane = placed.xy;
   fragment.planeAxis = axis;
   vec2 point = placed.xy;
   vec2 normal = vec2(-axis.y, axis.x) * 0.55;
-  if (group > 0.5) {
-    point = CORE + turnVector(point - CORE);
-    axis = turnVector(axis);
-    normal = turnVector(normal);
+  if (group > 0) {
+    vec2 turn = turnOfGroup(group, fromCore);
+    vec2 pivot = group == TRUSS_GROUP ? vec2(0.0) : CORE;
+    point = pivot + turnVector(point - pivot, turn);
+    axis = turnVector(axis, turn);
+    normal = turnVector(normal, turn);
   }
   fragment.centre = intoBody(point, placed.z);
   fragment.axis = intoBody(axis, axisDepth);
@@ -334,7 +371,7 @@ Fragment finishFragment(vec3 placed, vec2 axis, float axisDepth, float tier, flo
   fragment.tier = tier;
   fragment.light = light;
   fragment.glyph = glyph;
-  fragment.group = group;
+  fragment.group = float(group);
   return fragment;
 }
 
@@ -344,26 +381,27 @@ Fragment readBodyFragment() {
   float cycle = floor(cycles);
   float life = cycles - cycle;
   if (life >= DUTY) return hiddenFragment();
-  // brightness + 3 × pool + 6 × turning + 12 × glyph, taken apart exactly in integers.
+  // brightness + 3 × pool + GROUP_STEP × group + GLYPH_STEP × glyph, taken apart exactly in integers.
   int code = int(identity.z + 0.5);
-  int glyph = code / 12;
-  int kind = code - 12 * glyph;
-  int group = kind / 6;
-  int pool = (kind - 6 * group) / 3;
-  float brightness = float(kind - 6 * group - 3 * pool);
+  int glyph = code / GLYPH_STEP;
+  int kind = code - GLYPH_STEP * glyph;
+  int group = kind / GROUP_STEP;
+  int pool = (kind - GROUP_STEP * group) / 3;
+  float brightness = float(kind - GROUP_STEP * group - 3 * pool);
   float strength = fragmentStrength(life, id, float(pool));
   if (strength < FAINTEST) return hiddenFragment();
 
   float fragmentLength = shape.z;
   float hop = fract(cycle * 0.618034 + identity.x);
   vec3 turned = vec3(rest.x * bodyTurn.x + rest.z * bodyTurn.y, -rest.y, rest.z * bodyTurn.x - rest.x * bodyTurn.y);
-  // The whorl's specks are held in the view plane as they rest: placeFragment.
-  bool onWhorl = group > 0;
-  float planeX = onWhorl ? rest.x : dot(turned, viewRight);
-  float planeY = onWhorl ? rest.y : -dot(turned, viewUp);
-  float depth = onWhorl ? rest.z : dot(turned, viewFront);
+  // The groups held in the view plane rest there: placeFragment.
+  bool held = group > 0;
+  float planeX = held ? rest.x : dot(turned, viewRight);
+  float planeY = held ? rest.y : -dot(turned, viewUp);
+  float depth = held ? rest.z : dot(turned, viewFront);
   vec2 unit = ringDirection(vec2(planeX, planeY), shape.xy);
-  float inward = clamp01((0.76 - (planeX * planeX + planeY * planeY)) * 3.2);
+  // The voice's churn, which the gyroscope's arcs leave to their rocking.
+  float inward = group == GYRO_GROUP ? 0.0 : clamp01((0.76 - (planeX * planeX + planeY * planeY)) * 3.2);
   float wander = fract(hop * 23.17) - 0.5;
   float along = (hop - 0.5) * 1.4 * fragmentLength + wander * 1.3 * agitation * inward;
   float across = wander * WANDER;
@@ -387,7 +425,16 @@ Fragment readBodyFragment() {
   float plain = facing ? fragmentTier(brightness, litHere * light, hashes.y) : 0.0;
   float tier = promoted ? 2.0 : plain;
   float halfLength = fragmentLength * 0.5 * litHere * drawn * (1.0 - STROKE_SHRINK * hearing);
-  return finishFragment(placed, swirled.zw * halfLength, 0.0, tier, promoted ? 1.0 : light, float(glyph), float(group));
+  return finishFragment(
+    placed,
+    swirled.zw * halfLength,
+    0.0,
+    tier,
+    promoted ? 1.0 : light,
+    float(glyph),
+    group,
+    length(rest.xy - CORE)
+  );
 }
 
 Fragment readStreamFragment() {
@@ -396,8 +443,8 @@ Fragment readStreamFragment() {
   float life = cycles - floor(cycles);
   if (life >= DUTY) return hiddenFragment();
   int code = int(identity.z + 0.5);
-  int glyph = code / 12;
-  int kind = code - 12 * glyph;
+  int glyph = code / GLYPH_STEP;
+  int kind = code - GLYPH_STEP * glyph;
   int pool = kind >= 3 ? 1 : 0;
   float brightness = float(kind - 3 * pool);
   float strength = fragmentStrength(life, id, float(pool));
@@ -434,7 +481,7 @@ Fragment readStreamFragment() {
     tangentPlane.x * direction.x - tangentPlane.y * direction.y,
     tangentPlane.x * direction.y + tangentPlane.y * direction.x
   ) * size;
-  return finishFragment(placed, axis, tangentDepth * size, tier, 1.0, float(glyph), 0.0);
+  return finishFragment(placed, axis, tangentDepth * size, tier, 1.0, float(glyph), 0, 0.0);
 }
 
 Fragment readFragment() {

@@ -16,9 +16,9 @@ import { glslFloat } from './glsl';
  * specks crowd and gone a halo's radius past the last of them.
  *
  * They are drawn in the view plane, each where the centre eye sees its stroke: scaled by the
- * perspective of its depth, so the halo lies under the stroke. The pinned fragments and the ones
- * riding the inner layer go in two halves of the target, because they are separate layers, whose
- * halos Screen over each other rather than union.
+ * perspective of its depth, so the halo lies under the stroke. The globe's fragments and the ones
+ * held in the view plane (the whorl's, the arcs' and the truss's) go in two halves of the target,
+ * because they are separate layers, whose halos Screen over each other rather than union.
  */
 
 /** Texels across each half of the target: the same as the picture on the headset, so the halos are as sharp. */
@@ -87,11 +87,11 @@ void main() {
   glyphShape = vec4(fragment.glyph, halfLength, normalLength, fragment.tier);
   shellLight = fragment.light;
 
-  // Into the target: the pinned half on the left, the turning half on the right, y up as a
-  // texture's rows go.
+  // Into the target: the globe's half on the left, and every group held in the view plane — the
+  // whorl, the arcs and the truss — in the right, y up as a texture's rows go.
   vec2 point = centre + along * local.x + across * local.y;
   vec2 share = vec2(0.5 + point.x * radiusFraction, 0.5 - point.y * radiusFraction);
-  gl_Position = vec4(share.x - 1.0 + fragment.group, 2.0 * share.y - 1.0, 0.0, 1.0);
+  gl_Position = vec4(share.x - 1.0 + min(fragment.group, 1.0), 2.0 * share.y - 1.0, 0.0, 1.0);
 }
 `;
 

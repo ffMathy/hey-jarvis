@@ -47,8 +47,8 @@ export interface HologramRows {
   hashes: Float32Array;
   /**
    * Three numbers a row: where it re-lights (`fraction(id × 9.7)`, the body only), the id itself, and
-   * its class code: brightness + 3 × pool + 6 × rides the turning shell + FRAGMENT_CODE_GLYPH_STEP ×
-   * glyph — the body's own packing, which the stream's rows are given too.
+   * its class code: brightness + 3 × pool + FRAGMENT_GROUP_STEP × group + FRAGMENT_CODE_GLYPH_STEP ×
+   * glyph — the body's own packing, which the stream's rows are given too (always group 0).
    */
   identity: Float32Array;
   /** Where it sits in the density share (`densityKey`): a share keeps the rows under it. */

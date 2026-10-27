@@ -73,7 +73,8 @@
 //                     PARTICLE_COUNT specks: the old body's whorl, two soft spiral arms of specks
 //                     held in the view plane and winding out of the core from 0.1R, Age of Ultron's
 //                     swirl (pushWhorlSpeck); its gyroscope, strands of specks on arcs at 0.53R and
-//                     0.67R round the core, held in the view plane with the whorl (pushGyroSpeck); a
+//                     0.67R round the core, held in the view plane and turned with the whorl, and
+//                     rocked about the core while he talks (pushGyroSpeck, GYRO_SWAY_DEGREES); a
 //                     fill through the ball as the old body's was; and the film's shell from about
 //                     half his radius out (buildBody). Each tier has a soft halo of its own, and the
 //                     stream, specks below the core turning on a clock of their own (buildStream).
@@ -113,6 +114,8 @@
 //                 lit and the brightness hold while the churn rises;
 //               - each speck re-lights further along the way it lies, less so the nearer the limb
 //                 it is, so the silhouette holds;
+//               - the gyroscope's arcs rock to and fro about the core, the inner ones against the
+//                 outer like a gimbal's rings (gyroSway, turnOfGroup), instead of churning;
 //               - hotShare: some of the bright specks step down, and the hot cores all but go;
 //               - the fray, and more of the embers;
 //               - the rest of the swell and of the glow.
@@ -456,17 +459,25 @@ export const PULSE_SECONDS = 0.55;
 /** A fragment is lit for this share of its clock's cycle, fading in and out over a third of that at each end. */
 export const FRAGMENT_DUTY = 0.6;
 /**
- * A body fragment's code holds its class — brightness (0-2) + 3 × pool + {@link INNER_LAYER} if it
- * rides the inner layer, so 0 to 11 — and its glyph above that, at this step. See {@link buildBody}
- * for why the two share a number.
+ * A body fragment's code holds its class — brightness (0-2) + 3 × pool + {@link FRAGMENT_GROUP_STEP}
+ * × its group, so 0 to 23 — and its glyph above that, at this step. See {@link buildBody} for why
+ * they share a number.
  */
-export const FRAGMENT_CODE_GLYPH_STEP = 12;
+export const FRAGMENT_CODE_GLYPH_STEP = 24;
 /**
- * The part of a body fragment's class code that puts it on the inner layer: the whorl's and the
- * gyroscope's rows, held in the plane of the view and counter-turning about the core rather than
- * turned with the globe (see {@link ridesTheInnerLayer}).
+ * The step of a body fragment's class code that says which group it is in (see
+ * {@link fragmentGroup}): 0 the globe, turned about the vertical with his body; and three groups held
+ * in the plane of the view instead, each turned in it on a clock of its own — 1 the inner layer
+ * (the whorl), {@link GYRO_GROUP} the gyroscope's arcs, and {@link TRUSS_GROUP} the truss round his
+ * edge.
  */
-const INNER_LAYER = 6;
+export const FRAGMENT_GROUP_STEP = 6;
+/** The whorl's group: the inner layer, counter-turning about the core (`shellTurn`). */
+export const INNER_LAYER_GROUP = 1;
+/** The gyroscope's arcs: turned with the inner layer, and rocked about the core by his voice (`gyroSway`). */
+export const GYRO_GROUP = 2;
+/** The truss round his edge: rolled about his middle on its own clock (`rimRoll`). */
+export const TRUSS_GROUP = 3;
 /**
  * How many fragments the body has when the phone can afford all of them.
  *
@@ -806,9 +817,9 @@ function pickBodyBrightness(random: Random, crowding: number, brightShare: numbe
 
 /**
  * Writes a body row: the place in `spot` (x, y, depth), the direction it lies relative to the ring
- * through where it is seen, the glyph and length in `shape`, and its own clock. The whorl's and the
- * gyroscope's rows pass {@link INNER_LAYER} as their `layer`, which puts them on the inner layer
- * (see {@link ridesTheInnerLayer}); every other row is on the globe, layer 0.
+ * through where it is seen, the glyph and length in `shape`, and its own clock, in `group` (see
+ * {@link fragmentGroup}): the whorl's, the gyroscope's and the truss's rows are held in the plane of
+ * the view, and every other row is on the globe, group 0.
  *
  * Rounded as each row is written rather than in a pass of its own once the table is built, as the
  * smaller tables are: over ninety thousand numbers, that pass and the second array it made were up
@@ -822,7 +833,7 @@ function pushBodyRow(
   unitY: number,
   shape: number[],
   brightness: number,
-  layer = 0,
+  group = 0,
 ) {
   const pool = random() < 1 / 3 ? 1 : 0;
   const rate = pickFragmentRate(random, pool);
@@ -835,7 +846,7 @@ function pushBodyRow(
     roundToFiveDecimals(shape[1]),
     roundToFiveDecimals(rate),
     roundToFiveDecimals(id),
-    brightness + 3 * pool + layer + FRAGMENT_CODE_GLYPH_STEP * shape[0],
+    brightness + 3 * pool + FRAGMENT_GROUP_STEP * group + FRAGMENT_CODE_GLYPH_STEP * shape[0],
     roundToFiveDecimals(spot[2]),
   );
 }
@@ -919,7 +930,7 @@ function pushWhorlSpeck(random: Random, body: number[], shape: number[]) {
     outwardX * lieX + outwardY * lieY,
     shape,
     brightness,
-    INNER_LAYER,
+    INNER_LAYER_GROUP,
   );
 }
 
@@ -929,15 +940,36 @@ type GyroArc = readonly [radius: number, from: number, sweep: number];
 /**
  * The gyroscope: Age of Ultron's arcs round the core, each a bundle of thin strands, as its lab
  * shots show them (ring light at 0.50-0.60R over about half the clock, an arc at 0.67-0.7R). Specks
- * laid along them on the inner layer with the whorl, so they turn with the swirl and stay arcs whichever way
- * the globe has turned. Clear of the core's ring at {@link CORE_RING_RADIUS}, which is Vision Quest's,
- * and inside the shell's edge.
+ * laid along them in a group of their own ({@link GYRO_GROUP}), held in the plane of the view as the
+ * whorl is and turned with it, so they turn with the swirl and stay arcs whichever way the globe has
+ * turned — and rocked about the core while he talks ({@link GYRO_SWAY_DEGREES}). Clear of the core's
+ * ring at {@link CORE_RING_RADIUS}, which is Vision Quest's, and inside the shell's edge.
  */
 export const GYRO_ARCS: readonly GyroArc[] = [
   [0.53, 300, 110],
   [0.53, 105, 70],
   [0.67, 20, 140],
 ];
+/**
+ * The arcs move while he talks, at the user's asking ("The arcs around his core need to also move
+ * when talking"): they rock to and fro about the core, on top of the whorl's turn, by two slow
+ * swings — so many degrees either way at a rate in radians a second, the second a phase on — that
+ * never quite repeat, both times his agitation (`gyroSway` in {@link analyseFrame}). Agitation is
+ * eased, so the rocking comes in and dies away with his voice rather than jumping, and it is
+ * worked out from the clock alone, so nothing is remembered between frames. Calm: at its fastest
+ * an arc turns about 70° a second, a degree and a bit a frame. Silent, the arcs turn with the whorl.
+ */
+export const GYRO_SWAY_DEGREES = 24;
+export const GYRO_SWAY_RADIANS_PER_SECOND = 1.7;
+export const GYRO_SWAY_SECOND_DEGREES = 12;
+export const GYRO_SWAY_SECOND_RADIANS_PER_SECOND = 2.9;
+export const GYRO_SWAY_SECOND_PHASE = 1.3;
+/**
+ * The arcs inside this distance from the core, in R, rock one way and the arc outside it the other,
+ * as a gimbal's rings swing against each other ({@link turnOfGroup}): between the inner arcs at 0.53R
+ * and the outer one at 0.67R.
+ */
+export const GYRO_GIMBAL_SPLIT = 0.6;
 /** How long the arcs are together, radius by sweep: an arc is picked in proportion to its length. */
 const GYRO_LENGTH = GYRO_ARCS.reduce((total, [radius, , sweep]) => total + radius * sweep, 0);
 /** The share of the body's draws that go to the arcs: about 8% of his rows. */
@@ -1003,7 +1035,7 @@ export function pushGyroSpeck(random: Random, body: number[], shape: number[]) {
     outwardX * lieX + outwardY * lieY,
     shape,
     pickBrightness(random, GYRO_BRIGHT_SHARE),
-    INNER_LAYER,
+    GYRO_GROUP,
   );
 }
 
@@ -1837,6 +1869,12 @@ export function analyseFrame(frame: HologramFrame, size: number) {
     rimRoll: fraction((time * RIM_ROLL_DEGREES_PER_SECOND) / 360) * 360,
     // the inner layer winds up with the vortex, settling to its own slow turn as the specks do
     shellTurn: fraction((time * SHELL_DEGREES_PER_SECOND - 540 * settle * settle) / 360) * 360,
+    // How far the gyroscope's arcs are rocked off the inner layer's turn while he talks, in degrees
+    // (see GYRO_SWAY_DEGREES and turnOfGroup): nothing at all in silence.
+    gyroSway:
+      agitation *
+      (GYRO_SWAY_DEGREES * Math.sin(time * GYRO_SWAY_RADIANS_PER_SECOND) +
+        GYRO_SWAY_SECOND_DEGREES * Math.sin(time * GYRO_SWAY_SECOND_RADIANS_PER_SECOND + GYRO_SWAY_SECOND_PHASE)),
     streamCos: Math.cos(yaw),
     streamSin: Math.sin(yaw),
     // the core's brightness drifts a few percent over many seconds; it never beats
@@ -1969,18 +2007,43 @@ export function ringDirection(seenX: number, seenY: number, unitX: number, unitY
 }
 
 /**
- * Whether a body row's class code (see {@link FRAGMENT_CODE_GLYPH_STEP}) puts it on the inner layer,
- * as the whorl's and the gyroscope's rows are: held in the plane of the view and counter-turning
- * about the core rather than turned with the globe.
+ * Which group a body row's class code (see {@link FRAGMENT_CODE_GLYPH_STEP}) puts it in: 0 the globe,
+ * or one of the groups held in the plane of the view and turned in it on a clock of its own — the
+ * whorl's inner layer, the gyroscope ({@link GYRO_GROUP}) or the truss ({@link TRUSS_GROUP}).
  */
-export function ridesTheInnerLayer(code: number) {
+export function fragmentGroup(code: number) {
   'worklet';
-  return code - FRAGMENT_CODE_GLYPH_STEP * Math.floor(code / FRAGMENT_CODE_GLYPH_STEP) >= INNER_LAYER;
+  const kind = code - FRAGMENT_CODE_GLYPH_STEP * Math.floor(code / FRAGMENT_CODE_GLYPH_STEP);
+  return Math.floor(kind / FRAGMENT_GROUP_STEP);
+}
+
+/**
+ * How far a group is turned in the plane of the view this frame, in degrees clockwise: nothing for
+ * the globe, which turns about the vertical instead; `shellTurn` for the whorl; `shellTurn` rocked
+ * by `gyroSway` for the gyroscope's arcs, those within {@link GYRO_GIMBAL_SPLIT} of the core one way
+ * and those beyond it the other, as a gimbal's rings swing against each other; and `rimRoll` for the
+ * truss. `fromCore` is how far the row rests from the core, in R.
+ *
+ * The truss turns about his middle and every other group about the core (`CORE_X`, `CORE_Y`).
+ */
+export function turnOfGroup(group: number, fromCore: number, state: HologramFrameState) {
+  'worklet';
+  if (group === INNER_LAYER_GROUP) return state.shellTurn;
+  if (group === GYRO_GROUP) return state.shellTurn + (fromCore < GYRO_GIMBAL_SPLIT ? state.gyroSway : -state.gyroSway);
+  if (group === TRUSS_GROUP) return state.rimRoll;
+  return 0;
 }
 
 /**
  * Where a fragment lands on screen this frame, how much of it survives the limb, and how much of
  * its light the shell it is seen through leaves it ({@link shellFacing}).
+ *
+ * `hop` is where its blink re-lights it, a hash of its id and which blink it is on: it slides along
+ * the way it lies by a share of its length, and wanders along and across from where it rests by
+ * {@link FRAGMENT_WANDER}, and further along it while he talks — less so the nearer the limb it is
+ * seen, so the silhouette holds while the inside churns. The gyroscope's arcs do not churn with the
+ * rest: they rock while he talks instead ({@link GYRO_SWAY_DEGREES}), and slid along their circles
+ * by the churn they would smear into rings, whose rocking nobody could see.
  *
  * Writes `x`, `y`, `depth`, `edge` (the limb's share of its length) and `light` (the shell's share
  * of its paint) into `out`, and the way the speck lies ({@link ringDirection}) after them, rather
@@ -1989,14 +2052,7 @@ export function ridesTheInnerLayer(code: number) {
  * definition the GPU's body is held to, and what its CPU reference (`gpu/fragment-3d.ts`) composes
  * the body from.
  */
-export function placeFragment(
-  body: number[],
-  offset: number,
-  along: number,
-  across: number,
-  state: HologramFrameState,
-  out: number[],
-) {
+export function placeFragment(body: number[], offset: number, hop: number, state: HologramFrameState, out: number[]) {
   'worklet';
   // Turned about the vertical axis before anything else: the fragment wanders around where it
   // sits on the turning ball, not around a fixed place on the screen, and lies along the ring
@@ -2004,14 +2060,21 @@ export function placeFragment(
   const rest = body[offset];
   const restY = body[offset + 1];
   const depthAtRest = body[offset + 8];
-  // The whorl's specks are held in the plane of the view and turn only with the inner layer, so
-  // its arms stay arms however far the globe has turned.
-  const turnCos = ridesTheInnerLayer(body[offset + 7]) ? 1 : state.bodyCos;
-  const turnSin = ridesTheInnerLayer(body[offset + 7]) ? 0 : state.bodySin;
+  const group = fragmentGroup(body[offset + 7]);
+  // The whorl's, the arcs' and the truss's specks are held in the plane of the view and turn only
+  // in it, so its arms stay arms and the arcs and boxes stay arcs and boxes however far the globe
+  // has turned.
+  const held = group > 0;
+  const turnCos = held ? 1 : state.bodyCos;
+  const turnSin = held ? 0 : state.bodySin;
   const turnedX = rest * turnCos + depthAtRest * turnSin;
   ringDirection(turnedX, restY, body[offset + 2], body[offset + 3], out, 5);
   const unitX = out[5];
   const unitY = out[6];
+  const inward = group === GYRO_GROUP ? 0 : clamp01((0.76 - (turnedX * turnedX + restY * restY)) * 3.2);
+  const wander = fraction(hop * 23.17) - 0.5;
+  const along = (hop - 0.5) * 1.4 * body[offset + 4] + wander * 1.3 * state.agitation * inward;
+  const across = wander * FRAGMENT_WANDER;
   const y = restY + unitY * along + unitX * across;
   const x = turnedX + unitX * along - unitY * across;
   out[0] = x;
@@ -2031,7 +2094,7 @@ export function placeFragment(
  * fail first are the ones that cost least to ask.
  *
  * Returns the strength, or 0 for a fragment that is not drawn, and writes what the caller needs
- * into `into`: strength, glyph, whether it rides the inner layer, which blink it is on, and its
+ * into `into`: strength, glyph, its group ({@link fragmentGroup}), which blink it is on, and its
  * brightness tier. An array rather than an object because whatever composes the body from it asks it
  * of thousands of fragments a frame, and it is the array {@link HologramFrameState.reading} keeps
  * for exactly that reason. It is the definition the GPU's body is held to (`gpu/fragment-3d.ts`).
@@ -2052,17 +2115,17 @@ export function readFragment(body: number[], offset: number, state: HologramFram
   const glyph = Math.floor(packed / FRAGMENT_CODE_GLYPH_STEP);
   const code = packed - glyph * FRAGMENT_CODE_GLYPH_STEP;
   // The code packs three things by addition — brightness 0-2, plus 3 if it belongs to the
-  // fast pool, plus 6 if it rides the counter-turning shell — so division takes them apart.
-  const turning = 3 * Math.floor(code / 6);
-  const pool = Math.floor((code - turning * 2) / 3);
+  // fast pool, plus FRAGMENT_GROUP_STEP times its group — so division takes them apart.
+  const group = Math.floor(code / FRAGMENT_GROUP_STEP);
+  const pool = Math.floor((code - FRAGMENT_GROUP_STEP * group) / 3);
   const strength = fragmentStrength(life, id, pool, state);
   if (strength < FRAGMENT_FAINTEST) return 0;
 
   into[0] = strength;
   into[1] = glyph;
-  into[2] = turning;
+  into[2] = group;
   into[3] = cycle;
-  into[4] = code - 3 * pool - 2 * turning;
+  into[4] = code - 3 * pool - FRAGMENT_GROUP_STEP * group;
   return strength;
 }
 

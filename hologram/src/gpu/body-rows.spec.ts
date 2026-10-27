@@ -5,6 +5,7 @@ import {
   BODY_STRIDE,
   createHologramScene,
   densityKey,
+  FRAGMENT_CODE_GLYPH_STEP,
   PARTICLE_COUNT,
   STREAM_ID_FIELD,
   STREAM_STRIDE,
@@ -57,7 +58,7 @@ describe('the hologram’s rows on the GPU', () => {
     for (let row = 0; row < rows.streamCount; row++) {
       const offset = row * STREAM_STRIDE;
       const code = rows.identity[(rows.bodyCount + row) * 3 + 2];
-      expect(Math.floor(code / 12)).toBe(scene.stream[offset + 9]);
+      expect(Math.floor(code / FRAGMENT_CODE_GLYPH_STEP)).toBe(scene.stream[offset + 9]);
       expect(code % 12).toBe(scene.stream[offset + 8]);
       expect(rows.hashes[(rows.bodyCount + row) * 4]).toBe(Math.fround(scene.stream[offset + 6]));
     }

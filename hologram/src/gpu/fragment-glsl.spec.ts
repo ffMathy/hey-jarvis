@@ -58,6 +58,14 @@ describe('the fragment uniforms', () => {
     const shell = (state.shellTurn * Math.PI) / 180;
     expect(uniforms.shellTurn.value[0]).toBeCloseTo(Math.cos(shell), 12);
     expect(uniforms.shellTurn.value[1]).toBeCloseTo(Math.sin(shell), 12);
+    // the gyroscope's rocking, which this frame's agitation sets going, and the truss's roll
+    expect(Math.abs(state.gyroSway)).toBeGreaterThan(1);
+    const sway = (state.gyroSway * Math.PI) / 180;
+    expect(uniforms.gyroSway.value[0]).toBeCloseTo(Math.cos(sway), 12);
+    expect(uniforms.gyroSway.value[1]).toBeCloseTo(Math.sin(sway), 12);
+    const rim = (state.rimRoll * Math.PI) / 180;
+    expect(uniforms.rimTurn.value[0]).toBeCloseTo(Math.cos(rim), 12);
+    expect(uniforms.rimTurn.value[1]).toBeCloseTo(Math.sin(rim), 12);
     expect(uniforms.lattice.value[3]).toBeCloseTo(state.hearing * LATTICE_PULL, 12);
     expect(uniforms.eyeDistance.value).toBe(7.25);
   });
