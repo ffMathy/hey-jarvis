@@ -21,23 +21,22 @@ import { SPARKLE_REPEAT } from './sparkle';
  * The tiers' paints: colour, full width in the drawing's unit (the shaders use halves) and alpha.
  * The mid, bright and hot strokes vary in brightness along their length with the sparkle (`sparkle.ts`).
  *
- * The film's speck shell runs from deep amber in its dimmest specks through gold to pale gold, and
- * its brightest are white-hot — (255, 229, 174) and hotter at their middles, against a 95th
- * percentile of (245, 198, 132). So the tiers climb that ramp: the dim ones, which are every speck
- * at the back of the shell, deep amber and faint, so the back of the shell is depth rather than
- * clutter and the band between the bright specks is see-through, as the film's is; the mid ones
- * amber-gold; the bright ones pale gold, with a hot core near white laid over them, which Screens a
- * bright speck at full sparkle to about (255, 248, 223). They are fine, 0.009-0.011R across where
- * the old body's strokes were 0.014-0.0165R: the film's specks are glitter, not strokes.
+ * The old body fused with the film's: the dim and mid tiers are the old body's deep orange and
+ * as wide as its strokes were (0.014-0.0155R), so the fill that packs his middle reads as dense as
+ * the old body did — the user liked that better than the film's fine glitter — and the bright tier
+ * is the film's pale gold, with a hot core near white laid over it, which Screens a bright speck at
+ * full sparkle to about (255, 248, 223): the film's white-hot highlights, (255, 229, 174) and hotter
+ * at their middles. Every speck at the back of the ball is drawn dim, so it is depth rather than
+ * clutter.
  *
- * Each is drawn at its fragment's `light` too, which the shell it is seen through takes from a
- * speck seen face on (`shellFacing`), so the specks across his middle are faint lines.
+ * Each is drawn at its fragment's `light` too, which takes a little from a speck seen face on
+ * (`shellFacing`), so the beads round his edge lead.
  */
 export const STROKE_PAINTS = {
-  dim: { colour: 0xb8641e, width: 0.009, alpha: 0.32 },
-  mid: { colour: 0xf5aa48, width: 0.01, alpha: 0.9 },
+  dim: { colour: 0xcc6e2c, width: 0.014, alpha: 0.6 },
+  mid: { colour: 0xf88a30, width: 0.0155, alpha: 0.88 },
   /** Its alpha is 1 − 0.25 × agitation. */
-  bright: { colour: 0xffd27e, width: 0.011, alpha: 1 },
+  bright: { colour: 0xffd27e, width: 0.0155, alpha: 1 },
   /** Round-capped, on the bright strokes only; its alpha is 0.9 × (1 − 0.95 × agitation). */
   hot: { colour: 0xfff2d4, width: 0.007, alpha: 0.9 },
 };

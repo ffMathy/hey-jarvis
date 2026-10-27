@@ -23,7 +23,8 @@
 // - and calm: about 6 luma of change per film frame over 256 px.
 // The drawing keeps all of him inside his square, whose edge is about 1.85R from his middle at rest,
 // so its wireframe and its bloom stop shorter than the film's. Elsewhere it departs from the film
-// only where the user asked it to: see WHAT THE USER ASKED FOR below.
+// only where the user asked it to: see WHAT THE USER ASKED FOR below. The biggest departure is his
+// body: the film's hollow shell is filled with specks as the old body was, at the user's asking.
 //
 // LAYERS, back to front (unit space, R = 1, y down; clock angles in degrees clockwise from 12 o'clock)
 //   drawAura          the film's bloom: a soft warm band round him, see-through inside AURA_INNER,
@@ -49,8 +50,9 @@
 //   drawSatellites    the agents at work for him, circling him (`satellite-drawing.ts`). The headset
 //                     draws its own in the room instead.
 //   (the body)        over all of it, on the GPU in three dimensions (`hologram/gpu`): up to
-//                     PARTICLE_COUNT specks on a shell from about half his radius out (buildBody),
-//                     each tier with a soft halo of its own, and the stream, specks below the core
+//                     PARTICLE_COUNT specks, most of them filling the ball as the old body's did and
+//                     the rest on the film's shell from about half his radius out (buildBody), each
+//                     tier with a soft halo of its own, and the stream, specks below the core
 //                     turning on a clock of their own (buildStream). The scene's body and stream
 //                     tables, and the per-fragment helpers below (readFragment, placeFragment,
 //                     swirlFragment, latticeFragment and the rest), are what it is drawn from and
@@ -114,10 +116,15 @@
 // WHAT THE USER ASKED FOR
 // The film leads the look, but where the user has asked for something, that wins. Each request is
 // written up where it is made, and a change must keep them all:
-// - Nothing fills him. A textured haze used to lie under everything, and it went at the user's asking
-//   ("I just want the particles to speak for themselves"), so he is see-through between his light.
-//   The aura is a band and the core's glow mostly see-through for the same reason. Do not paint a
-//   volume back in, and do not read the dark between the specks as a regression.
+// - Dense, as the old body was. The film's hollow shell left a dark donut round the core, and the
+//   user preferred how packed the old body looked, so most of his specks fill the ball again
+//   (BODY_FILL_SHARE), in the old body's wider strokes, deep orange tiers and broad halos, and his
+//   middle is dimmed only a little (SHELL_FACE_DIMMING). The film's shell still lies round them, so
+//   his edge is the brightest of him, and its gold and white-hot highlights stay.
+// - Nothing but particles fills him. A textured haze used to lie under everything, and it went at the
+//   user's asking ("I just want the particles to speak for themselves"). The aura is a band and the
+//   core's glow mostly see-through for the same reason. Do not paint a volume back in: the density
+//   is the specks'.
 // - No protrusions. A script once stood truss booms, ribbon loops, hook tendrils, streak bundles and
 //   pole fans off his limb, one per epoch. On a phone, where he is small and the loop came round every
 //   minute, they read as an arm swinging out of the ball in the same pattern. Nothing grows out of him
@@ -502,7 +509,8 @@ function roundToFiveDecimals(value: number) {
 }
 
 /**
- * Where his specks lie: on a shell rather than through a ball. The film's sphere is a hollow of
+ * Where the specks that are not the fill ({@link BODY_FILL_SHARE}) lie: on a shell rather than
+ * through a ball. The film's sphere is a hollow of
  * fine glittering points, from about half his radius out to the edge of the speck shell, and seen
  * face on that shell is a bright beaded donut round a darker, see-through band and the core. A line
  * of sight near the edge runs through more of a shell than one through the middle does, so a shell
@@ -533,6 +541,47 @@ const BODY_SEED_MIX = 0x3c6ef372;
 /** A distance from his centre on the speck shell, `outer` at most. */
 function pickShellRadius(random: Random, outer: number) {
   return outer - SPECK_SHELL_DEPTH * random() ** SPECK_SHELL_GATHER;
+}
+
+/**
+ * The share of his specks that fill the ball, as the whole of the old body did, rather than lie on
+ * the shell. The film's shell alone left a dark donut round the core, and the user liked the old
+ * body's density better, so the two are fused: the fill packs his middle and the shell still rings
+ * his edge with the brightest beads.
+ */
+const BODY_FILL_SHARE = 0.62;
+/** How far out the fill reaches, seen face on, in R. */
+const BODY_FILL_RADIUS = 0.92;
+/** The share of the fill's specks that lie along the ring: the rest cross it any way, as the old body's circuit hatching did. */
+const FILL_ALONG_THE_RING_SHARE = 0.3;
+/** The share of the fill that is bright: the old body's. */
+const FILL_BRIGHT_SHARE = 0.12;
+
+/** A place on the speck shell — a direction uniform over the sphere at {@link pickShellRadius} — written into `out`. */
+function pickShellPlace(random: Random, out: number[]) {
+  // Its height (y, down) uniform in ±1, and any longitude.
+  const height = random() * 2 - 1;
+  const longitude = random() * Math.PI * 2;
+  const radius = pickShellRadius(random, SPECK_SHELL_OUTER);
+  const across = Math.sqrt(1 - height * height) * radius;
+  out[0] = Math.cos(longitude) * across;
+  out[1] = height * radius;
+  out[2] = Math.sin(longitude) * across;
+  return out;
+}
+
+/**
+ * A place in the fill, written into `out`: even over his disc seen face on, as the old body was, and
+ * anywhere through the ball behind and in front of that point, so it is as thick front to back as
+ * it is across and turns as a ball rather than a coin.
+ */
+function pickFillPlace(random: Random, out: number[]) {
+  const seen = Math.sqrt(random()) * BODY_FILL_RADIUS;
+  const angle = random() * Math.PI * 2;
+  out[0] = Math.cos(angle) * seen;
+  out[1] = Math.sin(angle) * seen;
+  out[2] = (random() * 2 - 1) * Math.sqrt(BODY_FILL_RADIUS * BODY_FILL_RADIUS - seen * seen);
+  return out;
 }
 
 /**
@@ -568,25 +617,23 @@ const ALONG_THE_RING_SHARE = 0.7;
  * 0 is along it. The film's specks run round the shell like beads on a necklace, so most lie
  * within 17° of the ring, and the rest any way at all, so that the shell does not read as combed.
  */
-function pickFragmentAngle(random: Random) {
-  if (random() < ALONG_THE_RING_SHARE) return (random() + random() - 1) * 0.3;
+function pickFragmentAngle(random: Random, alongShare: number) {
+  if (random() < alongShare) return (random() + random() - 1) * 0.3;
   return random() * Math.PI;
 }
 
 /**
- * A speck's length: median 0.05R, 90th percentile 0.075R, and one in fifty a streak up to 0.17R.
+ * A speck's length: median 0.083R, 90th percentile 0.17R, and three in a hundred a streak up to 0.38R.
  *
- * Shorter than the strokes this body was made of — those had a median of 0.083R — because the
- * film's shell is fine glitter, not long amber strokes, and held close to the median, since a
- * band of beads strung round him reads as hatching once a tenth of them are twice as long as the
- * rest. Not as short as the film's own, though: the user asked that a spark read as a line rather
- * than as a bead, and a stroke is 0.009-0.011R wide, so at this median a speck is still five times
- * as long as it is wide. Its clock draws it out from nothing and back, so most of what is lit at a
- * moment is shorter still.
+ * The old body's, which the user liked for how packed it looked. The film's glitter is shorter, and
+ * this body was briefly too, but its strokes are as wide as the old body's again (0.014-0.0155R),
+ * and the user asked that a spark read as a line rather than as a bead: at this median a speck is
+ * five times as long as it is wide, and at the film's it would be three. Its clock draws it out from
+ * nothing and back, so most of what is lit at a moment is shorter still.
  */
 function pickFragmentLength(random: Random) {
-  if (random() < 0.02) return 0.09 + random() * 0.08;
-  return 0.032 + 0.05 * random() ** 1.5;
+  if (random() < 0.03) return 0.18 + random() * 0.2;
+  return 0.03 + 0.15 * random() ** 1.5;
 }
 
 /**
@@ -685,24 +732,25 @@ function pickGlyphAndLength(random: Random, radius: number, out: number[]) {
 function buildBody(random: Random, fragmentCount: number) {
   const body: number[] = [];
   const shape = [0, 0];
+  const spot = [0, 0, 0];
   while (body.length < fragmentCount * BODY_STRIDE) {
-    // A direction uniform over the sphere: its height (y, down) uniform in ±1, and any longitude.
-    const height = random() * 2 - 1;
-    const longitude = random() * Math.PI * 2;
-    const radius = pickShellRadius(random, SPECK_SHELL_OUTER);
-    const across = Math.sqrt(1 - height * height) * radius;
-    const x = Math.cos(longitude) * across;
-    const y = height * radius;
-    const depth = Math.sin(longitude) * across;
+    const filling = random() < BODY_FILL_SHARE;
+    const place = filling ? pickFillPlace(random, spot) : pickShellPlace(random, spot);
+    const x = place[0];
+    const y = place[1];
+    const depth = place[2];
+    const radius = Math.sqrt(x * x + y * y + depth * depth);
     const crowding = clusterWeight(x, y, depth);
     // The crowded clumps carry the bright specks, and the dim and mid ones thin out between them.
     // Deeper in the shell they are dimmer, from a twentieth bright at its inside to three in ten at
-    // its edge, so the light gathers at the edge of the donut, as the film's does.
-    const outerness = (radius - SPECK_SHELL_INNER) / SPECK_SHELL_DEPTH;
-    const brightness = crowding > 0.72 && random() < 0.4 ? 2 : pickBrightness(random, 0.05 + 0.25 * outerness);
+    // its edge, so the light gathers at the edge of the donut, as the film's does; the fill is lit
+    // as the old body was, an eighth of it bright.
+    const outerness = clamp01((radius - SPECK_SHELL_INNER) / SPECK_SHELL_DEPTH);
+    const brightShare = filling ? FILL_BRIGHT_SHARE : 0.05 + 0.25 * outerness;
+    const brightness = crowding > 0.72 && random() < 0.4 ? 2 : pickBrightness(random, brightShare);
     const crowded = brightness === 2 ? crowding : crowding * Math.sqrt(crowding);
     if (random() > massWeight(y) * crowded) continue;
-    const direction = pickFragmentAngle(random);
+    const direction = pickFragmentAngle(random, filling ? FILL_ALONG_THE_RING_SHARE : ALONG_THE_RING_SHARE);
     pickGlyphAndLength(random, radius, shape);
     const pool = random() < 1 / 3 ? 1 : 0;
     const rate = pickFragmentRate(random, pool);
@@ -1527,22 +1575,21 @@ export function fragmentTier(brightness: number, strength: number, id: number, h
  * How much a speck seen face on through his shell is dimmed: one seen square through the shell
  * keeps 1 − this of its light, one at the silhouette all of it.
  *
- * The film's shell, seen face on, is a bright beaded donut round a darker, see-through band, and a
- * shell of specks gets only part of the way there by projection: a line of sight near the edge
- * runs through more of the shell than one through the middle, but only about twice as much where
- * the film's ring is several times brighter than the band inside it. So, as a glowing shell seen
- * edge on is brightest, a speck is dimmed by how squarely the eye looks through the shell where it
- * is seen — the square of the cosine between the line of sight and the shell's radius there, which
- * for a speck at its place on the shell is its depth over its distance from his centre — leaving
- * the middle of him to the core and the dark between them, from any side and as he turns. Where it
- * is seen, rather than where it sits, so a speck his voice carries in from the ring dims as it
- * comes and the donut holds while he talks.
+ * As a glowing shell seen edge on is brightest, a speck is dimmed by how squarely the eye looks
+ * through the ball where it is seen — the square of the cosine between the line of sight and his
+ * radius there, which for a speck at its place is its depth over its distance from his centre —
+ * from any side and as he turns. Where it is seen, rather than where it sits, so a speck his voice
+ * carries in from the edge dims as it comes.
+ *
+ * Only a little. The film's donut asked for 0.85, which left his middle to the core and the dark;
+ * the user preferred the old body's density, so his middle is filled ({@link BODY_FILL_SHARE}) and
+ * dimmed by a quarter at most: enough that the ring of beads round his edge still leads.
  *
  * Dimmed means fainter and in a lower tier, not shorter: a speck keeps its length, so the specks
- * across the middle are faint lines rather than dots — the user asked that a spark read as a line
- * and not a bead — and the band inside the donut is see-through between them.
+ * across the middle are lines rather than dots — the user asked that a spark read as a line and not
+ * a bead.
  */
-export const SHELL_FACE_DIMMING = 0.85;
+export const SHELL_FACE_DIMMING = 0.25;
 
 /**
  * How far behind the plane through his middle, in R, the back of his shell begins. Every speck

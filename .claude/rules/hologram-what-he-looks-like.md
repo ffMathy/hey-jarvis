@@ -17,9 +17,10 @@ does to it.
 
 - **The core:** a white-hot thin ring (`CORE_RING_RADIUS`), the brightest thing in him, round a
   glow that is mostly see-through, with a faint hooked ring and bar across it (`drawCore`).
-- **The shell of specks:** his body, up to `PARTICLE_COUNT` fine specks on a shell from about half
-  his radius out, which seen face on is a bright beaded donut round a darker, see-through band
-  (`buildBody`, drawn by `gpu/gpu-body.ts`).
+- **The body of specks:** up to `PARTICLE_COUNT` of them, the old body fused with the film's shell
+  (`buildBody`, drawn by `gpu/gpu-body.ts`): most fill the ball as the old body did
+  (`BODY_FILL_SHARE`), in its wide strokes, deep orange tiers and broad halos, and the rest lie on
+  the film's shell from about half his radius out, ringing his edge with the brightest gold beads.
 - **The stream:** a few specks below the core turning about the vertical on a clock of their own
   (`buildStream`).
 - **The cage:** the film's loose wireframe, hairlines between seeded nodes round the shell, in
@@ -36,8 +37,11 @@ does to it.
 
 ## What the user asked for, which a change must keep
 
-- **Nothing fills him.** "I just want the particles to speak for themselves": no warm volume, and
-  the middle stays see-through between his light.
+- **Dense, as the old body was.** The film's hollow shell alone left a dark donut round the core,
+  and the user liked how packed the old body looked better: his middle is filled with specks and
+  dimmed only a little (`SHELL_FACE_DIMMING`). Do not hollow him out again.
+- **Nothing but particles fills him.** "I just want the particles to speak for themselves": no warm
+  volume or haze painted under them; the density is the specks'.
 - **No protrusions.** Nothing grows out of him and dissolves in a repeating pattern; the cage is
   always there, and calm.
 - **He arrives as a vortex out of his core** and in no other way, and nothing flashes as he forms.

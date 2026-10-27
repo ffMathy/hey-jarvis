@@ -348,7 +348,10 @@ describe('his specks', () => {
     }
   });
 
-  it('are dimmed seen face on through his shell, not shortened into beads', () => {
+  it('are dimmed a little seen face on, so his edge still leads, and never shortened into beads', () => {
+    // His middle is filled again, as the old body was, so the specks seen there are dimmed by at
+    // most a quarter — enough that the ring of beads round his edge is still the brightest of
+    // him, not so much that the middle goes dark. Measured: 0.80 face on, where the hollow shell's was under 0.4.
     const faceOn = { light: 0, drawnShare: 0, count: 0 };
     const edgeOn = { light: 0, drawnShare: 0, count: 0 };
     for (const { offset, placed } of drawnBody(stateAt(IDLE))) {
@@ -362,8 +365,9 @@ describe('his specks', () => {
     }
     expect(faceOn.count).toBeGreaterThan(100);
     expect(edgeOn.count).toBeGreaterThan(500);
-    expect(faceOn.light / faceOn.count).toBeLessThan(0.4);
+    expect(faceOn.light / faceOn.count).toBeGreaterThan(0.7);
     expect(edgeOn.light / edgeOn.count).toBeGreaterThan(0.8);
+    expect(faceOn.light / faceOn.count).toBeLessThan(0.9 * (edgeOn.light / edgeOn.count));
     expect(faceOn.drawnShare / faceOn.count).toBeGreaterThan(0.85 * (edgeOn.drawnShare / edgeOn.count));
   });
 

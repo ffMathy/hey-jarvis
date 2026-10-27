@@ -26,18 +26,16 @@ export const HALO_TEXELS = 512;
 
 /**
  * How wide each tier's halo is — twice the distance from its stroke at which its glow is gone — in
- * the drawing's unit, and how strong it is on the stroke, before the voice's glow. Warm gold, the
- * film's falloff round its hot centres. The bright specks bloom, each a point of glow of its own;
- * the mid and dim ones, every speck at the back of the shell among them, only lay a faint warm haze
- * through the band, so the specks read one by one with the dark between them rather than as one
- * mass of light. Every halo is as strong as its speck's `light`, so the specks across his middle
- * hardly glow at all. The widest reaches 0.08R past its stroke, so from the shell's edge at 0.87R
- * no halo gets near the edge of the target at ±1.85R.
+ * the drawing's unit, and how strong it is on the stroke, before the voice's glow. Warm orange-gold.
+ * The bright specks bloom, each a point of glow of its own; the mid and dim ones lay a broad warm
+ * haze through him, as the old body's halos did, which is much of how packed he looks. Every halo is
+ * as strong as its speck's `light`. The widest reaches 0.08R past its stroke, so from the shell's
+ * edge at 0.87R no halo gets near the edge of the target at ±1.85R.
  */
 export const HALO_PAINTS = {
-  colour: 0xe08a2c,
-  dim: { width: 0.08, strength: 0.1 },
-  mid: { width: 0.1, strength: 0.14 },
+  colour: 0xdc7426,
+  dim: { width: 0.11, strength: 0.18 },
+  mid: { width: 0.12, strength: 0.24 },
   bright: { width: 0.16, strength: 0.65 },
 };
 
