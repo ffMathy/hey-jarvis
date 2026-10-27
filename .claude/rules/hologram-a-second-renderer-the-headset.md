@@ -20,9 +20,8 @@ watch draws both with `drawGpuFrame`. So the main entry exports what that needs:
 stream's row layouts, and the constants they read; and the frame clock. The
 picture itself is drawn from `pictureSceneOf(scene)`, the scene without the
 body's and the stream's rows, so a picture worklet never carries them.
-`analyseFrame` reads nothing of the scene but its script (`HologramScript`), so a
-frame callback that only analyses frames can capture that rather than the whole
-scene.
+`analyseFrame` reads nothing of the scene, so a frame callback that only analyses
+frames captures none of it.
 
 **Fading him from outside the drawing.** The GPU draws him unfaded, and whoever
 shows him fades him by `arrivalOf(appearance, presence)` — the arrival

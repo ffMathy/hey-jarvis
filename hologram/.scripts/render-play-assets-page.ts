@@ -35,7 +35,7 @@ const SCREEN_SQUARE_SHARE = 1.32;
 const NAME = 'JARVIS';
 const NAME_SIZE = 78;
 const NAME_TRACKING = 0.34;
-const NAME_INK = '#ffd18a';
+const NAME_INK = '#ffbc80';
 
 /** How one picture is drawn: the part of a Play asset the page reads. */
 export interface PlayPicture {

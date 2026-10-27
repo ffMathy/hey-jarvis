@@ -26,7 +26,7 @@ Per frame, on the CPU:
    their fixed rates, the lattice eased. This file keeps only what the headset does
    differently: the voice is read every READ_INTERVAL_MS on the clock's own time,
    and the arrival restarts on `arrive()` (`restartArrival`).
-2. **`analyseFrame(frame, 1, scene)`**, which is all the CPU does for the picture:
+2. **`analyseFrame(frame, 1)`**, which is all the CPU does for the picture:
    what it draws is a few dozen draws' uniforms.
 
 On the GPU, in passes whose shaders, rows and arithmetic are `hologram/gpu`'s —
@@ -36,8 +36,8 @@ materials, targets and meshes:
 
 3. **The picture** (`picture-target.ts`), once a frame, before either eye:
    `hologram/gpu`'s `drawGpuPicture` — everything flat that the phone draws, the
-   whorl, the core, the rim, the truss, the crescent, the fray, the chips, the
-   pulse, everything but the body and the stream — into a 512-pixel
+   aura, the core, the cage, the embers, the fray, the chips, the pulse,
+   everything but the body and the stream — into a 512-pixel
    `WebGLRenderTarget` with a depth and a stencil buffer, which the picture needs
    (`gpu-picture.ts` says why). It is drawn with raw GL calls on
    `renderer.getContext()`: three's state is reset (`renderer.resetState()`)
@@ -52,11 +52,13 @@ materials, targets and meshes:
    still. The target is read bottom row first, as every framebuffer is, which is
    the right way up for the quad's own coordinates, so nothing is flipped.
 4. **The halo union** (`halo-union.ts`), once a frame, before either eye: every lit
-   fragment's halo as a capsule, MAX-blended into a 1024×512 byte target (R/G/B =
-   dim/mid/bright coverage; the pinned fragments in the left half, the inner
-   layer's in the right, as the phone paints them as separate paths). Stacked one
-   by one, the halos were a flat orange coin; the phone strokes each tier's halos
-   as one path, so they are a union.
+   fragment's halo as a soft glow round its stroke — full on the stroke, falling as
+   (1 − d/r)² to nothing at its tier's radius, times the speck's light — MAX-blended
+   into a 1024×512 byte target (R/G/B = how much the dim, mid and bright halos light
+   each spot; the globe's fragments in the left half, and those held in the view
+   plane — the whorl's, the gyroscope's arcs' and the truss's — in the right, as
+   separate layers). Stacked one by one, the halos would be a flat coin over his
+   middle; unioned, they make one smooth envelope that leaves it see-through.
 5. **Per eye, the view-plane quad** (`view-plane-quad.ts`): the picture's target
    Screened with the halos' light, facing the centre eye, and faded with the rest
    of him by his arrival (`arrivalOf`) through the blend. It is the whole square,
@@ -78,13 +80,14 @@ vertex wave idle); on SwiftShader
 the plain list made the halo union about four times as fast and each eye's
 strokes about three, and it draws the same triangles in the same order, so the
 preview's stills came out the same to the byte. The price is memory: each row is
-held four times, 3 MB rather than 0.7.
+held four times, 2.6 MB rather than 0.65.
 
 Where each fragment is comes from `hologram/gpu`'s `fragment-3d.ts`: the phone's
 per-fragment helpers from `hologram`, with the body turning about the vertical in
 its own frame (its front faces where the user stood when he arrived) and
 everything the phone does on screen — the wander, the vortex, the lattice, the
-inner layer's turn, a glyph's direction — done in the plane through his centre
+turns of the groups held in the view plane (the whorl's, the arcs' rocking, the
+truss's roll), a glyph's direction and its scatter while he thinks — done in the plane through his centre
 that faces the centre eye. Depth is kept: the vortex scales it, the lattice snaps
 it into layers where the centre eye sees them line up, the thinking plane is
 level with the floor. Its `fragment-glsl.ts` is that file, line for line, in
@@ -140,14 +143,20 @@ Known deviations from the phone: strokes of one tier that cross add up rather th
 forming a union, so the arrival's first half-second and the listening knots are a
 little hotter; everything the picture draws is flat in the view plane.
 
-**The picture is held to Skia's.** Skia drew it on every device before
-`hologram/gpu` did, and `tests/e2e/hologram-picture.spec.ts` draws fourteen
-moments with it through `picture-target.ts` (the preview's `checkPicture`) and
-compares them with Skia's goldens (`tests/e2e/fixtures/picture/`, drawn with
-`fadeOutside`, RGB over black): a mean of 0.07–0.29 levels a channel, a 99th
-percentile of at most 8, at most 0.5% of pixels a channel more than 16 apart,
-and the mean luma within 0.02 of Skia's. The behaviour that was `hologram`'s
-pixel tests under CanvasKit — it moves, answers speech with activity, spirals in
-without a flash, leaves nothing behind, stays in its square, and draws each
-satellite where its orbit says — is `tests/e2e/hologram-picture-behaviour.spec.ts`,
+**The picture is held to its own goldens.** `tests/e2e/hologram-picture.spec.ts`
+draws fifteen moments with it through `picture-target.ts` (the preview's
+`checkPicture`) and compares them with frames it drew itself when he was redrawn
+as the Vision Quest / Age of Ultron hybrid (`tests/e2e/fixtures/picture/`, RGB over black,
+drawn by `.scripts/render-picture-goldens.ts`; see "The browser tests"): a mean
+of at most 0.4 levels a channel, a 99th percentile of at most 10, at most 0.8% of
+pixels a channel more than 16 apart, and the mean luma within 0.1. Drawn again on
+the machine that drew them, they match to the byte. The behaviour that was
+`hologram`'s pixel tests under CanvasKit — it is warm, its core ring rolls and
+its cage turns with his body, it answers speech with activity, spirals in without
+a flash, leaves nothing behind, stays in its square, and draws each satellite
+where its orbit says — is `tests/e2e/hologram-picture-behaviour.spec.ts`,
 measured on the picture as a view shows it: faded as one layer by `arrivalOf`.
+It also holds the light down the 45° diagonals through his middle to the light
+beside them, over ten idle moments: an arc's pieces once left the pixels there,
+where two of them meet on a circle centred on a pixel corner, unpainted, and the
+aura showed straight dark lines down them.

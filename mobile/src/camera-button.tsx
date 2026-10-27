@@ -13,7 +13,7 @@ const BUTTON_SIZE = 40;
  */
 const BESIDE_THE_LIMB = 1.2;
 
-/** Down and to the right, 45 degrees: the side the rim's slabs of light never break off from. */
+/** Down and to the right, 45 degrees: away from his left, where his shards of light break off. */
 const DIAGONAL = Math.SQRT1_2;
 
 interface CameraButtonProps {

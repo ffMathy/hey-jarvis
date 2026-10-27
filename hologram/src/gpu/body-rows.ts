@@ -10,8 +10,8 @@ import {
 } from '../hologram-drawing';
 
 /**
- * The body's and the stream's fragments as the GPU reads them: one row per fragment, four numbers
- * to an attribute, which `buildRowVertices` (`row-vertices.ts`) gives every corner of the
+ * The body's and the stream's fragments as the GPU reads them: one row per fragment, up to four
+ * numbers to an attribute, which `buildRowVertices` (`row-vertices.ts`) gives every corner of the
  * fragment's quad.
  *
  * The scene is the phone's own (`createHologramScene(SCENE_SEED)`), so the headset's Jarvis is made
@@ -35,8 +35,8 @@ export interface HologramRows {
    */
   rest: Float32Array;
   /**
-   * Body: its direction on screen (x, y), its length, its clock's rate. Stream: its half-length
-   * along its latitude (x, z), unused, its rate.
+   * Body: its direction along the ring and out from his middle where it is seen (`ringDirection`),
+   * its length, its clock's rate. Stream: its half-length along its latitude (x, z), unused, its rate.
    */
   shape: Float32Array;
   /**
@@ -46,9 +46,9 @@ export interface HologramRows {
    */
   hashes: Float32Array;
   /**
-   * Where it re-lights (`fraction(id × 9.7)`, the body only), the id itself, the order the script
-   * thins it in, and its class code: brightness + 3 × pool + 6 × rides the turning shell +
-   * FRAGMENT_CODE_GLYPH_STEP × glyph — the body's own packing, which the stream's rows are given too.
+   * Three numbers a row: where it re-lights (`fraction(id × 9.7)`, the body only), the id itself, and
+   * its class code: brightness + 3 × pool + FRAGMENT_GROUP_STEP × group + FRAGMENT_CODE_GLYPH_STEP ×
+   * glyph — the body's own packing, which the stream's rows are given too (always group 0).
    */
   identity: Float32Array;
   /** Where it sits in the density share (`densityKey`): a share keeps the rows under it. */
@@ -78,7 +78,7 @@ export function buildHologramRows(scene: HologramScene): HologramRows {
     rest: new Float32Array(count * 4),
     shape: new Float32Array(count * 4),
     hashes: new Float32Array(count * 4),
-    identity: new Float32Array(count * 4),
+    identity: new Float32Array(count * 3),
     thinning: new Float32Array(count),
   };
   for (let row = 0; row < bodyCount; row++) {
@@ -90,40 +90,53 @@ export function buildHologramRows(scene: HologramScene): HologramRows {
   return rows;
 }
 
+// The rows are written a number at a time rather than `set` from a literal of each attribute's
+// numbers: that made five arrays a row, fifty thousand of them for the scene, on the JS thread.
+
 function writeBodyRow(rows: HologramRows, row: number, body: number[], offset: number) {
+  const { rest, shape, hashes, identity } = rows;
   const id = body[offset + BODY_ID_FIELD];
   const at = row * 4;
-  rows.rest.set([body[offset], body[offset + 1], body[offset + 9], 0], at);
-  rows.shape.set([body[offset + 2], body[offset + 3], body[offset + 4], body[offset + 5]], at);
-  rows.hashes.set(
-    [
-      fraction(id * FRAGMENT_PHASE_FROM_ID),
-      fraction(id * HOT_FROM_ID),
-      fraction(id * VORTEX_ORDER_FROM_ID),
-      fraction(id * LATTICE_JITTER_FROM_ID),
-    ],
-    at,
-  );
-  rows.identity.set([fraction(id * RELIGHT_FROM_ID), id, body[offset + 8], body[offset + 7]], at);
+  rest[at] = body[offset];
+  rest[at + 1] = body[offset + 1];
+  rest[at + 2] = body[offset + 8];
+  rest[at + 3] = 0;
+  shape[at] = body[offset + 2];
+  shape[at + 1] = body[offset + 3];
+  shape[at + 2] = body[offset + 4];
+  shape[at + 3] = body[offset + 5];
+  hashes[at] = fraction(id * FRAGMENT_PHASE_FROM_ID);
+  writeIdHashes(hashes, at, id);
+  identity[row * 3] = fraction(id * RELIGHT_FROM_ID);
+  identity[row * 3 + 1] = id;
+  identity[row * 3 + 2] = body[offset + 7];
   rows.thinning[row] = densityKey(id);
 }
 
 function writeStreamRow(rows: HologramRows, row: number, stream: number[], offset: number) {
+  const { rest, shape, hashes, identity } = rows;
   const id = stream[offset + STREAM_ID_FIELD];
   const at = row * 4;
-  rows.rest.set([stream[offset], stream[offset + 1], stream[offset + 2], 1], at);
-  rows.shape.set([stream[offset + 3], stream[offset + 4], 0, stream[offset + 5]], at);
-  rows.hashes.set(
-    [
-      stream[offset + 6],
-      fraction(id * HOT_FROM_ID),
-      fraction(id * VORTEX_ORDER_FROM_ID),
-      fraction(id * LATTICE_JITTER_FROM_ID),
-    ],
-    at,
-  );
+  rest[at] = stream[offset];
+  rest[at + 1] = stream[offset + 1];
+  rest[at + 2] = stream[offset + 2];
+  rest[at + 3] = 1;
+  shape[at] = stream[offset + 3];
+  shape[at + 1] = stream[offset + 4];
+  shape[at + 2] = 0;
+  shape[at + 3] = stream[offset + 5];
+  hashes[at] = stream[offset + 6];
+  writeIdHashes(hashes, at, id);
+  identity[row * 3] = 0;
+  identity[row * 3 + 1] = id;
   // The stream's brightness and pool are packed as the body's are, with its glyph beside them.
-  const code = stream[offset + 8] + FRAGMENT_CODE_GLYPH_STEP * stream[offset + 9];
-  rows.identity.set([0, id, stream[offset + 10], code], at);
+  identity[row * 3 + 2] = stream[offset + 8] + FRAGMENT_CODE_GLYPH_STEP * stream[offset + 9];
   rows.thinning[row] = densityKey(id);
+}
+
+/** The hashes of a row's id that both tables share, after its blink phase in `hashes`. */
+function writeIdHashes(hashes: Float32Array, at: number, id: number) {
+  hashes[at + 1] = fraction(id * HOT_FROM_ID);
+  hashes[at + 2] = fraction(id * VORTEX_ORDER_FROM_ID);
+  hashes[at + 3] = fraction(id * LATTICE_JITTER_FROM_ID);
 }

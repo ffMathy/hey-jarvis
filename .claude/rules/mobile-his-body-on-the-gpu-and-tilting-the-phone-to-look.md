@@ -8,8 +8,8 @@ paths:
 > Part of [Mobile App → The hologram](mobile-the-hologram.md). Paths in it are relative to `mobile/` unless they say otherwise.
 
 All of him is drawn on the GPU, through expo-gl and `hologram/gpu`, into one canvas: his body — the
-thousands of fragments and their halos — and the rest of him, the whorl, the core, the rim and the
-satellites, which Skia used to draw beside it. There is nothing else to draw him with. The body in
+thousands of fragments and their halos — and the rest of him, the aura, the core, the cage, the
+embers and the satellites, which Skia used to draw beside it. There is nothing else to draw him with. The body in
 three dimensions is what lets him turn: **tilting the phone looks round him**, up to 25° from a rest
 pose that follows how it is held, so a phone held still shows him straight on, and he turns back to
 face you while you talk to him (`tilt.ts` in `hologram`). Both screens pass `tilt`, in the sheet and

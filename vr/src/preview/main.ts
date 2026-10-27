@@ -142,6 +142,9 @@ function start(): HologramPreviewHook {
     checkPicture(request) {
       return stage.checkPicture(request);
     },
+    pictureGolden(request) {
+      return stage.pictureGolden(request);
+    },
     stereo(request, separation) {
       setBackground(request.background);
       return stage.stereo(request, separation);
@@ -184,6 +187,7 @@ window.__hologramPreview = {
   pictureFacts: () => starting.then((hook) => hook.pictureFacts()),
   orbitPoints: (orbits, time) => starting.then((hook) => hook.orbitPoints(orbits, time)),
   checkPicture: (request) => starting.then((hook) => hook.checkPicture(request)),
+  pictureGolden: (request) => starting.then((hook) => hook.pictureGolden(request)),
   stereo: (request, separation) => starting.then((hook) => hook.stereo(request, separation)),
   setRoomPhase: (phase, holdAtSeconds) => {
     starting.then((hook) => hook.setRoomPhase(phase, holdAtSeconds));

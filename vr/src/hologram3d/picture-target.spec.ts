@@ -4,12 +4,12 @@ import { createPictureRenderTarget, PICTURE_SIZE_PIXELS } from './picture-target
 
 /**
  * What his picture is drawn into. Whether the picture drawn there is right is the browser's to say:
- * `tests/e2e/hologram-picture.spec.ts` draws it through this very target and holds it to Skia's.
+ * `tests/e2e/hologram-picture.spec.ts` draws it through this very target and holds it to its goldens.
  */
 describe('the picture target', () => {
   it('has the depth and stencil buffers the GPU picture needs under it', () => {
     // Without a stencil buffer every path's overlaps are lit twice; without a depth buffer the
-    // faint edge of one strand of the crescent darkens the one lying over it (`gpu-picture.ts`).
+    // faint edge of one stroke darkens the one lying over it (`gpu-picture.ts`).
     const target = createPictureRenderTarget(PICTURE_SIZE_PIXELS);
     expect(target.depthBuffer).toBe(true);
     expect(target.stencilBuffer).toBe(true);

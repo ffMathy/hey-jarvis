@@ -1,176 +1,217 @@
-// The J.A.R.V.I.S. hologram: the golden sphere of light that stands in for Tony
-// Stark's AI in the Avengers: Age of Ultron lab scene. This is what he is made of — the seeded
-// scene, the paths that never change — and what each frame of him is (analyseFrame); the GPU
-// draws him from it, his body in `gpu/gpu-body.ts` and every layer below in `gpu/gpu-picture.ts`,
-// whose draw functions carry the layers' names.
+// The J.A.R.V.I.S. hologram: the copper-orange sphere of light that stands in for Tony Stark's AI. This is
+// what he is made of — the seeded scene, the paths that never change — and what each frame of him
+// is (analyseFrame); the GPU draws him from it, his body in `gpu/gpu-body.ts` and every layer under
+// it in `gpu/gpu-picture.ts`, whose draw functions carry the layers' names.
 //
 // WHAT IT DEPICTS
-// The film's J.A.R.V.I.S.: a round, glowing, translucent amber ball, brightest at its core
-// and never dark inside — a see-through cloud of small lights rather than a painted surface,
-// the warm volume behind them only a haze — textured with short bright "circuit" strokes,
-// bounded by one dominant rim element at a time (a bright crescent on the left limb, a
-// segmented ladder ring, or a thin ring) and a small hooked ring at the core. The film's
-// large slow protrusions are deliberately not drawn: see the script below. Everything is
-// warm orange to amber: no blue, no white, no halo past 1.1R. Measurements and requirements come from the film study
-// (jarvis-reference.md), cited below by section.
+// A hybrid of two films' J.A.R.V.I.S., at the user's asking. Vision Quest, close up in the scene where
+// he dies, leads what he is made of: the ring, the shell, the cage and the bloom below. Avengers: Age
+// of Ultron, the lab scene the drawing was first made from, leads his colour and gives four parts:
+// - its red-orange: its close-ups measure a weighted hue of 26°, saturation 0.59, R:G:B
+//   1:0.69:0.43, median (160,98,54) and hottest pixels (253,223,193), never white;
+// - its soft swirl: one broad, mid-toned sweep of strands through his middle, at about 0.3-0.63R,
+//   never a white S;
+// - its small ringed eye at the core: two nested rings at 0.05-0.06R and 0.09-0.11R round a darker
+//   hole, never white;
+// - its gyroscope: bundles of 2-5 thin parallel strands on arcs round the core, ring light at
+//   0.50-0.60R over about half the clock and an arc at 0.67-0.7R;
+// and its ladder's boxes are open. Measured on 26 frames of Vision Quest, with S the outer edge of
+// his shell of specks (about 0.88R here), that film shows:
+// - a white-hot thin ring round his core at about 0.4 S, the brightest thing in him, round a glowing
+//   disc a little less bright than the ring, with faint marks across it;
+// - a shell of fine glittering specks from about 0.5 S to S, points and short dashes, pale gold to
+//   white. Seen face on it is a bright beaded donut, brightest near its outer edge, with a darker,
+//   see-through band between it and the core's ring;
+// - a loose angular wireframe of straight hairlines between nodes, making jagged triangles and
+//   polylines. It wraps the shell out to 1.5-1.8 S, is densest at the upper right and trails a tail
+//   downward, and it flickers from frame to frame while the whole holds its shape;
+// - embers: tiny golden flecks drifting in the space round him, some of them streaked;
+// - bloom round all of it, falling from luma 150 at S to about half that by 2.4 S;
+// - colour from white-hot through pale gold and gold to deep amber: its hottest pixels are
+//   (255,229,174), its 95th percentile (245,198,132), its 90th (234,180,111), its median (178,105,32).
+//   The drawing takes Age of Ultron's redder colour instead: over idle and speaking at 400 px it
+//   measures a weighted hue of about 30°, saturation 0.63, R:G:B 1:0.71:0.39, its hottest pixels
+//   orange-white rather than white, and his middle the palest of him and his edge the reddest;
+// - and calm: about 6 luma of change per film frame over 256 px.
+// The drawing keeps all of him inside his square, whose edge is about 1.85R from his middle at rest,
+// so its wireframe and its bloom stop shorter than the film's. Elsewhere it departs from the film
+// only where the user asked it to: see WHAT THE USER ASKED FOR below. The biggest departure is his
+// body: the film's hollow shell is filled with specks as the old body was, at the user's asking.
 //
-// LAYERS, drawn back to front by `gpu/gpu-picture.ts` (unit space, R = 1, y down; clock angles in
-// degrees clockwise from 12 o'clock)
-//   (no warm volume)    The film's ball is a lit cloud, and this drawing used to paint one: a
-//                       textured circle of amber haze under everything, arriving patch by patch
-//                       while the ball formed. It is gone, at the user's asking — "I just want
-//                       the particles to speak for themselves". Nothing lights the places where
-//                       no fragment lands now, so the ball is see-through to the background
-//                       between its strokes and reads as a swarm rather than as a surface. That
-//                       is a deliberate departure from the film study's section 6.4, which wants
-//                       an opaque volume and under 5% of the disc dark; do not read the dark
-//                       between the particles as a regression and paint it back in.
-//   drawInnerShells     the whorl: two wide spiral arms winding out of the core to 0.76R,
-//                       furry with short fragments across them, plus the long loop rising 37°
-//                       past the core, the saturated ")" arc at 0.57R and the faint near half of
-//                       the edge-on ellipse — all of it turning the other way; and data streaks
-//   (the body)          the fragment body is not drawn here: PARTICLE_COUNT fragments inside
-//                       0.94R and a 168-fragment turning shell in the lower hemisphere, with
-//                       their halos, drawn in three dimensions on the GPU by `hologram/gpu` and
-//                       laid over this picture. The scene's body and stream tables, and the
-//                       per-fragment helpers below (readFragment, placeFragment, swirlFragment,
-//                       latticeFragment and the rest), are what it is drawn from and held to.
-//   drawLines           comet arcs curling from the core to the lower right; radial spokes
-//                       or a swoosh fan of hairlines when the script calls for them
-//   drawCore            elongated bloom with a darker middle, the hooked 0.1R ring softened by
-//                       its glow, the bar, and a furry knot of spikes on the ring's upper left,
-//                       re-drawn 6 times a second
-//   drawThinRing        a hairline circle at 1R, brightest from 1 to 4 o'clock, over a lumpy ridge
-//                       of light just inside the limb that rolls with the rim layer, painted as
-//                       a band rather than a disc (see LIMB_RIDGE_BAND)
-//   drawTruss           the rolling rim layer: the ladder truss (a hot outer rail at 1.035R, a
-//                       finer inner rail at 0.935R, amber haze between them, fine rungs about
-//                       every 9°, circuit traces, paired hanging struts, 190° of arc in three
-//                       pieces), the thin ring's ticks where they pass 1-5 o'clock, and the fan
-//                       of strands on the right
-//   drawCrescent        the bright left crescent from 11 o'clock round to 7: four strands in
-//                       width tiers (glow, thin #dca131, medium, wide, #ffda53 core) and a
-//                       tight limb bloom (a radial ring profile times a sweep mask, painted
-//                       as a band round the limb rather than as a disc — see LIMB_BLOOM_BAND)
-//   drawFray            while he talks: strands fraying off the upper-left limb, streak arcs
-//                       at 1.2-1.27R, and horizontal streaks slipping out of the right limb
-//                       equator at 9 o'clock and a shorter, finer one at the upper left; then the
-//                       ribbon loop, hook tendril, streak bundle and pole fan (glowing rails,
-//                       never quite regular)
-//   drawChips           the latest burst's rim chips: solid amber slabs that break up rather
-//                       than fade
-//   drawAccents         the jagged lightning filament and the very rare two-frame red segment
+// LAYERS, back to front (unit space, R = 1, y down; clock angles in degrees clockwise from 12 o'clock)
+//   drawAura          the film's bloom: a soft warm band round him, see-through inside AURA_INNER,
+//                     brightest on the shell's edge and gone by AURA_OUTER. It is painted as a band,
+//                     so the middle of him is never filled.
+//   drawCore          the core: a glow, mostly see-through, round the white-hot ring at
+//                     CORE_RING_RADIUS; Age of Ultron's small ringed eye inside it, a hooked ring at
+//                     0.1R round a ring at 0.06R, and a faint bar across it (staticPathsOf); and the
+//                     ring itself, nested strokes up to an orange-white line, its brighter stretches
+//                     rolling round it.
+//   drawCage          the wireframe (buildCage): hairlines between seeded nodes round the shell of
+//                     specks, longer lines further out and a few trailing away below him. It is in
+//                     three dimensions and turns with the body, and each edge twinkles on its own slow
+//                     clock.
+//   drawEmbers        the embers (buildEmbers): flecks drifting out from the shell's edge and a little
+//                     upward, each on its own clock, some of them streaked.
+//   drawFray          while he talks: strands fraying off the upper left of the shell's edge, streak
+//                     arcs a little further out, and streaks slipping out of its right.
+//   drawChips         the latest burst's chips: shards of light thrown off the left of the shell's
+//                     edge on a syllable, each a streak and two splinters with white-hot cores,
+//                     which snap and thin away as they break up rather than fade.
+//   drawThinkingPulse while he thinks: a ring blooming out of the core's ring as each pass of the scan
+//                     plane ends.
+//   drawSatellites    the agents at work for him, circling him (`satellite-drawing.ts`). The headset
+//                     draws its own in the room instead.
+//   (the body)        over all of it, on the GPU in three dimensions (`hologram/gpu`): up to
+//                     PARTICLE_COUNT specks: the old body's whorl, two soft spiral arms of specks
+//                     held in the view plane and winding out of the core from 0.1R, Age of Ultron's
+//                     swirl (pushWhorlSpeck); its gyroscope, strands of specks on arcs at 0.53R and
+//                     0.67R round the core, held in the view plane and turned with the whorl, and
+//                     rocked about the core while he talks (pushGyroSpeck, GYRO_SWAY_DEGREES); the
+//                     old rim's ladder truss round his edge, made of specks at the user's asking: a
+//                     hot outer rail at TRUSS_OUTER_RAIL, a finer inner one at TRUSS_INNER_RAIL and
+//                     rungs between them making thirteen open boxes of about 11.6° along about 150°
+//                     of his edge in three stretches (TRUSS_ARCS, pushTrussSpeck), held in the view
+//                     plane and rolling clockwise on its own clock (RIM_ROLL_DEGREES_PER_SECOND),
+//                     never cut by the limb, snapped by the lattice or scattered by a thought; a
+//                     fill through the ball as the old body's was; and the film's shell from about
+//                     half his radius out (buildBody). Each tier has a soft halo of its own, and the
+//                     stream, specks below the core turning on a clock of their own (buildStream).
+//                     The scene's body and stream tables, and the per-fragment helpers below
+//                     (readFragment, placeFragment, swirlFragment, latticeFragment and the rest),
+//                     are what it is drawn from and held to.
 //
-// IDLE MOTION (section 3; nothing breathes, pulses or flickers as a whole)
-// - The outer rim layer rolls clockwise in the screen plane at 11°/s: the truss, the thin
-//   ring's ticks, and the breaks in the crescent's strands (the crescent's brightness
-//   itself stays on the left, where the film shows it).
-// - The inner layer — the whorl, the loop, the ")" arc and half of the fragments between
-//   0.3R and 0.62R — turns counter-clockwise at 5°/s about the core;
-//   the strand fan turns counter-clockwise at 3.5°/s and fades in and out on a 14 s cycle.
-//   Nothing outside 0.62R turns either way: that band is where the film's body stands still,
-//   and it is the pinned fragments in it that have to hold the picture there.
-// - The rest of the fragment body does not turn. Each fragment lives on its own clock, lit for
-//   0.18-0.4 s, growing out of nothing and shrinking back into it over a third of that, and
-//   re-lighting up to FRAGMENT_WANDER along or across from where it was — about a tenth renewed
-//   per film frame, as measured, which with twice as many fragments is what makes the idle ball
-//   read as alive rather than as a still picture: 4.2 luma of change per 1/24 s over the 256 px
-//   square, against 1.6 before, where the film shows 5-10. (That figure hardly moves with the
-//   window it is measured over — 4.18, 4.21, 4.21, 4.15 at 6, 8, 10 and 16 s — because in
-//   silence every clock here runs at a fixed rate.) Below
-//   the core, a shell turns about the vertical axis at 0.21 rad/s, so its front drifts
-//   right at 0.1-0.2 R/s and its dimmer back drifts left: the film's counter-streams.
-// - The core's brightness drifts ±3% over about 12 s; comet arcs grow, slide and fade
-//   over 5-9 s each.
-// - A script (a loop of 12 epochs, 3-8 s each, about 59 s in all, plus a second track
-//   on a 41 s period) decides which rim element dominates — the other two stay faintly
-//   present, handing over within 1.2 s — whether spokes, a swoosh or a lightning filament
-//   show, how dense the fragments are (0.9-1.02), and when the red segment flashes.
+// IDLE MOTION (nothing breathes, pulses or flickers as a whole)
+// - The body turns about the vertical axis like a globe (BODY_RADIANS_PER_SECOND), and the cage turns
+//   with it. The whorl's specks ride an inner layer instead, held in the plane of the view and
+//   counter-turning about the core (SHELL_DEGREES_PER_SECOND), so the spiral stays a spiral. The
+//   stream turns about the vertical on its own clock (STREAM_RADIANS_PER_SECOND), so its front drifts
+//   right and its dimmer back drifts left: counter-streams through the bottom of the shell.
+// - Every speck lives on its own clock. It grows out of nothing and shrinks back into it over a third
+//   of the time it is lit, and re-lights a little along or across from where it was. The clocks run
+//   slower than the film's on purpose (pickFragmentRate): at the film's rate the phone read as a
+//   sizzle.
+// - The core ring's brighter stretches roll clockwise round it (ROLL_DEGREES_PER_SECOND), and the
+//   core's brightness drifts a few percent over many seconds. It never beats.
+// - Each edge of the cage twinkles on its own slow clock, and each ember drifts out on its own.
+// - The truss rolls clockwise round his edge in the plane of the view (RIM_ROLL_DEGREES_PER_SECOND).
+// - Nothing is scheduled: no loop decides what shows or when.
 //
-//   It used to bring out a protrusion per epoch as well, on two tracks: truss booms, ribbon
-//   loops, hook tendrils, streak bundles and pole fans standing off the limb, each growing
-//   over 0.5-1.5 s, holding 1-3 s and dissolving through a hollow outline into sparks. They
-//   are the film's, and they are gone at the user's request: on a phone, where the sphere is
-//   small and the loop comes round every minute, they read as an arm swinging out of the ball
-//   in the same pattern rather than as the scenery of Tony's lab.
-//
-// HOW THE FRAME DRIVES IT (see analyseFrame). The film's sphere does not brighten or
-// swell with his voice, so neither does this one: disc brightness while talking stays
-// within a few percent of silence and the silhouette within 1%. Speech shows as activity.
-//   time        drives every clock above; every rate is fixed, so nothing depends on
-//               level × time and nothing jumps.
-//   level       deliberately unused: loudness has no counterpart in the film.
-//   speaking    unused too: agitation already says whether he is talking, and a flag that
-//               flips within one frame would make the sphere jump.
-//   agitation   held back until the vortex has all but formed him (appearance 0.6-1), then drives:
-//               - mix = 0.5·agitation: calm fragments whose ids fall below mix fade out and
-//                 fast fragments (lit 0.06-0.14 s) whose ids fall below 2·mix fade in. Half
-//                 and no more, because the two make up for each other exactly at that share
-//                 and not past it; so the count lit, and the brightness, hold while the churn
-//                 nearly doubles: over the check's recorded line, 4.18 luma per 1/24 s silent
-//                 against 7.77 while he talks, both measured over the first six seconds of it.
-//                 (Unlike the silent figure the speaking one does depend on that window, because
-//                 the recording falls quiet: over sixteen seconds it reads 6.07 against 4.15,
-//                 still half again as much, and the drawing this replaced degraded the same way.)
-//                 Each
-//                 fragment also re-lights up to a fifth of a radius from where it was, less so
-//                 the nearer the limb it is — the silhouette must not move with his voice
-//               - hotShare = 1 − 0.35·agitation: the share of bright fragments still drawn
-//                 bright. Their hot cores all but go (−95%), which is what takes the film's
-//                 luma-200 highlights out on "Doctor." while the strokes stay bright
-//               - spread = agitation·(0.7 + 0.3·low), low = clamp((mean of bands 0-5 −
-//                 0.35) / 0.45): the crescent's strands move from 0.965-1.03R out to
-//                 0.94/1.02/1.10/1.19R, thin (wide tier −62%, medium −45%), open gaps, the
-//                 outer two gather 28° toward the upper left and shorten 40%, and every strand
-//                 keeps streaming out and back at about 0.1 R/s. Its hot core fades as
-//                 (1 − spread)², while its limb bloom holds, so the silhouette does not shrink;
-//                 the crescent shows at no less than
-//                 0.65·agitation even when another element leads
-//               - fray = agitation·(0.55 + 0.45·high), high = clamp((mean of bands 14-23 −
-//                 0.2) / 0.45): which fray strands (drifting out 0.12R per cycle), streak
-//                 arcs and right-limb streaks (0.3 R/s) show; each is a slot on its own clock
-//                 that agitation only lets through, fading by length
+// HOW THE FRAME DRIVES IT (see analyseFrame). The film's sphere holds its brightness and its size
+// while he talks and shows speech as activity, and so does this one, except for the swell and the
+// tenth of a glow the user asked for.
+//   time        drives every clock above. Every rate is fixed, so nothing depends on level × time
+//               and nothing jumps.
+//   level       his loudness, eased: most of the swell (SWELL_WITH_VOICE) and part of the glow
+//               (GLOW_WITH_VOICE), so he breathes with the sentence.
+//   bands       the low ones bring more of the embers out and the high ones more of the fray, so the
+//               picture answers low and high notes differently.
+//   speaking    unused: agitation already says whether he is talking, and a flag that flips within
+//               one frame would make the sphere jump.
+//   agitation   held back until the vortex has all but formed him (appearance 0.6-1), then:
+//               - mix: calm specks hand over to fast ones, half of them and no more, so the count
+//                 lit and the brightness hold while the churn rises;
+//               - each speck re-lights further along the way it lies, less so the nearer the limb
+//                 it is, so the silhouette holds;
+//               - the gyroscope's arcs rock to and fro about the core, the inner ones against the
+//                 outer like a gimbal's rings (gyroSway, turnOfGroup), instead of churning;
+//               - hotShare: some of the bright specks step down, and the hot cores all but go;
+//               - the fray, and more of the embers;
+//               - the rest of the swell and of the glow.
 //   burstAge, burstStrength, burstCount
-//               while burstAge < 0.2 s the latest burst's 3 + round(2·strength) chips are drawn
-//               (the strength as the tracker gave it): #f59a30 slabs with a hot middle and a soft
-//               edge, leaving the left limb about mid-height (clock 255-290°, or split between
-//               250° and 300° for one burst in three, chosen by hashing burstCount) from 1.04R.
-//               One leads, up to 0.33R along the limb by 0.14R across and thrown at 1.6-2.3 R/s;
-//               the others are half its length or less at 0.9-2.1 R/s, spread over 50° of limb
-//               round it rather than stacked at one clock. A small onset throws three, a loud
-//               one five. All of them fall 8-22° counter-clockwise toward 8 o'clock. Fully lit
-//               for 0.13 s, then each thins, shortens and snaps in two until it is gone at
-//               0.2 s. For 0.18 s the crescent loses pieces within 16° of the launch point.
-//               Bursts come in flurries of four a quarter of a second apart and then rest for
-//               0.6 s (the tracker's rule). On the check's recorded line that works out at
-//               1.33 bursts a second of speech, so chips are on screen for about a third of
-//               the frames he speaks in — the density of the film's "Doctor.", which shows
-//               them in 10 of its 37 frames. How many onsets the line offers is set by the
-//               tracker's ONSET_RISE, which cannot fall much further without a swell counting
-//               as an onset. Only the latest burst is ever still in flight.
-//   appearance  0-1 over MATERIALISE_SECONDS: the vortex. The sphere is full size from the start
-//               and its particles leave the core on their own clocks, nearest first, spiralling
-//               out a turn and a half as streaks along their path before they settle where they
-//               sit (see swirlFragment); the core shows first, the whorl winds up with them and
-//               the rim fades in last. It moves only the particles already being drawn, so the
-//               scene's count and the density share hold throughout. There is no other arrival:
-//               the film's point of light, sparks and spoked dial are gone at the user's asking.
+//               the chips, drawn while burstAge is under CHIP_GONE_SECONDS and fully lit for
+//               CHIP_HOLD_SECONDS. The strength says how far they go and how many there are, and the
+//               count where they leave from. Bursts come in flurries with rests between them: the
+//               tracker's rule (`voice-levels.ts`).
+//   appearance  0-1 over MATERIALISE_SECONDS: the vortex. The specks leave the core on their own
+//               clocks, nearest first, spiralling out a turn and a half as streaks before they settle
+//               (swirlFragment), the truss's last. The core shows first, and the aura, the cage and
+//               the embers are carried out with the shell (shellReach) rather than drawn round a ball that is not
+//               there yet. It moves only the specks already being drawn, so the scene's count and the
+//               density share hold throughout.
+//   presence    0-1, and 1 unless he is leaving: he fades and shrinks to LEAVING_SMALLEST, without
+//               the vortex running backwards.
+//   thinking    a plane sweeps up through him (SCAN_SECONDS), lighting what it passes, and a ring
+//               blooms out of the core at the end of each pass. Everything but the core's ring
+//               recedes, and every speck but the truss's lies some way dealt afresh each time it
+//               re-lights rather than along its ring (thoughtTurn).
+//   hearing, hearingLevel
+//               someone is talking to him: the specks snap onto a slowly turning hexagonal lattice
+//               that breathes with their voice (latticeFragment), and the core's glow dims so the
+//               lattice is what is seen.
+//
+// WHAT THE USER ASKED FOR
+// The films lead the look, but where the user has asked for something, that wins. Each request is
+// written up where it is made, and a change must keep them all:
+// - Dense, as the old body was. The film's hollow shell left a dark donut round the core, and the
+//   user preferred how packed the old body looked, so most of his specks fill the ball again
+//   (BODY_FILL_SHARE), in the old body's wider strokes, copper and orange tiers and broad halos, and
+//   his middle is dimmed only a little (SHELL_FACE_DIMMING). The film's shell still lies round them,
+//   so his edge is the brightest of him, and its orange and orange-white highlights stay.
+// - Reddish, not yellow: "The light is also too yellow - I liked the old reddish tint." Every paint
+//   is Age of Ultron's copper and red-orange (`gpu/body-strokes.ts`, `gpu/halo-union.ts`,
+//   `gpu/gpu-picture.ts`, `gpu/picture-gradients.ts`), and white-hot is an orange-white. Over idle and
+//   speaking at 400 px his weighted hue is 30.3° (it was 37.6°), G/R 0.71 (0.82), and near-white
+//   is 1.1% of his light (6.8%): his hottest pixels are orange-white, never pure white.
+// - The spiral is soft: "The spiral is too sharp." The whorl is Age of Ultron's broad, mid-toned
+//   swirl of strands (pushWhorlSpeck), from just outside the core's eye: along its arms it measures
+//   a mean luma of 201 (it was 234), 1.33 times the gaps between them (1.45), and at most 9%
+//   of its centre line is white in any band, where 84-94% was inside the core's ring. It is still a
+//   spiral, plainly, at phone size: soften it, never lose it.
+// - Nothing but particles fills him. A textured haze used to lie under everything, and it went at the
+//   user's asking ("I just want the particles to speak for themselves"). The aura is a band and the
+//   core's glow mostly see-through for the same reason. Do not paint a volume back in: the density
+//   is the specks'.
+// - No protrusions. A script once stood truss booms, ribbon loops, hook tendrils, streak bundles and
+//   pole fans off his limb, one per epoch. On a phone, where he is small and the loop came round every
+//   minute, they read as an arm swinging out of the ball in the same pattern. Nothing grows out of him
+//   and dissolves: the cage is always there, and calm.
+// - The squares round his edge stay: "I'd also like to still have the weird squares near the edge
+//   of the hologram". The old rim's ladder truss is always there, between TRUSS_INNER_RAIL and
+//   TRUSS_OUTER_RAIL, so it never stands off him. The script that once chose between it, a crescent
+//   and a thin ring is gone, and so are those two.
+// - The squares are particles, and fewer: "The squares along the edge should be made from moving
+//   particles too if possible. The amount of squares should be reduced a bit." The truss is specks
+//   of the body (pushTrussSpeck), thirteen boxes where the painted truss had twenty-one, dense and
+//   bright enough that each box reads as plainly as the painted ones did while its specks twinkle.
+// - The arcs move while he talks: "The arcs around his core need to also move when talking." They
+//   rock about the core with his eased agitation, the inner arcs against the outer
+//   (GYRO_SWAY_DEGREES), calmly.
+// - Thinking scatters the glow lines: "While thinking, the direction of the glow lines should
+//   randomize." Every speck but the truss's lies some way dealt afresh at each blink (thoughtTurn).
+// - He arrives as a vortex out of his core and in no other way. The film's point of light, sparks and
+//   spoked dial are gone at the user's asking, and nothing flashes as he forms: no one frame may turn
+//   a tenth of his light on at once.
+// - PARTICLE_COUNT stays a ceiling of ten thousand: at fifteen thousand he read as a mass.
+// - Calm: "overwhelming calm and compute power", never a sizzle. The specks' clocks are slower than
+//   the film's (pickFragmentRate), and every twinkle is slow.
+// - His glow answers his voice by a tenth (GLOW_WITH_VOICE), a number asked for in both directions
+//   six times. Speech shows as movement.
+// - He swells with his voice (SWELL_WITH_VOICE), and his body turns like a globe
+//   (BODY_RADIANS_PER_SECOND), both asked for over the film.
+// - Listening is the lattice (LATTICE_SPACING), chosen from five candidates, and thinking is the scan
+//   plane (SCAN_SECONDS), asked to be "something completely different".
+// - A speck reads as a line, not a bead: the median one is at least five times as long as it is wide
+//   (pickFragmentLength).
 //
 // PERFORMANCE AND WORKLET RULES
 // - analyseFrame and every per-fragment helper are worklets ('worklet' directive) that use only
 //   their arguments and module-level number constants: no module-level mutable state, no closures
 //   over outer values, no Math.random in a frame. Randomness comes from the seeded scene, and
 //   per-cycle variation from an integer hash (in the shaders, as it was here).
-// - The scene is flat number arrays — about a hundred thousand numbers at PARTICLE_COUNT, ten
-//   to a body row — laid out into the GPU's tables once, when the view mounts. The body's rows lost
-//   two numbers each when the body was first doubled (see buildBody). The sparkle texture and the
-//   whorl are built from a seed rather than carried in the scene. The texture is small (64²) and
-//   built with table lookups and separable noise, because this runs on the JS thread at every
-//   mount, on a phone, under an interpreter with no JIT.
+// - The body's per-frame arithmetic is written three times: in the helpers here, in its CPU reference
+//   (`gpu/fragment-3d.ts`) and in GLSL (`gpu/fragment-glsl.ts`), and `gpu/fragment-3d.spec.ts`
+//   composes a fourth copy from the helpers. A change to one is a change to all of them. A change to
+//   the scene's data needs none.
+// - The scene is flat number arrays — about ninety thousand numbers at PARTICLE_COUNT, nine to a body
+//   row — laid out into the GPU's tables once, when the view mounts. The sparkle texture is built
+//   from a seed rather than carried in the scene. It is small (64²) and built from an integer hash
+//   of each texel, because this runs on the JS thread at every mount, on a phone, under an
+//   interpreter with no JIT.
 // - Every paint is Screen, so faint overlapping strokes add up like light: glow comes from nested
-//   strokes, gradients and the prebuilt texture, with no blur. It is drawn over black.
-// - A gradient that is transparent over most of the disc is painted as a band, not a disc
-//   (LIMB_BLOOM_BAND), which keeps the widest paints affordable.
+//   strokes, gradients, the halos and the prebuilt texture, with no blur. It is drawn over black.
+// - A gradient that is transparent over most of the disc is painted as a band, not a disc (see
+//   AURA_INNER), which keeps the widest paints affordable.
 /** What one frame of the hologram is drawn from. */
 export interface HologramFrame {
   /** Seconds since the hologram mounted, accumulated per frame. All motion derives from this. */
@@ -224,23 +265,30 @@ export interface HologramFrame {
  * makes it half again wider (see `useWholeScreenHologramSize`), so this fraction times that is a
  * sphere about 0.6 of the screen across — which is what you actually see.
  *
- * The room is for what leaves him. Chips are thrown to about 1.6R on a syllable and the sphere is
- * swollen by up to SWELL_WITH_VOICE while that happens, so the drawing needs something near 1.9R
- * of square around the middle or they are cut off in mid-air. It had 1.56R, and the user saw
- * exactly that: "some of the particles that flow outwards are clipped ... its particles should be
- * able to extend further out without being clipped." It has 2.1R now.
+ * The room is for what lies round him and what leaves him: the cage, the aura and the embers round
+ * his shell of specks, and the fray and the chips he throws off it while he talks, with the sphere
+ * swollen by up to SWELL_WITH_VOICE as he does. A square cut close round the sphere clips them in
+ * mid-air. It once left 1.56R round the middle, and the user saw exactly that: "some of the
+ * particles that flow outwards are clipped ... its particles should be able to extend further out
+ * without being clipped." At this fraction it leaves about 1.85R, and nothing he draws reaches its
+ * edge.
  *
  * Paying for that in canvas rather than in sphere is deliberate, and it is nearly free: the GPU
  * only shades what is drawn, and the drawn things are all sized from the sphere. What the extra
  * square costs is the canvas it is cleared on, not the picture painted into it.
  */
 export const SPHERE_FRACTION = 0.27;
-/** The outer rim layer rolls clockwise in the screen plane: one turn in about 33 s, as the film's ladder ring. */
+/**
+ * The white-hot core ring's brighter stretches roll clockwise round it: one turn in about 33 s, the
+ * rate the rim's ladder ring rolled at before the Vision footage replaced it, which the headset's
+ * coronas still roll their ticks at.
+ */
 export const ROLL_DEGREES_PER_SECOND = 11;
 /**
- * The inner layer turns the other way (shot d: -1.6 to -5.4°/s): the whorl, the loop, and half
- * of the shell's fragments between 0.3R and 0.62R — the band the whorl itself turns in, and the
- * only band the rim-roll check lets drift.
+ * The inner layer turns the other way, about the core in the plane of the view: the whorl's
+ * specks ride it, held in that plane (see buildBody), so the spiral through his middle drifts
+ * against the globe's turn. It winds up as the vortex brings him out (`shellTurn` in
+ * analyseFrame). The Age of Ultron footage measured its inner layer at -1.6 to -5.4°/s.
  */
 export const SHELL_DEGREES_PER_SECOND = -5;
 /** The lower hemisphere's equatorial shell turns about the vertical axis, which reads as a sideways stream. */
@@ -264,9 +312,9 @@ export function bodyTurnRadians(time: number) {
 /**
  * How much brighter the whole drawing gets while Jarvis speaks. **A tenth, at the user's asking.**
  *
- * Back to the film, after a long way round. The film's sphere holds its brightness to within about
- * 3% through "Doctor." and shows speech as *behaviour*: fragments turning over faster, the
- * crescent splitting, the limb fraying, slabs of light breaking off on syllable onsets. This
+ * Back to the film, after a long way round. The Age of Ultron footage's sphere holds its brightness
+ * to within about 3% through "Doctor." and shows speech as *behaviour*: fragments turning over
+ * faster, its limb fraying, shards of light breaking off on syllable onsets. This
  * drawing pinned that, then departed from it — the user could not tell on a phone whether he was
  * talking, so a glow went in at 0.3, and then 0.8, 2.4, 1.6, 1.1 and 1.35 as each version was seen
  * on a real screen. With the sphere now most of the screen wide and the sparks drawn out into
@@ -275,7 +323,7 @@ export function bodyTurnRadians(time: number) {
  *
  * It was set to 0 first, which is the film exactly, and the user then asked for a tenth back — so
  * what is here is a hint rather than a signal, under the few percent the film itself varies by.
- * The rest of what speech does is untouched by it: the swell, the spread, the fray, the chips and
+ * The rest of what speech does is untouched by it: the swell, the fray, the embers, the chips and
  * the churn are all movement, and movement is what says he is talking.
  *
  * It is a number rather than a deleted mechanism precisely because it has been asked for in both
@@ -288,9 +336,9 @@ export const GLOW_FROM_ENVELOPE = 0.65;
  * How much bigger the whole sphere grows at full voice.
  *
  * The film's holds its radius to within 1%, and the drawing used to as well — a sphere that
- * swells with the voice was exactly the "level meter" the film study warned against. This is
- * the user's call, after the glow alone still read as too quiet a signal on a phone: it
- * pulsates now, and 8% is enough to see without the silhouette lurching.
+ * swells with the voice was exactly the "level meter" the Age of Ultron film study warned against.
+ * This is the user's call, after the glow alone still read as too quiet a signal on a phone: it
+ * pulsates now.
  */
 export const SWELL_WITH_VOICE = 0.18;
 /** How small the sphere has shrunk to by the time he has gone. */
@@ -303,9 +351,11 @@ export const LEAVING_SMALLEST = 0.55;
  * Chosen from five candidates rendered side by side: drifting clusters, orbital rings, ripples, a
  * galaxy's arms and this. It replaced a ring of ticks round the outside of the ball,
  * which read as a decoration rather than as him paying attention.
+ *
+ * This is how far apart the lattice's points are.
  */
-/** How far apart the lattice's points are, and how fast it turns, in radians a second. */
 export const LATTICE_SPACING = 0.11;
+/** How fast the lattice turns, in radians a second. */
 export const LATTICE_TURN = 0.12;
 /** How much the lattice's spacing swells at full voice, and how quickly it breathes, in radians a second. */
 export const LATTICE_BREATH = 0.18;
@@ -325,23 +375,45 @@ export const CORE_Y = -0.02;
 /** How long a burst's chips stay fully lit, in seconds, and when the last of them has broken up and gone. */
 export const CHIP_HOLD_SECONDS = 0.13;
 export const CHIP_GONE_SECONDS = 0.2;
+/**
+ * Where the picture's layers leave his body, in R: the outer edge of the film's shell of specks
+ * (0.88R, the film's S). The fray, the chips and the embers start from it, and the cage's anchors
+ * reach down to it.
+ */
+export const PICTURE_SHELL_EDGE = 0.88;
+/**
+ * The white-hot ring round his core, in R from the core: the brightest thing in him. Vision Quest's
+ * is at about 0.4 of its S (0.35R here), and Age of Ultron's core is a small eye; the user found the
+ * Vision Quest size too big in the hybrid, so it is tighter, which also gives the swirl room round
+ * it. The thinking pulse blooms out of it.
+ */
+export const CORE_RING_RADIUS = 0.22;
 
 // Strides of the flat scene tables (the builders describe the fields).
-export const BODY_STRIDE = 10;
-export const STREAM_STRIDE = 11;
+export const BODY_STRIDE = 9;
+export const STREAM_STRIDE = 10;
 /** Where a body row and a stream row keep the fragment's id, which the density share is taken over. */
 export const BODY_ID_FIELD = 6;
 export const STREAM_ID_FIELD = 7;
 
-export const CRESCENT_PIECE_STRIDE = 3;
-export const CRESCENT_PIECES_PER_STRAND = 14;
-export const TRUSS_PIECE_STRIDE = 6;
 export const FRAY_STRIDE = 5;
 export const STREAK_ARC_STRIDE = 6;
 export const LIMB_STREAK_STRIDE = 5;
-export const RING_TICK_STRIDE = 2;
-const EPOCH_STRIDE = 10;
-export const COMET_STRIDE = 5;
+export const CAGE_EDGE_STRIDE = 10;
+export const EMBER_STRIDE = 7;
+/**
+ * The ladder truss round his edge, made of specks of the body (pushTrussSpeck): its hot outer rail
+ * and its finer inner one, in R, with the rungs across between them making its boxes. All of it lies
+ * between the two, so nothing of it stands off him or reads as something growing out of him.
+ */
+export const TRUSS_OUTER_RAIL = 1.035;
+export const TRUSS_INNER_RAIL = 0.935;
+/**
+ * The truss's specks roll clockwise in the plane of the view on a clock of their own, `rimRoll`
+ * ({@link turnOfGroup}): one turn in about 33 s, the rate it rolled at before the Vision footage
+ * replaced it, and the core ring's.
+ */
+export const RIM_ROLL_DEGREES_PER_SECOND = 11;
 /** Side of the tiled sparkle texture in texels, and how wide a texel is on the sphere: a stroke spans about two. */
 export const SPARKLE_TEXTURE_TEXELS = 64;
 export const SPARKLE_TEXEL_SIZE = 0.018;
@@ -349,16 +421,21 @@ export const SPARKLE_TEXEL_SIZE = 0.018;
 export const SPARKLE_SEED_MIX = 0x2545f491;
 
 /**
- * The limb bloom and the limb ridge are rings of light round the edge of the ball, and their
- * shaders are transparent over everything inside about 0.89R. Painting them as filled discs
- * still shades every pixel of the disc and blends a transparent result over it, which on these
- * two — the widest layers in the drawing — was a twelfth of the whole frame for nothing. They
- * are painted as bands instead: a stroked circle of these widths, centred so the band covers
- * everything the shader is not transparent over, with the inner edge well inside the transparent
- * part so its antialiasing multiplies by zero and the pixels come out identical. Measured over
- * a script's worth of frames — the intro, silence, three speaking levels and five burst ages,
- * at 384 px — not one channel of one pixel differs, and the frame is 8% cheaper.
+ * The aura: the film's bloom, a soft warm band of light round him, see-through inside AURA_INNER,
+ * at its brightest on the shell's edge and gone by AURA_OUTER, in R from his centre. It is not a
+ * filled volume — the middle stays see-through between his light, as the user asked ("I just want
+ * the particles to speak for themselves") — and it ends well inside his square, whose edge is about
+ * 1.8R away: the film's own bloom runs on past twice his radius, which a phone's screen has no
+ * room for.
+ *
+ * It is painted as a band rather than a disc. A gradient that is transparent over the middle still
+ * shades every pixel of a filled disc and blends nothing over it, which on the widest layer in the
+ * picture is a large share of the frame for nothing; a stroked circle covering just the radii the
+ * gradient lights draws exactly the same pixels. The limb bloom this replaced measured that: not
+ * one channel of one pixel differed, and the frame was 8% cheaper.
  */
+export const AURA_INNER = 0.45;
+export const AURA_OUTER = 1.56;
 /**
  * What Jarvis does while he is working rather than talking: a plane sweeps up through him.
  *
@@ -387,24 +464,28 @@ export const SCAN_BRIGHT_NEARNESS = 0.55;
 /** How long the ring takes to bloom from the core to past the limb, at the end of each pass. */
 export const PULSE_SECONDS = 0.55;
 
-export const LIMB_BLOOM_RADIUS = 0.995;
-export const LIMB_BLOOM_BAND = 0.25;
-export const LIMB_RIDGE_RADIUS = 0.955;
-export const LIMB_RIDGE_BAND = 0.17;
-
 /** A fragment is lit for this share of its clock's cycle, fading in and out over a third of that at each end. */
 export const FRAGMENT_DUTY = 0.6;
 /**
- * A body fragment's code holds its class — brightness (0-2) + 3 × pool + 6 × rides the turning
- * shell, so 0 to 11 — and its glyph above that, at this step. See {@link buildBody} for why the
- * two share a number.
+ * A body fragment's code holds its class — brightness (0-2) + 3 × pool + {@link FRAGMENT_GROUP_STEP}
+ * × its group, so 0 to 23 — and its glyph above that, at this step. See {@link buildBody} for why
+ * they share a number.
  */
-export const FRAGMENT_CODE_GLYPH_STEP = 12;
+export const FRAGMENT_CODE_GLYPH_STEP = 24;
 /**
- * The multiplier that turns a fragment's id into its blink phase. Any multiplier with a long
- * fractional part scatters a uniform id into a uniform phase; this one is far from every other
- * multiplier the id is hashed by, so no two of its uses line up.
+ * The step of a body fragment's class code that says which group it is in (see
+ * {@link fragmentGroup}): 0 the globe, turned about the vertical with his body; and three groups held
+ * in the plane of the view instead, each turned in it on a clock of its own — 1 the inner layer
+ * (the whorl), {@link GYRO_GROUP} the gyroscope's arcs, and {@link TRUSS_GROUP} the truss round his
+ * edge.
  */
+export const FRAGMENT_GROUP_STEP = 6;
+/** The whorl's group: the inner layer, counter-turning about the core (`shellTurn`). */
+export const INNER_LAYER_GROUP = 1;
+/** The gyroscope's arcs: turned with the inner layer, and rocked about the core by his voice (`gyroSway`). */
+export const GYRO_GROUP = 2;
+/** The truss round his edge: rolled about his middle on its own clock (`rimRoll`). */
+export const TRUSS_GROUP = 3;
 /**
  * How many fragments the body has when the phone can afford all of them.
  *
@@ -430,13 +511,22 @@ export const FRAGMENT_CODE_GLYPH_STEP = 12;
  * rather than the one the hardware allows, and those are different questions.
  *
  * What it costs on every phone, fast or slow, is the scene: this many fragments times
- * {@link BODY_STRIDE} numbers, built and laid out as the GPU's rows when the view mounts. That is the only part of raising it that nobody can opt out
- * of, and it is worth knowing the size of it: 100,000 numbers, which `createHologramScene` spends
- * about 20 ms building on a desktop under V8 once warm (about 35 on a first, cold call), and about
- * 70 ms under a Hermes compiled ahead of time the way React Native ships it, on the same desktop,
- * against about half that at five thousand. A phone is some multiple of that. It lands as a hitch
- * when the view mounts rather than as a frame rate, so the controller below cannot thin it away —
- * this is the number to look at first if the arrival ever starts feeling late.
+ * {@link BODY_STRIDE} numbers, built and laid out as the GPU's rows when the view mounts. That is
+ * the only part of raising it that nobody can opt out of, and it is worth knowing the size of it:
+ * 90,000 numbers. On a desktop under V8, `createHologramScene` builds them in about 22 ms once warm
+ * (about 43 on a first, cold call), and `buildHologramRows` and `buildRowVertices` lay them out as
+ * the GPU's rows in about 10 more (23 cold); JavaScriptCore is a little quicker. With the JIT turned
+ * off, the nearest that desktop comes to the Hermes a phone runs, the scene takes about 110 ms and
+ * its rows 35, in either engine. Hermes itself has not been run on this scene. The one before the
+ * redesign took about 70 ms to build under a Hermes compiled ahead of time the way React Native
+ * ships it, on a desktop where V8 built it in about 20 once warm; on this one V8 took about 24 to
+ * build it once warm, and with the JIT off 140 to build it and 60 to lay out its rows. Over a third
+ * of the time without a JIT is the two hundred thousand draws from the seeded generator — the body
+ * turns one candidate in two away, each after five or six draws — and every draw is part of what
+ * the seed builds, so that is the floor for as long as the scene stays the same. A phone is some
+ * multiple of all of it. It lands as a hitch when the view mounts rather than as a frame rate, so
+ * the controller below cannot thin it away — this is the number to look at first if the arrival
+ * ever starts feeling late.
  *
  * {@link FEWEST_PARTICLES} in `density-control.ts` is a share of this, so it moves when this does.
  */
@@ -453,14 +543,19 @@ export const PARTICLE_COUNT = 10000;
  */
 const DENSITY_FROM_ID = 733.1357;
 
+/**
+ * The multiplier that turns a fragment's id into its blink phase. Any multiplier with a long
+ * fractional part scatters a uniform id into a uniform phase; this one is far from every other
+ * multiplier the id is hashed by, so no two of its uses line up.
+ */
 export const FRAGMENT_PHASE_FROM_ID = 37.9;
 /**
- * How lit a fragment must be to be drawn at all. Below this it is a tenth of its length under a
- * paint that does not fade with it, so it costs a path verb and shows a dot. It is also how
- * abruptly a fragment arrives — the paint is set once for the whole tier, so a fragment cut off
- * at this strength appears at full colour, however short — and with twice as many fragments,
- * both of those matter: much higher and every arrival is a step rather than a fade; much lower
- * and a twentieth of the frame's verbs go on strokes too short to see.
+ * How lit a fragment must be to be drawn at all. Below this it is a tenth of its length in a paint
+ * that does not fade with it, so it costs a stroke and shows a dot. It is also how abruptly a
+ * fragment arrives — its tier's paint is the same however lit it is, so a fragment cut off at this
+ * strength appears at full colour, however short — and both of those matter: much higher and
+ * every arrival is a step rather than a fade; much lower and the frame spends its strokes on ones
+ * too short to see.
  */
 export const FRAGMENT_FAINTEST = 0.1;
 /**
@@ -471,15 +566,12 @@ export const FRAGMENT_FAINTEST = 0.1;
  */
 export const FRAGMENT_WANDER = 0.06;
 
-/** The rim element that dominates takes this long to hand over to the next. */
-export const HANDOVER_SECONDS = 1.2;
-
 // ---- scene: random geometry, built once on the JS thread ---------------------------------
 
 type Random = () => number;
 
 /** A Mulberry32-style seeded generator: the same seed always builds the same hologram. */
-function createRandom(seed: number): Random {
+export function createRandom(seed: number): Random {
   let state = seed >>> 0 || 1;
   return () => {
     state = (state + 0x6d2b79f5) >>> 0;
@@ -490,49 +582,145 @@ function createRandom(seed: number): Random {
   };
 }
 
-/**
- * How much of the film's fragment mass a spot keeps. The mass is uneven: the
- * left half of the ball is nearly full, the upper right thinner and the lower
- * right thinnest (shot g: 94-98% orange on the left, 66% upper right, 41% lower right).
- */
-function massWeight(x: number, y: number) {
-  if (x < 0) return y < 0 ? 1 : 0.93;
-  return y < 0 ? 0.78 : 0.52;
+/** Every number the scene holds is rounded so: it keeps the worklet copy of the scene small. */
+function roundToFiveDecimals(value: number) {
+  return Math.round(value * 1e5) / 1e5;
 }
 
 /**
- * Where the fragments crowd: the film's circuit texture comes in clumps and bands
- * with darker, emptier stretches between them, not as an even pepper.
+ * Where the specks that are not the fill ({@link BODY_FILL_SHARE}) lie: on a shell rather than
+ * through a ball. The film's sphere is a hollow of
+ * fine glittering points, from about half his radius out to the edge of the speck shell, and seen
+ * face on that shell is a bright beaded donut round a darker, see-through band and the core. A line
+ * of sight near the edge runs through more of a shell than one through the middle does, so a shell
+ * is brighter at its edge by projection alone, though only about twice as bright as its middle;
+ * {@link SHELL_FACE_DIMMING} does the rest.
+ *
+ * A speck's distance from his centre is `SPECK_SHELL_OUTER − SPECK_SHELL_DEPTH · u^3.5` for a
+ * uniform `u`, which puts nearly two in three of them in the outer fifth of the shell, where the
+ * film's donut is brightest and its edge a crisp ring of beads, and leaves enough deeper in that the
+ * band reaches in towards the core as the film's does rather than being a thin hoop. The outer edge
+ * stays inside 0.871R, where the limb fade (full inside it, nothing past 0.94R) begins, so the fade
+ * never eats the bright edge.
  */
-function clusterWeight(x: number, y: number) {
+const SPECK_SHELL_OUTER = 0.87;
+/** How deep the speck shell is, in R: from 0.49R to its outer edge. */
+const SPECK_SHELL_DEPTH = 0.38;
+/** The inside of the speck shell, in R. */
+const SPECK_SHELL_INNER = SPECK_SHELL_OUTER - SPECK_SHELL_DEPTH;
+/** How sharply the specks gather toward the outside of the shell: the power the uniform draw is raised to. */
+const SPECK_SHELL_GATHER = 3.5;
+/**
+ * What the scene's seed is mixed with to seed the body's own generator. The body draws from a
+ * generator of its own so that its count and its rejection test, which decide how many randoms it
+ * takes, cannot move anything the scene builds after it.
+ */
+const BODY_SEED_MIX = 0x3c6ef372;
+
+/** A distance from his centre on the speck shell, `outer` at most. */
+function pickShellRadius(random: Random, outer: number) {
+  return outer - SPECK_SHELL_DEPTH * random() ** SPECK_SHELL_GATHER;
+}
+
+/**
+ * The share of his specks that fill the ball, as the whole of the old body did, rather than lie on
+ * the shell. The film's shell alone left a dark donut round the core, and the user liked the old
+ * body's density better, so the two are fused: the fill packs his middle and the shell still rings
+ * his edge with the brightest beads.
+ */
+const BODY_FILL_SHARE = 0.62;
+/** How far out the fill reaches, seen face on, in R. */
+const BODY_FILL_RADIUS = 0.92;
+/** The share of the fill's specks that lie along the ring: the rest cross it any way, as the old body's circuit hatching did. */
+const FILL_ALONG_THE_RING_SHARE = 0.3;
+/** The share of the fill that is bright: the old body's. */
+const FILL_BRIGHT_SHARE = 0.12;
+
+/** A place on the speck shell — a direction uniform over the sphere at {@link pickShellRadius} — written into `out`. */
+function pickShellPlace(random: Random, out: number[]) {
+  // Its height (y, down) uniform in ±1, and any longitude.
+  const height = random() * 2 - 1;
+  const longitude = random() * Math.PI * 2;
+  const radius = pickShellRadius(random, SPECK_SHELL_OUTER);
+  const across = Math.sqrt(1 - height * height) * radius;
+  out[0] = Math.cos(longitude) * across;
+  out[1] = height * radius;
+  out[2] = Math.sin(longitude) * across;
+  out[3] = shellBrightShare(radius);
+  out[4] = ALONG_THE_RING_SHARE;
+}
+
+/**
+ * A place in the fill, written into `out`: even over his disc seen face on, as the old body was, and
+ * anywhere through the ball behind and in front of that point, so it is as thick front to back as
+ * it is across and turns as a ball rather than a coin.
+ */
+function pickFillPlace(random: Random, out: number[]) {
+  const seen = Math.sqrt(random()) * BODY_FILL_RADIUS;
+  const angle = random() * Math.PI * 2;
+  out[0] = Math.cos(angle) * seen;
+  out[1] = Math.sin(angle) * seen;
+  out[2] = (random() * 2 - 1) * Math.sqrt(BODY_FILL_RADIUS * BODY_FILL_RADIUS - seen * seen);
+  out[3] = FILL_BRIGHT_SHARE;
+  out[4] = FILL_ALONG_THE_RING_SHARE;
+}
+
+/**
+ * Where a body speck lies, in the fill ({@link BODY_FILL_SHARE} of them) or on the shell, written
+ * into `out` as x, y, depth, the share of its kind that is bright, and the share that lies along
+ * the ring.
+ */
+function pickBodyPlace(random: Random, out: number[]) {
+  if (random() < BODY_FILL_SHARE) pickFillPlace(random, out);
+  else pickShellPlace(random, out);
+}
+
+/**
+ * How much of the shell's mass a spot keeps, by height (y down). The film's shell is close to even
+ * all round, so this is mild: the lower half gives a little of its mass to the stream, which turns
+ * there. It is by height alone because the body turns like a globe, so anything that told left
+ * from right at rest would swing round to the front and the back of him in turn.
+ */
+function massWeight(y: number) {
+  return y > 0.12 ? 0.82 : 1;
+}
+
+/**
+ * Where the specks crowd: the film's shell is beaded, with brighter clumps and thinner stretches
+ * between them rather than an even pepper. Waves in three dimensions, so a clump is a place on the
+ * turning shell and not a column through him that would smear into a streak as he turns. Milder
+ * than the old body's: a trough keeps over a quarter of its specks rather than none, so the beaded
+ * band has thinner stretches but no holes through it.
+ */
+function clusterWeight(x: number, y: number, depth: number) {
   const waves =
-    Math.sin(5.3 * x + 1.7) * Math.sin(4.1 * y - 0.6 + 1.9 * x) +
-    0.6 * Math.sin(9.7 * y + 2.3 * x + 0.4) +
-    0.35 * Math.sin(13.1 * x - 7.3 * y + 2.9);
-  return Math.min(1, Math.max(0.04, 0.5 + 0.48 * waves));
+    Math.sin(5.3 * x + 2.1 * depth + 1.7) * Math.sin(4.1 * y + 1.9 * x - 0.6) +
+    0.6 * Math.sin(9.7 * y + 2.3 * x - 3.1 * depth + 0.4) +
+    0.45 * Math.sin(13.1 * x - 7.3 * y + 8.9 * depth + 2.9);
+  return Math.min(1, Math.max(0.28, 0.56 + 0.42 * waves));
 }
 
-/** A fragment's direction: mostly near-horizontal, a fifth vertical, the rest diagonal; tangential near the limb. */
-function pickFragmentAngle(random: Random, x: number, y: number) {
-  const radius = Math.hypot(x, y);
-  if (radius > 0.8 && random() < 0.35) return Math.atan2(y, x) + Math.PI / 2 + (random() - 0.5) * 0.3;
-  const roll = random();
-  if (roll < 0.52) return (random() - 0.5) * 0.42;
-  if (roll < 0.7) return Math.PI / 2 + (random() - 0.5) * 0.35;
+/** The share of specks that lie along the ring through where they are seen, give or take 17°. */
+const ALONG_THE_RING_SHARE = 0.7;
+
+/**
+ * Which way a speck lies, relative to the ring through where it is seen ({@link ringDirection}):
+ * 0 is along it. The film's specks run round the shell like beads on a necklace, so most lie
+ * within 17° of the ring, and the rest any way at all, so that the shell does not read as combed.
+ */
+function pickFragmentAngle(random: Random, alongShare: number) {
+  if (random() < alongShare) return (random() + random() - 1) * 0.3;
   return random() * Math.PI;
 }
 
 /**
- * A fragment's length: median 0.083R, 90th percentile 0.17R, and a few long streaks up to 0.38R.
+ * A speck's length: median 0.083R, 90th percentile 0.17R, and three in a hundred a streak up to 0.38R.
  *
- * Longer than the film's, at the user's asking, and the reason is the stroke width rather than
- * the film. A body stroke is 0.014-0.0165R wide, so at the median length this used to have —
- * 0.036R, which is what the study measures — a fragment was barely twice as long as it was wide,
- * and a capsule that stubby reads as a bead, not as a spark. At this median it is five times its
- * own width, which is the point at which the eye calls it a line.
- *
- * Nothing else about them changed: the same count, the same places, the same glyph mix. They are
- * only drawn out.
+ * The old body's, which the user liked for how packed it looked. The film's glitter is shorter, and
+ * this body was briefly too, but its strokes are as wide as the old body's again (0.014-0.0155R),
+ * and the user asked that a spark read as a line rather than as a bead: at this median a speck is
+ * five times as long as it is wide, and at the film's it would be three. Its clock draws it out from
+ * nothing and back, so most of what is lit at a moment is shorter still.
  */
 function pickFragmentLength(random: Random) {
   if (random() < 0.03) return 0.18 + random() * 0.2;
@@ -540,31 +728,33 @@ function pickFragmentLength(random: Random) {
 }
 
 /**
- * A fragment's shape: 0 dash, 1 L, 2 bracket, 3 T, 4 Z, 5 tiny ring, 6 cell outline.
+ * A speck's shape: 0 dash, 1 L, 2 bracket, 3 T, 4 Z, 5 tiny ring, 6 cell outline.
  *
- * Four fragments in five are plain dashes. With twice as many fragments in the body as
- * before, the mix leans further toward the two-verb dash than the film's own count would
- * (it shows rather more corners and brackets): a path verb costs the same whatever it
- * draws, so this is what pays for the second thousand strokes. The glyphs that read as
- * circuitry are still there, and they are still where the eye goes — round the core, where
- * pickGlyphAndLength keeps them.
+ * Nine in ten are plain dashes: the film's shell is points and short dashes. The corners, brackets
+ * and rings that read as circuitry stay as a seasoning, and the tiny rings, a few hundredths of a
+ * radius across, read as the film's round beads.
  */
 function pickGlyph(random: Random) {
   const roll = random();
-  if (roll < 0.84) return 0;
-  if (roll < 0.9) return 1;
-  if (roll < 0.93) return 2;
-  if (roll < 0.96) return 3;
+  if (roll < 0.9) return 0;
+  if (roll < 0.94) return 1;
+  if (roll < 0.955) return 2;
+  if (roll < 0.97) return 3;
   if (roll < 0.98) return 4;
-  if (roll < 0.995) return 5;
+  if (roll < 0.997) return 5;
   return 6;
 }
 
-/** Brightness class: 0 dim, 1 mid, 2 bright (the bright ones are the hot highlights speech thins out). */
-function pickBrightness(random: Random) {
+/**
+ * Brightness class: 0 dim, 1 mid, 2 bright (the bright ones are the white-hot highlights speech
+ * thins out). `brightShare` of them are bright and two in five mid; every speck at the back of the
+ * shell is drawn dim whatever its class ({@link BACK_OF_THE_SHELL}). Dim specks are faint, so the
+ * more of them there are the more see-through the band is between the bright ones.
+ */
+function pickBrightness(random: Random, brightShare: number) {
   const roll = random();
-  if (roll < 0.12) return 2;
-  return roll < 0.62 ? 1 : 0;
+  if (roll < brightShare) return 2;
+  return roll < brightShare + 0.38 ? 1 : 0;
 }
 
 /**
@@ -594,112 +784,454 @@ function pickFragmentRate(random: Random, pool: number) {
 }
 
 /**
- * A fragment's shape and how long it is, written into out[0] and out[1]. Rings and cell outlines
- * crowd round the core; further out most of them are plain dashes. However it hops, a fragment
- * stays inside the limb.
+ * The longest a speck `radius` from his centre may be drawn and still stay inside the limb however
+ * it hops: that distance is the furthest from his centre that turning can ever show it.
  */
-function pickGlyphAndLength(random: Random, x: number, y: number, radius: number, out: number[]) {
-  const picked = pickGlyph(random);
-  const scatter = x * 37.1 + y * 11.3;
-  const glyph = picked >= 5 && radius > 0.4 && scatter - Math.floor(scatter) < 0.75 ? 0 : picked;
+function limbCap(radius: number) {
+  return (1.02 - radius) / 1.1;
+}
+
+/** A speck's shape and how long it is, written into out[0] and out[1], no longer than {@link limbCap}. */
+function pickGlyphAndLength(random: Random, radius: number, out: number[]) {
+  const glyph = pickGlyph(random);
   out[0] = glyph;
   out[1] = Math.max(
     0.012,
-    Math.min(glyph === 6 ? 0.04 + random() * 0.07 : pickFragmentLength(random), (1.02 - radius) / 1.1),
+    Math.min(glyph === 6 ? 0.04 + random() * 0.07 : pickFragmentLength(random), limbCap(radius)),
   );
 }
 
 /**
- * The fragment body: the film's "circuit" texture of short bright strokes, nearly all of them
- * pinned in screen space (the film's body does not spin). Stride {@link BODY_STRIDE}: x, y,
- * unit direction x, y, length, rate (cycles per second), id (0..1), a code packing the
- * glyph and the fragment's class (see {@link FRAGMENT_CODE_GLYPH_STEP}), and the order it
- * arrives in while the ball forms (see {@link revealOrder}).
+ * Stretches the speck `shape` holds by `stretch`, so it reads as a line, but never past
+ * {@link limbCap} — unless it was already longer, as the shortest specks may be.
+ */
+function stretchSpeck(shape: number[], radius: number, stretch: number) {
+  shape[1] = Math.min(shape[1] * stretch, Math.max(shape[1], limbCap(radius)));
+}
+
+/**
+ * The share of a shell speck that is bright: deeper in the shell they are dimmer, from a twentieth
+ * at its inside to three in ten at its edge, so the light gathers at his edge, as the film's does.
+ * The fill is lit as the old body was instead ({@link FILL_BRIGHT_SHARE}).
+ */
+function shellBrightShare(radius: number) {
+  return 0.05 + 0.25 * clamp01((radius - SPECK_SHELL_INNER) / SPECK_SHELL_DEPTH);
+}
+
+/** A body speck's brightness class: the crowded clumps carry the bright specks, and the rest are lit at `brightShare`. */
+function pickBodyBrightness(random: Random, crowding: number, brightShare: number) {
+  return crowding > 0.72 && random() < 0.4 ? 2 : pickBrightness(random, brightShare);
+}
+
+/**
+ * Writes a body row: the place in `spot` (x, y, depth), the direction it lies relative to the ring
+ * through where it is seen, the glyph and length in `shape`, and its own clock, in `group` (see
+ * {@link fragmentGroup}): the whorl's, the gyroscope's and the truss's rows are held in the plane of
+ * the view, and every other row is on the globe, group 0.
  *
- * Twice as many fragments as before, so that the light comes from the particles rather than
- * from the wash behind them. Twice the rows would have put the scene over the size a phone
- * should clone into the worklet runtime at every mount, so each row lost two numbers instead:
- * the glyph rides in the class code, and the blink phase is a hash of the id rather than a
- * random of its own — a hash of a uniform number is as uniform and as uncorrelated as a
- * second draw would have been, and the id is already the fragment's handle for everything
- * else that has to vary independently.
+ * Rounded as each row is written rather than in a pass of its own once the table is built, as the
+ * smaller tables are: over ninety thousand numbers, that pass and the second array it made were up
+ * to a tenth of the scene's cost. The code is a whole number and needs no rounding.
+ */
+function pushBodyRow(
+  random: Random,
+  body: number[],
+  spot: number[],
+  unitX: number,
+  unitY: number,
+  shape: number[],
+  brightness: number,
+  group = 0,
+) {
+  const pool = random() < 1 / 3 ? 1 : 0;
+  const rate = pickFragmentRate(random, pool);
+  const id = random();
+  body.push(
+    roundToFiveDecimals(spot[0]),
+    roundToFiveDecimals(spot[1]),
+    roundToFiveDecimals(unitX),
+    roundToFiveDecimals(unitY),
+    roundToFiveDecimals(shape[1]),
+    roundToFiveDecimals(rate),
+    roundToFiveDecimals(id),
+    brightness + 3 * pool + FRAGMENT_GROUP_STEP * group + FRAGMENT_CODE_GLYPH_STEP * shape[0],
+    roundToFiveDecimals(spot[2]),
+  );
+}
+
+/**
+ * The whorl: the old body's spiral through his middle, two arms winding out of the core, which the
+ * user liked and asked to have back made of specks rather than painted. A share of the body's draws
+ * ({@link WHORL_SHARE}; about 36% of its rows, since a draw for the fill or the shell is kept only
+ * about half the time and one for the whorl always) lie along the arms, held in the plane of the
+ * view and turning about the core with the inner layer ({@link SHELL_DEGREES_PER_SECOND}), so the
+ * arms stay arms whichever way the globe has turned.
+ *
+ * It is Age of Ultron's soft swirl, at the user's asking ("the spiral is too sharp"): one broad,
+ * mid-toned sweep made of strands, never white. Its arms stood 1.45 times as bright as the gaps
+ * between them and clipped to white in a tight S inside the core's ring, because their specks
+ * crowded the core, three in ten were bright, and the arm was narrowest there. Now the arms start
+ * outside the core's eye, their specks are spread evenly along them, few are bright and those keep
+ * to the arm's centre line, and the arm is broader, with a soft skirt round it.
+ */
+const WHORL_SHARE = 0.22;
+/** The share of the whorl's specks on an arm's centre line that are bright, falling off across it. */
+const WHORL_BRIGHT_SHARE = 0.06;
+/** How far out of the core the arms wind, in R, from just outside its eye, and how many turns they make. */
+export const WHORL_START = 0.1;
+export const WHORL_REACH = 0.78;
+export const WHORL_TURNS = 1.1;
+/**
+ * How the specks are spread along an arm: `out = random() ** WHORL_OUT_POWER`. The arm's length
+ * per step of `out` grows about seven times from its start to its end, so an even `out` crowded the
+ * start of the arm 19 times as densely as its end; this brings that down to about 4.
+ */
+const WHORL_OUT_POWER = 0.72;
+/** The share of the whorl's specks that run along their arm, give or take 15°, as strands; the rest cross it. */
+const WHORL_ALONG_SHARE = 0.9;
+/** How far across its arm a speck lies, in R: a spread of INNER + OUTER × out, widening as it winds out. */
+const WHORL_SPREAD_INNER = 0.04;
+const WHORL_SPREAD_OUTER = 0.065;
+/** The share of the whorl's specks spread further across the arm, and how many times as far: its soft skirt. */
+const WHORL_SKIRT_SHARE = 0.3;
+const WHORL_SKIRT_SPREAD = 2;
+/** The whorl's specks are drawn this much longer than a body speck, so an arm reads as strands. */
+const WHORL_STRETCH = 1.3;
+
+/** A whorl speck: its place on an arm and the way it lies, pushed as a row of the body. */
+function pushWhorlSpeck(random: Random, body: number[], shape: number[]) {
+  const arm = random() < 0.5 ? 0 : Math.PI;
+  const out = random() ** WHORL_OUT_POWER;
+  const reach = WHORL_START + (WHORL_REACH - WHORL_START) * out;
+  const angle = arm + WHORL_TURNS * 2 * Math.PI * out;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  // The arm's direction there, and a spread across it that widens as it winds out.
+  const runX = (WHORL_REACH - WHORL_START) * cos - reach * WHORL_TURNS * 2 * Math.PI * sin;
+  const runY = (WHORL_REACH - WHORL_START) * sin + reach * WHORL_TURNS * 2 * Math.PI * cos;
+  const run = Math.hypot(runX, runY);
+  const narrow = WHORL_SPREAD_INNER + WHORL_SPREAD_OUTER * out;
+  const spread = random() < WHORL_SKIRT_SHARE ? narrow * WHORL_SKIRT_SPREAD : narrow;
+  const across = (random() + random() + random() - 1.5) * spread;
+  const x = CORE_X + reach * cos - (runY / run) * across;
+  const y = CORE_Y + reach * sin + (runX / run) * across;
+  const crossing = random() < WHORL_ALONG_SHARE ? 0 : Math.PI / 2;
+  const turn = crossing + (random() - 0.5) * 0.5;
+  const lieX = (runX / run) * Math.cos(turn) - (runY / run) * Math.sin(turn);
+  const lieY = (runX / run) * Math.sin(turn) + (runY / run) * Math.cos(turn);
+  // Kept relative to the ring through where it is seen, as every body row is (ringDirection).
+  const seen = Math.hypot(x, y) || 1;
+  const outwardX = x / seen;
+  const outwardY = y / seen;
+  const spot = [x, y, (random() * 2 - 1) * 0.06];
+  pickGlyphAndLength(random, seen, shape);
+  stretchSpeck(shape, seen, WHORL_STRETCH);
+  // How far off the arm's centre line, in standard deviations of the narrow spread (the sum of three
+  // uniforms has a standard deviation of a half): the bright specks keep to the centre line.
+  const deviations = across / (0.5 * narrow);
+  const brightness = pickBrightness(random, WHORL_BRIGHT_SHARE * Math.exp(-0.5 * deviations * deviations));
+  pushBodyRow(
+    random,
+    body,
+    spot,
+    -outwardY * lieX + outwardX * lieY,
+    outwardX * lieX + outwardY * lieY,
+    shape,
+    brightness,
+    INNER_LAYER_GROUP,
+  );
+}
+
+/** One of the gyroscope's arcs: its radius from the core in R, its first clock degree and its sweep in degrees. */
+type GyroArc = readonly [radius: number, from: number, sweep: number];
+
+/**
+ * The gyroscope: Age of Ultron's arcs round the core, each a bundle of thin strands, as its lab
+ * shots show them (ring light at 0.50-0.60R over about half the clock, an arc at 0.67-0.7R). Specks
+ * laid along them in a group of their own ({@link GYRO_GROUP}), held in the plane of the view as the
+ * whorl is and turned with it, so they turn with the swirl and stay arcs whichever way the globe has
+ * turned — and rocked about the core while he talks ({@link GYRO_SWAY_DEGREES}). Clear of the core's
+ * ring at {@link CORE_RING_RADIUS}, which is Vision Quest's, and inside the shell's edge.
+ */
+export const GYRO_ARCS: readonly GyroArc[] = [
+  [0.53, 300, 110],
+  [0.53, 105, 70],
+  [0.67, 20, 140],
+];
+/**
+ * The arcs move while he talks, at the user's asking ("The arcs around his core need to also move
+ * when talking"): they rock to and fro about the core, on top of the whorl's turn, by two slow
+ * swings — so many degrees either way at a rate in radians a second, the second a phase on — that
+ * never quite repeat, both times his agitation (`gyroSway` in {@link analyseFrame}). Agitation is
+ * eased, so the rocking comes in and dies away with his voice rather than jumping, and it is
+ * worked out from the clock alone, so nothing is remembered between frames. Calm: at its fastest
+ * an arc turns about 70° a second, a degree and a bit a frame. Silent, the arcs turn with the whorl.
+ */
+export const GYRO_SWAY_DEGREES = 24;
+export const GYRO_SWAY_RADIANS_PER_SECOND = 1.7;
+export const GYRO_SWAY_SECOND_DEGREES = 12;
+export const GYRO_SWAY_SECOND_RADIANS_PER_SECOND = 2.9;
+export const GYRO_SWAY_SECOND_PHASE = 1.3;
+/**
+ * The arcs inside this distance from the core, in R, rock one way and the arc outside it the other,
+ * as a gimbal's rings swing against each other ({@link turnOfGroup}): between the inner arcs at 0.53R
+ * and the outer one at 0.67R.
+ */
+export const GYRO_GIMBAL_SPLIT = 0.6;
+/** How long the arcs are together, radius by sweep: an arc is picked in proportion to its length. */
+const GYRO_LENGTH = GYRO_ARCS.reduce((total, [radius, , sweep]) => total + radius * sweep, 0);
+/** The share of the body's draws that go to the arcs: about 8% of his rows. */
+const GYRO_SHARE = 0.06;
+/** The share of the arcs' specks that are bright. */
+const GYRO_BRIGHT_SHARE = 0.15;
+/** Strands per arc, and how far apart they lie, in R. */
+const GYRO_STRANDS = 3;
+const GYRO_STRAND_GAP = 0.016;
+/** How much of each end of an arc thins out, as a share of its sweep. */
+const GYRO_END_FADE = 0.15;
+/** The arcs' specks are drawn this much longer than a body speck, so a strand reads as a line. */
+const GYRO_STRETCH = 1.5;
+
+/** One of the gyroscope's arcs, picked in proportion to its length. */
+function pickGyroArc(random: Random) {
+  let left = random() * GYRO_LENGTH;
+  for (const arc of GYRO_ARCS) {
+    left -= arc[0] * arc[2];
+    if (left <= 0) return arc;
+  }
+  return GYRO_ARCS[GYRO_ARCS.length - 1];
+}
+
+/** How far along its arc a speck lies, from 0 to 1, thinning out over {@link GYRO_END_FADE} at each end. */
+function pickAlongTheArc(random: Random) {
+  let along = random();
+  while (random() > Math.min(1, along / GYRO_END_FADE) * Math.min(1, (1 - along) / GYRO_END_FADE)) along = random();
+  return along;
+}
+
+/**
+ * A gyroscope speck: on one strand of one arc, lying along it, pushed as a row of the inner layer.
+ * {@link buildBody} gives the arcs {@link GYRO_SHARE} of its draws; exported so the arcs can be held
+ * to their own shape apart from the whorl that shares their layer.
+ */
+export function pushGyroSpeck(random: Random, body: number[], shape: number[]) {
+  const [radius, from, sweep] = pickGyroArc(random);
+  const along = pickAlongTheArc(random);
+  const strand = Math.floor(random() * GYRO_STRANDS) - (GYRO_STRANDS - 1) / 2;
+  const reach = radius + strand * GYRO_STRAND_GAP + (random() - 0.5) * 0.008;
+  // clock degrees, clockwise from 12 o'clock with y down
+  const clock = (from + sweep * along) * DEGREES_TO_RADIANS;
+  const x = CORE_X + reach * Math.sin(clock);
+  const y = CORE_Y - reach * Math.cos(clock);
+  const turn = (random() - 0.5) * 0.3;
+  const lieX = Math.cos(clock + turn);
+  const lieY = Math.sin(clock + turn);
+  // Kept relative to the ring through where it is seen, as every body row is (ringDirection).
+  const seen = Math.hypot(x, y) || 1;
+  const outwardX = x / seen;
+  const outwardY = y / seen;
+  const spot = [x, y, (random() * 2 - 1) * 0.06];
+  pickGlyphAndLength(random, seen, shape);
+  // a dash, so a strand reads as a line
+  shape[0] = 0;
+  stretchSpeck(shape, seen, GYRO_STRETCH);
+  pushBodyRow(
+    random,
+    body,
+    spot,
+    -outwardY * lieX + outwardX * lieY,
+    outwardX * lieX + outwardY * lieY,
+    shape,
+    pickBrightness(random, GYRO_BRIGHT_SHARE),
+    GYRO_GROUP,
+  );
+}
+
+/** One stretch of the truss: its first clock degree, its sweep in degrees, and how many boxes it is cut into. */
+type TrussArc = readonly [from: number, sweep: number, boxes: number];
+
+/**
+ * The truss's three stretches round his edge, at the user's asking ("The amount of squares should
+ * be reduced a bit"): thirteen boxes of about 11.6°, where the painted truss had twenty-one of about
+ * 9° over 190°.
+ */
+export const TRUSS_ARCS: readonly TrussArc[] = [
+  [282, 70, 6],
+  [196, 46, 4],
+  [64, 35, 3],
+];
+/** How many rungs the truss has: one at each end of every box, shared between neighbours. */
+const TRUSS_RUNGS = TRUSS_ARCS.reduce((total, [, , boxes]) => total + boxes + 1, 0);
+/** How far a rung reaches, from rail to rail, in R. */
+const TRUSS_RUNG_LENGTH = TRUSS_OUTER_RAIL - TRUSS_INNER_RAIL;
+/**
+ * How long the outer rail, the inner rail and the rungs are, in R: a part is picked in proportion to
+ * its length — the rungs' counted four times, since their specks are short and a box without its
+ * sides is no box.
+ */
+const TRUSS_PART_LENGTHS = [
+  TRUSS_OUTER_RAIL * TRUSS_ARCS.reduce((total, [, sweep]) => total + sweep, 0) * DEGREES_TO_RADIANS,
+  TRUSS_INNER_RAIL * TRUSS_ARCS.reduce((total, [, sweep]) => total + sweep, 0) * DEGREES_TO_RADIANS,
+  4 * TRUSS_RUNGS * TRUSS_RUNG_LENGTH,
+];
+const TRUSS_LENGTH = TRUSS_PART_LENGTHS[0] + TRUSS_PART_LENGTHS[1] + TRUSS_PART_LENGTHS[2];
+/**
+ * The share of the body's draws that go to the truss: about an eighth of his rows, enough that each
+ * rail and rung is drawn over two or three times at any moment, so a box reads as a box while its
+ * specks light, fade and re-light on their own clocks.
+ */
+const TRUSS_SHARE = 0.08;
+/** How long a rail's specks and a rung's are, in R. */
+const TRUSS_RAIL_SPECK = 0.11;
+const TRUSS_RUNG_SPECK = 0.035;
+/**
+ * The share of each part's specks that are bright, and the rest mid: none dim, so the boxes are as
+ * plain as the painted ones were. The outer rail is the hot one, as the old rim's was.
+ */
+const TRUSS_BRIGHT_SHARES = [0.9, 0.7, 0.8];
+/**
+ * How much of its light the truss gives up while he thinks: it recedes with everything else but is
+ * not put out by the thinking plane, as the rest of his specks are, so the squares stay.
+ */
+export const TRUSS_THINKING_DIM = 0.5;
+
+/** One of the truss's clock degrees along its arcs, picked evenly along them. */
+function pickTrussClock(random: Random) {
+  let left = random() * TRUSS_ARCS.reduce((total, [, sweep]) => total + sweep, 0);
+  for (const [from, sweep] of TRUSS_ARCS) {
+    if (left <= sweep) return from + left;
+    left -= sweep;
+  }
+  return TRUSS_ARCS[0][0];
+}
+
+/** The clock degree of one of the truss's rungs, picked evenly among them. */
+function pickTrussRung(random: Random) {
+  let left = Math.floor(random() * TRUSS_RUNGS);
+  for (const [from, sweep, boxes] of TRUSS_ARCS) {
+    if (left <= boxes) return from + (sweep * left) / boxes;
+    left -= boxes + 1;
+  }
+  return TRUSS_ARCS[0][0];
+}
+
+/**
+ * A speck of the truss round his edge, at the user's asking ("The squares along the edge should be
+ * made from moving particles too"): a dash on its outer rail or its inner one, lying along it, or
+ * on one of its rungs, lying across between them with room for the slide its blink gives it. Pushed
+ * as a row of the body in a group of its own ({@link TRUSS_GROUP}), held in the plane of the view
+ * and rolled round his middle by `rimRoll`; it is never cut by his limb, snapped onto the listening
+ * lattice, turned while he thinks or put out by the thinking plane, so the squares stay squares.
+ */
+export function pushTrussSpeck(random: Random, body: number[], shape: number[]) {
+  // 0 the outer rail, 1 the inner rail, 2 a rung
+  const pick = random() * TRUSS_LENGTH;
+  const part = pick < TRUSS_PART_LENGTHS[0] ? 0 : pick < TRUSS_PART_LENGTHS[0] + TRUSS_PART_LENGTHS[1] ? 1 : 2;
+  const onRung = part === 2;
+  const length = onRung ? TRUSS_RUNG_SPECK : TRUSS_RAIL_SPECK;
+  // A rung's specks stay between the rails however far their blink slides them (0.7 of a length).
+  const room = TRUSS_RUNG_LENGTH - 2.4 * length;
+  const reach = onRung
+    ? TRUSS_INNER_RAIL + 1.2 * length + random() * room
+    : part === 0
+      ? TRUSS_OUTER_RAIL
+      : TRUSS_INNER_RAIL;
+  const clock = (onRung ? pickTrussRung(random) : pickTrussClock(random)) * DEGREES_TO_RADIANS;
+  const spot = [reach * Math.sin(clock), -reach * Math.cos(clock), 0];
+  shape[0] = 0;
+  shape[1] = length;
+  pushBodyRow(
+    random,
+    body,
+    spot,
+    onRung ? 0 : 1,
+    onRung ? 1 : 0,
+    shape,
+    random() < TRUSS_BRIGHT_SHARES[part] ? 2 : 1,
+    TRUSS_GROUP,
+  );
+}
+
+/**
+ * The fragment body: the film's shell of fine glittering specks. Stride {@link BODY_STRIDE}: x, y,
+ * unit direction along the ring and out from his middle where it is seen (see
+ * {@link ringDirection}), length, rate (cycles per second), id (0..1), a code packing the glyph and
+ * the fragment's class (see {@link FRAGMENT_CODE_GLYPH_STEP}), and depth. (x, y, depth) is where the
+ * speck sits on the shell at rest — a direction uniform over the sphere at a distance from
+ * {@link pickShellRadius} — so the rest pose seen face on is its projection, and the body turning
+ * about the vertical axis turns the shell like a globe.
+ *
+ * A row is no wider than it has to be, since the scene is cloned into the worklet runtime at every
+ * mount: the glyph rides in the class code, and the blink phase is a hash of the id rather than a
+ * random of its own — a hash of a uniform number is as uniform and as uncorrelated as a second
+ * draw would have been, and the id is already the fragment's handle for everything else that has
+ * to vary independently.
  *
  * Two pools share the same places. Pool 0 is the calm set; pool 1, half its size,
  * cycles twice as fast and only shows while he talks, standing in for calm fragments
  * whose ids it takes over — so the count lit, and the brightness, stay the same.
  *
- * A quarter of the fragments between 0.3R and 0.85R ride the counter-turning inner shell
- * instead of being pinned: the film's features in those bands drift back at 2-6°/s (section 3)
- * while the body as a whole stays put.
+ * The whorl's, the gyroscope's and the truss's specks ({@link WHORL_SHARE}, {@link GYRO_SHARE},
+ * {@link TRUSS_SHARE}) are held in the plane of the view instead of the globe's turn, each group
+ * turned in it on its own clock ({@link turnOfGroup}), so the spiral and the arcs through his middle
+ * drift against the rest of him and the truss rolls round his edge. They take their rows out of the
+ * fill's and the shell's, so the body still has exactly `fragmentCount` rows.
  */
 function buildBody(random: Random, fragmentCount: number) {
   const body: number[] = [];
   const shape = [0, 0];
+  const spot = [0, 0, 0, 0, 0];
   while (body.length < fragmentCount * BODY_STRIDE) {
-    // the body stops just inside the rim layer, which rolls over it
-    const radius = Math.sqrt(random()) * 0.94;
-    const angle = random() * Math.PI * 2;
-    const x = Math.cos(angle) * radius;
-    const y = Math.sin(angle) * radius;
-    // the lower hemisphere's stream carries some of the mass there
-    const streamShare = y > 0.12 ? 0.8 : 1;
-    const crowding = clusterWeight(x, y);
-    // the crowded clumps carry the bright glyphs, and the dim and mid ones keep out of the
-    // troughs between the clumps altogether, where the film shows bare fill (shot d: a quarter
-    // of its tiles have next to no strokes, a seventh twice the median)
-    const brightness = crowding > 0.72 && random() < 0.4 ? 2 : pickBrightness(random);
-    const crowded = brightness === 2 ? crowding : crowding * crowding * crowding;
-    if (random() > massWeight(x, y) * streamShare * crowded) continue;
-    const direction = pickFragmentAngle(random, x, y);
-    pickGlyphAndLength(random, x, y, radius, shape);
-    const pool = random() < 1 / 3 ? 1 : 0;
-    // Drawn in the order the row used to draw them in, so the same seed still builds
-    // the same ball: the rate first, then the id, then the inner-shell coin.
-    const rate = pickFragmentRate(random, pool);
-    const id = random();
-    const onInnerShell = radius > 0.3 && radius < 0.62 && random() < 0.55 ? 6 : 0;
-    // How far behind or in front of the middle it sits, so the body can turn about the
-    // vertical axis. Anywhere through the ball at this distance from the axis, which keeps
-    // the cloud as thick front to back as it is across.
-    const depth = (random() * 2 - 1) * Math.sqrt(Math.max(0, 0.94 * 0.94 - x * x - y * y));
-    body.push(
-      x,
-      y,
-      Math.cos(direction),
-      Math.sin(direction),
-      shape[1],
-      rate,
-      id,
-      brightness + 3 * pool + onInnerShell + FRAGMENT_CODE_GLYPH_STEP * shape[0],
-      revealOrder(x, y, id),
-      depth,
-    );
+    if (random() < TRUSS_SHARE) {
+      pushTrussSpeck(random, body, shape);
+      continue;
+    }
+    if (random() < WHORL_SHARE) {
+      pushWhorlSpeck(random, body, shape);
+      continue;
+    }
+    if (random() < GYRO_SHARE) {
+      pushGyroSpeck(random, body, shape);
+      continue;
+    }
+    pickBodyPlace(random, spot);
+    const x = spot[0];
+    const y = spot[1];
+    const depth = spot[2];
+    const crowding = clusterWeight(x, y, depth);
+    const brightness = pickBodyBrightness(random, crowding, spot[3]);
+    const crowded = brightness === 2 ? crowding : crowding * Math.sqrt(crowding);
+    if (random() > massWeight(y) * crowded) continue;
+    const direction = pickFragmentAngle(random, spot[4]);
+    pickGlyphAndLength(random, Math.sqrt(x * x + y * y + depth * depth), shape);
+    pushBodyRow(random, body, spot, Math.cos(direction), Math.sin(direction), shape, brightness);
   }
   return body;
 }
 
 /**
- * The lower hemisphere's stream: fragments on an equatorial shell below the core
- * that turns about the vertical axis, so its front drifts right at 0.1-0.2 R/s and
- * its dimmer back drifts left — the film's horizontal counter-streams.
+ * The lower hemisphere's stream: specks on the speck shell below the core that turn about the
+ * vertical axis on a clock of their own ({@link STREAM_RADIANS_PER_SECOND}), so its front drifts
+ * right at 0.1-0.2 R/s and its dimmer back drifts left — counter-streams through the bottom of the
+ * shell.
  * Stride {@link STREAM_STRIDE}: x, y, z (rest pose), half-length along the latitude x, z, rate,
- * phase, id (at {@link STREAM_ID_FIELD}), brightness + 3 × pool, glyph (0 dash or 1 L), reveal order.
+ * phase, id (at {@link STREAM_ID_FIELD}), brightness + 3 × pool, glyph (0 dash or 1 L).
  */
 function buildStream(random: Random) {
   const stream: number[] = [];
   for (let i = 0; i < 168; i++) {
-    const shell = 0.42 + random() * 0.5;
+    // Just inside the body's shell: the stream's own limb fade starts at 0.857R.
+    const shell = pickShellRadius(random, SPECK_SHELL_OUTER - 0.015);
     const latitude = Math.asin(0.1 + random() * 0.72);
     const longitude = random() * Math.PI * 2;
     const half = pickFragmentLength(random) * 0.5;
     const pool = random() < 1 / 3 ? 1 : 0;
     const restX = shell * Math.cos(latitude) * Math.sin(longitude);
     const restY = shell * Math.sin(latitude);
-    // Same as the body: the row's randoms are drawn in their old order.
     const rate = pickFragmentRate(random, pool);
     const phase = random();
     const id = random();
-    const brightnessCode = pickBrightness(random) + 3 * pool;
+    const brightnessCode = pickBrightness(random, 0.12) + 3 * pool;
     const glyph = random() < 0.2 ? 1 : 0;
     stream.push(
       restX,
@@ -712,63 +1244,15 @@ function buildStream(random: Random) {
       id,
       brightnessCode,
       glyph,
-      revealOrder(restX, restY, id),
     );
   }
   return stream;
 }
 
 /**
- * The crescent's strands as rings of pieces in the rolling frame, so their breaks
- * roll clockwise through the crescent while its brightness stays on the left.
- * Stride 3 per piece, CRESCENT_PIECES_PER_STRAND pieces per strand, four strands:
- * start (degrees), sweep (degrees), a 0..1 hash.
+ * Strands fraying off the upper-left of the shell's edge while he talks, drawn round
+ * {@link PICTURE_SHELL_EDGE}. Stride 5: clock angle, sweep (degrees), rate, phase, threshold.
  */
-function buildCrescentPieces(random: Random) {
-  const pieces: number[] = [];
-  for (let strand = 0; strand < 4; strand++) {
-    const weights: number[] = [];
-    for (let i = 0; i < CRESCENT_PIECES_PER_STRAND; i++) weights.push(0.6 + random());
-    const total = weights.reduce((sum, weight) => sum + weight, 0);
-    let start = random() * 360;
-    for (let i = 0; i < CRESCENT_PIECES_PER_STRAND; i++) {
-      const span = (weights[i] / total) * 360;
-      const gap = strand < 2 ? 2.2 + random() * 2.6 : 2.5 + random() * 6;
-      pieces.push(start, span - gap, random());
-      start += span;
-    }
-  }
-  return pieces;
-}
-
-/**
- * The segmented ladder ring ("crown truss"): pieces of about 9° along three partial
- * arcs in the rolling frame, 190° of arc in all. Stride 6: start (degrees), sweep,
- * circuit trace (0 none, 1 L, 2 Z, 3 T), hanging strut length (0 = none), hash, arc.
- */
-function buildTruss(random: Random) {
-  const truss: number[] = [];
-  const arcs = [
-    [280, 380],
-    [195, 245],
-    [62, 102],
-  ];
-  arcs.forEach(([from, to], arc) => {
-    let degrees = from;
-    while (degrees < to - 4) {
-      // pieces meet end to end, so a leading truss has continuous rails with rungs across
-      const sweep = Math.min(to - degrees, 8 + random() * 3);
-      const traceRoll = random();
-      const trace = traceRoll < 0.45 ? 0 : 1 + Math.floor(random() * 3);
-      const strut = random() < 0.22 ? 0.12 + random() * 0.13 : 0;
-      truss.push(degrees, sweep, trace, strut, random(), arc);
-      degrees += sweep;
-    }
-  });
-  return truss;
-}
-
-/** Strands fraying off the upper-left limb while he talks. Stride 5: clock angle, sweep (degrees), rate, phase, threshold. */
 function buildFray(random: Random) {
   const fray: number[] = [];
   for (let i = 0; i < 22; i++) {
@@ -783,13 +1267,16 @@ function buildFray(random: Random) {
   return fray;
 }
 
-/** Outer streak arcs at 1.2-1.27R, upper left, while he talks. Stride 6: clock centre, radius, sweep, rate, phase, threshold. */
+/**
+ * Streak arcs a little off the shell's edge, at 1.0-1.07R, upper left, while he talks.
+ * Stride 6: clock centre, radius, sweep, rate, phase, threshold.
+ */
 function buildStreakArcs(random: Random) {
   const arcs: number[] = [];
   for (let i = 0; i < 7; i++) {
     arcs.push(
       286 + i * 11 + random() * 6,
-      1.2 + random() * 0.07,
+      1 + random() * 0.07,
       12 + random() * 12,
       0.5 + random() * 0.4,
       random(),
@@ -800,7 +1287,7 @@ function buildStreakArcs(random: Random) {
 }
 
 /**
- * Horizontal streaks slipping out of the right limb while he talks, as the film's
+ * Horizontal streaks slipping out of the right of the shell while he talks, as the film's
  * sphere loosens on "Doctor.". Stride 5: height, length, rate, phase, threshold.
  */
 function buildLimbStreaks(random: Random) {
@@ -811,65 +1298,305 @@ function buildLimbStreaks(random: Random) {
   return streaks;
 }
 
-/** Ticks along the thin rim ring, in the rolling frame. Stride 2: angle (degrees), length. */
-function buildRingTicks(random: Random) {
-  const ticks: number[] = [];
-  let degrees = random() * 10;
-  while (degrees < 356) {
-    ticks.push(degrees, 0.025 + random() * 0.045);
-    degrees += 5 + random() * 12;
-  }
-  return ticks;
+/**
+ * The cage's make-up: the nodes of its shell, the nodes woven over it a little farther out, the
+ * spikes standing off it, the anchors that tie it to the specks, and the lines trailing below him.
+ * CAGE_REACH is the farthest any of it reaches, in R.
+ */
+const CAGE_NODES = 160;
+const CAGE_WOVEN_NODES = 34;
+const CAGE_SPIKES = 13;
+const CAGE_ANCHORS = 12;
+const CAGE_TRAILS = 5;
+const CAGE_REACH = 1.4;
+/** How far out the shell's nodes reach, in R, from just outside the specks' edge. */
+const CAGE_SHELL_INNER = 0.9;
+export const CAGE_SHELL_OUTER = 1.16;
+/**
+ * How far out the woven nodes reach, in R: past it there are only single strokes — the spikes and
+ * the trails — so that nothing round him can read as an arm.
+ */
+export const CAGE_WOVEN_REACH = 1.25;
+/** The longest edge between two of the shell's nodes, in R: the film's are short and jagged. */
+const CAGE_LONGEST_MESH_EDGE = 0.42;
+/** The longest edge from a woven node back down to the shell's, and between two woven nodes. */
+const CAGE_LONGEST_WEAVE = 0.36;
+const CAGE_LONGEST_WOVEN_CHORD = 0.3;
+/** The longest a spike may be, in R, and how lit its tip is as a share of its root. */
+export const CAGE_LONGEST_SPIKE = 0.3;
+const CAGE_SPIKE_TIP_LIGHT = 0.3;
+/**
+ * What the scene's seed is mixed with to seed the cage's own generator, as {@link BODY_SEED_MIX}
+ * seeds the body's: what the scene draws from its main generator can change without moving the cage.
+ */
+const CAGE_SEED_MIX = 0x5bd1e995;
+
+/**
+ * A cage edge as a row: both ends (y down, z towards the eye at rest), its twinkle's rate and phase,
+ * its weight, and how lit its far end is as a share of its near one's: 1, lit evenly along it, but
+ * for a line that fades away as it leaves him.
+ */
+function pushCageEdge(edges: number[], random: Random, from: number[], to: number[], weight: number, farLight = 1) {
+  edges.push(from[0], from[1], from[2], to[0], to[1], to[2], 0.05 + random() * 0.13, random(), weight, farLight);
 }
 
 /**
- * The slow script: a loop of epochs 3-8 s long, each handing the rim to one dominant
- * element. Stride 6: start, duration, dominant (0 crescent, 1 truss, 2 thin ring),
- * line kind (0 none, 1 radial spokes, 2 swoosh fan, 3 lightning filament), fragment
- * density, red flash time (seconds into the epoch, or -1).
- *
- * It used to schedule a protrusion per epoch as well — a boom, ribbon, tendril or fan
- * standing off the limb. They were the film's, but on a phone they read as an arm
- * swinging out of the ball on a loop, and they are gone.
+ * A direction for the cage, as a unit vector: more of them over the top, as the film's wireframe is
+ * fullest above (y runs down, so a negative height is over the top).
  */
-function buildScript(random: Random) {
-  const epochs: number[] = [];
-  const dominants = [0, 1, 0, 2, 1, 0, 1, 2, 0, 1, 2, 1];
-  const lineKinds = [0, 0, 1, 0, 2, 0, 3, 1, 0, 2, 3, 0];
-  let start = 0;
-  dominants.forEach((dominant, index) => {
-    const duration = index === 0 ? 7 : 3 + random() * 5;
-    epochs.push(
-      start,
-      duration,
-      dominant,
-      lineKinds[index],
-      0.9 + random() * 0.12,
-      index === 4 || index === 9 ? 0.5 + random() * (duration - 1) : -1,
-    );
-    start += duration;
-  });
-  return { epochs, period: start };
+function pickCageDirection(random: Random): number[] {
+  for (;;) {
+    const height = random() * 2 - 1;
+    const around = random() * Math.PI * 2;
+    const ring = Math.sqrt(1 - height * height);
+    if (random() > 0.62 - 0.38 * height) continue;
+    return [Math.cos(around) * ring, height, Math.sin(around) * ring];
+  }
 }
 
-/** Comet arcs curling from the core to the lower right. Stride 5: period, phase, base angle (radians), radius, sweep. */
-function buildComets(random: Random) {
-  const comets: number[] = [];
-  for (let i = 0; i < 5; i++) {
-    comets.push(
-      5 + random() * 4,
+/**
+ * A node of the cage's lumpy shell, hugging the shell of specks: {@link CAGE_SHELL_INNER} to
+ * {@link CAGE_SHELL_OUTER} out, most of them inside 1.05R. Lumpy rather than round, the reach
+ * swelling and dipping with the direction and a little at random.
+ */
+function pickCageNode(random: Random): number[] {
+  const direction = pickCageDirection(random);
+  const lump = 0.5 + 0.5 * Math.sin(2.3 * direction[0] + 1.1) * Math.sin(3.1 * direction[1] - 0.4 + 1.7 * direction[2]);
+  const out = Math.min(1, Math.max(0, 0.55 * lump + 0.45 * random()));
+  const radius = CAGE_SHELL_INNER + (CAGE_SHELL_OUTER - CAGE_SHELL_INNER) * out ** 1.6;
+  return direction.map((component) => component * radius);
+}
+
+/**
+ * A node woven over the shell's, a little farther out than any of them and no farther than
+ * {@link CAGE_WOVEN_REACH}: the crumpled outside of the film's mesh. Never under him, where a node
+ * out past the shell would hang off him.
+ */
+function pickWovenCageNode(random: Random): number[] {
+  const radius = CAGE_SHELL_OUTER + 0.02 + random() * (CAGE_WOVEN_REACH - CAGE_SHELL_OUTER - 0.02);
+  for (;;) {
+    const direction = pickCageDirection(random);
+    if (direction[1] < 0.4) return direction.map((component) => component * radius);
+  }
+}
+
+/** How far a point of the cage is from his middle. */
+function cageReach(point: number[]) {
+  return Math.hypot(point[0], point[1], point[2]);
+}
+
+/** How far apart two points of the cage are. */
+function cageDistance(from: number[], to: number[]) {
+  return Math.hypot(from[0] - to[0], from[1] - to[1], from[2] - to[2]);
+}
+
+/**
+ * The `count` nodes of `among` nearest to `node`, nearest first, as their indices and how far each
+ * is: what sorting every node of `among` by its distance would put first, leaving out any at no
+ * distance at all (`node` itself), and of two as far away the one `among` lists first.
+ *
+ * Picked in one pass, keeping only the nearest so far, rather than by sorting them all: the cage
+ * asks this of every one of its nodes, and a hundred and sixty sorts of a hundred and sixty, with
+ * an object made for every node in each, cost more than the body's ten thousand specks under a JIT
+ * and over a third as much without one.
+ */
+function nearestCageNodes(node: number[], among: number[][], count: number) {
+  const nearest: { otherIndex: number; distance: number }[] = [];
+  for (let otherIndex = 0; otherIndex < among.length; otherIndex++) {
+    const distance = cageDistance(node, among[otherIndex]);
+    const farthestKept = nearest.length === count ? nearest[count - 1].distance : Infinity;
+    if (distance === 0 || distance >= farthestKept) continue;
+    if (nearest.length === count) nearest.pop();
+    // after every one kept that is no farther, so that a tie keeps the order of `among`
+    let at = nearest.length;
+    while (at > 0 && nearest[at - 1].distance > distance) at--;
+    nearest.splice(at, 0, { otherIndex, distance });
+  }
+  return nearest;
+}
+
+/** The one key an edge between two of `nodeCount` nodes has, whichever end it is named from. */
+function cageEdgeKey(first: number, second: number, nodeCount: number) {
+  return Math.min(first, second) * nodeCount + Math.max(first, second);
+}
+
+/** The nodes of the cage's shell, each joined to its two or three nearest by edges no longer than the mesh's. */
+function pushCageMesh(edges: number[], random: Random, nodes: number[][]) {
+  const joined = new Set<number>();
+  nodes.forEach((node, index) => {
+    const neighbours = random() < 0.6 ? 3 : 2;
+    for (const { otherIndex, distance } of nearestCageNodes(node, nodes, neighbours)) {
+      const key = cageEdgeKey(index, otherIndex, nodes.length);
+      // an edge much longer than the mesh's would cut across his face
+      if (joined.has(key) || distance > CAGE_LONGEST_MESH_EDGE) continue;
+      joined.add(key);
+      pushCageEdge(edges, random, node, nodes[otherIndex], 0.75 + 0.25 * random());
+    }
+  });
+}
+
+/**
+ * The cage's crumpled outside: each woven node tied back down to the two nodes of the shell nearest
+ * it, and some to the woven node nearest it as well, so the outside of the mesh is shallow jagged
+ * triangles lying over the shell, as the film's is. Every woven node is held by both ends of what it
+ * stands on, so none of it is a line with a loose end: a chain of chords out there, tied to the
+ * shell at one end only, was a hook, and turning with his body it swung round him like an arm.
+ */
+function pushCageWeave(edges: number[], random: Random, nodes: number[][], wovenNodes: number[][]) {
+  // A woven node out of reach of two of the shell's would hang by one line, a loose end, so it is
+  // left out altogether, and nothing else is joined to it either.
+  const woven = wovenNodes
+    .map((node) => ({ node, shellNodes: nearestCageNodes(node, nodes, 2) }))
+    .filter(({ shellNodes }) => (shellNodes[1]?.distance ?? Infinity) <= CAGE_LONGEST_WEAVE);
+  const held = woven.map(({ node }) => node);
+  const joined = new Set<number>();
+  woven.forEach(({ node, shellNodes }, index) => {
+    for (const { otherIndex } of shellNodes) {
+      pushCageEdge(edges, random, node, nodes[otherIndex], 0.6 + 0.25 * random());
+    }
+    const [nearest] = nearestCageNodes(node, held, 1);
+    if (nearest === undefined || nearest.distance > CAGE_LONGEST_WOVEN_CHORD || random() < 0.4) return;
+    const key = cageEdgeKey(index, nearest.otherIndex, held.length);
+    if (joined.has(key)) return;
+    joined.add(key);
+    pushCageEdge(edges, random, node, held[nearest.otherIndex], 0.55 + 0.25 * random());
+  });
+}
+
+/**
+ * Spikes: short single strokes standing off the outermost of the shell's nodes, out past
+ * {@link CAGE_WOVEN_REACH}, their tips fading, as the film's wireframe throws the odd short line out
+ * of its mesh. Leaning a little but never far from straight out, so that turning with him a spike
+ * never sweeps round him as a hook does.
+ */
+function pushCageSpikes(edges: number[], random: Random, nodes: number[][]) {
+  const roots = nodes.filter((node) => cageReach(node) >= CAGE_WOVEN_REACH - CAGE_LONGEST_SPIKE + 0.04);
+  for (let spike = 0; spike < CAGE_SPIKES && roots.length > 0; spike++) {
+    const root = roots[Math.floor(random() * roots.length)];
+    const rootRadius = cageReach(root);
+    const leaning = root.map((value) => value / rootRadius + (random() - 0.5) * 0.45);
+    const leaningLength = cageReach(leaning);
+    const tipRadius = CAGE_WOVEN_REACH + 0.02 + random() * 0.1;
+    // as long as it takes to stand past the woven nodes, and never longer than a spike may be
+    const length = Math.min(CAGE_LONGEST_SPIKE, tipRadius - rootRadius + 0.02);
+    const tip = root.map((value, axis) => value + ((leaning[axis] ?? 0) / leaningLength) * length);
+    if (cageReach(tip) <= CAGE_WOVEN_REACH) continue;
+    pushCageEdge(edges, random, root, tip, 0.7 + 0.2 * random(), CAGE_SPIKE_TIP_LIGHT);
+  }
+}
+
+/** Anchors: down from a node to the specks' edge, a little to one side of straight in. */
+function pushCageAnchors(edges: number[], random: Random, nodes: number[][]) {
+  for (let anchor = 0; anchor < CAGE_ANCHORS; anchor++) {
+    const node = nodes[Math.floor(random() * nodes.length)];
+    const length = cageReach(node);
+    const aside = node.map((value) => value / length + (random() - 0.5) * 0.5);
+    const asideLength = cageReach(aside);
+    const foot = aside.map((value) => (value / asideLength) * PICTURE_SHELL_EDGE * (0.93 + 0.07 * random()));
+    pushCageEdge(edges, random, node, foot, 0.5 + 0.2 * random());
+  }
+}
+
+/**
+ * The trails: a few long lines from all round the bottom of the shell of specks, sweeping down past
+ * the bottom of him towards the far side and fading away as they go, as the lines trailing below
+ * the film's sphere taper off. Each is on its own and none branches, and they start all round him
+ * rather than from one side, so that however his body has turned they never close up into one line;
+ * and having faded by the time they pass each other, they never meet in a point below him either.
+ * The chain of edges it replaces, with a branch off it, read as a limb hanging off him.
+ */
+function pushCageTrails(edges: number[], random: Random) {
+  for (let trail = 0; trail < CAGE_TRAILS; trail++) {
+    const around = ((trail + 0.4 * random()) / CAGE_TRAILS) * Math.PI * 2;
+    // from 25-55 degrees off the bottom of the shell
+    const tilt = (25 + random() * 30) * DEGREES_TO_RADIANS;
+    const startRadius = PICTURE_SHELL_EDGE * (0.95 + 0.05 * random());
+    const from = [
+      Math.cos(around) * Math.sin(tilt) * startRadius,
+      Math.cos(tilt) * startRadius,
+      Math.sin(around) * Math.sin(tilt) * startRadius,
+    ];
+    // down towards straight below him, ending short of it on its own side or past it on the far one
+    const beyond = around + Math.PI + (random() - 0.5) * 1.2;
+    const aside = (random() - 0.35) * 0.5;
+    const depth = 1.15 + random() * 0.2;
+    const to = [Math.cos(beyond) * aside, depth, Math.sin(beyond) * aside];
+    const reach = cageReach(to);
+    const kept = reach > CAGE_REACH - 0.02 ? to.map((value) => (value * (CAGE_REACH - 0.02)) / reach) : to;
+    pushCageEdge(edges, random, from, kept, 0.75 + 0.2 * random(), 0);
+  }
+}
+
+/**
+ * The cage: the film's crumpled wireframe round the shell of specks — straight hairlines between
+ * nodes, making jagged triangles. Seeded nodes on a lumpy shell hugging the specks,
+ * {@link CAGE_SHELL_INNER} to {@link CAGE_SHELL_OUTER} out, each joined to its two or three nearest
+ * by short edges; nodes woven over them a little farther out, each tied back down to two of them; a
+ * few short spikes standing straight off it; a few anchors running down to the specks' edge; and a
+ * few long lines tapering below him. Past {@link CAGE_WOVEN_REACH} there are only the spikes and the
+ * trails, single strokes fading away, and none of it reaches past {@link CAGE_REACH}.
+ *
+ * It is in three dimensions and turns with the body (`gpu/picture-layers.ts`), always there and
+ * calm: nothing grows out of it or swings away, which is what the user disliked in the protrusions
+ * it replaces. It once had long chords out to 1.4R as well, joined into polylines held to the shell
+ * at one end; turning with him, they swung round him as hooks and arms, the very thing he had lost.
+ *
+ * Stride {@link CAGE_EDGE_STRIDE}: from x, y, z, to x, y, z, twinkle rate (cycles a second), its
+ * phase, the edge's weight, and how lit its far end is as a share of its near one's. y runs down the
+ * screen and z towards the eye at rest, as the body's.
+ */
+function buildCage(random: Random) {
+  const nodes: number[][] = [];
+  while (nodes.length < CAGE_NODES) nodes.push(pickCageNode(random));
+  const wovenNodes: number[][] = [];
+  while (wovenNodes.length < CAGE_WOVEN_NODES) wovenNodes.push(pickWovenCageNode(random));
+  const edges: number[] = [];
+  pushCageMesh(edges, random, nodes);
+  pushCageWeave(edges, random, nodes, wovenNodes);
+  pushCageSpikes(edges, random, nodes);
+  pushCageAnchors(edges, random, nodes);
+  pushCageTrails(edges, random);
+  return edges;
+}
+
+/** How many embers drift round him, and the share of them that show while he is quiet. */
+const EMBER_COUNT = 56;
+const EMBERS_IN_SILENCE = 0.45;
+/** How far out an ember may get before it has gone, in R: well inside his square's edge. */
+const EMBER_FARTHEST = 1.45;
+/** How far up an ember rises for every R it drifts outward. */
+export const EMBER_RISE = 0.3;
+/** What the scene's seed is mixed with to seed the embers' own generator (see {@link CAGE_SEED_MIX}). */
+const EMBER_SEED_MIX = 0x27d4eb2f;
+
+/**
+ * The embers: tiny orange flecks drifting out from the shell's edge and a little upward, each on its
+ * own slow clock, fading in and out and gone before {@link EMBER_FARTHEST}. A quarter of them are
+ * streaked. Which of them show depends on a threshold each holds: {@link EMBERS_IN_SILENCE} of them
+ * while he is quiet, more while he talks, and all of them on the low notes of his voice
+ * (`emberShare` in {@link analyseFrame}).
+ *
+ * Stride {@link EMBER_STRIDE}: direction (radians from 3 o'clock, y down), where it starts (R),
+ * how far it drifts (R), its period (s), its phase, its streak's length (R) and its threshold.
+ */
+function buildEmbers(random: Random) {
+  const embers: number[] = [];
+  for (let ember = 0; ember < EMBER_COUNT; ember++) {
+    const start = PICTURE_SHELL_EDGE - 0.08 + random() * 0.12;
+    // what it rises adds to how far out it gets, at most EMBER_RISE as much again
+    const drift = Math.min(0.22 + random() * 0.36, (EMBER_FARTHEST - start) / (1 + EMBER_RISE));
+    const streaked = random() < 0.25;
+    embers.push(
+      random() * Math.PI * 2,
+      start,
+      drift,
+      4 + random() * 5,
       random(),
-      -0.1 + i * 0.3 + random() * 0.2,
-      0.35 + random() * 0.4,
-      1.2 + random() * 0.8,
+      streaked ? 0.025 + random() * 0.035 : 0.004 + random() * 0.006,
+      random(),
     );
   }
-  return comets;
-}
-
-/** Keeps the worklet copy of the scene small. */
-function roundToFiveDecimals(value: number) {
-  return Math.round(value * 1e5) / 1e5;
+  return embers;
 }
 
 /**
@@ -883,21 +1610,20 @@ function roundToFiveDecimals(value: number) {
  */
 export function createHologramScene(seed: number, particleCount: number = PARTICLE_COUNT) {
   const random = createRandom(seed);
-  const script = buildScript(random);
   return {
-    body: buildBody(random, particleCount).map(roundToFiveDecimals),
+    // rounded as it is built (see buildBody)
+    body: buildBody(createRandom(seed ^ BODY_SEED_MIX), particleCount),
     stream: buildStream(random).map(roundToFiveDecimals),
-    crescentPieces: buildCrescentPieces(random).map(roundToFiveDecimals),
-    truss: buildTruss(random).map(roundToFiveDecimals),
     fray: buildFray(random).map(roundToFiveDecimals),
     streakArcs: buildStreakArcs(random).map(roundToFiveDecimals),
     limbStreaks: buildLimbStreaks(random).map(roundToFiveDecimals),
-    ringTicks: buildRingTicks(random).map(roundToFiveDecimals),
-    epochs: script.epochs.map(roundToFiveDecimals),
-    scriptPeriod: roundToFiveDecimals(script.period),
-    comets: buildComets(random).map(roundToFiveDecimals),
-    // only a seed: the static textures are built straight into paths, never copied to the worklet runtime
+    // only a seed: the sparkle's texels are built from it wherever they are uploaded (gpu/sparkle.ts,
+    // and vr's sparkle texture), never copied to the worklet runtime
     textureSeed: Math.floor(random() * 4294967296),
+    // Each from a generator of its own, as the body is, so that nothing drawn from the one above —
+    // taken out or added — reshuffles them, nor they it.
+    cage: buildCage(createRandom(seed ^ CAGE_SEED_MIX)).map(roundToFiveDecimals),
+    embers: buildEmbers(createRandom(seed ^ EMBER_SEED_MIX)).map(roundToFiveDecimals),
   };
 }
 
@@ -905,32 +1631,21 @@ export function createHologramScene(seed: number, particleCount: number = PARTIC
 export type HologramScene = ReturnType<typeof createHologramScene>;
 
 /**
- * The part of a scene {@link analyseFrame} reads: the script, and nothing of the geometry. A frame
- * callback that only analyses frames can capture this where the whole scene, about a hundred
- * thousand numbers, would be copied into the worklet runtime with it.
- */
-export type HologramScript = Pick<HologramScene, 'epochs' | 'scriptPeriod'>;
-
-/**
  * The part of a scene the picture is drawn from: everything but the body and the stream, whose
  * fragments the GPU draws (`hologram/gpu`). A picture worklet captures this rather than the whole
- * scene, so the hundred thousand numbers of the body are never copied into the worklet runtime.
+ * scene, so the ninety thousand numbers of the body are never copied into the worklet runtime.
  */
 export type HologramPictureScene = Omit<HologramScene, 'body' | 'stream'>;
 
 /** {@link HologramPictureScene} of a scene, as a new object holding only those parts. */
 export function pictureSceneOf(scene: HologramScene): HologramPictureScene {
   return {
-    crescentPieces: scene.crescentPieces,
-    truss: scene.truss,
     fray: scene.fray,
     streakArcs: scene.streakArcs,
     limbStreaks: scene.limbStreaks,
-    ringTicks: scene.ringTicks,
-    epochs: scene.epochs,
-    scriptPeriod: scene.scriptPeriod,
-    comets: scene.comets,
     textureSeed: scene.textureSeed,
+    cage: scene.cage,
+    embers: scene.embers,
   };
 }
 
@@ -998,30 +1713,6 @@ function appendArc(
   }
 }
 
-/** A rotated ellipse, or the first `share` of its turn from the end of its major axis, as a polyline (prebuilt only). */
-function appendEllipse(
-  builder: PathBuilder,
-  centreX: number,
-  centreY: number,
-  radiusX: number,
-  radiusY: number,
-  tilt: number,
-  steps: number,
-  share = 1,
-) {
-  const cosTilt = Math.cos(tilt);
-  const sinTilt = Math.sin(tilt);
-  for (let step = 0; step <= steps; step++) {
-    const angle = (step / steps) * Math.PI * 2 * share - (share < 1 ? Math.PI / 2 : 0);
-    const x = Math.cos(angle) * radiusX;
-    const y = Math.sin(angle) * radiusY;
-    const pointX = centreX + x * cosTilt - y * sinTilt;
-    const pointY = centreY + x * sinTilt + y * cosTilt;
-    if (step === 0) pathMoveTo(builder, pointX, pointY);
-    else pathLineTo(builder, pointX, pointY);
-  }
-}
-
 /**
  * Brightness along the body's strokes: a tiled field of soft random dips and hot spots
  * (0.5-1), so a stroke is hot in places and dimmer in others rather than one flat tone.
@@ -1049,110 +1740,17 @@ export function sparklePixels(seed: number) {
   return pixels;
 }
 
-/** One unbroken stretch of a whorl arm, `stretch` radians of its spiral from `along`. */
-function appendWhorlStretch(
-  inner: PathBuilder,
-  outer: PathBuilder,
-  ticks: PathBuilder,
-  random: Random,
-  first: number,
-  firstAngle: number,
-  along: number,
-  stretch: number,
-) {
-  // Each turn is 2.7 times as wide as the one inside it, so an arm crosses the whole interior in
-  // under two turns: the film's whorl is one loose sweep with open fill between its passes, not
-  // a set of near-concentric rings.
-  const growth = Math.log(2.7) / (Math.PI * 2);
-  const steps = Math.ceil(stretch / 0.14);
-  let previousArm = ticks;
-  for (let step = 0; step <= steps; step++) {
-    const turned = along + (stretch * step) / steps;
-    const radius = first * Math.exp(growth * turned);
-    if (radius > 0.76) return;
-    const angle = firstAngle + turned;
-    const x = CORE_X + Math.cos(angle) * radius;
-    const y = CORE_Y + Math.sin(angle) * radius;
-    // an arm is bold round the core and thinner as it opens out past 0.46R; the two halves are
-    // drawn apart, so each is picked up where the other left it
-    const arm = radius < 0.46 ? inner : outer;
-    if (arm === previousArm) pathLineTo(arm, x, y);
-    else pathMoveTo(arm, x, y);
-    previousArm = arm;
-    // the arms are furry with short fragments across them, as the film's are
-    if (random() < 0.3) {
-      const across = (0.014 + 0.035 * random()) * (random() < 0.5 ? -1 : 1);
-      pathMoveTo(ticks, x, y);
-      pathLineTo(ticks, x + Math.cos(angle) * across, y + Math.sin(angle) * across);
-    }
-  }
-}
-
-/** One arm of the whorl: a spiral of broken stretches from `first` out to 0.76R. */
-function appendWhorlArm(
-  inner: PathBuilder,
-  outer: PathBuilder,
-  ticks: PathBuilder,
-  random: Random,
-  first: number,
-  firstAngle: number,
-  turns: number,
-) {
-  let along = 0;
-  while (along < turns) {
-    const stretch = Math.min(turns - along, 1.1 + random() * 1.5);
-    appendWhorlStretch(inner, outer, ticks, random, first, firstAngle, along, stretch);
-    // the gaps widen as an arm opens out
-    along += stretch + 0.12 + random() * 0.18 + 0.02 * along;
-  }
-}
-
 /**
- * The whorl round the core (shot d f40-150, the ball's boldest inner feature): two nested spiral
- * arms winding out from just outside the core's ring, each turn about 2.7× as wide as the one
- * inside it, broken into long stretches with short gaps, reaching 0.76R in under two turns. Two wisps just inside
- * the rim layer (shot b) keep them company out there. They are drawn wider than any stroke in
- * the body and turn the other way from the rim (drawInnerShells), so the ball reads as one loose
- * swirl over a field of fragments — the film's interior is a few fat luminous ribbons, not a
- * star chart of hairlines of equal weight.
+ * The marks of the core: inside its white-hot ring ({@link CORE_RING_RADIUS}) Age of Ultron's small
+ * ringed eye — a hooked ring of radius 0.1R with a stem curling in, round a closed ring of 0.06R, as
+ * the film's lab shots show two nested rings at 0.05-0.06R and 0.09-0.11R round a darker hole — and
+ * a bar across short enough to stay inside the white-hot ring, as Vision Quest's glowing disc has
+ * faint marks across it.
+ *
+ * The ring used to put out a short tick at its upper right, where one of the film's frames shows a
+ * spark leave it. Held still on him, it read as a glitch in the ring rather than as a spark, and it
+ * is gone.
  */
-function buildWhorl(random: Random) {
-  const whorl = makePathBuilder();
-  const outer = makePathBuilder();
-  const ticks = makePathBuilder();
-  appendWhorlArm(whorl, outer, ticks, random, 0.16, 3.5, 10.5);
-  appendWhorlArm(whorl, outer, ticks, random, 0.33, 1.1, 6.5);
-  appendArc(outer, CORE_X, CORE_Y, 0.7, 0.3, 0.8);
-  appendArc(outer, CORE_X, CORE_Y, 0.66, 1.35, 0.55);
-  return { whorl, whorlOuter: outer, whorlTicks: ticks };
-}
-
-/**
- * The inner structure: the long bright loop rising 37° to the right past the core, the faint
- * near half of the tall edge-on ellipse beside it, and two data streaks through the core.
- */
-function buildInnerStructure() {
-  const loop = makePathBuilder();
-  appendEllipse(loop, 0.04, 0.03, 0.74, 0.2, -37 * DEGREES_TO_RADIANS, 56);
-  // the edge-on ellipse's near half only, faint
-  const edgeOn = makePathBuilder();
-  appendEllipse(edgeOn, 0.27, 0.02, 0.1, 0.44, 4 * DEGREES_TO_RADIANS, 20, 0.5);
-  // the ")" arc wrapping the core's right side at 0.57R: -60° to +40°, measured up from 3 o'clock
-  const bracket = makePathBuilder();
-  appendArc(bracket, CORE_X, CORE_Y, 0.575, 60 * DEGREES_TO_RADIANS, -100 * DEGREES_TO_RADIANS);
-  const streaks = makePathBuilder();
-  const streakRows = [
-    [-0.72, 0.6, 0.05],
-    [-0.5, 0.2, -0.065],
-  ];
-  for (const [from, to, y] of streakRows) {
-    pathMoveTo(streaks, CORE_X + from, CORE_Y + y);
-    pathLineTo(streaks, CORE_X + to, CORE_Y + y);
-  }
-  return { loop, edgeOn, bracket, dataStreaks: streaks };
-}
-
-/** The core glyph: a hooked ring of radius 0.1R with a stem curling in, and the bar. The whorl's first turn is the film's second ring at 0.3R. */
 function buildCoreGlyph() {
   const ring = makePathBuilder();
   appendArc(ring, 0, 0, 0.1, -35 * DEGREES_TO_RADIANS, 305 * DEGREES_TO_RADIANS);
@@ -1161,76 +1759,21 @@ function buildCoreGlyph() {
   pathMoveTo(ring, Math.cos(endAngle) * 0.1, Math.sin(endAngle) * 0.1);
   pathLineTo(ring, 0.012, -0.055);
   pathLineTo(ring, 0.03, -0.02);
+  // the eye's inner ring, a run of its own (appendArc starts with a move)
+  appendArc(ring, 0, 0, 0.06, 0, 2 * Math.PI);
   const bar = makePathBuilder();
-  pathMoveTo(bar, -0.3, 0.012);
-  pathLineTo(bar, 0.3, 0.012);
+  pathMoveTo(bar, -0.22, 0.012);
+  pathLineTo(bar, 0.22, 0.012);
   return { coreRing: ring, coreBar: bar };
 }
 
-/**
- * The fan of strands on the right: four concentric strands from 1 to 5 o'clock whose
- * clockwise ends peel out to 1.08R (shot d).
- */
-function buildStrandFan() {
-  const fan = makePathBuilder();
-  const radii = [0.9, 0.95, 1.0, 1.03];
-  radii.forEach((radius, strand) => {
-    const from = 30 + strand * 6;
-    const to = 150 - strand * 4;
-    for (let degrees = from; degrees <= to; degrees += 5) {
-      const peel = Math.max(0, (degrees - (to - 30)) / 30);
-      const pointRadius = radius + peel * peel * (1.08 - radius);
-      const angle = (degrees - 90) * DEGREES_TO_RADIANS;
-      if (degrees === from) pathMoveTo(fan, Math.cos(angle) * pointRadius, Math.sin(angle) * pointRadius);
-      else pathLineTo(fan, Math.cos(angle) * pointRadius, Math.sin(angle) * pointRadius);
-    }
-  });
-  return fan;
-}
-
-/**
- * The paths that never change, as commands: the whorl's arms, wisps and ticks, the loop, the
- * edge-on ellipse, the ")" bracket and the data streaks, the core's ring and bar, and the strand
- * fan. The whorl's are random, from the scene's texture seed, so the same seed always builds them
- * the same.
- */
-export function staticPathsOf(textureSeed: number) {
-  return {
-    ...buildWhorl(createRandom(textureSeed ^ 0x5bd1e995)),
-    ...buildInnerStructure(),
-    ...buildCoreGlyph(),
-    strandFan: buildStrandFan(),
-  };
+/** The paths that never change, as commands: the core's marks — its ringed eye and its bar. */
+export function staticPathsOf() {
+  return buildCoreGlyph();
 }
 
 /** The paths that never change, as {@link staticPathsOf} builds them. */
 export type StaticPaths = ReturnType<typeof staticPathsOf>;
-
-/** A colour from 0-255 channels, as a `#rrggbb` string (`gpu/picture-gradients.ts` reads it). */
-function amberHex(red: number, green: number, blue: number) {
-  const channel = (value: number) =>
-    Math.round(Math.min(255, Math.max(0, value)))
-      .toString(16)
-      .padStart(2, '0');
-  return `#${channel(red)}${channel(green)}${channel(blue)}`;
-}
-
-/**
- * The limb ridge's colours round the limb: thirty stops of amber, bright stretches and see-through
- * ones from the seed, the last the same as the first so the sweep closes without a seam.
- */
-export function limbRidgeStops(textureSeed: number) {
-  const random = createRandom(textureSeed ^ 0x68e31da4);
-  const colours: string[] = [];
-  const positions: number[] = [];
-  for (let stop = 0; stop < 30; stop++) {
-    const lit = stop === 29 ? colours[0] : undefined;
-    const strength = 0.18 + 0.82 * random() ** 0.8;
-    colours.push(lit ?? amberHex(0xd0 * strength, 0x7c * strength, 0x30 * strength));
-    positions.push(stop / 29);
-  }
-  return { colours, positions };
-}
 
 function clamp01(value: number) {
   'worklet';
@@ -1258,30 +1801,6 @@ export function densityKey(id: number) {
   return fraction(id * DENSITY_FROM_ID);
 }
 
-/**
- * The order fragments drop out in when the script thins the body, 0 (last to go) to 1 (first):
- * across from the left and in patches rather than evenly.
- */
-function revealKey(x: number, y: number) {
-  'worklet';
-  const across = clamp01((x + 1.15) / 2.2);
-  const patches = 0.5 + 0.5 * Math.sin(4.1 * x + 1.3) * Math.sin(3.3 * y - 0.7);
-  return clamp01(0.72 * across + 0.28 * patches);
-}
-
-/**
- * The order a fragment leaves the body in when the script thins it, 0..1: high goes first.
- *
- * Worked out once, when the scene is built, because it never changes — it is the
- * film's reveal pattern at the fragment's place, dithered by its id. It used to be
- * worked out inside the frame, which meant two `Math.sin` per fragment per frame,
- * about 3,400 native trig calls a frame on the phone for numbers that were the same
- * every time. That is the one thing in the loop the scene can remember for it.
- */
-function revealOrder(x: number, y: number, id: number) {
-  return 0.55 * revealKey(x, y) + 0.45 * fraction(id * 7.31);
-}
-
 /** Mean of bands[firstBand..endBand), 0 when there are none. */
 function bandAverage(bands: number[], firstBand: number, endBand: number) {
   'worklet';
@@ -1292,64 +1811,6 @@ function bandAverage(bands: number[], firstBand: number, endBand: number) {
     count++;
   }
   return count ? sum / count : 0;
-}
-
-// ---- the script: which rim element dominates -------------------------------------------
-
-/** Offset of the epoch playing at `localTime` seconds into the script's loop. */
-function findEpoch(epochs: number[], localTime: number) {
-  'worklet';
-  for (let offset = epochs.length - EPOCH_STRIDE; offset > 0; offset -= EPOCH_STRIDE) {
-    if (localTime >= epochs[offset]) return offset;
-  }
-  return 0;
-}
-
-/** How strongly a rim element shows when it is (1) or is not (0) the dominant one: the others never quite vanish. */
-function rimTarget(element: number, dominant: number) {
-  'worklet';
-  if (element === dominant) return 1;
-  return element === 0 ? 0.3 : element === 1 ? 0.42 : 0.2;
-}
-
-/**
- * Reads the script at `time`: rim weights (crescent, truss, ring), fragment density, the
- * epoch's line kind and its envelope, and the red flash.
- * Everything is a function of time alone, so it never jumps.
- */
-function readScript(scene: HologramScript, time: number) {
-  'worklet';
-  const epochs = scene.epochs;
-  const period = scene.scriptPeriod;
-  const repeat = Math.floor(time / period);
-  const localTime = time - repeat * period;
-  const offset = findEpoch(epochs, localTime);
-  const previous = offset === 0 ? epochs.length - EPOCH_STRIDE : offset - EPOCH_STRIDE;
-  const start = epochs[offset];
-  const duration = epochs[offset + 1];
-  const intoEpoch = localTime - start;
-  // the very first epoch has nothing before it to hand over from
-  const handover = offset === 0 && repeat === 0 ? 1 : smooth01(intoEpoch / HANDOVER_SECONDS);
-  const dominant = epochs[offset + 2];
-  const previousDominant = epochs[previous + 2];
-  const weights = [0, 0, 0];
-  for (let element = 0; element < 3; element++) {
-    const from = rimTarget(element, previousDominant);
-    weights[element] = from + (rimTarget(element, dominant) - from) * handover;
-  }
-  const redAt = epochs[offset + 5];
-  const density = epochs[previous + 4] + (epochs[offset + 4] - epochs[previous + 4]) * handover;
-  return {
-    crescentWeight: weights[0],
-    trussWeight: weights[1],
-    ringWeight: weights[2],
-    density,
-    lineKind: epochs[offset + 3],
-    lineEnvelope: smooth01(intoEpoch / 1.0) * smooth01((duration - intoEpoch) / 1.0),
-    lineSeconds: intoEpoch,
-    lineSeed: repeat * 31 + offset,
-    redVisible: redAt >= 0 && intoEpoch >= redAt && intoEpoch < redAt + 2 / 24,
-  };
 }
 
 /**
@@ -1368,14 +1829,14 @@ export function arrivalOf(appearance: number, presence: number) {
 }
 
 /** Everything a frame derives from its fields; see the file header for the mapping. */
-export function analyseFrame(frame: HologramFrame, size: number, scene: HologramScript) {
+export function analyseFrame(frame: HologramFrame, size: number) {
   'worklet';
   const time = frame.time;
   // How far on the vortex is: 1 once it is over.
   const swirl = clamp01(frame.appearance);
-  // What speech does to him — chips thrown off the limb, the crescent splitting, the fraying —
+  // What speech does to him — chips thrown off the shell, the fraying, the embers it brings out —
   // waits until the vortex has all but formed him. The greeting plays while he arrives, and
-  // without this it threw full-size slabs off a limb that was not there yet, into empty space
+  // without this it threw full-size chips off a limb that was not there yet, into empty space
   // round a sphere still gathered at its core.
   const formed = smooth01((swirl - 0.6) / 0.4);
   const agitation = clamp01(frame.agitation) * formed;
@@ -1383,7 +1844,6 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
   const lowDrive = clamp01((bandAverage(bands, 0, 6) - 0.35) / 0.45);
   const highDrive = clamp01((bandAverage(bands, 14, 24) - 0.2) / 0.45);
   const burstAge = frame.burstAge >= 0 ? frame.burstAge : 10;
-  const script = readScript(scene, time);
   const yaw = time * STREAM_RADIANS_PER_SECOND;
   const bodyYaw = bodyTurnRadians(time);
   // Loudness, not the agitation envelope: the glow follows his voice moment to moment, as the
@@ -1402,6 +1862,14 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
   const radius = size * SPHERE_FRACTION * (LEAVING_SMALLEST + (1 - LEAVING_SMALLEST) * presence) * (1 + swell);
   const intoScan = time - Math.floor(time / SCAN_SECONDS) * SCAN_SECONDS;
   const thinking = clamp01(frame.thinking);
+  // How far the vortex has carried his shell of specks out of the core, 0 to 1. By swirlFragment's
+  // law a fragment leaves once the swirl passes 0.6 of its order — 0.9 of its reach and a tenth of
+  // its id's hash — and has settled 0.4 later, so the middle of the shell is on its way out at about
+  // 0.35 and its edge has settled by 0.95. This follows the shell between the two, over that whole
+  // stretch: the outer layers it carries out are much of the picture's light, and following the
+  // edge alone, which travels in the last 0.4, they came on so steeply that a frame of them turned
+  // most of a tenth of the light on at once.
+  const shellOut = smooth01((swirl - 0.35) / 0.6);
   return {
     time,
     radius,
@@ -1412,15 +1880,29 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
     // And how far the ring has bloomed, in the last stretch of each pass.
     pulse: intoScan > SCAN_SECONDS - PULSE_SECONDS ? (intoScan - (SCAN_SECONDS - PULSE_SECONDS)) / PULSE_SECONDS : 0,
     arrival,
-    bodyShare: script.density,
-    // Everything but the core recedes while he thinks, so that the plane sweeping through him is
-    // what the eye is left with. Without this the whorl, the rim and the ladder go on doing what
-    // they always do and the sweep is one more thing happening among several — which is how the
-    // first version of thinking looked, and why it did not read as a different state at all.
-    // The whorl recedes while he listens, as while he thinks, so the lattice is what is seen.
-    innerAlpha: (1 - 0.8 * thinking) * (1 - 0.6 * hearing) * smooth01((swirl - 0.15) / 0.6),
-    coreAlpha: smooth01(swirl / 0.25),
-    rimAlpha: (1 - 0.65 * thinking) * smooth01((swirl - 0.55) / 0.45),
+    // The picture arrives as the vortex does: the core first, on its own; then everything round the
+    // shell of specks, carried out of the core with it (`shellReach`, a share of where it settles),
+    // so that none of it is ever drawn round a ball that is not there yet — the aura did glow round
+    // nothing when it came up with the core, and the cage hung round nothing coming up after it.
+    // The aura brightens as the specks are carried out, and the cage and the embers come up a
+    // little behind it. The core comes up over the first 0.4 of the vortex rather than all at once:
+    // over a quarter, under the view's own fade, a frame of it turned 8% of the light on at once.
+    //
+    // Everything but the core's ring recedes while he thinks, so that the plane sweeping through
+    // him is what the eye is left with. Without this the rest goes on doing what it always does and
+    // the sweep is one more thing happening among several — which is how the first version of
+    // thinking looked, and why it did not read as a different state at all.
+    coreAlpha: smooth01(swirl / 0.4),
+    auraAlpha: (1 - 0.5 * thinking) * shellOut,
+    // From the 0.04 swirlFragment starts every fragment at, to 1.
+    shellReach: 0.04 + 0.96 * shellOut,
+    cageAlpha: (1 - 0.5 * thinking) * smooth01((swirl - 0.4) / 0.6),
+    // The core's glowing disc dims while he listens as well as while he thinks, so the lattice is
+    // what is seen.
+    coreGlow: (1 - 0.4 * thinking) * (1 - 0.3 * hearing),
+    // Which of the embers show: some of them always, and more while he talks, all of them on the
+    // low notes of his voice — as the fray answers the high ones.
+    emberShare: EMBERS_IN_SILENCE + (1 - EMBERS_IN_SILENCE) * agitation * (0.55 + 0.45 * lowDrive),
     swirl,
     hearing,
     hearingLevel,
@@ -1430,47 +1912,54 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
     swirled: [0, 0, 0, 0, 0],
     agitation,
     // Half the calm fragments hand over to fast ones at full agitation, so the turnover rises
-    // by about half (the film's churn on "Doctor." rises from 8 to 13 per frame). Half and no
-    // more, because pool 1 lights the ids below 2·mix: at this share, and only at this share,
+    // by about half (the Age of Ultron footage's churn on "Doctor." rises from 8 to 13 per frame).
+    // Half and no more, because pool 1 lights the ids below 2·mix: at this share, and only at this share,
     // the fragments pool 1 lights make up for the ones pool 0 puts out at every agitation.
     // Past it pool 1 runs out of ids to light and the body thins while he talks — which dims
     // the ball, and, with fewer strokes going out and coming back, makes it churn less rather
     // than more, which is the opposite of what speech is supposed to look like.
     mix: 0.5 * agitation,
-    // A third of the bright fragments step down while he talks, and the hot cores that make the
-    // film's luma-200 highlights go almost entirely (section 4.2: they drop by about 70%). The
-    // strokes themselves stay bright: it is the hot pixels that leave, not the texture.
+    // A third of the bright fragments step down while he talks, and their hot cores go almost
+    // entirely, as the Age of Ultron footage's luma-200 highlights drop by about 70% on "Doctor.".
+    // The strokes themselves stay bright: it is the hot pixels that leave, not the texture.
     hotShare: 1 - 0.35 * agitation,
-    spread: agitation * (0.7 + 0.3 * lowDrive),
     frayDrive: agitation * (0.55 + 0.45 * highDrive),
     burstAge,
     burstStrength: clamp01(frame.burstStrength) * formed,
     // how far the burst throws, and how many chips
     burstReach: clamp01(frame.burstStrength),
     burstCount: Math.floor(frame.burstCount),
-    // wrapped to one turn: the canvas takes float32 angles, which would lose the per-frame
-    // step of a sphere left mounted for hours
     /**
-     * Somewhere for placeFragment to put its four numbers: made once a frame, not once a fragment.
+     * Somewhere for placeFragment to put its seven numbers: made once a frame, not once a fragment.
      * Only what composes the body from the helpers uses it; the phone's loop keeps its numbers in locals.
      */
-    scratch: [0, 0, 0, 0],
+    scratch: [0, 0, 0, 0, 0, 0, 0],
     /** The same for whether a fragment is lit at all, and what it is; see {@link readFragment}. */
     reading: [0, 0, 0, 0, 0],
     /** And for whether the thinking plane is in the middle of one; see {@link scanned}. */
     scanBright: [0],
     bodyCos: Math.cos(bodyYaw),
     bodySin: Math.sin(bodyYaw),
-    /** What the halos and the volume multiply their alpha by: 1 in silence, up to 1 + GLOW_WITH_VOICE. */
+    /** What the halos and the aura multiply their alpha by: 1 in silence, up to 1 + GLOW_WITH_VOICE. */
     glowGain: 1 + GLOW_WITH_VOICE * (GLOW_FROM_ENVELOPE * agitation + (1 - GLOW_FROM_ENVELOPE) * voice),
+    // How far the core ring's brighter stretches have rolled round it. This and the inner layer's
+    // turn are wrapped to one turn: the GPU takes float32 numbers, which would lose the per-frame
+    // step of a sphere left mounted for hours.
     roll: fraction((time * ROLL_DEGREES_PER_SECOND) / 360) * 360,
-    // the whorl winds up with the vortex, settling to its own slow turn as the particles do
+    // And how far the truss round his edge has rolled, on its own clock.
+    rimRoll: fraction((time * RIM_ROLL_DEGREES_PER_SECOND) / 360) * 360,
+    // the inner layer winds up with the vortex, settling to its own slow turn as the specks do
     shellTurn: fraction((time * SHELL_DEGREES_PER_SECOND - 540 * settle * settle) / 360) * 360,
+    // How far the gyroscope's arcs are rocked off the inner layer's turn while he talks, in degrees
+    // (see GYRO_SWAY_DEGREES and turnOfGroup): nothing at all in silence.
+    gyroSway:
+      agitation *
+      (GYRO_SWAY_DEGREES * Math.sin(time * GYRO_SWAY_RADIANS_PER_SECOND) +
+        GYRO_SWAY_SECOND_DEGREES * Math.sin(time * GYRO_SWAY_SECOND_RADIANS_PER_SECOND + GYRO_SWAY_SECOND_PHASE)),
     streamCos: Math.cos(yaw),
     streamSin: Math.sin(yaw),
     // the core's brightness drifts a few percent over many seconds; it never beats
     coreDrift: 1 + 0.03 * Math.sin(time * 0.53 + 1.1),
-    script,
   };
 }
 
@@ -1481,30 +1970,21 @@ export function analyseFrame(frame: HologramFrame, size: number, scene: Hologram
  * some other way — the headset's draws the body in three dimensions on the GPU — so that it takes
  * the same state from the same frame instead of keeping a copy of this arithmetic that drifts.
  * Its `radius` is in the units of the `size` it was analysed at, `roll` and `shellTurn` are in
- * degrees because that is what a canvas takes, and `scan` is a height measured downward, as every y
- * in this file is.
+ * degrees because that is what Skia's canvas took when it drew him, and `scan` is a height measured
+ * downward, as every y in this file is.
  */
 export type HologramFrameState = ReturnType<typeof analyseFrame>;
 
-// ---- the volume ---------------------------------------------------------------------------
-
-/**
- * Whether a fragment is part of the ball at all, 0..1: the script's slow fragment density thins
- * them out a little, in the order revealKey gives.
- */
-export function fragmentShown(revealOrder: number, state: HologramFrameState) {
-  'worklet';
-  return clamp01((state.bodyShare * 1.12 - revealOrder) * 9);
-}
+// ---- the fragments ------------------------------------------------------------------------
 
 /**
  * How lit a fragment is this frame, 0..1 (0 = dark): its clock's fade envelope times its pool's
  * share. Pool 0 (calm) gives up the lowest ids as `mix` rises; pool 1 (fast) lights ids below
- * 2·mix. Whether a fragment is there at all is fragmentShown.
+ * 2·mix.
  *
  * The envelope fades over a third of the lit window at each end rather than the quarter it
- * was. A fragment's paint does not fade with it — only its length does, since a paint is set
- * once for the whole tier's path — so the fade is how quickly a lit stroke arrives in the
+ * was. A fragment's paint does not fade with it — only its length does, since its tier's paint is
+ * the same however lit it is — so the fade is how quickly a lit stroke arrives in the
  * pixels it covers, and with the fragment clocks running half again as fast as before, a
  * quarter of the window had come down to three frames and each arrival showed as a step.
  */
@@ -1517,7 +1997,7 @@ export function fragmentStrength(life: number, id: number, pool: number, state: 
 }
 
 /**
- * Which body builder a fragment goes to: 0 dim, 1 mid, 2 bright. Fading fragments and
+ * Which tier a fragment is drawn in: 0 dim, 1 mid, 2 bright. Fading fragments and
  * thinned-out hot ones step down.
  */
 export function fragmentTier(brightness: number, strength: number, id: number, hotShare: number) {
@@ -1538,35 +2018,187 @@ export function fragmentTier(brightness: number, strength: number, id: number, h
 }
 
 /**
- * Where a fragment lands on screen this frame, and how much of it survives the limb.
+ * How much a speck seen face on through his shell is dimmed: one seen square through the shell
+ * keeps 1 − this of its light, one at the silhouette all of it.
  *
- * Writes `x`, `y`, `depth` and `edge` into `out` rather than returning them, because whatever
- * composes the body from it places a couple of thousand fragments a frame, and an object apiece
- * would be a frame's worth of rubbish to collect. It is the definition the GPU's body is held to,
- * and what its CPU reference (`gpu/fragment-3d.ts`) composes the body from.
+ * As a glowing shell seen edge on is brightest, a speck is dimmed by how squarely the eye looks
+ * through the ball where it is seen — the square of the cosine between the line of sight and his
+ * radius there, which for a speck at its place is its depth over its distance from his centre —
+ * from any side and as he turns. Where it is seen, rather than where it sits, so a speck his voice
+ * carries in from the edge dims as it comes.
+ *
+ * Only a little. The film's donut asked for 0.85, which left his middle to the core and the dark;
+ * the user preferred the old body's density, so his middle is filled ({@link BODY_FILL_SHARE}) and
+ * dimmed by a quarter at most: enough that the ring of beads round his edge still leads.
+ *
+ * Dimmed means fainter and in a lower tier, not shorter: a speck keeps its length, so the specks
+ * across the middle are lines rather than dots — the user asked that a spark read as a line and not
+ * a bead.
  */
-export function placeFragment(
-  body: number[],
-  offset: number,
-  along: number,
-  across: number,
-  state: HologramFrameState,
-  out: number[],
-) {
+export const SHELL_FACE_DIMMING = 0.25;
+
+/**
+ * How far behind the plane through his middle, in R, the back of his shell begins. Every speck
+ * further back than this is drawn in the dim tier, whatever its class, so the back of the shell is
+ * depth rather than clutter. Not from the plane itself: a glowing shell is brightest at its
+ * silhouette, from both sides of it, and cut there the ring of beads round his edge would be half
+ * dim, the specks just behind the limb dark beside the ones just in front of it. Specks this close
+ * behind the plane are only ever seen at the edge of the donut.
+ */
+export const BACK_OF_THE_SHELL = 0.2;
+
+/**
+ * What {@link SHELL_FACE_DIMMING} leaves of a speck's light, seen at (`seenX`, `seenY`) in the
+ * plane through his centre, for the square of its distance from his centre: the squared cosine is
+ * `1 − seen²/radius²`, and nothing is dimmed outside its own radius. The body's own maths, here and
+ * on the GPU.
+ */
+export function shellFacing(seenX: number, seenY: number, radiusSquared: number) {
   'worklet';
-  const unitX = body[offset + 2];
-  const unitY = body[offset + 3];
+  if (radiusSquared <= 0) return 1;
+  return 1 - SHELL_FACE_DIMMING * clamp01(1 - (seenX * seenX + seenY * seenY) / radiusSquared);
+}
+
+/**
+ * Which way a speck lies in the plane of the view, seen at (`seenX`, `seenY`): its row's direction
+ * (`unitX`, `unitY`) is kept relative to the ring through where it is seen — `unitX` along that
+ * ring, clockwise, and `unitY` out from his middle — and this turns it into the view's x and y,
+ * written into `out[at]` and `out[at + 1]`.
+ *
+ * The film's specks run along the ring like beads on a necklace. A direction held in the plane of
+ * the view would lie along the ring only where the speck rested, and the body turns like a globe,
+ * so a quarter turn later the beads at the edge of the donut would be the ones that had been
+ * crossing his face, lying any way at all. Kept relative to where it is seen, a speck lies along
+ * the ring wherever the turn carries it. At his very middle there is no ring, and the row's
+ * direction is taken as it is.
+ */
+export function ringDirection(seenX: number, seenY: number, unitX: number, unitY: number, out: number[], at: number) {
+  'worklet';
+  const seen = Math.sqrt(seenX * seenX + seenY * seenY);
+  if (seen <= 0) {
+    out[at] = unitX;
+    out[at + 1] = unitY;
+    return;
+  }
+  const outwardX = seenX / seen;
+  const outwardY = seenY / seen;
+  // Along the ring is the outward direction turned a quarter clockwise on screen (y down).
+  out[at] = -outwardY * unitX + outwardX * unitY;
+  out[at + 1] = outwardX * unitX + outwardY * unitY;
+}
+
+/**
+ * Which group a body row's class code (see {@link FRAGMENT_CODE_GLYPH_STEP}) puts it in: 0 the globe,
+ * or one of the groups held in the plane of the view and turned in it on a clock of its own — the
+ * whorl's inner layer, the gyroscope ({@link GYRO_GROUP}) or the truss ({@link TRUSS_GROUP}).
+ */
+export function fragmentGroup(code: number) {
+  'worklet';
+  const kind = code - FRAGMENT_CODE_GLYPH_STEP * Math.floor(code / FRAGMENT_CODE_GLYPH_STEP);
+  return Math.floor(kind / FRAGMENT_GROUP_STEP);
+}
+
+/**
+ * How far a group is turned in the plane of the view this frame, in degrees clockwise: nothing for
+ * the globe, which turns about the vertical instead; `shellTurn` for the whorl; `shellTurn` rocked
+ * by `gyroSway` for the gyroscope's arcs, those within {@link GYRO_GIMBAL_SPLIT} of the core one way
+ * and those beyond it the other, as a gimbal's rings swing against each other; and `rimRoll` for the
+ * truss. `fromCore` is how far the row rests from the core, in R.
+ *
+ * The truss turns about his middle and every other group about the core (`CORE_X`, `CORE_Y`).
+ */
+export function turnOfGroup(group: number, fromCore: number, state: HologramFrameState) {
+  'worklet';
+  if (group === INNER_LAYER_GROUP) return state.shellTurn;
+  if (group === GYRO_GROUP) return state.shellTurn + (fromCore < GYRO_GIMBAL_SPLIT ? state.gyroSway : -state.gyroSway);
+  if (group === TRUSS_GROUP) return state.rimRoll;
+  return 0;
+}
+
+/**
+ * How far a speck lies off its own way while he thinks, at the user's asking ("While thinking, the
+ * direction of the glow lines should randomize"): up to half of this either way, in radians, at full
+ * thought.
+ */
+export const THOUGHT_SCATTER = Math.PI;
+/** What a speck's re-lighting hop is hashed by to deal its angle: far from the wander's 23.17. */
+export const THOUGHT_FROM_HOP = 41.73;
+
+/**
+ * How far a speck is turned off the way it lies while he thinks, in radians clockwise: his
+ * `thinking` times an angle within ±{@link THOUGHT_SCATTER}/2 dealt from `hop`, the hash of its id
+ * and its blink that says where it re-lights, so every speck lies some new way each time it lights
+ * rather than the body being combed once. It eases in and out with the thought, and in silence it
+ * is nothing. The truss's specks keep their way, so its boxes stay boxes.
+ */
+export function thoughtTurn(hop: number, group: number, state: HologramFrameState) {
+  'worklet';
+  if (group === TRUSS_GROUP) return 0;
+  return state.thinking * (fraction(hop * THOUGHT_FROM_HOP) - 0.5) * THOUGHT_SCATTER;
+}
+
+/**
+ * Where a fragment lands on screen this frame, how much of it survives the limb, and how much of
+ * its light the shell it is seen through leaves it ({@link shellFacing}).
+ *
+ * `hop` is where its blink re-lights it, a hash of its id and which blink it is on: it lies along the
+ * ring where it is seen, turned while he thinks by {@link thoughtTurn}; it slides along the way it
+ * lies by a share of its length, and wanders along and across from where it rests by
+ * {@link FRAGMENT_WANDER}, and further along it while he talks — less so the nearer the limb it is
+ * seen, so the silhouette holds while the inside churns. The gyroscope's arcs do not churn with the
+ * rest: they rock while he talks instead ({@link GYRO_SWAY_DEGREES}), and slid along their circles
+ * by the churn they would smear into rings, whose rocking nobody could see. The truss's specks only
+ * slide along their rails and rungs, and its limb never cuts them: it lies out past the limb.
+ *
+ * Writes `x`, `y`, `depth`, `edge` (the limb's share of its length) and `light` (the shell's share
+ * of its paint, and for the truss what thinking leaves it: {@link TRUSS_THINKING_DIM}) into `out`, and the way the speck lies ({@link ringDirection}) after them, rather
+ * than returning them, because whatever composes the body from it places a couple of thousand
+ * fragments a frame, and an object apiece would be a frame's worth of rubbish to collect. It is the
+ * definition the GPU's body is held to, and what its CPU reference (`gpu/fragment-3d.ts`) composes
+ * the body from.
+ */
+export function placeFragment(body: number[], offset: number, hop: number, state: HologramFrameState, out: number[]) {
+  'worklet';
   // Turned about the vertical axis before anything else: the fragment wanders around where it
-  // sits on the turning ball, not around a fixed place on the screen.
+  // sits on the turning ball, not around a fixed place on the screen, and lies along the ring
+  // through where it is seen there.
   const rest = body[offset];
-  const depthAtRest = body[offset + 9];
-  const turnedX = rest * state.bodyCos + depthAtRest * state.bodySin;
-  const y = body[offset + 1] + unitY * along + unitX * across;
-  out[0] = turnedX + unitX * along - unitY * across;
+  const restY = body[offset + 1];
+  const depthAtRest = body[offset + 8];
+  const group = fragmentGroup(body[offset + 7]);
+  // The whorl's, the arcs' and the truss's specks are held in the plane of the view and turn only
+  // in it, so its arms stay arms and the arcs and boxes stay arcs and boxes however far the globe
+  // has turned.
+  const held = group > 0;
+  const turnCos = held ? 1 : state.bodyCos;
+  const turnSin = held ? 0 : state.bodySin;
+  const turnedX = rest * turnCos + depthAtRest * turnSin;
+  ringDirection(turnedX, restY, body[offset + 2], body[offset + 3], out, 5);
+  // While he thinks it lies some way dealt afresh at each blink.
+  const scatter = thoughtTurn(hop, group, state);
+  const scatterCos = Math.cos(scatter);
+  const scatterSin = Math.sin(scatter);
+  const unitX = out[5] * scatterCos - out[6] * scatterSin;
+  const unitY = out[5] * scatterSin + out[6] * scatterCos;
+  out[5] = unitX;
+  out[6] = unitY;
+  const inward = group === GYRO_GROUP ? 0 : clamp01((0.76 - (turnedX * turnedX + restY * restY)) * 3.2);
+  const wander = fraction(hop * 23.17) - 0.5;
+  const along = (hop - 0.5) * 1.4 * body[offset + 4] + wander * 1.3 * state.agitation * inward;
+  // The truss's specks slide only along their rails and rungs, so its lines stay lines.
+  const truss = group === TRUSS_GROUP;
+  const across = truss ? 0 : wander * FRAGMENT_WANDER;
+  const y = restY + unitY * along + unitX * across;
+  const x = turnedX + unitX * along - unitY * across;
+  out[0] = x;
   out[1] = y;
-  out[2] = depthAtRest * state.bodyCos - rest * state.bodySin;
-  // Nothing pops at the limb as it turns out of sight.
-  out[3] = clamp01((0.94 * 0.94 - turnedX * turnedX - y * y) * 8);
+  out[2] = depthAtRest * turnCos - rest * turnSin;
+  // Nothing pops at the limb as it turns out of sight, or as it wanders out past it. The truss lies
+  // past the limb on purpose, and is never cut by it.
+  out[3] = truss ? 1 : clamp01((0.94 * 0.94 - x * x - y * y) * 8);
+  // The truss is not put out by the thinking plane as the rest of him is: it recedes instead.
+  const light = shellFacing(x, y, rest * rest + restY * restY + depthAtRest * depthAtRest);
+  out[4] = truss ? light * (1 - TRUSS_THINKING_DIM * state.thinking) : light;
 }
 
 /**
@@ -1578,7 +2210,7 @@ export function placeFragment(
  * fail first are the ones that cost least to ask.
  *
  * Returns the strength, or 0 for a fragment that is not drawn, and writes what the caller needs
- * into `into`: strength, glyph, which pair of builders it belongs to, which blink it is on, and its
+ * into `into`: strength, glyph, its group ({@link fragmentGroup}), which blink it is on, and its
  * brightness tier. An array rather than an object because whatever composes the body from it asks it
  * of thousands of fragments a frame, and it is the array {@link HologramFrameState.reading} keeps
  * for exactly that reason. It is the definition the GPU's body is held to (`gpu/fragment-3d.ts`).
@@ -1586,7 +2218,7 @@ export function placeFragment(
 export function readFragment(body: number[], offset: number, state: HologramFrameState, into: number[]): number {
   'worklet';
   // Is it lit at all? This is the cheapest question to ask of them: everything below — unpacking
-  // its class, where it sits in the reveal — is work the ones that fail would only throw away.
+  // its class, its pool's share — is work the ones that fail would only throw away.
   // Whether this device can afford it at all is not asked here: that is the density share's, which
   // keeps the fragments whose `densityKey` is under it.
   const id = body[offset + BODY_ID_FIELD];
@@ -1594,24 +2226,22 @@ export function readFragment(body: number[], offset: number, state: HologramFram
   const cycle = Math.floor(cycles);
   const life = cycles - cycle;
   if (life >= FRAGMENT_DUTY) return 0;
-  const shown = fragmentShown(body[offset + 8], state);
-  if (shown <= 0) return 0;
 
   const packed = body[offset + 7];
   const glyph = Math.floor(packed / FRAGMENT_CODE_GLYPH_STEP);
   const code = packed - glyph * FRAGMENT_CODE_GLYPH_STEP;
   // The code packs three things by addition — brightness 0-2, plus 3 if it belongs to the
-  // fast pool, plus 6 if it rides the counter-turning shell — so division takes them apart.
-  const turning = 3 * Math.floor(code / 6);
-  const pool = Math.floor((code - turning * 2) / 3);
-  const strength = shown * fragmentStrength(life, id, pool, state);
+  // fast pool, plus FRAGMENT_GROUP_STEP times its group — so division takes them apart.
+  const group = Math.floor(code / FRAGMENT_GROUP_STEP);
+  const pool = Math.floor((code - FRAGMENT_GROUP_STEP * group) / 3);
+  const strength = fragmentStrength(life, id, pool, state);
   if (strength < FRAGMENT_FAINTEST) return 0;
 
   into[0] = strength;
   into[1] = glyph;
-  into[2] = turning;
+  into[2] = group;
   into[3] = cycle;
-  into[4] = code - 3 * pool - 2 * turning;
+  into[4] = code - 3 * pool - FRAGMENT_GROUP_STEP * group;
   return strength;
 }
 
@@ -1756,10 +2386,8 @@ export function readShellFragment(stream: number[], offset: number, state: Holog
   const cycles = state.time * stream[offset + 5] + stream[offset + 6];
   const life = cycles - Math.floor(cycles);
   if (life >= FRAGMENT_DUTY) return 0;
-  const shown = fragmentShown(stream[offset + 10], state);
-  if (shown <= 0) return 0;
   const pool = stream[offset + 8] >= 3 ? 1 : 0;
   state.reading[0] = pool;
-  const strength = shown * fragmentStrength(life, id, pool, state);
+  const strength = fragmentStrength(life, id, pool, state);
   return strength < FRAGMENT_FAINTEST ? 0 : strength;
 }

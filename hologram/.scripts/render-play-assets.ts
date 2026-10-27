@@ -73,7 +73,7 @@ const ICON_SPHERE_DIAMETER = 0.9;
  * The same for Android's adaptive icon, whose foreground is a 108dp square the launcher masks to
  * the middle 72dp — a circle on a Pixel, and on a watch face — and may pull about by a further
  * few dp as it animates. So he fills 64 of the 108: nearly all of what any mask shows, with a
- * narrow edge the rim's segments — which stand just proud of his limb — still fit inside.
+ * narrow edge for what stands just proud of his limb.
  */
 const ADAPTIVE_ICON_SPHERE_DIAMETER = 64 / 108;
 

@@ -15,6 +15,8 @@ timeout 1200 bunx turbo e2e --filter=vr         # the browser tests, against a f
 timeout 60  bunx turbo lint --filter=vr
 bunx turbo serve --filter=vr                    # Vite's dev server on the LAN (persistent: run it in the background)
 timeout 3600 bun vr/.scripts/render-demo.ts     # the demo video, after a build (see "The demo video")
+timeout 300 bun vr/.scripts/render-picture-goldens.ts  # his picture's goldens drawn again, on purpose, after a build
+                                                # (see "The browser tests")
 ```
 
 `serve` does not run `initialize`; run that once first, or onnxruntime-web's

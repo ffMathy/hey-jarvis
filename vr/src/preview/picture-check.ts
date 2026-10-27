@@ -1,12 +1,15 @@
 import {
   analyseFrame,
   arrivalOf,
-  createHologramScene,
+  BODY_TURN_SECONDS,
+  CORE_RING_RADIUS,
+  CORE_X,
+  CORE_Y,
   MATERIALISE_SECONDS,
   orbitPoint,
   PLAIN_RING_GLYPH,
+  ROLL_DEGREES_PER_SECOND,
   SAMPLE_AGENTS,
-  SCENE_SEED,
   SCREEN_GLYPH_RADII,
   SCREEN_ORBIT_RADII,
   SPHERE_FRACTION,
@@ -19,6 +22,7 @@ import type {
   PictureCheck,
   PictureCheckRequest,
   PictureFacts,
+  PictureGoldenRequest,
   PictureMoment,
   PictureOrbit,
   PictureOrbitPoint,
@@ -34,7 +38,6 @@ import type {
  * headset's is every frame, so a test can tell whether anything one frame draws reaches the next.
  */
 
-const scene = createHologramScene(SCENE_SEED);
 const targets = new Map<number, PictureTarget>();
 
 function targetOf(renderer: WebGLRenderer, size: number): PictureTarget {
@@ -49,7 +52,7 @@ function targetOf(renderer: WebGLRenderer, size: number): PictureTarget {
 /** Draws `moment` into the `size`-pixel target and reads it back: RGBA, premultiplied, bottom row first. */
 function drawMoment(renderer: WebGLRenderer, size: number, moment: PictureMoment): Uint8Array {
   const target = targetOf(renderer, size);
-  target.draw(analyseFrame(moment.frame, 1, scene), moment.satellites ?? NO_SATELLITES);
+  target.draw(analyseFrame(moment.frame, 1), moment.satellites ?? NO_SATELLITES);
   const pixels = new Uint8Array(size * size * 4);
   renderer.readRenderTargetPixels(target.target, 0, 0, size, size, pixels);
   return pixels;
@@ -79,18 +82,19 @@ export function drawPictures(renderer: WebGLRenderer, request: PictureRequest): 
 }
 
 export function pictureFacts(): PictureFacts {
-  // Six numbers an epoch, its start first (see the script in hologram's `hologram-drawing.ts`).
-  const scriptBoundaries: number[] = [];
-  for (let offset = 0; offset < scene.epochs.length; offset += 6) scriptBoundaries.push(scene.epochs[offset]);
   return {
     voiceBandCount: VOICE_BAND_COUNT,
     sphereFraction: SPHERE_FRACTION,
     materialiseSeconds: MATERIALISE_SECONDS,
-    scriptBoundaries,
     plainRingGlyph: PLAIN_RING_GLYPH,
     sampleGlyphs: SAMPLE_AGENTS.map((agent) => agent.glyph),
     screenOrbitRadii: SCREEN_ORBIT_RADII,
     screenGlyphRadii: SCREEN_GLYPH_RADII,
+    coreAcross: CORE_X,
+    coreDown: CORE_Y,
+    coreRingRadius: CORE_RING_RADIUS,
+    rollDegreesPerSecond: ROLL_DEGREES_PER_SECOND,
+    bodyTurnSeconds: BODY_TURN_SECONDS,
   };
 }
 
@@ -103,7 +107,7 @@ export function orbitPoints(orbits: readonly PictureOrbit[], time: number): Pict
 
 /**
  * A PNG's pixels, top row first, as it holds them: unpremultiplied and with no colour conversion,
- * which is how Skia's goldens were written.
+ * which is how {@link pictureGolden} writes the goldens.
  */
 async function pixelsOfPng(base64: string, size: number): Promise<Uint8ClampedArray> {
   const image = await createImageBitmap(new Blob([bytesOf(base64)], { type: 'image/png' }), {
@@ -174,7 +178,7 @@ function spreadOf(counts: Uint32Array, channels: number) {
 }
 
 /**
- * Compares the GPU picture of a moment with Skia's: RGB only, since the golden is Skia's picture
+ * Compares the GPU picture of a moment with its golden: RGB only, since the golden is the picture
  * over black and the GPU's premultiplied light over transparent black is the same light; the GPU's
  * rows are flipped, a framebuffer being read bottom row first.
  */
@@ -191,4 +195,23 @@ export async function checkPicture(renderer: WebGLRenderer, request: PictureChec
     meanLuma: meanLumaOf(drawn),
     goldenMeanLuma: meanLumaOf(golden),
   };
+}
+
+/**
+ * The GPU picture of a moment as a golden of it, a PNG in base64: drawn as {@link checkPicture}
+ * draws it, its rows flipped to the top first, and its premultiplied light over transparent black
+ * written as RGB over black with every pixel opaque — so {@link pixelsOfPng} reads back exactly the
+ * RGB the check compares.
+ */
+export async function pictureGolden(renderer: WebGLRenderer, request: PictureGoldenRequest): Promise<string> {
+  const { size } = request;
+  const image = new ImageData(size, size);
+  image.data.set(flipped(drawMoment(renderer, size, request), size));
+  for (let alpha = 3; alpha < image.data.length; alpha += 4) image.data[alpha] = 255;
+  const canvas = new OffscreenCanvas(size, size);
+  const context = canvas.getContext('2d');
+  if (context === null) throw new Error('No 2D canvas to write the golden with.');
+  context.putImageData(image, 0, 0);
+  const png = await canvas.convertToBlob({ type: 'image/png' });
+  return base64Of(new Uint8Array(await png.arrayBuffer()));
 }

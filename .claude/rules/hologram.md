@@ -26,6 +26,7 @@ Each topic is a rule of its own, under the same paths:
 - [What is said while he connects is kept, not lost](hologram-what-is-said-while-he-connects-is-kept-not-lost.md)
 - [What the phone's camera button needs of it](hologram-what-the-phone-s-camera-button-needs-of-it.md)
 - [Worklets](hologram-worklets.md)
+- [What he looks like](hologram-what-he-looks-like.md)
 - [A second renderer: the headset](hologram-a-second-renderer-the-headset.md)
 - [Him on the GPU, on a phone and a watch](hologram-his-body-on-the-gpu-on-a-phone-and-a-watch.md)
 - [Tilt to look around, on the phone and the watch](hologram-tilt-to-look-around-on-the-phone-and-the-watch.md)

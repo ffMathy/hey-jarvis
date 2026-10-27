@@ -79,9 +79,9 @@ const COVER_NAME = 'JARVIS';
 const COVER_NAME_SIZE = 92;
 /** Space between letters, as a share of their size. Wide: it is a name on a ring, not a sentence. */
 const COVER_NAME_TRACKING = 0.62;
-/** The same amber the sphere is made of, and the same glow under it. */
-const COVER_NAME_INK = '#ffd18a';
-const COVER_NAME_GLOW = '#e8902a';
+/** The same pale orange the sphere is made of, and the same glow under it (`gpu-picture.ts`'s paints). */
+const COVER_NAME_INK = '#ffbc80';
+const COVER_NAME_GLOW = '#d65a22';
 /** The glow's blur, as a standard deviation in pixels: what a canvas's `blur()` filter takes. */
 const COVER_NAME_GLOW_BLUR = 14;
 /** How much clear space to leave round the emblem once it has been cropped to what it drew. */

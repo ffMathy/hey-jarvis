@@ -3,7 +3,7 @@ import { blockExternalRequests } from './external-requests';
 
 /**
  * Jarvis on the GPU, in the phone's web build: all of him — his body and the rest of him, the
- * whorl, the core, the rim and the satellites — is drawn by `hologram/gpu` into one canvas
+ * core, the cage, the aura, the embers and the satellites — is drawn by `hologram/gpu` into one canvas
  * (`hologram-canvas`). Where the browser cannot draw him there is no GL view and nothing of him, and
  * the screen goes on without him. See "His body on the GPU, on a phone and a watch" in `.claude/rules/hologram-his-body-on-the-gpu-on-a-phone-and-a-watch.md`.
  *
@@ -14,6 +14,11 @@ import { blockExternalRequests } from './external-requests';
  * manages and the density loop steers the share of particles by it, so two pictures would be of
  * different moments with different particles in them. Stepped, both are of the same moment, with
  * the same particles, every time.
+ *
+ * What the clock does not stop is React. Its scheduler runs renders, commits and effects in tasks of
+ * its own, on real time, so after a tap and after every step the spec waits for those to have run
+ * (`untilReactIsIdle`) before it reads the page or steps again. Otherwise how far React had got
+ * would be a race with the machine's speed, and a busy one would land the same work a step later.
  *
  * The numbers below that are the hologram's own are written out rather than imported, so the page
  * is held to numbers this file states rather than to whatever it and the bundle happen to share.
@@ -35,6 +40,8 @@ declare global {
     startedGravitySensors?: () => number;
     /** What lost his canvas's context, kept to give it back with. */
     canvasContextLoss?: WEBGL_lose_context;
+    /** How many messages the page has posted on any `MessagePort`: see `countPostedMessages`. */
+    postedMessages?: () => number;
   }
 }
 
@@ -103,7 +110,7 @@ const SETTLED_FRAMES = 50;
 
 /**
  * The least share of his canvas that comes out differently when the eye moves: as it
- * comes in from infinitely far to the phone's, measured at 21%, and as a 15° tip turns him, at 34%.
+ * comes in from infinitely far to the phone's, measured at 22%, and as a 15° tip turns him, at 38%.
  * A tenth is well below either and far above the nothing a view that never moved would differ by.
  */
 const MOVED_EYE_SHARE = 0.1;
@@ -119,9 +126,9 @@ const BEFORE_THE_TIMEOUT_FRAMES = 6;
 
 /**
  * The sphere at its largest, as a radius in sides of the drawing's square: `SPHERE_FRACTION` (0.27)
- * swollen as far as his voice swells him (`SWELL_WITH_VOICE`, 18%). His body is the fragments
- * inside it, and his rim rings it. What lies beyond is the stream flowing out of it and the chips
- * he throws past the limb while he speaks.
+ * swollen as far as his voice swells him (`SWELL_WITH_VOICE`, 18%). His body is the shell of specks
+ * inside it, round the white-hot ring at his core. What lies beyond it is the cage, the aura and the
+ * embers round him, and the fray and the chips he throws past the limb while he speaks.
  */
 const SPHERE_AT_LARGEST = 0.27 * 1.18;
 
@@ -140,8 +147,13 @@ function tippedAway(degrees: number): Reading {
   return [0, -9.81 * Math.cos(radians), -9.81 * Math.sin(radians)];
 }
 
-/** How many steps the view may take to mount: sample mode draws him once its sheet has settled, on the page's clock. */
-const MOUNT_STEPS_AT_MOST = 10;
+/**
+ * The most messages `untilReactIsIdle` sends round before it gives up on React running out of work.
+ * A tap or a step sets React off on a handful of tasks, and ten thousand round trips take a quarter
+ * of a second in Chromium here, so this is only there for a page that never stops posting: it fails
+ * with a reason rather than hanging until the test's own timeout.
+ */
+const ROUND_TRIPS_AT_MOST = 10_000;
 
 /** Keeps every error the page throws, for a test to say there were none. */
 function collectPageErrors(page: Page): string[] {
@@ -151,37 +163,111 @@ function collectPageErrors(page: Page): string[] {
 }
 
 /**
- * Opens sample mode on a stopped clock and steps it until the hologram's view has mounted, returning
- * how many steps that took.
+ * Counts every message the page posts on a `MessagePort`, passing each one on as it was, for
+ * `untilReactIsIdle`. React DOM's scheduler queues each piece of its work by posting itself a message
+ * on a `MessageChannel`, and its count going up is the one sign there is that it has queued more.
+ */
+function countPostedMessages() {
+  const postMessage = MessagePort.prototype.postMessage;
+  let posted = 0;
+  Reflect.defineProperty(MessagePort.prototype, 'postMessage', {
+    configurable: true,
+    writable: true,
+    value(this: MessagePort, ...message: unknown[]) {
+      posted++;
+      return Reflect.apply(postMessage, this, message);
+    },
+  });
+  window.postedMessages = () => posted;
+}
+
+/**
+ * Waits until React has run all the work the page has queued for it, so what a test reads or steps
+ * next is the same on a fast machine and a slow one.
+ *
+ * Playwright's clock fakes timers, animation frames, `Date` and `performance`, so all of his drawing
+ * happens inside a step. React DOM's scheduler uses none of them: it renders, commits and runs
+ * effects — and the renders those set off — in tasks it queues by posting itself a message on a
+ * `MessageChannel`, on real time. So after a tap or a step some of what follows from it is still
+ * queued, and a test that reads the page or steps the clock straight away races it. On a busy
+ * machine the test's next command can run before React's task does, and the work then lands a step
+ * later than it would have: the view mounting, expo-gl making his context, the frame callback and
+ * the tilt's sensor starting.
+ *
+ * A message posted here is delivered after every message posted before it, React's among them, so
+ * by the time it arrives React has run what it had queued — unless that queued more, which the page's
+ * count of posted messages says (`countPostedMessages`). So it is sent round again until one comes
+ * back with nothing posted meanwhile but itself. React then has nothing left to do on real time:
+ * whatever it still has waits on the stopped clock, for a step to run it.
+ */
+async function untilReactIsIdle(page: Page): Promise<void> {
+  const idle = await page.evaluate(async (roundTripsAtMost) => {
+    const postedMessages = window.postedMessages;
+    if (postedMessages === undefined) {
+      throw new Error('The page is not counting the messages it posts: see countPostedMessages');
+    }
+    const roundTrip = () =>
+      new Promise<void>((arrived) => {
+        const channel = new MessageChannel();
+        channel.port1.onmessage = () => {
+          channel.port1.close();
+          arrived();
+        };
+        channel.port2.postMessage(undefined);
+      });
+    for (let roundTrips = 0; roundTrips < roundTripsAtMost; roundTrips++) {
+      const postedBefore = postedMessages();
+      await roundTrip();
+      if (postedMessages() === postedBefore + 1) {
+        return true;
+      }
+    }
+    return false;
+  }, ROUND_TRIPS_AT_MOST);
+  expect(idle, `React was still queuing work after ${ROUND_TRIPS_AT_MOST} round trips`).toBe(true);
+}
+
+/**
+ * Opens sample mode on a stopped clock, with the hologram's view mounted before the clock has moved.
  *
  * The clock runs while the page loads, so nothing in the app waits on a timer that never fires,
- * and stops on the tour. Sample mode draws him only once its sheet has settled, which is a timer of
- * the page's, so the view mounts on the same step every time, and his clock starts on the next.
- * The view is whatever is inside sample mode's `hologram`: where there is a GL view it is in there,
- * and where there is none the view's own square still is.
+ * and stops on the tour. In a browser there is no sheet for him to wait for, so the view mounts in
+ * the renders the tap sets off, which take no timer at all: once React has run them
+ * (`untilReactIsIdle`) the view is there, expo-gl has made his context and set him up in it, and
+ * his frame callback is waiting for the first step. So every page is at the same moment of him when
+ * a test starts stepping, however fast the machine got there. The view is whatever is inside sample
+ * mode's `hologram`: where there is a GL view it is in there, and where there is none the view's own
+ * square still is.
  */
-async function openSampleModeOnAStoppedClock(page: Page, path: string): Promise<number> {
+async function openSampleModeOnAStoppedClock(page: Page, path: string): Promise<void> {
   await page.clock.install();
+  await page.addInitScript(countPostedMessages);
   await page.goto(path);
   await expect(page.getByTestId('try-sample')).toBeVisible();
   await page.clock.pauseAt((await page.evaluate(() => Date.now())) + FRAME_MS);
 
   await page.getByTestId('try-sample').click();
+  await untilReactIsIdle(page);
   await expect(page.getByTestId('hologram')).toBeVisible();
-
-  let steps = 0;
-  while ((await page.getByTestId('hologram').locator(':scope > *').count()) === 0) {
-    expect(steps, 'the hologram view never mounted').toBeLessThan(MOUNT_STEPS_AT_MOST);
-    await page.clock.fastForward(FRAME_MS);
-    steps++;
-  }
-  return steps;
+  expect(
+    await page.getByTestId('hologram').locator(':scope > *').count(),
+    'the hologram view had not mounted before the clock moved',
+  ).toBe(1);
 }
 
-/** Steps the stopped clock one frame at a time: each step runs exactly one animation frame. */
+/**
+ * Steps the stopped clock by one frame, which runs exactly one animation frame, and waits for what
+ * React makes of it.
+ */
+async function stepOneFrame(page: Page): Promise<void> {
+  await page.clock.fastForward(FRAME_MS);
+  await untilReactIsIdle(page);
+}
+
+/** Steps the stopped clock one frame at a time, as `stepOneFrame` does. */
 async function stepFrames(page: Page, frames: number): Promise<void> {
   for (let frame = 0; frame < frames; frame++) {
-    await page.clock.fastForward(FRAME_MS);
+    await stepOneFrame(page);
   }
 }
 
@@ -223,13 +309,14 @@ async function stepReading(page: Page, frames: number, reading: Reading | undefi
     if (reading !== undefined) {
       await page.evaluate(([x, y, z]) => window.tiltTo?.(x, y, z), reading);
     }
-    await page.clock.fastForward(FRAME_MS);
+    await stepOneFrame(page);
   }
 }
 
 /**
  * Sends the page to the background or brings it back, as far as the app can tell — which is what
- * the phone's app sees between summonings — and waits for the tilt's sensor to stop or start with it.
+ * the phone's app sees between summonings — and waits for React to have done what it does about
+ * that, which stops or starts the tilt's sensor with it.
  */
 async function bringToTheFront(page: Page, front: boolean): Promise<void> {
   await page.evaluate((visible) => {
@@ -239,7 +326,8 @@ async function bringToTheFront(page: Page, front: boolean): Promise<void> {
     });
     document.dispatchEvent(new Event('visibilitychange'));
   }, front);
-  await expect.poll(() => page.evaluate(() => window.startedGravitySensors?.())).toBe(front ? 1 : 0);
+  await untilReactIsIdle(page);
+  expect(await page.evaluate(() => window.startedGravitySensors?.())).toBe(front ? 1 : 0);
 }
 
 /** Another page in a context of its own, the size of `like`, opened as `like` was. */
@@ -523,11 +611,13 @@ test('draws all of him on the GPU where the browser has WebGL 2, centred in the 
   const frames = await takeCanvasFrames(page);
 
   // Every frame after the arrival draws him, from the GPU's own pixels: lit, centred in the canvas,
-  // and the size of the sphere. The share lit was measured at 27–40% over these frames, the light's
-  // centre at most 3.2% of the side from the middle — to the left, where the crescent is — and 86% to
-  // all of the light inside the sphere at its largest, the rest the chips he throws past the limb
-  // while he speaks. Drawn off-centre or at the wrong scale (`FlatScreen` given the wrong square),
-  // he is neither.
+  // and the size of the sphere. Measured over these frames when he was redrawn after the Vision Quest
+  // footage: 56–75% of the canvas lit, the light's centre at most 1.5% of the side from the middle —
+  // a little up and to the left, where his core sits — and 81% to 94% of the light inside the sphere
+  // at its largest, the rest the cage, the aura and the embers round him and the chips he throws past
+  // the limb while he speaks. The worst frame is close to the 0.8 held here: light moving out past
+  // the sphere is a change to how he looks, to be looked at rather than allowed for by lowering it.
+  // Drawn off-centre or at the wrong scale (`FlatScreen` given the wrong square), he is neither.
   expect(frames).toHaveLength(10);
   for (const frame of frames) {
     expect(frame.litShare).toBeGreaterThan(0.05);
@@ -546,8 +636,8 @@ test('draws all of him on the GPU where the browser has WebGL 2, centred in the 
   const inTheSquare = lookOf(onThePage, square);
   expect(inTheSquare.litShare).toBeGreaterThan(0.02);
   expect(inTheSquare.litOutside).toBe(0);
-  // And where the sphere is in that square, not only somewhere in it: all of its light was, at this
-  // moment.
+  // And where the sphere is in that square, not only somewhere in it: 96% of the light the screen
+  // shows was, at this moment, when he was redrawn after the Vision Quest footage.
   expect(shareInsideTheSphere(onThePage, square)).toBeGreaterThan(0.85);
 
   expect(pageErrors).toEqual([]);
@@ -704,19 +794,17 @@ test('turns him as the phone tilts, from the phone’s eye, and back to the fron
   page,
   browser,
 }) => {
-  // Three phones stepped alike: one whose sensor never reads, one held upright throughout, and one
-  // held upright and then tipped.
+  // Three phones stepped alike from the same moment of him, before any step: one whose sensor never
+  // reads, one held upright throughout, and one held upright and then tipped.
   const unread = page;
   const still = await anotherPageLike(browser, page);
   const tipped = await anotherPageLike(browser, page);
   const pageErrors = [unread, still, tipped].map(collectPageErrors);
-  const mountedAfter: number[] = [];
   for (const phone of [unread, still, tipped]) {
     await phone.addInitScript(installAGravitySensor);
-    mountedAfter.push(await openSampleModeOnAStoppedClock(phone, '/'));
+    await openSampleModeOnAStoppedClock(phone, '/');
     await measureEveryFrame(hisCanvas(phone));
   }
-  expect(new Set(mountedAfter).size).toBe(1);
 
   // Readings arriving bring the eye in from infinitely far, straight on as a flat projection, to
   // the phone's: the same moment drawn differently. And two phones handed the same readings draw the

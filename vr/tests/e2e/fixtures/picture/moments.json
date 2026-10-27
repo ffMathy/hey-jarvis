@@ -2,7 +2,7 @@
   "size": 512,
   "moments": [
     {
-      "name": "rest-crescent",
+      "name": "rest-early",
       "frame": {
         "time": 3,
         "level": 0,
@@ -20,9 +20,9 @@
       }
     },
     {
-      "name": "rest-truss",
+      "name": "rest-later",
       "frame": {
-        "time": 9,
+        "time": 11.5,
         "level": 0,
         "bands": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         "speaking": false,
@@ -38,81 +38,9 @@
       }
     },
     {
-      "name": "spokes",
+      "name": "rest-latest",
       "frame": {
-        "time": 14,
-        "level": 0,
-        "bands": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        "speaking": false,
-        "agitation": 0,
-        "burstAge": 10,
-        "burstStrength": 0,
-        "burstCount": 0,
-        "appearance": 1,
-        "presence": 1,
-        "thinking": 0,
-        "hearing": 0,
-        "hearingLevel": 0
-      }
-    },
-    {
-      "name": "rest-ring",
-      "frame": {
-        "time": 19.5,
-        "level": 0,
-        "bands": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        "speaking": false,
-        "agitation": 0,
-        "burstAge": 10,
-        "burstStrength": 0,
-        "burstCount": 0,
-        "appearance": 1,
-        "presence": 1,
-        "thinking": 0,
-        "hearing": 0,
-        "hearingLevel": 0
-      }
-    },
-    {
-      "name": "swoosh",
-      "frame": {
-        "time": 24.5,
-        "level": 0,
-        "bands": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        "speaking": false,
-        "agitation": 0,
-        "burstAge": 10,
-        "burstStrength": 0,
-        "burstCount": 0,
-        "appearance": 1,
-        "presence": 1,
-        "thinking": 0,
-        "hearing": 0,
-        "hearingLevel": 0
-      }
-    },
-    {
-      "name": "red",
-      "frame": {
-        "time": 25.17,
-        "level": 0,
-        "bands": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        "speaking": false,
-        "agitation": 0,
-        "burstAge": 10,
-        "burstStrength": 0,
-        "burstCount": 0,
-        "appearance": 1,
-        "presence": 1,
-        "thinking": 0,
-        "hearing": 0,
-        "hearingLevel": 0
-      }
-    },
-    {
-      "name": "lightning",
-      "frame": {
-        "time": 36.5,
+        "time": 20.6,
         "level": 0,
         "bands": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         "speaking": false,
@@ -136,6 +64,42 @@
           0.55, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55,
           0.55, 0.55, 0.55, 0.55, 0.55, 0.55
         ],
+        "speaking": true,
+        "agitation": 1,
+        "burstAge": 10,
+        "burstStrength": 0,
+        "burstCount": 0,
+        "appearance": 1,
+        "presence": 1,
+        "thinking": 0,
+        "hearing": 0,
+        "hearingLevel": 0
+      }
+    },
+    {
+      "name": "speaking-low",
+      "frame": {
+        "time": 33.4,
+        "level": 0.7,
+        "bands": [0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "speaking": true,
+        "agitation": 1,
+        "burstAge": 10,
+        "burstStrength": 0,
+        "burstCount": 0,
+        "appearance": 1,
+        "presence": 1,
+        "thinking": 0,
+        "hearing": 0,
+        "hearingLevel": 0
+      }
+    },
+    {
+      "name": "speaking-high",
+      "frame": {
+        "time": 33.4,
+        "level": 0.7,
+        "bands": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9],
         "speaking": true,
         "agitation": 1,
         "burstAge": 10,
@@ -193,7 +157,25 @@
     {
       "name": "thinking",
       "frame": {
-        "time": 46.5,
+        "time": 45.5,
+        "level": 0,
+        "bands": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "speaking": false,
+        "agitation": 0,
+        "burstAge": 10,
+        "burstStrength": 0,
+        "burstCount": 0,
+        "appearance": 1,
+        "presence": 1,
+        "thinking": 1,
+        "hearing": 0,
+        "hearingLevel": 0
+      }
+    },
+    {
+      "name": "thinking-pulse",
+      "frame": {
+        "time": 46.45,
         "level": 0,
         "bands": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         "speaking": false,
@@ -227,9 +209,9 @@
       }
     },
     {
-      "name": "arriving",
+      "name": "arriving-early",
       "frame": {
-        "time": 0.5,
+        "time": 0.21,
         "level": 0,
         "bands": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         "speaking": false,
@@ -237,8 +219,44 @@
         "burstAge": 10,
         "burstStrength": 0,
         "burstCount": 0,
-        "appearance": 0.5,
+        "appearance": 0.3,
         "presence": 1,
+        "thinking": 0,
+        "hearing": 0,
+        "hearingLevel": 0
+      }
+    },
+    {
+      "name": "arriving-late",
+      "frame": {
+        "time": 0.56,
+        "level": 0,
+        "bands": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "speaking": false,
+        "agitation": 0,
+        "burstAge": 10,
+        "burstStrength": 0,
+        "burstCount": 0,
+        "appearance": 0.8,
+        "presence": 1,
+        "thinking": 0,
+        "hearing": 0,
+        "hearingLevel": 0
+      }
+    },
+    {
+      "name": "leaving",
+      "frame": {
+        "time": 6,
+        "level": 0,
+        "bands": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "speaking": false,
+        "agitation": 0,
+        "burstAge": 10,
+        "burstStrength": 0,
+        "burstCount": 0,
+        "appearance": 1,
+        "presence": 0.5,
         "thinking": 0,
         "hearing": 0,
         "hearingLevel": 0

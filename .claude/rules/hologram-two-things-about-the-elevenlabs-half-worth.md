@@ -31,7 +31,7 @@ microphone level — for sample mode's listening phase.
 
 **Listening is not a voice of his.** While someone talks to Jarvis his particles snap onto a
 hexagonal lattice that turns slowly inside the ball and breathes with how loud they are
-(`latticeFragment`, `latticeTarget`); the whorl recedes so the lattice is what is seen. It is
+(`latticeFragment`, `latticeTarget`); the core's glow dims so the lattice is what is seen. It is
 driven by a `UserVoice` — ElevenLabs' `vad_score` and the microphone's input level in a
 conversation, `simulatedUserAt` in sample mode — handed to the view as `user`, eased per frame by
 `hearing.ts`. Only the score switches it on, past the firmware's own 0.25, so the phone, the watch
