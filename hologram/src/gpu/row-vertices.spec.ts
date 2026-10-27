@@ -42,6 +42,32 @@ describe('the rows’ vertices', () => {
     }
   });
 
+  it('keep rows that share a key in their own order, as a stable sort by key would', () => {
+    // A tenth of the scene's rows share a key with another — ids are rounded to five decimals — so
+    // which of them comes first is part of the index the headset and the phone both draw.
+    expect(new Set(rows.thinning).size).toBeLessThan(rows.count);
+    const thinning = new Float32Array([0.5, 0.25, 0.5, 0.25, 0, 0.5, 1, 0]);
+    const count = thinning.length;
+    const tied = buildRowVertices({
+      count,
+      bodyCount: count,
+      streamCount: 0,
+      rest: new Float32Array(count * 4),
+      shape: new Float32Array(count * 4),
+      hashes: new Float32Array(count * 4),
+      identity: new Float32Array(count * 3),
+      thinning,
+    });
+    const order = Array.from({ length: count }, (_, quad) => tied.index[quad * 6] / 4);
+    expect(order).toEqual([4, 7, 1, 3, 0, 2, 5, 6]);
+    expect(Array.from(tied.keys)).toEqual([0, 0, 0.25, 0.25, 0.5, 0.5, 0.5, 1]);
+    // ...and in the scene, every run of equal keys lists its rows in ascending order.
+    for (let quad = 1; quad < rows.count; quad++) {
+      if (vertices.keys[quad] !== vertices.keys[quad - 1]) continue;
+      expect(vertices.index[quad * 6]).toBeGreaterThan(vertices.index[(quad - 1) * 6]);
+    }
+  });
+
   it('carry every row attribute the shaders read, in order and at its size', () => {
     expect(vertices.attributes.map(({ name, size }) => [name, size])).toEqual(
       ROW_ATTRIBUTES.map(([name, size]) => [name, size]),

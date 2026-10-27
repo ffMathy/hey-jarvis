@@ -427,12 +427,20 @@ export const FRAGMENT_CODE_GLYPH_STEP = 12;
  * What it costs on every phone, fast or slow, is the scene: this many fragments times
  * {@link BODY_STRIDE} numbers, built and laid out as the GPU's rows when the view mounts. That is
  * the only part of raising it that nobody can opt out of, and it is worth knowing the size of it:
- * 90,000 numbers. At 100,000, ten to a row, `createHologramScene` spent about 20 ms building them on
- * a desktop under V8 once warm (about 35 on a first, cold call), and about 70 ms under a Hermes
- * compiled ahead of time the way React Native ships it, on the same desktop, against about half
- * that at five thousand. A phone is some multiple of that. It lands as a hitch when the view mounts
- * rather than as a frame rate, so the controller below cannot thin it away — this is the number to
- * look at first if the arrival ever starts feeling late.
+ * 90,000 numbers. On a desktop under V8, `createHologramScene` builds them in about 22 ms once warm
+ * (about 43 on a first, cold call), and `buildHologramRows` and `buildRowVertices` lay them out as
+ * the GPU's rows in about 10 more (23 cold); JavaScriptCore is a little quicker. With the JIT turned
+ * off, the nearest that desktop comes to the Hermes a phone runs, the scene takes about 110 ms and
+ * its rows 35, in either engine. Hermes itself has not been run on this scene. The one before the
+ * redesign took about 70 ms to build under a Hermes compiled ahead of time the way React Native
+ * ships it, on a desktop where V8 built it in about 20 once warm; on this one V8 took about 24 to
+ * build it once warm, and with the JIT off 140 to build it and 60 to lay out its rows. Over a third
+ * of the time without a JIT is the two hundred thousand draws from the seeded generator — the body
+ * turns one candidate in two away, each after five or six draws — and every draw is part of what
+ * the seed builds, so that is the floor for as long as the scene stays the same. A phone is some
+ * multiple of all of it. It lands as a hitch when the view mounts rather than as a frame rate, so
+ * the controller below cannot thin it away — this is the number to look at first if the arrival
+ * ever starts feeling late.
  *
  * {@link FEWEST_PARTICLES} in `density-control.ts` is a share of this, so it moves when this does.
  */
@@ -488,6 +496,11 @@ function createRandom(seed: number): Random {
   };
 }
 
+/** Every number the scene holds is rounded so: it keeps the worklet copy of the scene small. */
+function roundToFiveDecimals(value: number) {
+  return Math.round(value * 1e5) / 1e5;
+}
+
 /**
  * Where his specks lie: on a shell rather than through a ball. The film's sphere is a hollow of
  * fine glittering points, from about half his radius out to the edge of the speck shell, and seen
@@ -506,6 +519,8 @@ function createRandom(seed: number): Random {
 const SPECK_SHELL_OUTER = 0.87;
 /** How deep the speck shell is, in R: from 0.49R to its outer edge. */
 const SPECK_SHELL_DEPTH = 0.38;
+/** The inside of the speck shell, in R. */
+const SPECK_SHELL_INNER = SPECK_SHELL_OUTER - SPECK_SHELL_DEPTH;
 /** How sharply the specks gather toward the outside of the shell: the power the uniform draw is raised to. */
 const SPECK_SHELL_GATHER = 3.5;
 /**
@@ -683,7 +698,7 @@ function buildBody(random: Random, fragmentCount: number) {
     // The crowded clumps carry the bright specks, and the dim and mid ones thin out between them.
     // Deeper in the shell they are dimmer, from a twentieth bright at its inside to three in ten at
     // its edge, so the light gathers at the edge of the donut, as the film's does.
-    const outerness = (radius - (SPECK_SHELL_OUTER - SPECK_SHELL_DEPTH)) / SPECK_SHELL_DEPTH;
+    const outerness = (radius - SPECK_SHELL_INNER) / SPECK_SHELL_DEPTH;
     const brightness = crowding > 0.72 && random() < 0.4 ? 2 : pickBrightness(random, 0.05 + 0.25 * outerness);
     const crowded = brightness === 2 ? crowding : crowding * Math.sqrt(crowding);
     if (random() > massWeight(y) * crowded) continue;
@@ -694,16 +709,19 @@ function buildBody(random: Random, fragmentCount: number) {
     const id = random();
     const seenFromMiddle = Math.hypot(x, y);
     const onInnerShell = seenFromMiddle > 0.3 && seenFromMiddle < 0.62 && random() < 0.55 ? 6 : 0;
+    // Rounded as each row is written rather than in a pass of its own once the table is built, as
+    // the smaller tables are: over ninety thousand numbers, that pass and the second array it made
+    // were up to a tenth of the scene's cost. The code is a whole number and needs no rounding.
     body.push(
-      x,
-      y,
-      Math.cos(direction),
-      Math.sin(direction),
-      shape[1],
-      rate,
-      id,
+      roundToFiveDecimals(x),
+      roundToFiveDecimals(y),
+      roundToFiveDecimals(Math.cos(direction)),
+      roundToFiveDecimals(Math.sin(direction)),
+      roundToFiveDecimals(shape[1]),
+      roundToFiveDecimals(rate),
+      roundToFiveDecimals(id),
       brightness + 3 * pool + onInnerShell + FRAGMENT_CODE_GLYPH_STEP * shape[0],
-      depth,
+      roundToFiveDecimals(depth),
     );
   }
   return body;
@@ -880,24 +898,53 @@ function pickWovenCageNode(random: Random): number[] {
   }
 }
 
-/** The nodes of `among` nearest to `node`, nearest first, as their indices and how far each is. */
-function nearestCageNodes(node: number[], among: number[][]) {
-  return among
-    .map((other, otherIndex) => ({
-      otherIndex,
-      distance: Math.hypot(...node.map((value, axis) => value - other[axis])),
-    }))
-    .filter(({ distance }) => distance > 0)
-    .sort((first, second) => first.distance - second.distance);
+/** How far a point of the cage is from his middle. */
+function cageReach(point: number[]) {
+  return Math.hypot(point[0], point[1], point[2]);
+}
+
+/** How far apart two points of the cage are. */
+function cageDistance(from: number[], to: number[]) {
+  return Math.hypot(from[0] - to[0], from[1] - to[1], from[2] - to[2]);
+}
+
+/**
+ * The `count` nodes of `among` nearest to `node`, nearest first, as their indices and how far each
+ * is: what sorting every node of `among` by its distance would put first, leaving out any at no
+ * distance at all (`node` itself), and of two as far away the one `among` lists first.
+ *
+ * Picked in one pass, keeping only the nearest so far, rather than by sorting them all: the cage
+ * asks this of every one of its nodes, and a hundred and sixty sorts of a hundred and sixty, with
+ * an object made for every node in each, cost more than the body's ten thousand specks under a JIT
+ * and over a third as much without one.
+ */
+function nearestCageNodes(node: number[], among: number[][], count: number) {
+  const nearest: { otherIndex: number; distance: number }[] = [];
+  for (let otherIndex = 0; otherIndex < among.length; otherIndex++) {
+    const distance = cageDistance(node, among[otherIndex]);
+    const farthestKept = nearest.length === count ? nearest[count - 1].distance : Infinity;
+    if (distance === 0 || distance >= farthestKept) continue;
+    if (nearest.length === count) nearest.pop();
+    // after every one kept that is no farther, so that a tie keeps the order of `among`
+    let at = nearest.length;
+    while (at > 0 && nearest[at - 1].distance > distance) at--;
+    nearest.splice(at, 0, { otherIndex, distance });
+  }
+  return nearest;
+}
+
+/** The one key an edge between two of `nodeCount` nodes has, whichever end it is named from. */
+function cageEdgeKey(first: number, second: number, nodeCount: number) {
+  return Math.min(first, second) * nodeCount + Math.max(first, second);
 }
 
 /** The nodes of the cage's shell, each joined to its two or three nearest by edges no longer than the mesh's. */
 function pushCageMesh(edges: number[], random: Random, nodes: number[][]) {
-  const joined = new Set<string>();
+  const joined = new Set<number>();
   nodes.forEach((node, index) => {
     const neighbours = random() < 0.6 ? 3 : 2;
-    for (const { otherIndex, distance } of nearestCageNodes(node, nodes).slice(0, neighbours)) {
-      const key = `${Math.min(index, otherIndex)}:${Math.max(index, otherIndex)}`;
+    for (const { otherIndex, distance } of nearestCageNodes(node, nodes, neighbours)) {
+      const key = cageEdgeKey(index, otherIndex, nodes.length);
       // an edge much longer than the mesh's would cut across his face
       if (joined.has(key) || distance > CAGE_LONGEST_MESH_EDGE) continue;
       joined.add(key);
@@ -916,17 +963,18 @@ function pushCageMesh(edges: number[], random: Random, nodes: number[][]) {
 function pushCageWeave(edges: number[], random: Random, nodes: number[][], wovenNodes: number[][]) {
   // A woven node out of reach of two of the shell's would hang by one line, a loose end, so it is
   // left out altogether, and nothing else is joined to it either.
-  const held = wovenNodes.filter(
-    (node) => (nearestCageNodes(node, nodes)[1]?.distance ?? Infinity) <= CAGE_LONGEST_WEAVE,
-  );
-  const joined = new Set<string>();
-  held.forEach((node, index) => {
-    for (const { otherIndex } of nearestCageNodes(node, nodes).slice(0, 2)) {
+  const woven = wovenNodes
+    .map((node) => ({ node, shellNodes: nearestCageNodes(node, nodes, 2) }))
+    .filter(({ shellNodes }) => (shellNodes[1]?.distance ?? Infinity) <= CAGE_LONGEST_WEAVE);
+  const held = woven.map(({ node }) => node);
+  const joined = new Set<number>();
+  woven.forEach(({ node, shellNodes }, index) => {
+    for (const { otherIndex } of shellNodes) {
       pushCageEdge(edges, random, node, nodes[otherIndex], 0.6 + 0.25 * random());
     }
-    const [nearest] = nearestCageNodes(node, held);
+    const [nearest] = nearestCageNodes(node, held, 1);
     if (nearest === undefined || nearest.distance > CAGE_LONGEST_WOVEN_CHORD || random() < 0.4) return;
-    const key = `${Math.min(index, nearest.otherIndex)}:${Math.max(index, nearest.otherIndex)}`;
+    const key = cageEdgeKey(index, nearest.otherIndex, held.length);
     if (joined.has(key)) return;
     joined.add(key);
     pushCageEdge(edges, random, node, held[nearest.otherIndex], 0.55 + 0.25 * random());
@@ -940,17 +988,17 @@ function pushCageWeave(edges: number[], random: Random, nodes: number[][], woven
  * never sweeps round him as a hook does.
  */
 function pushCageSpikes(edges: number[], random: Random, nodes: number[][]) {
-  const roots = nodes.filter((node) => Math.hypot(...node) >= CAGE_WOVEN_REACH - CAGE_LONGEST_SPIKE + 0.04);
+  const roots = nodes.filter((node) => cageReach(node) >= CAGE_WOVEN_REACH - CAGE_LONGEST_SPIKE + 0.04);
   for (let spike = 0; spike < CAGE_SPIKES && roots.length > 0; spike++) {
     const root = roots[Math.floor(random() * roots.length)];
-    const rootRadius = Math.hypot(...root);
+    const rootRadius = cageReach(root);
     const leaning = root.map((value) => value / rootRadius + (random() - 0.5) * 0.45);
-    const leaningLength = Math.hypot(...leaning);
+    const leaningLength = cageReach(leaning);
     const tipRadius = CAGE_WOVEN_REACH + 0.02 + random() * 0.1;
     // as long as it takes to stand past the woven nodes, and never longer than a spike may be
     const length = Math.min(CAGE_LONGEST_SPIKE, tipRadius - rootRadius + 0.02);
     const tip = root.map((value, axis) => value + ((leaning[axis] ?? 0) / leaningLength) * length);
-    if (Math.hypot(...tip) <= CAGE_WOVEN_REACH) continue;
+    if (cageReach(tip) <= CAGE_WOVEN_REACH) continue;
     pushCageEdge(edges, random, root, tip, 0.7 + 0.2 * random(), CAGE_SPIKE_TIP_LIGHT);
   }
 }
@@ -959,9 +1007,9 @@ function pushCageSpikes(edges: number[], random: Random, nodes: number[][]) {
 function pushCageAnchors(edges: number[], random: Random, nodes: number[][]) {
   for (let anchor = 0; anchor < CAGE_ANCHORS; anchor++) {
     const node = nodes[Math.floor(random() * nodes.length)];
-    const length = Math.hypot(...node);
+    const length = cageReach(node);
     const aside = node.map((value) => value / length + (random() - 0.5) * 0.5);
-    const asideLength = Math.hypot(...aside);
+    const asideLength = cageReach(aside);
     const foot = aside.map((value) => (value / asideLength) * PICTURE_SHELL_EDGE * (0.93 + 0.07 * random()));
     pushCageEdge(edges, random, node, foot, 0.5 + 0.2 * random());
   }
@@ -991,7 +1039,7 @@ function pushCageTrails(edges: number[], random: Random) {
     const aside = (random() - 0.35) * 0.5;
     const depth = 1.15 + random() * 0.2;
     const to = [Math.cos(beyond) * aside, depth, Math.sin(beyond) * aside];
-    const reach = Math.hypot(...to);
+    const reach = cageReach(to);
     const kept = reach > CAGE_REACH - 0.02 ? to.map((value) => (value * (CAGE_REACH - 0.02)) / reach) : to;
     pushCageEdge(edges, random, from, kept, 0.75 + 0.2 * random(), 0);
   }
@@ -1069,11 +1117,6 @@ function buildEmbers(random: Random) {
   return embers;
 }
 
-/** Keeps the worklet copy of the scene small. */
-function roundToFiveDecimals(value: number) {
-  return Math.round(value * 1e5) / 1e5;
-}
-
 /**
  * Builds the hologram's random geometry once. Deterministic for a given seed; plain data only.
  *
@@ -1086,7 +1129,8 @@ function roundToFiveDecimals(value: number) {
 export function createHologramScene(seed: number, particleCount: number = PARTICLE_COUNT) {
   const random = createRandom(seed);
   return {
-    body: buildBody(createRandom(seed ^ BODY_SEED_MIX), particleCount).map(roundToFiveDecimals),
+    // rounded as it is built (see buildBody)
+    body: buildBody(createRandom(seed ^ BODY_SEED_MIX), particleCount),
     stream: buildStream(random).map(roundToFiveDecimals),
     fray: buildFray(random).map(roundToFiveDecimals),
     streakArcs: buildStreakArcs(random).map(roundToFiveDecimals),
