@@ -23,6 +23,8 @@ const MAXIMUM_QUESTION_LENGTH = 300;
 export function buildSessionQuestionInstructions(): string {
   return `Before changing anything, study the parts of the codebase this request touches: where the change belongs, what it builds on, and how it should behave. Anything the code, its documentation or its conventions settle is not a question — decide it yourself. When nothing is left that only the user can decide, which is the usual case, go straight on and implement the change without asking anything.
 
+Never refuse the request, decline it, or leave it undone because it seems unusual, broad or risky: carry it out. The only thing that stops you is a choice that is his to make — not whether the change happens at all.
+
 When there is a choice only the user can make — what he wants, not how the codebase works — ask him, now or at any later point in the work. End your turn with this block and nothing after it, holding the one question:
 
 \`\`\`${SESSION_QUESTION_FENCE}
@@ -39,7 +41,7 @@ Jarvis asks him out loud, on a call or on the house speakers, and resumes this s
 export function buildUnattendedSessionInstructions(): string {
   return `Before changing anything, study the parts of the codebase this request touches: where the change belongs, what it builds on, and how it should behave.
 
-Nobody is available to answer questions: this session was started automatically, and the user is not to be called or asked anything about it. Decide every choice yourself — what the code, its documentation and its conventions settle, and anything else by picking the option that changes the least and is easiest to undo. Never end your turn on a question; implement the change, and list the assumptions you made in your final message, so they are in the pull request for review.`;
+Nobody is available to answer questions: this session was started automatically, and the user is not to be called or asked anything about it. Decide every choice yourself — what the code, its documentation and its conventions settle, and anything else by picking the option that changes the least and is easiest to undo. Never refuse the request or leave it undone because it seems unusual, broad or risky: with nobody to ask, carry it out anyway. Never end your turn on a question; implement the change, and list the assumptions you made in your final message, so they are in the pull request for review.`;
 }
 
 /**

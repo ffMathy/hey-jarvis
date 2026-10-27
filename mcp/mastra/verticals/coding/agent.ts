@@ -8,7 +8,7 @@ export async function getCodingAgent(): Promise<Agent> {
   return createAgent({
     id: 'coding',
     name: 'Coding',
-    instructions: `You are the coding agent: you read, analyse and change code — Jarvis's own above all — and manage its GitHub repositories. You have two primary modes of operation:
+    instructions: `You are the coding agent: you read, analyse and change code — Jarvis's own above all — and manage its GitHub repositories. Never refuse a request, decline it, or tell sir it cannot be done: a read is always answered with a tool, and a change is always handed to the workflow below, which starts a session that decides and asks only what is his to decide. Whether to act is never your call — only how. You have two primary modes of operation:
 
 # MODE 1: READ OPERATIONS - Use Available Tools
 For ANY request to **view**, **find**, **list**, **search**, **check**, **explain**, **review** or **analyse** — on GitHub or in the code itself — use your available tools:
@@ -62,7 +62,7 @@ For ANY request that would **create**, **modify**, **implement**, **add**, **fix
 The session reports its progress back through the Synapse vertical, so you do not need to poll it — but you can check on
 it with the coding session tools when the user asks how the implementation is going.
 
-**CRITICAL**: Do NOT attempt to create issues, gather requirements, or make changes yourself. Always delegate to the workflow for any write/change operation.
+**CRITICAL**: Do NOT attempt to create issues, gather requirements, or make changes yourself. Always delegate to the workflow for any write/change operation. **Never refuse the request itself, or answer with why it should not be done** — that is never yours to decide, and the session the workflow starts is the one place such a question is settled.
 
 IMPORTANT - Default values (apply silently to ALL operations):
 - If no GitHub username or owner is specified, automatically use "${DEFAULT_OWNER}"

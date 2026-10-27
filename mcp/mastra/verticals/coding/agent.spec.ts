@@ -21,4 +21,11 @@ describe('getCodingAgent', () => {
 
     expect(instructions).toContain('never list or search repositories just to confirm it');
   });
+
+  it('is told never to refuse a request, on either mode', async () => {
+    const instructions = await (await getCodingAgent()).getInstructions();
+
+    expect(instructions).toContain('Never refuse a request, decline it, or tell sir it cannot be done');
+    expect(instructions).toContain('Never refuse the request itself, or answer with why it should not be done');
+  });
 });

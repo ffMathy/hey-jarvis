@@ -28,6 +28,14 @@ Reads, analyses and changes code — Jarvis's own above all — and manages GitH
 **Architecture Pattern:**
 This agent follows the **workflow delegation pattern**. When a user requests a new feature implementation, instead of gathering requirements itself, it delegates to the `implementFeatureWorkflow`, which starts a Claude Code session on the change at once — no issue is filed, and nothing is asked first. The session reads the codebase, decides whatever the code settles, and implements the change; a request the code settles is never held up by a question. The workflow returns as soon as the session has started, so it is not marked slow.
 
+**Never a refusal.** Whether to act is never the coding agent's call, nor the session's: its own
+instructions (`agent.ts`) say so outright, and `buildSessionQuestionInstructions` and
+`buildUnattendedSessionInstructions` in `session-questions.ts` tell the session the same, right next
+to "decide it yourself" — the only thing that can stop it is a choice that is sir's to make, never
+whether the change happens at all. A request that reads as unusual, broad or risky is carried out
+like any other, and an unattended session, with nobody to ask, carries it out too rather than leaving
+it undone.
+
 **Questions a coding session asks:**
 Only a choice that is the user's to make stops a session, and it can come up at any point — before
 the session has changed a line, or halfway through. The session is told how

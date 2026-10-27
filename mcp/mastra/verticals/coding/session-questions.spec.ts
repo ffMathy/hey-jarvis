@@ -47,6 +47,10 @@ describe('buildSessionQuestionInstructions', () => {
   it('shows the block the session asks with', () => {
     expect(buildSessionQuestionInstructions()).toContain(`\`\`\`${SESSION_QUESTION_FENCE}`);
   });
+
+  it('never lets the session refuse the request itself', () => {
+    expect(buildSessionQuestionInstructions()).toContain('Never refuse the request, decline it, or leave it undone');
+  });
 });
 
 describe('readProseQuestion', () => {
@@ -86,5 +90,9 @@ describe('buildUnattendedSessionInstructions', () => {
     expect(instructions).toContain('Nobody is available to answer questions');
     expect(instructions).toContain('Never end your turn on a question');
     expect(instructions).not.toContain(SESSION_QUESTION_FENCE);
+  });
+
+  it('never lets an unattended session refuse the request either', () => {
+    expect(buildUnattendedSessionInstructions()).toContain('Never refuse the request or leave it undone');
   });
 });
