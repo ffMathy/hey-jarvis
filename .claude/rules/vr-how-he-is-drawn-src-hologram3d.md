@@ -144,12 +144,12 @@ little hotter; everything the picture draws is flat in the view plane.
 **The picture is held to its own goldens.** `tests/e2e/hologram-picture.spec.ts`
 draws fifteen moments with it through `picture-target.ts` (the preview's
 `checkPicture`) and compares them with frames it drew itself when he was redrawn
-after the Vision Quest footage (`tests/e2e/fixtures/picture/`, RGB over black,
+as the Vision Quest / Age of Ultron hybrid (`tests/e2e/fixtures/picture/`, RGB over black,
 drawn by `.scripts/render-picture-goldens.ts`; see "The browser tests"): a mean
 of at most 0.4 levels a channel, a 99th percentile of at most 10, at most 0.8% of
 pixels a channel more than 16 apart, and the mean luma within 0.1. Drawn again on
 the machine that drew them, they match to the byte. The behaviour that was
-`hologram`'s pixel tests under CanvasKit — it is golden, its core ring rolls and
+`hologram`'s pixel tests under CanvasKit — it is warm, its core ring rolls and
 its cage turns with his body, it answers speech with activity, spirals in without
 a flash, leaves nothing behind, stays in its square, and draws each satellite
 where its orbit says — is `tests/e2e/hologram-picture-behaviour.spec.ts`,

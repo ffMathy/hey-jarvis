@@ -24,17 +24,20 @@ import {
   pushGyroSpeck,
   RIM_ROLL_DEGREES_PER_SECOND,
   ROLL_DEGREES_PER_SECOND,
-  ridesTheWhorl,
+  ridesTheInnerLayer,
   SHELL_DEGREES_PER_SECOND,
   swirlFragment,
   TRUSS_INNER_RAIL,
   TRUSS_OUTER_RAIL,
   TRUSS_PIECE_STRIDE,
+  WHORL_REACH,
+  WHORL_START,
+  WHORL_TURNS,
 } from './hologram-drawing';
 import { VOICE_BAND_COUNT } from './voice-levels';
 
 /**
- * The scene he is drawn from and what a frame of him is. What he looks like drawn — golden, moving,
+ * The scene he is drawn from and what a frame of him is. What he looks like drawn — red-orange, moving,
  * arriving without a flash, staying inside his square — needs a GPU, so it is the headset's browser
  * tests' to say, on the very picture the apps draw (`vr/tests/e2e/hologram-picture-behaviour.spec.ts`).
  */
@@ -106,22 +109,67 @@ describe('the hologram', () => {
 
 /** A body table's rows, each where it rests seen face on, relative to the core, with its class. */
 function rowsOf(body: number[]) {
-  const rows: { fromTheCore: number; clockDegrees: number; innerLayer: boolean; bright: boolean; glyph: number }[] = [];
+  const rows: {
+    x: number;
+    y: number;
+    fromTheCore: number;
+    clockDegrees: number;
+    innerLayer: boolean;
+    bright: boolean;
+    glyph: number;
+  }[] = [];
   for (let offset = 0; offset < body.length; offset += BODY_STRIDE) {
     const x = body[offset] - CORE_X;
     const y = body[offset + 1] - CORE_Y;
     const code = body[offset + 7];
     const kind = code % FRAGMENT_CODE_GLYPH_STEP;
     rows.push({
+      x,
+      y,
       fromTheCore: Math.hypot(x, y),
       // clockwise from 12 o'clock, y down
       clockDegrees: ((Math.atan2(x, -y) * 180) / Math.PI + 360) % 360,
-      innerLayer: ridesTheWhorl(code),
+      innerLayer: ridesTheInnerLayer(code),
       bright: kind % 3 === 2,
       glyph: Math.floor(code / FRAGMENT_CODE_GLYPH_STEP),
     });
   }
   return rows;
+}
+
+/** Points along the whorl's two arms' centre curves, relative to the core, each with how far out along its arm it is. */
+const WHORL_CURVE = Array.from({ length: 4001 }, (_, step) => step / 4000).flatMap((out) =>
+  [0, Math.PI].map((arm) => {
+    const reach = WHORL_START + (WHORL_REACH - WHORL_START) * out;
+    const angle = arm + WHORL_TURNS * 2 * Math.PI * out;
+    return { x: reach * Math.cos(angle), y: reach * Math.sin(angle), out };
+  }),
+);
+
+/** Where a row lies against the whorl: how far it is from the nearest arm's centre curve, and how far out along that arm. */
+function againstTheArm(row: { x: number; y: number }) {
+  let distance = Number.POSITIVE_INFINITY;
+  let out = 0;
+  for (const point of WHORL_CURVE) {
+    const apart = Math.hypot(point.x - row.x, point.y - row.y);
+    if (apart < distance) {
+      distance = apart;
+      out = point.out;
+    }
+  }
+  return { distance, out };
+}
+
+/** How long an arm is between two steps of `out`, in R. */
+function armLength(from: number, to: number) {
+  const steps = 1000;
+  let length = 0;
+  for (let step = 0; step < steps; step++) {
+    const out = from + ((to - from) * (step + 0.5)) / steps;
+    const reach = WHORL_START + (WHORL_REACH - WHORL_START) * out;
+    length += Math.hypot(WHORL_REACH - WHORL_START, reach * WHORL_TURNS * 2 * Math.PI) * ((to - from) / steps);
+  }
+  return length;
 }
 
 describe('his middle: the whorl and the gyroscope', () => {
@@ -152,6 +200,48 @@ describe('his middle: the whorl and the gyroscope', () => {
     // Measured 6.0% of the inner layer, with the gyroscope's brighter strands among them.
     const bright = innerLayer.filter((row) => row.bright).length;
     expect(bright / innerLayer.length).toBeLessThan(0.1);
+  });
+
+  it("spreads the whorl's arms broad, with a soft skirt, so the swirl is soft rather than sharp", () => {
+    // "The spiral is too sharp": the arm was 0.025R wide at the core and had no skirt. Between 0.3R
+    // and 0.5R, clear of the gyroscope, every inner-layer row is the whorl's. Measured a root mean
+    // square of 0.048R off the arm's centre curve, and 20% of them more than 0.06R off it; a narrow
+    // arm (a spread of 0.01 + 0.065·out, or 0.04 + 0.02·out) or no skirt measured 0.030-0.035R and
+    // 6-9%. Not so broad that the spiral is lost at phone size, either.
+    const apart = innerLayer
+      .filter((row) => row.fromTheCore >= 0.3 && row.fromTheCore < 0.5)
+      .map((row) => againstTheArm(row).distance);
+    const rootMeanSquare = Math.sqrt(apart.reduce((total, distance) => total + distance * distance, 0) / apart.length);
+    expect(rootMeanSquare).toBeGreaterThan(0.042);
+    expect(rootMeanSquare).toBeLessThan(0.055);
+    expect(apart.filter((distance) => distance > 0.06).length / apart.length).toBeGreaterThan(0.15);
+  });
+
+  it("spreads the whorl's specks evenly along its arms, so they do not crowd its start", () => {
+    // An even step along the arm crowded its start, where it is shortest per step: per R of arm,
+    // the stretch just out of the core's eye was 2.2 times as dense as the arm at 0.37-0.44R. Spread
+    // by WHORL_OUT_POWER it measures 1.45.
+    const along = innerLayer.filter((row) => row.fromTheCore < 0.5).map((row) => againstTheArm(row).out);
+    const density = (from: number, to: number) =>
+      along.filter((out) => out >= from && out < to).length / armLength(from, to);
+    expect(density(0.05, 0.15) / density(0.4, 0.5)).toBeLessThan(1.8);
+  });
+
+  it("draws the gyroscope's arcs in his scene, standing out of the whorl that shares their layer", () => {
+    // At each arc's radius, the inner layer's rows inside the arcs' sweeps over what the same
+    // stretch of clock off them holds: the whorl's arms cross every radius, so only the arcs make
+    // the difference. Measured 584 rows over at 0.53R and 444 at 0.67R; without the arcs, the
+    // whorl alone leaves 195 and 42.
+    for (const radius of new Set(GYRO_ARCS.map(([arcRadius]) => arcRadius))) {
+      const arcs = GYRO_ARCS.filter(([arcRadius]) => arcRadius === radius);
+      const onTheArcs = (clock: number) => arcs.some(([, from, sweep]) => (clock - from + 360) % 360 <= sweep);
+      const swept = arcs.reduce((total, [, , sweep]) => total + sweep, 0);
+      const ring = innerLayer.filter((row) => Math.abs(row.fromTheCore - radius) <= 0.03);
+      const on = ring.filter((row) => onTheArcs(row.clockDegrees)).length;
+      const off = ring.length - on;
+      const over = on - (off * swept) / (360 - swept);
+      expect(over).toBeGreaterThan(radius < 0.6 ? 400 : 300);
+    }
   });
 
   it("lays the gyroscope's strands on its arcs round the core, on the inner layer, clear of the core's ring", () => {

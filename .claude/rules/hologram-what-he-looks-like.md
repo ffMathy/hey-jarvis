@@ -33,7 +33,7 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
   strands, its specks spread evenly along the arms, few of them bright and those on the arms' centre
   lines, with a soft skirt round each arm.
 - **The gyroscope:** Age of Ultron's arcs round the core, bundles of three thin strands of specks on
-  arcs at 0.53R and 0.67R (`GYRO_ARCS`, `pushGyroSpeck`), riding the whorl's inner layer so they
+  arcs at 0.53R and 0.67R (`GYRO_ARCS`, `pushGyroSpeck`), riding the inner layer with the whorl so they
   turn with it. Nothing of it lies at the core's ring.
 - **The stream:** a few specks below the core turning about the vertical on a clock of their own
   (`buildStream`).

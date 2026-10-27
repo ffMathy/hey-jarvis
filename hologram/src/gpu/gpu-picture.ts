@@ -80,9 +80,10 @@ import { sceneSparklePixels } from './sparkle';
  * Drawn layer by layer: the aura round him, the core — its glowing disc, the ringed eye and faint
  * bar across it and the white-hot ring round it — the cage of hairlines turning with his body, the
  * ladder truss rolling round his edge, the embers drifting off him, and while he talks the fray and
- * the chips; the thinking pulse; and the satellites over him. Each layer is a few draws, each with one paint and one width, from the layers in
- * `picture-layers.ts`, whose vertex shaders work out where everything is this frame. So a frame's
- * JavaScript is a couple of dozen draws' uniforms, and nothing it does grows with what is drawn.
+ * the chips; the thinking pulse; and the satellites over him. Each layer is a few draws, each with
+ * one paint and one width, from the layers in `picture-layers.ts`, whose vertex shaders work out
+ * where everything is this frame. So a frame's JavaScript is a couple of dozen draws' uniforms, and
+ * nothing it does grows with what is drawn.
  *
  * **Every paint is Screen**: premultiplied light, blended `ONE, ONE_MINUS_SRC_COLOR` (alpha `ONE,
  * ONE_MINUS_SRC_ALPHA`), which is Screen with the paint's coverage folded in exactly as Skia's

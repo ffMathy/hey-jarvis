@@ -211,7 +211,7 @@ function meanOf(total: number, count: number): number {
 }
 
 /**
- * Jarvis, drawn: a golden holographic sphere that turns on its own and grows
+ * Jarvis, drawn: a copper-orange holographic sphere that turns on its own and grows
  * agitated while he speaks.
  *
  * Three clocks keep each other honest. The JS thread reads the voice every

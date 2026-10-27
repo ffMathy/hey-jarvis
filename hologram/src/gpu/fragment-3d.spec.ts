@@ -18,7 +18,7 @@ import {
   placeFragment,
   readFragment,
   readShellFragment,
-  ridesTheWhorl,
+  ridesTheInnerLayer,
   STREAM_STRIDE,
   scanned,
   swirlFragment,
@@ -99,7 +99,7 @@ function phoneBody(offset: number, state: HologramFrameState): PhoneFragment | n
   // is seen that the voice's wander keeps clear of, wherever on the turning ball the fragment is.
   // The voice's wander is along the way the fragment lies, so the beads slide round the ring.
   // The whorl's specks do not turn with the globe: they are held in the view plane as they rest.
-  const turnedX = ridesTheWhorl(body[offset + 7])
+  const turnedX = ridesTheInnerLayer(body[offset + 7])
     ? body[offset]
     : body[offset] * state.bodyCos + body[offset + 8] * state.bodySin;
   const fromCentre = turnedX * turnedX + body[offset + 1] * body[offset + 1];

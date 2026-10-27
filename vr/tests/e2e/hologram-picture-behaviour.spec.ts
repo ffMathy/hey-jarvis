@@ -425,7 +425,7 @@ const test = appTest.extend<Record<never, never>, { picture: Picture }>({
 });
 
 test.describe('the hologram', () => {
-  test('draws something red-orange: never bluer than red, and white-hot only in the ring round its core', async ({
+  test('draws something warm: never bluer than red, and white-hot only in the ring round its core', async ({
     picture,
   }) => {
     // His colour is Age of Ultron's red-orange — its close-ups' median (160,98,54), their hottest
@@ -436,6 +436,8 @@ test.describe('the hologram', () => {
     // back to Age of Ultron's colour, over these three moments: 0 pixels bluer than red, red 3.2
     // times blue (2.7 in the gold), and not one pixel with all three channels over 230 anywhere —
     // the ring's hottest is about (250,229,190), where the gold's was (251,240,205).
+    // Gold passes these as easily as red-orange does, so they hold him warm and white only in the
+    // ring; that he is red-orange rather than gold is corona.spec.ts's to say (rim G/R under 0.7).
     for (const frame of [
       speech(5, 0.7, spectrum(picture, 'low', 0.7)),
       speech(45.3, 0.6, evenBands(picture, 0.55), 0.05, 4),

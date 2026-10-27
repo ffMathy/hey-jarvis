@@ -30,7 +30,7 @@
 // - colour from white-hot through pale gold and gold to deep amber: its hottest pixels are
 //   (255,229,174), its 95th percentile (245,198,132), its 90th (234,180,111), its median (178,105,32).
 //   The drawing takes Age of Ultron's redder colour instead: over idle and speaking at 400 px it
-//   measures a weighted hue of about 30°, saturation 0.64, R:G:B 1:0.71:0.38, its hottest pixels
+//   measures a weighted hue of about 30°, saturation 0.63, R:G:B 1:0.71:0.39, its hottest pixels
 //   orange-white rather than white, and his middle the palest of him and his edge the reddest;
 // - and calm: about 6 luma of change per film frame over 256 px.
 // The drawing keeps all of him inside his square, whose edge is about 1.85R from his middle at rest,
@@ -77,10 +77,9 @@
 //                     fill through the ball as the old body's was; and the film's shell from about
 //                     half his radius out (buildBody). Each tier has a soft halo of its own, and the
 //                     stream, specks below the core turning on a clock of their own (buildStream).
-//                     The scene's body and stream
-//                     tables, and the per-fragment helpers below (readFragment, placeFragment,
-//                     swirlFragment, latticeFragment and the rest), are what it is drawn from and
-//                     held to.
+//                     The scene's body and stream tables, and the per-fragment helpers below
+//                     (readFragment, placeFragment, swirlFragment, latticeFragment and the rest),
+//                     are what it is drawn from and held to.
 //
 // IDLE MOTION (nothing breathes, pulses or flickers as a whole)
 // - The body turns about the vertical axis like a globe (BODY_RADIANS_PER_SECOND), and the cage turns
@@ -455,11 +454,17 @@ export const PULSE_SECONDS = 0.55;
 /** A fragment is lit for this share of its clock's cycle, fading in and out over a third of that at each end. */
 export const FRAGMENT_DUTY = 0.6;
 /**
- * A body fragment's code holds its class — brightness (0-2) + 3 × pool + 6 × rides the turning
- * shell, so 0 to 11 — and its glyph above that, at this step. See {@link buildBody} for why the
- * two share a number.
+ * A body fragment's code holds its class — brightness (0-2) + 3 × pool + {@link INNER_LAYER} if it
+ * rides the inner layer, so 0 to 11 — and its glyph above that, at this step. See {@link buildBody}
+ * for why the two share a number.
  */
 export const FRAGMENT_CODE_GLYPH_STEP = 12;
+/**
+ * The part of a body fragment's class code that puts it on the inner layer: the whorl's and the
+ * gyroscope's rows, held in the plane of the view and counter-turning about the core rather than
+ * turned with the globe (see {@link ridesTheInnerLayer}).
+ */
+const INNER_LAYER = 6;
 /**
  * How many fragments the body has when the phone can afford all of them.
  *
@@ -799,8 +804,9 @@ function pickBodyBrightness(random: Random, crowding: number, brightShare: numbe
 
 /**
  * Writes a body row: the place in `spot` (x, y, depth), the direction it lies relative to the ring
- * through where it is seen, the glyph and length in `shape`, and its own clock. A whorl row is on
- * the inner layer (`whorl` 6, see {@link ridesTheWhorl}).
+ * through where it is seen, the glyph and length in `shape`, and its own clock. The whorl's and the
+ * gyroscope's rows pass {@link INNER_LAYER} as their `layer`, which puts them on the inner layer
+ * (see {@link ridesTheInnerLayer}); every other row is on the globe, layer 0.
  *
  * Rounded as each row is written rather than in a pass of its own once the table is built, as the
  * smaller tables are: over ninety thousand numbers, that pass and the second array it made were up
@@ -814,7 +820,7 @@ function pushBodyRow(
   unitY: number,
   shape: number[],
   brightness: number,
-  whorl = 0,
+  layer = 0,
 ) {
   const pool = random() < 1 / 3 ? 1 : 0;
   const rate = pickFragmentRate(random, pool);
@@ -827,7 +833,7 @@ function pushBodyRow(
     roundToFiveDecimals(shape[1]),
     roundToFiveDecimals(rate),
     roundToFiveDecimals(id),
-    brightness + 3 * pool + whorl + FRAGMENT_CODE_GLYPH_STEP * shape[0],
+    brightness + 3 * pool + layer + FRAGMENT_CODE_GLYPH_STEP * shape[0],
     roundToFiveDecimals(spot[2]),
   );
 }
@@ -851,9 +857,9 @@ const WHORL_SHARE = 0.22;
 /** The share of the whorl's specks on an arm's centre line that are bright, falling off across it. */
 const WHORL_BRIGHT_SHARE = 0.06;
 /** How far out of the core the arms wind, in R, from just outside its eye, and how many turns they make. */
-const WHORL_START = 0.1;
-const WHORL_REACH = 0.78;
-const WHORL_TURNS = 1.1;
+export const WHORL_START = 0.1;
+export const WHORL_REACH = 0.78;
+export const WHORL_TURNS = 1.1;
 /**
  * How the specks are spread along an arm: `out = random() ** WHORL_OUT_POWER`. The arm's length
  * per step of `out` grows about seven times from its start to its end, so an even `out` crowded the
@@ -911,7 +917,7 @@ function pushWhorlSpeck(random: Random, body: number[], shape: number[]) {
     outwardX * lieX + outwardY * lieY,
     shape,
     brightness,
-    6,
+    INNER_LAYER,
   );
 }
 
@@ -921,7 +927,7 @@ type GyroArc = readonly [radius: number, from: number, sweep: number];
 /**
  * The gyroscope: Age of Ultron's arcs round the core, each a bundle of thin strands, as its lab
  * shots show them (ring light at 0.50-0.60R over about half the clock, an arc at 0.67-0.7R). Specks
- * laid along them on the whorl's inner layer, so they turn with the swirl and stay arcs whichever way
+ * laid along them on the inner layer with the whorl, so they turn with the swirl and stay arcs whichever way
  * the globe has turned. Clear of the core's ring at {@link CORE_RING_RADIUS}, which is Vision Quest's,
  * and inside the shell's edge.
  */
@@ -995,7 +1001,7 @@ export function pushGyroSpeck(random: Random, body: number[], shape: number[]) {
     outwardX * lieX + outwardY * lieY,
     shape,
     pickBrightness(random, GYRO_BRIGHT_SHARE),
-    6,
+    INNER_LAYER,
   );
 }
 
@@ -1961,12 +1967,13 @@ export function ringDirection(seenX: number, seenY: number, unitX: number, unitY
 }
 
 /**
- * Whether a body row's class code (see {@link FRAGMENT_CODE_GLYPH_STEP}) puts it on the whorl: the
- * inner layer, held in the plane of the view rather than turned with the globe.
+ * Whether a body row's class code (see {@link FRAGMENT_CODE_GLYPH_STEP}) puts it on the inner layer,
+ * as the whorl's and the gyroscope's rows are: held in the plane of the view and counter-turning
+ * about the core rather than turned with the globe.
  */
-export function ridesTheWhorl(code: number) {
+export function ridesTheInnerLayer(code: number) {
   'worklet';
-  return code - FRAGMENT_CODE_GLYPH_STEP * Math.floor(code / FRAGMENT_CODE_GLYPH_STEP) >= 6;
+  return code - FRAGMENT_CODE_GLYPH_STEP * Math.floor(code / FRAGMENT_CODE_GLYPH_STEP) >= INNER_LAYER;
 }
 
 /**
@@ -1997,8 +2004,8 @@ export function placeFragment(
   const depthAtRest = body[offset + 8];
   // The whorl's specks are held in the plane of the view and turn only with the inner layer, so
   // its arms stay arms however far the globe has turned.
-  const turnCos = ridesTheWhorl(body[offset + 7]) ? 1 : state.bodyCos;
-  const turnSin = ridesTheWhorl(body[offset + 7]) ? 0 : state.bodySin;
+  const turnCos = ridesTheInnerLayer(body[offset + 7]) ? 1 : state.bodyCos;
+  const turnSin = ridesTheInnerLayer(body[offset + 7]) ? 0 : state.bodySin;
   const turnedX = rest * turnCos + depthAtRest * turnSin;
   ringDirection(turnedX, restY, body[offset + 2], body[offset + 3], out, 5);
   const unitX = out[5];
