@@ -21,6 +21,7 @@ import {
   THOUGHT_FROM_HOP,
   THOUGHT_SCATTER,
   TRUSS_GROUP,
+  TRUSS_THINKING_DIM,
   VORTEX_STRETCH,
   VORTEX_TWIST,
 } from '../hologram-drawing';
@@ -198,6 +199,7 @@ const int TRUSS_GROUP = ${TRUSS_GROUP};
 const float GIMBAL_SPLIT = ${glslFloat(GYRO_GIMBAL_SPLIT)};
 const float THOUGHT_SCATTER = ${glslFloat(THOUGHT_SCATTER)};
 const float THOUGHT_FROM_HOP = ${glslFloat(THOUGHT_FROM_HOP)};
+const float TRUSS_THINKING_DIM = ${glslFloat(TRUSS_THINKING_DIM)};
 
 struct Fragment {
   bool visible;
@@ -411,11 +413,15 @@ Fragment readBodyFragment() {
   float inward = group == GYRO_GROUP ? 0.0 : clamp01((0.76 - (planeX * planeX + planeY * planeY)) * 3.2);
   float wander = fract(hop * 23.17) - 0.5;
   float along = (hop - 0.5) * 1.4 * fragmentLength + wander * 1.3 * agitation * inward;
-  float across = wander * WANDER;
+  // The truss's specks slide only along their rails and rungs, and lie past the limb on purpose.
+  bool truss = group == TRUSS_GROUP;
+  float across = truss ? 0.0 : wander * WANDER;
   float y = planeY + unit.y * along + unit.x * across;
   float x = planeX + unit.x * along - unit.y * across;
-  float edge = clamp01((0.94 * 0.94 - x * x - y * y) * 8.0);
+  float edge = truss ? 1.0 : clamp01((0.94 * 0.94 - x * x - y * y) * 8.0);
   float light = shellFacing(vec2(x, y), dot(rest.xyz, rest.xyz));
+  // The truss is not put out by the thinking plane; it recedes instead.
+  if (truss) light *= 1.0 - TRUSS_THINKING_DIM * thinking;
   float lit = strength * edge;
   if (lit < FAINTEST) return hiddenFragment();
 
@@ -423,9 +429,14 @@ Fragment readBodyFragment() {
   float scale;
   vec4 swirled = swirlFragment(vec2(x, y), unit, hashes.z, drawn, scale);
   if (drawn <= 0.0) return hiddenFragment();
-  vec3 placed = onLattice(swirled.xy, depth * scale, hashes.w);
-  bool scanBright;
-  float litHere = lit * scanned(-intoBody(placed.xy, placed.z).y, scanBright);
+  // The truss keeps its squares while he listens, and while he thinks.
+  vec3 placed = vec3(swirled.xy, depth * scale);
+  bool scanBright = false;
+  float litHere = lit;
+  if (!truss) {
+    placed = onLattice(swirled.xy, depth * scale, hashes.w);
+    litHere = lit * scanned(-intoBody(placed.xy, placed.z).y, scanBright);
+  }
   if (litHere < FAINTEST) return hiddenFragment();
   bool facing = depth >= -BACK_OF_THE_SHELL;
   bool promoted = scanBright && facing;

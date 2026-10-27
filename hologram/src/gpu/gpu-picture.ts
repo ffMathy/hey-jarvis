@@ -11,8 +11,6 @@ import {
   SPARKLE_TEXTURE_TEXELS,
   SPHERE_FRACTION,
   staticPathsOf,
-  TRUSS_INNER_RAIL,
-  TRUSS_OUTER_RAIL,
 } from '../hologram-drawing';
 import { GLYPH_STROKE_WIDTH, screenSatellite } from '../satellite-drawing';
 import {
@@ -67,8 +65,6 @@ import {
   type ShapeRange,
   type StaticPathName,
   staticSegmentsLayer,
-  type TrussPart,
-  trussLayer,
 } from './picture-layers';
 import { sceneSparklePixels } from './sparkle';
 
@@ -79,8 +75,7 @@ import { sceneSparklePixels } from './sparkle';
  *
  * Drawn layer by layer: the aura round him, the core — its glowing disc, the ringed eye and faint
  * bar across it and the white-hot ring round it — the cage of hairlines turning with his body, the
- * ladder truss rolling round his edge, the embers drifting off him, and while he talks the fray and
- * the chips; the thinking pulse; and the satellites over him. Each layer is a few draws, each with
+ * embers drifting off him, and while he talks the fray and the chips; the thinking pulse; and the satellites over him. Each layer is a few draws, each with
  * one paint and one width, from the layers in `picture-layers.ts`, whose vertex shaders work out
  * where everything is this frame. So a frame's JavaScript is a couple of dozen draws' uniforms, and
  * nothing it does grows with what is drawn.
@@ -144,13 +139,11 @@ export interface GpuPicture {
   arc: PictureLayer;
   disc: PictureLayer;
   cage: PictureLayer;
-  truss: PictureLayer;
   embers: PictureLayer;
   fray: PictureLayer;
   chips: PictureLayer;
   paths: Record<StaticPathName, ShapeRange>;
   chipParts: Record<(typeof CHIP_PARTS)[number], ShapeRange>;
-  trussParts: Record<TrussPart, ShapeRange>;
   sparkle: WebGLTexture;
   gradients: WebGLTexture;
   /** The glyphs' runs, written as the satellites change, and the glyph each slot holds now. */
@@ -233,7 +226,6 @@ function layerOf(gl: HologramGl, source: PictureLayerSource, buffers?: [string, 
 export function createGpuPicture(gl: HologramGl, scene: HologramPictureScene): GpuPicture {
   const statics = staticSegmentsLayer(staticPathsOf());
   const chips = chipsLayer();
-  const truss = trussLayer(scene);
 
   // The glyphs draw with the static runs' shader, from buffers of their own that a frame rewrites.
   const glyphBuffer = (size: number) => {
@@ -275,13 +267,11 @@ export function createGpuPicture(gl: HologramGl, scene: HologramPictureScene): G
     arc: layerOf(gl, arcLayer()),
     disc: layerOf(gl, discLayer()),
     cage: layerOf(gl, cageLayer(scene)),
-    truss: layerOf(gl, truss.layer),
     embers: layerOf(gl, embersLayer(scene)),
     fray: layerOf(gl, frayLayer(scene)),
     chips: layerOf(gl, chips.layer),
     paths: statics.ranges,
     chipParts: chips.ranges,
-    trussParts: truss.ranges,
     sparkle: carried(sparkle),
     gradients: carried(gradients),
     glyphEnds: carried(glyphEnds),
@@ -595,52 +585,6 @@ function drawCage(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   strokeCage(gl, picture, frame, 0.011 / 2, PICTURE_PAINTS.sparkle, PALE_ORANGE, clamp01(0.9 * alpha));
 }
 
-/** How far either side of the middle of the truss its haze reaches: from rail to rail, and no further. */
-const TRUSS_HAZE_HALF_WIDTH = (TRUSS_OUTER_RAIL - TRUSS_INNER_RAIL) / 2;
-
-/** One part of the truss's pieces, in one paint and width, rolled round his edge on its own clock. */
-function strokeTruss(
-  gl: HologramGl,
-  picture: GpuPicture,
-  frame: GpuPictureFrame,
-  part: ShapeRange,
-  halfWidth: number,
-  colour: number,
-  alpha: number,
-) {
-  'worklet';
-  const layer = picture.truss;
-  const state = frame.state;
-  beginPath(gl, picture);
-  useLayerRoundTheShell(gl, picture, layer, frame);
-  setSolid(gl, layer, colour, alpha);
-  setUniform1(layer, gl, 'rimRoll', state.rimRoll);
-  setUniform1(layer, gl, 'halfWidth', halfWidth / state.shellReach);
-  drawShapes(gl, picture, layer, part.first, part.count);
-}
-
-/**
- * The ladder truss round his edge (`buildTruss`): the old rim's squares, always there and recoloured
- * into the cage's palette — a trace of glow in each box, open as the film's ladder is, a fine orange
- * inner rail, an orange outer rail under a pale orange hot line, orange rungs closing the boxes, and
- * the circuit traces and struts finer still. It comes and goes with the cage, carried out with the
- * shell as he arrives. The haze filled each box at 0.42 of the glow once, and in the copper paints
- * that read as a solid band round him.
- */
-function drawTruss(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
-  'worklet';
-  const alpha = frame.state.cageAlpha;
-  if (alpha <= 0) return;
-  const parts = picture.trussParts;
-  const glow = frame.state.glowGain;
-  strokeTruss(gl, picture, frame, parts.haze, TRUSS_HAZE_HALF_WIDTH, GLOW, clamp01(0.15 * alpha * glow));
-  strokeTruss(gl, picture, frame, parts.inner, 0.014 / 2, ORANGE, clamp01(0.7 * alpha));
-  strokeTruss(gl, picture, frame, parts.outer, 0.026 / 2, ORANGE, clamp01(0.85 * alpha));
-  strokeTruss(gl, picture, frame, parts.outer, 0.008 / 2, PALE_ORANGE, clamp01(0.85 * alpha));
-  strokeTruss(gl, picture, frame, parts.rung, 0.016 / 2, ORANGE, clamp01(0.85 * alpha));
-  strokeTruss(gl, picture, frame, parts.detail, 0.006 / 2, DEEP_ORANGE, clamp01(0.5 * alpha));
-}
-
 /** The embers, in one paint and width. */
 function strokeEmbers(
   gl: HologramGl,
@@ -935,7 +879,6 @@ export function drawGpuPicture(gl: HologramGl, picture: GpuPicture, frame: GpuPi
   drawAura(gl, picture, frame);
   drawCore(gl, picture, frame);
   drawCage(gl, picture, frame);
-  drawTruss(gl, picture, frame);
   drawEmbers(gl, picture, frame);
   drawFray(gl, picture, frame);
   drawChips(gl, picture, frame);

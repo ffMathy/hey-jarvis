@@ -51,13 +51,6 @@
 //                     specks, longer lines further out and a few trailing away below him. It is in
 //                     three dimensions and turns with the body, and each edge twinkles on its own slow
 //                     clock.
-//   drawTruss         the old rim's ladder truss (buildTruss), at the user's asking: a hot outer rail
-//                     at TRUSS_OUTER_RAIL and a finer inner one at TRUSS_INNER_RAIL, rungs about
-//                     every 9° making its boxes, open as Age of Ultron's ladder is with only a trace
-//                     of glow in them, circuit traces and pairs of short struts hanging inward, along
-//                     about 190° of his edge in three stretches. Recoloured into the cage's pale
-//                     orange, always there, and rolling clockwise in the plane of the view on its own
-//                     clock (RIM_ROLL_DEGREES_PER_SECOND).
 //   drawEmbers        the embers (buildEmbers): flecks drifting out from the shell's edge and a little
 //                     upward, each on its own clock, some of them streaked.
 //   drawFray          while he talks: strands fraying off the upper left of the shell's edge, streak
@@ -74,7 +67,13 @@
 //                     held in the view plane and winding out of the core from 0.1R, Age of Ultron's
 //                     swirl (pushWhorlSpeck); its gyroscope, strands of specks on arcs at 0.53R and
 //                     0.67R round the core, held in the view plane and turned with the whorl, and
-//                     rocked about the core while he talks (pushGyroSpeck, GYRO_SWAY_DEGREES); a
+//                     rocked about the core while he talks (pushGyroSpeck, GYRO_SWAY_DEGREES); the
+//                     old rim's ladder truss round his edge, made of specks at the user's asking: a
+//                     hot outer rail at TRUSS_OUTER_RAIL, a finer inner one at TRUSS_INNER_RAIL and
+//                     rungs between them making thirteen open boxes of about 11.6° along about 150°
+//                     of his edge in three stretches (TRUSS_ARCS, pushTrussSpeck), held in the view
+//                     plane and rolling clockwise on its own clock (RIM_ROLL_DEGREES_PER_SECOND),
+//                     never cut by the limb, snapped by the lattice or scattered by a thought; a
 //                     fill through the ball as the old body's was; and the film's shell from about
 //                     half his radius out (buildBody). Each tier has a soft halo of its own, and the
 //                     stream, specks below the core turning on a clock of their own (buildStream).
@@ -126,8 +125,8 @@
 //               tracker's rule (`voice-levels.ts`).
 //   appearance  0-1 over MATERIALISE_SECONDS: the vortex. The specks leave the core on their own
 //               clocks, nearest first, spiralling out a turn and a half as streaks before they settle
-//               (swirlFragment). The core shows first, and the aura, the cage, the truss and the embers are
-//               carried out with the shell (shellReach) rather than drawn round a ball that is not
+//               (swirlFragment), the truss's last. The core shows first, and the aura, the cage and
+//               the embers are carried out with the shell (shellReach) rather than drawn round a ball that is not
 //               there yet. It moves only the specks already being drawn, so the scene's count and the
 //               density share hold throughout.
 //   presence    0-1, and 1 unless he is leaving: he fades and shrinks to LEAVING_SMALLEST, without
@@ -168,9 +167,18 @@
 //   minute, they read as an arm swinging out of the ball in the same pattern. Nothing grows out of him
 //   and dissolves: the cage is always there, and calm.
 // - The squares round his edge stay: "I'd also like to still have the weird squares near the edge
-//   of the hologram". The old rim's ladder truss is drawn always (drawTruss), in the cage's palette,
-//   between TRUSS_INNER_RAIL and TRUSS_OUTER_RAIL, so it never stands off him. The script that once
-//   chose between it, a crescent and a thin ring is gone, and so are those two.
+//   of the hologram". The old rim's ladder truss is always there, between TRUSS_INNER_RAIL and
+//   TRUSS_OUTER_RAIL, so it never stands off him. The script that once chose between it, a crescent
+//   and a thin ring is gone, and so are those two.
+// - The squares are particles, and fewer: "The squares along the edge should be made from moving
+//   particles too if possible. The amount of squares should be reduced a bit." The truss is specks
+//   of the body (pushTrussSpeck), thirteen boxes where the painted truss had twenty-one, dense and
+//   bright enough that each box reads as plainly as the painted ones did while its specks twinkle.
+// - The arcs move while he talks: "The arcs around his core need to also move when talking." They
+//   rock about the core with his eased agitation, the inner arcs against the outer
+//   (GYRO_SWAY_DEGREES), calmly.
+// - Thinking scatters the glow lines: "While thinking, the direction of the glow lines should
+//   randomize." Every speck but the truss's lies some way dealt afresh at each blink (thoughtTurn).
 // - He arrives as a vortex out of his core and in no other way. The film's point of light, sparks and
 //   spoked dial are gone at the user's asking, and nothing flashes as he forms: no one frame may turn
 //   a tenth of his light on at once.
@@ -393,18 +401,17 @@ export const STREAK_ARC_STRIDE = 6;
 export const LIMB_STREAK_STRIDE = 5;
 export const CAGE_EDGE_STRIDE = 10;
 export const EMBER_STRIDE = 7;
-export const TRUSS_PIECE_STRIDE = 4;
 /**
- * The ladder truss round his edge (buildTruss, `drawTruss`): its hot outer rail and its finer inner
- * one, in R, with the rungs across between them making its boxes. Everything of it lies between the
- * two but the struts, which hang a little inward from the inner rail over his edge: nothing of it
- * stands off him, so it never reads as something growing out of him.
+ * The ladder truss round his edge, made of specks of the body (pushTrussSpeck): its hot outer rail
+ * and its finer inner one, in R, with the rungs across between them making its boxes. All of it lies
+ * between the two, so nothing of it stands off him or reads as something growing out of him.
  */
 export const TRUSS_OUTER_RAIL = 1.035;
 export const TRUSS_INNER_RAIL = 0.935;
 /**
- * The truss rolls clockwise in the plane of the view on a clock of its own, `rimRoll`: one turn in
- * about 33 s, the rate it rolled at before the Vision footage replaced it, and the core ring's.
+ * The truss's specks roll clockwise in the plane of the view on a clock of their own, `rimRoll`
+ * ({@link turnOfGroup}): one turn in about 33 s, the rate it rolled at before the Vision footage
+ * replaced it, and the core ring's.
  */
 export const RIM_ROLL_DEGREES_PER_SECOND = 11;
 /** Side of the tiled sparkle texture in texels, and how wide a texel is on the sphere: a stroke spans about two. */
@@ -1040,6 +1047,111 @@ export function pushGyroSpeck(random: Random, body: number[], shape: number[]) {
   );
 }
 
+/** One stretch of the truss: its first clock degree, its sweep in degrees, and how many boxes it is cut into. */
+type TrussArc = readonly [from: number, sweep: number, boxes: number];
+
+/**
+ * The truss's three stretches round his edge, at the user's asking ("The amount of squares should
+ * be reduced a bit"): thirteen boxes of about 11.6°, where the painted truss had twenty-one of about
+ * 9° over 190°.
+ */
+export const TRUSS_ARCS: readonly TrussArc[] = [
+  [282, 70, 6],
+  [196, 46, 4],
+  [64, 35, 3],
+];
+/** How many rungs the truss has: one at each end of every box, shared between neighbours. */
+const TRUSS_RUNGS = TRUSS_ARCS.reduce((total, [, , boxes]) => total + boxes + 1, 0);
+/** How far a rung reaches, from rail to rail, in R. */
+const TRUSS_RUNG_LENGTH = TRUSS_OUTER_RAIL - TRUSS_INNER_RAIL;
+/**
+ * How long the outer rail, the inner rail and the rungs are, in R: a part is picked in proportion to
+ * its length — the rungs' counted four times, since their specks are short and a box without its
+ * sides is no box.
+ */
+const TRUSS_PART_LENGTHS = [
+  TRUSS_OUTER_RAIL * TRUSS_ARCS.reduce((total, [, sweep]) => total + sweep, 0) * DEGREES_TO_RADIANS,
+  TRUSS_INNER_RAIL * TRUSS_ARCS.reduce((total, [, sweep]) => total + sweep, 0) * DEGREES_TO_RADIANS,
+  4 * TRUSS_RUNGS * TRUSS_RUNG_LENGTH,
+];
+const TRUSS_LENGTH = TRUSS_PART_LENGTHS[0] + TRUSS_PART_LENGTHS[1] + TRUSS_PART_LENGTHS[2];
+/**
+ * The share of the body's draws that go to the truss: about an eighth of his rows, enough that each
+ * rail and rung is drawn over two or three times at any moment, so a box reads as a box while its
+ * specks light, fade and re-light on their own clocks.
+ */
+const TRUSS_SHARE = 0.08;
+/** How long a rail's specks and a rung's are, in R. */
+const TRUSS_RAIL_SPECK = 0.11;
+const TRUSS_RUNG_SPECK = 0.035;
+/**
+ * The share of each part's specks that are bright, and the rest mid: none dim, so the boxes are as
+ * plain as the painted ones were. The outer rail is the hot one, as the old rim's was.
+ */
+const TRUSS_BRIGHT_SHARES = [0.9, 0.7, 0.8];
+/**
+ * How much of its light the truss gives up while he thinks: it recedes with everything else but is
+ * not put out by the thinking plane, as the rest of his specks are, so the squares stay.
+ */
+export const TRUSS_THINKING_DIM = 0.5;
+
+/** One of the truss's clock degrees along its arcs, picked evenly along them. */
+function pickTrussClock(random: Random) {
+  let left = random() * TRUSS_ARCS.reduce((total, [, sweep]) => total + sweep, 0);
+  for (const [from, sweep] of TRUSS_ARCS) {
+    if (left <= sweep) return from + left;
+    left -= sweep;
+  }
+  return TRUSS_ARCS[0][0];
+}
+
+/** The clock degree of one of the truss's rungs, picked evenly among them. */
+function pickTrussRung(random: Random) {
+  let left = Math.floor(random() * TRUSS_RUNGS);
+  for (const [from, sweep, boxes] of TRUSS_ARCS) {
+    if (left <= boxes) return from + (sweep * left) / boxes;
+    left -= boxes + 1;
+  }
+  return TRUSS_ARCS[0][0];
+}
+
+/**
+ * A speck of the truss round his edge, at the user's asking ("The squares along the edge should be
+ * made from moving particles too"): a dash on its outer rail or its inner one, lying along it, or
+ * on one of its rungs, lying across between them with room for the slide its blink gives it. Pushed
+ * as a row of the body in a group of its own ({@link TRUSS_GROUP}), held in the plane of the view
+ * and rolled round his middle by `rimRoll`; it is never cut by his limb, snapped onto the listening
+ * lattice, turned while he thinks or put out by the thinking plane, so the squares stay squares.
+ */
+export function pushTrussSpeck(random: Random, body: number[], shape: number[]) {
+  // 0 the outer rail, 1 the inner rail, 2 a rung
+  const pick = random() * TRUSS_LENGTH;
+  const part = pick < TRUSS_PART_LENGTHS[0] ? 0 : pick < TRUSS_PART_LENGTHS[0] + TRUSS_PART_LENGTHS[1] ? 1 : 2;
+  const onRung = part === 2;
+  const length = onRung ? TRUSS_RUNG_SPECK : TRUSS_RAIL_SPECK;
+  // A rung's specks stay between the rails however far their blink slides them (0.7 of a length).
+  const room = TRUSS_RUNG_LENGTH - 2.4 * length;
+  const reach = onRung
+    ? TRUSS_INNER_RAIL + 1.2 * length + random() * room
+    : part === 0
+      ? TRUSS_OUTER_RAIL
+      : TRUSS_INNER_RAIL;
+  const clock = (onRung ? pickTrussRung(random) : pickTrussClock(random)) * DEGREES_TO_RADIANS;
+  const spot = [reach * Math.sin(clock), -reach * Math.cos(clock), 0];
+  shape[0] = 0;
+  shape[1] = length;
+  pushBodyRow(
+    random,
+    body,
+    spot,
+    onRung ? 0 : 1,
+    onRung ? 1 : 0,
+    shape,
+    random() < TRUSS_BRIGHT_SHARES[part] ? 2 : 1,
+    TRUSS_GROUP,
+  );
+}
+
 /**
  * The fragment body: the film's shell of fine glittering specks. Stride {@link BODY_STRIDE}: x, y,
  * unit direction along the ring and out from his middle where it is seen (see
@@ -1059,16 +1171,21 @@ export function pushGyroSpeck(random: Random, body: number[], shape: number[]) {
  * cycles twice as fast and only shows while he talks, standing in for calm fragments
  * whose ids it takes over — so the count lit, and the brightness, stay the same.
  *
- * The whorl's and the gyroscope's specks ({@link WHORL_SHARE}, {@link GYRO_SHARE}) ride the
- * counter-turning inner layer instead of the globe's turn, so the spiral and the arcs through his
- * middle drift against the rest of him. Both take their rows out of the fill's and the shell's, so the
- * body still has exactly `fragmentCount` rows.
+ * The whorl's, the gyroscope's and the truss's specks ({@link WHORL_SHARE}, {@link GYRO_SHARE},
+ * {@link TRUSS_SHARE}) are held in the plane of the view instead of the globe's turn, each group
+ * turned in it on its own clock ({@link turnOfGroup}), so the spiral and the arcs through his middle
+ * drift against the rest of him and the truss rolls round his edge. They take their rows out of the
+ * fill's and the shell's, so the body still has exactly `fragmentCount` rows.
  */
 function buildBody(random: Random, fragmentCount: number) {
   const body: number[] = [];
   const shape = [0, 0];
   const spot = [0, 0, 0, 0, 0];
   while (body.length < fragmentCount * BODY_STRIDE) {
+    if (random() < TRUSS_SHARE) {
+      pushTrussSpeck(random, body, shape);
+      continue;
+    }
     if (random() < WHORL_SHARE) {
       pushWhorlSpeck(random, body, shape);
       continue;
@@ -1482,41 +1599,6 @@ function buildEmbers(random: Random) {
   return embers;
 }
 
-/** What the scene's seed is mixed with to seed the truss's own generator (see {@link CAGE_SEED_MIX}). */
-const TRUSS_SEED_MIX = 0x165667b1;
-/** The truss's three stretches of arc, in clock degrees: about 190° of his edge in all. */
-const TRUSS_ARCS = [
-  [280, 380],
-  [195, 245],
-  [62, 102],
-];
-
-/**
- * The ladder truss round his edge, as the old rim had it: pieces of about 9° meeting end to end along
- * three stretches of arc ({@link TRUSS_ARCS}), each a box between the rails with a rung at its start,
- * some carrying a circuit trace and some a pair of short struts hanging inward from the inner rail.
- * In the frame it rolls in (`rimRoll`), the GPU drawing every piece every frame.
- *
- * Stride {@link TRUSS_PIECE_STRIDE}: start (clock degrees), sweep (degrees), circuit trace (0 none,
- * 1 L, 2 Z, 3 T) and hanging strut length (R, 0 for none).
- */
-function buildTruss(random: Random) {
-  const truss: number[] = [];
-  for (const [from, to] of TRUSS_ARCS) {
-    let degrees = from;
-    while (degrees < to - 4) {
-      // pieces meet end to end, so the rails run on unbroken with rungs across them
-      const sweep = Math.min(to - degrees, 8 + random() * 3);
-      const trace = random() < 0.45 ? 0 : 1 + Math.floor(random() * 3);
-      // short, so that a strut stays in the shell's edge and never reaches into his face
-      const strut = random() < 0.22 ? 0.04 + random() * 0.04 : 0;
-      truss.push(degrees, sweep, trace, strut);
-      degrees += sweep;
-    }
-  }
-  return truss;
-}
-
 /**
  * Builds the hologram's random geometry once. Deterministic for a given seed; plain data only.
  *
@@ -1542,7 +1624,6 @@ export function createHologramScene(seed: number, particleCount: number = PARTIC
     // taken out or added — reshuffles them, nor they it.
     cage: buildCage(createRandom(seed ^ CAGE_SEED_MIX)).map(roundToFiveDecimals),
     embers: buildEmbers(createRandom(seed ^ EMBER_SEED_MIX)).map(roundToFiveDecimals),
-    truss: buildTruss(createRandom(seed ^ TRUSS_SEED_MIX)).map(roundToFiveDecimals),
   };
 }
 
@@ -1565,7 +1646,6 @@ export function pictureSceneOf(scene: HologramScene): HologramPictureScene {
     textureSeed: scene.textureSeed,
     cage: scene.cage,
     embers: scene.embers,
-    truss: scene.truss,
   };
 }
 
@@ -2067,10 +2147,11 @@ export function thoughtTurn(hop: number, group: number, state: HologramFrameStat
  * {@link FRAGMENT_WANDER}, and further along it while he talks — less so the nearer the limb it is
  * seen, so the silhouette holds while the inside churns. The gyroscope's arcs do not churn with the
  * rest: they rock while he talks instead ({@link GYRO_SWAY_DEGREES}), and slid along their circles
- * by the churn they would smear into rings, whose rocking nobody could see.
+ * by the churn they would smear into rings, whose rocking nobody could see. The truss's specks only
+ * slide along their rails and rungs, and its limb never cuts them: it lies out past the limb.
  *
  * Writes `x`, `y`, `depth`, `edge` (the limb's share of its length) and `light` (the shell's share
- * of its paint) into `out`, and the way the speck lies ({@link ringDirection}) after them, rather
+ * of its paint, and for the truss what thinking leaves it: {@link TRUSS_THINKING_DIM}) into `out`, and the way the speck lies ({@link ringDirection}) after them, rather
  * than returning them, because whatever composes the body from it places a couple of thousand
  * fragments a frame, and an object apiece would be a frame's worth of rubbish to collect. It is the
  * definition the GPU's body is held to, and what its CPU reference (`gpu/fragment-3d.ts`) composes
@@ -2104,15 +2185,20 @@ export function placeFragment(body: number[], offset: number, hop: number, state
   const inward = group === GYRO_GROUP ? 0 : clamp01((0.76 - (turnedX * turnedX + restY * restY)) * 3.2);
   const wander = fraction(hop * 23.17) - 0.5;
   const along = (hop - 0.5) * 1.4 * body[offset + 4] + wander * 1.3 * state.agitation * inward;
-  const across = wander * FRAGMENT_WANDER;
+  // The truss's specks slide only along their rails and rungs, so its lines stay lines.
+  const truss = group === TRUSS_GROUP;
+  const across = truss ? 0 : wander * FRAGMENT_WANDER;
   const y = restY + unitY * along + unitX * across;
   const x = turnedX + unitX * along - unitY * across;
   out[0] = x;
   out[1] = y;
   out[2] = depthAtRest * turnCos - rest * turnSin;
-  // Nothing pops at the limb as it turns out of sight, or as it wanders out past it.
-  out[3] = clamp01((0.94 * 0.94 - x * x - y * y) * 8);
-  out[4] = shellFacing(x, y, rest * rest + restY * restY + depthAtRest * depthAtRest);
+  // Nothing pops at the limb as it turns out of sight, or as it wanders out past it. The truss lies
+  // past the limb on purpose, and is never cut by it.
+  out[3] = truss ? 1 : clamp01((0.94 * 0.94 - x * x - y * y) * 8);
+  // The truss is not put out by the thinking plane as the rest of him is: it recedes instead.
+  const light = shellFacing(x, y, rest * rest + restY * restY + depthAtRest * depthAtRest);
+  out[4] = truss ? light * (1 - TRUSS_THINKING_DIM * state.thinking) : light;
 }
 
 /**

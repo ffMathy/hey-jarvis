@@ -33,9 +33,10 @@ import {
   ringDirection,
   SHELL_DEGREES_PER_SECOND,
   swirlFragment,
+  TRUSS_ARCS,
+  TRUSS_GROUP,
   TRUSS_INNER_RAIL,
   TRUSS_OUTER_RAIL,
-  TRUSS_PIECE_STRIDE,
   thoughtTurn,
   turnOfGroup,
   WHORL_REACH,
@@ -148,6 +149,23 @@ function rowsOf(body: number[]) {
   return rows;
 }
 
+/** The truss's rows of a body table: where each rests, which way it lies relative to the ring, and how long it is. */
+function trussRowsOf(body: number[]) {
+  const rows: { x: number; y: number; unitX: number; unitY: number; length: number; depth: number }[] = [];
+  for (let offset = 0; offset < body.length; offset += BODY_STRIDE) {
+    if (fragmentGroup(body[offset + 7] ?? 0) !== TRUSS_GROUP) continue;
+    rows.push({
+      x: body[offset] ?? 0,
+      y: body[offset + 1] ?? 0,
+      unitX: body[offset + 2] ?? 0,
+      unitY: body[offset + 3] ?? 0,
+      length: body[offset + 4] ?? 0,
+      depth: body[offset + 8] ?? 0,
+    });
+  }
+  return rows;
+}
+
 /** Points along the whorl's two arms' centre curves, relative to the core, each with how far out along its arm it is. */
 const WHORL_CURVE = Array.from({ length: 4001 }, (_, step) => step / 4000).flatMap((out) =>
   [0, Math.PI].map((arm) => {
@@ -187,8 +205,9 @@ describe('his middle: the whorl and the gyroscope', () => {
   const rows = rowsOf(createHologramScene(SEED).body);
   const innerLayer = rows.filter((row) => row.innerLayer);
 
-  it('still has exactly PARTICLE_COUNT specks, however many go to the whorl and the gyroscope', () => {
-    // Their rows come out of the fill's and the shell's: ten thousand at most, as the user asked.
+  it('still has exactly PARTICLE_COUNT specks, however many go to the whorl, the gyroscope and the truss', () => {
+    // Their rows come out of the fill's and the shell's: ten thousand at most, as the user asked,
+    // the truss's among them now that its squares are specks too.
     expect(rows.length).toBe(PARTICLE_COUNT);
     // Over four in ten ride the inner layer (measured 43.6%), and the rest still fill the ball.
     expect(innerLayer.length / rows.length).toBeGreaterThan(0.35);
@@ -387,6 +406,8 @@ describe('his specks while he thinks', () => {
     for (let blink = 1; blink < blinks.length; blink++) {
       expect(Math.abs((blinks[blink] ?? 0) - (blinks[blink - 1] ?? 0))).toBeGreaterThan(0.05);
     }
+    // Never the truss's: its boxes stay boxes.
+    for (const hop of hops) expect(thoughtTurn(hop, TRUSS_GROUP, state)).toBe(0);
     // Half thinking, half as far: it eases in with the thought.
     const half = analyseFrame(frameAt(0.5), SIZE);
     for (const hop of hops.slice(0, 50)) {
@@ -520,27 +541,58 @@ describe('the picture round him', () => {
     return edges;
   };
 
-  it('keeps the truss on his edge: boxes between its rails, short struts hanging inward, nothing standing off him', () => {
-    // "I'd also like to still have the weird squares near the edge of the hologram" — and nothing may
-    // stand off him, so the rails stay inside 0.93-1.05R and a strut only ever hangs inward, short.
-    const { truss } = scene;
+  it('builds the truss round his edge out of his specks: boxes between its rails, fewer than before', () => {
+    // "I'd also like to still have the weird squares near the edge of the hologram", and then "The
+    // squares along the edge should be made from moving particles too ... The amount of squares
+    // should be reduced a bit." Its rows are specks of the body, in a group of their own, each a dash
+    // on the outer rail or the inner one, lying along it, or on a rung between them, lying across:
+    // the rails stay inside 0.93-1.05R so nothing stands off him.
     expect(TRUSS_INNER_RAIL).toBeGreaterThanOrEqual(0.93);
     expect(TRUSS_OUTER_RAIL).toBeLessThanOrEqual(1.05);
-    let degrees = 0;
-    let struts = 0;
-    for (let offset = 0; offset < truss.length; offset += TRUSS_PIECE_STRIDE) {
-      const [, sweep, trace, strut] = truss.slice(offset, offset + TRUSS_PIECE_STRIDE);
-      degrees += sweep;
-      // a box is wider than it is deep, as the old truss's were
-      expect(sweep).toBeGreaterThan(4);
-      expect(sweep).toBeLessThanOrEqual(11);
-      expect([0, 1, 2, 3]).toContain(trace);
-      if (strut > 0) struts++;
-      expect(TRUSS_INNER_RAIL - strut).toBeGreaterThan(PICTURE_SHELL_EDGE - 0.05);
+    const truss = trussRowsOf(scene.body);
+    // Measured 1207 of the ten thousand: enough that its boxes read as plainly as the painted ones.
+    expect(truss.length).toBeGreaterThan(1000);
+    expect(truss.length).toBeLessThan(1400);
+    const rungs = TRUSS_ARCS.flatMap(([from, sweep, boxes]) =>
+      Array.from({ length: boxes + 1 }, (_, rung) => from + (sweep * rung) / boxes),
+    );
+    const onRails = { outer: 0, inner: 0 };
+    const perRung = new Map<number, number>();
+    for (const row of truss) {
+      const reach = Math.hypot(row.x, row.y);
+      const clock = ((Math.atan2(row.x, -row.y) * 180) / Math.PI + 360) % 360;
+      // to within the five decimals a row is rounded to
+      expect(TRUSS_ARCS.some(([from, sweep]) => (clock - from + 360.01) % 360 <= sweep + 0.02)).toBe(true);
+      const rail = [TRUSS_OUTER_RAIL, TRUSS_INNER_RAIL].find((radius) => Math.abs(reach - radius) < 1e-4);
+      if (rail !== undefined) {
+        // along the ring
+        expect([row.unitX, row.unitY]).toEqual([1, 0]);
+        if (rail === TRUSS_OUTER_RAIL) onRails.outer++;
+        else onRails.inner++;
+        continue;
+      }
+      // across it, on a rung, between the rails with room for its slide
+      expect([row.unitX, row.unitY]).toEqual([0, 1]);
+      const rung = rungs.findIndex((at) => Math.abs(((clock - at + 540) % 360) - 180) < 2e-3);
+      expect(rung).toBeGreaterThanOrEqual(0);
+      perRung.set(rung, (perRung.get(rung) ?? 0) + 1);
+      expect(reach - 1.2 * row.length).toBeGreaterThan(TRUSS_INNER_RAIL - 1e-4);
+      expect(reach + 1.2 * row.length).toBeLessThan(TRUSS_OUTER_RAIL + 1e-4);
     }
-    expect(degrees).toBeGreaterThan(180);
-    expect(degrees).toBeLessThan(200);
-    expect(struts).toBeGreaterThan(0);
+    // Thirteen boxes, about a third fewer than the 21 the painted truss had, each 10-13° wide, and
+    // every rung closing them made of specks too (measured at least 34 a rung, 279 and 263 a rail):
+    // with fewer, at 400 px the rim read as a faint dashed scatter rather than as boxes.
+    const boxes = TRUSS_ARCS.reduce((total, [, , count]) => total + count, 0);
+    expect(boxes).toBeGreaterThanOrEqual(12);
+    expect(boxes).toBeLessThanOrEqual(15);
+    for (const [, sweep, count] of TRUSS_ARCS) {
+      expect(sweep / count).toBeGreaterThanOrEqual(10);
+      expect(sweep / count).toBeLessThanOrEqual(13);
+    }
+    expect(perRung.size).toBe(rungs.length);
+    for (const count of perRung.values()) expect(count).toBeGreaterThanOrEqual(25);
+    expect(onRails.outer).toBeGreaterThan(200);
+    expect(onRails.inner).toBeGreaterThan(200);
   });
 
   it('rolls the truss clockwise on a clock of its own, one turn in about 33 s', () => {

@@ -11,9 +11,6 @@ import {
   PICTURE_SHELL_EDGE,
   STREAK_ARC_STRIDE,
   type StaticPaths,
-  TRUSS_INNER_RAIL,
-  TRUSS_OUTER_RAIL,
-  TRUSS_PIECE_STRIDE,
 } from '../hologram-drawing';
 import { glslFloat } from './glsl';
 import { PICTURE_VERTEX_PRELUDE } from './picture-glsl';
@@ -381,107 +378,6 @@ uniform float halfWidth;
     uniforms: ['time', 'share', 'halfWidth'],
     attributes: [attribute('emberPath', 4, paths), attribute('emberMore', 3, more)],
     shapes: paths.length,
-  };
-}
-
-// ---- round his edge: the truss ------------------------------------------------------------------
-
-/** The parts of a truss piece, in the order they are laid out: one range a part. */
-export const TRUSS_PARTS = ['outer', 'inner', 'haze', 'rung', 'detail'] as const;
-
-export type TrussPart = (typeof TRUSS_PARTS)[number];
-
-/** How many runs a piece's circuit trace and struts take at most: three of trace, two struts. */
-const TRUSS_DETAIL_RUNS = 5;
-
-/**
- * The ladder truss round his edge, rolled `rimRoll` degrees clockwise: each piece's outer and inner
- * rails, the haze between them, the rung at its start that closes its box, and its circuit trace and
- * pair of hanging struts (`buildTruss`, `drawTruss`). Every piece is drawn in every frame.
- */
-export function trussLayer(scene: HologramPictureScene): {
-  layer: PictureLayerSource;
-  ranges: Record<TrussPart, ShapeRange>;
-} {
-  const pieces: number[][] = [];
-  const parts: number[][] = [];
-  const ranges: Partial<Record<TrussPart, ShapeRange>> = {};
-  TRUSS_PARTS.forEach((part, partIndex) => {
-    const first = pieces.length;
-    for (let offset = 0; offset < scene.truss.length; offset += TRUSS_PIECE_STRIDE) {
-      const runs = part === 'detail' ? TRUSS_DETAIL_RUNS : 1;
-      for (let run = 0; run < runs; run++) {
-        pieces.push(scene.truss.slice(offset, offset + TRUSS_PIECE_STRIDE));
-        parts.push([partIndex, run]);
-      }
-    }
-    ranges[part] = { first, count: pieces.length - first };
-  });
-  const outer = glslFloat(TRUSS_OUTER_RAIL);
-  const inner = glslFloat(TRUSS_INNER_RAIL);
-  return {
-    layer: {
-      vertexShader: shader(
-        `
-in vec4 trussPiece;
-in vec2 trussPart;
-uniform float rimRoll;
-uniform float halfWidth;
-`,
-        `
-  // trussPiece: start (clock degrees), sweep (degrees), circuit trace, strut; trussPart: which part
-  // of the piece, and which of the detail's runs.
-  float part = trussPart.x;
-  float start = clockRadians(trussPiece.x + rimRoll);
-  float sweep = trussPiece.y * DEGREES;
-  if (part < 0.5) {
-    emitArcPiece(vec2(0.0), ${outer}, halfWidth, start, sweep, 0.0, 1.0, 0.0, 0.0);
-    return;
-  }
-  if (part < 1.5) {
-    emitArcPiece(vec2(0.0), ${inner}, halfWidth, start, sweep, 0.0, 1.0, 0.0, 0.0);
-    return;
-  }
-  if (part < 2.5) {
-    emitArcPiece(vec2(0.0), (${outer} + ${inner}) * 0.5, halfWidth, start, sweep, 0.0, 1.0, 0.0, 0.0);
-    return;
-  }
-  vec2 startDirection = vec2(cos(start), sin(start));
-  if (part < 3.5) {
-    emitSegment(startDirection * ${inner}, startDirection * ${outer}, halfWidth, 0.0, 0.0);
-    return;
-  }
-  // The circuit trace (an L, a Z or a T between the rails) or one of the struts.
-  vec2 early = vec2(cos(start + 0.045), sin(start + 0.045));
-  vec2 late = vec2(cos(start + 0.11), sin(start + 0.11));
-  float trace = trussPiece.z;
-  float strut = trussPiece.w;
-  float run = trussPart.y;
-  if (run < 2.5) {
-    if (trace == 1.0 && run < 0.5) emitRun(early * 0.955, early * 1.005, halfWidth, 2.0, 0.0, 0.0);
-    else if (trace == 1.0 && run < 1.5) emitRun(early * 1.005, late * 1.005, halfWidth, 1.0, 0.0, 0.0);
-    else if (trace == 2.0 && run < 0.5) emitRun(early * 0.95, early * 0.99, halfWidth, 2.0, 0.0, 0.0);
-    else if (trace == 2.0 && run < 1.5) emitRun(early * 0.99, late * 0.99, halfWidth, 3.0, 0.0, 0.0);
-    else if (trace == 2.0) emitRun(late * 0.99, late * 1.03, halfWidth, 1.0, 0.0, 0.0);
-    else if (trace == 3.0 && run < 0.5) emitSegment(early * 1.02, late * 1.02, halfWidth, 0.0, 0.0);
-    else if (trace == 3.0 && run < 1.5) emitSegment((early + late) * 0.4725, (early + late) * 0.5, halfWidth, 0.0, 0.0);
-    else hide();
-    return;
-  }
-  if (strut <= 0.0) {
-    hide();
-    return;
-  }
-  // A pair of struts 0.02R apart, hanging a little inward from the inner rail.
-  vec2 tangent = vec2(-early.y, early.x) * (run < 3.5 ? 0.0 : 0.02);
-  emitSegment(early * ${inner} + tangent, early * (${inner} - strut) + tangent, halfWidth, 0.0, 0.0);
-`,
-      ),
-      uniforms: ['rimRoll', 'halfWidth'],
-      attributes: [attribute('trussPiece', 4, pieces), attribute('trussPart', 2, parts)],
-      shapes: pieces.length,
-    },
-    ranges: ranges as Record<TrussPart, ShapeRange>,
   };
 }
 

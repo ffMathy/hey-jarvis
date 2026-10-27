@@ -10,6 +10,7 @@ import {
   CORE_Y,
   createHologramScene,
   FRAGMENT_FAINTEST,
+  fragmentGroup,
   fragmentTier,
   type HologramFrame,
   type HologramFrameState,
@@ -22,6 +23,10 @@ import {
   STREAM_STRIDE,
   scanned,
   swirlFragment,
+  TRUSS_GROUP,
+  TRUSS_INNER_RAIL,
+  TRUSS_OUTER_RAIL,
+  TRUSS_THINKING_DIM,
   turnOfGroup,
 } from '../hologram-drawing';
 import { VOICE_BAND_COUNT } from '../voice-levels';
@@ -105,14 +110,21 @@ function phoneBody(offset: number, state: HologramFrameState): PhoneFragment | n
   swirlFragment(placed[0], placed[1], placed[5], placed[6], id, state);
   const drawn = state.swirled[4];
   if (drawn <= 0) return null;
-  latticeFragment(state.swirled[0], state.swirled[1], id, state);
+  // The truss keeps its squares: never snapped onto the lattice nor put out by the thinking plane.
+  const truss = reading[2] === TRUSS_GROUP;
+  if (truss) {
+    state.listened[0] = state.swirled[0];
+    state.listened[1] = state.swirled[1];
+  } else {
+    latticeFragment(state.swirled[0], state.swirled[1], id, state);
+  }
   const y = state.listened[1];
-  const litHere = lit * scanned(y, state);
+  const litHere = truss ? lit : lit * scanned(y, state);
   if (litHere < FRAGMENT_FAINTEST) return null;
   const facing = placed[2] >= -BACK_OF_THE_SHELL;
   // The shell it is seen through dims its paint, not its length: the light picks its tier, except
   // where the thinking plane lights it to the brightest at full light.
-  const promoted = state.scanBright[0] > 0 && facing;
+  const promoted = !truss && state.scanBright[0] > 0 && facing;
   const plain = facing ? fragmentTier(reading[4], litHere * placed[4], id, state.hotShare) : 0;
   const half = length * 0.5 * litHere * drawn * (1 - LATTICE_STROKE_SHRINK * state.hearing);
   return {
@@ -329,6 +341,8 @@ function specksAtTheEdge(state: HologramFrameState, behind: boolean) {
   const sliver = drawnBody(state).filter(({ placed }) => {
     const depth = placed.centre[2];
     const isBehind = depth < 0;
+    // the globe's shell: the truss lies flat round his limb, in front of it, and would swamp it
+    if (placed.group === TRUSS_GROUP) return false;
     return seenReach(placed) >= 0.75 && Math.abs(depth) <= 0.15 && isBehind === behind;
   });
   return { count: sliver.length, lit: sliver.filter(({ placed }) => placed.tier > 0).length };
@@ -364,10 +378,10 @@ describe('his specks', () => {
       tally.count++;
     }
     expect(faceOn.count).toBeGreaterThan(100);
-    // Enough at the edge to measure: over four in ten of his specks ride the inner layer instead —
-    // the whorl's and the gyroscope's, round the core — so the edge holds fewer than it did
-    // (measured 426 here).
-    expect(edgeOn.count).toBeGreaterThan(400);
+    // Enough at the edge to measure: over four in ten of his specks are held in the view plane
+    // instead — the whorl's and the gyroscope's round the core, and the truss's — so the edge holds
+    // fewer than it did (measured 426 before the truss was made of specks, 390 since).
+    expect(edgeOn.count).toBeGreaterThan(350);
     expect(faceOn.light / faceOn.count).toBeGreaterThan(0.7);
     expect(edgeOn.light / edgeOn.count).toBeGreaterThan(0.8);
     expect(faceOn.light / faceOn.count).toBeLessThan(0.9 * (edgeOn.light / edgeOn.count));
@@ -375,7 +389,8 @@ describe('his specks', () => {
   });
 
   it('stay inside his limb while he talks, however far his voice moves them', () => {
-    const drawn = drawnBody(stateAt(MOMENTS.speaking));
+    // All but the truss's, which lies round his limb on purpose and which his voice never moves.
+    const drawn = drawnBody(stateAt(MOMENTS.speaking)).filter(({ placed }) => placed.group !== TRUSS_GROUP);
     expect(drawn.length).toBeGreaterThan(2000);
     for (const { placed } of drawn) {
       expect(seenReach(placed)).toBeLessThan(0.94);
@@ -455,7 +470,8 @@ describe('the body while he thinks', () => {
       let count = 0;
       for (let offset = 0; offset < scene.body.length; offset += BODY_STRIDE) {
         const placed = placeBodyFragment(scene.body, offset, state, FRONT_VIEW);
-        if (placed === null) continue;
+        // The truss is not lit by the plane: it stays, receding, so the squares do.
+        if (placed === null || placed.group === TRUSS_GROUP) continue;
         total += placed.plane[1];
         count++;
       }
@@ -469,5 +485,75 @@ describe('the body while he thinks', () => {
     expect(Math.max(...late)).toBeLessThan(Math.min(...early));
     const mean = (of: number[]) => of.reduce((all, one) => all + one, 0) / of.length;
     expect(mean(early) - mean(late)).toBeGreaterThan(0.12);
+  });
+});
+
+/** The offsets of the truss's rows in the scene's body. */
+const TRUSS_OFFSETS = Array.from({ length: scene.body.length / BODY_STRIDE }, (_, row) => row * BODY_STRIDE).filter(
+  (offset) => fragmentGroup(scene.body[offset + 7] ?? 0) === TRUSS_GROUP,
+);
+
+/** How lit a row's clock makes it this frame, before anything else is asked of it: 0 when it is not drawn. */
+function clockStrength(offset: number, state: HologramFrameState) {
+  return readFragment(scene.body, offset, state, [0, 0, 0, 0, 0]);
+}
+
+describe('the truss round his edge, made of specks', () => {
+  it('is never cut or shortened by his limb, though it lies past it', () => {
+    // Its rails are at 0.935R and 1.035R, where the limb fade leaves a body speck nothing.
+    for (const moment of [IDLE, MOMENTS.speaking, MOMENTS.listening]) {
+      const state = stateAt(moment);
+      let lit = 0;
+      for (const offset of TRUSS_OFFSETS) {
+        const strength = clockStrength(offset, state);
+        const placed = placeBodyFragment(scene.body, offset, state, FRONT_VIEW);
+        expect(placed === null).toBe(strength <= 0);
+        if (placed === null) continue;
+        lit++;
+        const half = 0.5 * (scene.body[offset + 4] ?? 0) * strength * (1 - LATTICE_STROKE_SHRINK * state.hearing);
+        expect(length3(placed.axis)).toBeCloseTo(half, 9);
+      }
+      expect(lit).toBeGreaterThan(150);
+    }
+  });
+
+  it('keeps its specks on its rails and rungs, rolled round his middle by rimRoll, even while he listens', () => {
+    // Not snapped onto the listening lattice: the squares stay squares.
+    for (const moment of [IDLE, MOMENTS.listening]) {
+      const state = stateAt(moment);
+      const radians = (state.rimRoll * Math.PI) / 180;
+      for (const offset of TRUSS_OFFSETS) {
+        const placed = placeBodyFragment(scene.body, offset, state, FRONT_VIEW);
+        if (placed === null) continue;
+        const [x = 0, y = 0] = placed.plane;
+        // only slid along the way it lies, never across it: on a rail still — the chord of a slide of
+        // 0.7 of its 0.11R stands off the rail by 0.003R at most — or on its rung
+        const reach = Math.hypot(x, y);
+        const onRail = [TRUSS_OUTER_RAIL, TRUSS_INNER_RAIL].some((rail) => Math.abs(reach - rail) < 4e-3);
+        const restClock = Math.atan2(scene.body[offset] ?? 0, -(scene.body[offset + 1] ?? 0));
+        const onRung = Math.abs(Math.atan2(x, -y) - restClock) < 1e-6;
+        expect(onRail || onRung).toBe(true);
+        // turned about his middle, clockwise on screen
+        expect(placed.centre[0]).toBeCloseTo(x * Math.cos(radians) - y * Math.sin(radians), 9);
+        expect(-placed.centre[1]).toBeCloseTo(x * Math.sin(radians) + y * Math.cos(radians), 9);
+      }
+    }
+  });
+
+  it('stays while he thinks, lying as it always does and receding, rather than going out with the scan', () => {
+    const quiet = stateAt({ time: 41.2 });
+    const thinking = stateAt(MOMENTS.thinking);
+    let compared = 0;
+    for (const offset of TRUSS_OFFSETS) {
+      const placed = placeBodyFragment(scene.body, offset, thinking, FRONT_VIEW);
+      const calm = placeBodyFragment(scene.body, offset, quiet, FRONT_VIEW);
+      expect(placed === null).toBe(calm === null);
+      if (placed === null || calm === null) continue;
+      compared++;
+      // the same way, never scattered: the squares must stay squares
+      for (const axis of [0, 1, 2]) expect(placed.axis[axis]).toBeCloseTo(calm.axis[axis] ?? 0, 9);
+      expect(placed.light).toBeCloseTo(calm.light * (1 - TRUSS_THINKING_DIM), 9);
+    }
+    expect(compared).toBeGreaterThan(150);
   });
 });

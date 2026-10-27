@@ -20,6 +20,7 @@ import {
   shellFacing,
   swirlFragment,
   TRUSS_GROUP,
+  TRUSS_THINKING_DIM,
   thoughtTurn,
   turnOfGroup,
 } from '../hologram-drawing';
@@ -277,33 +278,34 @@ export function placeBodyFragment(
   const inward = group === GYRO_GROUP ? 0 : clamp01((0.76 - (planeX * planeX + planeY * planeY)) * 3.2);
   const wander = fraction(hop * 23.17) - 0.5;
   const along = (hop - 0.5) * 1.4 * length + wander * 1.3 * state.agitation * inward;
-  const across = wander * FRAGMENT_WANDER;
+  // The truss's specks slide only along their rails and rungs, and lie past the limb on purpose.
+  const truss = group === TRUSS_GROUP;
+  const across = truss ? 0 : wander * FRAGMENT_WANDER;
   const y = planeY + unitY * along + unitX * across;
   const x = planeX + unitX * along - unitY * across;
   // The limb, which takes its length, and the shell it is seen through, which takes its light:
   // `placeFragment`'s edge and light.
-  const edge = clamp01((0.94 * 0.94 - x * x - y * y) * 8);
-  const light = shellFacing(x, y, restX * restX + restY * restY + restDepth * restDepth);
+  const edge = truss ? 1 : clamp01((0.94 * 0.94 - x * x - y * y) * 8);
+  const shellLight = shellFacing(x, y, restX * restX + restY * restY + restDepth * restDepth);
+  // The truss is not put out by the thinking plane as the rest of him is: it recedes instead.
+  const light = truss ? shellLight * (1 - TRUSS_THINKING_DIM * state.thinking) : shellLight;
   const lit = strength * edge;
   if (lit < FRAGMENT_FAINTEST) return null;
 
   swirlFragment(x, y, unitX, unitY, id, state);
   const [swirledX = 0, swirledY = 0, directionX = 0, directionY = 0, drawn = 0] = state.swirled;
   if (drawn <= 0) return null;
-  const [latticeX, latticeY, latticeDepth] = onLattice(
-    swirledX,
-    swirledY,
-    depth * vortexScale(x, y, id, state),
-    id,
-    state,
-    eyeDistance,
-  );
+  // The truss keeps its squares while he listens: never snapped onto the lattice.
+  const vortexDepth = depth * vortexScale(x, y, id, state);
+  const [latticeX, latticeY, latticeDepth] = truss
+    ? [swirledX, swirledY, vortexDepth]
+    : onLattice(swirledX, swirledY, vortexDepth, id, state, eyeDistance);
   // The thinking plane is level: how far down the world's vertical the fragment is.
-  const litHere = lit * scanned(-intoBody(basis, latticeX, latticeY, latticeDepth)[1], state);
+  const litHere = truss ? lit : lit * scanned(-intoBody(basis, latticeX, latticeY, latticeDepth)[1], state);
   if (litHere < FRAGMENT_FAINTEST) return null;
   const facing = depth >= -BACK_OF_THE_SHELL;
   // The thinking plane lights what it is in the middle of to the brightest tier, at full light.
-  const scanBright = state.scanBright[0] > 0 && facing;
+  const scanBright = !truss && state.scanBright[0] > 0 && facing;
   const plain = facing ? fragmentTier(brightness, litHere * light, id, state.hotShare) : 0;
   const half = length * 0.5 * litHere * drawn * (1 - LATTICE_STROKE_SHRINK * state.hearing);
   return finish(
