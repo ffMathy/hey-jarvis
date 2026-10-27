@@ -427,12 +427,20 @@ export const FRAGMENT_CODE_GLYPH_STEP = 12;
  * What it costs on every phone, fast or slow, is the scene: this many fragments times
  * {@link BODY_STRIDE} numbers, built and laid out as the GPU's rows when the view mounts. That is
  * the only part of raising it that nobody can opt out of, and it is worth knowing the size of it:
- * 90,000 numbers. At 100,000, ten to a row, `createHologramScene` spent about 20 ms building them on
- * a desktop under V8 once warm (about 35 on a first, cold call), and about 70 ms under a Hermes
- * compiled ahead of time the way React Native ships it, on the same desktop, against about half
- * that at five thousand. A phone is some multiple of that. It lands as a hitch when the view mounts
- * rather than as a frame rate, so the controller below cannot thin it away — this is the number to
- * look at first if the arrival ever starts feeling late.
+ * 90,000 numbers. On a desktop under V8, `createHologramScene` builds them in about 22 ms once warm
+ * (about 43 on a first, cold call), and `buildHologramRows` and `buildRowVertices` lay them out as
+ * the GPU's rows in about 10 more (23 cold); JavaScriptCore is a little quicker. With the JIT turned
+ * off, the nearest that desktop comes to the Hermes a phone runs, the scene takes about 110 ms and
+ * its rows 35, in either engine. Hermes itself has not been run on this scene. The one before the
+ * redesign took about 70 ms to build under a Hermes compiled ahead of time the way React Native
+ * ships it, on a desktop where V8 built it in about 20 once warm; on this one V8 took about 24 to
+ * build it once warm, and with the JIT off 140 to build it and 60 to lay out its rows. Over a third
+ * of the time without a JIT is the two hundred thousand draws from the seeded generator — the body
+ * turns one candidate in two away, each after five or six draws — and every draw is part of what
+ * the seed builds, so that is the floor for as long as the scene stays the same. A phone is some
+ * multiple of all of it. It lands as a hitch when the view mounts rather than as a frame rate, so
+ * the controller below cannot thin it away — this is the number to look at first if the arrival
+ * ever starts feeling late.
  *
  * {@link FEWEST_PARTICLES} in `density-control.ts` is a share of this, so it moves when this does.
  */
