@@ -630,8 +630,9 @@ test.describe('the hologram', () => {
     // what was on his left is on his right — and a whole turn later it is itself again; the
     // twinkling of its lines and the embers drifting through it keep either from being exact.
     // Measured over the band it is in — its weave at 0.9–1.25R, with spikes to about 1.36R and its
-    // trails to 1.4R — from 1.07R out, past the truss round his edge (0.935–1.035R), which rolls in
-    // the plane of the view on a clock of its own and is no mirror of itself half a body turn later.
+    // trails to 1.4R — from 1.07R out, past where the truss round his edge (0.935–1.035R) used to be
+    // painted, rolling in the plane of the view on a clock of its own; it is made of his body's specks
+    // now, which the picture does not draw.
     // With the aura taken out, when the truss was brought back: 0.52–0.60 alike with its mirror half
     // a turn later and -0.05–0.08 with itself, 0.65–0.71 alike with itself a turn later and
     // -0.05–0.05 with its mirror. (From 0.95R, before the truss, it was 0.59–0.66 and 0.76–0.78.)
