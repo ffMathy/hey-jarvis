@@ -378,7 +378,8 @@ describe('a lamp chosen by answering the question that asked which', () => {
  * A request the routing classifier answers without its agent: no agent runs, so no tool result is
  * streamed for routing to read what was touched off, and the direct answer has to say so itself --
  * before its answer, as a tool's result comes before the agent's answer. One that fails or declines
- * goes to the agent instead, and says nothing of what it tried.
+ * goes to the agent instead, and says nothing of what it tried. Either way the agent is announced
+ * the moment routing knows it, so its satellite is out round Jarvis before anything is tried.
  */
 describe('a request answered without its agent, with the headset watching', () => {
   const TO_DO_QUESTION = 'What is on my to-do list?';
@@ -406,9 +407,17 @@ describe('a request answered without its agent, with the headset watching', () =
     return (handleSpy?.mock.calls ?? []).map(([event]) => event);
   }
 
-  /** The events of the delegation a direct answer is reported as. */
-  function directAnswerEvents(): RoutingEvent[] {
-    return eventsHandled().filter((event) => 'delegationId' in event && event.delegationId.startsWith('direct-'));
+  /** The agents announced as at work so far, in the order they were. */
+  function agentsAnnounced(): string[] {
+    return eventsHandled().flatMap((event) => (event.type === 'delegation_start' ? [event.agentId] : []));
+  }
+
+  /** The events of the one delegation the request planned, which a direct answer is reported as. */
+  function plannedDelegationEvents(): RoutingEvent[] {
+    const [start] = eventsHandled().filter((event) => event.type === 'delegation_start');
+    return eventsHandled().filter(
+      (event) => start !== undefined && 'delegationId' in event && event.delegationId === start.delegationId,
+    );
   }
 
   /**
@@ -510,7 +519,13 @@ describe('a request answered without its agent, with the headset watching', () =
     setRoutingClassifierForTest(
       routingClassifierSureOf({ route: 'todoList', responseStyle: 'lookup', directLookup: 'todoList.open' }),
     );
-    spies.push(spyOn(getAllTasks, 'execute').mockResolvedValue({ tasks: [MILK], taskList: DEFAULT_TASK_LIST }));
+    let announcedBeforeTheLookup: string[] = [];
+    spies.push(
+      spyOn(getAllTasks, 'execute').mockImplementation(async () => {
+        announcedBeforeTheLookup = agentsAnnounced();
+        return { tasks: [MILK], taskList: DEFAULT_TASK_LIST };
+      }),
+    );
 
     await executeTool(routeTool, { userQuery: TO_DO_QUESTION, async: false });
     const [first] = await pollUntilClosed();
@@ -518,7 +533,9 @@ describe('a request answered without its agent, with the headset watching', () =
     // The list itself, by its real id -- exactly what the agent's `getAllTasks` call reports.
     expect(pushed).toEqual([DEFAULT_TASK_LIST]);
     expect(first?.completedTaskResults).toEqual([{ id: 'todoList', result: '{"tasks":[{"title":"Buy milk"}]}' }]);
-    expect(directAnswerEvents().map((event) => event.type)).toEqual([
+    // Its satellite is out the moment routing knows the agent, not once the answer is in.
+    expect(announcedBeforeTheLookup).toEqual(['todoList']);
+    expect(plannedDelegationEvents().map((event) => event.type)).toEqual([
       'delegation_start',
       'delegation_affected_entities',
       'delegation_end',
@@ -529,20 +546,40 @@ describe('a request answered without its agent, with the headset watching', () =
     setRoutingClassifierForTest(
       routingClassifierSureOf({ route: 'todoList', responseStyle: 'lookup', directLookup: 'todoList.open' }),
     );
-    spies.push(spyOn(getAllTasks, 'execute').mockRejectedValue(new Error('Google Tasks is down')));
+    let announcedBeforeTheLookup: string[] = [];
+    spies.push(
+      spyOn(getAllTasks, 'execute').mockImplementation(async () => {
+        announcedBeforeTheLookup = agentsAnnounced();
+        throw new Error('Google Tasks is down');
+      }),
+    );
 
     await executeTool(routeTool, { userQuery: TO_DO_QUESTION, async: false });
     const responses = await pollUntilClosed();
 
     expect(responses[responses.length - 1]?.completedTaskResults).toEqual([{ id: 'todoList', result: TO_DO_ANSWER }]);
     expect(pushed).toEqual([]);
-    expect(directAnswerEvents()).toEqual([]);
+    // Announced once, before the lookup: the agent carries on the delegation the lookup gave up.
+    expect(announcedBeforeTheLookup).toEqual(['todoList']);
+    expect(agentsAnnounced()).toEqual(['todoList']);
     expect(eventsHandled().filter((event) => event.type === 'delegation_affected_entities')).toEqual([]);
   }, 60_000);
 
   it('hands a command the direct path declines to the agent, and reports nothing of what it tried', async () => {
     setRoutingClassifierForTest(
       routingClassifierSureOf({ route: 'internetOfThings', responseStyle: 'command', homeDomain: 'light' }),
+    );
+
+    let announcedBeforeThePlanWasRegistered: string[] = [];
+    const register = Mastra.prototype.addDynamicWorkflows;
+    spies.push(
+      spyOn(Mastra.prototype, 'addDynamicWorkflows').mockImplementation(function (
+        this: Mastra,
+        ...args: Parameters<Mastra['addDynamicWorkflows']>
+      ) {
+        announcedBeforeThePlanWasRegistered = agentsAnnounced();
+        return register.apply(this, args);
+      }),
     );
 
     await executeTool(routeTool, { userQuery: LIGHTS_COMMAND, async: false });
@@ -552,7 +589,8 @@ describe('a request answered without its agent, with the headset watching', () =
       { id: 'internetOfThings', result: LIGHTS_ANSWER },
     ]);
     expect(pushed).toEqual([]);
-    expect(directAnswerEvents()).toEqual([]);
+    expect(announcedBeforeThePlanWasRegistered).toEqual(['internetOfThings']);
+    expect(agentsAnnounced()).toEqual(['internetOfThings']);
     expect(eventsHandled().filter((event) => event.type === 'delegation_affected_entities')).toEqual([]);
   }, 60_000);
 });
