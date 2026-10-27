@@ -33,17 +33,23 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
   strands, its specks spread evenly along the arms, few of them bright and those on the arms' centre
   lines, with a soft skirt round each arm.
 - **The gyroscope:** Age of Ultron's arcs round the core, bundles of three thin strands of specks on
-  arcs at 0.53R and 0.67R (`GYRO_ARCS`, `pushGyroSpeck`), riding the inner layer with the whorl so they
-  turn with it. Nothing of it lies at the core's ring.
+  arcs at 0.53R and 0.67R (`GYRO_ARCS`, `pushGyroSpeck`), in a group of their own (`GYRO_GROUP`) held
+  in the view plane and turned with the whorl, and rocked about the core while he talks, the inner
+  arcs against the outer one like a gimbal's rings (`gyroSway`, `GYRO_SWAY_DEGREES`, `turnOfGroup`).
+  They leave the voice's churn to the rest of him, which would slide them round into rings. Nothing
+  of it lies at the core's ring.
 - **The stream:** a few specks below the core turning about the vertical on a clock of their own
   (`buildStream`).
 - **The cage:** the film's loose wireframe, hairlines between seeded nodes round the shell, in
   three dimensions and turning with the body (`buildCage`, `drawCage`).
-- **The truss:** the old rim's ladder truss round his edge, its boxes between a hot outer rail
-  (`TRUSS_OUTER_RAIL`) and a finer inner one (`TRUSS_INNER_RAIL`), in the cage's pale orange, its
-  boxes open as Age of Ultron's ladder is, with only a trace of glow in them, always there and
-  rolling clockwise on its own clock (`RIM_ROLL_DEGREES_PER_SECOND`, `rimRoll`) (`buildTruss`,
-  `drawTruss`).
+- **The truss:** the old rim's ladder truss round his edge, made of specks of the body
+  (`pushTrussSpeck`, `TRUSS_GROUP`, about 1200 of the ten thousand): dashes along a hot outer rail
+  (`TRUSS_OUTER_RAIL`) and a finer inner one (`TRUSS_INNER_RAIL`) and across the rungs between
+  them, thirteen open boxes of about 11.6° in three stretches (`TRUSS_ARCS`), always there and
+  rolling clockwise about his middle on its own clock (`RIM_ROLL_DEGREES_PER_SECOND`, `rimRoll`).
+  Its specks twinkle and slide along their lines like every speck, but the limb never cuts them,
+  the listening lattice never snaps them, thinking never scatters them and the thinking plane does
+  not put them out (they recede by `TRUSS_THINKING_DIM`), so the squares stay squares.
 - **The embers:** orange flecks drifting out from the shell's edge, more of them while he talks
   (`buildEmbers`, `drawEmbers`).
 - **The aura:** the film's bloom, a soft warm band round him, see-through in the middle
@@ -80,7 +86,7 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
 - **No protrusions.** Nothing grows out of him and dissolves in a repeating pattern; the cage is
   always there, and calm.
 - **The squares near his edge stay** ("I'd also like to still have the weird squares near the edge
-  of the hologram"): the truss is always drawn, between `TRUSS_INNER_RAIL` and `TRUSS_OUTER_RAIL`, so
+  of the hologram"): the truss is always there, between `TRUSS_INNER_RAIL` and `TRUSS_OUTER_RAIL`, so
   it never stands off him. The script that chose between it, a crescent and a thin ring is gone.
 - **He arrives as a vortex out of his core** and in no other way, and nothing flashes as he forms.
 - **Ten thousand particles at most** (`PARTICLE_COUNT`): fifteen thousand read as a mass.
@@ -93,3 +99,14 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
   (`SCAN_SECONDS`).
 - **A speck reads as a line, not a bead:** the median one is at least five times as long as it is
   wide (`pickFragmentLength`).
+- **The squares are particles, and fewer** ("The squares along the edge should be made from moving
+  particles too if possible. The amount of squares should be reduced a bit."): the truss is specks
+  of the body, not a painted layer, thirteen boxes where the painted truss had twenty-one. Its boxes
+  must read as plainly as the painted ones did at 400 px while he idles, talks and listens: about
+  280 specks a rail and 34 or more a rung, mostly bright. Fewer read as a faint dashed scatter.
+- **The arcs move while he talks** ("The arcs around his core need to also move when talking"):
+  they rock 25-45° either way about the core with his eased agitation, calmly (never over 1.5° a
+  frame), and in silence turn with the whorl.
+- **Thinking scatters the glow lines** ("While thinking, the direction of the glow lines should
+  randomize"): every speck but the truss's lies some way within ±90° of its own (`thoughtTurn`),
+  dealt afresh each time it re-lights, eased in with the thought.

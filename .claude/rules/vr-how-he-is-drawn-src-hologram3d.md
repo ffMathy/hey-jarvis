@@ -55,8 +55,9 @@ materials, targets and meshes:
    fragment's halo as a soft glow round its stroke — full on the stroke, falling as
    (1 − d/r)² to nothing at its tier's radius, times the speck's light — MAX-blended
    into a 1024×512 byte target (R/G/B = how much the dim, mid and bright halos light
-   each spot; the pinned fragments in the left half, the inner layer's in the right,
-   as separate layers). Stacked one by one, the halos would be a flat coin over his
+   each spot; the globe's fragments in the left half, and those held in the view
+   plane — the whorl's, the gyroscope's arcs' and the truss's — in the right, as
+   separate layers). Stacked one by one, the halos would be a flat coin over his
    middle; unioned, they make one smooth envelope that leaves it see-through.
 5. **Per eye, the view-plane quad** (`view-plane-quad.ts`): the picture's target
    Screened with the halos' light, facing the centre eye, and faded with the rest
@@ -85,7 +86,8 @@ Where each fragment is comes from `hologram/gpu`'s `fragment-3d.ts`: the phone's
 per-fragment helpers from `hologram`, with the body turning about the vertical in
 its own frame (its front faces where the user stood when he arrived) and
 everything the phone does on screen — the wander, the vortex, the lattice, the
-inner layer's turn, a glyph's direction — done in the plane through his centre
+turns of the groups held in the view plane (the whorl's, the arcs' rocking, the
+truss's roll), a glyph's direction and its scatter while he thinks — done in the plane through his centre
 that faces the centre eye. Depth is kept: the vortex scales it, the lattice snaps
 it into layers where the centre eye sees them line up, the thinking plane is
 level with the floor. Its `fragment-glsl.ts` is that file, line for line, in
