@@ -231,6 +231,28 @@ function finish(fragment: Unfinished, state: HologramFrameState, basis: ViewBasi
 }
 
 /**
+ * Where a body row rests this frame, in the view plane (x right, y down) and its depth:
+ * `placeFragment`'s turn about the vertical in the body's frame, then seen in the view plane — or,
+ * in a group held in the view plane, as it rests there.
+ */
+function restInThePlane(
+  restX: number,
+  restY: number,
+  restDepth: number,
+  group: number,
+  state: HologramFrameState,
+  basis: ViewBasis,
+): Vector3Tuple {
+  if (group > 0) return [restX, restY, restDepth];
+  const turned: Vector3Tuple = [
+    restX * state.bodyCos + restDepth * state.bodySin,
+    -restY,
+    restDepth * state.bodyCos - restX * state.bodySin,
+  ];
+  return [dot(turned, basis.right), -dot(turned, basis.up), dot(turned, basis.front)];
+}
+
+/**
  * A body fragment this frame, or null when it is not drawn: `readFragment`, `placeFragment`,
  * `swirlFragment`, `latticeFragment`, `scanned` and `fragmentTier` in turn, with `placeFragment`
  * turned into three dimensions.
@@ -253,17 +275,7 @@ export function placeBodyFragment(
   const restDepth = body[offset + 8];
   const hop = fraction(cycle * 0.618034 + id * 9.7);
 
-  // placeFragment: turned about the vertical in the body's frame, then seen in the view plane — or,
-  // in a group held in the view plane, as it rests there.
-  const turned: Vector3Tuple = [
-    restX * state.bodyCos + restDepth * state.bodySin,
-    -restY,
-    restDepth * state.bodyCos - restX * state.bodySin,
-  ];
-  const held = group > 0;
-  const planeX = held ? restX : dot(turned, basis.right);
-  const planeY = held ? restY : -dot(turned, basis.up);
-  const depth = held ? restDepth : dot(turned, basis.front);
+  const [planeX, planeY, depth] = restInThePlane(restX, restY, restDepth, group, state, basis);
   // It lies along the ring through where it is seen: `placeFragment`'s direction.
   const direction = [0, 0];
   ringDirection(planeX, planeY, body[offset + 2], body[offset + 3], direction, 0);
