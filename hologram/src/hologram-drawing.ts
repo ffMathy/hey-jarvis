@@ -134,7 +134,8 @@
 //               the vortex running backwards.
 //   thinking    a plane sweeps up through him (SCAN_SECONDS), lighting what it passes, and a ring
 //               blooms out of the core at the end of each pass. Everything but the core's ring
-//               recedes.
+//               recedes, and every speck but the truss's lies some way dealt afresh each time it
+//               re-lights rather than along its ring (thoughtTurn).
 //   hearing, hearingLevel
 //               someone is talking to him: the specks snap onto a slowly turning hexagonal lattice
 //               that breathes with their voice (latticeFragment), and the core's glow dims so the
@@ -2035,11 +2036,34 @@ export function turnOfGroup(group: number, fromCore: number, state: HologramFram
 }
 
 /**
+ * How far a speck lies off its own way while he thinks, at the user's asking ("While thinking, the
+ * direction of the glow lines should randomize"): up to half of this either way, in radians, at full
+ * thought.
+ */
+export const THOUGHT_SCATTER = Math.PI;
+/** What a speck's re-lighting hop is hashed by to deal its angle: far from the wander's 23.17. */
+export const THOUGHT_FROM_HOP = 41.73;
+
+/**
+ * How far a speck is turned off the way it lies while he thinks, in radians clockwise: his
+ * `thinking` times an angle within ±{@link THOUGHT_SCATTER}/2 dealt from `hop`, the hash of its id
+ * and its blink that says where it re-lights, so every speck lies some new way each time it lights
+ * rather than the body being combed once. It eases in and out with the thought, and in silence it
+ * is nothing. The truss's specks keep their way, so its boxes stay boxes.
+ */
+export function thoughtTurn(hop: number, group: number, state: HologramFrameState) {
+  'worklet';
+  if (group === TRUSS_GROUP) return 0;
+  return state.thinking * (fraction(hop * THOUGHT_FROM_HOP) - 0.5) * THOUGHT_SCATTER;
+}
+
+/**
  * Where a fragment lands on screen this frame, how much of it survives the limb, and how much of
  * its light the shell it is seen through leaves it ({@link shellFacing}).
  *
- * `hop` is where its blink re-lights it, a hash of its id and which blink it is on: it slides along
- * the way it lies by a share of its length, and wanders along and across from where it rests by
+ * `hop` is where its blink re-lights it, a hash of its id and which blink it is on: it lies along the
+ * ring where it is seen, turned while he thinks by {@link thoughtTurn}; it slides along the way it
+ * lies by a share of its length, and wanders along and across from where it rests by
  * {@link FRAGMENT_WANDER}, and further along it while he talks — less so the nearer the limb it is
  * seen, so the silhouette holds while the inside churns. The gyroscope's arcs do not churn with the
  * rest: they rock while he talks instead ({@link GYRO_SWAY_DEGREES}), and slid along their circles
@@ -2069,8 +2093,14 @@ export function placeFragment(body: number[], offset: number, hop: number, state
   const turnSin = held ? 0 : state.bodySin;
   const turnedX = rest * turnCos + depthAtRest * turnSin;
   ringDirection(turnedX, restY, body[offset + 2], body[offset + 3], out, 5);
-  const unitX = out[5];
-  const unitY = out[6];
+  // While he thinks it lies some way dealt afresh at each blink.
+  const scatter = thoughtTurn(hop, group, state);
+  const scatterCos = Math.cos(scatter);
+  const scatterSin = Math.sin(scatter);
+  const unitX = out[5] * scatterCos - out[6] * scatterSin;
+  const unitY = out[5] * scatterSin + out[6] * scatterCos;
+  out[5] = unitX;
+  out[6] = unitY;
   const inward = group === GYRO_GROUP ? 0 : clamp01((0.76 - (turnedX * turnedX + restY * restY)) * 3.2);
   const wander = fraction(hop * 23.17) - 0.5;
   const along = (hop - 0.5) * 1.4 * body[offset + 4] + wander * 1.3 * state.agitation * inward;

@@ -20,6 +20,7 @@ import {
   shellFacing,
   swirlFragment,
   TRUSS_GROUP,
+  thoughtTurn,
   turnOfGroup,
 } from '../hologram-drawing';
 
@@ -265,7 +266,11 @@ export function placeBodyFragment(
   // It lies along the ring through where it is seen: `placeFragment`'s direction.
   const direction = [0, 0];
   ringDirection(planeX, planeY, body[offset + 2], body[offset + 3], direction, 0);
-  const [unitX = 0, unitY = 0] = direction;
+  // While he thinks it lies some way dealt afresh at each blink: `thoughtTurn`.
+  const scatter = thoughtTurn(hop, group, state);
+  const [ringX = 0, ringY = 0] = direction;
+  const unitX = ringX * Math.cos(scatter) - ringY * Math.sin(scatter);
+  const unitY = ringX * Math.sin(scatter) + ringY * Math.cos(scatter);
   // His voice lets a fragment re-light further from where it was the further inside the limb it is
   // seen, so the silhouette holds while the inside churns: along the way it lies, so the beads slide
   // round the ring rather than spilling out of it. The gyroscope's arcs rock instead.

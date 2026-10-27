@@ -18,6 +18,8 @@ import {
   SCAN_FLOOR,
   SCAN_HALF_WIDTH,
   SHELL_FACE_DIMMING,
+  THOUGHT_FROM_HOP,
+  THOUGHT_SCATTER,
   TRUSS_GROUP,
   VORTEX_STRETCH,
   VORTEX_TWIST,
@@ -194,6 +196,8 @@ const int INNER_LAYER_GROUP = ${INNER_LAYER_GROUP};
 const int GYRO_GROUP = ${GYRO_GROUP};
 const int TRUSS_GROUP = ${TRUSS_GROUP};
 const float GIMBAL_SPLIT = ${glslFloat(GYRO_GIMBAL_SPLIT)};
+const float THOUGHT_SCATTER = ${glslFloat(THOUGHT_SCATTER)};
+const float THOUGHT_FROM_HOP = ${glslFloat(THOUGHT_FROM_HOP)};
 
 struct Fragment {
   bool visible;
@@ -400,6 +404,9 @@ Fragment readBodyFragment() {
   float planeY = held ? rest.y : -dot(turned, viewUp);
   float depth = held ? rest.z : dot(turned, viewFront);
   vec2 unit = ringDirection(vec2(planeX, planeY), shape.xy);
+  // While he thinks it lies some way dealt afresh at each blink: thoughtTurn.
+  float scatter = group == TRUSS_GROUP ? 0.0 : thinking * (fract(hop * THOUGHT_FROM_HOP) - 0.5) * THOUGHT_SCATTER;
+  unit = turnVector(unit, vec2(cos(scatter), sin(scatter)));
   // The voice's churn, which the gyroscope's arcs leave to their rocking.
   float inward = group == GYRO_GROUP ? 0.0 : clamp01((0.76 - (planeX * planeX + planeY * planeY)) * 3.2);
   float wander = fract(hop * 23.17) - 0.5;

@@ -25,15 +25,18 @@ import {
   type HologramFrame,
   PARTICLE_COUNT,
   PICTURE_SHELL_EDGE,
+  placeFragment,
   pushGyroSpeck,
   RIM_ROLL_DEGREES_PER_SECOND,
   ROLL_DEGREES_PER_SECOND,
   readFragment,
+  ringDirection,
   SHELL_DEGREES_PER_SECOND,
   swirlFragment,
   TRUSS_INNER_RAIL,
   TRUSS_OUTER_RAIL,
   TRUSS_PIECE_STRIDE,
+  thoughtTurn,
   turnOfGroup,
   WHORL_REACH,
   WHORL_START,
@@ -340,6 +343,86 @@ describe('the gyroscope while he talks', () => {
       largest = Math.max(largest, Math.abs(full.gyroSway));
     }
     expect(largest).toBeGreaterThan(20);
+  });
+});
+
+describe('his specks while he thinks', () => {
+  const frameAt = (thinking: number): HologramFrame => ({
+    time: 20,
+    level: 0,
+    bands: new Array(VOICE_BAND_COUNT).fill(0),
+    speaking: false,
+    agitation: 0,
+    burstAge: 10,
+    burstStrength: 0,
+    burstCount: 0,
+    appearance: 1,
+    presence: 1,
+    thinking,
+  });
+  const hops = Array.from({ length: 2000 }, (_, index) => (index + 0.5) / 2000);
+
+  it('lie as they always do when he is not thinking', () => {
+    const state = analyseFrame(frameAt(0), SIZE);
+    for (const hop of hops) expect(thoughtTurn(hop, 0, state) === 0).toBe(true);
+  });
+
+  it('point every which way while he thinks, dealt afresh each time a speck re-lights', () => {
+    // "While thinking, the direction of the glow lines should randomize": each speck is turned by up
+    // to a quarter turn either way, by a hash of where its blink re-lights it, so the angle is dealt
+    // again on every blink rather than combed once. Spread evenly over ±90°.
+    const state = analyseFrame(frameAt(1), SIZE);
+    const turns = hops.map((hop) => thoughtTurn(hop, 0, state));
+    expect(Math.max(...turns)).toBeLessThanOrEqual(Math.PI / 2);
+    expect(Math.min(...turns)).toBeGreaterThanOrEqual(-Math.PI / 2);
+    for (let quarter = 0; quarter < 4; quarter++) {
+      const from = -Math.PI / 2 + (quarter * Math.PI) / 4;
+      const inQuarter = turns.filter((turn) => turn >= from && turn < from + Math.PI / 4).length;
+      expect(inQuarter / turns.length).toBeGreaterThan(0.2);
+      expect(inQuarter / turns.length).toBeLessThan(0.3);
+    }
+    // The same speck on its next blinks — the hop steps by the golden ratio — lies some other way.
+    const id = 0.4127;
+    const blinks = [0, 1, 2, 3].map((cycle) => thoughtTurn((cycle * 0.618034 + id * 9.7) % 1, 0, state));
+    for (let blink = 1; blink < blinks.length; blink++) {
+      expect(Math.abs((blinks[blink] ?? 0) - (blinks[blink - 1] ?? 0))).toBeGreaterThan(0.05);
+    }
+    // Half thinking, half as far: it eases in with the thought.
+    const half = analyseFrame(frameAt(0.5), SIZE);
+    for (const hop of hops.slice(0, 50)) {
+      expect(thoughtTurn(hop, 0, half)).toBeCloseTo(thoughtTurn(hop, 0, state) / 2, 12);
+    }
+  });
+
+  it('turns the way a speck lies, and so its slide, by that angle where it is placed', () => {
+    const scene = createHologramScene(SEED);
+    const thinking = analyseFrame(frameAt(1), SIZE);
+    const out = [0, 0, 0, 0, 0, 0, 0];
+    const ring = [0, 0];
+    let turned = 0;
+    for (let offset = 0; offset < BODY_STRIDE * 400; offset += BODY_STRIDE) {
+      const hop = ((offset / BODY_STRIDE) * 0.377) % 1;
+      const group = fragmentGroup(scene.body[offset + 7] ?? 0);
+      placeFragment(scene.body, offset, hop, thinking, out);
+      const restX =
+        group > 0
+          ? (scene.body[offset] ?? 0)
+          : (scene.body[offset] ?? 0) * thinking.bodyCos + (scene.body[offset + 8] ?? 0) * thinking.bodySin;
+      ringDirection(
+        restX,
+        scene.body[offset + 1] ?? 0,
+        scene.body[offset + 2] ?? 0,
+        scene.body[offset + 3] ?? 0,
+        ring,
+        0,
+      );
+      const angle = thoughtTurn(hop, group, thinking);
+      const [ringX = 0, ringY = 0] = ring;
+      expect(out[5]).toBeCloseTo(ringX * Math.cos(angle) - ringY * Math.sin(angle), 12);
+      expect(out[6]).toBeCloseTo(ringX * Math.sin(angle) + ringY * Math.cos(angle), 12);
+      if (Math.abs(angle) > 0.3) turned++;
+    }
+    expect(turned).toBeGreaterThan(200);
   });
 });
 
