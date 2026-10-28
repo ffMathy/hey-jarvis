@@ -126,7 +126,7 @@ export function useConversationSheet({
  * The conversation as it is framed: in the sheet when summoned, and as it is otherwise.
  *
  * **The sheet goes the moment the conversation does, with him still on it.** He used to fade first
- * and the sheet followed once he had: `LEAVING_SECONDS` of him shrinking, then an empty sheet
+ * and the sheet followed once he had: `LEAVING_SECONDS` of him going, then an empty sheet
  * sliding away, which is most of a second of a finished assistant still on the screen. The user
  * asked for the sheet simply to go, so in the sheet he does not fade at all. It slides off the
  * bottom with him drawn on it, as sample mode's always has.

@@ -132,6 +132,19 @@ describe('thinking', () => {
     expect(session.thinking).toBe(true);
   });
 
+  it('is not set off by the agent hanging up', async () => {
+    const harness = createHarness();
+    await harness.goLive();
+
+    // `end_call` arrives as a tool request a moment before the conversation ends; drawn as a thought,
+    // it put him into the scan plane just as he began to leave.
+    harness.sdk.latest.options.onAgentToolRequest({ tool_call_id: 'hang-up', tool_type: 'system' });
+    expect(harness.session.thinking).toBe(false);
+
+    harness.sdk.latest.agentHangsUp();
+    expect(harness.session.thinking).toBe(false);
+  });
+
   it('stops the moment the conversation ends, with a call still in flight', async () => {
     const harness = createHarness();
     await harness.goLive();

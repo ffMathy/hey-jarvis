@@ -14,7 +14,7 @@ import type { Ray } from '../xr/ray';
  * **The scenes.** On the 2D page Jarvis is `outside`. In the room he is `waiting` for "Hey Jarvis"
  * (nothing drawn), `placing` for the one frame it takes to find him a spot, `present` while the
  * conversation runs through its phases, `failed` while an error hangs where he stands, and
- * `leaving` while he shrinks away. Sample mode has a scene of its own, `sample`, walking the moods.
+ * `leaving` while the vortex draws him back into his core. Sample mode has a scene of its own, `sample`, walking the moods.
  * `editing` is sir placing the things Jarvis works on in the room (`src/entities/`): entered from
  * `waiting` with A or X or the button on the back of the wrist, or straight from the 2D page's
  * "Place entities", and left with B or Y, the same button again, or the drawer's Done. A room

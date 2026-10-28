@@ -740,11 +740,11 @@ test.describe('the hologram', () => {
     }
   });
 
-  test('leaves by shrinking and fading, and leaves nothing of him behind', async ({ picture }) => {
-    // The way out is the way in, run backwards and quicker: the whole sphere fades and draws back
-    // toward the middle rather than being cut off where it stands. The drawing does the drawing
-    // back; the fade is the view's, laid over the whole picture as one layer by its arrival, which
-    // is what `shown` does here.
+  test('leaves by drawing back into its core, and leaves nothing of him behind', async ({ picture }) => {
+    // The way out is the way in, run backwards: the vortex carries the shell, the aura and the cage
+    // back into the core rather than cutting him off where he stands. The drawing does the drawing
+    // back; the last of the fade is the view's, laid over the whole picture as one layer by its
+    // arrival, which is what `shown` does here.
     const here = brightness(await picture.render({ ...silence(picture, 6), presence: 1 }));
     const halfway = brightness(await picture.render({ ...silence(picture, 6), presence: 0.5 }));
     // ...and over a bright screen for the ending, where what matters is that nothing is left on it.

@@ -73,7 +73,7 @@ export const RENDERER_PARAMETERS = {
  *
  * The first frame after a blur or a hiccup can come seconds after the last; handed on whole, it
  * would jump every animation to its end in one frame. A tenth of a second is under the shortest
- * thing he does (leaving takes 0.45 s), so it still shows.
+ * thing he does (a thought fades in over 0.45 s), so it still shows.
  */
 export const LONGEST_FRAME_SECONDS = 0.1;
 

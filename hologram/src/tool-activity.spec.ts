@@ -196,6 +196,26 @@ describe('createToolActivity', () => {
     expect(activity.thinking()).toBe(false);
   });
 
+  it('does not think about hanging up, or any other tool ElevenLabs runs to steer the conversation', () => {
+    const { activity, clock, heard } = followedActivity();
+
+    // The request the SDK hands over as the agent hangs up, as it reports it.
+    activity.toolHandlers.onAgentToolRequest({ tool_call_id: 'hang-up', tool_type: 'system' });
+    expect(activity.thinking()).toBe(false);
+    activity.toolHandlers.onAgentToolResponse({ tool_call_id: 'hang-up', tool_type: 'system' });
+    expect(clock.pendingTimers()).toBe(0);
+
+    // A webhook alongside it is still work.
+    activity.toolHandlers.onAgentToolRequest({ tool_call_id: 'weather', tool_type: 'webhook' });
+    expect(activity.thinking()).toBe(true);
+    activity.toolHandlers.onAgentToolRequest({ tool_call_id: 'skip', tool_type: 'system' });
+    activity.toolHandlers.onAgentToolResponse({ tool_call_id: 'weather', tool_type: 'webhook' });
+    clock.advance(KEEP_THINKING_AFTER_LAST_ANSWER_MS);
+
+    expect(activity.thinking()).toBe(false);
+    expect(heard).toEqual([true, false]);
+  });
+
   it('counts one call once, however many times it is announced', () => {
     const { activity, clock, heard } = followedActivity();
 

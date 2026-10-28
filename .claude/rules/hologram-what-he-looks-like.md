@@ -89,6 +89,14 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
   of the hologram"): the truss is always there, between `TRUSS_INNER_RAIL` and `TRUSS_OUTER_RAIL`, so
   it never stands off him. The script that chose between it, a crescent and a thin ring is gone.
 - **He arrives as a vortex out of his core** and in no other way, and nothing flashes as he forms.
+- **He leaves the way he came** ("The leaving animation should also be way more sophisticated.
+  Maybe the reverse of the arriving animation."): presence runs the arrival's vortex backwards
+  (`vortexOf`), over as long as the arrival takes (`LEAVING_SECONDS` is `MATERIALISE_SECONDS`), so a
+  frame at presence `p` is the frame at appearance `p`. Do not go back to fading and shrinking him
+  where he stands.
+- **Hanging up is not a thought** ("When calling end call tool, the hologram should not show a
+  thinking animation"): ElevenLabs' system tools (`end_call`, `skip_turn`…) never start the scan
+  plane; only a call that goes out and does work does (`startsAThought` in `tool-activity.ts`).
 - **Ten thousand particles at most** (`PARTICLE_COUNT`): fifteen thousand read as a mass.
 - **Calm, never a sizzle:** the specks' clocks are slower than the film's (`pickFragmentRate`),
   and every twinkle is slow.

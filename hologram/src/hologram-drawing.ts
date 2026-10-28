@@ -129,8 +129,9 @@
 //               the embers are carried out with the shell (shellReach) rather than drawn round a ball that is not
 //               there yet. It moves only the specks already being drawn, so the scene's count and the
 //               density share hold throughout.
-//   presence    0-1, and 1 unless he is leaving: he fades and shrinks to LEAVING_SMALLEST, without
-//               the vortex running backwards.
+//   presence    0-1, and 1 unless he is leaving: the vortex runs backwards (vortexOf), so the
+//               truss and the limb spiral back into the core first, his middle after them, and the
+//               core goes out last, exactly as he came.
 //   thinking    a plane sweeps up through him (SCAN_SECONDS), lighting what it passes, and a ring
 //               blooms out of the core at the end of each pass. Everything but the core's ring
 //               recedes, and every speck but the truss's lies some way dealt afresh each time it
@@ -236,8 +237,9 @@ export interface HologramFrame {
    * 0–1: how much of him is here at all. 1 unless he is leaving.
    *
    * Kept apart from {@link appearance} so the view can send him away without rewinding the clock
-   * that arrival is counted on: leaving fades and shrinks the whole sphere, rather than running
-   * the vortex backwards.
+   * that arrival is counted on. The drawing takes the lesser of the two as how far on the vortex is
+   * ({@link vortexOf}), so leaving is the arrival run backwards: a frame at presence `p` is the
+   * frame at appearance `p`.
    */
   presence: number;
   /**
@@ -341,8 +343,6 @@ export const GLOW_FROM_ENVELOPE = 0.65;
  * pulsates now.
  */
 export const SWELL_WITH_VOICE = 0.18;
-/** How small the sphere has shrunk to by the time he has gone. */
-export const LEAVING_SMALLEST = 0.55;
 /**
  * How he listens: while someone talks to him his particles snap onto a hexagonal lattice that turns
  * slowly inside the ball and breathes with their voice — a crystalline, working look that says
@@ -1814,10 +1814,26 @@ function bandAverage(bands: number[], firstBand: number, endBand: number) {
 }
 
 /**
+ * How far on the vortex is, 0–1, from a frame's {@link HologramFrame.appearance} and
+ * {@link HologramFrame.presence}: whichever of the two is further from done.
+ *
+ * **He leaves the way he came, at the user's asking**: "The leaving animation should also be way
+ * more sophisticated. Maybe the reverse of the arriving animation." He used to fade and shrink to
+ * half his size while the vortex stood still, which read as him being switched off. Now presence
+ * runs the vortex backwards — the truss and his limb spiral into the core first, his middle after
+ * them, the aura and the cage drawn in with the shell, and the core last — and arriving again while
+ * he goes runs it forward from wherever it got to.
+ */
+export function vortexOf(appearance: number, presence: number) {
+  'worklet';
+  return clamp01(Math.min(appearance, presence));
+}
+
+/**
  * How much of him shows, 0–1, from a frame's {@link HologramFrame.appearance} and
  * {@link HologramFrame.presence}: the whole sphere fades in over the first fifth of the vortex, so
  * the first particles leaving the core are seen as they go and their own travel does the arriving,
- * and leaving fades it out by the same alpha.
+ * and out over its last fifth as he leaves, once they have all but gone back into it.
  *
  * The GPU draws him unfaded, body and picture as one, and whoever shows him fades the lot by it:
  * the two each faded before being Screened together would come out brighter where they overlap.
@@ -1825,15 +1841,15 @@ function bandAverage(bands: number[], firstBand: number, endBand: number) {
  */
 export function arrivalOf(appearance: number, presence: number) {
   'worklet';
-  return smooth01(clamp01(appearance) / 0.2) * clamp01(presence);
+  return smooth01(vortexOf(appearance, presence) / 0.2);
 }
 
 /** Everything a frame derives from its fields; see the file header for the mapping. */
 export function analyseFrame(frame: HologramFrame, size: number) {
   'worklet';
   const time = frame.time;
-  // How far on the vortex is: 1 once it is over.
-  const swirl = clamp01(frame.appearance);
+  // How far on the vortex is: 1 once it is over, and back down as he leaves.
+  const swirl = vortexOf(frame.appearance, frame.presence);
   // What speech does to him — chips thrown off the shell, the fraying, the embers it brings out —
   // waits until the vortex has all but formed him. The greeting plays while he arrives, and
   // without this it threw full-size chips off a limb that was not there yet, into empty space
@@ -1850,7 +1866,6 @@ export function analyseFrame(frame: HologramFrame, size: number) {
   // first hologram's did, while the chips and the churn follow the envelope.
   const voice = clamp01(frame.level) ** 0.8;
   const settle = 1 - smooth01(swirl);
-  const presence = clamp01(frame.presence);
   const hearing = clamp01(frame.hearing ?? 0);
   const hearingLevel = clamp01(frame.hearingLevel ?? 0);
   const arrival = arrivalOf(frame.appearance, frame.presence);
@@ -1858,8 +1873,8 @@ export function analyseFrame(frame: HologramFrame, size: number) {
   // the sentence rather than stepping up and sitting there; the envelope keeps it from dropping
   // back to nothing between syllables.
   const swell = SWELL_WITH_VOICE * (0.7 * voice + 0.3 * agitation);
-  // Full size from the start of the vortex; it only shrinks on the way out.
-  const radius = size * SPHERE_FRACTION * (LEAVING_SMALLEST + (1 - LEAVING_SMALLEST) * presence) * (1 + swell);
+  // Full size throughout: the vortex is what carries him out of the core and back into it.
+  const radius = size * SPHERE_FRACTION * (1 + swell);
   const intoScan = time - Math.floor(time / SCAN_SECONDS) * SCAN_SECONDS;
   const thinking = clamp01(frame.thinking);
   // How far the vortex has carried his shell of specks out of the core, 0 to 1. By swirlFragment's
