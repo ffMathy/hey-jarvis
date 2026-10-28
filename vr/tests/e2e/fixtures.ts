@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test as base, type Page, type TestInfo } from '@playwright/test';
 import { build } from 'esbuild';
+import { ROOM_ASSETS_PATH } from './room/room-assets';
 
 /**
  * The page every headset test starts from: offline, with an emulated Quest 3 in a living room.
@@ -129,10 +130,38 @@ async function reportFrameTimes(page: Page, testInfo: TestInfo) {
   console.log(`Emulator frame times in "${testInfo.title}": ${description}`);
 }
 
+/** Where the furnished room's photographs and models are on disk (see `room/furnishings.ts`). */
+const ROOM_ASSETS_DIRECTORY = path.join(HERE, 'room', 'assets');
+
+/**
+ * Answers the page's requests for the furnished room's photographs and models from disk, on the page's
+ * own origin, so the room is furnished with nothing fetched from anywhere but this machine.
+ */
+async function serveRoomAssets(page: Page) {
+  await page.route(
+    (url) => isLocal(url) && url.pathname.startsWith(ROOM_ASSETS_PATH),
+    (route) => {
+      const relative = decodeURIComponent(new URL(route.request().url()).pathname.slice(ROOM_ASSETS_PATH.length));
+      const file = path.resolve(ROOM_ASSETS_DIRECTORY, relative);
+      if (!file.startsWith(`${ROOM_ASSETS_DIRECTORY}${path.sep}`)) return route.fulfill({ status: 404 });
+      return route.fulfill({ path: file });
+    },
+  );
+}
+
+/**
+ * Makes `page` a Quest 3 standing in the furnished living room, offline: what every headset spec and
+ * `.scripts/render-demo.ts` open their pages with.
+ */
+export async function emulateHeadset(page: Page) {
+  await keepOffline(page);
+  await serveRoomAssets(page);
+  await page.addInitScript({ content: await bundle('xr-harness.ts') });
+}
+
 export const test = base.extend({
   page: async ({ page }, use, testInfo) => {
-    await keepOffline(page);
-    await page.addInitScript({ content: await bundle('xr-harness.ts') });
+    await emulateHeadset(page);
     await use(page);
     await reportFrameTimes(page, testInfo);
   },

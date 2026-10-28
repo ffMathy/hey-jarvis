@@ -42,7 +42,7 @@ import { GREETING_REPEAT_SECONDS, GREETING_SECONDS } from 'hologram';
 import config from '../playwright.config';
 import type { RoomPoint } from '../src/debug-hook';
 import { withSavedSettings } from '../tests/e2e/app-driver';
-import { bundle, keepOffline } from '../tests/e2e/fixtures';
+import { emulateHeadset } from '../tests/e2e/fixtures';
 import {
   decodeMono,
   encodeArguments,
@@ -555,8 +555,7 @@ async function openPage(browser: Browser, options: Options, port: number): Promi
   });
   const page = await context.newPage();
   page.on('pageerror', (error) => console.warn(`page error: ${error.message}`));
-  await keepOffline(page);
-  await page.addInitScript({ content: await bundle('xr-harness.ts') });
+  await emulateHeadset(page);
   await withSavedSettings(page);
   await page.clock.install();
   await page.goto(`http://localhost:${port}${SITE_PREFIX}?film`);

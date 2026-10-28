@@ -1,0 +1,314 @@
+{
+  "asset": {
+    "generator": "Khronos glTF Blender I/O v4.2.60",
+    "version": "2.0"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0,
+        1,
+        2
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "name": "gallinera_table"
+    },
+    {
+      "mesh": 1,
+      "name": "gallinera_table_door_a"
+    },
+    {
+      "mesh": 2,
+      "name": "gallinera_table_door_b"
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "gallinera_table",
+      "normalTexture": {
+        "index": 0
+      },
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1
+        },
+        "metallicFactor": 0,
+        "metallicRoughnessTexture": {
+          "index": 2
+        }
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Cube.005",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0
+        }
+      ]
+    },
+    {
+      "name": "Cube.001",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 4,
+            "NORMAL": 5,
+            "TEXCOORD_0": 6
+          },
+          "indices": 7,
+          "material": 0
+        }
+      ]
+    },
+    {
+      "name": "Cube.002",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 8,
+            "NORMAL": 9,
+            "TEXCOORD_0": 10
+          },
+          "indices": 11,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    },
+    {
+      "sampler": 0,
+      "source": 1
+    },
+    {
+      "sampler": 0,
+      "source": 2
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/jpeg",
+      "name": "gallinera_table_nor_gl",
+      "uri": "textures/gallinera_table_nor_gl_1k.jpg"
+    },
+    {
+      "mimeType": "image/jpeg",
+      "name": "gallinera_table_diff",
+      "uri": "textures/gallinera_table_diff_1k.jpg"
+    },
+    {
+      "mimeType": "image/jpeg",
+      "name": "gallinera_table_rough",
+      "uri": "textures/gallinera_table_arm_1k.jpg"
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 4352,
+      "max": [
+        0.4150412976741791,
+        0.4877856969833374,
+        0.2591458559036255
+      ],
+      "min": [
+        -0.4150412380695343,
+        -7.450580596923828e-9,
+        -0.2591458559036255
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 4352,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 4352,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5123,
+      "count": 14472,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5126,
+      "count": 284,
+      "max": [
+        0.11524398624897003,
+        0.39795130491256714,
+        0.2458086460828781
+      ],
+      "min": [
+        -0.12821489572525024,
+        0.1031491830945015,
+        0.21045450866222382
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 5,
+      "componentType": 5126,
+      "count": 284,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 6,
+      "componentType": 5126,
+      "count": 284,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 7,
+      "componentType": 5123,
+      "count": 1056,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 8,
+      "componentType": 5126,
+      "count": 284,
+      "max": [
+        0.11524398624897003,
+        0.39795130491256714,
+        -0.21045450866222382
+      ],
+      "min": [
+        -0.12821489572525024,
+        0.1031491830945015,
+        -0.2458086460828781
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 9,
+      "componentType": 5126,
+      "count": 284,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 10,
+      "componentType": 5126,
+      "count": 284,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 11,
+      "componentType": 5123,
+      "count": 1056,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 52224,
+      "byteOffset": 0,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 52224,
+      "byteOffset": 52224,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 34816,
+      "byteOffset": 104448,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 28944,
+      "byteOffset": 139264,
+      "target": 34963
+    },
+    {
+      "buffer": 0,
+      "byteLength": 3408,
+      "byteOffset": 168208,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 3408,
+      "byteOffset": 171616,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 2272,
+      "byteOffset": 175024,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 2112,
+      "byteOffset": 177296,
+      "target": 34963
+    },
+    {
+      "buffer": 0,
+      "byteLength": 3408,
+      "byteOffset": 179408,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 3408,
+      "byteOffset": 182816,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 2272,
+      "byteOffset": 186224,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 2112,
+      "byteOffset": 188496,
+      "target": 34963
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 190608,
+      "uri": "gallinera_table.bin"
+    }
+  ]
+}
