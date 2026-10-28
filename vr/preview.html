@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#05070a" />
+    <title>Jarvis preview</title>
+    <link rel="icon" type="image/png" href="./icon-512.png" />
+    <style>:root{--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark;--background:#05070a;--panel:#0d1117;--text:#e8ecf0;--muted:#8a949e;--accent:#dc5c20;--passthrough:#8c8c8c}*{box-sizing:border-box}body{background:var(--background);min-height:100vh;color:var(--text);flex-direction:column;align-items:center;gap:1rem;margin:0;padding:1rem;font-family:system-ui,sans-serif;display:flex}h1{letter-spacing:.3em;text-transform:uppercase;margin:0;font-size:1.4rem;font-weight:300}#stage{aspect-ratio:1;touch-action:none;background:#000;border-radius:.5rem;width:min(100%,72vh,900px);position:relative;overflow:hidden}#stage[data-background=grey]{background:var(--passthrough)}#view{width:100%;height:100%;display:block}#controls{flex-wrap:wrap;justify-content:center;gap:.75rem 1.5rem;max-width:60rem;display:flex}fieldset{background:var(--panel);border:1px solid #1f2630;border-radius:.5rem;flex-wrap:wrap;align-items:center;gap:.4rem;margin:0;padding:.4rem .6rem;display:flex}legend{color:var(--muted);padding:0 .3rem;font-size:.8rem}button{color:var(--text);font:inherit;cursor:pointer;background:0 0;border:1px solid #2a323d;border-radius:999px;padding:.45rem .9rem;font-size:.9rem}button[aria-pressed=true]{border-color:var(--accent);background:var(--accent);color:var(--background)}button:disabled{color:var(--muted);cursor:default}input[type=range]{accent-color:var(--accent)}#readout{min-height:1.4em;color:var(--muted);font-variant-numeric:tabular-nums;text-align:center;margin:0;font-size:.85rem}a{color:var(--muted)}#satellites{flex-wrap:wrap;justify-content:center;gap:1rem;max-width:60rem;display:flex}#satellites-phone{background:#000;border-radius:.5rem;width:240px;height:240px}#satellites fieldset{align-self:flex-start}#satellite-agents button.glyph[aria-pressed=true]{color:var(--text);background:#2a1608}#satellite-agents button.glyph{border-radius:.5rem;flex-direction:column;align-items:center;gap:.2rem;font-size:.75rem;display:inline-flex}#satellite-path{width:min(28rem,80vw);font:inherit;color:var(--text);background:0 0;border:1px solid #2a323d;border-radius:.4rem;padding:.4rem;font-size:.8rem}</style>
+    <script type="module" crossorigin src="./assets/preview-T4aMozAi.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/room-session-CchnwNi_.js">
+    <link rel="modulepreload" crossorigin href="./assets/three-BdQlZwYR.js">
+    <link rel="modulepreload" crossorigin href="./assets/view-plane-quad-CX894RBP.js">
+    <link rel="modulepreload" crossorigin href="./assets/hologram3d-CHm4P7cx.js">
+    <link rel="modulepreload" crossorigin href="./assets/room-satellites-CcOsnxMq.js">
+  </head>
+  <body>
+    <h1>Jarvis</h1>
+    <div id="stage" data-background="black">
+      <canvas id="view"></canvas>
+    </div>
+    <p id="readout" role="status" aria-live="off">Getting Jarvis ready…</p>
+    <div id="controls">
+      <fieldset id="phases">
+        <legend>What he is doing</legend>
+        <button type="button" data-phase="arriving">Arriving</button>
+        <button type="button" data-phase="greeting">Greeting</button>
+        <button type="button" data-phase="speaking">Speaking</button>
+        <button type="button" data-phase="listening">Listening</button>
+        <button type="button" data-phase="thinking">Thinking</button>
+        <button type="button" data-phase="idle">Idle</button>
+        <button type="button" data-phase="leaving">Leaving</button>
+      </fieldset>
+      <fieldset>
+        <legend>Behind him</legend>
+        <button type="button" data-background="black">Black</button>
+        <button type="button" data-background="grey">Passthrough grey</button>
+      </fieldset>
+      <fieldset>
+        <legend>Seen from</legend>
+        <button type="button" data-view="front">The front</button>
+        <button type="button" data-view="side">45° to the side</button>
+        <button type="button" data-view="orbit">Walking round him</button>
+      </fieldset>
+      <fieldset>
+        <legend>How much of the room his light hides</legend>
+        <input id="alpha" type="range" min="0" max="1" step="0.05" value="0.85" aria-label="Alpha factor" />
+        <output id="alpha-value" for="alpha">0.85</output>
+      </fieldset>
+      <fieldset>
+        <legend>On a headset</legend>
+        <button id="enter-room" type="button" disabled>Enter your room</button>
+      </fieldset>
+    </div>
+    <section id="satellites" aria-label="His agents at work">
+      <fieldset>
+        <legend>His agents at work — tap one to set it working, again to have it answer (at most 8 at once)</legend>
+        <div id="satellite-agents"></div>
+      </fieldset>
+      <fieldset>
+        <legend>All of them</legend>
+        <button type="button" data-satellites="all">Every agent</button>
+        <button type="button" data-satellites="tool">Call a tool</button>
+        <button type="button" data-satellites="ask">One asks sir</button>
+        <button type="button" data-satellites="fail">One fails</button>
+        <button type="button" data-satellites="finish">Finish all</button>
+      </fieldset>
+      <fieldset>
+        <legend>As the phone draws them</legend>
+        <canvas id="satellites-phone" width="480" height="480"></canvas>
+      </fieldset>
+      <fieldset>
+        <legend>Try a glyph of your own: an SVG path in glyph radii, y down</legend>
+        <input id="satellite-path" type="text" value="M 0 -0.7 L 0.7 0 L 0 0.7 L -0.7 0 Z" aria-label="Glyph path" />
+        <button id="satellite-try" type="button">Try this path</button>
+        <p id="satellite-status" role="status"></p>
+      </fieldset>
+    </section>
+    <p id="readout-help">
+      Drag to look round him, scroll to come closer. In the room, pull the trigger or pinch to go to the next phase.
+      <a href="./">Back to the app</a>
+    </p>
+  </body>
+</html>
