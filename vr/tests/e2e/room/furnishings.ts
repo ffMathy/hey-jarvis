@@ -231,7 +231,7 @@ async function surfaceMaterial(textures: TextureLoader, name: keyof typeof TEXTU
  * turned into its x-z exactly as `@iwer/sem` builds its own planes, so it lies where the app is told.
  */
 function shellOf(surface: RoomSurface, holes: Rect[], material: Material) {
-  const shape = rectanglePath(new Shape(), surface.rect);
+  const shape = rectanglePath(new Shape(), overlapping(surface.rect));
   shape.holes = holes.map((hole) => rectanglePath(new Path(), hole));
   const geometry = new ShapeGeometry(shape);
   geometry.rotateX(Math.PI / 2);
@@ -241,6 +241,22 @@ function shellOf(surface: RoomSurface, holes: Rect[], material: Material) {
   mesh.applyMatrix4(surface.matrix);
   mesh.name = surface.label;
   return mesh;
+}
+
+/**
+ * How far each wall, the floor and the ceiling are drawn past their captured edges. Space Setup's
+ * planes meet only roughly — two of the living room's walls stop a centimetre or two short of each
+ * other — and the park behind showed through the slit as a white line down the corner.
+ */
+const SEAM_OVERLAP_METRES = 0.05;
+
+function overlapping(rect: Rect): Rect {
+  return {
+    minU: rect.minU - SEAM_OVERLAP_METRES,
+    maxU: rect.maxU + SEAM_OVERLAP_METRES,
+    minV: rect.minV - SEAM_OVERLAP_METRES,
+    maxV: rect.maxV + SEAM_OVERLAP_METRES,
+  };
 }
 
 function rectanglePath<Outline extends Path>(path: Outline, rect: Rect): Outline {
