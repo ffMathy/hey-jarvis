@@ -525,6 +525,7 @@ export function ConversationScreen({
   const sheet = useConversationSheet({
     inSheet,
     inAssistantWindow,
+    showing,
     gone,
     leave,
     // Hangs up when the user asks: tapping beside the sheet or pressing back. Dismissed

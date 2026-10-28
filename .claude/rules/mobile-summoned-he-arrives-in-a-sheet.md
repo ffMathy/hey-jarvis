@@ -55,6 +55,17 @@ third. So a summoning into the window is its `showing` prop, a summoning into th
 launch URL, the window's tree ignores launch URLs, and only the tree drawn in the window
 (`summoned`, passed down as `inAssistantWindow`) may retract it.
 
+**Putting the window away belongs to the showing that asked.** The sheet retracts the window once it
+has slid off the bottom of the screen, on Reanimated's clock. Summoned from the watch into a locked
+phone in a pocket, that slide was held up after the agent hung up and finished on the first frame of
+the next summoning from the phone — retracting the window just shown for it, so sir heard the
+greeting and saw nothing. Now the sheet says gone with the callback its departure started under, the
+screens drop a departure from an earlier showing (`isStillTheShowing` in `src/assistant-window.ts`),
+and `dismissAssistantWindow(showing)` is ignored natively once another showing is up (the session
+logs "Kept the assistant window up" when it does). Showings are counted across sessions so no two
+share a number. `assistant-window.contract.spec.ts` pins both halves. What held the slide up is not
+yet seen in a log.
+
 **A session that fails once open also says so in a toast.** An account out of credits is
 accepted, connects, and is then closed by ElevenLabs with `quota_exceeded` — which is a
 conversation ending, so he fades and the sheet goes, and the red line went with it before anyone

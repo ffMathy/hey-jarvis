@@ -12,6 +12,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { dismissAssistantWindow } from '../modules/jarvis-assistant';
+import { isStillTheShowing } from './assistant-window';
 import { SAMPLE_CANVAS, SampleSheet, sampleHologramSize } from './sample-sheet';
 import { useSparkDensity } from './spark-density';
 import { theme } from './theme';
@@ -103,14 +104,21 @@ export function SampleScreen({ inAssistantWindow = false, showing, onLeave }: Sa
    * Which of the two is known rather than tried: `dismissAssistantWindow` retracts whichever
    * assistant window is showing, including one this screen is not in. See `leaveTheSheet` in
    * `conversation-sheet.tsx`.
+   *
+   * It belongs to the showing it began in, as there: see `isStillTheShowing`.
    */
+  const showingNow = useRef(showing);
+  showingNow.current = showing;
   const finish = useCallback(() => {
+    if (!isStillTheShowing(showing, showingNow.current)) {
+      return;
+    }
     if (inAssistantWindow) {
-      dismissAssistantWindow();
+      dismissAssistantWindow(showing);
     } else {
       onLeave();
     }
-  }, [inAssistantWindow, onLeave]);
+  }, [inAssistantWindow, showing, onLeave]);
 
   useEffect(() => () => clearTimeout(going.current), []);
 

@@ -135,7 +135,6 @@ export function SampleSheet({
   }, [onSettled, onGone]);
 
   const tellSettled = useCallback(() => announce.current.settled(), []);
-  const tellGone = useCallback(() => announce.current.gone(), []);
 
   /**
    * One effect for both directions, so they cannot fight.
@@ -146,6 +145,10 @@ export function SampleSheet({
    * mounting, that is simply the other branch.
    */
   useEffect(() => {
+    // Gone is said with the callback this departure started under, not whichever is newest when it
+    // finishes: a slide held up until the next summoning would otherwise speak for that one, and
+    // put away the window it had only just been shown in. See `isStillTheShowing`.
+    const tellGone = announce.current.gone;
     // Nothing slides on the web, so the two moments the sheet exists to announce have to be
     // announced anyway: it is safe to draw as soon as there is a screen, and it is over as soon as
     // Jarvis has faded. The screen above waits `LEAVING_SECONDS` for that either way.
@@ -172,7 +175,7 @@ export function SampleSheet({
         runOnJS(tellSettled)();
       }
     });
-  }, [leaving, below, tall, tellGone, tellSettled]);
+  }, [leaving, below, tall, tellSettled]);
 
   const sliding = useAnimatedStyle(() => ({ transform: [{ translateY: below.value }] }));
 

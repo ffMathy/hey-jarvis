@@ -1,6 +1,7 @@
-import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, Platform, useWindowDimensions } from 'react-native';
 import { dismissAssistantWindow } from '../modules/jarvis-assistant';
+import { isStillTheShowing } from './assistant-window';
 import { useWholeScreenHologramSize } from './hologram-size';
 import { SAMPLE_CANVAS, SampleSheet, sampleHologramSize } from './sample-sheet';
 
@@ -15,6 +16,8 @@ interface ConversationSheetOptions {
    * Only that one may retract the window: see `leaveTheSheet`.
    */
   inAssistantWindow: boolean;
+  /** Which showing of the assistant's window this is, if it is one. See `SHOWING_PROP`. */
+  showing: number | undefined;
   /** Whether the sheet has carried him off the bottom of the screen, which is when the window goes too. */
   gone: boolean;
   /** Ends the conversation, the way the agent hanging up would. */
@@ -50,6 +53,7 @@ interface ConversationSheetOptions {
 export function useConversationSheet({
   inSheet,
   inAssistantWindow,
+  showing,
   gone,
   endConversation,
   leave,
@@ -84,15 +88,24 @@ export function useConversationSheet({
    * was meant to be in was gone. The same went for a conversation across the whole screen, which
    * used to retract the window the moment it was over — a leftover from when a summoned Jarvis
    * filled the screen, which he no longer does anywhere there is a window to retract.
+   *
+   * **And it belongs to the showing it began in.** The sheet holds on to the one it was handed when
+   * it started down, so a slide that finishes after the next summoning has begun leaves that
+   * summoning alone rather than taking him and his window with it. See `isStillTheShowing`.
    */
+  const showingNow = useRef(showing);
+  showingNow.current = showing;
   const leaveTheSheet = useCallback(() => {
+    if (!isStillTheShowing(showing, showingNow.current)) {
+      return;
+    }
     goNow();
     if (inAssistantWindow) {
-      dismissAssistantWindow();
+      dismissAssistantWindow(showing);
     } else {
       BackHandler.exitApp();
     }
-  }, [inAssistantWindow, goNow]);
+  }, [inAssistantWindow, showing, goNow]);
 
   /**
    * Tapping beside him or pressing back: the sheet goes at once, whether or not a conversation ever
