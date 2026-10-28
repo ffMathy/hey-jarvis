@@ -26,9 +26,15 @@ export function toolCallFinished(inFlight: ToolCallsInFlight, id: string): ToolC
   return inFlight.includes(id) ? inFlight.filter((running) => running !== id) : inFlight;
 }
 
-/** The one field every tool event carries that matters here. */
+/** The fields of a tool event that matter here. */
 export interface ToolCallEvent {
   tool_call_id: string;
+  /**
+   * What kind of tool it is, as ElevenLabs reports it on a request and its response: `system`,
+   * `webhook`, `client`, `mcp` and so on. Left out by an MCP tool's own event, which is never a
+   * system tool.
+   */
+  tool_type?: string;
 }
 
 /** An MCP tool call, which reports its progress in one event rather than two. */
@@ -44,6 +50,23 @@ export interface MCPToolCallEvent extends ToolCallEvent {
  * saying he is busy when he is idle.
  */
 export const MCP_TOOL_STILL_RUNNING = 'loading';
+
+/**
+ * The kind of tool ElevenLabs runs on its own side to steer the conversation: `end_call`,
+ * `skip_turn`, `language_detection` and the like.
+ *
+ * **None of them is work, so none of them is a thought.** `end_call` is him hanging up, and drawn
+ * as a call in flight it put him into the scan plane for the last moment of the conversation, as
+ * though hanging up were something to think about, just as he began to leave. `skip_turn` is him
+ * choosing to stay quiet. What is worth showing as a thought is a call that goes out and does
+ * something: a webhook, the server's MCP tools.
+ */
+export const SYSTEM_TOOL = 'system';
+
+/** Whether a tool call is work he is waiting on, rather than him steering the conversation. */
+export function startsAThought({ tool_type: type }: ToolCallEvent): boolean {
+  return type !== SYSTEM_TOOL;
+}
 
 /**
  * How long he goes on thinking after the last call has answered.
@@ -178,7 +201,13 @@ export function createToolActivity<Timer>({
   return {
     thinking,
     toolHandlers: {
-      onAgentToolRequest: ({ tool_call_id: id }) => update(toolCallStarted(inFlight, id)),
+      // A system tool never starts a thought. Its answer needs no such test: an id that never
+      // started finishes nothing.
+      onAgentToolRequest: (event) => {
+        if (startsAThought(event)) {
+          update(toolCallStarted(inFlight, event.tool_call_id));
+        }
+      },
       onAgentToolResponse: ({ tool_call_id: id }) => update(toolCallFinished(inFlight, id)),
       // One event with a state on it, rather than a request and a response.
       onMCPToolCall: ({ tool_call_id: id, state }) =>

@@ -507,11 +507,60 @@ describe('how much of him shows', () => {
     }
   });
 
-  it('fades the whole of him in over the first fifth of the vortex, and out with his presence', () => {
+  it('fades the whole of him in over the first fifth of the vortex, and out over its last fifth as he leaves', () => {
     expect(arrivalOf(0, 1)).toBe(0);
     expect(arrivalOf(0.1, 1)).toBe(0.5);
     expect(arrivalOf(0.2, 1)).toBe(1);
-    expect(arrivalOf(1, 0.3)).toBe(0.3);
+    // Leaving runs the vortex backwards: he is all there until the specks are nearly back in the core.
+    expect(arrivalOf(1, 0.3)).toBe(1);
+    expect(arrivalOf(1, 0.1)).toBe(0.5);
+    expect(arrivalOf(1, 0)).toBe(0);
+  });
+});
+
+describe('leaving', () => {
+  const quietFrame: HologramFrame = {
+    time: 0,
+    level: 0,
+    bands: new Array(VOICE_BAND_COUNT).fill(0),
+    speaking: false,
+    agitation: 0,
+    burstAge: 10,
+    burstStrength: 0,
+    burstCount: 0,
+    appearance: 1,
+    presence: 1,
+    thinking: 0,
+  };
+
+  it('is the arrival run backwards: a frame at presence p is the frame at appearance p', () => {
+    // "Maybe the reverse of the arriving animation." Everything the drawing works out from a frame
+    // — where the vortex is, the core, the aura, the cage, the shell's reach, the inner layer's
+    // wind-up, the size and the fade — is the same leaving at p as arriving at p.
+    for (const time of [3.2, 17.9, 40.05]) {
+      for (const share of [0, 0.05, 0.3, 0.5, 0.75, 0.99]) {
+        const arriving = analyseFrame({ ...quietFrame, time, appearance: share, presence: 1 }, SIZE);
+        const going = analyseFrame({ ...quietFrame, time, appearance: 1, presence: share }, SIZE);
+        expect(going).toEqual(arriving);
+      }
+    }
+  });
+
+  it('draws the shell back into the core, limb first, and does not shrink the sphere itself', () => {
+    const here = analyseFrame({ ...quietFrame, time: 9, appearance: 1, presence: 1 }, SIZE);
+    const going = analyseFrame({ ...quietFrame, time: 9, appearance: 1, presence: 0.5 }, SIZE);
+    const outer = { x: 0.9, y: 0, id: 3 };
+    const inner = { x: 0.15, y: 0, id: 3 };
+    const reachOf = ({ x, y, id }: typeof outer) => {
+      swirlFragment(x, y, 1, 0, id, going);
+      return Math.hypot(going.swirled[0], going.swirled[1]) / Math.hypot(x, y);
+    };
+
+    expect(going.radius).toBe(here.radius);
+    expect(going.shellReach).toBeLessThan(here.shellReach);
+    // Halfway out, the limb has gone further back toward the core than his middle has.
+    expect(reachOf(outer)).toBeLessThan(reachOf(inner));
+    expect(going.coreAlpha).toBe(1);
   });
 });
 
@@ -776,8 +825,8 @@ function arrivalAsItWas(appearance: number, presence: number) {
     const clamped = value < 0 ? 0 : value > 1 ? 1 : value;
     return clamped * clamped * (3 - 2 * clamped);
   };
-  const swirl = clamp01(appearance);
-  return smooth01(swirl / 0.2) * clamp01(presence);
+  const swirl = clamp01(Math.min(appearance, presence));
+  return smooth01(swirl / 0.2);
 }
 
 /**

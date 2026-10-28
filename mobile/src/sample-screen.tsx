@@ -75,7 +75,7 @@ export function SampleScreen({ inAssistantWindow = false, showing, onLeave }: Sa
   /**
    * Starts the way out, and finishes it once Jarvis has gone.
    *
-   * He shrinks and fades over `LEAVING_SECONDS` rather than being cut off mid-turn — see the
+   * He is drawn back into his core over `LEAVING_SECONDS` rather than being cut off mid-turn — see the
    * `leaving` prop — so the screen it is on has to stay there for exactly that long.
    *
    * Then the two ways out differ. Summoned, the app *is* the assistant's window and there is

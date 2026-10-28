@@ -98,7 +98,8 @@ describe('the frame clock', () => {
 
   it('starts the arrival again on every summon, fully present', () => {
     const clock = createFrameClock();
-    for (let frame = 0; frame < 30; frame++) clock.advance(1 / 60, drive({ leaving: true }));
+    for (let frame = 0; frame < Math.ceil(LEAVING_SECONDS * 60) + 2; frame++)
+      clock.advance(1 / 60, drive({ leaving: true }));
     expect(clock.presence).toBe(0);
     clock.arrive();
     expect(clock.time).toBe(0);

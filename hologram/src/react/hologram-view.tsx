@@ -71,8 +71,8 @@ export interface JarvisHologramProps {
   /**
    * Whether Jarvis is on his way out — the screen closing, the back button pressed.
    *
-   * He does not vanish: he shrinks and fades over {@link LEAVING_SECONDS}, which is the arrival
-   * run backwards without its ceremony. Whoever sets this is responsible for waiting that long
+   * He does not vanish: over {@link LEAVING_SECONDS} the arrival's vortex runs backwards and draws
+   * him back into his core. Whoever sets this is responsible for waiting that long
    * before actually closing anything; see `sample-screen.tsx`.
    */
   leaving?: boolean;

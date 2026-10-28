@@ -36,8 +36,8 @@ const MOMENTS: Record<PreviewPhase, number> = {
   // Fully in the thought, the plane across his middle.
   thinking: 137,
   idle: 216,
-  // Half gone.
-  leaving: 14,
+  // Half gone: halfway back through the vortex, LEAVING_SECONDS being 0.7 s.
+  leaving: 25,
 };
 
 async function openPreview(page: Page) {

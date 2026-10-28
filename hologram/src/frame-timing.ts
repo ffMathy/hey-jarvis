@@ -12,16 +12,16 @@
 export const MATERIALISE_SECONDS = 0.7;
 
 /**
- * How long Jarvis takes to go.
- *
- * Shorter than he takes to arrive: leaving should not be a ceremony. Whoever sets a hologram's
+ * How long Jarvis takes to go: as long as he takes to arrive, since leaving is the vortex that
+ * brought him run backwards (`vortexOf` in the drawing). It was 0.45 s, shorter than arriving, so
+ * that leaving would not be a ceremony, and the user found it too plain. Whoever sets a hologram's
  * `leaving` prop has to keep its screen alive for this long before closing anything, so the number
  * is shared rather than guessed at twice.
  *
  * `hologram/react/lifecycle` hands it on to the screens that wait for it (see
  * `react/leaving.ts`), since they need it without the view.
  */
-export const LEAVING_SECONDS = 0.45;
+export const LEAVING_SECONDS = MATERIALISE_SECONDS;
 
 /** How long it takes to fall into a thought, and to come out of one. */
 export const THOUGHT_FADE_SECONDS = 0.45;
