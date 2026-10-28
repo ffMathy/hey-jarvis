@@ -40,7 +40,13 @@ paths:
   told there is something, so he is never placed inside furniture only the picture has.
   The room stands still, so a frame whose head pose and size have not changed is not
   drawn again; a moving head costs SwiftShader what the grey scan did (about 220 ms at
-  2560 by 1440). `emulated-room.spec.ts` checks it is furnished from the report, that
+  2560 by 1440). Its first frame — every program compiled, every texture uploaded — takes
+  SwiftShader seconds, and left to a session's first frame it blocked whatever a spec did
+  first (`app-entities.spec.ts`'s click on **Place entities** timed out under it); so it is
+  drawn while loading, and `ready` settles only once a GPU fence says it is done, about six
+  seconds into the page. For the same reason the park is the inside of a sphere rather than
+  the scene's background (which three turns into a cube map first), and there is no
+  reflection map (generating one cost seconds more for a matte room). `emulated-room.spec.ts` checks it is furnished from the report, that
   every piece stays inside its box, and that the picture has colour and contrast.
 - **Its assets** are CC0, from Poly Haven (`ROOM_ASSET_SOURCES` lists each), committed
   under `tests/e2e/room/assets/` — 1k glTF models and texture sets as downloaded, the
