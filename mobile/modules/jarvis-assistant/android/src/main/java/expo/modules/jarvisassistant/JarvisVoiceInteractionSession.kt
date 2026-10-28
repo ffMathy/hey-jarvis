@@ -54,9 +54,6 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
   /** Lets React Native rest once the window has been put away. See {@link onHide}. */
   private val letReactNativeRest = Runnable { pauseReactNative() }
 
-  /** How many times this window has been shown. See {@link announceShowing}. */
-  private var showings = 0
-
   /**
    * Asks for a hardware-accelerated window, before there is anything in it.
    *
@@ -421,10 +418,34 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
       return false
     }
 
-    /** Closes the assistant window, if one is open. Safe to call from any thread. */
-    internal fun dismissCurrent(): Boolean {
+    /**
+     * How many times an assistant window has been shown, counted across sessions so that no two
+     * showings ever share a number. See {@link announceShowing}. Main thread only.
+     */
+    private var showings = 0
+
+    /**
+     * Closes the assistant window, if one is open — but only if it is still the showing the app
+     * asked from. Safe to call from any thread.
+     *
+     * **A departure can finish after the next summoning has begun.** The sheet slides away on
+     * Reanimated's clock, and retracts the window when it gets to the bottom. A phone in a pocket,
+     * holding a conversation the watch summoned, can have that slide held up — its frames stopped
+     * with React Native paused — and then it finishes on the first frame after the next summoning
+     * resumes React Native. Asking for "whatever window is open", it retracted the new one: sir
+     * heard "Hello sir, how can I help?" and saw nothing. So the app says which showing it is
+     * leaving, and a window shown since then stays. `null` is for a tree that has not been told
+     * its showing yet, which nothing can have been shown after.
+     */
+    internal fun dismissCurrent(showing: Int?): Boolean {
       val session = current?.get() ?: return false
-      Handler(Looper.getMainLooper()).post { session.hide() }
+      Handler(Looper.getMainLooper()).post {
+        if (showing != null && showing != showings) {
+          Log.i(TAG, "Kept the assistant window up: showing $showings is not the showing $showing that asked to go.")
+          return@post
+        }
+        session.hide()
+      }
       return true
     }
   }

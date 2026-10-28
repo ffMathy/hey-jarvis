@@ -29,3 +29,20 @@ export const ASSISTANT_SURFACE = 'assistant';
  * `assistant-window.contract.spec.ts`.
  */
 export const SHOWING_PROP = 'showing';
+
+/**
+ * Whether a departure that began during showing `leftFrom` still speaks for the window, now that it
+ * is on showing `now`.
+ *
+ * **A sheet can finish leaving after the next summoning has begun.** It slides away on Reanimated's
+ * clock, and only once it is off the bottom of the screen is he marked gone and the window put
+ * away. When that slide is held up — its frames stopped with React Native paused, which is what a
+ * phone in a pocket, holding a conversation the watch summoned, can do — it finishes on the first
+ * frame after the next summoning resumes React Native. It used to finish as if it were still the
+ * summoning it started in: it retracted the window just shown, and the conversation that new
+ * showing opened greeted sir from nowhere. A departure belongs to its own showing, and is dropped
+ * once there is another.
+ */
+export function isStillTheShowing(leftFrom: number | undefined, now: number | undefined): boolean {
+  return leftFrom === now;
+}

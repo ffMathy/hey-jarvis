@@ -72,8 +72,9 @@ class JarvisAssistantModule : Module() {
       openAssistantSettings(activity())
     }
 
-    Function("dismissAssistantWindow") {
-      JarvisVoiceInteractionSession.dismissCurrent()
+    // Which showing is leaving, so a departure that finishes late cannot retract a newer one.
+    Function("dismissAssistantWindow") { showing: Int? ->
+      JarvisVoiceInteractionSession.dismissCurrent(showing)
     }
 
     AsyncFunction("takePhoto") { inAssistantWindow: Boolean, promise: Promise ->

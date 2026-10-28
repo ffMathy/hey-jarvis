@@ -107,3 +107,29 @@ describe("the watch's handover to a locked phone", () => {
     expect(summon).not.toMatch(/KeyguardManager|isDeviceLocked|isKeyguardLocked/);
   });
 });
+
+// The sheet puts the window away once it has slid off the bottom of the screen. Held up — a phone in
+// a pocket, holding a conversation the watch summoned — that slide finished on the first frame of the
+// next summoning, and retracted the window just shown for it: the greeting, and no sheet.
+describe('putting the window away', () => {
+  it('retracts only the showing the app asked from', () => {
+    const dismiss = readKotlinFunction('internal fun dismissCurrent(');
+
+    expect(dismiss).toMatch(/dismissCurrent\(showing: Int\?\)/);
+    expect(dismiss).toMatch(/showing != showings/);
+  });
+
+  it('is handed that showing by JavaScript', () => {
+    expect(readSource(MODULE)).toMatch(
+      /Function\("dismissAssistantWindow"\) \{ showing: Int\? ->\s*JarvisVoiceInteractionSession\.dismissCurrent\(showing\)/,
+    );
+    expect(readSource('modules/jarvis-assistant/index.ts')).toMatch(/dismissAssistantWindow\(showing \?\? null\)/);
+  });
+
+  it('is asked to by every screen with the showing it is leaving', () => {
+    for (const screen of ['src/conversation-sheet.tsx', 'src/sample-screen.tsx']) {
+      expect(readSource(screen), screen).toMatch(/dismissAssistantWindow\(showing\)/);
+      expect(readSource(screen), screen).not.toMatch(/dismissAssistantWindow\(\)/);
+    }
+  });
+});

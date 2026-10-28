@@ -14,7 +14,7 @@ interface JarvisAssistantNativeModule {
   isVoiceInteractionServiceActive(): boolean;
   canReachAssistantSettings(): boolean;
   openAssistantSettings(): AssistantSettingsScreen;
-  dismissAssistantWindow(): boolean;
+  dismissAssistantWindow(showing: number | null): boolean;
   /** A photo's `file://` URI, {@link NOT_READABLE}, or `null` for no photo. */
   takePhoto(inAssistantWindow: boolean): Promise<string | null>;
   returnFromTheCamera(showWindowAgain: boolean): Promise<boolean>;
@@ -94,9 +94,12 @@ export function openAssistantSettings(): AssistantSettingsScreen {
  * not a matter of changing screens, it is retracting the window, and only the system can do that.
  * Returns false when there is no such window, which is every other way the app can be open; the
  * caller then leaves by changing screens as usual.
+ *
+ * `showing` is the showing being left (`SHOWING_PROP`): a window shown again since then is a new
+ * summoning, and stays. See `dismissCurrent` in `JarvisVoiceInteractionSession.kt`.
  */
-export function dismissAssistantWindow(): boolean {
-  return nativeModule?.dismissAssistantWindow() ?? false;
+export function dismissAssistantWindow(showing: number | undefined): boolean {
+  return nativeModule?.dismissAssistantWindow(showing ?? null) ?? false;
 }
 
 /**
