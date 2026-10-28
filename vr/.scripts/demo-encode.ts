@@ -142,17 +142,25 @@ export function encodeArguments(
 export const README_SHOWN_WIDTH = 640;
 
 /** The GIF's frame rate and width: a GIF of a camera that never stops moving changes every pixel of
- * every frame, so at the WebP's size it would pass GitHub's 100 MB limit. This one is 32 MB. */
+ * every frame, so at the WebP's size it would pass GitHub's 100 MB limit. */
 const README_GIF_FRAMES_PER_SECOND = 15;
 const README_GIF_WIDTH = README_SHOWN_WIDTH;
 
 /**
+ * The README's WebP frame rate and quality. Every frame at quality 95 made 50 MB of the grey room, but
+ * 172 MB of the furnished one — textures change every pixel as the camera moves — past GitHub's 100 MB
+ * limit on a file. Quality 85 at every frame (88 MB) left blocks on the plain walls; 90 at two frames
+ * in three is 78 MB and looks the same as 95. The WebM, for the sound, keeps every frame.
+ */
+const README_WEBP_FRAMES_PER_SECOND = 20;
+const README_WEBP_QUALITY = 90;
+
+/**
  * The ffmpeg arguments for the README's copy of the film: an animated WebP, because GitHub plays no
  * video from a repository — neither a `<video>` of a committed file nor one served from `raw` — and
- * shows an animated image inline. The same quality as the phone's and the watch's clips (95, every
- * frame kept), at compression level 4 rather than their 6: over this film's 36 s level 6 took
- * seventeen minutes for 5% fewer bytes, where level 4 takes two. It has no sound, which is why the
- * WebM is linked beside it.
+ * shows an animated image inline. At compression level 4 rather than the phone's and the watch's 6:
+ * over this film's 36 s level 6 took seventeen minutes for 5% fewer bytes, where level 4 takes two.
+ * It has no sound, which is why the WebM is linked beside it.
  */
 export function readmeWebpArguments(film: string, output: string): string[] {
   return [
@@ -163,13 +171,13 @@ export function readmeWebpArguments(film: string, output: string): string[] {
     '-i',
     film,
     '-vf',
-    `scale=${README_SHOWN_WIDTH * 2}:-2:flags=lanczos`,
+    `fps=${README_WEBP_FRAMES_PER_SECOND},scale=${README_SHOWN_WIDTH * 2}:-2:flags=lanczos`,
     '-c:v',
     'libwebp_anim',
     '-lossless',
     '0',
     '-q:v',
-    '95',
+    String(README_WEBP_QUALITY),
     '-compression_level',
     '4',
     '-loop',

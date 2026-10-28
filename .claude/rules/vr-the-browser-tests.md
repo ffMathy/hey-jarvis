@@ -20,11 +20,41 @@ paths:
   the old one was — so `xr-harness.ts` hands it the transform's matrix, and the
   `?origin` seam works as it does on a headset.
 - **The room.** `@iwer/sem`'s Synthetic Environment Module with its bundled
-  `living_room` capture (`device.installSEM(SyntheticEnvironmentModule)`, then
+  `living_room` capture (`device.installSEM(FurnishedEnvironmentModule)`, then
   `await device.sem.loadDefaultEnvironment('living_room')` — the README's
-  `installSyntheticEnvironmentModule` is stale). It draws the room on its own
-  canvas behind the app's and reports its planes, furniture boxes and room mesh as
-  `XRPlane`s and `XRMesh`es. No network: the captures are in the package.
+  `installSyntheticEnvironmentModule` is stale). It reports the capture's planes,
+  furniture boxes and room mesh as `XRPlane`s and `XRMesh`es, answers hit tests and
+  depth, and draws the room on its own canvas behind the app's.
+- **The room, furnished** (`room/`). Meta's module draws the capture's scan in flat
+  grey, which made every picture of him look like a clay model. `FurnishedEnvironmentModule`
+  (`room/furnished-environment.ts`) is Meta's module with only the drawing replaced — IWER's
+  own `installSEM` takes it — so the app is told exactly what it was told before.
+  `room/room-layout.ts` reads the reported planes and boxes back (a plane faces the room
+  on its local −y; a box is turned upright and faced at the middle of the floor), and
+  `room/furnishings.ts` builds the room from them alone: textured walls, floor and ceiling
+  with the windows cut through, frames, sills and a park outside them (lit by a rect-area
+  light each), baseboards, framed prints on the wall art, and a real model scaled into
+  each furniture box — sofa, coffee table, desks, sideboard, a wall of cube shelving
+  tiled from one unit — and table lamps built in place. A model that was not modelled
+  facing glTF's +z says how far to turn it (`turn`). Nothing is put where the app is not
+  told there is something, so he is never placed inside furniture only the picture has.
+  The room stands still, so a frame whose head pose and size have not changed is not
+  drawn again; a moving head costs SwiftShader what the grey scan did (about 220 ms at
+  2560 by 1440). Its first frame — every program compiled, every texture uploaded — takes
+  SwiftShader seconds, and left to a session's first frame it blocked whatever a spec did
+  first (`app-entities.spec.ts`'s click on **Place entities** timed out under it); so it is
+  drawn while loading, and `ready` settles only once a GPU fence says it is done, about six
+  seconds into the page. For the same reason the park is the inside of a sphere rather than
+  the scene's background (which three turns into a cube map first), and there is no
+  reflection map (generating one cost seconds more for a matte room). `emulated-room.spec.ts` checks it is furnished from the report, that
+  every piece stays inside its box, and that the picture has colour and contrast.
+- **Its assets** are CC0, from Poly Haven (`ROOM_ASSET_SOURCES` lists each), committed
+  under `tests/e2e/room/assets/` — 1k glTF models and texture sets as downloaded, the
+  park HDRI's tonemapped JPEG scaled to 4096 × 2048, and two prints cropped from
+  another's — about 11 MB. The page asks for them under `/__xr-room/`
+  (`room/room-assets.ts`), which `emulateHeadset` in `fixtures.ts` answers from disk;
+  `.scripts/render-demo.ts` opens its page with it too, so the demo is filmed in the
+  furnished room.
 - **How it gets in.** `xr-harness.ts` runs in the page. `fixtures.ts` bundles it
   (and any other init script, like `room-probe.ts`) with the root `esbuild` at
   test time and injects it with `page.addInitScript`, so it is in place before the
@@ -162,5 +192,6 @@ pictures are the page canvas's own, not a render into a layer), `fixedFoveation`
 session, the eight-anchor limit, a persistent anchor that fails to restore or
 takes time to relocalise (its anchors are unlimited and always located), and a
 squeeze from a hand. Its hands are three rigid poses — relaxed, pointing,
-pinching — blended by the pinch value. `@iwer/sem` also brings its own three.js 0.184 — test-only, since the
+pinching — blended by the pinch value. `@iwer/sem` also brings its own three.js 0.184 beside the
+furnished room's 0.186 (three warns of two copies in the console) — test-only, since the
 harness is only ever bundled into an init script.

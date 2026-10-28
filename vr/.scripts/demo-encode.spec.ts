@@ -86,7 +86,7 @@ describe('the README copies', () => {
   it('makes an animated WebP from the film at twice the width the README shows it, without sound', () => {
     const args = readmeWebpArguments('film.webm', 'film.webp');
     expect(args).toContain('libwebp_anim');
-    expect(args).toContain(`scale=${README_SHOWN_WIDTH * 2}:-2:flags=lanczos`);
+    expect(args[args.indexOf('-vf') + 1]).toContain(`scale=${README_SHOWN_WIDTH * 2}:-2:flags=lanczos`);
     expect(args).toContain('-an');
     expect(args.at(-1)).toBe('film.webp');
   });

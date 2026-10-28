@@ -1,14 +1,15 @@
-import { SyntheticEnvironmentModule } from '@iwer/sem';
 import { metaQuest3, XRDevice, XRReferenceSpace, XRSession } from 'iwer';
+import { FurnishedEnvironmentModule } from './room/furnished-environment';
 
 /**
  * An emulated Meta Quest 3 standing in an emulated living room, for the browser tests.
  *
  * Headless Chromium has no headset, so Meta's Immersive Web Emulation Runtime stands in for
  * one: it replaces `navigator.xr` with a Quest 3 that grants `immersive-ar`, and its Synthetic
- * Environment Module plays the passthrough — a real room capture drawn behind the page, with
- * the planes, furniture boxes and room mesh that Quest Browser hands a page from Space Setup.
- * The rooms ship inside the package, so nothing is fetched.
+ * Environment Module plays the passthrough — a real room capture, with the planes, furniture boxes
+ * and room mesh that Quest Browser hands a page from Space Setup — drawn behind the page furnished
+ * from photographs (`room/furnished-environment.ts`). The capture ships inside the package, and the
+ * photographs and models are served by the tests, so nothing leaves the machine.
  *
  * This file runs in the page, not in the test. The spec bundles it with esbuild and injects it
  * with `page.addInitScript`, so it is in place before the app's first line runs and never goes
@@ -17,6 +18,8 @@ import { metaQuest3, XRDevice, XRReferenceSpace, XRSession } from 'iwer';
 
 export interface XrHarness {
   device: XRDevice;
+  /** The room behind the page, and what it was furnished with once `ready` has settled. */
+  environment: FurnishedEnvironmentModule;
   /** Settles once the room has loaded; entering the room before then finds it empty. */
   ready: Promise<void>;
   /**
@@ -94,14 +97,14 @@ function installHarness(): XrHarness {
   // `forceInstall` the runtime sees it, decides a real one is present and does nothing at all.
   device.installRuntime({ forceInstall: true });
   device.position.set(HEAD_POSITION.x, HEAD_POSITION.y, HEAD_POSITION.z);
-  device.installSEM(SyntheticEnvironmentModule);
+  device.installSEM(FurnishedEnvironmentModule);
   // Narrowed to the module's own class: the emulator types `sem` as a minimal interface whose
   // loadDefaultEnvironment returns nothing, while the real one returns the load's promise.
   const environment = device.sem;
-  if (!(environment instanceof SyntheticEnvironmentModule)) {
+  if (!(environment instanceof FurnishedEnvironmentModule)) {
     throw new Error('The synthetic environment did not install.');
   }
-  return { device, ready: environment.loadDefaultEnvironment('living_room'), frameTimes };
+  return { device, environment, ready: environment.loadDefaultEnvironment('living_room'), frameTimes };
 }
 
 window.__xrHarness = installHarness();
