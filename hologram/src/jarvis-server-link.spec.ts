@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { AFFECTED_ENTITY_ID_MAX_LENGTH, AFFECTED_ENTITY_NAME_MAX_LENGTH } from './affected-entities';
 import { activityOfMessage } from './agent-activity';
+import { DROPPED_RESULT, GLANCE_ACTION_TIMEOUT_MS, NOT_CONNECTED_RESULT, TIMED_OUT_RESULT } from './glance';
 import {
   connectToServer,
   FIRST_RETRY_MS,
@@ -416,5 +417,130 @@ describe('a device with no server address', () => {
     link.close();
 
     expect(sockets).toHaveLength(0);
+  });
+});
+
+describe('the glance the server sends', () => {
+  const GLANCE = {
+    id: 'glance-1',
+    url: 'https://jarvis.example.com/artifacts/0b6f3c1e',
+    title: 'A parcel is coming today',
+    generatedAt: '2026-11-01T07:30:00.000Z',
+    actions: [{ id: 'unlock-front-door', label: 'Unlock the front door', prompt: 'Unlock the front door.' }],
+  };
+
+  it('is passed on, and kept for whoever listens after it came, across a reconnect', () => {
+    const { platform, advance, latest } = fakePlatform();
+    const link = connectToServer({ address: ADDRESS, device: 'phone' }, platform);
+    const received: JarvisServerMessage[] = [];
+    link.subscribe((message) => received.push(message));
+    const early: unknown[] = [];
+    link.onGlance((glance) => early.push(glance));
+
+    latest().open();
+    latest().receive('{"type":"ready"}');
+    latest().receive(JSON.stringify({ type: 'glance', glance: GLANCE }));
+    latest().drop(1006);
+    advance(FIRST_RETRY_MS);
+
+    const late: unknown[] = [];
+    link.onGlance((glance) => late.push(glance));
+
+    expect(received).toContainEqual({ type: 'glance', glance: GLANCE });
+    expect(early).toEqual([undefined, GLANCE]);
+    expect(late).toEqual([GLANCE]);
+  });
+
+  it('is dropped when it is not usable, and the glance before it kept', () => {
+    const { platform, latest } = fakePlatform();
+    const link = connectToServer({ address: ADDRESS, device: 'phone' }, platform);
+    const told: unknown[] = [];
+    link.onGlance((glance) => told.push(glance));
+    latest().open();
+    latest().receive('{"type":"ready"}');
+
+    latest().receive(JSON.stringify({ type: 'glance', glance: GLANCE }));
+    latest().receive(JSON.stringify({ type: 'glance', glance: { ...GLANCE, url: 'javascript:alert(1)' } }));
+    latest().receive(JSON.stringify({ type: 'glance' }));
+
+    expect(told).toEqual([undefined, GLANCE]);
+  });
+});
+
+describe('asking the server to run a glance’s action', () => {
+  /** The glance action frames a socket was sent, parsed. */
+  function actionsSent(socket: FakeSocket): { requestId: string; glanceId: string; actionId: string }[] {
+    return socket.sent.map((frame) => JSON.parse(frame)).filter((frame) => frame.type === 'glanceAction');
+  }
+
+  function readyLine() {
+    const fake = fakePlatform();
+    const link = connectToServer({ address: ADDRESS, device: 'phone' }, fake.platform);
+    fake.latest().open();
+    fake.latest().receive('{"type":"ready"}');
+    return { ...fake, link };
+  }
+
+  it('sends the glance and the action, and resolves with the answer to that request', async () => {
+    const { link, latest } = readyLine();
+
+    const first = link.requestGlanceAction('glance-1', 'unlock-front-door');
+    const second = link.requestGlanceAction('glance-1', 'turn-on-porch-light');
+    const [unlock, porch] = actionsSent(latest());
+    expect(unlock).toMatchObject({ glanceId: 'glance-1', actionId: 'unlock-front-door' });
+    expect(porch).toMatchObject({ glanceId: 'glance-1', actionId: 'turn-on-porch-light' });
+    expect(unlock?.requestId).not.toBe(porch?.requestId);
+    expect(unlock?.requestId.length).toBeLessThanOrEqual(64);
+
+    latest().receive(
+      JSON.stringify({
+        type: 'glanceActionResult',
+        requestId: porch?.requestId,
+        ok: false,
+        message: 'No porch light.',
+      }),
+    );
+    latest().receive(JSON.stringify({ type: 'glanceActionResult', requestId: 'someone-else', ok: true, message: 'x' }));
+    latest().receive(
+      JSON.stringify({ type: 'glanceActionResult', requestId: unlock?.requestId, ok: true, message: 'Unlocked.' }),
+    );
+
+    expect(await first).toEqual({ ok: true, message: 'Unlocked.' });
+    expect(await second).toEqual({ ok: false, message: 'No porch light.' });
+  });
+
+  it('fails at once, sending nothing, while the line is not connected', async () => {
+    const { platform, latest } = fakePlatform();
+    const link = connectToServer({ address: ADDRESS, device: 'phone' }, platform);
+    latest().open();
+
+    expect(await link.requestGlanceAction('glance-1', 'unlock-front-door')).toEqual(NOT_CONNECTED_RESULT);
+    expect(actionsSent(latest())).toEqual([]);
+    expect(await connectToServer({ address: undefined, device: 'phone' }).requestGlanceAction('g', 'a')).toEqual(
+      NOT_CONNECTED_RESULT,
+    );
+  });
+
+  it('gives up on a server that does not answer in time', async () => {
+    const { link, advance } = readyLine();
+    const asked = link.requestGlanceAction('glance-1', 'unlock-front-door');
+
+    advance(GLANCE_ACTION_TIMEOUT_MS);
+
+    expect(await asked).toEqual(TIMED_OUT_RESULT);
+  });
+
+  it('says it is not known whether it was done when the line drops, or is closed, first', async () => {
+    const { link, latest, advance } = readyLine();
+    const dropped = link.requestGlanceAction('glance-1', 'unlock-front-door');
+    latest().drop(1006);
+    expect(await dropped).toEqual(DROPPED_RESULT);
+
+    advance(FIRST_RETRY_MS);
+    latest().open();
+    latest().receive('{"type":"ready"}');
+    const closed = link.requestGlanceAction('glance-1', 'unlock-front-door');
+    link.close();
+    expect(await closed).toEqual(DROPPED_RESULT);
   });
 });

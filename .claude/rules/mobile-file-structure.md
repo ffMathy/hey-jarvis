@@ -19,9 +19,12 @@ paths:
 ├── jarvis-session.ts             # the conversation itself — the phone's, the watch's and the headset's
 ├── failure-text.ts               # what each failure says, in words rather than the SDK's
 ├── written-caption.ts            # which of his lines are written down: text mode, and the text-only session
+├── jarvis-server-link.ts         # the live line to sir's Jarvis server: satellites, the glance and its actions
+├── glance.ts                     # a glance and its actions, read strictly, and the frames that ask for one
 ├── react/                        # `hologram/react`, the half that needs a framework
 │   ├── hologram-view.tsx         # Reanimated clocks, reading the voice every frame
 │   ├── gpu-layer.tsx             # the one GL canvas all of him is drawn into, and waiting for the GPU
+│   ├── glance.ts                 # useGlance: the line's latest glance (`hologram/react/lifecycle`)
 │   └── is-foreground.ts          # stops the clock and the microphone when nobody is looking
 └── conversation/                 # `hologram/conversation`, the half that needs the ElevenLabs SDK
     ├── session.ts                # useJarvisSession: the session, the SDK, the greeting's player, the call's audio
@@ -39,7 +42,18 @@ mobile/
 │   └── android/src/main/         # Kotlin, the merged manifest, and res/xml — and the photo activity
 ├── modules/jarvis-audio/         # raw audio for the hologram: the microphone, or Jarvis's WebRTC track
 └── src/
-    ├── app.tsx                   # root component: the tour, settings, the conversation, sample mode
+    ├── app.tsx                   # root component: the tour, settings, the glance, the conversation, sample mode
+    ├── app-screen.ts             # which of them shows: the glance only when opened, never mid-conversation
+    ├── use-opening-glance.ts     # the glance the app opens on: the line's, or the one kept from before
+    ├── glance-storage.ts         # the kept glance, so the launcher has one before the line does
+    ├── glance-screen.tsx         # the glance's page filling the screen, and Jarvis's button over it
+    ├── glance-view.tsx           # the page in a locked-down WebView …
+    ├── glance-view.web.tsx       # … and in a sandboxed <iframe> in a browser
+    ├── glance-bridge.ts          # what the page may say, what it is told, and where it may go
+    ├── glance-actions.ts         # one press: looked up, confirmed with the server's prompt, sent, told
+    ├── confirm-glance-action.ts      # Alert.alert …
+    ├── confirm-glance-action.web.ts  # … window.confirm
+    ├── back-to-glance.tsx        # what the conversation tells the app, and the way back to the glance
     ├── onboarding-screen.tsx     # the first-run tour: agents, credentials, assistant role
     ├── onboarding.ts             # its steps, which of them this device has, and every link
     ├── onboarding-storage.ts     # whether the tour has been walked

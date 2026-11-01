@@ -17,6 +17,11 @@ export const theme = {
     speaking: '#a78bfa',
     danger: '#f87171',
     success: '#4ade80',
+    /** His copper, for the one thing that stands for him off his own screen: the glance's talk button. */
+    jarvis: '#f97316',
+    jarvisGlow: '#fb923c',
+    /** His core's orange-white, never pure white (`hologram-what-he-looks-like.md`). */
+    jarvisCore: '#ffedd5',
   },
   spacing: {
     small: 8,

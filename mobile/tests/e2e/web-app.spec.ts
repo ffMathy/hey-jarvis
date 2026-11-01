@@ -1175,3 +1175,197 @@ test('leaves an address that could not be read alone when the rest of the settin
   expect(JSON.parse(kept.settings ?? '{}')).toMatchObject({ agentId: 'agent_changed' });
   expect(kept.serverAddress).toBe(JARVIS_SERVER);
 });
+
+/** Where the Jarvis server's glance is, as the server names it: a public artifact page on its own origin. */
+const GLANCE_URL = `${JARVIS_SERVER}/artifacts/0b6f3c1e-8f5d-4a58-9a77-3c4e2f1d9b10`;
+
+/** What the action on the glance will really run, which is what sir is asked to confirm. */
+const UNLOCK_PROMPT = 'Unlock the front door for the courier.';
+
+/** A glance as the server sends it, made just now so the phone still counts it as current. */
+function aGlance() {
+  return {
+    id: 'glance-1',
+    url: GLANCE_URL,
+    title: 'A parcel is coming today',
+    generatedAt: new Date().toISOString(),
+    actions: [{ id: 'unlock-front-door', label: 'Unlock the front door', prompt: UNLOCK_PROMPT }],
+  };
+}
+
+/**
+ * The glance's page, with a bridge that speaks as the server's does in an `<iframe>`: a button calls
+ * `window.jarvis.act`, which posts the action to the parent as a string, and the answer posted back
+ * is re-dispatched as `jarvisactionresult` and written on the page. Its button's label says
+ * something harmless on purpose — it names the action that unlocks the door — and a second button
+ * names an action the glance does not list.
+ */
+const GLANCE_PAGE = `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+  window.jarvis = {
+    act: function (actionId) {
+      window.parent.postMessage(JSON.stringify({ type: 'jarvisAction', actionId: String(actionId) }), '*');
+    }
+  };
+  window.addEventListener('message', function (event) {
+    var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+    if (data && data.type === 'jarvisActionResult') {
+      window.dispatchEvent(new CustomEvent('jarvisactionresult', { detail: data }));
+    }
+  });
+  window.addEventListener('jarvisactionresult', function (event) {
+    document.getElementById('result').textContent =
+      (event.detail.ok ? 'Done: ' : 'Not done: ') + event.detail.message;
+  });
+</script>
+<style>
+  body { margin: 0; padding: 24px 20px 120px; font-family: system-ui, sans-serif; background: #0b1020; color: #e2e8f0; }
+  .card { background: #131b2e; border: 1px solid #1e293b; border-radius: 16px; padding: 20px; margin-bottom: 16px; }
+  .eyebrow { color: #fb923c; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+  h1 { font-size: 26px; margin: 6px 0 4px; }
+  p { color: #94a3b8; line-height: 1.5; }
+  button { width: 100%; padding: 14px; border-radius: 12px; border: 0; font-size: 16px; font-weight: 600; margin-top: 8px; }
+  #track { background: #f97316; color: #05070d; }
+  #garage { background: #1e293b; color: #e2e8f0; }
+  #result { color: #4ade80; min-height: 1.5em; }
+</style></head>
+<body>
+  <div class="eyebrow">Good morning, sir</div>
+  <h1>A parcel is coming today</h1>
+  <p>DHL says your order from Nordic Outdoor arrives between 10:00 and 12:00. Nobody will be home.</p>
+  <div class="card">
+    <strong>Front door</strong>
+    <p>Locked. The courier can leave it in the hall if you let them in.</p>
+    <button id="track" onclick="window.jarvis.act('unlock-front-door')">Track parcel</button>
+    <button id="garage" onclick="window.jarvis.act('open-the-garage')">Open the garage</button>
+  </div>
+  <p id="result"></p>
+</body></html>`;
+
+/** What the phone said on its line to the Jarvis server, and the line itself, played by the test. */
+interface PlayedServer {
+  heard: { type?: string; [key: string]: unknown }[];
+}
+
+/**
+ * Plays sir's Jarvis server's side of the phone's live line (`/api/live`): `ready` for the hello, then
+ * `glance` when there is one, and a `glanceActionResult` for every `glanceAction` — and serves the
+ * glance's page. Registered after `blockExternalRequests`, so it wins.
+ */
+async function playTheJarvisServer(page: Page, glance: ReturnType<typeof aGlance> | undefined): Promise<PlayedServer> {
+  const heard: PlayedServer['heard'] = [];
+  await page.routeWebSocket(/^wss:\/\/jarvis\.example\.test\/api\/live$/, (webSocket) => {
+    webSocket.onMessage((frame: string | Buffer) => {
+      const message = JSON.parse(String(frame));
+      heard.push(message);
+      if (message.type === 'hello') {
+        webSocket.send(JSON.stringify({ type: 'ready' }));
+        if (glance) webSocket.send(JSON.stringify({ type: 'glance', glance }));
+      }
+      if (message.type === 'glanceAction') {
+        webSocket.send(
+          JSON.stringify({
+            type: 'glanceActionResult',
+            requestId: message.requestId,
+            ok: true,
+            message: 'The front door is unlocked.',
+          }),
+        );
+      }
+    });
+  });
+  await page.route(GLANCE_URL, (route: Route) =>
+    route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: GLANCE_PAGE }),
+  );
+  return { heard };
+}
+
+/** The glance's page, inside the app's frame. */
+function glancePage(page: Page) {
+  return page.frameLocator('iframe[data-testid="glance-page"]');
+}
+
+/** A configured app that knows its Jarvis server, opened afresh from the start, as from the launcher. */
+async function openWithAJarvisServer(page: Page): Promise<void> {
+  await page.goto('/');
+  await configureElevenLabs(page);
+  await saveJarvisServer(page, JARVIS_SERVER);
+  await page.reload();
+}
+
+test('opens on the glance the Jarvis server sent, with a way to Jarvis and back', async ({ page }) => {
+  const server = await playTheJarvisServer(page, aGlance());
+  await openWithAJarvisServer(page);
+
+  // The page the server made, filling the screen, from its own address — and nothing of him yet.
+  const frame = page.locator('iframe[data-testid="glance-page"]');
+  await expect(frame).toBeVisible();
+  await expect(frame).toHaveAttribute('src', GLANCE_URL);
+  await expect(glancePage(page).getByRole('heading')).toHaveText('A parcel is coming today');
+  await expect(page.getByTestId('hologram')).toHaveCount(0);
+  expect(server.heard).toContainEqual({ type: 'hello', device: 'phone' });
+
+  // The one way to Jarvis on it opens the conversation, as a summoning would, and back again.
+  await page.getByTestId('talk-to-jarvis').click();
+  await expect(page.getByTestId('hologram')).toBeVisible();
+  await expect(frame).toHaveCount(0);
+  await page.getByTestId('back-to-glance').click();
+  await expect(frame).toBeVisible();
+});
+
+test('runs a glance’s action only once sir confirms the prompt the server holds, and tells the page', async ({
+  page,
+}) => {
+  const server = await playTheJarvisServer(page, aGlance());
+  await openWithAJarvisServer(page);
+  await expect(glancePage(page).locator('#track')).toBeVisible();
+
+  const dialogs: string[] = [];
+  page.on('dialog', (dialog) => {
+    dialogs.push(dialog.message());
+    void dialog.accept();
+  });
+
+  // An action the glance does not list is nothing: no question, and nothing sent.
+  await glancePage(page).locator('#garage').click();
+
+  // The button says "Track parcel"; what sir is asked is what the server will run.
+  await glancePage(page).locator('#track').click();
+  await expect.poll(() => dialogs).toHaveLength(1);
+  expect(dialogs[0]).toContain(UNLOCK_PROMPT);
+  expect(dialogs[0]).not.toContain('Track parcel');
+
+  // Accepted, the action goes to the server on the line, naming the glance and the action.
+  await expect.poll(() => server.heard.filter((message) => message.type === 'glanceAction')).toHaveLength(1);
+  const asked = server.heard.find((message) => message.type === 'glanceAction');
+  expect(asked).toMatchObject({ glanceId: 'glance-1', actionId: 'unlock-front-door' });
+  expect(typeof asked?.requestId).toBe('string');
+
+  // The server's answer reaches the page, and sir.
+  await expect(glancePage(page).locator('#result')).toHaveText('Done: The front door is unlocked.');
+  await expect(page.getByTestId('glance-notice')).toHaveText('The front door is unlocked.');
+  expect(dialogs).toHaveLength(1);
+});
+
+test('sends nothing when sir cancels a glance’s action, and tells the page it was cancelled', async ({ page }) => {
+  const server = await playTheJarvisServer(page, aGlance());
+  await openWithAJarvisServer(page);
+  await expect(glancePage(page).locator('#track')).toBeVisible();
+
+  page.on('dialog', (dialog) => void dialog.dismiss());
+  await glancePage(page).locator('#track').click();
+
+  await expect(glancePage(page).locator('#result')).toHaveText('Not done: Cancelled');
+  expect(server.heard.filter((message) => message.type === 'glanceAction')).toEqual([]);
+});
+
+test('opens on the conversation, as before, when the Jarvis server has no glance', async ({ page }) => {
+  const server = await playTheJarvisServer(page, undefined);
+  await openWithAJarvisServer(page);
+
+  await expect(page.getByTestId('hologram')).toBeVisible();
+  await expect.poll(() => server.heard).toContainEqual({ type: 'hello', device: 'phone' });
+  await expect(page.locator('iframe[data-testid="glance-page"]')).toHaveCount(0);
+  await expect(page.getByTestId('back-to-glance')).toHaveCount(0);
+});

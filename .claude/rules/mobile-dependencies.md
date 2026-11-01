@@ -7,12 +7,13 @@ paths:
 
 > Part of [Mobile App](mobile.md). Paths in it are relative to `mobile/` unless they say otherwise.
 
-Versions are pinned exactly, and every one of them has to clear the repository's 7-day npm cooldown (see [Supply Chain Security](supply-chain-security.md)). Three pins are not just "the latest that fits":
+Versions are pinned exactly, and every one of them has to clear the repository's 7-day npm cooldown (see [Supply Chain Security](supply-chain-security.md)). Some pins are not just "the latest that fits":
 
 - `@livekit/react-native` is held at **2.x**. The 3.x line is published as `latest` but does not satisfy `@elevenlabs/react-native`'s peer range.
 - `livekit-client` is a direct dependency even though it is transitive, so only one copy can resolve.
 - `expo-audio` is at **57.0.5**, what Expo 57's `bundledNativeModules.json` allows (`~57.0.4`). It plays the greeting in a browser, through an `HTMLAudioElement`; on Android `hologram`'s own native module plays it, as call audio. It needs no config plugin: it only plays, and its manifest adds nothing but `MODIFY_AUDIO_SETTINGS`.
 - `@config-plugins/react-native-webrtc` is deliberately **not** installed. Its Android half only adds permissions, and two of them — `CAMERA` and `SYSTEM_ALERT_WINDOW` — have no business in a voice assistant. `app.config.ts` declares the permissions this app actually uses and blocks `CAMERA`, which LiveKit's own manifest would otherwise merge in. The block is also what lets the phone's camera app take a photo for Jarvis with no permission at all — see "Showing him something".
+- `react-native-webview` is at **13.16.1**, what Expo 57's `bundledNativeModules.json` pins. It shows the glance's page on a phone (see [The glance](mobile-the-glance.md)); it autolinks and needs no config plugin, and has no web half — the web build draws an `<iframe>` from `glance-view.web.tsx` and never imports it.
 - **No camera package either.** expo-camera and expo-image-picker both need the current activity, which the assistant's window does not have; the photo is taken by the phone's own camera app through a small activity in `modules/jarvis-assistant`, and read back with React Native's own `fetch`.
 
 `metro.config.js` points Metro at both this package's `node_modules` and the workspace root's, and keeps hierarchical lookup **on** — the usual monorepo advice to switch it off breaks bun's isolated layout, where walking up from the importing file is how a package finds its own dependencies.

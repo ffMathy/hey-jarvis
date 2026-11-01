@@ -29,6 +29,7 @@ export * from './elevenlabs-settings';
 export * from './failure-text';
 export * from './frame-clock';
 export * from './frame-timing';
+export * from './glance';
 export * from './greeting-handover';
 export * from './greeting-voice';
 export * from './half-duplex';
