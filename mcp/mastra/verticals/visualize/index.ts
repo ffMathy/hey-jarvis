@@ -4,3 +4,4 @@ export { ARTIFACT_LIFETIME_MILLISECONDS, hostArtifact, registerArtifactRoutes } 
 export { visualizeGlyph } from './glyph.js';
 export { buildArtifactTask, findArtifactHtml, visualizeShortcuts } from './shortcuts.js';
 export { visualizeTools } from './tools.js';
+export { glanceWorkflow } from './workflows.js';

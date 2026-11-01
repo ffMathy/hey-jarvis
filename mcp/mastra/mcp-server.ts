@@ -19,7 +19,11 @@ import {
   whyPhotoSlotsAreOff,
   withoutUploadToken,
 } from './verticals/index.js';
+import { runRequestToCompletion } from './verticals/routing/run-to-completion.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
+
+/** The routing session the glance's actions run in. */
+const GLANCE_ROUTING_SESSION_ID = 'jarvis-glance';
 
 // Re-export for cross-project imports
 export { getPublicAgents };
@@ -176,7 +180,11 @@ export async function startMcpServer() {
       console.log(`WebSocket API available: ws://${host}:${port}${LIVE_SOCKET_PATH}`);
       resolve();
     });
-    attachLiveSocket(server);
+    // A glance's button runs its prompt as a request routed like the same words spoken, in a routing
+    // session of its own so it never supersedes what sir is saying to Jarvis meanwhile
+    attachLiveSocket(server, {
+      runRequest: (request) => runRequestToCompletion(mastra, request, { sessionId: GLANCE_ROUTING_SESSION_ID }),
+    });
   });
 }
 

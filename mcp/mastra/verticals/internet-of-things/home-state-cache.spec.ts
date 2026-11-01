@@ -21,6 +21,7 @@ import {
   serviceTargetsInSnapshot,
   setHomeSnapshotForTest,
   startHomeStateCache,
+  summarizeActionableEntitiesInSnapshot,
   summarizeEntitiesInSnapshot,
   trimAttributeValue,
 } from './home-state-cache.js';
@@ -98,6 +99,20 @@ describe('reading the copy of the house', () => {
       { id: 'light.porch', name: 'Porch', area: null, state: 'off', unit: null },
     ]);
     expect(summarizeEntitiesInSnapshot(house, 'sensor')[0]?.unit).toBe('W');
+  });
+
+  it('lists what sir could act on at short notice, leaving out lights and what is unavailable', () => {
+    const withLocks = snapshotOf([
+      ...Object.values(house.states),
+      state('lock.front_door', 'locked', { friendly_name: 'Front door' }),
+      state('cover.garage_door', 'closed', { friendly_name: 'Garage door' }),
+      state('lock.shed', 'unavailable', { friendly_name: 'Shed' }),
+    ]);
+
+    expect(summarizeActionableEntitiesInSnapshot(withLocks)).toEqual([
+      { id: 'lock.front_door', name: 'Front door', area: null, state: 'locked', unit: null },
+      { id: 'cover.garage_door', name: 'Garage door', area: null, state: 'closed', unit: null },
+    ]);
   });
 
   it('names an entity without a friendly name the way Home Assistant does', () => {

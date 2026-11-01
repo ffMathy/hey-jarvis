@@ -5,6 +5,7 @@ import { CronPatterns } from './utils/workflows/cron-patterns.js';
 import {
   emailCheckingWorkflow,
   formRepliesDetectionWorkflow,
+  glanceWorkflow,
   iotNoiseBaselineWorkflow,
   storageRetentionWorkflow,
   weatherMonitoringWorkflow,
@@ -118,6 +119,14 @@ export const SCHEDULED_WORKFLOWS: ScheduledWorkflowDeclaration[] = [
   {
     workflowId: iotNoiseBaselineWorkflow.id,
     cron: CronPatterns.EVERY_3_HOURS,
+    runOnStartup: true,
+  },
+  // Glance - every 15 minutes, and on startup
+  // Decides whether sir's glance needs building again, and ends at once when it does not: a build
+  // costs minutes of a Claude Code session (verticals/visualize/glance.ts)
+  {
+    workflowId: glanceWorkflow.id,
+    cron: CronPatterns.EVERY_15_MINUTES,
     runOnStartup: true,
   },
   // Storage retention - nightly

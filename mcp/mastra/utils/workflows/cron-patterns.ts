@@ -11,6 +11,7 @@
  */
 export const CronPatterns = {
   EVERY_MINUTE: '* * * * *',
+  EVERY_15_MINUTES: '*/15 * * * *',
   EVERY_3_HOURS: '0 */3 * * *',
   DAILY_AT_MIDNIGHT: '0 0 * * *',
   WEEKLY_SUNDAY_8AM: '0 8 * * 0',

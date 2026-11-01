@@ -1,7 +1,9 @@
+import type { GlanceAction } from '../../utils/live-events.js';
 import { createShortcut } from '../../utils/shortcut-factory.js';
 import { executeTool } from '../../utils/tool-factory.js';
 import { runCodingTask } from '../coding/tools.js';
 import { sendPushNotification } from '../notification/tools.js';
+import { GLANCE_BRIDGE } from './glance-bridge.js';
 
 /**
  * Shortcuts are tools that piggy-back on other verticals' capabilities.
@@ -21,7 +23,7 @@ import { sendPushNotification } from '../notification/tools.js';
  * not touch a repository, and that the page itself is its answer. The session has nowhere to
  * publish to, so it hands the HTML back and the server hosts it (see `artifact-hosting.ts`).
  */
-export function buildArtifactTask(request: string): string {
+export function buildArtifactTask(request: string, options: ArtifactBriefOptions = {}): string {
   return [
     'Build an interactive web page for this request from the user of Jarvis, a voice assistant:',
     '',
@@ -30,7 +32,7 @@ export function buildArtifactTask(request: string): string {
     'How to build it:',
     '- Make one self-contained HTML page that answers the request visually: a chart, a dashboard, a diagram, an explainer or a user interface, whichever fits.',
     '- Keep the CSS and JavaScript inline. Libraries may be loaded from cdnjs.cloudflare.com or cdn.jsdelivr.net; nothing else can be served next to the page.',
-    '- Design for a phone first. It is usually opened by tapping a push notification, so it has to read well at phone width and still work on a desktop.',
+    ...(options.glance ? glanceDesignLines(options.glance.actions) : [PUSHED_PAGE_DESIGN_LINE]),
     '- Use the data given in the request. Where it needs facts that are not given and can be looked up, look them up. Never present invented numbers as real ones; label anything illustrative as such.',
     '- Nobody is there to answer questions, so do not ask any. Make sensible choices and carry on.',
     '- This is not a code change: do not modify any repository, create branches, open pull requests or file issues.',
@@ -38,6 +40,54 @@ export function buildArtifactTask(request: string): string {
     '',
     'End your final message with the complete HTML document, from <!doctype html> to </html>, in a single ```html code block, with nothing after it.',
   ].join('\n');
+}
+
+/** What changes in the brief for a page that is not an answer to a request. */
+export interface ArtifactBriefOptions {
+  /**
+   * The page is sir's glance (`glance.ts`): what the phone shows when he opens Jarvis from the
+   * launcher, with a button for each of `actions`.
+   */
+  glance?: { actions: GlanceAction[] };
+}
+
+/** How an ordinary page is designed: for the phone a push notification opens it on. */
+const PUSHED_PAGE_DESIGN_LINE =
+  '- Design for a phone first. It is usually opened by tapping a push notification, so it has to read well at phone width and still work on a desktop.';
+
+/**
+ * How a glance is designed, and how its buttons work.
+ *
+ * The buttons may only name the actions the server planned, through the bridge the server puts in
+ * the page (`glance-bridge.ts`): a page that reached Home Assistant itself would need a credential
+ * it must never have, and one that invented an action would offer something nobody planned.
+ */
+function glanceDesignLines(actions: GlanceAction[]): string[] {
+  const { actFunction, resultEvent } = GLANCE_BRIDGE;
+  const actionLines =
+    actions.length === 0
+      ? [
+          '- This glance has no actions: render no buttons that do anything, and offer nothing to be done from the page.',
+        ]
+      : [
+          `- Render one button per action below, labelled with its label. Clicking it must call \`${actFunction}('<id>')\` with exactly the id given, and nothing else: \`${actFunction}\` is provided by the page's host, so never define, replace or stub it.`,
+          `- Show each button's outcome on the button itself: a working state from the click, then the result. The result arrives as \`window.addEventListener('${resultEvent}', (event) => …)\`, where \`event.detail\` is \`{ actionId, ok, message }\`; show \`message\`, styled as success when \`ok\` is true and as a failure otherwise, and let the button be pressed again after a failure.`,
+          '- Never carry out an action any other way: no fetch or other request to Home Assistant or anywhere else, no links or forms that perform one, and no buttons for actions that are not listed.',
+          '- The actions, as id, label and what it does:',
+          ...actions.map((action) => `  - \`${action.id}\` — "${action.label}": ${action.prompt}`),
+        ];
+
+  return [
+    "- This page is sir's glance: what his phone shows when he opens Jarvis from the launcher, held in the hand. Design for a phone at portrait width only, filling the full height of the screen.",
+    '- Match Jarvis: a near-black background (around #05080c) with a single cyan accent (around #38e1ff), light text, and generous touch targets. Keep it calm and quick to read at a glance.',
+    '- It is not a notification and not an answer to a question: never frame it as "you have a new…" or "here is what you asked for". It is simply what matters to him right now.',
+    ...actionLines,
+  ];
+}
+
+/** Has a Claude Code session build a page from `brief`, which it sees and nothing else. */
+export async function runArtifactSession(brief: string, context: Parameters<typeof executeTool>[2]) {
+  return await executeTool(runCodingTask, { task: brief }, context);
 }
 
 /** A fenced HTML code block; the last one is taken, as the brief asks for the page at the end. */
@@ -72,8 +122,7 @@ export const createArtifact = createShortcut({
   description:
     "Have a Claude Code session build an interactive web page (an artifact) for what `task` describes, and report back with the page's HTML at the end of `final_message`. Takes a few minutes. `task` should say what to show and include any data the page needs, since the session can't reach Jarvis's own.",
   tool: runCodingTask,
-  execute: async (inputData, context) =>
-    await executeTool(runCodingTask, { task: buildArtifactTask(inputData.task) }, context),
+  execute: async (inputData, context) => await runArtifactSession(buildArtifactTask(inputData.task), context),
 });
 
 /**

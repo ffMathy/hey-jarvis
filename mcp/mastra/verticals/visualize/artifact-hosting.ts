@@ -56,6 +56,11 @@ export function getPublicBaseUrl(): string {
   return (/^https?:\/\//.test(baseUrl) ? baseUrl : `https://${baseUrl}`).replace(/\/+$/, '');
 }
 
+/** Whether there is a public address to host pages at; see {@link getPublicBaseUrl}. */
+export function hasPublicBaseUrl(): boolean {
+  return Boolean(process.env.HEY_JARVIS_PUBLIC_URL?.trim());
+}
+
 function getArtifactPath(id: string): string {
   return path.join(getArtifactDirectory(), `${id}.html`);
 }

@@ -64,6 +64,67 @@ says so and names the coding and reflection agents instead. Those are chained by
 than reached through more shortcuts on web research: a shortcut belongs to the agent that already
 holds the context, and here web research holds none of it.
 
+## Glance
+
+What the phone shows when sir opens Jarvis from the launcher rather than with the assistant button: a
+page built ahead of time from what has been going on, showing whatever he is likely to need soon —
+an email said a parcel comes this afternoon, so the page shows the delivery and a button to unlock
+the front door. It is a page like any other here, built by a Claude Code session and hosted for a
+day, with three differences: what it is built from, its buttons, and how a device hears of it.
+
+**When it is built** (`glanceWorkflow`, `visualize/workflows.ts`, scheduled every 15 minutes and on
+startup). A build costs minutes of a Claude Code session, so the first step decides
+(`decideGlanceRebuild` in `visualize/glance.ts`) and ends the run with `bail` when nothing is to be
+done: it rebuilds when there is no current glance, when an important change was noted after the
+current one was built, or when it is three hours old (`GLANCE_MAX_AGE_MS`) — and never between 23:00
+and 06:00 household time (`GLANCE_QUIET_HOURS`) unless there is none at all. The changes come from
+`ImportantChangeStorage.listRecent`, which reads the last day's changes *without* marking them told,
+so the voice asides still come (see [Synapse Important Changes](mcp-synapse-important-changes-news-for-the-next.md#synapse-important-changes-news-for-the-next-request)). It is a
+schedule rather than a call from `noteImportantChange` because the reactor and the MCP server are
+different processes. Without the Claude Code host or `HEY_JARVIS_PUBLIC_URL` it ends there too,
+naming what is missing (`whyGlancesAreOff`). A glance's age counts from when its context was read,
+not from when the build finished, so a change noted mid-build is built next time.
+
+**What it is built from:** every important change of the last 24 hours, the next 24 hours of every
+calendar (`getCalendarEvents` with `allCalendars`), and the locks, covers, alarm panels and climate
+entities in the live copy of the house (`summarizeActionableEntitiesInSnapshot`, `internet-of-things/home-state-cache.ts`). A source that
+cannot be read is logged with its reason and marked unavailable for the planner, which leaves it out
+rather than failing the glance. The `GlancePlanner` agent step (structured output) turns that and the
+household time into `{ title, brief, actions }`: at most four actions (`MAX_GLANCE_ACTIONS`), each a
+slug `id`, a button `label` and a plain imperative `prompt` to Jarvis, and only ones that are timely;
+with nothing notable, a calm "nothing needs you right now" page with the time and the next calendar
+item. Its actions are normalised (`normalizeGlanceActions`) before the page is briefed.
+
+**Its brief** is `buildArtifactTask(request, { glance: { actions } })`: the same brief as any page,
+but designed for a phone held in the hand, opened from the launcher, near-black with a cyan accent,
+full height, with no notification framing — and one button per action that calls
+`window.jarvis.act('<id>')` with exactly the planned id and shows the outcome from the
+`jarvisactionresult` event, never carrying an action out any other way. `hostSessionPage`
+(`visualize/tools.ts`, shared with `generateUserInterface`) reads the page out and hosts it.
+
+**The bridge** (`visualize/glance-bridge.ts`) is injected by the server as the first child of
+`<head>` before the page is hosted, so every glance speaks the same protocol whatever the session
+wrote. `window.jarvis.act(id)` posts `{"type":"jarvisAction","actionId":…}` as a string to
+`window.ReactNativeWebView.postMessage`, or else to the parent window when the page is in an iframe;
+opened anywhere else, it answers itself with a failed result. A result comes back as a
+`jarvisactionresult` event on `window` with `detail: { actionId, ok, message }` — dispatched directly
+by the Android host through `injectJavaScript`, or re-dispatched by the bridge from a posted
+`{"type":"jarvisActionResult",…}` message, string or object.
+
+**Where it is kept:** `glance.json` beside the pages (`visualize/glance-store.ts`), written atomically:
+`{ id, url, artifactId, title, generatedAt, actions }`. A glance whose page has outlived its 24 hours
+is no glance. Each new one is published as a `glance` live event, and a socket that says hello is
+sent the current one right after `ready` (see [The WebSocket API](mcp-mcp-server-access.md#the-websocket-api)).
+
+**The action guard.** A device presses a button by sending `glanceAction` with the glance's id and
+the action's id. The server runs it only when that glance is the *current* one and offers that
+action, so a device can trigger nothing but a prompt the server itself planned, and a replaced page
+triggers nothing. The prompt is then routed like the same words spoken —
+`runRequestToCompletion` (`routing/run-to-completion.ts`) starts it in the `jarvis-glance` routing
+session, waits up to two minutes for it to finish, and answers with what the agents said, or why it
+failed — without claiming any important change for an aside. One action runs at a time; one pressed
+meanwhile is refused.
+
 **Requirements:** the Claude Code sandbox under [Coding Agent](mcp-coding-agent.md#coding-agent);
 `HEY_JARVIS_PUBLIC_URL` (in `op.optional.env`, the `Public URL` field of the `Jarvis` item), the
 production MCP server's public address; plus the

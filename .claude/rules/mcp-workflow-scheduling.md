@@ -91,6 +91,7 @@ ceiling for a slow SD card, not something to lean on.
 
 **Available Cron Patterns** (`utils/workflows/cron-patterns.ts`):
 - `EVERY_MINUTE`: `* * * * *`
+- `EVERY_15_MINUTES`: `*/15 * * * *`
 - `EVERY_3_HOURS`: `0 */3 * * *`
 - `DAILY_AT_MIDNIGHT`: `0 0 * * *`
 - `WEEKLY_SUNDAY_8AM`: `0 8 * * 0`
@@ -132,6 +133,11 @@ in standard 5-field form; croner nicknames (`@hourly`, `@daily`) work too.
    - Workflow: `weeklyNewsDigestWorkflow`
    - Purpose: Summarizes the past week's news and daily.dev's most upvoted posts on one visualized
      page, and pushes its link to the phone (see [Web Research](mcp-visualize-vertical-shortcuts.md#visualize-vertical-shortcuts))
+
+8. **Glance** - Runs every 15 minutes + on startup
+   - Workflow: `glanceWorkflow`
+   - Purpose: Decides whether sir's glance needs building again, ends at once when it does not, and
+     otherwise builds and publishes it (see [Glance](mcp-visualize-vertical-shortcuts.md#glance))
 
 **Monitoring Scheduled Workflows:**
 

@@ -11,8 +11,8 @@ import { logger } from './logger.js';
  * serves no sockets, it simply goes nowhere.
  *
  * A device subscribes by holding a socket open, and acts on the events it cares about: the headset
- * lights up what a request is touching and shows which agents are working on it, and the phone and
- * the watch need not do anything at all.
+ * lights up what a request is touching and shows which agents are working on it, and the phone
+ * shows the latest glance when sir opens Jarvis from the launcher.
  */
 export type LiveEvent =
   | {
@@ -20,7 +20,38 @@ export type LiveEvent =
       /** What a request's tool just read or changed. See `affected-entities.ts`. */
       entities: AffectedEntity[];
     }
-  | ({ type: 'agentActivity' } & AgentActivity);
+  | ({ type: 'agentActivity' } & AgentActivity)
+  | {
+      type: 'glance';
+      /** The page the phone shows when sir opens Jarvis from the launcher. See `visualize/glance.ts`. */
+      glance: GlanceSummary;
+    };
+
+/** One button on a glance: what it says, and the request Jarvis runs when it is pressed. */
+export interface GlanceAction {
+  /** A short slug, `[a-z0-9-]`, unique on its glance: what the page and the device name it by. */
+  id: string;
+  /** The button's text. */
+  label: string;
+  /** The request it stands for, as sir would say it to Jarvis: "Unlock the front door". */
+  prompt: string;
+}
+
+/**
+ * The current glance as a device is told of it: the page to show and the actions on it.
+ *
+ * The id names this one build of the glance, so an action pressed on a page that has since been
+ * replaced is recognised as stale and refused.
+ */
+export interface GlanceSummary {
+  id: string;
+  /** Where the page is hosted. */
+  url: string;
+  title: string;
+  /** When it was built, as an ISO 8601 timestamp. */
+  generatedAt: string;
+  actions: GlanceAction[];
+}
 
 /**
  * Where one of a request's delegations has got to, for sir's headset to show him at work: a

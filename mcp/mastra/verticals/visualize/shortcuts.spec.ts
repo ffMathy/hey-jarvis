@@ -32,6 +32,41 @@ describe('buildArtifactTask', () => {
   });
 });
 
+describe('buildArtifactTask for a glance', () => {
+  const actions = [
+    { id: 'unlock-front-door', label: 'Unlock the door', prompt: 'Unlock the front door' },
+    { id: 'open-garage', label: 'Open the garage', prompt: 'Open the garage door' },
+  ];
+  const task = buildArtifactTask('The parcel from Zalando arrives between 14:00 and 16:00.', { glance: { actions } });
+
+  it('designs a dark page held in the hand, opened from the launcher, not a notification', () => {
+    expect(task).toContain('opens Jarvis from the launcher');
+    expect(task).toContain('#05080c');
+    expect(task).toContain('#38e1ff');
+    expect(task).toContain('It is not a notification');
+    expect(task).not.toContain('tapping a push notification');
+  });
+
+  it('wires every planned action through the bridge, by exactly its id', () => {
+    expect(task).toContain("window.jarvis.act('<id>')");
+    expect(task).toContain("window.addEventListener('jarvisactionresult'");
+    expect(task).toContain('`unlock-front-door` — "Unlock the door": Unlock the front door');
+    expect(task).toContain('`open-garage` — "Open the garage": Open the garage door');
+  });
+
+  it('forbids carrying out an action any other way', () => {
+    expect(task).toContain('no fetch or other request to Home Assistant');
+    expect(task).toContain('never define, replace or stub it');
+  });
+
+  it('asks for no buttons when there is nothing to do', () => {
+    const calm = buildArtifactTask('Nothing needs you right now.', { glance: { actions: [] } });
+
+    expect(calm).toContain('This glance has no actions');
+    expect(calm).not.toContain("window.jarvis.act('<id>')");
+  });
+});
+
 describe('findArtifactHtml', () => {
   const PAGE = '<!doctype html>\n<html><body><h1>Prices</h1></body></html>';
 
