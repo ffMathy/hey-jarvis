@@ -9,11 +9,12 @@ paths:
 
 `platforms` includes `web`, and the conversation genuinely works there: `@elevenlabs/client` resolves through its `browser` export condition to the build that speaks WebRTC through the browser rather than through LiveKit's native modules. The same components and the same session; what differs is decided in `useJarvisSession` by platform (no call audio, dialled behind the greeting) and in the platform pairs below.
 
-Three things do differ, and each is a pair of files Metro picks between rather than a conditional:
+These things do differ, and each is a pair of files Metro picks between rather than a conditional:
 
 - **Storage.** `expo-secure-store` ships `export default {}` as its web implementation, so the native path does not degrade on web — it throws. `key-value-store.web.ts` uses `localStorage` instead, and the settings screen says so, because `localStorage` is not a keystore.
 - **The microphone.** `PermissionsAndroid` is not part of `react-native-web`. `microphone-permission.web.ts` asks by requesting a stream and releasing it again, so a refusal still surfaces as a permission problem rather than as a failed connection.
 - **The camera.** `take-photo.web.ts` is a file picker (`capture="environment"`, which a phone's browser opens on its camera and a desktop's on its files), drawn onto a canvas and re-encoded as the same JPEG the phone sends. A picker only opens inside a tap, which is why the camera button asks for it before anything is awaited, and one left open is taken as closed after the camera app's 110 s.
+- **The glance.** `glance-view.web.tsx` is a sandboxed `<iframe>` in place of the phone's WebView, talking to its page by `postMessage`, and `confirm-glance-action.web.ts` asks with `window.confirm` in place of an Android dialog. See [The glance](mobile-the-glance.md).
 
 `platform-contracts.ts` holds the types both halves implement, so neither can drift — nothing else in the app imports both.
 

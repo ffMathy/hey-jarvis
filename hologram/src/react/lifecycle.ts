@@ -8,6 +8,7 @@
  */
 
 export { AgentSatellitesContext, useAgentSatellites } from './agent-satellites';
+export { useGlance } from './glance';
 export { useIsForeground } from './is-foreground';
 export { useJarvisServer } from './jarvis-server';
 export { LEAVING_SECONDS } from './leaving';

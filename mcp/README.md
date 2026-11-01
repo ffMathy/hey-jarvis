@@ -211,10 +211,13 @@ other machine the container can reach.
 
 The SSH key gets no shell on the host. Its only command is
 [`.scripts/claude-code-ssh-command.sh`](./.scripts/claude-code-ssh-command.sh), which sshd runs
-whatever the connection asked for. It accepts `start <session id>`, `resume <session id>` or
+whatever the connection asked for. It accepts `start <session id>`, `resume <session id>` (either
+optionally followed by an allowed model alias, `haiku`, which the glance is built on) or
 `export <session id>` and nothing else, and fixes everything that matters itself: the `jarvis`
 sandbox, the session's directory, and the `claude` and `git` command lines. A compromised container
-can start Claude Code sessions in the sandbox and fetch their work, and that is all.
+can start Claude Code sessions in the sandbox and fetch their work, and that is all. Whenever the
+script changes, install it again (step 4 below): a copy from before models could be chosen refuses
+`start <session id> haiku`, so no glance is built until it is replaced.
 
 The sandbox gets no GitHub credential that can write. A session clones the repository over plain
 HTTPS, commits on a branch named `jarvis/…`, and pushes nothing: it ends its turn by naming the

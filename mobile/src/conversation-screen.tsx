@@ -7,7 +7,6 @@ import {
   NOT_YET_OPEN,
   PHONE_PARTICIPANT_NAME,
   type ProblemSource,
-  type SessionPhase,
 } from 'hologram';
 import { useJarvisSession } from 'hologram/conversation';
 import { JarvisHologram } from 'hologram/react';
@@ -18,6 +17,7 @@ import { Platform, Pressable, StyleSheet, Text, ToastAndroid, View } from 'react
 import { whenTheAssistantWindowIsPutAway } from '../modules/jarvis-assistant';
 import { roomOfConversation } from './agent-audio-track';
 import { createAssistLaunchClaim } from './assist-link';
+import { BackToGlanceLink, isUnderWay, useBackToGlance } from './back-to-glance';
 import { CameraButton } from './camera-button';
 import { ConversationFrame, useConversationSheet } from './conversation-sheet';
 import { followJarvisVoice, useJarvisVoice } from './jarvis-voice';
@@ -50,6 +50,19 @@ interface ConversationScreenProps {
   inAssistantWindow?: boolean;
   /** Which showing of the assistant's window this is; changes on every summoning. See `App`. */
   showing?: number;
+  /**
+   * Told whether a conversation is under way on this screen — being started, greeting, connecting,
+   * live, or still leaving — every time that changes, so the app does not swap it for a glance in the
+   * middle of one. See `chooseScreen` in `app-screen.ts`.
+   */
+  onUnderWayChange?: (underWay: boolean) => void;
+  /** Told once he has gone at the end of a conversation, so the app can go back to the glance. */
+  onGone?: () => void;
+  /**
+   * There is a glance to go back to: back on a phone, and a link in a browser, end the conversation
+   * and show it. Left out, neither is there, and back does what it always did.
+   */
+  onBackToGlance?: () => void;
 }
 
 /** Summonings already acted on in this process. */
@@ -121,14 +134,6 @@ function showsCameraButton({
 }) {
   const inFront = canSendPhotos && connected && !gone && settled && !greeting && !(ON_A_PHONE && textMode);
   return inFront && !(thinking || speaking || busy);
-}
-
-/**
- * Whether a summoning is under way — greeting, connecting or talking — and so is shown again rather
- * than replaced when he is summoned once more.
- */
-function isUnderWay(phase: SessionPhase): boolean {
-  return phase === 'greeting' || phase === 'connecting' || phase === 'live';
 }
 
 /**
@@ -248,6 +253,9 @@ export function ConversationScreen({
   inSheet = false,
   inAssistantWindow = false,
   showing,
+  onUnderWayChange,
+  onGone,
+  onBackToGlance,
 }: ConversationScreenProps) {
   const [problem, setProblem] = useState<string | undefined>(undefined);
 
@@ -542,6 +550,19 @@ export function ConversationScreen({
   });
   const { hologramSize, canvas, settled } = sheet;
 
+  // The way back to the glance, when the app was opened onto one. See `back-to-glance.tsx`.
+  useBackToGlance({
+    starting: isStarting,
+    phase,
+    hangingUp,
+    ended,
+    gone,
+    inSheet,
+    onUnderWayChange,
+    onGone,
+    onBackToGlance,
+  });
+
   /**
    * A summoning that arrives while this screen is already open.
    *
@@ -695,6 +716,8 @@ export function ConversationScreen({
         hologramSize={hologramSize}
         onPress={sendJarvisAPhoto}
       />
+
+      <BackToGlanceLink onBackToGlance={onBackToGlance} />
 
       {ON_A_PHONE ? null : (
         <Pressable

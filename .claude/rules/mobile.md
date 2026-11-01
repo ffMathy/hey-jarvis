@@ -16,6 +16,7 @@ Each topic is a rule of its own, under the same paths:
 - [File Structure](mobile-file-structure.md)
 - [The hologram](mobile-the-hologram.md)
 - [Showing him something](mobile-showing-him-something.md)
+- [The glance](mobile-the-glance.md)
 - [Sample mode](mobile-sample-mode.md)
 - [First run](mobile-first-run.md)
 - [Configuration](mobile-configuration.md)

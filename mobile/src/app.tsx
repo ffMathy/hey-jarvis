@@ -17,8 +17,10 @@ import { AgentSatellitesContext, useAgentSatellites, useJarvisServer } from 'hol
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { useAnswerTheWatch } from './answer-the-watch';
+import { chooseScreen, type Screen } from './app-screen';
 import { isAssistLaunch } from './assist-link';
 import { ConversationScreen } from './conversation-screen';
+import { GlanceScreen } from './glance-screen';
 import {
   type JarvisServerChange,
   loadJarvisServerAddress,
@@ -34,6 +36,7 @@ import { SampleScreen } from './sample-screen';
 import { SettingsScreen } from './settings-screen';
 import { loadElevenLabsSettings, saveElevenLabsSettings } from './settings-storage';
 import { theme } from './theme';
+import { useOpeningGlance } from './use-opening-glance';
 
 /**
  * The Jarvis server's address to use: the one read, or none — an address that still cannot be read
@@ -48,40 +51,6 @@ async function readJarvisServerAddress(stillWanted: () => boolean): Promise<stri
 async function readJarvisServerToken(stillWanted: () => boolean): Promise<string | undefined> {
   const stored = await readTryingAgain(loadJarvisServerToken, stillWanted);
   return stored?.kind === 'token' ? stored.token : undefined;
-}
-
-/** Which screen is showing. */
-type Screen = 'loading' | 'sample' | 'onboarding' | 'settings' | 'conversation';
-
-/**
- * Which one, given everything that has a say in it.
- *
- * The order is the argument. Sample mode comes first because it is a side trip taken *from*
- * somewhere and returned to — including from the tour, where it is offered on every step. The tour
- * comes next because a first run has nothing else worth showing. The bare settings screen is what
- * is left for an install that has been through the tour and has no credentials any more, which is
- * where this app opened before there was a tour at all.
- */
-function chooseScreen(state: {
-  isLoaded: boolean;
-  hasSettings: boolean;
-  isEditingSettings: boolean;
-  isSampling: boolean;
-  isTouring: boolean;
-}): Screen {
-  if (!state.isLoaded) {
-    return 'loading';
-  }
-  if (state.isSampling) {
-    return 'sample';
-  }
-  if (state.isTouring) {
-    return 'onboarding';
-  }
-  if (!state.hasSettings) {
-    return 'settings';
-  }
-  return state.isEditingSettings ? 'settings' : 'conversation';
 }
 
 export interface AppProps {
@@ -146,6 +115,10 @@ export function App({ summoned = false, showing }: AppProps) {
   // Which of his agents a request is using, from that line, drawn round him on whichever screen shows
   // him (`AgentSatellitesContext`). Sample mode has its own, pretended (`sample-screen.tsx`).
   const satellites = useAgentSatellites(serverLink);
+  // The page the server made ahead of time for sir to look at, shown when the app is opened rather
+  // than summoned (`app-screen.ts`), and what decides whether it is showing.
+  const opening = useOpeningGlance(serverLink, serverAddress);
+  const { glance } = opening;
 
   const launchUrl = Linking.useURL();
   // Two ways in, and they are genuinely different: the assistant's own window renders this
@@ -278,12 +251,18 @@ export function App({ summoned = false, showing }: AppProps) {
 
   const screen = chooseScreen({
     isLoaded,
+    // Read beside the settings, so the first screen already knows of a kept glance.
+    isGlanceRead: opening.read,
     hasSettings: settings !== undefined,
     isEditingSettings,
     isSampling,
     // Never to somebody who just made the assistant gesture. They asked for Jarvis, and the answer
     // to that is him — sample mode, if there is nothing set up — rather than a guided tour.
     isTouring: !hasWalkedTour && !wasSummoned && tourHasSteps,
+    wasSummoned,
+    glance,
+    wantsToTalk: opening.wantsToTalk,
+    conversationUnderWay: opening.conversationUnderWay,
   });
 
   const conversationInSheet = isConversationInSheet(wasSummoned);
@@ -315,6 +294,9 @@ export function App({ summoned = false, showing }: AppProps) {
             onTrySample={settings ? undefined : () => setIsSampling(true)}
           />
         ) : null}
+        {screen === 'glance' && glance && serverLink ? (
+          <GlanceScreen glance={glance} requestAction={serverLink.requestGlanceAction} onTalk={opening.startTalking} />
+        ) : null}
         {screen === 'conversation' && settings ? (
           <ConversationScreen
             settings={settings}
@@ -323,11 +305,19 @@ export function App({ summoned = false, showing }: AppProps) {
             inSheet={conversationInSheet}
             inAssistantWindow={summoned}
             showing={showing}
+            onUnderWayChange={opening.setConversationUnderWay}
+            onGone={opening.conversationOver}
+            onBackToGlance={screenBackToGlance(wasSummoned, glance, opening.backToGlance)}
           />
         ) : null}
       </View>
     </AgentSatellitesContext.Provider>
   );
+}
+
+/** The way back from a conversation to the glance: only opened rather than summoned, and only to one there is. */
+function screenBackToGlance(wasSummoned: boolean, glance: unknown, backToGlance: () => void) {
+  return glance !== undefined && !wasSummoned ? backToGlance : undefined;
 }
 
 /**

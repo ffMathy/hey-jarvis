@@ -339,6 +339,27 @@ export function summarizeEntitiesInSnapshot(snapshot: HomeSnapshot, domain?: str
   });
 }
 
+/**
+ * The kinds of device sir acts on at a moment's notice rather than by routine: doors that lock,
+ * covers and garage doors, the alarm, the heating. Lights are left out: a house has dozens, and
+ * which one he wants is never something to guess ahead of time.
+ */
+export const ACTIONABLE_DOMAINS = ['lock', 'cover', 'alarm_control_panel', 'climate'] as const;
+
+/** The most actionable entities listed, so a large house cannot crowd out everything else. */
+const MAX_ACTIONABLE_ENTITIES = 40;
+
+/**
+ * The entities of {@link ACTIONABLE_DOMAINS}, as `findEntities` summarises them, for a page that
+ * offers to act on them before he asks (`visualize/glance.ts`). Unavailable ones are left out:
+ * nothing can be done with them.
+ */
+export function summarizeActionableEntitiesInSnapshot(snapshot: HomeSnapshot): EntitySummary[] {
+  return ACTIONABLE_DOMAINS.flatMap((domain) => summarizeEntitiesInSnapshot(snapshot, domain))
+    .filter((entity) => entity.state !== 'unavailable' && entity.state !== 'unknown')
+    .slice(0, MAX_ACTIONABLE_ENTITIES);
+}
+
 /** The longest string an attribute or state is reported with before it is cut. */
 const MAX_STRING_LENGTH = 160;
 

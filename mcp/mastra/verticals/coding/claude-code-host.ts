@@ -11,8 +11,9 @@
  * server's container — so the server reaches the host over SSH, and the host runs `sbx exec`.
  *
  * The SSH key gets no shell on the host. Its forced command is `mcp/.scripts/claude-code-ssh-command.sh`,
- * which accepts only `start <session id>`, `resume <session id>` or `export <session id>` and fixes
- * everything else — the sandbox, the directory, and the `claude` and `git` command lines — so a
+ * which accepts only `start <session id>`, `resume <session id>` (either optionally followed by one
+ * of {@link CLAUDE_CODE_MODELS}) or `export <session id>` and fixes everything else — the sandbox,
+ * the directory, and the `claude` and `git` command lines — so a
  * compromised container can start Claude Code sessions in the sandbox, fetch their work as a git
  * bundle, and do nothing else on the host. It also decides for itself
  * whether a session is started or resumed, from whether its transcript is in the sandbox, and holds
@@ -41,6 +42,18 @@ export const SANDBOX_SESSIONS_DIRECTORY = 'jarvis-sessions';
 
 /** Claude Code session ids are UUIDs, and the host refuses anything else. */
 const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * The models a session may be asked to run on, as Claude Code's own aliases.
+ *
+ * The host's forced command allows exactly these and refuses any other word, so a request can only
+ * ever pick one of them, never pass `claude` anything else. A session given none runs on Claude
+ * Code's default model, and its request is the same as before models could be chosen at all.
+ */
+export const CLAUDE_CODE_MODELS = ['haiku'] as const;
+
+/** A model a session may be asked to run on; see {@link CLAUDE_CODE_MODELS}. */
+export type ClaudeCodeModel = (typeof CLAUDE_CODE_MODELS)[number];
 
 /** Longest stretch of stderr kept for reporting why a process failed. */
 const MAXIMUM_STDERR_LENGTH = 4000;
@@ -109,15 +122,20 @@ export function isClaudeCodeHostConfigured(): boolean {
  * a host still on the older forced command goes by it. The host checks the id too; checking it
  * here as well turns a bug into a clear error rather than a refused connection.
  *
+ * A model is a third word, and only when one is given: a host still on a forced command from before
+ * models could be chosen refuses the third word, but goes on running every session that has none.
+ *
  * @param sessionId - The Claude Code session id
  * @param resume - Whether this server believes the session already exists in the sandbox
+ * @param model - The model to run the session on; Claude Code's default when left out
  */
-export function buildRemoteCommand(sessionId: string, resume: boolean): string {
+export function buildRemoteCommand(sessionId: string, resume: boolean, model?: ClaudeCodeModel): string {
   if (!SESSION_ID_PATTERN.test(sessionId)) {
     throw new Error(`Not a Claude Code session id: ${sessionId}`);
   }
 
-  return `${resume ? 'resume' : 'start'} ${sessionId}`;
+  const request = `${resume ? 'resume' : 'start'} ${sessionId}`;
+  return model ? `${request} ${model}` : request;
 }
 
 /** How a Claude Code process ended. */
@@ -146,11 +164,16 @@ export interface ClaudeCodeProcess {
 }
 
 /**
- * Starts a Claude Code process for a session; swapped out in tests.
+ * Starts a Claude Code process for a session, on `model` or Claude Code's default; swapped out in
+ * tests.
  *
  * `resume` is only a hint: the host decides for itself whether the session is resumed.
  */
-export type ClaudeCodeLauncher = (sessionId: string, resume: boolean) => Promise<ClaudeCodeProcess>;
+export type ClaudeCodeLauncher = (
+  sessionId: string,
+  resume: boolean,
+  model?: ClaudeCodeModel,
+) => Promise<ClaudeCodeProcess>;
 
 /**
  * Where the host's key is remembered between restarts.
@@ -265,8 +288,8 @@ async function spawnSsh(remoteCommand: string): Promise<ChildProcessWithoutNullS
  *
  * The subscription token is the one secret that travels, on the first line of stdin.
  */
-export const launchClaudeCodeOverSsh: ClaudeCodeLauncher = async (sessionId, resume) => {
-  const remoteCommand = buildRemoteCommand(sessionId, resume);
+export const launchClaudeCodeOverSsh: ClaudeCodeLauncher = async (sessionId, resume, model) => {
+  const remoteCommand = buildRemoteCommand(sessionId, resume, model);
   const { oauthToken } = getClaudeCodeHostConfiguration();
   const child = await spawnSsh(remoteCommand);
 

@@ -20,3 +20,7 @@ processing") carries the next one. A request that finishes before the route call
 silence, so its closing report carries the news, told straight after the answer. A claim marks the change told in the same statement, so each is
 mentioned once, and a storage failure only costs the aside (`claimImportantChangeToMention` in
 `synapse/important-changes.ts`).
+
+The glance reads them too, with `listRecent`, which lists the last day's changes without claiming
+any: a page showing sir what is going on is not Jarvis having told him (see
+[Glance](mcp-visualize-vertical-shortcuts.md#glance)).

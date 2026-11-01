@@ -4,12 +4,17 @@ import type { AddressInfo } from 'node:net';
 import WebSocket from 'ws';
 import { publishLiveEvent } from '../../utils/live-events.js';
 import { currentPointing, resetPointingForTest } from '../../utils/pointing.js';
+import type { StoredGlance } from '../visualize/glance-store.js';
 import {
   attachLiveSocket,
+  GLANCE_ACTION_REFUSALS,
+  type GlanceRequestOutcome,
   LIVE_SOCKET_CLOSE_CODES,
   LIVE_SOCKET_PATH,
   type LiveSocketOptions,
   type LiveSockets,
+  MAX_FRAME_BYTES,
+  MAX_GLANCE_REQUEST_ID_LENGTH,
   MAX_LIVE_SOCKETS,
 } from './live-socket.js';
 
@@ -41,10 +46,20 @@ function isAddressInfo(address: string | AddressInfo | null): address is Address
   return typeof address === 'object' && address !== null;
 }
 
-/** A real HTTP server with the live socket on it. */
-async function serve(options: LiveSocketOptions = {}): Promise<{ url: (path?: string) => string }> {
+/** The prompts the stand-in runner was asked to run, in order. */
+let ranRequests: string[] = [];
+
+/** A runner that answers every request at once, as the routed request would have. */
+async function answerAtOnce(request: string): Promise<GlanceRequestOutcome> {
+  ranRequests.push(request);
+  return { ok: true, message: `Done: ${request}.` };
+}
+
+/** A real HTTP server with the live socket on it, with no glance unless the spec gives one. */
+async function serve(options: Partial<LiveSocketOptions> = {}): Promise<{ url: (path?: string) => string }> {
+  ranRequests = [];
   server = createServer((_request, response) => response.end());
-  live = attachLiveSocket(server, options);
+  live = attachLiveSocket(server, { runRequest: answerAtOnce, currentGlance: async () => undefined, ...options });
   await new Promise<void>((resolve) => server?.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   if (!isAddressInfo(address)) {
@@ -212,5 +227,204 @@ describe('the live socket', () => {
     await Promise.all(Array.from({ length: MAX_LIVE_SOCKETS }, () => connect(url())));
     await expect(connect(url())).rejects.toThrow();
     expect(live?.size).toBe(MAX_LIVE_SOCKETS);
+  });
+});
+
+const GLANCE: StoredGlance = {
+  id: '6f1c9a4e-2b3d-4c5e-8f70-1a2b3c4d5e6f',
+  url: 'https://jarvis.example.com/artifacts/0e9d8c7b-6a5f-4e3d-9c2b-1a0f9e8d7c6b',
+  artifactId: '0e9d8c7b-6a5f-4e3d-9c2b-1a0f9e8d7c6b',
+  title: 'Your parcel arrives this afternoon',
+  generatedAt: '2026-11-01T10:00:00.000Z',
+  actions: [{ id: 'unlock-front-door', label: 'Unlock the door', prompt: 'Unlock the front door' }],
+};
+
+/** The glance as the wire carries it: everything but the file its page is. */
+const { artifactId: _artifactId, ...GLANCE_ON_THE_WIRE } = GLANCE;
+
+/** A socket that has said hello, and every frame it has been sent, from the first. */
+interface ListeningSocket {
+  socket: WebSocket;
+  frames: unknown[];
+}
+
+/**
+ * Opens a socket, says hello, and waits for `ready` — and for the glance after it, when the server
+ * has one. Every frame is recorded from the start, since two can arrive in the same moment.
+ */
+async function readySocket(url: string, expectsGlance: boolean): Promise<ListeningSocket> {
+  const socket = await connect(url);
+  const frames: unknown[] = [];
+  socket.on('message', (data) => frames.push(JSON.parse(data.toString())));
+  socket.send(hello());
+  await until(() => frames.length === (expectsGlance ? 2 : 1));
+  expect(frames[0]).toEqual({ type: 'ready' });
+  return { socket, frames };
+}
+
+/** The frames a socket is sent after the ones it has already been sent. */
+async function framesAfter(listening: ListeningSocket, count: number, act: () => void): Promise<unknown[]> {
+  const seen = listening.frames.length;
+  act();
+  await until(() => listening.frames.length >= seen + count);
+  return listening.frames.slice(seen);
+}
+
+function glanceAction(actionId = 'unlock-front-door', glanceId = GLANCE.id, requestId = 'request-1'): string {
+  return JSON.stringify({ type: 'glanceAction', requestId, glanceId, actionId });
+}
+
+function result(ok: boolean, message: string, requestId = 'request-1') {
+  return { type: 'glanceActionResult', requestId, ok, message };
+}
+
+describe('the glance on the live socket', () => {
+  it('sends the current glance right after ready, without the file it is kept in', async () => {
+    const { url } = await serve({ currentGlance: async () => GLANCE });
+    const { frames } = await readySocket(url(), true);
+
+    expect(frames).toEqual([{ type: 'ready' }, { type: 'glance', glance: GLANCE_ON_THE_WIRE }]);
+  });
+
+  it('sends nothing after ready when there is no glance', async () => {
+    const { url } = await serve();
+    const listening = await readySocket(url(), false);
+
+    const sent = await framesAfter(listening, 1, () =>
+      publishLiveEvent({ type: 'affectedEntities', entities: [{ id: 'light.hall' }] }),
+    );
+    expect(sent).toEqual([{ type: 'affectedEntities', entities: [{ id: 'light.hall' }] }]);
+  });
+
+  it('sends a newly published glance to every socket', async () => {
+    const { url } = await serve();
+    const sockets = await Promise.all([readySocket(url(), false), readySocket(url(), false)]);
+
+    publishLiveEvent({ type: 'glance', glance: GLANCE_ON_THE_WIRE });
+    await until(() => sockets.every((listening) => listening.frames.length === 2));
+
+    for (const { frames } of sockets) {
+      expect(frames[1]).toEqual({ type: 'glance', glance: GLANCE_ON_THE_WIRE });
+    }
+  });
+
+  it("runs a pressed action's own prompt, and answers only the socket that pressed it", async () => {
+    const { url } = await serve({ currentGlance: async () => GLANCE });
+    const [pressing, watching] = await Promise.all([readySocket(url(), true), readySocket(url(), true)]);
+
+    const answered = await framesAfter(pressing, 1, () => pressing.socket.send(glanceAction()));
+
+    expect(answered).toEqual([result(true, 'Done: Unlock the front door.')]);
+    expect(ranRequests).toEqual(['Unlock the front door']);
+    expect(watching.frames).toHaveLength(2);
+  });
+
+  it('refuses an action on a glance that has been replaced, and runs nothing', async () => {
+    const { url } = await serve({ currentGlance: async () => GLANCE });
+    const listening = await readySocket(url(), true);
+
+    const answered = await framesAfter(listening, 1, () =>
+      listening.socket.send(glanceAction('unlock-front-door', '7a2d0b5f-3c4e-4d6f-9a81-2b3c4d5e6f70')),
+    );
+
+    expect(answered).toEqual([result(false, GLANCE_ACTION_REFUSALS.staleGlance)]);
+    expect(ranRequests).toEqual([]);
+  });
+
+  it('refuses an action when there is no glance at all', async () => {
+    const { url } = await serve();
+    const listening = await readySocket(url(), false);
+
+    const answered = await framesAfter(listening, 1, () => listening.socket.send(glanceAction()));
+
+    expect(answered).toEqual([result(false, GLANCE_ACTION_REFUSALS.staleGlance)]);
+    expect(ranRequests).toEqual([]);
+  });
+
+  it('refuses an action the glance does not offer, and runs nothing', async () => {
+    const { url } = await serve({ currentGlance: async () => GLANCE });
+    const listening = await readySocket(url(), true);
+
+    const answered = await framesAfter(listening, 1, () => listening.socket.send(glanceAction('open-garage')));
+
+    expect(answered).toEqual([result(false, GLANCE_ACTION_REFUSALS.unknownAction)]);
+    expect(ranRequests).toEqual([]);
+  });
+
+  it('refuses a second action while one runs, and answers the first when it is done', async () => {
+    let finishFirst: (outcome: GlanceRequestOutcome) => void = () => undefined;
+    const { url } = await serve({
+      currentGlance: async () => GLANCE,
+      runRequest: (request) => {
+        ranRequests.push(request);
+        return new Promise((resolve) => {
+          finishFirst = resolve;
+        });
+      },
+    });
+    const listening = await readySocket(url(), true);
+
+    listening.socket.send(glanceAction('unlock-front-door', GLANCE.id, 'first'));
+    await until(() => ranRequests.length === 1);
+    const refused = await framesAfter(listening, 1, () =>
+      listening.socket.send(glanceAction('unlock-front-door', GLANCE.id, 'second')),
+    );
+    const answered = await framesAfter(listening, 1, () =>
+      finishFirst({ ok: true, message: 'The front door is unlocked.' }),
+    );
+
+    expect(refused).toEqual([result(false, GLANCE_ACTION_REFUSALS.busy, 'second')]);
+    expect(answered).toEqual([result(true, 'The front door is unlocked.', 'first')]);
+    expect(ranRequests).toEqual(['Unlock the front door']);
+  });
+
+  it('answers a runner that throws as a failure, rather than leaving the button waiting', async () => {
+    const { url } = await serve({
+      currentGlance: async () => GLANCE,
+      runRequest: async () => {
+        throw new Error('routing exploded');
+      },
+    });
+    const listening = await readySocket(url(), true);
+
+    const answered = await framesAfter(listening, 1, () => listening.socket.send(glanceAction()));
+
+    expect(answered).toEqual([result(false, GLANCE_ACTION_REFUSALS.failed)]);
+  });
+
+  it('ignores a glance action frame that breaks the schema', async () => {
+    const { url } = await serve({ currentGlance: async () => GLANCE });
+    const listening = await readySocket(url(), true);
+
+    const answered = await framesAfter(listening, 1, () => {
+      for (const frame of [
+        { type: 'glanceAction', glanceId: GLANCE.id, actionId: 'unlock-front-door' },
+        { type: 'glanceAction', requestId: '', glanceId: GLANCE.id, actionId: 'unlock-front-door' },
+        {
+          type: 'glanceAction',
+          requestId: 'x'.repeat(MAX_GLANCE_REQUEST_ID_LENGTH + 1),
+          glanceId: GLANCE.id,
+          actionId: 'unlock-front-door',
+        },
+        { type: 'glanceAction', requestId: 'request-1', glanceId: GLANCE.id },
+      ]) {
+        listening.socket.send(JSON.stringify(frame));
+      }
+      // A frame that is answered, sent last, shows the ones before it were read and ignored.
+      listening.socket.send(glanceAction('open-garage', GLANCE.id, 'last'));
+    });
+
+    expect(answered).toEqual([result(false, GLANCE_ACTION_REFUSALS.unknownAction, 'last')]);
+    expect(ranRequests).toEqual([]);
+  });
+
+  it('fits the longest glance action a device may send in one frame', () => {
+    const longest = JSON.stringify({
+      type: 'glanceAction',
+      requestId: 'x'.repeat(MAX_GLANCE_REQUEST_ID_LENGTH),
+      glanceId: 'x'.repeat(64),
+      actionId: 'x'.repeat(64),
+    });
+    expect(Buffer.byteLength(longest)).toBeLessThan(MAX_FRAME_BYTES);
   });
 });

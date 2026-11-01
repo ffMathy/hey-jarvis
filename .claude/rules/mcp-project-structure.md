@@ -45,10 +45,14 @@ mcp/
 │   │   │   ├── contacts.ts
 │   │   │   ├── tools.ts
 │   │   │   └── index.ts
-│   │   ├── visualize/   # Pages built on request by a Claude session (mostly shortcuts)
+│   │   ├── visualize/   # Pages built on request by a Claude session (mostly shortcuts), and the glance
 │   │   │   ├── agent.ts
+│   │   │   ├── glance.ts        # When the glance is rebuilt, and what it is planned from
+│   │   │   ├── glance-bridge.ts # The script that lets a glance's buttons reach the app
+│   │   │   ├── glance-store.ts  # The current glance, kept beside the pages
 │   │   │   ├── shortcuts.ts
 │   │   │   ├── tools.ts
+│   │   │   ├── workflows.ts     # glanceWorkflow
 │   │   │   └── index.ts
 │   │   ├── presence/        # Where the user is (shortcuts only)
 │   │   │   ├── shortcuts.ts

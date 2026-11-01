@@ -6,9 +6,27 @@
  * reading of the page it hands back.
  */
 
-import { describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { executeTool } from '../../utils/tool-factory.js';
-import { buildArtifactTask, findArtifactHtml, openArtifactOnPhone } from './shortcuts.js';
+import { runCodingTask } from '../coding/tools.js';
+import {
+  buildArtifactTask,
+  createArtifact,
+  findArtifactHtml,
+  openArtifactOnPhone,
+  runArtifactSession,
+} from './shortcuts.js';
+
+/** Replaces the Claude Code session underneath the shortcuts, recording what each was asked. */
+function fakeCodingTask() {
+  return spyOn(runCodingTask, 'execute').mockResolvedValue({
+    success: true,
+    session_id: 'session_page',
+    stop_reason: 'end_turn',
+    final_message: 'Done.',
+    message: 'Claude Code session session_page stopped with "end_turn".',
+  });
+}
 
 describe('buildArtifactTask', () => {
   const task = buildArtifactTask('  Visualize the electricity prices for the next 24 hours: 1.2, 0.9, 2.4 DKK  ');
@@ -29,6 +47,76 @@ describe('buildArtifactTask', () => {
 
   it('designs for the phone the page is opened on', () => {
     expect(task).toContain('phone width');
+  });
+});
+
+describe('buildArtifactTask for a glance', () => {
+  const actions = [
+    { id: 'unlock-front-door', label: 'Unlock the door', prompt: 'Unlock the front door' },
+    { id: 'open-garage', label: 'Open the garage', prompt: 'Open the garage door' },
+  ];
+  const task = buildArtifactTask('The parcel from Zalando arrives between 14:00 and 16:00.', { glance: { actions } });
+
+  it('designs a dark page held in the hand, opened from the launcher, not a notification', () => {
+    expect(task).toContain('opens Jarvis from the launcher');
+    expect(task).toContain('#05080c');
+    expect(task).toContain('#38e1ff');
+    expect(task).toContain('It is not a notification');
+    expect(task).not.toContain('tapping a push notification');
+  });
+
+  it('wires every planned action through the bridge, by exactly its id', () => {
+    expect(task).toContain("window.jarvis.act('<id>')");
+    expect(task).toContain("window.addEventListener('jarvisactionresult'");
+    expect(task).toContain('`unlock-front-door` — "Unlock the door": Unlock the front door');
+    expect(task).toContain('`open-garage` — "Open the garage": Open the garage door');
+  });
+
+  it('forbids carrying out an action any other way', () => {
+    expect(task).toContain('no fetch or other request to Home Assistant');
+    expect(task).toContain('never define, replace or stub it');
+  });
+
+  it('asks for no buttons when there is nothing to do', () => {
+    const calm = buildArtifactTask('Nothing needs you right now.', { glance: { actions: [] } });
+
+    expect(calm).toContain('This glance has no actions');
+    expect(calm).not.toContain("window.jarvis.act('<id>')");
+  });
+});
+
+describe('runArtifactSession', () => {
+  let codingTask: ReturnType<typeof fakeCodingTask> | undefined;
+
+  afterEach(() => {
+    codingTask?.mockRestore();
+    codingTask = undefined;
+  });
+
+  it("builds the page on Claude Code's default model unless it is given one", async () => {
+    codingTask = fakeCodingTask();
+
+    await runArtifactSession('Build a page.', {});
+
+    expect(codingTask.mock.calls[0][0]).toEqual({ task: 'Build a page.' });
+  });
+
+  it('builds the page on the model it is given', async () => {
+    codingTask = fakeCodingTask();
+
+    await runArtifactSession('Build a page.', {}, 'haiku');
+
+    expect(codingTask.mock.calls[0][0]).toEqual({ task: 'Build a page.', model: 'haiku' });
+  });
+
+  it('leaves an ordinary page, as generateUserInterface asks for it, on the default model', async () => {
+    codingTask = fakeCodingTask();
+
+    await executeTool(createArtifact, { task: 'Visualize the electricity prices for today' });
+
+    expect(codingTask.mock.calls[0][0]).toEqual({
+      task: buildArtifactTask('Visualize the electricity prices for today'),
+    });
   });
 });
 

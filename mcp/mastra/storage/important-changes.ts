@@ -112,6 +112,32 @@ export class ImportantChangeStorage {
     };
   }
 
+  /**
+   * Every change noted in the last {@link IMPORTANT_CHANGE_TTL_MS}, newest first, told or not.
+   *
+   * Only reads: nothing is marked told. The glance (`visualize/glance.ts`) shows sir what is going
+   * on, which is not the same as Jarvis having mentioned it, so the asides still come.
+   */
+  async listRecent(now = new Date()): Promise<ImportantChange[]> {
+    await this.initialize();
+
+    const result = await this.client.execute({
+      sql: `
+        SELECT id, summary, source, noted_at FROM important_changes
+        WHERE noted_at >= ?
+        ORDER BY noted_at DESC, rowid DESC
+      `,
+      args: [new Date(now.getTime() - IMPORTANT_CHANGE_TTL_MS).toISOString()],
+    });
+
+    return result.rows.map((row) => ({
+      id: String(row.id),
+      summary: String(row.summary),
+      source: String(row.source),
+      notedAt: String(row.noted_at),
+    }));
+  }
+
   async clear(): Promise<void> {
     await this.initialize();
     await this.client.execute('DELETE FROM important_changes');

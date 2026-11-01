@@ -1,5 +1,18 @@
 import { type AffectedEntity, affectedEntitiesOf, affectedEntityOf } from './affected-entities';
 import { type AgentActivity, agentActivityOf } from './agent-activity';
+import {
+  DROPPED_RESULT,
+  GLANCE_ACTION_TIMEOUT_MS,
+  GLANCE_REQUEST_ID_MAX_LENGTH,
+  type Glance,
+  type GlanceActionAnswer,
+  type GlanceActionResult,
+  glanceActionAnswerOf,
+  glanceActionFrame,
+  glanceOf,
+  NOT_CONNECTED_RESULT,
+  TIMED_OUT_RESULT,
+} from './glance';
 
 /**
  * A device's line to the Jarvis server: a WebSocket each device that is Jarvis — the phone, the
@@ -43,13 +56,20 @@ export const LONGEST_RETRY_MS = 30_000;
  * What the server sends a device: `ready` once it has read the hello, `affectedEntities` whenever a
  * tool in a request reports what it touched, and `agentActivity` as each agent a request uses starts,
  * calls a tool and finishes — sent to every device that has said hello. A device that shows nothing of
- * them (the phone, the watch) simply ignores them; the headset lights the entities up where they
- * stand, and draws the agents as satellites round him.
+ * them (the watch) simply ignores them; the headset lights the entities up where they stand, and the
+ * headset and the phone draw the agents as satellites round him.
+ *
+ * And `glance`, right after `ready` when the server has a current one and whenever it makes a new
+ * one (`glance.ts`), which the phone shows when it is opened rather than summoned; and
+ * `glanceActionResult`, the answer to a `glanceAction` this device sent
+ * ({@link ServerLink.requestGlanceAction}).
  */
 export type JarvisServerMessage =
   | { type: 'ready' }
   | { type: 'affectedEntities'; entities: readonly AffectedEntity[] }
-  | ({ type: 'agentActivity' } & AgentActivity);
+  | ({ type: 'agentActivity' } & AgentActivity)
+  | { type: 'glance'; glance: Glance }
+  | ({ type: 'glanceActionResult' } & GlanceActionAnswer);
 
 /** As much of a `WebSocket` as a line uses, which a browser's, React Native's and Bun's all are. */
 export interface ServerSocket {
@@ -155,6 +175,22 @@ export interface ServerLink {
    * signing in.
    */
   onConnectionChange(listener: (connected: boolean) => void): () => void;
+  /**
+   * Calls `listener` with the latest glance the server has sent on this line — at once, with
+   * `undefined` while there has been none — and again with every new one, until the function it
+   * returns is called. A glance is kept across a reconnect, since the server sends its current one
+   * again after the new socket's `ready`.
+   */
+  onGlance(listener: (glance: Glance | undefined) => void): () => void;
+  /**
+   * Asks the server to run the action `actionId` of the glance `glanceId`, in a `glanceAction` frame,
+   * and resolves with what it answered. Never rejects: a line that is not connected answers at once
+   * that nothing was done, and one that drops or is closed first, or a server that has not answered
+   * within {@link GLANCE_ACTION_TIMEOUT_MS}, answers that it is not known whether it was.
+   *
+   * Confirming it with sir is the caller's: this sends whatever it is asked to.
+   */
+  requestGlanceAction(glanceId: string, actionId: string): Promise<GlanceActionResult>;
   /** Closes it, and stops trying. */
   close(): void;
 }
@@ -190,21 +226,60 @@ function parsedFrame(data: unknown): unknown {
  */
 function readServerMessage(data: unknown): JarvisServerMessage | undefined {
   const parsed = parsedFrame(data);
-  if (typeof parsed !== 'object' || parsed === null || !('type' in parsed)) {
+  if (typeof parsed !== 'object' || parsed === null || !('type' in parsed) || typeof parsed.type !== 'string') {
     return undefined;
   }
-  if (parsed.type === 'ready') {
-    return { type: 'ready' };
-  }
-  if (parsed.type === 'affectedEntities') {
-    const entities = affectedEntitiesOf(parsed);
-    return entities.length > 0 ? { type: 'affectedEntities', entities } : undefined;
-  }
-  if (parsed.type === 'agentActivity') {
-    const activity = agentActivityOf(parsed);
-    return activity === undefined ? undefined : { type: 'agentActivity', ...activity };
-  }
-  return undefined;
+  return MESSAGE_READERS.get(parsed.type)?.(parsed);
+}
+
+/** How one kind of message is read: `undefined` for one that is not usable. */
+type MessageReader = (parsed: object) => JarvisServerMessage | undefined;
+
+/** How each message the server sends is read, by its `type`. */
+const MESSAGE_READERS: ReadonlyMap<string, MessageReader> = new Map<string, MessageReader>([
+  ['ready', () => ({ type: 'ready' })],
+  [
+    'affectedEntities',
+    (parsed) => {
+      const entities = affectedEntitiesOf(parsed);
+      return entities.length > 0 ? { type: 'affectedEntities', entities } : undefined;
+    },
+  ],
+  [
+    'agentActivity',
+    (parsed) => {
+      const activity = agentActivityOf(parsed);
+      return activity === undefined ? undefined : { type: 'agentActivity', ...activity };
+    },
+  ],
+  [
+    'glance',
+    (parsed) => {
+      const glance = glanceOf('glance' in parsed ? parsed.glance : undefined);
+      return glance === undefined ? undefined : { type: 'glance', glance };
+    },
+  ],
+  [
+    'glanceActionResult',
+    (parsed) => {
+      const answer = glanceActionAnswerOf(parsed);
+      return answer === undefined ? undefined : { type: 'glanceActionResult', ...answer };
+    },
+  ],
+]);
+
+/**
+ * A request id no other request on this line has had: a count, and the moment the line was opened in
+ * base 36, so a server that outlives a line never hears the same id from the same device twice. Well
+ * inside {@link GLANCE_REQUEST_ID_MAX_LENGTH}.
+ */
+function requestIds(): () => string {
+  const opened = Date.now().toString(36);
+  let count = 0;
+  return () => {
+    count += 1;
+    return `glance-${opened}-${count}`.slice(0, GLANCE_REQUEST_ID_MAX_LENGTH);
+  };
 }
 
 /** The line of a device with no server address: it points at nothing, hears nothing and has nothing to close. */
@@ -215,6 +290,11 @@ const NO_LINE: ServerLink = {
     listener(false);
     return () => undefined;
   },
+  onGlance: (listener) => {
+    listener(undefined);
+    return () => undefined;
+  },
+  requestGlanceAction: async () => NOT_CONNECTED_RESULT,
   close: () => undefined,
 };
 
@@ -244,6 +324,17 @@ export function connectToServer(
   const listeners = new Set<(message: JarvisServerMessage) => void>();
   const connectionListeners = new Set<(connected: boolean) => void>();
   let connected = false;
+  let glance: Glance | undefined;
+  const glanceListeners = new Set<(glance: Glance | undefined) => void>();
+  const nextRequestId = requestIds();
+  /** The glance actions sent and not yet answered, by request id. */
+  const pending = new Map<string, { answer: (result: GlanceActionResult) => void }>();
+  /** Answers every action still waiting with `result`: the line they were sent on is gone. */
+  const answerEveryPending = (result: GlanceActionResult) => {
+    for (const request of [...pending.values()]) {
+      request.answer(result);
+    }
+  };
   const setConnected = (now: boolean) => {
     if (now === connected) {
       return;
@@ -265,6 +356,28 @@ export function connectToServer(
     }
   };
 
+  /** What the line does with a message the server sent on `opened`, before every listener hears it. */
+  const hear = (opened: ServerSocket, message: JarvisServerMessage) => {
+    if (message.type === 'ready') {
+      failedAttempts = 0;
+      ready = opened;
+      setConnected(true);
+      sendPointing();
+    }
+    if (message.type === 'glance') {
+      glance = message.glance;
+      for (const listener of glanceListeners) {
+        listener(glance);
+      }
+    }
+    if (message.type === 'glanceActionResult') {
+      pending.get(message.requestId)?.answer({ ok: message.ok, message: message.message });
+    }
+    for (const listener of listeners) {
+      listener(message);
+    }
+  };
+
   const connect = () => {
     cancelRetry = undefined;
     let opened: ServerSocket;
@@ -278,17 +391,8 @@ export function connectToServer(
     opened.onopen = () => opened.send(hello);
     opened.onmessage = (event) => {
       const message = readServerMessage(event.data);
-      if (!message) {
-        return;
-      }
-      if (message.type === 'ready') {
-        failedAttempts = 0;
-        ready = opened;
-        setConnected(true);
-        sendPointing();
-      }
-      for (const listener of listeners) {
-        listener(message);
+      if (message) {
+        hear(opened, message);
       }
     };
     opened.onclose = (event) => {
@@ -298,6 +402,7 @@ export function connectToServer(
       socket = undefined;
       ready = undefined;
       setConnected(false);
+      answerEveryPending(DROPPED_RESULT);
       if (!closed && !FINAL_SERVER_SOCKET_CLOSE_CODES.has(event.code)) {
         tryAgainLater();
       }
@@ -333,6 +438,35 @@ export function connectToServer(
         connectionListeners.delete(listener);
       };
     },
+    onGlance: (listener) => {
+      glanceListeners.add(listener);
+      listener(glance);
+      return () => {
+        glanceListeners.delete(listener);
+      };
+    },
+    requestGlanceAction: (glanceId, actionId) => {
+      const line = ready;
+      if (line === undefined) {
+        return Promise.resolve(NOT_CONNECTED_RESULT);
+      }
+      const requestId = nextRequestId();
+      return new Promise<GlanceActionResult>((resolve) => {
+        const stopWaiting = platform.after(GLANCE_ACTION_TIMEOUT_MS, () => answer(TIMED_OUT_RESULT));
+        const answer = (result: GlanceActionResult) => {
+          pending.delete(requestId);
+          stopWaiting();
+          resolve(result);
+        };
+        pending.set(requestId, { answer });
+        try {
+          line.send(glanceActionFrame(requestId, glanceId, actionId));
+        } catch {
+          // A socket that cannot take a frame is one that is going: nothing was sent.
+          answer(NOT_CONNECTED_RESULT);
+        }
+      });
+    },
     close: () => {
       closed = true;
       cancelRetry?.();
@@ -341,6 +475,7 @@ export function connectToServer(
       socket = undefined;
       ready = undefined;
       setConnected(false);
+      answerEveryPending(DROPPED_RESULT);
       try {
         open?.close();
       } catch {

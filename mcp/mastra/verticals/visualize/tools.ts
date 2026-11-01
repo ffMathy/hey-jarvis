@@ -2,14 +2,54 @@ import { z } from 'zod';
 import { logger } from '../../utils/logger.js';
 import { markAsSlow } from '../../utils/slow-tasks.js';
 import { createTool, executeTool } from '../../utils/tool-factory.js';
-import { hostArtifact } from './artifact-hosting.js';
-import { createArtifact, findArtifactHtml, openArtifactOnPhone } from './shortcuts.js';
+import { type HostedArtifact, hostArtifact } from './artifact-hosting.js';
+import { createArtifact, findArtifactHtml, openArtifactOnPhone, type runArtifactSession } from './shortcuts.js';
 
 /** How much of a session's answer is quoted back when it held no page, so a failure stays short. */
 const MAXIMUM_QUOTED_ANSWER_LENGTH = 500;
 
 /** The notification heading when the caller gave the page no name. */
 const DEFAULT_NOTIFICATION_TITLE = 'Jarvis built something for you';
+
+/** What a session that was asked for a page came to: the page, hosted, or why there is none. */
+export type HostedSessionPage = { success: true; hosted: HostedArtifact } | { success: false; message: string };
+
+/**
+ * Reads the page out of what a page-building session reported and hosts it, after `preparePage`
+ * has had its say over the HTML (the glance puts its bridge in). Every way of coming away without
+ * a link -- the session failed, handed back no page, or hosting it failed -- is a failure with a
+ * reason, so the caller can say what went wrong.
+ */
+export async function hostSessionPage(
+  session: Awaited<ReturnType<typeof runArtifactSession>>,
+  preparePage: (html: string) => string = (html) => html,
+): Promise<HostedSessionPage> {
+  if (!session.success) {
+    return { success: false, message: session.message };
+  }
+
+  const answer = session.final_message ?? '';
+  const html = findArtifactHtml(answer);
+  if (!html) {
+    return {
+      success: false,
+      message: `The session finished without handing back a page. It said: ${
+        answer.slice(0, MAXIMUM_QUOTED_ANSWER_LENGTH) || 'nothing'
+      }`,
+    };
+  }
+
+  try {
+    return { success: true, hosted: await hostArtifact(preparePage(html)) };
+  } catch (error) {
+    logger.error('[VISUALIZE] Failed to host the page', { error });
+
+    return {
+      success: false,
+      message: `The page was built, but hosting it failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
 
 /**
  * Builds a page for a request and hands back its link, pushing it to the user's phone on the way.
@@ -58,37 +98,12 @@ export const generateUserInterface = markAsSlow(
       const { request, title, sendToPhone = true } = inputData;
 
       const session = await executeTool(createArtifact, { task: request }, context);
-      if (!session.success) {
-        return { success: false, sentToPhone: false, message: session.message };
+      const page = await hostSessionPage(session);
+      if (!page.success) {
+        return { success: false, sentToPhone: false, message: page.message };
       }
-
-      const answer = session.final_message ?? '';
-      const html = findArtifactHtml(answer);
-      if (!html) {
-        return {
-          success: false,
-          sentToPhone: false,
-          message: `The session finished without handing back a page. It said: ${
-            answer.slice(0, MAXIMUM_QUOTED_ANSWER_LENGTH) || 'nothing'
-          }`,
-        };
-      }
-
-      let artifactUrl: string;
-      let expiresAt: string;
-      try {
-        const hosted = await hostArtifact(html);
-        artifactUrl = hosted.url;
-        expiresAt = hosted.expiresAt.toISOString();
-      } catch (error) {
-        logger.error('[VISUALIZE] Failed to host the page', { error });
-
-        return {
-          success: false,
-          sentToPhone: false,
-          message: `The page was built, but hosting it failed: ${error instanceof Error ? error.message : String(error)}`,
-        };
-      }
+      const artifactUrl = page.hosted.url;
+      const expiresAt = page.hosted.expiresAt.toISOString();
 
       if (!sendToPhone) {
         return {

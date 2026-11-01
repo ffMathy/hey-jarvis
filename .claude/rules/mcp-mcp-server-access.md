@@ -111,6 +111,9 @@ credentials, and read by the headset from the storage it shares with the phone's
 | server → device | `{"type":"affectedEntities","entities":[{"id":"…","name":"…"}]}` | A request's tool just read or changed these |
 | server → device | `{"type":"agentActivity","delegationId":"…","agentId":"…","state":"…"}` | Where one of a request's agents has got to |
 | device → server | `{"type":"pointing","entity":{"id":"…","name":"…"}}` or `"entity":null` | What sir points at now, or nothing |
+| server → device | `{"type":"glance","glance":{"id":"…","url":"…","title":"…","generatedAt":"<ISO 8601>","actions":[{"id":"…","label":"…","prompt":"…"}]}}` | The current glance: right after `ready` when there is one, and to every socket whenever a new one is built |
+| device → server | `{"type":"glanceAction","requestId":"…","glanceId":"…","actionId":"…"}` | Sir pressed a button on the glance; `requestId` at most 64 characters |
+| server → device | `{"type":"glanceActionResult","requestId":"…","ok":true\|false,"message":"…"}` | How that went, to that socket only: Jarvis's answer, or why it was refused |
 
 **No authentication**: the hello names the device, for the log, and is not a credential. A refusal is
 a close: `4400` a first frame that is not a hello, `4408` no hello in time; an upgrade past 32
@@ -118,6 +121,13 @@ open sockets is answered `503`. A device tries again with a growing delay after 
 every 30 seconds, which also keeps Cloudflare from closing a quiet one after 100.
 
 After `ready`, a socket is sent every event published on `utils/live-events.ts` — today `affectedEntities` and `agentActivity`, see
-[What a request touches](mcp-routing-affected-entities.md#affected-entities). A device acts on the events it cares about and ignores
+[What a request touches](mcp-routing-affected-entities.md#affected-entities), and `glance`, see
+[Glance](mcp-visualize-vertical-shortcuts.md#glance). A device acts on the events it cares about and ignores
 the rest. What a socket says sir points at is kept until it says otherwise or closes, and written into
 the next request routed — see [What sir points at](mcp-routing-pointing.md#pointing).
+
+A `glanceAction` is run only when its `glanceId` is the current glance's and its `actionId` is one of
+that glance's actions, so a device can have nothing run but a prompt the server itself planned; one
+action runs at a time across every socket, and another pressed meanwhile is refused with `ok: false`.
+The runner is handed to `attachLiveSocket` (`runRequest`) by `mcp-server.ts`, so the spec drives it
+with a fake.

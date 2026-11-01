@@ -12,12 +12,15 @@ import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { readAffectedEntities } from '../../utils/affected-entities.js';
 import { isSlowTask } from '../../utils/slow-tasks.js';
 import { executeTool } from '../../utils/tool-factory.js';
+import * as claudeSessions from './claude-sessions.js';
 import { DEFAULT_OWNER, DEFAULT_REPOSITORY } from './repository.js';
 import {
   analyzeCodebase,
   buildCodebaseQuestionTask,
+  codingTaskInputSchema,
   codingTools,
   createGitHubIssue,
+  FOREGROUND_WORK_NOTE,
   listRepositoryIssues,
   listUserRepositories,
   runCodingTask,
@@ -142,6 +145,59 @@ describe('buildCodebaseQuestionTask', () => {
     expect(buildCodebaseQuestionTask('Why?', 'someone/else', false, '   ')).not.toContain(
       'What is known beyond the code',
     );
+  });
+});
+
+describe('runCodingTask', () => {
+  let restoreSessions: (() => void) | undefined;
+
+  afterEach(() => {
+    restoreSessions?.();
+    restoreSessions = undefined;
+  });
+
+  /** Replaces the session manager underneath the tool, recording what each session was created with. */
+  function fakeSessions() {
+    const created: Array<{ task: string; options: claudeSessions.ClaudeSessionOptions | undefined }> = [];
+    const createSpy = spyOn(claudeSessions, 'createClaudeSession').mockImplementation(async (task, options) => {
+      created.push({ task, options });
+      return { id: 'session_task', status: 'running' };
+    });
+    const waitSpy = spyOn(claudeSessions, 'waitForClaudeSessionTurn').mockResolvedValue({
+      stopReason: 'end_turn',
+      finalMessage: 'Done.',
+    });
+    restoreSessions = () => {
+      createSpy.mockRestore();
+      waitSpy.mockRestore();
+    };
+
+    return created;
+  }
+
+  it("runs the session on Claude Code's default model when given none", async () => {
+    const created = fakeSessions();
+
+    const result = await executeTool(runCodingTask, { task: 'Build the page.' });
+
+    expect(result.final_message).toBe('Done.');
+    expect(created).toEqual([{ task: `Build the page.\n\n${FOREGROUND_WORK_NOTE}`, options: { model: undefined } }]);
+  });
+
+  it('runs the session on the model it is given', async () => {
+    const created = fakeSessions();
+
+    await executeTool(runCodingTask, { task: 'Build the glance.', model: 'haiku' });
+
+    expect(created.map(({ options }) => options)).toEqual([{ model: 'haiku' }]);
+  });
+
+  it('accepts only the models the host allows, never free text', () => {
+    expect(codingTaskInputSchema.safeParse({ task: 't', model: 'haiku' }).success).toBe(true);
+    expect(codingTaskInputSchema.safeParse({ task: 't' }).success).toBe(true);
+    for (const model of ['opus', 'claude-haiku-4-5', 'haiku --dangerously-load-anything', '']) {
+      expect(codingTaskInputSchema.safeParse({ task: 't', model }).success).toBe(false);
+    }
   });
 });
 

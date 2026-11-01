@@ -6,8 +6,11 @@
  * against `key-value-store.web.ts`, `microphone-permission.ts` against
  * `microphone-permission.web.ts`, the voice the hologram listens to —
  * `jarvis-voice.ts`, with a `.web.ts` beside it — the camera, `take-photo.ts`
- * against `take-photo.web.ts`, and the screen Jarvis was summoned over,
- * `summoning-screenshot.ts` against `summoning-screenshot.web.ts`.
+ * against `take-photo.web.ts`, the screen Jarvis was summoned over,
+ * `summoning-screenshot.ts` against `summoning-screenshot.web.ts`, and a glance's
+ * page — `glance-view.tsx`, a WebView, against `glance-view.web.tsx`, an `<iframe>`
+ * — with the question asked before one of its actions runs,
+ * `confirm-glance-action.ts` against `confirm-glance-action.web.ts`.
  *
  * The contracts live here rather than in either implementation so that neither
  * half can drift: nothing else in the app would notice if the web one grew an
@@ -20,6 +23,7 @@
  * asking this file what a voice looks like.
  */
 import type { FollowAgentVoice, JarvisVoice } from 'hologram';
+import type { Ref } from 'react';
 
 export type { JarvisVoice };
 
@@ -109,3 +113,33 @@ export type TakePhoto = (options: {
  * screenshot of the screen it came up over. A browser is never summoned over anything.
  */
 export type ReadSummoningScreenshot = () => Promise<Blob | undefined>;
+
+/**
+ * Asks sir, natively, whether to run a glance's action, showing the prompt the server will run — and
+ * resolves with whether he said yes. An Android dialog on a phone, `window.confirm` in a browser:
+ * never anything the glance's own page draws, since the page cannot be trusted to say what a button
+ * does (`glance-actions.ts`).
+ */
+export type ConfirmGlanceAction = (confirmation: { title: string; prompt: string }) => Promise<boolean>;
+
+/** How the screen speaks to the glance's page once it is showing. */
+export interface GlanceViewHandle {
+  /** Tells the page how an action it asked for went (`BridgeResult` in `glance-bridge.ts`). */
+  deliverResult: (result: { type: 'jarvisActionResult'; actionId: string; ok: boolean; message: string }) => void;
+}
+
+/**
+ * A glance's page, filling what it is put in: a WebView on a phone, an `<iframe>` in a browser.
+ *
+ * Only `origin` is loaded in it; on a phone anything else the page navigates to opens in the
+ * browser, or not at all (`navigationVerdict` in `glance-bridge.ts`). Each `jarvisAction` the page
+ * posts, from `origin` alone, reaches `onAction` as the id it named, read by `bridgeActionOf` and
+ * looked up by nothing yet.
+ */
+export interface GlanceViewProps {
+  url: string;
+  origin: string;
+  title: string;
+  onAction: (actionId: string) => void;
+  ref?: Ref<GlanceViewHandle>;
+}

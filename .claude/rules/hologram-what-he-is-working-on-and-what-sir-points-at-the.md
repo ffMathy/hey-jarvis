@@ -79,6 +79,27 @@ ring), and by a 2D canvas into the headset's glyph atlas. Sample mode's three pr
 (`SAMPLE_AGENTS`), since the real ones are only the server's. With `pretending`, the hook has sample mode's
 three pretend agents at work (`pretendWork`), so they can be seen with no server.
 
+**The glance comes from the server too, and its actions go back on the line.** Right after `ready`
+when it has a current one, and whenever it makes a new one, the server sends
+`{"type":"glance","glance":{"id","url","title","generatedAt","actions":[{"id","label","prompt"}]}}`:
+a page it made ahead of time, which the phone opens on from the launcher (`.claude/rules/mobile-the-glance.md`).
+`glanceOf` (`glance.ts`) reads it as strictly as an entity: ids of at most 200 characters, a title of
+at most 200, a `generatedAt` that `Date.parse` reads, a page at an `https` address (or `http` on this
+very computer, by the server address's own rules — `glanceOrigin`), and at most 12 actions, each
+with a label and a prompt of at most 2000 characters, each id once; anything else dropped — an
+action on its own, an unusable glance whole, keeping the one before. The line keeps the latest across
+reconnects and hands it to `onGlance` listeners at once and on each new one, so a screen that listens
+late misses nothing; `useGlance` (in `hologram/react/lifecycle`) holds it for a React screen.
+`requestGlanceAction(glanceId, actionId)` sends
+`{"type":"glanceAction","requestId","glanceId","actionId"}` — the request id the line's own,
+`glance-<opened>-<n>`, well inside the server's 64 characters and its 1 KiB frame — and resolves with
+the `{"type":"glanceActionResult","requestId","ok","message"}` that names it. It never rejects: while
+the line is not connected it answers at once that nothing was done (`NOT_CONNECTED_RESULT`), after
+`GLANCE_ACTION_TIMEOUT_MS` (60 s) that the server did not answer (`TIMED_OUT_RESULT`), and when the
+line drops or is closed first that it may still have been done (`DROPPED_RESULT`). An answer with an
+empty or overlong message is still an answer, in the device's own words. Confirming the action with
+sir is the caller's: the line sends what it is asked to.
+
 **What sir points at goes to the server.** `ServerLink.point(entity)` sends `{"type":"pointing","entity":{…}}`, or `"entity":null` for
 nothing, held to the same limits (`affectedEntityOf`). Only the latest is kept:
 it is sent once the server has said `ready`, at once if it already has, again

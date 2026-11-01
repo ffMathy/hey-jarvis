@@ -76,4 +76,22 @@ describe('ImportantChangeStorage', () => {
 
     expect(claimed.filter((change) => change !== undefined).map((change) => change.summary)).toEqual(['only once']);
   });
+
+  it('lists the last day of changes, newest first, told or not, without telling any', async () => {
+    const aDayAndAMinute = IMPORTANT_CHANGE_TTL_MS / 60_000 + 1;
+    await storage.add({ summary: 'stale', source: 'weather' }, minutesBefore(aDayAndAMinute));
+    await storage.add({ summary: 'older', source: 'calendar' }, minutesBefore(30));
+    await storage.add({ summary: 'newer', source: 'email' }, minutesBefore(5));
+    await storage.claimNewestUnmentioned(now);
+
+    const listed = await storage.listRecent(now);
+
+    expect(listed.map((change) => [change.summary, change.source])).toEqual([
+      ['newer', 'email'],
+      ['older', 'calendar'],
+    ]);
+    expect(listed[0]?.notedAt).toBe(minutesBefore(5).toISOString());
+    // Listing told nothing: the one not yet claimed is still there to mention.
+    expect((await storage.claimNewestUnmentioned(now))?.summary).toBe('older');
+  });
 });
