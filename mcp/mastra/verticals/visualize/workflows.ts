@@ -2,10 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { getImportantChangeStorage } from '../../storage/index.js';
 import { householdTime } from '../../utils/household.js';
+import type { GlanceAction } from '../../utils/live-events.js';
 import { logger } from '../../utils/logger.js';
 import { executeTool } from '../../utils/tool-factory.js';
 import { createAgentStep, createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { getCalendarEvents } from '../calendar/tools.js';
+import type { ClaudeCodeModel } from '../coding/claude-code-host.js';
 import { getHomeSnapshot, summarizeActionableEntitiesInSnapshot } from '../internet-of-things/home-state-cache.js';
 import {
   buildGlanceRequest,
@@ -14,6 +16,7 @@ import {
   GLANCE_CALENDAR_LOOKAHEAD_MS,
   GLANCE_PLANNER_INSTRUCTIONS,
   type GlanceContext,
+  type GlancePlan,
   glanceContextSchema,
   glancePlanSchema,
   normalizeGlanceActions,
@@ -23,6 +26,12 @@ import { injectGlanceBridge } from './glance-bridge.js';
 import { publishGlance, readCurrentGlance } from './glance-store.js';
 import { buildArtifactTask, runArtifactSession } from './shortcuts.js';
 import { hostSessionPage } from './tools.js';
+
+/**
+ * The model a glance's page is built on: a glance is rebuilt many times a day, unasked, so it runs
+ * on the smallest model to save subscription credits.
+ */
+export const GLANCE_SESSION_MODEL = 'haiku' satisfies ClaudeCodeModel;
 
 /** The most calendar events the glance is planned from. */
 const MAX_GLANCE_EVENTS = 15;
@@ -161,6 +170,24 @@ const planGlance = createAgentStep({
   prompt: ({ inputData }) => describeGlanceContext(inputData),
 });
 
+/**
+ * Has a Claude Code session build the glance's page from its plan, on {@link GLANCE_SESSION_MODEL}.
+ *
+ * @internal Exported for tests.
+ */
+export async function runGlanceSession(
+  plan: GlancePlan,
+  plannedAt: string,
+  actions: GlanceAction[],
+  context: Parameters<typeof executeTool>[2],
+) {
+  return await runArtifactSession(
+    buildArtifactTask(buildGlanceRequest(plan, plannedAt), { glance: { actions } }),
+    context,
+    GLANCE_SESSION_MODEL,
+  );
+}
+
 const buildGlance = createStep({
   id: 'build-glance',
   description: 'Has a Claude Code session build the page, hosts it with the bridge in, and publishes it',
@@ -172,10 +199,7 @@ const buildGlance = createStep({
     const { readAt, householdTime: plannedAt } = getStepResult(gatherGlanceContext);
     const actions = normalizeGlanceActions(inputData.actions);
 
-    const session = await runArtifactSession(
-      buildArtifactTask(buildGlanceRequest(inputData, plannedAt), { glance: { actions } }),
-      { mastra },
-    );
+    const session = await runGlanceSession(inputData, plannedAt, actions, { mastra });
     const page = await hostSessionPage(session, injectGlanceBridge);
     if (!page.success) {
       throw new Error(`The glance could not be built: ${page.message}`);

@@ -10,9 +10,13 @@
 #
 # The request is exactly one of:
 #
-#   start <session id>
-#   resume <session id>
+#   start <session id> [<model>]
+#   resume <session id> [<model>]
 #   export <session id>
+#
+# <model> is one of the Claude Code aliases allowed below, and nothing else; without one, Claude
+# Code runs on its default model, exactly as it did before a model could be asked for. It only
+# picks which model `claude` runs on (`--model <alias>`) -- never any other flag.
 #
 # `start` and `resume` both mean "run this session". The word is only the client's guess: whether
 # Claude Code starts the session afresh or resumes it is decided in the sandbox, by whether its
@@ -32,17 +36,34 @@ set -eu
 export LC_ALL=C
 
 reject() {
-  echo "jarvis-claude-code: refusing \"${SSH_ORIGINAL_COMMAND:-}\" -- expected \"start <session id>\", \"resume <session id>\" or \"export <session id>\"" >&2
+  echo "jarvis-claude-code: refusing \"${SSH_ORIGINAL_COMMAND:-}\" -- expected \"start <session id> [haiku]\", \"resume <session id> [haiku]\" or \"export <session id>\"" >&2
   exit 64
 }
 
 request=${SSH_ORIGINAL_COMMAND:-}
 mode=${request%% *}
-session_id=${request#* }
+arguments=${request#* }
+session_id=${arguments%% *}
 
 case "$mode" in
   start | resume | export) ;;
   *) reject ;;
+esac
+
+# A third word is a model, and only for `start` and `resume`. It has to be one of the aliases here
+# exactly -- the whole rest of the request, so a fourth word, a newline or anything else after it is
+# refused -- and it is the only thing besides the session id that reaches the sandbox's command.
+# The aliases are `CLAUDE_CODE_MODELS` in `claude-code-host.ts`, and its spec checks they match.
+model=
+case "$arguments" in
+  *' '*)
+    [ "$mode" != export ] || reject
+    model=${arguments#* }
+    case "$model" in
+      haiku) ;;
+      *) reject ;;
+    esac
+    ;;
 esac
 
 # The id is interpolated into the command the sandbox runs, so it has to be a UUID and nothing
@@ -94,7 +115,8 @@ IFS= read -r CLAUDE_CODE_OAUTH_TOKEN || reject_token
 export CLAUDE_CODE_OAUTH_TOKEN
 
 # What the sandbox runs, step by step. `$HOME` and the sandbox's own variables are escaped so the
-# sandbox expands them, not this shell; the session id is the only thing interpolated here.
+# sandbox expands them, not this shell; the session id and the allowed model are the only things
+# interpolated here.
 #
 # 1. Every session works in a directory of its own, and is resumed from the one it started in,
 #    because Claude Code keys its transcripts by working directory.
@@ -112,9 +134,15 @@ export CLAUDE_CODE_OAUTH_TOKEN
 # --input-format stream-json   messages arrive as JSON lines on stdin, so a follow-up can be written
 #                              to a process that is still working
 # --dangerously-skip-permissions   nobody is there to answer a prompt; the sandbox bounds the session
+# --model <alias>              only when the request named one, from the allow-list above
 # CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1   the server lets a process go as soon as its turn ends, so
 #                              a subagent or command left running in the background is stopped
 #                              unfinished, and a turn that ends to wait for one reports nothing
+model_option=
+if [ -n "$model" ]; then
+  model_option="--model $model "
+fi
+
 exec sbx exec -i -e CLAUDE_CODE_OAUTH_TOKEN jarvis sh -c "\
 mkdir -p \"\$HOME/jarvis-sessions/$session_id\" && \
 cd \"\$HOME/jarvis-sessions/$session_id\" && \
@@ -123,5 +151,5 @@ exec 9>>\"\$HOME/jarvis-sessions/$session_id.lock\" && \
 session_flag=--session-id && \
 for transcript in \"\$HOME\"/.claude/projects/*/$session_id.jsonl; do if [ -s \"\$transcript\" ]; then session_flag=--resume; fi; done && \
 CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 claude --print --input-format stream-json --output-format stream-json --verbose \
---dangerously-skip-permissions \$session_flag $session_id 9>&-; \
+--dangerously-skip-permissions $model_option\$session_flag $session_id 9>&-; \
 exit \$?"

@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'bun:test';
 import { PassThrough } from 'node:stream';
-import type { ClaudeCodeExit, ClaudeCodeProcess } from './claude-code-host.js';
+import type { ClaudeCodeExit, ClaudeCodeModel, ClaudeCodeProcess } from './claude-code-host.js';
 import {
   ClaudeCodeSessions,
   type ClaudeCodeSessionTimeouts,
@@ -173,6 +173,7 @@ class FakeClaudeCode {
   constructor(
     readonly sessionId: string,
     readonly resume: boolean,
+    readonly model: ClaudeCodeModel | undefined,
     private readonly behaviour: FakeBehaviour = {},
   ) {
     this.input.setEncoding('utf8');
@@ -232,8 +233,8 @@ function fakeHost(
 ) {
   const launched: FakeClaudeCode[] = [];
   const sessions = new ClaudeCodeSessions(
-    async (sessionId, resume): Promise<ClaudeCodeProcess> => {
-      const claudeCode = new FakeClaudeCode(sessionId, resume, options.behaviour);
+    async (sessionId, resume, model): Promise<ClaudeCodeProcess> => {
+      const claudeCode = new FakeClaudeCode(sessionId, resume, model, options.behaviour);
       launched.push(claudeCode);
       options.onLaunch?.(claudeCode);
       return claudeCode;
@@ -282,8 +283,32 @@ describe('ClaudeCodeSessions', () => {
     expect(launched).toHaveLength(1);
     expect(launched[0].sessionId).toBe(session.id);
     expect(launched[0].resume).toBe(false);
+    expect(launched[0].model).toBeUndefined();
     await settle();
     expect(launched[0].receivedTexts()).toEqual(['Build the page.']);
+  });
+
+  it('runs a session on the model it was created with, and resumes it on the same one', async () => {
+    const { sessions, launched } = fakeHost();
+    const session = await sessions.create('Build the glance.', { model: 'haiku' });
+    launched[0].finishTurn();
+    await settle();
+
+    await sessions.send(session.id, 'Make the buttons larger.');
+
+    expect(launched.map(({ resume, model }) => ({ resume, model }))).toEqual([
+      { resume: false, model: 'haiku' },
+      { resume: true, model: 'haiku' },
+    ]);
+  });
+
+  it('keeps one session’s model to itself', async () => {
+    const { sessions, launched } = fakeHost();
+
+    await sessions.create('Build the glance.', { model: 'haiku' });
+    await sessions.create('Implement the change.');
+
+    expect(launched.map(({ model }) => model)).toEqual(['haiku', undefined]);
   });
 
   it('forgets a session whose process could not be started, and says why', async () => {

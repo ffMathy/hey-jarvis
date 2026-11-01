@@ -60,6 +60,18 @@ A sandbox needs KVM and the `sbx` daemon on the host, so the server reaches the 
 `mcp/.scripts/claude-code-ssh-command.sh`, accepts only `start <session id>`, `resume <session id>` or
 `export <session id>` and fixes the sandbox, the directory and the `claude` and `git` command lines itself, so a
 compromised container can start sessions in the sandbox, fetch their work, and do nothing else on the host.
+
+**Choosing a session's model.** `start` and `resume` may carry a third word, a model alias from a fixed allow-list:
+`start <session id> haiku`. The forced command turns it into `--model haiku` on the `claude` command line and refuses
+any other third word (another alias, a full model name, a different case, anything after it) and any third word on
+`export`, with exit **64**. The allow-list is `CLAUDE_CODE_MODELS` in `claude-code-host.ts` — only `haiku` today —
+and `claude-code-ssh-command.spec.ts` runs every entry of it through the script, so the two cannot drift apart. The
+choice travels as `runCodingTask`'s optional `model` input (`codingTaskInputSchema`, a `z.enum` of those aliases,
+never free text) → `createClaudeSession(task, { model })`, which keeps it on the session so every resume asks for the
+same model → the launcher → `buildRemoteCommand(sessionId, resume, model)`. A session given no model sends exactly
+`start <session id>` / `resume <session id>`, as before, and runs on Claude Code's default — which is every session
+but the glance's (see [Glance](mcp-visualize-vertical-shortcuts.md#glance)): implementations, codebase questions and
+`generateUserInterface`'s pages included.
 `claude-code-ssh-command.spec.ts` runs it under `sh` with a fake `sbx` that goes on to run the sandbox's half against
 a fake `flock` and `claude` and the real `git`, and most of what it checks is what the script refuses. The fakes
 report to a log file, not stdout, because `export`'s stdout must be the bundle alone. It sets `PATH` to
@@ -185,7 +197,9 @@ The host itself — 64-bit Linux with KVM and glibc 2.39 or newer, a user of its
 the forced command, and the `jarvis` sandbox, with no GitHub secret for public repositories and only a read-only
 one for private ones — is set up as described in **Letting Jarvis code on your Claude subscription** in
 `mcp/README.md`. The forced command has to be reinstalled whenever it changes: a copy from before `export` refuses
-every export (exit 64), so no session's work is published, and a copy from before it set
+every export (exit 64), so no session's work is published; a copy from before models could be chosen refuses
+`start <session id> haiku` (exit 64), so **no glance is built until the host's forced command is reinstalled** —
+every other session, which sends no model, keeps working on it; and a copy from before it set
 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` lets a session end its turn to wait for a background agent that is then
 stopped with it.
 

@@ -4,12 +4,14 @@
  * is the part that runs every quarter of an hour; a build needs a Claude Code session.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { getImportantChangeStorage } from '../../storage/index.js';
+import { runCodingTask } from '../coding/tools.js';
 import {
+  buildGlanceRequest,
   decideGlanceRebuild,
   describeGlanceContext,
   GLANCE_MAX_AGE_MS,
@@ -18,7 +20,8 @@ import {
   normalizeGlanceActions,
 } from './glance.js';
 import { storeGlance } from './glance-store.js';
-import { glanceWorkflow } from './workflows.js';
+import { buildArtifactTask } from './shortcuts.js';
+import { GLANCE_SESSION_MODEL, glanceWorkflow, runGlanceSession } from './workflows.js';
 
 /** 14:00 in Copenhagen (UTC+1 in November). */
 const afternoon = new Date('2026-11-01T13:00:00.000Z');
@@ -163,5 +166,32 @@ describe('glanceWorkflow', () => {
       expect(result.result.message).toStartWith('No rebuild:');
     }
     expect(Object.keys(result.steps)).toEqual(['input', 'decide-glance-rebuild']);
+  });
+});
+
+describe('runGlanceSession', () => {
+  it('builds the glance on Haiku, to save subscription credits', async () => {
+    const codingTask = spyOn(runCodingTask, 'execute').mockResolvedValue({
+      success: true,
+      session_id: 'session_glance',
+      stop_reason: 'end_turn',
+      final_message: 'Done.',
+      message: 'Claude Code session session_glance stopped with "end_turn".',
+    });
+    const plan = { title: 'Nothing needs you', brief: 'A calm page with the time.', actions: [] };
+
+    let asked: unknown;
+    try {
+      await runGlanceSession(plan, 'Sunday 14:00', [], {});
+      asked = codingTask.mock.calls[0][0];
+    } finally {
+      codingTask.mockRestore();
+    }
+
+    expect(GLANCE_SESSION_MODEL).toBe('haiku');
+    expect(asked).toEqual({
+      task: buildArtifactTask(buildGlanceRequest(plan, 'Sunday 14:00'), { glance: { actions: [] } }),
+      model: 'haiku',
+    });
   });
 });

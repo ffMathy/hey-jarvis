@@ -6,9 +6,27 @@
  * reading of the page it hands back.
  */
 
-import { describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { executeTool } from '../../utils/tool-factory.js';
-import { buildArtifactTask, findArtifactHtml, openArtifactOnPhone } from './shortcuts.js';
+import { runCodingTask } from '../coding/tools.js';
+import {
+  buildArtifactTask,
+  createArtifact,
+  findArtifactHtml,
+  openArtifactOnPhone,
+  runArtifactSession,
+} from './shortcuts.js';
+
+/** Replaces the Claude Code session underneath the shortcuts, recording what each was asked. */
+function fakeCodingTask() {
+  return spyOn(runCodingTask, 'execute').mockResolvedValue({
+    success: true,
+    session_id: 'session_page',
+    stop_reason: 'end_turn',
+    final_message: 'Done.',
+    message: 'Claude Code session session_page stopped with "end_turn".',
+  });
+}
 
 describe('buildArtifactTask', () => {
   const task = buildArtifactTask('  Visualize the electricity prices for the next 24 hours: 1.2, 0.9, 2.4 DKK  ');
@@ -64,6 +82,41 @@ describe('buildArtifactTask for a glance', () => {
 
     expect(calm).toContain('This glance has no actions');
     expect(calm).not.toContain("window.jarvis.act('<id>')");
+  });
+});
+
+describe('runArtifactSession', () => {
+  let codingTask: ReturnType<typeof fakeCodingTask> | undefined;
+
+  afterEach(() => {
+    codingTask?.mockRestore();
+    codingTask = undefined;
+  });
+
+  it("builds the page on Claude Code's default model unless it is given one", async () => {
+    codingTask = fakeCodingTask();
+
+    await runArtifactSession('Build a page.', {});
+
+    expect(codingTask.mock.calls[0][0]).toEqual({ task: 'Build a page.' });
+  });
+
+  it('builds the page on the model it is given', async () => {
+    codingTask = fakeCodingTask();
+
+    await runArtifactSession('Build a page.', {}, 'haiku');
+
+    expect(codingTask.mock.calls[0][0]).toEqual({ task: 'Build a page.', model: 'haiku' });
+  });
+
+  it('leaves an ordinary page, as generateUserInterface asks for it, on the default model', async () => {
+    codingTask = fakeCodingTask();
+
+    await executeTool(createArtifact, { task: 'Visualize the electricity prices for today' });
+
+    expect(codingTask.mock.calls[0][0]).toEqual({
+      task: buildArtifactTask('Visualize the electricity prices for today'),
+    });
   });
 });
 

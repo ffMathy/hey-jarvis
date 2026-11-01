@@ -32,6 +32,18 @@ describe('buildRemoteCommand', () => {
     expect(buildRemoteCommand(SESSION_ID, true)).toBe(`resume ${SESSION_ID}`);
   });
 
+  // A host still on the forced command from before models refuses a third word, so a session given
+  // no model must ask exactly what it always asked.
+  it('asks exactly what it did before models could be chosen when the session has none', () => {
+    expect(buildRemoteCommand(SESSION_ID, false, undefined)).toBe(`start ${SESSION_ID}`);
+    expect(buildRemoteCommand(SESSION_ID, true, undefined)).toBe(`resume ${SESSION_ID}`);
+  });
+
+  it('names the model as a third word', () => {
+    expect(buildRemoteCommand(SESSION_ID, false, 'haiku')).toBe(`start ${SESSION_ID} haiku`);
+    expect(buildRemoteCommand(SESSION_ID, true, 'haiku')).toBe(`resume ${SESSION_ID} haiku`);
+  });
+
   it('refuses anything but a UUID before the host has to', () => {
     expect(() => buildRemoteCommand("x'; rm -rf ~; '", false)).toThrow('Not a Claude Code session id');
     expect(() => buildRemoteCommand(`${SESSION_ID} && reboot`, true)).toThrow('Not a Claude Code session id');

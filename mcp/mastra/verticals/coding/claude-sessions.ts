@@ -28,6 +28,7 @@ import { logger } from '../../utils/logger.js';
 import {
   type ClaudeCodeExit,
   type ClaudeCodeLauncher,
+  type ClaudeCodeModel,
   type ClaudeCodeProcess,
   launchClaudeCodeOverSsh,
   SANDBOX_NAME,
@@ -259,9 +260,17 @@ interface Launched {
   startup: Promise<Startup>;
 }
 
+/** How a session is set up when it is created; it keeps this for every process that runs it. */
+export interface ClaudeSessionOptions {
+  /** The model the session runs on, every resume included; Claude Code's default when left out. */
+  model?: ClaudeCodeModel;
+}
+
 interface SessionRecord {
   id: string;
   status: ClaudeSessionStatus;
+  /** The model every process of the session is launched on, so a resume never switches it. */
+  model?: ClaudeCodeModel;
   events: ClaudeSessionEvent[];
   /**
    * Whether a process of this session has written output, so Claude Code has most likely created
@@ -305,10 +314,11 @@ export class ClaudeCodeSessions {
    * @throws When the process cannot be started, e.g. because the host is not configured, or when
    *   it stops before it has said anything — refused by the host, or unable to reach it
    */
-  async create(task: string): Promise<ClaudeSession> {
+  async create(task: string, options: ClaudeSessionOptions = {}): Promise<ClaudeSession> {
     const record: SessionRecord = {
       id: randomUUID(),
       status: 'idle',
+      model: options.model,
       events: [],
       exists: false,
       unansweredMessages: 0,
@@ -326,7 +336,7 @@ export class ClaudeCodeSessions {
       throw error;
     }
 
-    logger.info('[CLAUDE SESSION] Session created', { sessionId: record.id });
+    logger.info('[CLAUDE SESSION] Session created', { sessionId: record.id, model: record.model ?? 'default' });
 
     return this.get(record.id);
   }
@@ -509,7 +519,7 @@ export class ClaudeCodeSessions {
       await this.waitForExit(record, record.lastProcess);
     }
 
-    const claudeCode = await this.launch(record.id, record.exists);
+    const claudeCode = await this.launch(record.id, record.exists, record.model);
     return { claudeCode, startup: this.start(record, claudeCode) };
   }
 
@@ -640,10 +650,11 @@ const sessions = new ClaudeCodeSessions();
  * Creates a session and starts it on the given task.
  *
  * @param task - The instructions the session should carry out
+ * @param options - How the session is set up, such as the model it runs on
  * @returns The created session, including the id used to follow it
  */
-export async function createClaudeSession(task: string): Promise<ClaudeSession> {
-  return await sessions.create(task);
+export async function createClaudeSession(task: string, options: ClaudeSessionOptions = {}): Promise<ClaudeSession> {
+  return await sessions.create(task, options);
 }
 
 /** Retrieves a session's current state. */

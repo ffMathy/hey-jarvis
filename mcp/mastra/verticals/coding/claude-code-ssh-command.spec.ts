@@ -18,6 +18,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { CLAUDE_CODE_MODELS } from './claude-code-host.js';
 
 const SCRIPT = path.join(import.meta.dir, '../../../.scripts/claude-code-ssh-command.sh');
 const SESSION_ID = '0b7e1d52-6c3f-4f7e-9a51-2f7d8c9e0a11';
@@ -144,6 +145,35 @@ describe('claude-code-ssh-command.sh', () => {
     expect(backgroundTasksDisabled).toBe('1');
   });
 
+  it.each(['start', 'resume'])('leaves the model to Claude Code when asked to %s with none', (mode) => {
+    const { status, claudeArguments } = runAsSshd(`${mode} ${SESSION_ID}`);
+
+    expect(status).toBe(0);
+    expect(claudeArguments).toEqual([...CLAUDE_COMMAND_LINE, '--session-id', SESSION_ID]);
+    expect(claudeArguments).not.toContain('--model');
+  });
+
+  it.each(
+    CLAUDE_CODE_MODELS.flatMap((model) => [
+      ['start', model],
+      ['resume', model],
+    ]),
+  )('runs Claude Code on the model the request names, when asked to %s on %s', (mode, model) => {
+    const { status, claudeArguments } = runAsSshd(`${mode} ${SESSION_ID} ${model}`);
+
+    expect(status).toBe(0);
+    expect(claudeArguments).toEqual([...CLAUDE_COMMAND_LINE, '--model', model, '--session-id', SESSION_ID]);
+  });
+
+  it('keeps the model when it resumes a session on one', async () => {
+    await writeTranscript('{"type":"user"}\n');
+
+    const { status, claudeArguments } = runAsSshd(`resume ${SESSION_ID} haiku`);
+
+    expect(status).toBe(0);
+    expect(claudeArguments.slice(-4)).toEqual(['--model', 'haiku', '--resume', SESSION_ID]);
+  });
+
   it("works in the session's own directory", () => {
     const { cwd } = runAsSshd(`start ${SESSION_ID}`);
 
@@ -217,6 +247,15 @@ describe('claude-code-ssh-command.sh', () => {
     ['a glob to reach another repository', `export ${SESSION_ID.slice(0, -1)}*`],
     ['a path to reach outside the sessions', `export ../${SESSION_ID}`],
     ['an upper-case UUID, which Claude Code never makes', `start ${SESSION_ID.toUpperCase()}`],
+    ['a model that is not on the allow-list', `start ${SESSION_ID} opus`],
+    ['a full model name rather than an allowed alias', `start ${SESSION_ID} claude-haiku-4-5`],
+    ['an allowed model in another case', `start ${SESSION_ID} Haiku`],
+    ['an allowed model with a flag after it', `start ${SESSION_ID} haiku --dangerously-load-anything`],
+    ['an allowed model with a command chained after it', `resume ${SESSION_ID} haiku; reboot`],
+    ['an allowed model with a second line after it', `start ${SESSION_ID} haiku\nreboot`],
+    ['a flag where the model goes', `start ${SESSION_ID} --model`],
+    ['an empty model after a trailing space', `start ${SESSION_ID} `],
+    ['a model on an export', `export ${SESSION_ID} haiku`],
   ])('refuses %s, without running sbx', (_description, request) => {
     const { status, stderr, sbxArguments } = runAsSshd(request);
 

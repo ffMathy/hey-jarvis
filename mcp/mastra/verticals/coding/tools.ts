@@ -5,6 +5,7 @@ import { type AffectedEntity, markAsAffectingEntities } from '../../utils/affect
 import { logger } from '../../utils/logger.js';
 import { markAsSlow } from '../../utils/slow-tasks.js';
 import { createTool, executeTool } from '../../utils/tool-factory.js';
+import { CLAUDE_CODE_MODELS } from './claude-code-host.js';
 import {
   createClaudeSession,
   getClaudeSession,
@@ -358,6 +359,22 @@ export const CODING_TASK_TIMEOUT_MILLISECONDS = 15 * 60 * 1000;
 export const FOREGROUND_WORK_NOTE =
   'Your turn ending is what hands your answer back, and anything still running then is stopped. So do all of the work in the foreground: never run a subagent or a command in the background, and do not end your turn until the task is done and your final message says what was asked for.';
 
+/**
+ * What {@link runCodingTask} is given.
+ *
+ * The model is one of the aliases the host's forced command allows, never free text: the host
+ * refuses any other word, so a session asked for one would never start.
+ */
+export const codingTaskInputSchema = z.object({
+  task: z.string().describe('The complete instructions for the session; it sees nothing else'),
+  model: z
+    .enum(CLAUDE_CODE_MODELS)
+    .optional()
+    .describe(
+      "The Claude Code model to run the session on. Leave it out for Claude Code's default; a smaller model only saves subscription credits on work it is good enough for.",
+    ),
+});
+
 /** What {@link runCodingTask} reports. */
 const codingTaskResultSchema = z.object({
   success: z.boolean(),
@@ -419,13 +436,12 @@ export const runCodingTask = markAsSlow(
     id: 'runCodingTask',
     description:
       'Hands a self-contained task to a Claude Code session, waits for the session to finish, and returns the last message it sent. For work that produces an answer or a link rather than a pull request.',
-    inputSchema: z.object({
-      task: z.string().describe('The complete instructions for the session; it sees nothing else'),
-    }),
+    inputSchema: codingTaskInputSchema,
     outputSchema: codingTaskResultSchema,
     execute: async (inputData) =>
       await awaitCodingTaskTurn(
-        async () => (await createClaudeSession(`${inputData.task}\n\n${FOREGROUND_WORK_NOTE}`)).id,
+        async () =>
+          (await createClaudeSession(`${inputData.task}\n\n${FOREGROUND_WORK_NOTE}`, { model: inputData.model })).id,
       ),
   }),
 );

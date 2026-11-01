@@ -1,6 +1,7 @@
 import type { GlanceAction } from '../../utils/live-events.js';
 import { createShortcut } from '../../utils/shortcut-factory.js';
 import { executeTool } from '../../utils/tool-factory.js';
+import type { ClaudeCodeModel } from '../coding/claude-code-host.js';
 import { runCodingTask } from '../coding/tools.js';
 import { sendPushNotification } from '../notification/tools.js';
 import { GLANCE_BRIDGE } from './glance-bridge.js';
@@ -85,9 +86,16 @@ function glanceDesignLines(actions: GlanceAction[]): string[] {
   ];
 }
 
-/** Has a Claude Code session build a page from `brief`, which it sees and nothing else. */
-export async function runArtifactSession(brief: string, context: Parameters<typeof executeTool>[2]) {
-  return await executeTool(runCodingTask, { task: brief }, context);
+/**
+ * Has a Claude Code session build a page from `brief`, which it sees and nothing else, on `model`
+ * or, when none is given, on Claude Code's default.
+ */
+export async function runArtifactSession(
+  brief: string,
+  context: Parameters<typeof executeTool>[2],
+  model?: ClaudeCodeModel,
+) {
+  return await executeTool(runCodingTask, { task: brief, model }, context);
 }
 
 /** A fenced HTML code block; the last one is taken, as the brief asks for the page at the end. */
@@ -122,7 +130,8 @@ export const createArtifact = createShortcut({
   description:
     "Have a Claude Code session build an interactive web page (an artifact) for what `task` describes, and report back with the page's HTML at the end of `final_message`. Takes a few minutes. `task` should say what to show and include any data the page needs, since the session can't reach Jarvis's own.",
   tool: runCodingTask,
-  execute: async (inputData, context) => await runArtifactSession(buildArtifactTask(inputData.task), context),
+  execute: async (inputData, context) =>
+    await runArtifactSession(buildArtifactTask(inputData.task), context, inputData.model),
 });
 
 /**

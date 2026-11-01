@@ -102,6 +102,16 @@ full height, with no notification framing — and one button per action that cal
 `jarvisactionresult` event, never carrying an action out any other way. `hostSessionPage`
 (`visualize/tools.ts`, shared with `generateUserInterface`) reads the page out and hosts it.
 
+**Its model:** the glance is the one page built on **Haiku**. It is rebuilt many times a day without
+anyone asking, so `runGlanceSession` (`visualize/workflows.ts`) passes `GLANCE_SESSION_MODEL`
+(`haiku`) to `runArtifactSession(brief, context, model)` to save subscription credits. Every other
+page — `generateUserInterface`, `createArtifact`, the weekly digest — passes no model and is built on
+Claude Code's default. The model reaches the host as a third word, `start <session id> haiku` (see
+[Coding Agent](mcp-coding-agent.md#coding-agent)), which a forced command from before models could
+be chosen refuses: **reinstall the host's forced command
+(`mcp/.scripts/claude-code-ssh-command.sh`) before glance builds will work**; until then each one
+fails with exit 64 and no glance is published.
+
 **The bridge** (`visualize/glance-bridge.ts`) is injected by the server as the first child of
 `<head>` before the page is hosted, so every glance speaks the same protocol whatever the session
 wrote. `window.jarvis.act(id)` posts `{"type":"jarvisAction","actionId":…}` as a string to
