@@ -30,7 +30,8 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
   brightest orange beads.
 - **The rings of his voice:** while he talks, each syllable leaves his core as a ring of his own
   specks — pushed out from the core by up to `VOICE_WAVE_REACH`, so far that at its front they
-  overtake the ones ahead and gather into a crisp line, their strokes laid along it — that travels
+  crowd to up to five times as close into a crisp line, their strokes laid along it (only about
+  0.6–0.7R from the core, where the taper adds its slope, do a few briefly overtake) — that travels
   out at `VOICE_WAVE_SPEED` and melts into his shell by `VOICE_WAVE_GONE`. The clock keeps how
   sharply each 40 ms of his voice started a syllable (`hologram/src/voice-wave.ts`), and each slot is
   a ring `VOICE_WAVE_STEP` further out than the next (`voiceWaveKnots`, `voiceWavePush`,
@@ -133,7 +134,8 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
   of his own specks that sweeps out through him (the rings above), and the white-hot ring draws in
   as it goes. Both are movement, as the tenth of a glow asks: over a sentence his light is within 3%
   of what it was, its hue (30°) and G/R (0.70) unchanged, no near-white added, and in silence he is
-  drawn to the byte as before. At the first design's 0.06R push no speck overtook another, and the
-  rings showed only in a plot of his light against distance and time; at 0.16R they are a crisp line
-  anyone sees. The arcs, the fray and the embers follow the talk envelope, which holds through the
+  drawn to the byte as before. At the first design's 0.06R push a ring's front crowded the specks by
+  at most 0.3, and the rings showed only in a plot of his light against distance and time; at 0.16R
+  they are a crisp line anyone sees. A ring has gone about 1.3 s after his last syllable
+  (`VOICE_WAVE_FLOOR`). The arcs, the fray and the embers follow the talk envelope, which holds through the
   gaps between words, so he no longer drops back to idle a dozen times a sentence.

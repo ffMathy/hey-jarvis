@@ -74,7 +74,8 @@ export const VOICE_WAVE_SLOT_SECONDS = READ_INTERVAL_MS / 1000;
 /**
  * The most one slot of his recent syllables may rise above the one before it, on a scale where a
  * full syllable is 1: a syllable's ring comes up over three or four slots rather than one, so it
- * has a body — a crest with a soft back — rather than a single hard edge. A slot can fall no faster
- * than its hold lets it.
+ * has a body — a crest with a soft back — rather than a single hard edge, and its front crowds his
+ * specks no more than `VOICE_WAVE_REACH` allows (see there). A slot falls as fast as its hold lets
+ * it, which from a slot over about three quarters is faster than this.
  */
 export const VOICE_WAVE_SLEW = 0.25;

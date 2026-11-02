@@ -644,8 +644,10 @@ describe('the white-hot ring round his core while he talks', () => {
     expect(Math.min(...rings)).toBeLessThan(0.205);
     const steps = rings.slice(1).map((ring, index) => Math.abs(ring - (rings[index] ?? 0)));
     expect(Math.max(...steps)).toBeLessThan(0.01);
-    // and between sentences it is back where it rests
-    expect(rings.filter((ring) => ring === CORE_RING_RADIUS).length).toBeGreaterThan(30);
+    // and between sentences it is back where it rests: counted from his first syllable on, so the
+    // silence before he starts says nothing
+    const fromSpeech = rings.slice(rings.findIndex((ring) => ring < CORE_RING_RADIUS));
+    expect(fromSpeech.filter((ring) => CORE_RING_RADIUS - ring < 1e-4).length).toBeGreaterThan(30);
   });
 });
 

@@ -518,11 +518,12 @@ function strokeCoreRing(
 }
 
 /**
- * The core: a glow, mostly see-through, at its brightest just inside the white-hot ring and blooming
- * out of it both ways; Age of Ultron's small ringed eye inside it, its rings an orange body under a
+ * The core: a glow, mostly see-through, at its brightest just inside where the white-hot ring rests
+ * (CORE_RING_RADIUS) and blooming out of it both ways; Age of Ultron's small ringed eye inside it, its rings an orange body under a
  * pale orange line, never white, so it reads under the glow without outshining the ring; a faint
  * bar across it; and the ring itself — the brightest thing in him — a thin orange body under a
- * crisper orange-white line, which draws in toward the eye on each syllable and lets go.
+ * crisper orange-white line, which draws in toward the eye on each syllable and lets go, inside a
+ * glow that stays where it is, so for a moment the glow blooms just outside it.
  */
 function drawCore(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';

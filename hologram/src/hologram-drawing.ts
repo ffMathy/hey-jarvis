@@ -465,12 +465,15 @@ export const VOICE_WAVE_TAPER = 0.3;
 /**
  * How far a full syllable's ring pushes his specks out from the core, at the most, in R.
  *
- * Far enough that at a ring's front the specks behind overtake the ones ahead, so they gather into
- * a crisp line — a caustic, as light gathers into a bright curve in a cup — with a thinner band
- * behind it: that is what makes it read as a ring rather than as a ripple in his texture. At 0.06,
- * too gentle for any speck to overtake another, as the design first had it, the rings showed in a
- * plot of his light against distance and time and to nobody's eye. It is still only places that
- * move, so the light is the light he had.
+ * Far enough that a ring's front crowds his specks into a crisp line with a thinner band behind it,
+ * which is what makes it read as a ring rather than as a ripple in his texture. Through his middle
+ * the front is as steep as VOICE_WAVE_SLEW lets the slots rise, `slew × this / VOICE_WAVE_STEP` = 0.8,
+ * so specks there crowd to five times as close without passing each other; only where the taper
+ * that melts a ring into his shell adds its own slope, about 0.6–0.7R from the core, does a strong
+ * front tip over and a few overtake the ones ahead, briefly (measured on the real clock: crowding up
+ * to 1.13 there). At 0.06, as the design first had it, the front crowded them by at most 0.3, and
+ * the rings showed in a plot of his light against distance and time and to nobody's eye. It is still
+ * only places that move, so the light is the light he had.
  */
 export const VOICE_WAVE_REACH = 0.16;
 /**
@@ -1990,9 +1993,10 @@ function smooth01Slope(value: number) {
 /**
  * The rings this frame, in R: each of his recent syllables (`slots`, newest first, 0–1) times
  * VOICE_WAVE_REACH and `gate`, then held to rising or falling no more than VOICE_WAVE_SLEW of the
- * reach from one to the next, from either side — which the clock's slots already keep to, so this
- * only guarantees it for a frame built any other way: a ring has the same shape, two or three slots
- * deep, however the frame was made.
+ * reach from one to the next, from either side. The clock's slots already rise no faster than that,
+ * but they fall as fast as the hold lets them — up to a third of a slot — so the steepest falls of
+ * real speech are trimmed here, and a frame built any other way is held to the same limit: a ring
+ * has the same shape, two or three slots deep, however the frame was made.
  */
 export function voiceWaveKnots(slots: number[] | undefined, gate: number) {
   'worklet';

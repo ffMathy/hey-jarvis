@@ -14,10 +14,11 @@
  * spectrum, so a slot holds the summed rise of his bands as the clock eases them toward each reading
  * — the positive half of what `easeBands` adds, gated on speech as the voice tracker's agitation is —
  * squashed into 0–1 by {@link VOICE_WAVE_ONSET_SCALE}, held for {@link VOICE_WAVE_HOLD_SECONDS} so a
- * syllable's ring has a body, and limited in how fast it may rise from one slot to the next
- * (`VOICE_WAVE_SLEW`), which is what keeps the specks a ring pushes from passing each other. A held
- * vowel adds nothing: its bands have arrived. Neither does a thought's voice, which never passes
- * the speech gate.
+ * syllable's ring has a body, limited in how fast it may rise from one slot to the next
+ * (`VOICE_WAVE_SLEW`), which bounds how steeply a ring's front pushes his specks together, and let go
+ * entirely below {@link VOICE_WAVE_FLOOR}, so a ring that has died out is gone rather than nearly
+ * gone. A held vowel adds nothing: its bands have arrived. Neither does a thought's voice, which
+ * never passes the speech gate.
  *
  * **The same at any frame rate.** Slots are cut on the clock's own time, with the voice tracker's
  * slack, never once a frame. Every rising band eases on the same exponential, so the rise a step
@@ -44,7 +45,15 @@ export const VOICE_WAVE_ONSET_SCALE = 1.5;
  */
 export const VOICE_WAVE_HOLD_SECONDS = 0.1;
 /** What a slot keeps of the one before it: `e^(−slot / hold)`. */
-const HOLD_DECAY = Math.exp(-VOICE_WAVE_SLOT_SECONDS / VOICE_WAVE_HOLD_SECONDS);
+export const HOLD_DECAY = Math.exp(-VOICE_WAVE_SLOT_SECONDS / VOICE_WAVE_HOLD_SECONDS);
+/**
+ * The least a slot holds before it is let go: a thousandth of a syllable, a ring of a sixth of a
+ * thousandth of his radius. Without it the hold only ever halves a slot, never empties it, so the
+ * last syllable's ring lingered for over a minute at sizes no screen can show, and every speck was
+ * pushed on the GPU all that while; with it a ring has gone about 1.3 s after his last syllable, and
+ * in silence nothing is pushed at all.
+ */
+export const VOICE_WAVE_FLOOR = 1e-3;
 /** The voice tracker's slack for comparing summed frame steps with a duration (see `voice-levels.ts`). */
 const TIME_SLACK_SECONDS = 1e-6;
 
@@ -110,12 +119,13 @@ function pushSlot(slots: number[], value: number): void {
 /**
  * What a slot cut now holds, from the rise gathered in it and the slot before it: as sharp as its
  * onset, or what the hold keeps of the one before, whichever is more — but no more than
- * VOICE_WAVE_SLEW above the one before.
+ * VOICE_WAVE_SLEW above the one before, and nothing at all under {@link VOICE_WAVE_FLOOR}.
  */
 function slotAfter(previous: number, rise: number): number {
   'worklet';
   const onset = 1 - Math.exp(-rise / VOICE_WAVE_ONSET_SCALE);
-  return Math.min(Math.max(onset, previous * HOLD_DECAY), previous + VOICE_WAVE_SLEW);
+  const held = Math.min(Math.max(onset, previous * HOLD_DECAY), previous + VOICE_WAVE_SLEW);
+  return held < VOICE_WAVE_FLOOR ? 0 : held;
 }
 
 /**
@@ -136,11 +146,12 @@ function arrivedShare(into: number, whole: number): number {
  * front. The rise is shared out between the slots a step crosses by the curve it arrives on: the
  * bands ease exponentially over ATTACK_SECONDS, so by `t` into a step `(1 − e^(−t/τ)) / (1 − e^(−Δ/τ))`
  * of its rise has arrived, whatever the step. A step that cuts more than VOICE_WAVE_SLOTS slots — a
- * stall — writes only the newest of them: the rise that arrived in the cuts before them is dropped,
- * and the slot before them is taken to have decayed by the hold through every one. Right after a stall
- * of under a second that leaves the oldest slots weaker than smooth steps would (after 0.8 s, 0.14 of a
- * full syllable against 0.27), on rings about to melt into his shell, after a frame late enough to be
- * a hitch of its own.
+ * stall — writes only the newest of them: the rise that arrived in the cuts before them, and any still
+ * gathering in the slot being filled, is dropped, and the slot before them is taken to have decayed by
+ * the hold through every one. So a stall never leaves a ring stronger than smooth steps would, and can
+ * leave its oldest slots weaker: an 0.8 s stall just as a syllable comes up leaves the oldest at 0.068
+ * of a syllable where smooth steps leave 0.092, on a ring about to melt into his shell, after a frame
+ * late enough to be a hitch of its own.
  *
  * A step that is not a positive, finite number of seconds changes nothing.
  */

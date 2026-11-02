@@ -39,8 +39,9 @@ function stopsAtRadii(reach: number, stops: readonly [radius: number, colour: st
  * gold (Age of Ultron's colour, see `gpu-picture.ts`).
  *
  * Inside the ring its stops are shares of the ring's radius, so the haze keeps its shape whatever
- * size the ring is; outside, the bloom's are distances from the ring, since a bloom is as wide
- * whatever it rings.
+ * CORE_RING_RADIUS is; outside, the bloom's are distances from the ring, since a bloom is as wide
+ * whatever it rings. It is fixed at where the ring rests: when the ring draws in on a syllable
+ * (`coreRing`), the glow stays, and for a moment blooms just outside it.
  *
  * It has been both ways wrong. Pale and nearly as bright at the middle as at the ring, it read as
  * an opaque coin laid over him; then faint amber at a fifth of the ring's light, the inside of the

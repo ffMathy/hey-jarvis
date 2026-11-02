@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { advanceFrameClock, createFrameClockState, type FrameClockState, hologramFrameOf } from './frame-clock';
 import { READ_INTERVAL_MS, VOICE_WAVE_SLEW, VOICE_WAVE_SLOT_SECONDS, VOICE_WAVE_SLOTS } from './frame-timing';
+import { analyseFrame, CORE_RING_RADIUS } from './hologram-drawing';
 import { createSimulatedSpectrum, fillSimulatedSpectrum, type SimulatedMood } from './simulated-voice';
 import { simulatedVolume } from './voice-analysis';
 import {
@@ -16,17 +17,15 @@ import {
 } from './voice-levels';
 import {
   advanceVoiceWave,
+  HOLD_DECAY,
   syllableRise,
-  VOICE_WAVE_HOLD_SECONDS,
+  VOICE_WAVE_FLOOR,
   VOICE_WAVE_ONSET_SCALE,
   voiceWavePhaseOf,
 } from './voice-wave';
 
 /** How often the voice is read: the phone's timer and the headset's clock both read it this often. */
 const READING_SECONDS = READ_INTERVAL_MS / 1000;
-
-/** What a slot keeps of the one before it, at the most it may fall: `e^(−slot / hold)`. */
-const HOLD_DECAY = Math.exp(-VOICE_WAVE_SLOT_SECONDS / VOICE_WAVE_HOLD_SECONDS);
 
 /**
  * How often the slot series below are sampled: a fifth of a second lands on a frame at 30, 60 and
@@ -403,11 +402,10 @@ describe('his recent syllables, as the frame clock keeps them', () => {
 
     expect(stalled.wave.slots).toBe(slots);
     expect(slots).toHaveLength(VOICE_WAVE_SLOTS);
-    expect(Math.max(...slots)).toBeLessThan(1e-6);
-    // What it keeps is what a smoothly stepped clock holds at the same moment: the newest slots.
-    slots.forEach((slot, index) => {
-      expect(slot).toBeCloseTo(smooth.wave.slots[index] ?? Number.NaN, 6);
-    });
+    expect(slots.every((slot) => slot === 0)).toBe(true);
+    // What it keeps is what a smoothly stepped clock holds at the same moment: the newest slots, which
+    // the onset's ring has long left.
+    expect(slots).toEqual(smooth.wave.slots);
     // 3.5 s is 87.5 slots: half the way through the slot being filled, as it is for the smooth clock.
     const phase = voiceWavePhaseOf(stalled.wave);
     expect(phase).toBeGreaterThanOrEqual(0);
@@ -416,7 +414,84 @@ describe('his recent syllables, as the frame clock keeps them', () => {
     expect(phase).toBeCloseTo(voiceWavePhaseOf(smooth.wave), 6);
   });
 
-  it('never lets a slot rise more than VOICE_WAVE_SLEW above the one before it, or fall faster than the hold lets it, in the greeting and in speech', () => {
+  it('carries a ring already in flight through a stall as the hold would, drops the rise still gathering, and never brings a dead ring back', () => {
+    // A syllable coming up, stepped smoothly onto a held vowel at 120 Hz: half a syllable cut, the
+    // newest slot, and a quarter of a slot into the next, nearly a whole onset still gathering in it.
+    const before = createFrameClockState();
+    play(stepOnto(loudVowel(), 1), 1.05, evenClock(120), { state: before });
+    const newest = before.wave.slots[0] ?? Number.NaN;
+    expect(newest).toBeGreaterThan(0.4);
+    expect(before.wave.rise).toBeGreaterThan(VOICE_WAVE_ONSET_SCALE / 2);
+
+    // Then the app hitches for 0.8 s of silence: twenty slots cut in one step, four more than the
+    // ring holds.
+    const stallSeconds = 0.8;
+    const cuts = Math.floor((before.wave.sinceNewest + stallSeconds) / VOICE_WAVE_SLOT_SECONDS);
+    expect(cuts).toBeGreaterThan(VOICE_WAVE_SLOTS);
+    const stalled = structuredClone(before);
+    advanceFrameClock(stalled, stallSeconds, SILENCE.level, SILENCE.bands, true, false, false, 0, 0);
+
+    // Each slot it keeps is the newest before it, decayed by the hold through every cut since — the
+    // four it never shows included — and nothing once that is under the floor. The rise that was
+    // gathering is dropped with the cuts it would have gone into.
+    const heldThrough = (slotsSince: number) => {
+      const held = newest * HOLD_DECAY ** slotsSince;
+      return held < VOICE_WAVE_FLOOR ? 0 : held;
+    };
+    stalled.wave.slots.forEach((slot, index) => {
+      expect(slot).toBeCloseTo(heldThrough(cuts - index), 12);
+    });
+    // The ring is still there to compare, not all zeros.
+    expect(stalled.wave.slots.at(-1)).toBeGreaterThan(0.05);
+
+    // Smooth steps through the same silence cut that gathering rise into a slot of its own, so they
+    // keep the ring stronger: a stall can leave a ring weaker than they would, never stronger.
+    const smooth = structuredClone(before);
+    play(() => SILENCE, stallSeconds, evenClock(120), { state: smooth });
+    stalled.wave.slots.forEach((slot, index) => {
+      expect(slot).toBeLessThanOrEqual(smooth.wave.slots[index] ?? Number.NaN);
+    });
+    expect(smooth.wave.slots.at(-1)).toBeGreaterThan((stalled.wave.slots.at(-1) ?? Number.NaN) * 1.25);
+
+    // A stall long enough for the ring to have died leaves nothing of it: the hold decays the slot
+    // before the stall through every unseen cut, and the floor lets it go.
+    const longStall = structuredClone(before);
+    advanceFrameClock(longStall, 2.5, SILENCE.level, SILENCE.bands, true, false, false, 0, 0);
+    expect(longStall.wave.slots.every((slot) => slot === 0)).toBe(true);
+  });
+
+  it('lets every slot go once his voice stops, so within 1.5 s of his last syllable nothing is pushed and the core ring is at rest', () => {
+    // The greeting, then silence: his last syllable starts a little under two seconds in.
+    const greeting = simulatedVoice('greeting');
+    const spokenSeconds = 3;
+    const thenSilence: Voice = (seconds) => (seconds < spokenSeconds - 1e-9 ? greeting(seconds) : SILENCE);
+
+    for (const clock of [evenClock(60), unevenClock()]) {
+      const state = createFrameClockState();
+      const frames = play(thenSilence, spokenSeconds + 2, clock, { state });
+
+      // A slot holds a share of a syllable worth drawing, or nothing: none lingers under the floor.
+      expect(frames.every((frame) => frame.slots.every((slot) => slot === 0 || slot >= VOICE_WAVE_FLOOR))).toBe(true);
+      const lastSyllable = frames.findLast((frame) => frame.rise > 0);
+      if (!lastSyllable) {
+        throw new Error('The greeting raised none of his bands');
+      }
+      // His last syllable's ring is still in flight half a second on...
+      const halfASecondOn = frames.find((frame) => frame.time >= lastSyllable.time + 0.5);
+      expect(Math.max(...(halfASecondOn?.slots ?? [0]))).toBeGreaterThan(VOICE_WAVE_FLOOR);
+      // ...and gone, to the last slot, by a second and a half.
+      const afterIt = frames.filter((frame) => frame.time >= lastSyllable.time + 1.5);
+      expect(afterIt.length).toBeGreaterThan(0);
+      expect(afterIt.every((frame) => frame.slots.every((slot) => slot === 0))).toBe(true);
+
+      // So the drawing pushes no speck at all, and his core ring is exactly where it rests.
+      const drawn = analyseFrame(hologramFrameOf(state), 400);
+      expect(drawn.voiceWaveLargest).toBe(0);
+      expect(drawn.coreRing).toBe(CORE_RING_RADIUS);
+    }
+  });
+
+  it('never lets a slot rise more than VOICE_WAVE_SLEW above the one before it, or fall faster than the hold lets it but to nothing, in the greeting and in speech', () => {
     const clocks = [evenClock(30), evenClock(60), evenClock(120), unevenClock()];
     const neighbours = (['greeting', 'speaking'] as const).flatMap((mood) =>
       clocks.flatMap((clock) => neighboursIn(play(simulatedVoice(mood), 6, clock))),
@@ -425,16 +500,18 @@ describe('his recent syllables, as the frame clock keeps them', () => {
       (steepest, { newer, older }) => Math.max(steepest, newer - older),
       Number.NEGATIVE_INFINITY,
     );
-    const closestToTheHold = neighbours.reduce(
-      (closest, { newer, older }) => Math.min(closest, newer - older * HOLD_DECAY),
-      Number.POSITIVE_INFINITY,
-    );
+    // Where the hold would leave less than VOICE_WAVE_FLOOR, the slot is let go instead.
+    const closestToTheHold = neighbours
+      .filter(({ older }) => older * HOLD_DECAY >= VOICE_WAVE_FLOOR)
+      .reduce((closest, { newer, older }) => Math.min(closest, newer - older * HOLD_DECAY), Number.POSITIVE_INFINITY);
     // Measured only where there is something to fall from, since nought over nought says nothing.
     const fastestFall = neighbours
       .filter(({ older }) => older > 0.01)
       .reduce((fastest, { newer, older }) => Math.min(fastest, newer / older), Number.POSITIVE_INFINITY);
 
-    // Newer minus older: the steps a ring's specks are pushed in, which is what keeps them from passing each other.
+    // Newer minus older bounds how steeply a ring's front pushes his specks together: at the full
+    // reach they crowd to five times as close, and only where the ring melts into his shell do a few
+    // overtake the ones ahead.
     expect(steepestRise).toBeLessThanOrEqual(VOICE_WAVE_SLEW + 1e-12);
     expect(closestToTheHold).toBeGreaterThanOrEqual(-1e-12);
     // Both limits are reached, so neither holds only because these voices happened to be gentle.
