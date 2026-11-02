@@ -370,12 +370,19 @@ function coreRingPeak(picture: Picture, pixels: Uint8Array): number {
   return peak / picture.radius;
 }
 
-/** Lit pixels beyond 1.1R on the left half, however faintly: where the fray's hairlines and the embers lie. */
-function faintBeyondLeftLimb(picture: Picture, pixels: Uint8Array): number {
+/** Where the fray's strands and streak arcs lie, in resting radii: off his shell's edge and a little past it. */
+const FRAY_INSIDE = 0.8;
+const FRAY_OUTSIDE = 1.25;
+
+/** How many pixels between {@link FRAY_INSIDE} and {@link FRAY_OUTSIDE} differ at all between two pictures. */
+function changedRoundTheShell(picture: Picture, first: Uint8Array, second: Uint8Array): number {
   let count = 0;
   for (let y = 0; y < SIZE; y++) {
-    for (let x = 0; x < SIZE / 2; x++) {
-      if (radiusOf(picture, x, y) > 1.1 && luminance(pixels, (y * SIZE + x) * 4) > 8) count++;
+    for (let x = 0; x < SIZE; x++) {
+      const reach = radiusOf(picture, x, y);
+      if (reach < FRAY_INSIDE || reach > FRAY_OUTSIDE) continue;
+      const at = (y * SIZE + x) * 4;
+      if (first[at] !== second[at] || first[at + 1] !== second[at + 1] || first[at + 2] !== second[at + 2]) count++;
     }
   }
   return count;
@@ -634,9 +641,11 @@ test.describe('the hologram', () => {
     picture,
   }) => {
     // Between words his agitation is nothing, but the sentence is not over: the talk envelope holds,
-    // and with it the fray off his upper left and more of the embers, as faint hairlines and flecks.
+    // and with it the fray off his shell's edge and more of the embers, as faint hairlines and flecks.
     // They used to drop back to idle a dozen times a sentence. Held against the same frame with the
-    // envelope let go, so his swell and his glow are the same in both.
+    // envelope let go, so his swell and his glow are the same in both and only what the envelope
+    // holds out differs. Measured when the envelope was added: 385–459 pixels round his shell's edge
+    // changed, almost all of them between 0.8R and 1.2R.
     for (const time of [6, 13.4, 22.8]) {
       const betweenWords = {
         ...silence(picture, time),
@@ -644,10 +653,10 @@ test.describe('the hologram', () => {
         bands: evenBands(picture, 0.3),
         speaking: true,
       };
-      const held = faintBeyondLeftLimb(picture, await picture.render({ ...betweenWords, talk: 1 }));
-      const letGo = faintBeyondLeftLimb(picture, await picture.render({ ...betweenWords, talk: 0 }));
+      const held = await picture.render({ ...betweenWords, talk: 1 });
+      const letGo = await picture.render({ ...betweenWords, talk: 0 });
 
-      expect(held - letGo).toBeGreaterThan(150);
+      expect(changedRoundTheShell(picture, held, letGo)).toBeGreaterThan(200);
     }
   });
 
