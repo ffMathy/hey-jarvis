@@ -333,31 +333,52 @@ function coreRingProfile(picture: Picture, pixels: Uint8Array): number[] {
   return totals.map((total, degree) => (counts[degree] ? total / counts[degree] : 0));
 }
 
-/** Where the core ring's light sits, in radii from the core: luminance-weighted, between these two. */
+/** Where the white-hot ring round the core is looked for, in resting radii from the core. */
 const CORE_RING_INSIDE = 0.15;
-const CORE_RING_OUTSIDE = 0.27;
+const CORE_RING_OUTSIDE = 0.3;
 
 /**
- * How far from the core the light round its white-hot ring sits, in radii: the luminance-weighted
- * mean distance, about the core's own centre, of everything between {@link CORE_RING_INSIDE} and
- * {@link CORE_RING_OUTSIDE}.
+ * Where the white-hot ring round the core is, in resting radii from the core's own centre: the
+ * distance, to the nearest pixel, whose circle of pixels is brightest on average between
+ * {@link CORE_RING_INSIDE} and {@link CORE_RING_OUTSIDE}. The ring is the brightest thing in him, so
+ * its line is the peak; the glow round it, which does not move with it, only lifts the floor.
  */
-function coreRingReach(picture: Picture, pixels: Uint8Array): number {
+function coreRingPeak(picture: Picture, pixels: Uint8Array): number {
   const { coreAcross, coreDown } = picture.facts;
   const centreX = SIZE / 2 + coreAcross * picture.radius;
   const centreY = SIZE / 2 + coreDown * picture.radius;
-  let weighted = 0;
-  let total = 0;
+  const totals = new Map<number, { light: number; count: number }>();
   for (let y = 0; y < SIZE; y++) {
     for (let x = 0; x < SIZE; x++) {
-      const reach = Math.hypot(x + 0.5 - centreX, y + 0.5 - centreY) / picture.radius;
+      const pixelsOut = Math.round(Math.hypot(x + 0.5 - centreX, y + 0.5 - centreY));
+      const reach = pixelsOut / picture.radius;
       if (reach < CORE_RING_INSIDE || reach > CORE_RING_OUTSIDE) continue;
-      const here = luminance(pixels, (y * SIZE + x) * 4);
-      weighted += here * reach;
-      total += here;
+      const total = totals.get(pixelsOut) ?? { light: 0, count: 0 };
+      total.light += luminance(pixels, (y * SIZE + x) * 4);
+      total.count++;
+      totals.set(pixelsOut, total);
     }
   }
-  return total === 0 ? 0 : weighted / total;
+  let peak = 0;
+  let brightest = -1;
+  for (const [pixelsOut, { light, count }] of totals) {
+    if (light / count > brightest) {
+      brightest = light / count;
+      peak = pixelsOut;
+    }
+  }
+  return peak / picture.radius;
+}
+
+/** Lit pixels beyond 1.1R on the left half, however faintly: where the fray's hairlines and the embers lie. */
+function faintBeyondLeftLimb(picture: Picture, pixels: Uint8Array): number {
+  let count = 0;
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE / 2; x++) {
+      if (radiusOf(picture, x, y) > 1.1 && luminance(pixels, (y * SIZE + x) * 4) > 8) count++;
+    }
+  }
+  return count;
 }
 
 /** `profile` less `still`, degree by degree, then averaged over `reach` degrees either side. */
@@ -590,41 +611,43 @@ test.describe('the hologram', () => {
     expect(agitatedChange).toBeGreaterThan(calmChange * 1.3);
   });
 
-  test('draws its white-hot ring in toward the eye as a syllable leaves him, and never out', async ({ picture }) => {
+  test('draws its white-hot ring in toward the eye as a syllable leaves him', async ({ picture }) => {
     // Each syllable leaves his core as a ring of specks (his body, not this picture), and the
-    // white-hot ring round the core draws in by up to CORE_RING_DRAW of its radius as it goes. A
-    // ring of his voice leaving through it: every slot a full syllable.
+    // white-hot ring round the core draws in by up to CORE_RING_DRAW of its radius as it goes. Held
+    // against the same frame with no syllable leaving, so his swell, which carries the whole core out
+    // with his voice, is the same in both. Every slot a full syllable draws it all the way in: 0.25 of
+    // 0.22R, swollen with him.
     const leaving = { voiceWave: new Array(16).fill(1), voiceWavePhase: 0.2 };
     for (const time of [8.2, 19.6]) {
       const bands = evenBands(picture, 0.6);
-      const quiet = coreRingReach(picture, await picture.render(silence(picture, time)));
-      const talking = coreRingReach(picture, await picture.render(speech(time, 0.7, bands)));
-      const syllable = coreRingReach(picture, await picture.render({ ...speech(time, 0.7, bands), ...leaving }));
+      const talking = coreRingPeak(picture, await picture.render(speech(time, 0.7, bands)));
+      const syllable = coreRingPeak(picture, await picture.render({ ...speech(time, 0.7, bands), ...leaving }));
+      const quiet = coreRingPeak(picture, await picture.render(silence(picture, time)));
 
-      // Talking with no syllable leaving does not move it; one leaving draws it in.
-      expect(Math.abs(talking - quiet)).toBeLessThan(0.003);
-      expect(syllable).toBeLessThan(quiet - 0.008);
+      expect(syllable).toBeLessThan(talking - 0.03);
+      // In silence, where nothing swells him or draws it in, it is where it has always been.
+      expect(Math.abs(quiet - picture.facts.coreRingRadius)).toBeLessThan(0.02);
     }
   });
 
-  test('keeps the fray out between words, while he holds the floor for the sentence', async ({ picture }) => {
+  test('keeps the fray and more embers out between words, while he holds the floor for the sentence', async ({
+    picture,
+  }) => {
     // Between words his agitation is nothing, but the sentence is not over: the talk envelope holds,
-    // and with it the fray off his upper left and more of the embers. They used to drop back to
-    // idle a dozen times a sentence.
+    // and with it the fray off his upper left and more of the embers, as faint hairlines and flecks.
+    // They used to drop back to idle a dozen times a sentence. Held against the same frame with the
+    // envelope let go, so his swell and his glow are the same in both.
     for (const time of [6, 13.4, 22.8]) {
-      const calm = brightBeyondLeftLimb(picture, await picture.render(silence(picture, time)));
-      const betweenWords = brightBeyondLeftLimb(
-        picture,
-        await picture.render({
-          ...silence(picture, time),
-          level: 0.08,
-          bands: evenBands(picture, 0.3),
-          speaking: true,
-          talk: 1,
-        }),
-      );
+      const betweenWords = {
+        ...silence(picture, time),
+        level: 0.08,
+        bands: evenBands(picture, 0.3),
+        speaking: true,
+      };
+      const held = faintBeyondLeftLimb(picture, await picture.render({ ...betweenWords, talk: 1 }));
+      const letGo = faintBeyondLeftLimb(picture, await picture.render({ ...betweenWords, talk: 0 }));
 
-      expect(betweenWords - calm).toBeGreaterThan(20);
+      expect(held - letGo).toBeGreaterThan(150);
     }
   });
 
