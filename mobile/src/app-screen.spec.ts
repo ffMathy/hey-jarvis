@@ -64,7 +64,25 @@ describe('the glance to show', () => {
     expect(glanceToShow({ live: newer, kept: glance, hasServer: false, now: made })).toBeUndefined();
   });
 
-  it('is none once the server would have stopped keeping it current', () => {
+  it('is still shown while the server is rebuilding one that has grown three hours old', () => {
+    // The server only starts a rebuild once a glance is three hours old, checks every quarter of an
+    // hour, and the build takes minutes: a glance a little over three hours old is its current one.
+    const whileRebuilding = made + 3 * 60 * 60 * 1000 + 20 * 60 * 1000;
+    expect(glanceToShow({ live: glance, kept: glance, hasServer: true, now: whileRebuilding })).toBe(glance);
+    expect(glanceToShow({ live: undefined, kept: glance, hasServer: true, now: whileRebuilding })).toBe(glance);
+  });
+
+  it('is still shown in the morning, after the quiet hours in which the server rebuilds none', () => {
+    const lastBuiltAt = Date.parse('2026-11-01T21:50:00.000Z');
+    const nextMorning = Date.parse('2026-11-02T05:10:00.000Z');
+    const lastOfTheEvening = glanceOf({ ...glance, generatedAt: '2026-11-01T21:50:00.000Z' });
+    expect(nextMorning - lastBuiltAt).toBeGreaterThan(7 * 60 * 60 * 1000);
+    expect(glanceToShow({ live: lastOfTheEvening, kept: undefined, hasServer: true, now: nextMorning })).toBe(
+      lastOfTheEvening,
+    );
+  });
+
+  it('is none once its page is no longer hosted', () => {
     expect(glanceToShow({ live: undefined, kept: glance, hasServer: true, now: made + GLANCE_SHOWN_FOR_MS })).toBe(
       glance,
     );
