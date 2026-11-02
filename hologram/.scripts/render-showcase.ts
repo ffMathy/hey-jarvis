@@ -431,9 +431,9 @@ async function main() {
     // loudest instant of it is when that is furthest along.
     const loudest = findLoudestMoment(COVER_LISTEN_SECONDS, FRAME_SECONDS);
     const speaking = createPerformance(FRAME_SECONDS);
-    let mid = speaking(stillMoment(0));
+    let mid = speaking(stillMoment(0, 'speaking'));
     for (let seconds = FRAME_SECONDS; seconds <= loudest; seconds += FRAME_SECONDS) {
-      mid = speaking(stillMoment(seconds));
+      mid = speaking(stillMoment(seconds, 'speaking'));
     }
     const drawn = await page.evaluate((frame) => window.showcase.cover(frame), mid);
     writeFileSync(cover, bytesOf(drawn.png));

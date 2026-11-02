@@ -20,12 +20,22 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
 - **The core:** a white-hot thin ring at 0.22R (`CORE_RING_RADIUS`), the brightest thing in him and an
   orange-white rather than white, round a glow that is mostly see-through, with Age of Ultron's
   small ringed eye inside it — a hooked ring at 0.1R round a ring at 0.06R, never white — and a
-  faint bar across it (`buildCoreGlyph`, `drawCore`).
+  faint bar across it (`buildCoreGlyph`, `drawCore`). While he talks the white-hot ring draws in
+  toward the eye as each syllable leaves him, by up to `CORE_RING_DRAW` of its radius, and lets go
+  (`coreRing`): in, never out.
 - **The body of specks:** up to `PARTICLE_COUNT` of them, the old body fused with the film's shell
   (`buildBody`, drawn by `gpu/gpu-body.ts`): most fill the ball as the old body did
   (`BODY_FILL_SHARE`), in its wide strokes, copper and orange tiers and broad red-orange halos, and
   the rest lie on the film's shell from about half his radius out, ringing his edge with the
   brightest orange beads.
+- **The rings of his voice:** while he talks, each syllable leaves his core as a ring of his own
+  specks — pushed out from the core by up to `VOICE_WAVE_REACH`, so far that at its front they
+  overtake the ones ahead and gather into a crisp line, their strokes laid along it — that travels
+  out at `VOICE_WAVE_SPEED` and melts into his shell by `VOICE_WAVE_GONE`. The clock keeps how
+  sharply each 40 ms of his voice started a syllable (`hologram/src/voice-wave.ts`), and each slot is
+  a ring `VOICE_WAVE_STEP` further out than the next (`voiceWaveKnots`, `voiceWavePush`,
+  `voiceWaveTurn`). Every speck but the truss's; the arcs and the stream are carried out but keep
+  their way. Held back until he has formed, and given way to the lattice and the scan plane.
 - **The whorl:** the old body's spiral through his middle, two arms winding out from just outside
   the core's eye at 0.1R to about 0.78R, made of specks (`WHORL_SHARE` of the body's draws,
   `pushWhorlSpeck`) held in the plane of the view and turning slowly about the core against the
@@ -118,3 +128,12 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
 - **Thinking scatters the glow lines** ("While thinking, the direction of the glow lines should
   randomize"): every speck but the truss's lies some way within ±90° of its own (`thoughtTurn`),
   dealt afresh each time it re-lights, eased in with the thought.
+- **It is plain when he is speaking** ("Update the talking animation to more cool and expressive -
+  right now it's not very clear that Jarvis is speaking"): each syllable leaves his core as a ring
+  of his own specks that sweeps out through him (the rings above), and the white-hot ring draws in
+  as it goes. Both are movement, as the tenth of a glow asks: over a sentence his light is within 3%
+  of what it was, its hue (30°) and G/R (0.70) unchanged, no near-white added, and in silence he is
+  drawn to the byte as before. At the first design's 0.06R push no speck overtook another, and the
+  rings showed only in a plot of his light against distance and time; at 0.16R they are a crisp line
+  anyone sees. The arcs, the fray and the embers follow the talk envelope, which holds through the
+  gaps between words, so he no longer drops back to idle a dozen times a sentence.

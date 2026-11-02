@@ -29,6 +29,7 @@ import {
   VOICE_BAND_COUNT,
   voiceDrive,
 } from './voice-levels';
+import { advanceVoiceWave, createVoiceWaveState, syllableRise, voiceWavePhaseOf } from './voice-wave';
 
 /** The view's step for a frame with no previous one to measure from, as `hologram-view.tsx` has it. */
 const DEFAULT_FRAME_MS = 16;
@@ -72,6 +73,10 @@ function createReferenceLoop(quietestSpeech: number | undefined, speaking: boole
     hearing: 0,
     hearingLevel: 0,
     activity: createVoiceActivityState(quietestSpeech),
+    // Added on purpose, after the clock was shared: his recent syllables, for the rings his voice
+    // sends out of his core. The frames change because the drawing asked for more, not because code
+    // moved; each of the lines below that reads it says so too.
+    wave: createVoiceWaveState(),
   };
   let waiting = 0;
   return {
@@ -84,6 +89,8 @@ function createReferenceLoop(quietestSpeech: number | undefined, speaking: boole
       const deltaSeconds = waiting;
       waiting = 0;
       const current = frame;
+      // Added on purpose: his recent syllables (see `wave` above).
+      const rise = syllableRise(current.bands, inputs.targetBands, inputs.targetLevel, current.activity, deltaSeconds);
       current.time += deltaSeconds;
       current.level = easeLevel(current.level, inputs.targetLevel, deltaSeconds);
       current.bands = easeBands(current.bands, inputs.targetBands, deltaSeconds);
@@ -95,6 +102,8 @@ function createReferenceLoop(quietestSpeech: number | undefined, speaking: boole
       current.hearing = easeHearing(current.hearing, inputs.targetHearing, deltaSeconds);
       current.hearingLevel = easeHearingLevel(current.hearingLevel, inputs.targetHearingLevel, deltaSeconds);
       advanceVoiceActivity(current.activity, inputs.targetLevel, deltaSeconds);
+      // Added on purpose: his recent syllables (see `wave` above).
+      advanceVoiceWave(current.wave, rise, deltaSeconds);
       return true;
     },
     backInFront() {
@@ -121,6 +130,9 @@ function createReferenceLoop(quietestSpeech: number | undefined, speaking: boole
         hearing: current.hearing,
         hearingLevel: current.hearingLevel,
         presence: current.presence,
+        // Added on purpose: his recent syllables (see `wave` above).
+        voiceWave: current.wave.slots,
+        voiceWavePhase: voiceWavePhaseOf(current.wave),
       };
     },
   };
@@ -209,6 +221,8 @@ interface Coverage {
   readings: number;
   maximumBursts: number;
   maximumHearing: number;
+  maximumSyllable: number;
+  maximumTalk: number;
   gone: boolean;
   fullyThinking: boolean;
 }
@@ -328,6 +342,8 @@ function noteCoverage(coverage: Coverage, state: FrameClockState) {
   coverage.pictures += 1;
   coverage.maximumBursts = Math.max(coverage.maximumBursts, state.activity.burstCount);
   coverage.maximumHearing = Math.max(coverage.maximumHearing, state.hearing);
+  coverage.maximumSyllable = Math.max(coverage.maximumSyllable, ...state.wave.slots);
+  coverage.maximumTalk = Math.max(coverage.maximumTalk, state.activity.talk);
   coverage.gone ||= state.presence === 0;
   coverage.fullyThinking ||= state.thinking === 1;
 }
@@ -350,6 +366,8 @@ function runSideBySide(seed: number, frames: number, quietestSpeech: number | un
     readings: 0,
     maximumBursts: 0,
     maximumHearing: 0,
+    maximumSyllable: 0,
+    maximumTalk: 0,
     gone: false,
     fullyThinking: false,
   };
@@ -412,6 +430,8 @@ describe('the frame clock, against the view’s frame loop before it was shared'
       expect(coverage.readings).toBeGreaterThan(1000);
       expect(coverage.maximumBursts).toBeGreaterThan(10);
       expect(coverage.maximumHearing).toBeGreaterThan(0.5);
+      expect(coverage.maximumSyllable).toBeGreaterThan(0.3);
+      expect(coverage.maximumTalk).toBe(1);
       expect(coverage.gone).toBe(true);
       expect(coverage.fullyThinking).toBe(true);
     });

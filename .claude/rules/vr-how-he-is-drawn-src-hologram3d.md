@@ -87,7 +87,8 @@ per-fragment helpers from `hologram`, with the body turning about the vertical i
 its own frame (its front faces where the user stood when he arrived) and
 everything the phone does on screen — the wander, the vortex, the lattice, the
 turns of the groups held in the view plane (the whorl's, the arcs' rocking, the
-truss's roll), a glyph's direction and its scatter while he thinks — done in the plane through his centre
+truss's roll), a glyph's direction and its scatter while he thinks, and the rings his syllables
+push out of his core (`voiceWavePush`, after visibility and tier are decided) — done in the plane through his centre
 that faces the centre eye. Depth is kept: the vortex scales it, the lattice snaps
 it into layers where the centre eye sees them line up, the thinking plane is
 level with the floor. Its `fragment-glsl.ts` is that file, line for line, in
@@ -144,7 +145,7 @@ forming a union, so the arrival's first half-second and the listening knots are 
 little hotter; everything the picture draws is flat in the view plane.
 
 **The picture is held to its own goldens.** `tests/e2e/hologram-picture.spec.ts`
-draws fifteen moments with it through `picture-target.ts` (the preview's
+draws seventeen moments with it through `picture-target.ts` (the preview's
 `checkPicture`) and compares them with frames it drew itself when he was redrawn
 as the Vision Quest / Age of Ultron hybrid (`tests/e2e/fixtures/picture/`, RGB over black,
 drawn by `.scripts/render-picture-goldens.ts`; see "The browser tests"): a mean

@@ -70,6 +70,28 @@ describe('the fragment uniforms', () => {
     expect(uniforms.eyeDistance.value).toBe(7.25);
   });
 
+  it('carry the rings his syllables send out of his core, newest first, four to a vector', () => {
+    const uniforms = createFragmentUniforms();
+    // Silent to begin with: nothing to push, and the shader skips the rings altogether.
+    for (const name of ['voiceWave0', 'voiceWave1', 'voiceWave2', 'voiceWave3'] as const) {
+      expect(uniforms[name].value).toEqual([0, 0, 0, 0]);
+    }
+    expect(uniforms.voiceWaveClock.value).toEqual([0, 0]);
+
+    const slots = Array.from({ length: 16 }, (_, slot) => (slot % 5) / 4);
+    const state = analyseFrame(frameAt({ voiceWave: slots, voiceWavePhase: 0.35 }), 1);
+    writeFragmentUniforms(uniforms, state, FRONT_VIEW, 1, Number.POSITIVE_INFINITY);
+    const written = [
+      ...uniforms.voiceWave0.value,
+      ...uniforms.voiceWave1.value,
+      ...uniforms.voiceWave2.value,
+      ...uniforms.voiceWave3.value,
+    ];
+    expect(written).toEqual(state.voiceWave);
+    expect(state.voiceWaveLargest).toBeGreaterThan(0);
+    expect(uniforms.voiceWaveClock.value).toEqual([state.voiceWaveLargest, 0.35]);
+  });
+
   it('stand the eye far off, in a number float32 holds, when it is infinitely far', () => {
     const uniforms = createFragmentUniforms();
     writeFragmentUniforms(uniforms, analyseFrame(frameAt({}), 1), FRONT_VIEW, 1, Number.POSITIVE_INFINITY);

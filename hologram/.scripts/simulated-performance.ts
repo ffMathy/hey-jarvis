@@ -142,6 +142,7 @@ export function createPerformance(frameSeconds: number) {
       appearance: Math.min(1, moment.hologramSeconds / MATERIALISE_SECONDS),
       // The clock's own arrays, good only until its next step: a frame kept is a frame copied.
       bands: [...frame.bands],
+      voiceWave: [...(frame.voiceWave ?? [])],
     };
   };
 }
@@ -150,12 +151,14 @@ export function createPerformance(frameSeconds: number) {
 export type SimulatedFrame = HologramFrame;
 
 /**
- * A moment for a still: formed, present, and in one mood with nothing else going on.
+ * A moment for a still: formed, present, and in one mood with nothing else going on — or silent,
+ * for no mood at all. The mood has no default: one of `'speaking'` made an explicit `undefined`
+ * mean speaking too, so a still asked to be silent was not.
  *
  * The same shape the clip's script produces, so that {@link createPerformance} can advance it
  * without knowing it is being used for a still rather than for a clip.
  */
-export function stillMoment(seconds: number, mood: SimulatedMood | undefined = 'speaking'): SimulatedMoment {
+export function stillMoment(seconds: number, mood: SimulatedMood | undefined): SimulatedMoment {
   return {
     mood,
     moodSeconds: seconds,
