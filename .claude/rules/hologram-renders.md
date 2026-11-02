@@ -26,10 +26,10 @@ There is no Skia or CanvasKit in them and no CPU path to fall back on: a browser
 an error. `CHROMIUM_EXECUTABLE_PATH` picks the browser, as for the browser tests, on a machine whose
 Chromium is not the build the pinned Playwright expects.
 
-**The committed clips, stills and icons may be regenerated from them**, and the ones in the
-repository predate this, so they are not yet what the scripts draw. Regenerating them is a change of
-its own, made deliberately and looked at before it is committed. Expect it to be slow: SwiftShader
-takes a few hundred milliseconds a frame at these sizes.
+**The README's clips are recorded again with every change to how he looks** (see [Keep the README's
+recordings current](hologram-keep-the-readme-recordings-current.md)), and looked at before they are
+committed. Expect it to be slow: SwiftShader takes a few hundred milliseconds a frame at these
+sizes.
 
 ## Particle count
 
