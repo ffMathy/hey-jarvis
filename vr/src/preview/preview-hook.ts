@@ -117,6 +117,7 @@ export interface PictureFrame {
   bands: number[];
   speaking: boolean;
   agitation: number;
+  talk?: number;
   burstAge: number;
   burstStrength: number;
   burstCount: number;

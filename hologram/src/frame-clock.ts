@@ -172,6 +172,7 @@ export function hologramFrameOf(state: FrameClockState): HologramFrame {
     bands: state.bands,
     speaking: state.speaking,
     agitation: activity.agitation,
+    talk: activity.talk,
     burstAge: activity.burstAge,
     burstStrength: activity.burstStrength,
     burstCount: activity.burstCount,

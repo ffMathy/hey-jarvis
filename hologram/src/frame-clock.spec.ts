@@ -110,6 +110,9 @@ function createReferenceLoop(quietestSpeech: number | undefined, speaking: boole
         bands: current.bands,
         speaking: current.speaking,
         agitation: activity.agitation,
+        // Added on purpose, after the clock was shared: the talk envelope the arcs, the fray and the
+        // embers follow. The frames change because the drawing asked for more, not because code moved.
+        talk: activity.talk,
         burstAge: activity.burstAge,
         burstStrength: activity.burstStrength,
         burstCount: activity.burstCount,

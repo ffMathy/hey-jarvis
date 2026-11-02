@@ -113,11 +113,16 @@
 //                 lit and the brightness hold while the churn rises;
 //               - each speck re-lights further along the way it lies, less so the nearer the limb
 //                 it is, so the silhouette holds;
+//               - hotShare: some of the bright specks step down, and the hot cores all but go;
+//               - the rest of the swell and of the glow.
+//   talk        whether he holds the floor: the sentence's envelope where agitation is the
+//               syllable's, up over a second, held through every gap between words and let go over
+//               two (`TALK_RISE_SECONDS` and the rest in `voice-levels.ts`), eased at both ends and
+//               held back with agitation. Left out of a frame it is the agitation. What should not
+//               flicker a dozen times a sentence follows it:
 //               - the gyroscope's arcs rock to and fro about the core, the inner ones against the
 //                 outer like a gimbal's rings (gyroSway, turnOfGroup), instead of churning;
-//               - hotShare: some of the bright specks step down, and the hot cores all but go;
-//               - the fray, and more of the embers;
-//               - the rest of the swell and of the glow.
+//               - the fray, and more of the embers (FRAY_WHILE_TALKING, EMBERS_WHILE_TALKING).
 //   burstAge, burstStrength, burstCount
 //               the chips, drawn while burstAge is under CHIP_GONE_SECONDS and fully lit for
 //               CHIP_HOLD_SECONDS. The strength says how far they go and how many there are, and the
@@ -176,8 +181,9 @@
 //   of the body (pushTrussSpeck), thirteen boxes where the painted truss had twenty-one, dense and
 //   bright enough that each box reads as plainly as the painted ones did while its specks twinkle.
 // - The arcs move while he talks: "The arcs around his core need to also move when talking." They
-//   rock about the core with his eased agitation, the inner arcs against the outer
-//   (GYRO_SWAY_DEGREES), calmly.
+//   rock about the core with his talk envelope, the inner arcs against the outer
+//   (GYRO_SWAY_DEGREES), calmly: never more than 1.5° a frame. On his agitation, which drops to
+//   nothing in every gap between words, they jumped 4.1° in a frame at each one.
 // - Thinking scatters the glow lines: "While thinking, the direction of the glow lines should
 //   randomize." Every speck but the truss's lies some way dealt afresh at each blink (thoughtTurn).
 // - He arrives as a vortex out of his core and in no other way. The film's point of light, sparks and
@@ -223,8 +229,14 @@ export interface HologramFrame {
   bands: number[];
   /** Whether he is speaking, as opposed to the conversation merely being open. */
   speaking: boolean;
-  /** 0–1 speech-activity envelope: rises over about 0.15 s while speech is present, releases over about 0.4 s. */
+  /** 0–1 speech-activity envelope: rises over about 0.15 s while speech is present, releases over about 0.15 s. */
   agitation: number;
+  /**
+   * 0–1: whether he holds the floor — the sentence's envelope, where {@link agitation} is the
+   * syllable's (`TALK_RISE_SECONDS` and the rest in `voice-levels.ts`). Left out, it is taken to be
+   * the agitation.
+   */
+  talk?: number;
   /** Seconds since the latest chip burst began; 10 or more when there has been none. */
   burstAge: number;
   /** 0–1 strength of the latest burst. */
@@ -962,10 +974,12 @@ export const GYRO_ARCS: readonly GyroArc[] = [
  * The arcs move while he talks, at the user's asking ("The arcs around his core need to also move
  * when talking"): they rock to and fro about the core, on top of the whorl's turn, by two slow
  * swings — so many degrees either way at a rate in radians a second, the second a phase on — that
- * never quite repeat, both times his agitation (`gyroSway` in {@link analyseFrame}). Agitation is
- * eased, so the rocking comes in and dies away with his voice rather than jumping, and it is
- * worked out from the clock alone, so nothing is remembered between frames. Calm: at its fastest
- * an arc turns about 70° a second, a degree and a bit a frame. Silent, the arcs turn with the whorl.
+ * never quite repeat, both times his talk envelope (`gyroSway` in {@link analyseFrame}). The
+ * envelope is the sentence's, not the syllable's: it comes up over a second, holds through the gaps
+ * between words and lets go over two, so the rocking comes in and dies away with what he says
+ * rather than jumping. On his agitation, which drops to nothing in every gap, the arcs jumped 4.1° in
+ * a frame at each one. Calm: at its fastest an arc turns about 70° a second, a degree and a bit a
+ * frame. Silent, the arcs turn with the whorl.
  */
 export const GYRO_SWAY_DEGREES = 24;
 export const GYRO_SWAY_RADIANS_PER_SECOND = 1.7;
@@ -1562,6 +1576,20 @@ function buildCage(random: Random) {
 /** How many embers drift round him, and the share of them that show while he is quiet. */
 const EMBER_COUNT = 56;
 const EMBERS_IN_SILENCE = 0.45;
+/**
+ * How much of the rest of the embers come out while he holds the floor, before the low notes of his
+ * voice bring out more (`emberShare` in {@link analyseFrame}). It followed his agitation at 0.55,
+ * and agitation drops to nothing in every gap between words; the talk envelope holds through them, so
+ * the share is lower by what it makes up, and over a spoken sentence about as many show as did.
+ */
+const EMBERS_WHILE_TALKING = 0.27;
+/**
+ * How strongly the fray is driven while he holds the floor, before the high notes of his voice drive
+ * it further (`frayDrive` in {@link analyseFrame}): lower than the 0.55 it was on his agitation for
+ * the reason {@link EMBERS_WHILE_TALKING} is, so over a sentence the fray shows about as much as it
+ * did, steadily rather than in flickers.
+ */
+const FRAY_WHILE_TALKING = 0.28;
 /** How far out an ember may get before it has gone, in R: well inside his square's edge. */
 const EMBER_FARTHEST = 1.45;
 /** How far up an ember rises for every R it drifts outward. */
@@ -1856,6 +1884,9 @@ export function analyseFrame(frame: HologramFrame, size: number) {
   // round a sphere still gathered at its core.
   const formed = smooth01((swirl - 0.6) / 0.4);
   const agitation = clamp01(frame.agitation) * formed;
+  // Whether he holds the floor: the sentence's envelope, eased at both ends so what rides it neither
+  // starts nor stops with a jolt. What should not flicker a dozen times a sentence follows it.
+  const talk = smooth01(clamp01(frame.talk ?? frame.agitation)) * formed;
   const bands = frame.bands;
   const lowDrive = clamp01((bandAverage(bands, 0, 6) - 0.35) / 0.45);
   const highDrive = clamp01((bandAverage(bands, 14, 24) - 0.2) / 0.45);
@@ -1915,9 +1946,9 @@ export function analyseFrame(frame: HologramFrame, size: number) {
     // The core's glowing disc dims while he listens as well as while he thinks, so the lattice is
     // what is seen.
     coreGlow: (1 - 0.4 * thinking) * (1 - 0.3 * hearing),
-    // Which of the embers show: some of them always, and more while he talks, all of them on the
-    // low notes of his voice — as the fray answers the high ones.
-    emberShare: EMBERS_IN_SILENCE + (1 - EMBERS_IN_SILENCE) * agitation * (0.55 + 0.45 * lowDrive),
+    // Which of the embers show: some of them always, and more while he holds the floor, all of them
+    // on the low notes of his voice — as the fray answers the high ones.
+    emberShare: EMBERS_IN_SILENCE + (1 - EMBERS_IN_SILENCE) * talk * (EMBERS_WHILE_TALKING + 0.45 * lowDrive),
     swirl,
     hearing,
     hearingLevel,
@@ -1926,6 +1957,7 @@ export function analyseFrame(frame: HologramFrame, size: number) {
     /** Where {@link swirlFragment} leaves a fragment: x, y, its direction, and how much of it shows. */
     swirled: [0, 0, 0, 0, 0],
     agitation,
+    talk,
     // Half the calm fragments hand over to fast ones at full agitation, so the turnover rises
     // by about half (the Age of Ultron footage's churn on "Doctor." rises from 8 to 13 per frame).
     // Half and no more, because pool 1 lights the ids below 2·mix: at this share, and only at this share,
@@ -1938,7 +1970,7 @@ export function analyseFrame(frame: HologramFrame, size: number) {
     // entirely, as the Age of Ultron footage's luma-200 highlights drop by about 70% on "Doctor.".
     // The strokes themselves stay bright: it is the hot pixels that leave, not the texture.
     hotShare: 1 - 0.35 * agitation,
-    frayDrive: agitation * (0.55 + 0.45 * highDrive),
+    frayDrive: talk * (FRAY_WHILE_TALKING + 0.45 * highDrive),
     burstAge,
     burstStrength: clamp01(frame.burstStrength) * formed,
     // how far the burst throws, and how many chips
@@ -1965,10 +1997,10 @@ export function analyseFrame(frame: HologramFrame, size: number) {
     rimRoll: fraction((time * RIM_ROLL_DEGREES_PER_SECOND) / 360) * 360,
     // the inner layer winds up with the vortex, settling to its own slow turn as the specks do
     shellTurn: fraction((time * SHELL_DEGREES_PER_SECOND - 540 * settle * settle) / 360) * 360,
-    // How far the gyroscope's arcs are rocked off the inner layer's turn while he talks, in degrees
-    // (see GYRO_SWAY_DEGREES and turnOfGroup): nothing at all in silence.
+    // How far the gyroscope's arcs are rocked off the inner layer's turn while he holds the floor, in
+    // degrees (see GYRO_SWAY_DEGREES and turnOfGroup): nothing at all in silence.
     gyroSway:
-      agitation *
+      talk *
       (GYRO_SWAY_DEGREES * Math.sin(time * GYRO_SWAY_RADIANS_PER_SECOND) +
         GYRO_SWAY_SECOND_DEGREES * Math.sin(time * GYRO_SWAY_SECOND_RADIANS_PER_SECOND + GYRO_SWAY_SECOND_PHASE)),
     streamCos: Math.cos(yaw),

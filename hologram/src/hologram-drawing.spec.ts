@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { advanceFrameClock, createFrameClockState, hologramFrameOf, restartArrival } from './frame-clock';
+import { MATERIALISE_SECONDS, READ_INTERVAL_MS } from './frame-timing';
 import {
   analyseFrame,
   arrivalOf,
@@ -43,7 +44,9 @@ import {
   WHORL_START,
   WHORL_TURNS,
 } from './hologram-drawing';
-import { VOICE_BAND_COUNT } from './voice-levels';
+import { createSimulatedSpectrum, fillSimulatedSpectrum, type SimulatedMood } from './simulated-voice';
+import { simulatedVolume } from './voice-analysis';
+import { foldSpectrum, perceivedLevel, VOICE_BAND_COUNT } from './voice-levels';
 
 /**
  * The scene he is drawn from and what a frame of him is. What he looks like drawn — red-orange, moving,
@@ -304,12 +307,13 @@ describe('his middle: the whorl and the gyroscope', () => {
 });
 
 describe('the gyroscope while he talks', () => {
-  const frameAt = (time: number, agitation: number): HologramFrame => ({
+  const frameAt = (time: number, agitation: number, talk = agitation): HologramFrame => ({
     time,
     level: agitation * 0.6,
     bands: new Array(VOICE_BAND_COUNT).fill(0.3),
     speaking: agitation > 0,
     agitation,
+    talk,
     burstAge: 10,
     burstStrength: 0,
     burstCount: 0,
@@ -352,16 +356,50 @@ describe('the gyroscope while he talks', () => {
     expect(Math.max(...steps)).toBeLessThan(1.5);
   });
 
-  it('eases the rocking in with his voice rather than jumping to it', () => {
-    // Half as agitated, half the sway, so the eased envelope is what brings it in.
+  it('never rocks the arcs faster than 1.5° a frame through real speech, gaps between words and all', () => {
+    // Every gap between words drops his agitation to nothing within 0.15 s, and the sway used to
+    // drop with it: through the real clock at 60 fps, on the greeting sample mode speaks, the arcs
+    // jumped 4.1° in a single frame at each gap. They rock with the talk envelope instead, which
+    // holds through a sentence and lets go slowly.
+    for (const mood of ['greeting', 'speaking'] as const) {
+      const sways = spokenFrames(mood, 30).map((frame) => analyseFrame(frame, SIZE).gyroSway);
+      const steps = sways.slice(1).map((sway, index) => Math.abs(sway - (sways[index] ?? 0)));
+      expect(Math.max(...steps)).toBeLessThan(1.5);
+      // and they do rock while he talks
+      expect(Math.max(...sways.map(Math.abs))).toBeGreaterThan(20);
+    }
+  });
+
+  it('eases the rocking in with the talk envelope rather than jumping to it', () => {
+    // Halfway up the envelope, half the sway, so the eased envelope is what brings it in — and it is
+    // the envelope, not the syllable's agitation, that the arcs follow.
     let largest = 0;
     for (let time = 10; time < 14; time += 0.1) {
-      const full = analyseFrame(frameAt(time, 1), SIZE);
-      const half = analyseFrame(frameAt(time, 0.5), SIZE);
+      const full = analyseFrame(frameAt(time, 1, 1), SIZE);
+      const half = analyseFrame(frameAt(time, 1, 0.5), SIZE);
+      const betweenWords = analyseFrame(frameAt(time, 0, 0.5), SIZE);
       expect(half.gyroSway).toBeCloseTo(full.gyroSway / 2, 9);
+      expect(betweenWords.gyroSway).toBe(half.gyroSway);
       largest = Math.max(largest, Math.abs(full.gyroSway));
     }
     expect(largest).toBeGreaterThan(20);
+  });
+
+  it('takes his agitation for the talk envelope in a frame that has none', () => {
+    const { talk: _left, ...withoutTalk } = frameAt(12.3, 0.8, 0.8);
+    expect(analyseFrame(withoutTalk, SIZE)).toEqual(analyseFrame(frameAt(12.3, 0.8, 0.8), SIZE));
+  });
+
+  it('keeps the fray and more of the embers out between words, while he holds the floor', () => {
+    // Between words his agitation is nothing, but the sentence is not over: the fray and the embers
+    // stay out instead of dropping back to idle a dozen times a sentence.
+    const between = analyseFrame({ ...frameAt(20, 0, 1), level: 0.08 }, SIZE);
+    const silent = analyseFrame(frameAt(20, 0, 0), SIZE);
+
+    expect(between.agitation).toBe(0);
+    expect(between.frayDrive).toBeGreaterThan(0.02);
+    expect(between.emberShare).toBeGreaterThan(silent.emberShare);
+    expect(silent.frayDrive).toBe(0);
   });
 });
 
@@ -827,6 +865,37 @@ function arrivalAsItWas(appearance: number, presence: number) {
   };
   const swirl = clamp01(Math.min(appearance, presence));
   return smooth01(swirl / 0.2);
+}
+
+/**
+ * The frames the frame clock hands the drawing at 60 a second while a simulated voice speaks for
+ * `seconds`, once he has formed, read every READ_INTERVAL_MS of clock time as the app reads it: each
+ * one copied, since the clock's frame is only good until its next step.
+ */
+function spokenFrames(mood: SimulatedMood, seconds: number): HologramFrame[] {
+  const clock = createFrameClockState();
+  const spectrum = createSimulatedSpectrum();
+  const frames: HologramFrame[] = [];
+  let level = 0;
+  let bands: number[] = new Array(VOICE_BAND_COUNT).fill(0);
+  let lastReading = -1;
+  for (let step = 1; step / 60 <= MATERIALISE_SECONDS + seconds; step++) {
+    const at = step / 60;
+    const reading = Math.floor(at / (READ_INTERVAL_MS / 1000));
+    if (reading !== lastReading) {
+      lastReading = reading;
+      const spoken = at - MATERIALISE_SECONDS;
+      if (spoken >= 0) {
+        fillSimulatedSpectrum(mood, spoken, spectrum);
+        level = perceivedLevel(simulatedVolume(spectrum));
+        bands = foldSpectrum(spectrum);
+      }
+    }
+    advanceFrameClock(clock, 1 / 60, level, bands, level > 0, false, false, 0, 0);
+    const frame = hologramFrameOf(clock);
+    frames.push({ ...frame, bands: [...frame.bands] });
+  }
+  return frames;
 }
 
 /**

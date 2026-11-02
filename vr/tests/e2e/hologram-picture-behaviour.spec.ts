@@ -522,9 +522,10 @@ test.describe('the hologram', () => {
     // Some forty renders, which SwiftShader draws on the CPU.
     test.setTimeout(300_000);
     const bands = evenBands(picture, 0.7);
-    // Measured when his cage, core ring and chips were last redrawn: a burst adds 410–460 bright
-    // pixels beyond the left limb, the talking sphere changes 2.0 times as much as the calm one and
-    // the agitated one 1.6.
+    // Measured when the fray and the embers were first held for the whole sentence (the talk
+    // envelope): a burst adds 237–265 bright pixels beyond the left limb, the talking sphere changes
+    // 1.95 times as much as the calm one and the agitated one 1.6. (It read 410–460 for the burst
+    // once, but had drifted to 250–280 by the time the fray was held.)
     for (const time of [6, 13.4, 22.8]) {
       // the cage and the embers are round him in both, so count what the burst adds
       const calm = brightBeyondLeftLimb(picture, await picture.render(silence(picture, time)));
@@ -569,8 +570,9 @@ test.describe('the hologram', () => {
     // **0.15, where it was 0.45, because the old picture answered with something far bigger.** Its
     // low notes split the crescent, a band of light round a third of the rim, and that measured
     // 0.63. The embers and the fray that answer them now are hairlines and flecks, and measured
-    // 0.20–0.24 over these moments when his cage, core ring and chips were last redrawn (0.21–0.25
-    // when the picture was first redrawn after the Vision Quest footage). It keeps its teeth: the same
+    // 0.23–0.27 over these moments when the fray and the embers were first held for the whole
+    // sentence (0.20–0.24 when his cage, core ring and chips were last redrawn, and 0.21–0.25 when
+    // the picture was first redrawn after the Vision Quest footage). It keeps its teeth: the same
     // spectrum drawn twice differs by exactly 0, which is what ignoring the bands would score, and
     // it sits under the least of them rather than at it, because a threshold a test clears by
     // three percent is a threshold that fails on the next unrelated thing.

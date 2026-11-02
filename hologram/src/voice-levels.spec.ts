@@ -21,6 +21,9 @@ import {
   QUIETEST_SPEECH,
   RELEASE_SECONDS,
   SPEECH_LEVEL,
+  TALK_HOLD_SECONDS,
+  TALK_RELEASE_SECONDS,
+  TALK_RISE_SECONDS,
   VOICE_BAND_COUNT,
   voiceDrive,
 } from './voice-levels';
@@ -204,6 +207,7 @@ function readings(levels: number[], seconds: number): (time: number) => number {
 interface ActivityFrame {
   time: number;
   agitation: number;
+  talk: number;
   burstAge: number;
   burstStrength: number;
   burstCount: number;
@@ -223,8 +227,8 @@ function play(
     const time = clock(frame);
     advanceVoiceActivity(state, levelAt(time), time - previousTime);
     previousTime = time;
-    const { agitation, burstAge, burstStrength, burstCount } = state;
-    frames.push({ time, agitation, burstAge, burstStrength, burstCount });
+    const { agitation, talk, burstAge, burstStrength, burstCount } = state;
+    frames.push({ time, agitation, talk, burstAge, burstStrength, burstCount });
   }
   return frames;
 }
@@ -272,6 +276,7 @@ describe('createVoiceActivityState', () => {
     const state = createVoiceActivityState();
 
     expect(state.agitation).toBe(0);
+    expect(state.talk).toBe(0);
     expect(state.burstAge).toBeGreaterThanOrEqual(10);
     expect(state.burstAge).toBe(NO_BURST_AGE_SECONDS);
     expect(state.burstStrength).toBe(0);
@@ -321,7 +326,7 @@ describe('advanceVoiceActivity', () => {
     it('stays calm: no agitation and no bursts, however long it lasts', () => {
       const frames = play(() => 0, 10);
 
-      expect(frames.every((frame) => frame.agitation === 0 && frame.burstCount === 0)).toBe(true);
+      expect(frames.every((frame) => frame.agitation === 0 && frame.talk === 0 && frame.burstCount === 0)).toBe(true);
       expect(frames.at(-1)?.burstStrength).toBe(0);
       expect(frames.at(-1)?.burstAge).toBeCloseTo(NO_BURST_AGE_SECONDS + 10, 6);
     });
@@ -340,6 +345,7 @@ describe('advanceVoiceActivity', () => {
       const frames = play(hiss, 10);
 
       expect(Math.max(...frames.map((frame) => frame.agitation))).toBe(0);
+      expect(Math.max(...frames.map((frame) => frame.talk))).toBe(0);
       expect(frames.at(-1)?.burstCount).toBe(0);
     });
   });
@@ -378,6 +384,68 @@ describe('advanceVoiceActivity', () => {
       expect(Math.min(...afterFirstWord.map((frame) => frame.agitation))).toBeGreaterThanOrEqual(
         1 - 0.1 / AGITATION_RELEASE_SECONDS,
       );
+    });
+  });
+
+  describe('the talk envelope', () => {
+    it('comes up over TALK_RISE_SECONDS once speech starts, and goes no higher than 1', () => {
+      const frames = play((time) => (time < 1 ? 0 : 0.5), 3, evenClock(120));
+
+      expect(frameAt(frames, 1).talk).toBe(0);
+      expect(frameAt(frames, 1 + TALK_RISE_SECONDS / 2).talk).toBeCloseTo(0.5, 9);
+      expect(frameAt(frames, 1 + TALK_RISE_SECONDS).talk).toBeCloseTo(1, 9);
+      expect(Math.max(...frames.map((frame) => frame.talk))).toBe(1);
+    });
+
+    it('holds through TALK_HOLD_SECONDS of silence, then lets go over TALK_RELEASE_SECONDS', () => {
+      const frames = play((time) => (time < 1.5 ? 0.5 : 0), 5, evenClock(120));
+
+      expect(frameAt(frames, 1.5).talk).toBe(1);
+      expect(frameAt(frames, 1.5 + TALK_HOLD_SECONDS).talk).toBe(1);
+      expect(frameAt(frames, 1.5 + TALK_HOLD_SECONDS + TALK_RELEASE_SECONDS / 2).talk).toBeCloseTo(0.5, 9);
+      expect(frameAt(frames, 1.5 + TALK_HOLD_SECONDS + TALK_RELEASE_SECONDS).talk).toBeCloseTo(0, 9);
+      expect(Math.min(...frames.map((frame) => frame.talk))).toBe(0);
+    });
+
+    it('holds the floor through every gap between words, where agitation drops to nothing', () => {
+      // Words of 600 ms with 400 ms between them: each gap calms the agitation all the way.
+      const frames = play((time) => (time % 1 < 0.6 ? 0.5 : 0), 6);
+      const sinceFullyUp = frames.filter((frame) => frame.time >= 2);
+
+      expect(Math.min(...sinceFullyUp.map((frame) => frame.agitation))).toBe(0);
+      expect(Math.min(...sinceFullyUp.map((frame) => frame.talk))).toBe(1);
+    });
+
+    it('is the same for a whisper as for a shout', () => {
+      const whisper = play(() => SPEECH_LEVEL, 2).map((frame) => frame.talk);
+      const shout = play(() => 0.95, 2).map((frame) => frame.talk);
+
+      expect(shout).toEqual(whisper);
+    });
+
+    it('is the same at any frame rate, a frame that straddles the end of the hold included', () => {
+      // Readings of 100 ms land on a frame at 30, 60 and 120 Hz, and the silences are long enough
+      // to reach past the hold.
+      const level = readings([0, 0.5, 0.5, 0.5, 0.5, 0, 0, 0, 0, 0, 0, 0, 0.6, 0.6, 0, 0, 0, 0, 0, 0], 0.1);
+      const at30 = play(level, 4, evenClock(30));
+      const at60 = play(level, 4, evenClock(60));
+      const at120 = play(level, 4, evenClock(120));
+
+      at30.forEach((frame, index) => {
+        for (const other of [at60[2 * index + 1], at120[4 * index + 3]]) {
+          expect(other?.time).toBeCloseTo(frame.time, 9);
+          expect(other?.talk).toBeCloseTo(frame.talk, 9);
+        }
+      });
+      for (const clock of [evenClock(144, 0.5), unevenClock()]) {
+        const uneven = play(readings(SPOKEN_LEVELS, READING_SECONDS), 8, clock);
+        const reference = play(readings(SPOKEN_LEVELS, READING_SECONDS), 8, evenClock(120));
+        // Weighed by time rather than by frame, as meanAgitation is, so an uneven clock is weighed fairly.
+        const meanTalk = (frames: ActivityFrame[]) =>
+          frames.reduce((sum, frame, at) => sum + frame.talk * (frame.time - (frames[at - 1]?.time ?? 0)), 0) /
+          (frames.at(-1)?.time ?? 1);
+        expect(Math.abs(meanTalk(uneven) - meanTalk(reference))).toBeLessThan(0.02);
+      }
     });
   });
 

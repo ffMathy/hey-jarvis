@@ -113,7 +113,7 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
   must read as plainly as the painted ones did at 400 px while he idles, talks and listens: about
   280 specks a rail and 34 or more a rung, mostly bright. Fewer read as a faint dashed scatter.
 - **The arcs move while he talks** ("The arcs around his core need to also move when talking"):
-  they rock 25-45° either way about the core with his eased agitation, calmly (never over 1.5° a
+  they rock 25-45° either way about the core with his talk envelope, calmly (never over 1.5° a
   frame), and in silence turn with the whorl.
 - **Thinking scatters the glow lines** ("While thinking, the direction of the glow lines should
   randomize"): every speck but the truss's lies some way within ±90° of its own (`thoughtTurn`),
