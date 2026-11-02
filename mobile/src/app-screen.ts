@@ -49,12 +49,21 @@ export function chooseScreen(state: ScreenState): Screen {
 }
 
 /**
- * How long a glance is shown after the server made it: three hours, as long as the server itself
- * keeps one current (`GLANCE_MAX_AGE_MS` in `mcp/mastra/verticals/visualize/glance.ts`). A glance is
- * about the moment it was made in — the parcel due this afternoon — and one kept on the phone from a
- * server that has since gone quiet should not go on offering to unlock the door for it tomorrow.
+ * How long a glance is shown after the server made it: a day, for as long as the server hosts its
+ * page and still hands it out as the current one (`ARTIFACT_LIFETIME_MILLISECONDS`, which
+ * `readCurrentGlance` in `mcp/mastra/verticals/visualize/glance-store.ts` holds it to). One kept on
+ * the phone from a server that has since gone quiet stops being offered with its page.
+ *
+ * **Not the server's three hours.** `GLANCE_MAX_AGE_MS` is when the server *starts* building the next
+ * one, not when the last stops being current: it checks every quarter of an hour, the build takes
+ * minutes, and the new glance is stamped with when its build began — so the current glance is
+ * routinely a little over three hours old. And between 23:00 and 06:00 it builds none at all, so the
+ * evening's last glance is the current one all night. Cut off at three hours, the phone opened on the
+ * conversation instead for part of every rebuild and for the whole of every morning. Whether a glance
+ * is still worth showing is the server's call; its actions are only ever run on the server's current
+ * one (`live-socket.ts`), so an old page offers nothing it would do.
  */
-export const GLANCE_SHOWN_FOR_MS = 3 * 60 * 60 * 1000;
+export const GLANCE_SHOWN_FOR_MS = 24 * 60 * 60 * 1000;
 
 /**
  * The glance to show: the line's latest, or else the one kept from before (`glance-storage.ts`), and
