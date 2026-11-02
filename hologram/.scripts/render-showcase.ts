@@ -43,7 +43,6 @@ import {
   moodOf,
   SAMPLE_MODE_NAMES,
   type SimulatedMood,
-  THOUGHT_FADE_SECONDS,
 } from '../src/index';
 import { bytesOf, openRenderPage } from './render-page';
 import { createPerformance, findLoudestMoment, type SimulatedFrame, stillMoment } from './simulated-performance';
@@ -248,7 +247,7 @@ async function renderClip(
   clip: { opensOver: number; closesOver: number; paint: ClipPainter },
 ): Promise<number> {
   const script = writeScript(clip.opensOver, clip.closesOver);
-  const perform = createPerformance(FRAME_SECONDS, THOUGHT_FADE_SECONDS);
+  const perform = createPerformance(FRAME_SECONDS);
 
   let frames = 0;
   for (let seconds = 0; seconds <= script.endsAt; seconds += FRAME_SECONDS) {
@@ -431,7 +430,7 @@ async function main() {
     // Speaking is when he has most to look at — the swarm swells, the rim throws chips — and the
     // loudest instant of it is when that is furthest along.
     const loudest = findLoudestMoment(COVER_LISTEN_SECONDS, FRAME_SECONDS);
-    const speaking = createPerformance(FRAME_SECONDS, THOUGHT_FADE_SECONDS);
+    const speaking = createPerformance(FRAME_SECONDS);
     let mid = speaking(stillMoment(0));
     for (let seconds = FRAME_SECONDS; seconds <= loudest; seconds += FRAME_SECONDS) {
       mid = speaking(stillMoment(seconds));

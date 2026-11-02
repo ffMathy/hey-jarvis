@@ -44,7 +44,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PARTICLE_COUNT, type SimulatedMood, THOUGHT_FADE_SECONDS } from '../src/index';
+import { PARTICLE_COUNT, type SimulatedMood } from '../src/index';
 import { bytesOf, openRenderPage } from './render-page';
 import type { PlayPicture } from './render-play-assets-page';
 import { createPerformance, findLoudestMoment, type SimulatedFrame, stillMoment } from './simulated-performance';
@@ -250,7 +250,7 @@ const ASSETS: Asset[] = [
  * one frame to the next — there is no way to jump to a moment, only to walk to it.
  */
 function performTo(mood: SimulatedMood | undefined, seconds: number): SimulatedFrame {
-  const perform = createPerformance(FRAME_SECONDS, THOUGHT_FADE_SECONDS);
+  const perform = createPerformance(FRAME_SECONDS);
   let frame = perform(stillMoment(0, mood));
   for (let at = FRAME_SECONDS; at <= seconds; at += FRAME_SECONDS) {
     frame = perform(stillMoment(at, mood));
