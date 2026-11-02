@@ -155,6 +155,29 @@ describe('the picture on the GPU', () => {
     }
   });
 
+  it('draws the white-hot ring round his core where the frame says it has been drawn in to', () => {
+    const calls: Call[] = [];
+    const gl = recordingGl(calls);
+    const picture = createGpuPicture(gl, scene);
+    const silent = analyseFrame(frameAt({}), 1);
+    const speaking = analyseFrame(frameAt({ voiceWave: new Array(16).fill(1), voiceWavePhase: 0.2 }), 1);
+    expect(speaking.coreRing).toBeLessThan(silent.coreRing);
+    for (const state of [silent, speaking]) {
+      calls.length = 0;
+      drawGpuPicture(gl, picture, { state, pixels: 512, satellites: [] });
+      // Its two nested strokes, the orange body and the orange-white line, by their half-widths.
+      const ringStrokes = calls.filter(
+        ([name, location, , , , halfWidth]) =>
+          name === 'uniform4f' &&
+          location instanceof BrowserLocation &&
+          location.name === 'arc' &&
+          (halfWidth === 0.024 / 2 || halfWidth === 0.009 / 2),
+      );
+      expect(ringStrokes).toHaveLength(2);
+      for (const [, , , , radius] of ringStrokes) expect(radius).toBe(state.coreRing);
+    }
+  });
+
   it('writes a glyph into its slot once, and again only when the slot is given another', () => {
     const made = madePicture();
     const [diamond, square] = SAMPLE_AGENTS;

@@ -15,10 +15,10 @@
  *
  * Easing alone is not enough for the film's Jarvis, though. He does not brighten
  * or swell as he gets louder; he shows speech as activity — the sphere grows
- * agitated while he talks, and chips break off its rim as a syllable starts and
- * in the gap after one. Onsets and gaps are changes over time, which no single
- * frame can see, so a small tracker remembers the recent past from frame to
- * frame: see {@link advanceVoiceActivity}.
+ * agitated while he talks, holds the floor through a sentence, and chips break
+ * off its rim as a syllable starts and in the gap after one. Onsets and gaps are
+ * changes over time, which no single frame can see, so a small tracker remembers
+ * the recent past from frame to frame: see {@link advanceVoiceActivity}.
  *
  * **Keeping that state in the view.** {@link advanceVoiceActivity} writes into
  * the state object it is given, so the view has to hand it one that lives on from
@@ -255,6 +255,26 @@ export const AGITATION_RELEASE_SECONDS = 0.15;
 export const FLURRY_ENDS_AFTER_SECONDS = 0.4;
 
 /**
+ * How long the talk envelope takes to come all the way up once he speaks.
+ *
+ * Agitation is the syllable's envelope, and drops to nothing in every gap between words; this is the
+ * sentence's. What should not flicker a dozen times a sentence follows it — the gyroscope's arcs,
+ * the fray, the embers — so he holds the floor while he talks instead of dropping back to idle at
+ * every gap. On agitation the arcs jumped 4.1° in a frame at each gap, against the user's calm 1.5.
+ *
+ * A second, and no less: the arcs' sway is the envelope times a swing of up to 36°, so the faster
+ * the envelope moves, the faster they do. At 0.6 s it breaks the 1.5° a frame on its own.
+ */
+export const TALK_RISE_SECONDS = 1;
+/**
+ * How long he holds the floor through a silence before the envelope starts to let go: just over
+ * {@link FLURRY_ENDS_AFTER_SECONDS}, so no gap between words lets go of it.
+ */
+export const TALK_HOLD_SECONDS = 0.45;
+/** How long the envelope takes to go all the way down once the hold is over: a sentence ends slowing down, not switching off. */
+export const TALK_RELEASE_SECONDS = 2;
+
+/**
  * How far back an onset or a gap may reach. A syllable lasts about a quarter of a
  * second and its rise develops over the first few readings of it; a change spread
  * over longer than this window is a swell or a fade, and throws no chips.
@@ -354,6 +374,14 @@ const TIME_SLACK_SECONDS = 1e-6;
 export interface VoiceActivityState {
   /** 0–1: how agitated the sphere is. Ramps up while speech is present and back down once it is gone. */
   agitation: number;
+  /**
+   * 0–1: whether he holds the floor — the sentence's envelope, where agitation is the syllable's.
+   * Up over {@link TALK_RISE_SECONDS} while he speaks, held through {@link TALK_HOLD_SECONDS} of
+   * silence, then down over {@link TALK_RELEASE_SECONDS}.
+   */
+  talk: number;
+  /** How long the voice has been gone for the talk envelope, in seconds; it stops counting once the envelope is surely down. */
+  talkQuietSeconds: number;
   /** Seconds since the latest chip burst began; {@link NO_BURST_AGE_SECONDS} or more before the first. */
   burstAge: number;
   /** 0–1: how strong the latest burst was. Kept as the burst ages; the drawing fades chips by age. */
@@ -416,6 +444,8 @@ export function createVoiceActivityState(quietestSpeech: number = QUIETEST_SPEEC
   return {
     quietestSpeech,
     agitation: 0,
+    talk: 0,
+    talkQuietSeconds: 0,
     burstAge: NO_BURST_AGE_SECONDS,
     burstStrength: 0,
     burstCount: 0,
@@ -466,6 +496,25 @@ function rampAgitation(
   return heldLevel >= speakingThreshold(loudest, quietest)
     ? Math.min(1, agitation + deltaSeconds / AGITATION_RISE_SECONDS)
     : Math.max(0, agitation - deltaSeconds / AGITATION_RELEASE_SECONDS);
+}
+
+/**
+ * The talk envelope after `deltaSeconds` in which `heldLevel` held: up a linear ramp if that was
+ * speech, and otherwise down one — but only for the part of the step past the hold, so a frame that
+ * straddles the end of the hold lets go of exactly as much as two frames either side of it would,
+ * and the envelope is the same at any frame rate.
+ */
+function rampTalk(state: VoiceActivityState, heldLevel: number, deltaSeconds: number): void {
+  'worklet';
+  if (heldLevel >= speakingThreshold(state.loudest, state.quietestSpeech)) {
+    state.talkQuietSeconds = 0;
+    state.talk = Math.min(1, state.talk + deltaSeconds / TALK_RISE_SECONDS);
+    return;
+  }
+  const quietBefore = state.talkQuietSeconds;
+  state.talkQuietSeconds = Math.min(TALK_HOLD_SECONDS + TALK_RELEASE_SECONDS, quietBefore + deltaSeconds);
+  const pastHold = Math.max(0, state.talkQuietSeconds - Math.max(quietBefore, TALK_HOLD_SECONDS));
+  state.talk = Math.max(0, state.talk - pastHold / TALK_RELEASE_SECONDS);
 }
 
 /**
@@ -566,6 +615,10 @@ function endFlurryAfterSilence(state: VoiceActivityState, level: number, deltaSe
  *   is speech and falls to 0 over {@link AGITATION_RELEASE_SECONDS} while it is
  *   not. It is the same for a whisper as for a shout: the film shows speech as a
  *   change of state, not as a loudness meter.
+ * - **The talk envelope** climbs to 1 over {@link TALK_RISE_SECONDS} on the same
+ *   gate, holds through {@link TALK_HOLD_SECONDS} of silence — every gap between
+ *   words — and falls over {@link TALK_RELEASE_SECONDS} after it: the sentence,
+ *   where agitation is the syllable.
  * - **A burst** begins on an onset — the level has risen by {@link ONSET_RISE}
  *   from the quietest point in the change window, *to* a level that is speech —
  *   or on a gap — it has fallen by more than {@link GAP_DROP_DECIBELS} from the
@@ -617,6 +670,7 @@ export function advanceVoiceActivity(
   // tracker then answers differently at different frame rates — which is what the frame-rate
   // checks exist to catch, and did.
   state.agitation = rampAgitation(state.agitation, state.heldLevel, state.loudest, state.quietestSpeech, deltaSeconds);
+  rampTalk(state, state.heldLevel, deltaSeconds);
   slideChangeWindow(state, state.heldLevel, level, deltaSeconds);
   state.heldLevel = level;
 

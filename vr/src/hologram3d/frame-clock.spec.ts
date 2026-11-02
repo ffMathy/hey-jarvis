@@ -61,6 +61,7 @@ describe('the frame clock', () => {
     });
     expect(frame.speaking).toBe(true);
     expect(frame.agitation).toBeCloseTo(activity.agitation, 12);
+    expect(frame.talk).toBeCloseTo(activity.talk, 12);
     expect(frame.burstAge).toBeCloseTo(activity.burstAge, 12);
     expect(frame.burstStrength).toBeCloseTo(activity.burstStrength, 12);
     expect(frame.burstCount).toBe(activity.burstCount);

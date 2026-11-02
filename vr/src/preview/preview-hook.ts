@@ -70,6 +70,8 @@ export interface PortCheck {
   /** In the drawing's unit, among rows both drew. */
   largestCentreError: number;
   largestAxisError: number;
+  /** How strong the strongest ring of his voice was in the frame compared, as a share of the fullest. */
+  voiceWaveShare: number;
 }
 
 /** A moment and a view to compare the GPU port at. */
@@ -117,6 +119,7 @@ export interface PictureFrame {
   bands: number[];
   speaking: boolean;
   agitation: number;
+  talk?: number;
   burstAge: number;
   burstStrength: number;
   burstCount: number;
@@ -125,6 +128,8 @@ export interface PictureFrame {
   thinking: number;
   hearing?: number;
   hearingLevel?: number;
+  voiceWave?: number[];
+  voiceWavePhase?: number;
 }
 
 /** A satellite round him as `hologram`'s `SatelliteOrbit` has it. */

@@ -46,7 +46,8 @@
 //                     CORE_RING_RADIUS; Age of Ultron's small ringed eye inside it, a hooked ring at
 //                     0.1R round a ring at 0.06R, and a faint bar across it (staticPathsOf); and the
 //                     ring itself, nested strokes up to an orange-white line, its brighter stretches
-//                     rolling round it.
+//                     rolling round it, drawn in toward the eye as each syllable leaves him
+//                     (coreRing, CORE_RING_DRAW).
 //   drawCage          the wireframe (buildCage): hairlines between seeded nodes round the shell of
 //                     specks, longer lines further out and a few trailing away below him. It is in
 //                     three dimensions and turns with the body, and each edge twinkles on its own slow
@@ -77,6 +78,9 @@
 //                     fill through the ball as the old body's was; and the film's shell from about
 //                     half his radius out (buildBody). Each tier has a soft halo of its own, and the
 //                     stream, specks below the core turning on a clock of their own (buildStream).
+//                     While he talks, each syllable leaves the core as a ring of these specks, pushed
+//                     out and crowded into a crisp line that travels through him and melts into his
+//                     shell (voiceWavePush, VOICE_WAVE_SPEED): all of them but the truss's.
 //                     The scene's body and stream tables, and the per-fragment helpers below
 //                     (readFragment, placeFragment, swirlFragment, latticeFragment and the rest),
 //                     are what it is drawn from and held to.
@@ -113,11 +117,22 @@
 //                 lit and the brightness hold while the churn rises;
 //               - each speck re-lights further along the way it lies, less so the nearer the limb
 //                 it is, so the silhouette holds;
+//               - hotShare: some of the bright specks step down, and the hot cores all but go;
+//               - the rest of the swell and of the glow.
+//   talk        whether he holds the floor: the sentence's envelope where agitation is the
+//               syllable's, up over a second, held through every gap between words and let go over
+//               two (`TALK_RISE_SECONDS` and the rest in `voice-levels.ts`), eased at both ends and
+//               held back with agitation. Left out of a frame it is the agitation. What should not
+//               flicker a dozen times a sentence follows it:
 //               - the gyroscope's arcs rock to and fro about the core, the inner ones against the
 //                 outer like a gimbal's rings (gyroSway, turnOfGroup), instead of churning;
-//               - hotShare: some of the bright specks step down, and the hot cores all but go;
-//               - the fray, and more of the embers;
-//               - the rest of the swell and of the glow.
+//               - the fray, and more of the embers (FRAY_WHILE_TALKING, EMBERS_WHILE_TALKING).
+//   voiceWave, voiceWavePhase
+//               his recent syllables, newest first, as the clock keeps them (`voice-wave.ts`): how
+//               sharply each slot of his voice started a syllable. Held back with agitation, and
+//               given way to the lattice and the scan plane, each becomes a ring of specks
+//               VOICE_WAVE_STEP further out than the next (voiceWaveKnots, voiceWavePush), and the
+//               one leaving through the white-hot ring draws it in (coreRing). Left out, there are none.
 //   burstAge, burstStrength, burstCount
 //               the chips, drawn while burstAge is under CHIP_GONE_SECONDS and fully lit for
 //               CHIP_HOLD_SECONDS. The strength says how far they go and how many there are, and the
@@ -176,10 +191,18 @@
 //   of the body (pushTrussSpeck), thirteen boxes where the painted truss had twenty-one, dense and
 //   bright enough that each box reads as plainly as the painted ones did while its specks twinkle.
 // - The arcs move while he talks: "The arcs around his core need to also move when talking." They
-//   rock about the core with his eased agitation, the inner arcs against the outer
-//   (GYRO_SWAY_DEGREES), calmly.
+//   rock about the core with his talk envelope, the inner arcs against the outer
+//   (GYRO_SWAY_DEGREES), calmly: never more than 1.5° a frame. On his agitation, which drops to
+//   nothing in every gap between words, they jumped 4.1° in a frame at each one.
 // - Thinking scatters the glow lines: "While thinking, the direction of the glow lines should
 //   randomize." Every speck but the truss's lies some way dealt afresh at each blink (thoughtTurn).
+// - It is plain when he is speaking: "Update the talking animation to more cool and expressive -
+//   right now it's not very clear that Jarvis is speaking." Each syllable leaves his core as a ring
+//   of his own specks that sweeps out through him and melts into his shell (VOICE_WAVE_SPEED), and
+//   the white-hot ring draws in toward the eye as it goes (CORE_RING_DRAW). Both are movement: no
+//   speck is brighter, his light over a sentence is within 3% of what it was, and in silence he is
+//   drawn to the byte as before. The arcs, the fray and the embers hold for the whole sentence (the
+//   talk envelope) rather than dropping back to idle at every gap between words.
 // - He arrives as a vortex out of his core and in no other way. The film's point of light, sparks and
 //   spoked dial are gone at the user's asking, and nothing flashes as he forms: no one frame may turn
 //   a tenth of his light on at once.
@@ -213,6 +236,8 @@
 //   strokes, gradients, the halos and the prebuilt texture, with no blur. It is drawn over black.
 // - A gradient that is transparent over most of the disc is painted as a band, not a disc (see
 //   AURA_INNER), which keeps the widest paints affordable.
+import { VOICE_WAVE_SLEW, VOICE_WAVE_SLOT_SECONDS, VOICE_WAVE_SLOTS } from './frame-timing';
+
 /** What one frame of the hologram is drawn from. */
 export interface HologramFrame {
   /** Seconds since the hologram mounted, accumulated per frame. All motion derives from this. */
@@ -223,8 +248,14 @@ export interface HologramFrame {
   bands: number[];
   /** Whether he is speaking, as opposed to the conversation merely being open. */
   speaking: boolean;
-  /** 0–1 speech-activity envelope: rises over about 0.15 s while speech is present, releases over about 0.4 s. */
+  /** 0–1 speech-activity envelope: rises over about 0.15 s while speech is present, releases over about 0.15 s. */
   agitation: number;
+  /**
+   * 0–1: whether he holds the floor — the sentence's envelope, where {@link agitation} is the
+   * syllable's (`TALK_RISE_SECONDS` and the rest in `voice-levels.ts`). Left out, it is taken to be
+   * the agitation.
+   */
+  talk?: number;
   /** Seconds since the latest chip burst began; 10 or more when there has been none. */
   burstAge: number;
   /** 0–1 strength of the latest burst. */
@@ -258,6 +289,15 @@ export interface HologramFrame {
   hearing?: number;
   /** 0–1: how loud they are, eased. Only read while {@link hearing} is above nothing. */
   hearingLevel?: number;
+  /**
+   * His recent syllables, 0–1 each, newest first, one slot of VOICE_WAVE_SLOT_SECONDS each: how
+   * sharply a syllable started in it (`voice-wave.ts`). Each is a ring his voice sends out of his
+   * core (VOICE_WAVE_SPEED). The clock's own array, good only until its next step. Left out, there
+   * are none.
+   */
+  voiceWave?: number[];
+  /** 0–1: how far the slot being filled has got, so the rings glide between slots rather than stepping. */
+  voiceWavePhase?: number;
 }
 
 /**
@@ -388,6 +428,75 @@ export const PICTURE_SHELL_EDGE = 0.88;
  * it. The thinking pulse blooms out of it.
  */
 export const CORE_RING_RADIUS = 0.22;
+
+/**
+ * **Each syllable leaves his core as a ring of his own specks**, at the user's asking: "Update the
+ * talking animation to more cool and expressive - right now it's not very clear that Jarvis is
+ * speaking." It is the textbook picture of sound leaving a source — a crisp line where the specks
+ * crowd together, pushed out from the core, with a thinner band behind it — travelling out through
+ * his body and melting into his shell before his edge. Nothing is brighter and nothing leaves him:
+ * only the specks' places move, which is the "positions outwards" the user asked for when they asked
+ * for the glow to stay a tenth (GLOW_WITH_VOICE). Over a sentence his light is within 3% of what it
+ * was, its hue and its share of near-white unchanged, and in silence he is drawn to the byte as before.
+ *
+ * A ring at a given distance from the core is where his voice was that distance over this speed ago:
+ * the clock keeps his recent syllables (`voice-wave.ts`), and each slot becomes a ring
+ * VOICE_WAVE_STEP further out than the one after it. At 1.25R a second a ring crosses him in just
+ * over half a second, and at the two or three syllables a second he speaks there are one to three
+ * in flight at once, spaced by what he is saying: "Hel-lo sir" sends three close together, and the
+ * pause before "how can I help?" a gap.
+ */
+export const VOICE_WAVE_SPEED = 1.25;
+/** How far apart two slots' rings are, in R: the speed times a slot. */
+export const VOICE_WAVE_STEP = VOICE_WAVE_SPEED * VOICE_WAVE_SLOT_SECONDS;
+/**
+ * Where, in R from the core, a ring is born: just outside the eye's 0.1R ring, so the eye stays
+ * still, and inside the white-hot ring, so each ring leaves through it.
+ */
+export const VOICE_WAVE_FROM = 0.16;
+/** Where a ring has melted into his shell, in R from the core: well inside his edge, so the silhouette holds. */
+export const VOICE_WAVE_GONE = 0.86;
+/**
+ * How far in from each end a ring comes up to its full push and dies away, in R: wide enough that
+ * the taper alone never pushes a speck past one further out (VOICE_WAVE_REACH times its steepest
+ * slope, `1.5 / this`, stays under 1), so no speck is ever pushed out past VOICE_WAVE_GONE.
+ */
+export const VOICE_WAVE_TAPER = 0.3;
+/**
+ * How far a full syllable's ring pushes his specks out from the core, at the most, in R.
+ *
+ * Far enough that a ring's front crowds his specks into a crisp line with a thinner band behind it,
+ * which is what makes it read as a ring rather than as a ripple in his texture. Through his middle
+ * the front is as steep as VOICE_WAVE_SLEW lets the slots rise, `slew × this / VOICE_WAVE_STEP` = 0.8,
+ * so specks there crowd to five times as close without passing each other; only where the taper
+ * that melts a ring into his shell adds its own slope, about 0.6–0.7R from the core, does a strong
+ * front tip over and a few overtake the ones ahead, briefly (measured on the real clock: crowding up
+ * to 1.13 there). At 0.06, as the design first had it, the front crowded them by at most 0.3, and
+ * the rings showed in a plot of his light against distance and time and to nobody's eye. It is still
+ * only places that move, so the light is the light he had.
+ */
+export const VOICE_WAVE_REACH = 0.16;
+/**
+ * How much of a speck's outward lean a full ring takes away, so the strokes in a crest lie along
+ * the ring and it reads as a ring of light lines: all of it, where the specks are crowded by
+ * VOICE_WAVE_FULL_CROWDING or more. Never its length, so no light is added. The gyroscope's arcs and
+ * the stream keep their way.
+ */
+export const VOICE_WAVE_ALONG = 1;
+/** How crowded a ring has to be, as the share its specks are pushed closer together, for its strokes to lie as far along it as they go. */
+export const VOICE_WAVE_FULL_CROWDING = 0.2;
+/**
+ * How much of its radius the white-hot ring round his core draws in by as a syllable leaves him:
+ * from CORE_RING_RADIUS toward the eye, and back as the syllable's slot lets go, so his palest point
+ * beats with every syllable the moment it starts, before its ring of specks has got far enough out
+ * to be seen. In, never out — the user asked for a small core — and a ring that draws in is nothing
+ * like the thinking pulse, which blooms out of it. It is always drawn, so it carries speech on a
+ * watch that can afford only a few of his specks: at the density loop's floor, a fortieth of them,
+ * the rings have too few specks to show, and at 0.16 the beat was three pixels on a 340-pixel watch.
+ * At a quarter it reaches 0.17R on real speech, still well clear of the eye's 0.1R, and moves at most
+ * 0.007R a frame.
+ */
+export const CORE_RING_DRAW = 0.25;
 
 // Strides of the flat scene tables (the builders describe the fields).
 export const BODY_STRIDE = 9;
@@ -962,10 +1071,12 @@ export const GYRO_ARCS: readonly GyroArc[] = [
  * The arcs move while he talks, at the user's asking ("The arcs around his core need to also move
  * when talking"): they rock to and fro about the core, on top of the whorl's turn, by two slow
  * swings — so many degrees either way at a rate in radians a second, the second a phase on — that
- * never quite repeat, both times his agitation (`gyroSway` in {@link analyseFrame}). Agitation is
- * eased, so the rocking comes in and dies away with his voice rather than jumping, and it is
- * worked out from the clock alone, so nothing is remembered between frames. Calm: at its fastest
- * an arc turns about 70° a second, a degree and a bit a frame. Silent, the arcs turn with the whorl.
+ * never quite repeat, both times his talk envelope (`gyroSway` in {@link analyseFrame}). The
+ * envelope is the sentence's, not the syllable's: it comes up over a second, holds through the gaps
+ * between words and lets go over two, so the rocking comes in and dies away with what he says
+ * rather than jumping. On his agitation, which drops to nothing in every gap, the arcs jumped 4.1° in
+ * a frame at each one. Calm: at its fastest an arc turns about 70° a second, a degree and a bit a
+ * frame. Silent, the arcs turn with the whorl.
  */
 export const GYRO_SWAY_DEGREES = 24;
 export const GYRO_SWAY_RADIANS_PER_SECOND = 1.7;
@@ -1562,6 +1673,20 @@ function buildCage(random: Random) {
 /** How many embers drift round him, and the share of them that show while he is quiet. */
 const EMBER_COUNT = 56;
 const EMBERS_IN_SILENCE = 0.45;
+/**
+ * How much of the rest of the embers come out while he holds the floor, before the low notes of his
+ * voice bring out more (`emberShare` in {@link analyseFrame}). It followed his agitation at 0.55,
+ * and agitation drops to nothing in every gap between words; the talk envelope holds through them, so
+ * the share is lower by what it makes up, and over a spoken sentence about as many show as did.
+ */
+const EMBERS_WHILE_TALKING = 0.27;
+/**
+ * How strongly the fray is driven while he holds the floor, before the high notes of his voice drive
+ * it further (`frayDrive` in {@link analyseFrame}): lower than the 0.55 it was on his agitation for
+ * the reason {@link EMBERS_WHILE_TALKING} is, so over a sentence the fray shows about as much as it
+ * did, steadily rather than in flickers.
+ */
+const FRAY_WHILE_TALKING = 0.28;
 /** How far out an ember may get before it has gone, in R: well inside his square's edge. */
 const EMBER_FARTHEST = 1.45;
 /** How far up an ember rises for every R it drifts outward. */
@@ -1814,6 +1939,80 @@ function bandAverage(bands: number[], firstBand: number, endBand: number) {
 }
 
 /**
+ * The quadratic B-spline the rings are drawn through, `offset` slots from a slot: a smooth bump two
+ * and a half slots wide that the slots' rings add up under to a wave with no corners, so a speck
+ * glides as a ring passes rather than being kicked.
+ */
+function voiceWaveKernel(offset: number) {
+  'worklet';
+  const apart = Math.abs(offset);
+  if (apart < 0.5) return 0.75 - apart * apart;
+  if (apart < 1.5) return 0.5 * (1.5 - apart) * (1.5 - apart);
+  return 0;
+}
+
+/** The slope of {@link voiceWaveKernel} at `offset`. */
+function voiceWaveKernelSlope(offset: number) {
+  'worklet';
+  const apart = Math.abs(offset);
+  if (apart < 0.5) return -2 * offset;
+  if (apart < 1.5) return -Math.sign(offset) * (1.5 - apart);
+  return 0;
+}
+
+/**
+ * How far the rings push a speck out at `slots` slots out from where they are born: each knot is a
+ * slot's ring, in R (see {@link voiceWaveKnots}), and between them the wave is drawn through
+ * {@link voiceWaveKernel}.
+ */
+export function voiceWaveSum(knots: number[], slots: number) {
+  'worklet';
+  let sum = 0;
+  for (let knot = 0; knot < knots.length; knot++) {
+    sum += (knots[knot] ?? 0) * voiceWaveKernel(slots - knot);
+  }
+  return sum;
+}
+
+/** The slope of {@link voiceWaveSum} at `slots`, per slot. */
+export function voiceWaveSumSlope(knots: number[], slots: number) {
+  'worklet';
+  let sum = 0;
+  for (let knot = 0; knot < knots.length; knot++) {
+    sum += (knots[knot] ?? 0) * voiceWaveKernelSlope(slots - knot);
+  }
+  return sum;
+}
+
+/** Hermite smoothstep's slope at `value`, which {@link smooth01} eases by: 0 outside 0..1. */
+function smooth01Slope(value: number) {
+  'worklet';
+  return value > 0 && value < 1 ? 6 * value * (1 - value) : 0;
+}
+
+/**
+ * The rings this frame, in R: each of his recent syllables (`slots`, newest first, 0–1) times
+ * VOICE_WAVE_REACH and `gate`, then held to rising or falling no more than VOICE_WAVE_SLEW of the
+ * reach from one to the next, from either side. The clock's slots already rise no faster than that,
+ * but they fall as fast as the hold lets them — up to a third of a slot — so the steepest falls of
+ * real speech are trimmed here, and a frame built any other way is held to the same limit: a ring
+ * has the same shape, two or three slots deep, however the frame was made.
+ */
+export function voiceWaveKnots(slots: number[] | undefined, gate: number) {
+  'worklet';
+  const steepest = VOICE_WAVE_SLEW * VOICE_WAVE_REACH;
+  const knots: number[] = [];
+  for (let slot = 0; slot < VOICE_WAVE_SLOTS; slot++) {
+    const knot = VOICE_WAVE_REACH * gate * clamp01(slots === undefined ? 0 : (slots[slot] ?? 0));
+    knots.push(slot > 0 ? Math.min(knot, (knots[slot - 1] ?? 0) + steepest) : knot);
+  }
+  for (let slot = VOICE_WAVE_SLOTS - 2; slot >= 0; slot--) {
+    knots[slot] = Math.min(knots[slot] ?? 0, (knots[slot + 1] ?? 0) + steepest);
+  }
+  return knots;
+}
+
+/**
  * How far on the vortex is, 0–1, from a frame's {@link HologramFrame.appearance} and
  * {@link HologramFrame.presence}: whichever of the two is further from done.
  *
@@ -1856,6 +2055,9 @@ export function analyseFrame(frame: HologramFrame, size: number) {
   // round a sphere still gathered at its core.
   const formed = smooth01((swirl - 0.6) / 0.4);
   const agitation = clamp01(frame.agitation) * formed;
+  // Whether he holds the floor: the sentence's envelope, eased at both ends so what rides it neither
+  // starts nor stops with a jolt. What should not flicker a dozen times a sentence follows it.
+  const talk = smooth01(clamp01(frame.talk ?? frame.agitation)) * formed;
   const bands = frame.bands;
   const lowDrive = clamp01((bandAverage(bands, 0, 6) - 0.35) / 0.45);
   const highDrive = clamp01((bandAverage(bands, 14, 24) - 0.2) / 0.45);
@@ -1885,6 +2087,14 @@ export function analyseFrame(frame: HologramFrame, size: number) {
   // edge alone, which travels in the last 0.4, they came on so steeply that a frame of them turned
   // most of a tenth of the light on at once.
   const shellOut = smooth01((swirl - 0.35) / 0.6);
+  // His recent syllables as rings out of his core: held back until the vortex has all but formed him,
+  // as the rest of speech is, and given way to the lattice while someone talks to him and to the scan
+  // plane while he thinks, so a ring is never seen beside the thought's own.
+  const voiceWave = voiceWaveKnots(frame.voiceWave, formed * (1 - hearing) * (1 - thinking));
+  let voiceWaveLargest = 0;
+  for (let knot = 0; knot < voiceWave.length; knot++) {
+    voiceWaveLargest = Math.max(voiceWaveLargest, voiceWave[knot] ?? 0);
+  }
   return {
     time,
     radius,
@@ -1915,9 +2125,9 @@ export function analyseFrame(frame: HologramFrame, size: number) {
     // The core's glowing disc dims while he listens as well as while he thinks, so the lattice is
     // what is seen.
     coreGlow: (1 - 0.4 * thinking) * (1 - 0.3 * hearing),
-    // Which of the embers show: some of them always, and more while he talks, all of them on the
-    // low notes of his voice — as the fray answers the high ones.
-    emberShare: EMBERS_IN_SILENCE + (1 - EMBERS_IN_SILENCE) * agitation * (0.55 + 0.45 * lowDrive),
+    // Which of the embers show: some of them always, and more while he holds the floor, all of them
+    // on the low notes of his voice — as the fray answers the high ones.
+    emberShare: EMBERS_IN_SILENCE + (1 - EMBERS_IN_SILENCE) * talk * (EMBERS_WHILE_TALKING + 0.45 * lowDrive),
     swirl,
     hearing,
     hearingLevel,
@@ -1926,6 +2136,7 @@ export function analyseFrame(frame: HologramFrame, size: number) {
     /** Where {@link swirlFragment} leaves a fragment: x, y, its direction, and how much of it shows. */
     swirled: [0, 0, 0, 0, 0],
     agitation,
+    talk,
     // Half the calm fragments hand over to fast ones at full agitation, so the turnover rises
     // by about half (the Age of Ultron footage's churn on "Doctor." rises from 8 to 13 per frame).
     // Half and no more, because pool 1 lights the ids below 2·mix: at this share, and only at this share,
@@ -1938,7 +2149,7 @@ export function analyseFrame(frame: HologramFrame, size: number) {
     // entirely, as the Age of Ultron footage's luma-200 highlights drop by about 70% on "Doctor.".
     // The strokes themselves stay bright: it is the hot pixels that leave, not the texture.
     hotShare: 1 - 0.35 * agitation,
-    frayDrive: agitation * (0.55 + 0.45 * highDrive),
+    frayDrive: talk * (FRAY_WHILE_TALKING + 0.45 * highDrive),
     burstAge,
     burstStrength: clamp01(frame.burstStrength) * formed,
     // how far the burst throws, and how many chips
@@ -1965,16 +2176,41 @@ export function analyseFrame(frame: HologramFrame, size: number) {
     rimRoll: fraction((time * RIM_ROLL_DEGREES_PER_SECOND) / 360) * 360,
     // the inner layer winds up with the vortex, settling to its own slow turn as the specks do
     shellTurn: fraction((time * SHELL_DEGREES_PER_SECOND - 540 * settle * settle) / 360) * 360,
-    // How far the gyroscope's arcs are rocked off the inner layer's turn while he talks, in degrees
-    // (see GYRO_SWAY_DEGREES and turnOfGroup): nothing at all in silence.
+    // How far the gyroscope's arcs are rocked off the inner layer's turn while he holds the floor, in
+    // degrees (see GYRO_SWAY_DEGREES and turnOfGroup): nothing at all in silence.
     gyroSway:
-      agitation *
+      talk *
       (GYRO_SWAY_DEGREES * Math.sin(time * GYRO_SWAY_RADIANS_PER_SECOND) +
         GYRO_SWAY_SECOND_DEGREES * Math.sin(time * GYRO_SWAY_SECOND_RADIANS_PER_SECOND + GYRO_SWAY_SECOND_PHASE)),
     streamCos: Math.cos(yaw),
     streamSin: Math.sin(yaw),
     // the core's brightness drifts a few percent over many seconds; it never beats
     coreDrift: 1 + 0.03 * Math.sin(time * 0.53 + 1.1),
+    /** The rings his syllables send out of his core, newest first, in R: see {@link voiceWavePush}. */
+    voiceWave,
+    /** How far the newest ring has travelled since its slot was cut, in slots, 0–1. */
+    voiceWavePhase: clamp01(frame.voiceWavePhase ?? 0),
+    /** The strongest ring this frame, in R: 0 while he is silent, when nothing is pushed at all. */
+    voiceWaveLargest,
+    /**
+     * The white-hot ring's radius about the core, in R: CORE_RING_RADIUS, drawn in by up to
+     * CORE_RING_DRAW of it by the syllable whose ring is leaving through it now.
+     */
+    coreRing:
+      CORE_RING_RADIUS *
+      (1 -
+        CORE_RING_DRAW *
+          clamp01(
+            voiceWaveSum(
+              voiceWave,
+              (CORE_RING_RADIUS - VOICE_WAVE_FROM) / VOICE_WAVE_STEP - clamp01(frame.voiceWavePhase ?? 0),
+            ) / VOICE_WAVE_REACH,
+          )),
+    /**
+     * Somewhere for {@link voiceWavePush} and {@link voiceWaveTurn} to put a speck's pushed place,
+     * how crowded it is there, and its turned stroke.
+     */
+    waved: [0, 0, 0, 0, 0],
   };
 }
 
@@ -2150,6 +2386,82 @@ export function thoughtTurn(hop: number, group: number, state: HologramFrameStat
   'worklet';
   if (group === TRUSS_GROUP) return 0;
   return state.thinking * (fraction(hop * THOUGHT_FROM_HOP) - 0.5) * THOUGHT_SCATTER;
+}
+
+/**
+ * Where his syllables' rings push a speck seen at (`x`, `y`) in the view plane: out from the core,
+ * by the wave of rings at its distance from the core (VOICE_WAVE_REACH at the most), tapered in over
+ * VOICE_WAVE_TAPER from where the rings are born and out before they melt into his shell. Writes the
+ * pushed `x` and `y` into `state.waved[0..1]`, and into `state.waved[2]` how crowded the specks are
+ * there — the share by which the push brings neighbours closer together, `−du/dρ`, so they are about
+ * `1 / (1 − that)` times as dense: what makes a ring a ring.
+ *
+ * Nothing moves while he is silent, inside where the rings are born or beyond where they are gone.
+ * It moves the speck only after it is known whether, and how brightly, it is drawn, and only in the
+ * view plane, so it changes no speck's light and turns with the whorl and the arcs about the core.
+ */
+export function voiceWavePush(x: number, y: number, state: HologramFrameState) {
+  'worklet';
+  const out = state.waved;
+  out[0] = x;
+  out[1] = y;
+  out[2] = 0;
+  if (state.voiceWaveLargest <= 0) return;
+  const fromCoreX = x - CORE_X;
+  const fromCoreY = y - CORE_Y;
+  const fromCore = Math.sqrt(fromCoreX * fromCoreX + fromCoreY * fromCoreY);
+  if (fromCore <= VOICE_WAVE_FROM || fromCore >= VOICE_WAVE_GONE) return;
+  const slots = (fromCore - VOICE_WAVE_FROM) / VOICE_WAVE_STEP - state.voiceWavePhase;
+  const wave = voiceWaveSum(state.voiceWave, slots);
+  const waveSlope = voiceWaveSumSlope(state.voiceWave, slots);
+  const comingIn = (fromCore - VOICE_WAVE_FROM) / VOICE_WAVE_TAPER;
+  const goingOut = (VOICE_WAVE_GONE - fromCore) / VOICE_WAVE_TAPER;
+  const taperIn = smooth01(comingIn);
+  const taperOut = smooth01(goingOut);
+  const taper = taperIn * taperOut;
+  const taperSlope = (smooth01Slope(comingIn) * taperOut - taperIn * smooth01Slope(goingOut)) / VOICE_WAVE_TAPER;
+  const scale = (fromCore + taper * wave) / fromCore;
+  out[0] = CORE_X + fromCoreX * scale;
+  out[1] = CORE_Y + fromCoreY * scale;
+  out[2] = -(taperSlope * wave + (taper * waveSlope) / VOICE_WAVE_STEP);
+}
+
+/**
+ * A speck's stroke (`axisX`, `axisY`) where a ring crowds the specks together by `crowding` (from
+ * {@link voiceWavePush}), at (`x`, `y`): `along` of its outward lean taken away at full crowding
+ * (VOICE_WAVE_FULL_CROWDING), so the strokes in a crest lie along the ring, and its length kept, so
+ * none of it is brighter. Writes the stroke into `state.waved[3..4]`; nothing changes where the specks
+ * are not crowded, or for a group whose strokes keep their way (`along` 0).
+ */
+export function voiceWaveTurn(
+  axisX: number,
+  axisY: number,
+  x: number,
+  y: number,
+  crowding: number,
+  along: number,
+  state: HologramFrameState,
+) {
+  'worklet';
+  const out = state.waved;
+  out[3] = axisX;
+  out[4] = axisY;
+  if (along <= 0 || crowding <= 0) return;
+  const fromCoreX = x - CORE_X;
+  const fromCoreY = y - CORE_Y;
+  const fromCore = Math.sqrt(fromCoreX * fromCoreX + fromCoreY * fromCoreY);
+  if (fromCore <= 0) return;
+  const outwardX = fromCoreX / fromCore;
+  const outwardY = fromCoreY / fromCore;
+  const bend = along * clamp01(crowding / VOICE_WAVE_FULL_CROWDING);
+  const outward = axisX * outwardX + axisY * outwardY;
+  const turnedX = axisX - bend * outward * outwardX;
+  const turnedY = axisY - bend * outward * outwardY;
+  const turned = Math.sqrt(turnedX * turnedX + turnedY * turnedY);
+  if (turned <= 0) return;
+  const kept = Math.sqrt(axisX * axisX + axisY * axisY) / turned;
+  out[3] = turnedX * kept;
+  out[4] = turnedY * kept;
 }
 
 /**

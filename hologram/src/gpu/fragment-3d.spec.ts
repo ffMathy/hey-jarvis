@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { MATERIALISE_SECONDS, SCENE_SEED } from '../frame-timing';
+import { advanceFrameClock, createFrameClockState, hologramFrameOf } from '../frame-clock';
+import { MATERIALISE_SECONDS, READ_INTERVAL_MS, SCENE_SEED, VOICE_WAVE_SLOTS } from '../frame-timing';
 import {
   analyseFrame,
   BACK_OF_THE_SHELL,
@@ -12,6 +13,7 @@ import {
   FRAGMENT_FAINTEST,
   fragmentGroup,
   fragmentTier,
+  GYRO_GROUP,
   type HologramFrame,
   type HologramFrameState,
   LATTICE_STROKE_SHRINK,
@@ -28,8 +30,14 @@ import {
   TRUSS_OUTER_RAIL,
   TRUSS_THINKING_DIM,
   turnOfGroup,
+  VOICE_WAVE_ALONG,
+  VOICE_WAVE_GONE,
+  voiceWavePush,
+  voiceWaveTurn,
 } from '../hologram-drawing';
-import { VOICE_BAND_COUNT } from '../voice-levels';
+import { createSimulatedSpectrum, fillSimulatedSpectrum } from '../simulated-voice';
+import { simulatedVolume } from '../voice-analysis';
+import { foldSpectrum, perceivedLevel, VOICE_BAND_COUNT } from '../voice-levels';
 import {
   FRONT_VIEW,
   type PlacedFragment,
@@ -42,11 +50,47 @@ import {
 
 const scene = createHologramScene(SCENE_SEED);
 
+/**
+ * His recent syllables and the talk envelope as the real frame clock leaves them `seconds` into the
+ * greeting sample mode speaks, read every READ_INTERVAL_MS as the app reads it: the shape the clock
+ * really hands the drawing, copied, since its arrays are only good until its next step.
+ */
+function spokenAt(seconds: number): Partial<HologramFrame> {
+  const clock = createFrameClockState();
+  const spectrum = createSimulatedSpectrum();
+  let level = 0;
+  let bands: number[] = new Array(VOICE_BAND_COUNT).fill(0);
+  let lastReading = -1;
+  for (let step = 1; step / 60 <= seconds; step++) {
+    const reading = Math.floor(step / 60 / (READ_INTERVAL_MS / 1000));
+    if (reading !== lastReading) {
+      lastReading = reading;
+      fillSimulatedSpectrum('greeting', step / 60, spectrum);
+      level = perceivedLevel(simulatedVolume(spectrum));
+      bands = foldSpectrum(spectrum);
+    }
+    advanceFrameClock(clock, 1 / 60, level, bands, true, false, false, 0, 0);
+  }
+  const frame = hologramFrameOf(clock);
+  return { talk: frame.talk, voiceWave: [...(frame.voiceWave ?? [])], voiceWavePhase: frame.voiceWavePhase };
+}
+
+/** About 0.13 s after "help" starts: one ring just out of the core, and the ones before it further out. */
+const SPOKEN = spokenAt(1.2);
+
 /** The moments the drawing is checked at: every phase the body does something different in. */
 const MOMENTS: Record<string, Partial<HologramFrame>> = {
   idle: { time: 10 },
   arriving: { time: 0.5, appearance: 0.5 / MATERIALISE_SECONDS },
-  speaking: { time: 23.7, level: 0.7, agitation: 0.85, burstAge: 0.05, burstStrength: 0.8, burstCount: 7 },
+  speaking: {
+    time: 23.7,
+    level: 0.7,
+    agitation: 0.85,
+    burstAge: 0.05,
+    burstStrength: 0.8,
+    burstCount: 7,
+    ...SPOKEN,
+  },
   thinking: { time: 41.2, thinking: 1 },
   listening: { time: 12.3, hearing: 1, hearingLevel: 0.6 },
   leaving: { time: 30, presence: 0.5 },
@@ -87,6 +131,8 @@ interface PhoneFragment {
   group: number;
   /** How far its row rests from the core: which way a gyroscope's arc rocks. */
   fromCore: number;
+  /** How much of its outward lean a ring of his voice takes away: none for the arcs and the stream. */
+  alongWave: number;
 }
 
 /**
@@ -138,6 +184,7 @@ function phoneBody(offset: number, state: HologramFrameState): PhoneFragment | n
     glyph: reading[1],
     group: reading[2],
     fromCore: Math.hypot(body[offset] - CORE_X, body[offset + 1] - CORE_Y),
+    alongWave: reading[2] === GYRO_GROUP ? 0 : VOICE_WAVE_ALONG,
   };
 }
 
@@ -173,6 +220,7 @@ function phoneStream(offset: number, state: HologramFrameState): PhoneFragment |
     glyph: stream[offset + 9],
     group: 0,
     fromCore: 0,
+    alongWave: 0,
   };
 }
 
@@ -180,18 +228,46 @@ function length3(vector: Vector3Tuple) {
   return Math.hypot(vector[0], vector[1], vector[2]);
 }
 
+/**
+ * Where the phone draws a fragment and which way, once the rings of his voice have pushed it and
+ * turned its stroke (all but the truss's) and its group has been turned in the view plane: the
+ * helpers, composed as the phone composes them. The phone turns the canvas under a group instead.
+ */
+function phoneDrawn(phone: PhoneFragment, state: HologramFrameState) {
+  let { x, y, alongX, alongY } = phone;
+  if (state.voiceWaveLargest > 0 && phone.group !== TRUSS_GROUP) {
+    voiceWavePush(x, y, state);
+    voiceWaveTurn(alongX, alongY, x, y, state.waved[2] ?? 0, phone.alongWave, state);
+    [x = 0, y = 0] = state.waved;
+    alongX = state.waved[3] ?? 0;
+    alongY = state.waved[4] ?? 0;
+  }
+  const radians = (turnOfGroup(phone.group, phone.fromCore, state) * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const pivotX = phone.group > 0 && phone.group !== TRUSS_GROUP ? CORE_X : 0;
+  const pivotY = phone.group > 0 && phone.group !== TRUSS_GROUP ? CORE_Y : 0;
+  return {
+    x: pivotX + (x - pivotX) * cos - (y - pivotY) * sin,
+    y: pivotY + (x - pivotX) * sin + (y - pivotY) * cos,
+    alongX: alongX * cos - alongY * sin,
+    alongY: alongX * sin + alongY * cos,
+  };
+}
+
 function expectSame(placed: PlacedFragment | null, phone: PhoneFragment | null, state: HologramFrameState) {
   expect(placed === null).toBe(phone === null);
   if (placed === null || phone === null) return;
+  // Where it is before the rings push it, which is where its sparkle is read.
   expect(placed.plane[0]).toBeCloseTo(phone.x, 9);
   expect(placed.plane[1]).toBeCloseTo(phone.y, 9);
-  // In the plane of the view the stroke is exactly the phone's, turned with its group when it is
-  // held in the view plane (the phone turns the canvas under it instead).
-  const turn = (turnOfGroup(phone.group, phone.fromCore, state) * Math.PI) / 180;
-  const alongX = phone.alongX * Math.cos(turn) - phone.alongY * Math.sin(turn);
-  const alongY = phone.alongX * Math.sin(turn) + phone.alongY * Math.cos(turn);
-  expect(placed.axis[0]).toBeCloseTo(alongX, 9);
-  expect(-placed.axis[1]).toBeCloseTo(alongY, 9);
+  // In the plane of the view it is drawn exactly where the phone draws it, and its stroke lies
+  // exactly the phone's way.
+  const drawn = phoneDrawn(phone, state);
+  expect(placed.centre[0]).toBeCloseTo(drawn.x, 9);
+  expect(-placed.centre[1]).toBeCloseTo(drawn.y, 9);
+  expect(placed.axis[0]).toBeCloseTo(drawn.alongX, 9);
+  expect(-placed.axis[1]).toBeCloseTo(drawn.alongY, 9);
   expect(placed.tier).toBe(phone.tier);
   expect(placed.light).toBeCloseTo(phone.light, 9);
   expect(placed.glyph).toBe(phone.glyph);
@@ -407,6 +483,122 @@ describe('his specks', () => {
     // (measured 190).
     expect(behind.count).toBeGreaterThan(150);
     expect(behind.lit / behind.count).toBeGreaterThan(0.8 * (inFront.lit / inFront.count));
+  });
+});
+
+describe('the rings his syllables send out of his core', () => {
+  /** Where a fragment is drawn, seen from the front: the view plane's x is the body's, its y the body's flipped. */
+  const drawnAt = (placed: PlacedFragment): [number, number] => [placed.centre[0], -placed.centre[1]];
+  const everySlotFull = { ...MOMENTS.speaking, voiceWave: new Array(VOICE_WAVE_SLOTS).fill(1), voiceWavePhase: 0.5 };
+
+  /** Where a body row is drawn with no ring to push it: where it lay before the push, turned with its group. */
+  const unpushed = (placed: PlacedFragment, offset: number, state: HologramFrameState): [number, number] => {
+    const fromCore = Math.hypot((scene.body[offset] ?? 0) - CORE_X, (scene.body[offset + 1] ?? 0) - CORE_Y);
+    const turn = (turnOfGroup(placed.group, fromCore, state) * Math.PI) / 180;
+    const aboutCore = placed.group > 0 && placed.group !== TRUSS_GROUP;
+    const pivotX = aboutCore ? CORE_X : 0;
+    const pivotY = aboutCore ? CORE_Y : 0;
+    const fromX = placed.plane[0] - pivotX;
+    const fromY = placed.plane[1] - pivotY;
+    return [
+      pivotX + fromX * Math.cos(turn) - fromY * Math.sin(turn),
+      pivotY + fromX * Math.sin(turn) + fromY * Math.cos(turn),
+    ];
+  };
+
+  it('leave every speck where it was in silence', () => {
+    const silent = stateAt({ ...MOMENTS.speaking, voiceWave: undefined, voiceWavePhase: undefined });
+    for (const { offset, placed } of drawnBody(silent)) {
+      const [x, y] = drawnAt(placed);
+      const [expectedX, expectedY] = unpushed(placed, offset, silent);
+      expect(x).toBeCloseTo(expectedX, 12);
+      expect(y).toBeCloseTo(expectedY, 12);
+    }
+  });
+
+  it('push his specks out from the core where he is speaking, along the line they lie on, never in', () => {
+    const pushes = drawnBody(stateAt(MOMENTS.speaking))
+      .filter(({ placed }) => placed.group === 0)
+      .map(({ placed }) => {
+        const [x, y] = drawnAt(placed);
+        return Math.hypot(x - CORE_X, y - CORE_Y) - Math.hypot(placed.plane[0] - CORE_X, placed.plane[1] - CORE_Y);
+      });
+    expect(Math.min(...pushes)).toBeGreaterThanOrEqual(-1e-12);
+    // A real ring, just out of the core, and the ones before it move a good share of the globe.
+    expect(pushes.filter((push) => push > 0.01).length).toBeGreaterThan(200);
+  });
+
+  it('never push a speck past where the rings melt into his shell, so his limb holds', () => {
+    // The 0.94R limb test above measures where a speck is before the rings push it; this is where it
+    // is drawn, with every slot a full syllable and with the real ones. The whorl's and the arcs' are
+    // turned about the core after the push, which keeps how far they are from it but not from his
+    // middle, so it is measured from the core: inside where the rings melt a speck stays inside it,
+    // and beyond it a speck is not pushed at all.
+    for (const moment of [MOMENTS.speaking, everySlotFull]) {
+      const state = stateAt(moment);
+      const drawn = drawnBody(state).filter(({ placed }) => placed.group !== TRUSS_GROUP);
+      expect(drawn.length).toBeGreaterThan(2000);
+      for (const { placed } of drawn) {
+        const [x, y] = drawnAt(placed);
+        const before = Math.hypot(placed.plane[0] - CORE_X, placed.plane[1] - CORE_Y);
+        const after = Math.hypot(x - CORE_X, y - CORE_Y);
+        if (before < VOICE_WAVE_GONE) expect(after).toBeLessThan(VOICE_WAVE_GONE);
+        else expect(after).toBeCloseTo(before, 12);
+        // The globe's specks are drawn where they are pushed, so its limb can be read off directly.
+        if (placed.group === 0) expect(Math.hypot(x, y)).toBeLessThan(0.94);
+      }
+    }
+  });
+
+  it('leave the truss exactly where it is, so its squares stay squares', () => {
+    const spoken = stateAt(everySlotFull);
+    const silent = stateAt({ ...everySlotFull, voiceWave: undefined });
+    let compared = 0;
+    for (let offset = 0; offset < scene.body.length; offset += BODY_STRIDE) {
+      const loud = placeBodyFragment(scene.body, offset, spoken, FRONT_VIEW);
+      if (loud === null || loud.group !== TRUSS_GROUP) continue;
+      const quiet = placeBodyFragment(scene.body, offset, silent, FRONT_VIEW);
+      if (quiet === null) throw new Error(`truss row ${offset} is drawn while he speaks but not in silence`);
+      expect(loud.centre).toEqual(quiet.centre);
+      expect(loud.axis).toEqual(quiet.axis);
+      compared++;
+    }
+    expect(compared).toBeGreaterThan(150);
+  });
+
+  it("breathe the gyroscope's arcs out as a ring passes, keeping them arcs about the core", () => {
+    const spoken = stateAt(everySlotFull);
+    const silent = stateAt({ ...everySlotFull, voiceWave: undefined });
+    let compared = 0;
+    for (let offset = 0; offset < scene.body.length; offset += BODY_STRIDE) {
+      const loud = placeBodyFragment(scene.body, offset, spoken, FRONT_VIEW);
+      if (loud === null || loud.group !== GYRO_GROUP) continue;
+      const quiet = placeBodyFragment(scene.body, offset, silent, FRONT_VIEW);
+      if (quiet === null) continue;
+      const [loudX, loudY] = drawnAt(loud);
+      const [quietX, quietY] = drawnAt(quiet);
+      // The same angle about the core, so an arc stays an arc; only how far out it is moves.
+      expect(Math.atan2(loudY - CORE_Y, loudX - CORE_X)).toBeCloseTo(Math.atan2(quietY - CORE_Y, quietX - CORE_X), 9);
+      // And its strokes keep their way: the arcs rock instead.
+      expect(loud.axis[0]).toBeCloseTo(quiet.axis[0], 12);
+      expect(loud.axis[1]).toBeCloseTo(quiet.axis[1], 12);
+      compared++;
+    }
+    expect(compared).toBeGreaterThan(100);
+  });
+
+  it('push the stream with the rest of him, but never turn its strokes', () => {
+    const spoken = stateAt(everySlotFull);
+    const silent = stateAt({ ...everySlotFull, voiceWave: undefined });
+    let compared = 0;
+    for (let offset = 0; offset < scene.stream.length; offset += STREAM_STRIDE) {
+      const loud = placeStreamFragment(scene.stream, offset, spoken, FRONT_VIEW);
+      const quiet = placeStreamFragment(scene.stream, offset, silent, FRONT_VIEW);
+      if (loud === null || quiet === null) continue;
+      expect(loud.axis).toEqual(quiet.axis);
+      compared++;
+    }
+    expect(compared).toBeGreaterThan(20);
   });
 });
 

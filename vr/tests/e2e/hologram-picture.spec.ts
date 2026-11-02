@@ -6,12 +6,14 @@ import { goldenPath, readPictureMoments } from './picture-moments';
  * The GPU picture of everything but his body, held to its own frames.
  *
  * `hologram/gpu`'s `drawGpuPicture` drew fifteen moments when he was redrawn after the Vision Quest
- * footage, and they are kept as goldens (`fixtures/picture/<name>.png`, RGB over black, named in
+ * footage, and two more when speech was made plain, and they are kept as goldens (`fixtures/picture/<name>.png`, RGB over black, named in
  * `fixtures/picture/moments.json`): at rest at three times, so the cage has turned with his body,
  * the core ring's brighter stretches have rolled and the embers have drifted between them; speaking,
  * with his voice's energy spread evenly, in its low notes (the embers) and in its high ones (the
  * fray); a burst held and breaking; thinking, with the scan plane and with its pulse blooming out
- * of the core ring; the listening lattice; the vortex early and late; leaving; and satellites. The
+ * of the core ring; the listening lattice; the vortex early and late; leaving; satellites; a
+ * syllable leaving him, its white-hot ring drawn in, and the gap between two words, the fray held
+ * out — both frames as the real frame clock hands them over on the greeting. The
  * preview draws each moment with the GPU picture into a target of its own three.js renderer, exactly
  * as the headset draws it (`picture-check.ts`), and measures how far it is from its golden.
  *
@@ -31,7 +33,7 @@ test('the GPU picture draws every moment as it did when its goldens were drawn',
   await page.goto('/hey-jarvis/vr/preview.html');
   await page.evaluate(() => window.__hologramPreview?.ready);
   const { size, moments } = readPictureMoments();
-  expect(moments.length).toBe(15);
+  expect(moments.length).toBe(17);
   for (const { name, frame, satellites } of moments) {
     const golden = readFileSync(goldenPath(name)).toString('base64');
     const check = await page.evaluate((asked) => window.__hologramPreview?.checkPicture(asked), {

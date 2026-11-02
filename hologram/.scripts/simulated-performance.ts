@@ -1,36 +1,33 @@
 /**
  * Driving the sphere from a simulated voice, for anything that renders him headlessly.
  *
- * This is the part `render-showcase.ts` and `render-play-assets.ts` genuinely share: the five
- * things the drawing carries from one frame to the next, advanced exactly the way
- * `hologram-view.tsx` advances them in its `frame` shared value. What differs between the two
- * scripts is only what they do with the frames — one stitches them into a clip, the other keeps a
- * single one — so the simulation lives here and neither owns it.
+ * This is the part the render scripts genuinely share: the frame clock every device steps him on,
+ * stepped here as `hologram-view.tsx` steps it, on a voice read as the app reads it. What differs
+ * between the scripts is only what they do with the frames — one stitches them into a clip, another
+ * keeps a single one — so the simulation lives here and none of them owns it.
  *
  * Nothing in here touches the GPU, the browser or the file system. It answers one question: given a
  * moment, what is Jarvis doing.
  */
 import {
-  advanceVoiceActivity,
+  advanceFrameClock,
+  createFrameClockState,
   createSimulatedSpectrum,
-  createVoiceActivityState,
-  easeBands,
-  easeHearing,
-  easeHearingLevel,
   easeLevel,
   fillGreetingSpectrum,
   fillSimulatedSpectrum,
   foldSpectrum,
+  type HologramFrame,
   hearingFromPresence,
   hearingLevelFromVolume,
-  LEAVING_SECONDS,
+  hologramFrameOf,
   MATERIALISE_SECONDS,
   perceivedLevel,
+  READ_INTERVAL_MS,
   type SimulatedMood,
   simulatedUserAt,
   simulatedVolume,
   VOICE_BAND_COUNT,
-  voiceDrive,
 } from '../src/index';
 
 /**
@@ -55,10 +52,6 @@ export interface SimulatedMoment {
   showing?: boolean;
 }
 
-function clamp(value: number, lowest: number, highest: number): number {
-  return value < lowest ? lowest : value > highest ? highest : value;
-}
-
 /** Writes his voice at this moment into `spectrum` — the greeting while it plays, else the mood — and says whether there is one. */
 function readVoice(moment: SimulatedMoment, spectrum: Uint8Array): boolean {
   if (moment.greetingSeconds !== undefined) {
@@ -72,71 +65,100 @@ function readVoice(moment: SimulatedMoment, spectrum: Uint8Array): boolean {
   return false;
 }
 
+function silentBands(): number[] {
+  return new Array<number>(VOICE_BAND_COUNT).fill(0);
+}
+
 /**
- * Everything the drawing reads that is carried from one frame to the next.
+ * Everything the drawing reads that is carried from one frame to the next: the frame clock every
+ * device steps him on (`frame-clock.ts`), stepped here once a frame, so the sphere behaves here
+ * exactly as it does in the app.
  *
- * The same five things `hologram-view.tsx` keeps in its `frame` shared value, advanced the same
- * way, so the sphere behaves here exactly as it does in the app.
+ * The voice is read as the app reads it, on a beat of READ_INTERVAL_MS of clock time, and at once
+ * when it starts or stops or someone starts or stops talking to him — the headset's rule
+ * (`vr/src/hologram3d/frame-clock.ts`). Read every frame instead, as this once did, an onset landed
+ * up to 40 ms earlier and sharper here than on a device, so a render showed a livelier Jarvis than
+ * a phone draws.
+ *
+ * The clock's time is the moment's own (`hologramSeconds`), so a clip can start him anywhere in his
+ * arrival; everything else is the clock's.
  *
  * @param frameSeconds - How long each frame is, which the easing and the fades are measured in.
- * @param thoughtFadeSeconds - How long a thought takes to come up and go down.
  */
-export function createPerformance(frameSeconds: number, thoughtFadeSeconds: number) {
+export function createPerformance(frameSeconds: number) {
+  const readSeconds = READ_INTERVAL_MS / 1000;
   const spectrum = createSimulatedSpectrum();
-  const activity = createVoiceActivityState();
-  let level = 0;
-  let bands: number[] = new Array(VOICE_BAND_COUNT).fill(0);
-  let thinking = 0;
-  let presence = 1;
-  let hearing = 0;
-  let hearingLevel = 0;
+  const clock = createFrameClockState();
+  let targetLevel = 0;
+  let targetBands = silentBands();
+  let targetHearing = 0;
+  let targetHearingLevel = 0;
+  let sinceReading = 0;
+  let readOnce = false;
+  let readVoiced = false;
+  let readHeard = false;
 
-  return (moment: SimulatedMoment) => {
-    // What the app reads off the voice every 40 ms, read here every frame: same two questions.
-    const voiced = readVoice(moment, spectrum);
-    const heard = voiced ? perceivedLevel(simulatedVolume(spectrum)) : 0;
-    const heardBands = voiced ? foldSpectrum(spectrum) : new Array<number>(VOICE_BAND_COUNT).fill(0);
+  function read(moment: SimulatedMoment, voiced: boolean) {
+    targetLevel = voiced ? perceivedLevel(simulatedVolume(spectrum)) : 0;
+    targetBands = voiced ? foldSpectrum(spectrum) : silentBands();
     const user = moment.userSeconds === undefined ? undefined : simulatedUserAt(moment.userSeconds);
-    hearing = easeHearing(hearing, user ? hearingFromPresence(user.presence) : 0, frameSeconds);
-    hearingLevel = easeHearingLevel(hearingLevel, user ? hearingLevelFromVolume(user.volume) : 0, frameSeconds);
+    targetHearing = user ? hearingFromPresence(user.presence) : 0;
+    targetHearingLevel = user ? hearingLevelFromVolume(user.volume) : 0;
+    readOnce = true;
+    readVoiced = voiced;
+    readHeard = user !== undefined;
+  }
 
-    level = easeLevel(level, heard, frameSeconds);
-    bands = easeBands(bands, heardBands, frameSeconds);
-    advanceVoiceActivity(activity, heard, frameSeconds);
-    thinking = clamp(thinking + ((moment.thinkingWanted ? 1 : -1) * frameSeconds) / thoughtFadeSeconds, 0, 1);
-    presence = clamp(presence + ((moment.leaving ? -1 : 1) * frameSeconds) / LEAVING_SECONDS, 0, 1);
-
-    return {
-      time: moment.hologramSeconds,
-      // Judged against how loud this voice actually gets, as the view does.
-      level: voiceDrive(level, activity.loudest),
-      bands,
+  return (moment: SimulatedMoment): HologramFrame => {
+    const voiced = readVoice(moment, spectrum);
+    const heard = moment.userSeconds !== undefined;
+    if (!readOnce || voiced !== readVoiced || heard !== readHeard) {
+      sinceReading = 0;
+      read(moment, voiced);
+    } else {
+      sinceReading += frameSeconds;
+      if (sinceReading >= readSeconds) {
+        sinceReading %= readSeconds;
+        read(moment, voiced);
+      }
+    }
+    advanceFrameClock(
+      clock,
+      frameSeconds,
+      targetLevel,
+      targetBands,
       // True for both moods: a simulated voice is always "on", and it is `thinking` that tells
       // them apart. See `useSimulatedVoice`, which does exactly this.
-      speaking: voiced,
-      agitation: activity.agitation,
-      burstAge: activity.burstAge,
-      burstStrength: activity.burstStrength,
-      burstCount: activity.burstCount,
+      voiced,
+      moment.thinkingWanted,
+      moment.leaving,
+      targetHearing,
+      targetHearingLevel,
+    );
+    const frame = hologramFrameOf(clock);
+    return {
+      ...frame,
+      time: moment.hologramSeconds,
       appearance: Math.min(1, moment.hologramSeconds / MATERIALISE_SECONDS),
-      thinking,
-      presence,
-      hearing,
-      hearingLevel,
+      // The clock's own arrays, good only until its next step: a frame kept is a frame copied.
+      bands: [...frame.bands],
+      voiceWave: [...(frame.voiceWave ?? [])],
     };
   };
 }
 
 /** One frame's worth of everything the drawing reads. */
-export type SimulatedFrame = ReturnType<ReturnType<typeof createPerformance>>;
+export type SimulatedFrame = HologramFrame;
 
 /**
- * A moment for a still: formed, present, and in one mood with nothing else going on.
+ * A moment for a still: formed, present, and in one mood with nothing else going on — or silent,
+ * for no mood at all. The mood has no default: one of `'speaking'` made an explicit `undefined`
+ * mean speaking too, so a still asked to be silent was not.
  *
  * The same shape the clip's script produces, so that {@link createPerformance} can advance it
  * without knowing it is being used for a still rather than for a clip.
  */
-export function stillMoment(seconds: number, mood: SimulatedMood | undefined = 'speaking'): SimulatedMoment {
+export function stillMoment(seconds: number, mood: SimulatedMood | undefined): SimulatedMoment {
   return {
     mood,
     moodSeconds: seconds,

@@ -158,6 +158,27 @@ describe('the raw renderer', () => {
     expect(draws.map(([, , count]) => count)).toEqual([kept * 6, kept * 6, 6]);
   });
 
+  it('hands both passes the rings his syllables send out of his core, four to a vector', () => {
+    const calls: Call[] = [];
+    const slots = Array.from({ length: 16 }, (_, slot) => (slot === 3 ? 1 : slot === 4 ? 0.6 : 0));
+    drawn(calls, { agitation: 1, level: 0.7, voiceWave: slots, voiceWavePhase: 0.25 }, 1);
+    const written = (uniform: string) =>
+      calls.filter(([, location]) => location instanceof BrowserLocation && location.name === uniform);
+    const state = analyseFrame(frameAt({ agitation: 1, level: 0.7, voiceWave: slots, voiceWavePhase: 0.25 }), 1);
+    // Once for the halo union and once for the strokes, each as the vec4 the shader declares.
+    expect(written('voiceWave0')).toHaveLength(2);
+    for (const call of written('voiceWave0')) {
+      expect(call).toEqual(['uniform4f', call[1], ...state.voiceWave.slice(0, 4)]);
+    }
+    for (const call of written('voiceWave1')) {
+      expect(call).toEqual(['uniform4f', call[1], ...state.voiceWave.slice(4, 8)]);
+    }
+    for (const call of written('voiceWaveClock')) {
+      expect(call).toEqual(['uniform2f', call[1], state.voiceWaveLargest, 0.25]);
+    }
+    expect(state.voiceWaveLargest).toBeGreaterThan(0);
+  });
+
   it('fades by the fade it is handed, not by the arrival, where nothing outside fades it', () => {
     const calls: Call[] = [];
     drawn(calls, { appearance: 0.1 }, 0.3);

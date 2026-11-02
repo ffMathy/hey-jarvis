@@ -146,7 +146,7 @@ paths:
   `HOLOGRAM_SCREENS_DIR` when that is set. `hologram-room.spec.ts` logs the
   emulator's frame times, which say nothing about a Quest's.
 - **His picture alone.** `hologram-picture.spec.ts` holds the GPU picture of
-  everything but his body to goldens of fifteen moments that it drew itself
+  everything but his body to goldens of seventeen moments that it drew itself
   when he was redrawn as the Vision Quest / Age of Ultron hybrid (`fixtures/picture/`, the
   moments named in `moments.json`): a regression test, not a judge of the look.
   `hologram-picture-behaviour.spec.ts` carries what were `hologram`'s pixel

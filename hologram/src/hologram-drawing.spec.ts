@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { advanceFrameClock, createFrameClockState, hologramFrameOf, restartArrival } from './frame-clock';
+import { MATERIALISE_SECONDS, READ_INTERVAL_MS, VOICE_WAVE_SLEW, VOICE_WAVE_SLOTS } from './frame-timing';
 import {
   analyseFrame,
   arrivalOf,
@@ -10,6 +11,8 @@ import {
   CAGE_LONGEST_SPIKE,
   CAGE_SHELL_OUTER,
   CAGE_WOVEN_REACH,
+  CORE_RING_DRAW,
+  CORE_RING_RADIUS,
   CORE_X,
   CORE_Y,
   createHologramScene,
@@ -39,11 +42,25 @@ import {
   TRUSS_OUTER_RAIL,
   thoughtTurn,
   turnOfGroup,
+  VOICE_WAVE_ALONG,
+  VOICE_WAVE_FROM,
+  VOICE_WAVE_FULL_CROWDING,
+  VOICE_WAVE_GONE,
+  VOICE_WAVE_REACH,
+  VOICE_WAVE_STEP,
+  VOICE_WAVE_TAPER,
+  voiceWaveKnots,
+  voiceWavePush,
+  voiceWaveSum,
+  voiceWaveSumSlope,
+  voiceWaveTurn,
   WHORL_REACH,
   WHORL_START,
   WHORL_TURNS,
 } from './hologram-drawing';
-import { VOICE_BAND_COUNT } from './voice-levels';
+import { createSimulatedSpectrum, fillSimulatedSpectrum, type SimulatedMood } from './simulated-voice';
+import { simulatedVolume } from './voice-analysis';
+import { foldSpectrum, perceivedLevel, VOICE_BAND_COUNT } from './voice-levels';
 
 /**
  * The scene he is drawn from and what a frame of him is. What he looks like drawn — red-orange, moving,
@@ -304,12 +321,13 @@ describe('his middle: the whorl and the gyroscope', () => {
 });
 
 describe('the gyroscope while he talks', () => {
-  const frameAt = (time: number, agitation: number): HologramFrame => ({
+  const frameAt = (time: number, agitation: number, talk = agitation): HologramFrame => ({
     time,
     level: agitation * 0.6,
     bands: new Array(VOICE_BAND_COUNT).fill(0.3),
     speaking: agitation > 0,
     agitation,
+    talk,
     burstAge: 10,
     burstStrength: 0,
     burstCount: 0,
@@ -352,16 +370,284 @@ describe('the gyroscope while he talks', () => {
     expect(Math.max(...steps)).toBeLessThan(1.5);
   });
 
-  it('eases the rocking in with his voice rather than jumping to it', () => {
-    // Half as agitated, half the sway, so the eased envelope is what brings it in.
+  it('never rocks the arcs faster than 1.5° a frame through real speech, gaps between words and all', () => {
+    // Every gap between words drops his agitation to nothing within 0.15 s, and the sway used to
+    // drop with it: through the real clock at 60 fps, on the greeting sample mode speaks, the arcs
+    // jumped 4.1° in a single frame at each gap. They rock with the talk envelope instead, which
+    // holds through a sentence and lets go slowly.
+    for (const mood of ['greeting', 'speaking'] as const) {
+      const sways = spokenFrames(mood, 30).map((frame) => analyseFrame(frame, SIZE).gyroSway);
+      const steps = sways.slice(1).map((sway, index) => Math.abs(sway - (sways[index] ?? 0)));
+      expect(Math.max(...steps)).toBeLessThan(1.5);
+      // and they do rock while he talks
+      expect(Math.max(...sways.map(Math.abs))).toBeGreaterThan(20);
+    }
+  });
+
+  it('eases the rocking in with the talk envelope rather than jumping to it', () => {
+    // Halfway up the envelope, half the sway, so the eased envelope is what brings it in — and it is
+    // the envelope, not the syllable's agitation, that the arcs follow.
     let largest = 0;
     for (let time = 10; time < 14; time += 0.1) {
-      const full = analyseFrame(frameAt(time, 1), SIZE);
-      const half = analyseFrame(frameAt(time, 0.5), SIZE);
+      const full = analyseFrame(frameAt(time, 1, 1), SIZE);
+      const half = analyseFrame(frameAt(time, 1, 0.5), SIZE);
+      const betweenWords = analyseFrame(frameAt(time, 0, 0.5), SIZE);
       expect(half.gyroSway).toBeCloseTo(full.gyroSway / 2, 9);
+      expect(betweenWords.gyroSway).toBe(half.gyroSway);
       largest = Math.max(largest, Math.abs(full.gyroSway));
     }
     expect(largest).toBeGreaterThan(20);
+  });
+
+  it('takes his agitation for the talk envelope in a frame that has none', () => {
+    const { talk: _left, ...withoutTalk } = frameAt(12.3, 0.8, 0.8);
+    expect(analyseFrame(withoutTalk, SIZE)).toEqual(analyseFrame(frameAt(12.3, 0.8, 0.8), SIZE));
+  });
+
+  it('keeps the fray and more of the embers out between words, while he holds the floor', () => {
+    // Between words his agitation is nothing, but the sentence is not over: the fray and the embers
+    // stay out instead of dropping back to idle a dozen times a sentence.
+    const between = analyseFrame({ ...frameAt(20, 0, 1), level: 0.08 }, SIZE);
+    const silent = analyseFrame(frameAt(20, 0, 0), SIZE);
+
+    expect(between.agitation).toBe(0);
+    expect(between.frayDrive).toBeGreaterThan(0.02);
+    expect(between.emberShare).toBeGreaterThan(silent.emberShare);
+    expect(silent.frayDrive).toBe(0);
+  });
+});
+
+describe('the rings his syllables send out of his core', () => {
+  const frameWith = (overrides: Partial<HologramFrame>): HologramFrame => ({
+    time: 21.4,
+    level: 0.6,
+    bands: new Array(VOICE_BAND_COUNT).fill(0.4),
+    speaking: true,
+    agitation: 1,
+    talk: 1,
+    burstAge: 10,
+    burstStrength: 0,
+    burstCount: 0,
+    appearance: 1,
+    presence: 1,
+    thinking: 0,
+    voiceWave: new Array(VOICE_WAVE_SLOTS).fill(1),
+    voiceWavePhase: 0.4,
+    ...overrides,
+  });
+  /** A single full syllable, `slot` slots back, and nothing else. */
+  const oneSyllable = (slot: number) => Array.from({ length: VOICE_WAVE_SLOTS }, (_, at) => (at === slot ? 1 : 0));
+  /** How far from the core a speck at `fromCore` along `angle` is pushed to. */
+  const pushedFrom = (fromCore: number, angle: number, state: ReturnType<typeof analyseFrame>) => {
+    voiceWavePush(CORE_X + fromCore * Math.cos(angle), CORE_Y + fromCore * Math.sin(angle), state);
+    return Math.hypot((state.waved[0] ?? 0) - CORE_X, (state.waved[1] ?? 0) - CORE_Y);
+  };
+
+  it('push nothing in silence, before the vortex has formed him, while he listens or while he thinks', () => {
+    for (const frame of [
+      frameWith({ voiceWave: undefined }),
+      frameWith({ voiceWave: new Array(VOICE_WAVE_SLOTS).fill(0) }),
+      frameWith({ appearance: 0.6 }),
+      frameWith({ appearance: 0.4, presence: 0.4 }),
+      frameWith({ hearing: 1 }),
+      frameWith({ thinking: 1 }),
+    ]) {
+      const state = analyseFrame(frame, SIZE);
+      expect(state.voiceWaveLargest).toBe(0);
+      for (const fromCore of [0.2, 0.4, 0.6, 0.8]) {
+        expect(pushedFrom(fromCore, 1.1, state)).toBeCloseTo(fromCore, 12);
+        expect(state.waved[2]).toBe(0);
+      }
+    }
+  });
+
+  it('hold every frame to the same shape of ring, however it was made', () => {
+    // The clock's slots never rise by more than VOICE_WAVE_SLEW from one to the next; a frame made
+    // any other way is held to it too, from either side, and to no more than a full syllable.
+    const random = createRandom(9);
+    const frames = [
+      oneSyllable(0),
+      oneSyllable(7),
+      oneSyllable(15),
+      Array.from({ length: VOICE_WAVE_SLOTS }, (_, slot) => slot % 2),
+      Array.from({ length: VOICE_WAVE_SLOTS }, () => random() * 3 - 1),
+      Array.from({ length: VOICE_WAVE_SLOTS }, () => Number.NaN),
+    ];
+    for (const slots of frames) {
+      const knots = voiceWaveKnots(slots, 1);
+      expect(knots.length).toBe(VOICE_WAVE_SLOTS);
+      for (let knot = 0; knot < knots.length; knot++) {
+        expect(knots[knot]).toBeGreaterThanOrEqual(0);
+        expect(knots[knot]).toBeLessThanOrEqual(VOICE_WAVE_REACH);
+        if (knot > 0) {
+          expect(Math.abs((knots[knot] ?? 0) - (knots[knot - 1] ?? 0))).toBeLessThanOrEqual(
+            VOICE_WAVE_SLEW * VOICE_WAVE_REACH + 1e-15,
+          );
+        }
+      }
+    }
+  });
+
+  it('push a speck out from the core along the line it lies on, never in, and never past where they melt', () => {
+    // The taper alone can never carry a speck past one further out (REACH times its steepest slope,
+    // 1.5 / TAPER, is under 1), so whatever the rings, none is pushed out past VOICE_WAVE_GONE.
+    expect((VOICE_WAVE_REACH * 1.5) / VOICE_WAVE_TAPER).toBeLessThan(1);
+    const random = createRandom(4);
+    const frames = [
+      frameWith({}),
+      frameWith({ voiceWave: oneSyllable(3), voiceWavePhase: 0 }),
+      frameWith({ voiceWave: Array.from({ length: VOICE_WAVE_SLOTS }, () => random()), voiceWavePhase: 0.9 }),
+    ];
+    for (const frame of frames) {
+      const state = analyseFrame(frame, SIZE);
+      for (let fromCore = 0.001; fromCore < 1.2; fromCore += 0.0007) {
+        const angle = fromCore * 37;
+        const pushed = pushedFrom(fromCore, angle, state);
+        expect(pushed).toBeGreaterThanOrEqual(fromCore - 1e-12);
+        expect(pushed - fromCore).toBeLessThanOrEqual(VOICE_WAVE_REACH + 1e-12);
+        expect(Math.atan2((state.waved[1] ?? 0) - CORE_Y, (state.waved[0] ?? 0) - CORE_X)).toBeCloseTo(
+          Math.atan2(Math.sin(angle), Math.cos(angle)),
+          9,
+        );
+        if (fromCore <= VOICE_WAVE_FROM || fromCore >= VOICE_WAVE_GONE) {
+          expect(pushed).toBeCloseTo(fromCore, 12);
+        } else {
+          expect(pushed).toBeLessThan(VOICE_WAVE_GONE);
+        }
+      }
+    }
+  });
+
+  it('send each ring out VOICE_WAVE_STEP a slot, gliding between slots rather than stepping', () => {
+    /** Where along the line out of the core one syllable's ring pushes hardest. */
+    const crestOf = (slot: number, phase: number) => {
+      const state = analyseFrame(frameWith({ voiceWave: oneSyllable(slot), voiceWavePhase: phase }), SIZE);
+      let crest = 0;
+      let hardest = -1;
+      for (let fromCore = VOICE_WAVE_FROM; fromCore < VOICE_WAVE_GONE; fromCore += 0.0005) {
+        const push = pushedFrom(fromCore, 0.3, state) - fromCore;
+        if (push > hardest) {
+          hardest = push;
+          crest = fromCore;
+        }
+      }
+      return crest;
+    };
+    // Two slots later, at the same point of the slot, it is two steps further out — measured in the
+    // middle of him, where the taper is flat (near either end its slope pulls a crest a little).
+    expect(crestOf(8, 0.5) - crestOf(6, 0.5)).toBeCloseTo(2 * VOICE_WAVE_STEP, 2);
+    // and within a slot it travels on, so a slot being cut never makes it jump
+    expect(crestOf(7, 0.75)).toBeGreaterThan(crestOf(7, 0.25));
+    expect(crestOf(8, 0)).toBeCloseTo(crestOf(7, 0.999), 2);
+  });
+
+  it("draw the wave and its slope smoothly, the slope the wave's own", () => {
+    const random = createRandom(12);
+    const knots = Array.from({ length: VOICE_WAVE_SLOTS }, () => random() * VOICE_WAVE_REACH);
+    for (let slots = -1.4; slots < 16.4; slots += 0.0137) {
+      const step = 1e-6;
+      const numeric = (voiceWaveSum(knots, slots + step) - voiceWaveSum(knots, slots - step)) / (2 * step);
+      expect(voiceWaveSumSlope(knots, slots)).toBeCloseTo(numeric, 5);
+    }
+    // and a run of full syllables is a full push, with no ripple between them
+    const full = new Array(VOICE_WAVE_SLOTS).fill(VOICE_WAVE_REACH);
+    for (let slots = 1.5; slots < 13.5; slots += 0.1) {
+      expect(voiceWaveSum(full, slots)).toBeCloseTo(VOICE_WAVE_REACH, 12);
+    }
+  });
+
+  it('crowd the specks into a crest where a ring arrives', () => {
+    const state = analyseFrame(frameWith({ voiceWave: oneSyllable(6), voiceWavePhase: 0 }), SIZE);
+    let crowdest = 0;
+    for (let fromCore = VOICE_WAVE_FROM; fromCore < VOICE_WAVE_GONE; fromCore += 0.001) {
+      pushedFrom(fromCore, 0.8, state);
+      crowdest = Math.max(crowdest, state.waved[2] ?? 0);
+    }
+    expect(crowdest).toBeGreaterThan(VOICE_WAVE_FULL_CROWDING);
+  });
+
+  it('lay the strokes in a crest along the ring, keeping their length', () => {
+    const state = analyseFrame(frameWith({}), SIZE);
+    // Half a radius out from the core, at 0.8 rad: out from the core, and along the ring there.
+    const outwardX = Math.cos(0.8);
+    const outwardY = Math.sin(0.8);
+    const atX = CORE_X + 0.5 * outwardX;
+    const atY = CORE_Y + 0.5 * outwardY;
+    // A stroke lying half out of the ring and half along it.
+    const strokeX = 0.03 * (outwardX - outwardY);
+    const strokeY = 0.03 * (outwardY + outwardX);
+    const turnedBy = (crowding: number, along: number) => {
+      voiceWaveTurn(strokeX, strokeY, atX, atY, crowding, along, state);
+      return { x: state.waved[3] ?? 0, y: state.waved[4] ?? 0 };
+    };
+
+    // In a full crest the outward half goes, and none of its length.
+    const turned = turnedBy(1, VOICE_WAVE_ALONG);
+    expect(Math.hypot(turned.x, turned.y)).toBeCloseTo(Math.hypot(strokeX, strokeY), 12);
+    expect(Math.abs(turned.x * outwardX + turned.y * outwardY)).toBeLessThan(1e-12);
+    // Uncrowded, or for a stroke that keeps its way, nothing changes.
+    expect(turnedBy(0, VOICE_WAVE_ALONG)).toEqual({ x: strokeX, y: strokeY });
+    expect(turnedBy(-0.4, VOICE_WAVE_ALONG)).toEqual({ x: strokeX, y: strokeY });
+    expect(turnedBy(1, 0)).toEqual({ x: strokeX, y: strokeY });
+    // And a stroke lying straight out of the core stays as it is rather than vanishing.
+    voiceWaveTurn(0.03 * outwardX, 0.03 * outwardY, atX, atY, 1, 1, state);
+    expect([state.waved[3], state.waved[4]]).toEqual([0.03 * outwardX, 0.03 * outwardY]);
+  });
+});
+
+describe('the white-hot ring round his core while he talks', () => {
+  const frameWith = (overrides: Partial<HologramFrame>): HologramFrame => ({
+    time: 21.4,
+    level: 0.6,
+    bands: new Array(VOICE_BAND_COUNT).fill(0.4),
+    speaking: true,
+    agitation: 1,
+    talk: 1,
+    burstAge: 10,
+    burstStrength: 0,
+    burstCount: 0,
+    appearance: 1,
+    presence: 1,
+    thinking: 0,
+    ...overrides,
+  });
+
+  it('sits exactly where it always has in silence, and before he has formed', () => {
+    expect(analyseFrame(frameWith({}), SIZE).coreRing).toBe(CORE_RING_RADIUS);
+    expect(analyseFrame(frameWith({ voiceWave: new Array(VOICE_WAVE_SLOTS).fill(0) }), SIZE).coreRing).toBe(
+      CORE_RING_RADIUS,
+    );
+    const full = new Array(VOICE_WAVE_SLOTS).fill(1);
+    expect(analyseFrame(frameWith({ voiceWave: full, appearance: 0.5 }), SIZE).coreRing).toBe(CORE_RING_RADIUS);
+  });
+
+  it('draws in toward the eye as a syllable leaves through it, never out, and never past CORE_RING_DRAW', () => {
+    // A full syllable leaving through it draws it well in: past 0.2R, where it rests at 0.22R.
+    const leaving = analyseFrame(
+      frameWith({ voiceWave: new Array(VOICE_WAVE_SLOTS).fill(1), voiceWavePhase: 0.2 }),
+      SIZE,
+    );
+    expect(leaving.coreRing).toBeLessThan(0.2);
+    const random = createRandom(31);
+    for (let trial = 0; trial < 400; trial++) {
+      const voiceWave = Array.from({ length: VOICE_WAVE_SLOTS }, () => random() * 1.4 - 0.2);
+      const state = analyseFrame(frameWith({ voiceWave, voiceWavePhase: random() }), SIZE);
+      expect(state.coreRing).toBeLessThanOrEqual(CORE_RING_RADIUS);
+      expect(state.coreRing).toBeGreaterThanOrEqual((1 - CORE_RING_DRAW) * CORE_RING_RADIUS - 1e-15);
+    }
+  });
+
+  it('beats with real speech, calmly', () => {
+    // Through the real clock on the greeting: it moves with his syllables, and never by more than a
+    // hundredth of his radius in a frame at 60 fps.
+    const rings = spokenFrames('greeting', 6).map((frame) => analyseFrame(frame, SIZE).coreRing);
+    expect(Math.min(...rings)).toBeLessThan(0.205);
+    const steps = rings.slice(1).map((ring, index) => Math.abs(ring - (rings[index] ?? 0)));
+    expect(Math.max(...steps)).toBeLessThan(0.01);
+    // and between sentences it is back where it rests: counted from his first syllable on, so the
+    // silence before he starts says nothing
+    const fromSpeech = rings.slice(rings.findIndex((ring) => ring < CORE_RING_RADIUS));
+    expect(fromSpeech.filter((ring) => CORE_RING_RADIUS - ring < 1e-4).length).toBeGreaterThan(30);
   });
 });
 
@@ -830,6 +1116,37 @@ function arrivalAsItWas(appearance: number, presence: number) {
 }
 
 /**
+ * The frames the frame clock hands the drawing at 60 a second while a simulated voice speaks for
+ * `seconds`, once he has formed, read every READ_INTERVAL_MS of clock time as the app reads it: each
+ * one copied, since the clock's frame is only good until its next step.
+ */
+function spokenFrames(mood: SimulatedMood, seconds: number): HologramFrame[] {
+  const clock = createFrameClockState();
+  const spectrum = createSimulatedSpectrum();
+  const frames: HologramFrame[] = [];
+  let level = 0;
+  let bands: number[] = new Array(VOICE_BAND_COUNT).fill(0);
+  let lastReading = -1;
+  for (let step = 1; step / 60 <= MATERIALISE_SECONDS + seconds; step++) {
+    const at = step / 60;
+    const reading = Math.floor(at / (READ_INTERVAL_MS / 1000));
+    if (reading !== lastReading) {
+      lastReading = reading;
+      const spoken = at - MATERIALISE_SECONDS;
+      if (spoken >= 0) {
+        fillSimulatedSpectrum(mood, spoken, spectrum);
+        level = perceivedLevel(simulatedVolume(spectrum));
+        bands = foldSpectrum(spectrum);
+      }
+    }
+    advanceFrameClock(clock, 1 / 60, level, bands, level > 0, false, false, 0, 0);
+    const frame = hologramFrameOf(clock);
+    frames.push({ ...frame, bands: [...frame.bands], voiceWave: [...(frame.voiceWave ?? [])] });
+  }
+  return frames;
+}
+
+/**
  * The frames the frame clock hands the drawing at 60 a second through two arrivals that stay and two
  * that leave halfway through: each one copied, since the clock's frame is only good until its next step.
  */
@@ -842,7 +1159,7 @@ function framesFromTheClock(): HologramFrame[] {
     for (let step = 0; step < 90; step++) {
       advanceFrameClock(clock, 1 / 60, 0, silent, false, false, leaving && step > 45, 0, 0);
       const frame = hologramFrameOf(clock);
-      frames.push({ ...frame, bands: [...frame.bands] });
+      frames.push({ ...frame, bands: [...frame.bands], voiceWave: [...(frame.voiceWave ?? [])] });
     }
   }
   return frames;

@@ -36,6 +36,13 @@ import {
   type VoiceActivityState,
   voiceDrive,
 } from './voice-levels';
+import {
+  advanceVoiceWave,
+  createVoiceWaveState,
+  syllableRise,
+  type VoiceWaveState,
+  voiceWavePhaseOf,
+} from './voice-wave';
 
 /** Everything the clock carries from one frame to the next. */
 export interface FrameClockState {
@@ -60,6 +67,11 @@ export interface FrameClockState {
    * stopped and how long ago the rim last threw chips. See `advanceVoiceActivity`.
    */
   activity: VoiceActivityState;
+  /**
+   * His recent syllables, newest first, for the rings his voice sends out of his core. See
+   * `voice-wave.ts`.
+   */
+  wave: VoiceWaveState;
 }
 
 /**
@@ -79,6 +91,7 @@ export function createFrameClockState(quietestSpeech = QUIETEST_SPEECH, speaking
     hearing: 0,
     hearingLevel: 0,
     activity: createVoiceActivityState(quietestSpeech),
+    wave: createVoiceWaveState(),
   };
 }
 
@@ -129,6 +142,8 @@ export function advanceFrameClock(
   targetHearingLevel: number,
 ): FrameClockState {
   'worklet';
+  // How sharply his bands rise this step, taken before they are eased, since easing them is the rise.
+  const rise = syllableRise(state.bands, targetBands, targetLevel, state.activity, deltaSeconds);
   state.time += deltaSeconds;
   state.level = easeLevel(state.level, targetLevel, deltaSeconds);
   state.bands = easeBands(state.bands, targetBands, deltaSeconds);
@@ -138,6 +153,7 @@ export function advanceFrameClock(
   state.hearing = easeHearing(state.hearing, targetHearing, deltaSeconds);
   state.hearingLevel = easeHearingLevel(state.hearingLevel, targetHearingLevel, deltaSeconds);
   advanceVoiceActivity(state.activity, targetLevel, deltaSeconds);
+  advanceVoiceWave(state.wave, rise, deltaSeconds);
   return state;
 }
 
@@ -145,7 +161,8 @@ export function advanceFrameClock(
  * Back to the start of the arrival vortex, fully present.
  *
  * The arrival is derived from the clock, so winding it back is the whole of it. The voice tracker,
- * the thought and the lattice carry on as they were, since none of them is part of arriving.
+ * his recent syllables, the thought and the lattice carry on as they were, since none of them is part
+ * of arriving; the drawing holds his syllables' rings back until the vortex has formed him.
  */
 export function restartArrival(state: FrameClockState): FrameClockState {
   'worklet';
@@ -160,8 +177,8 @@ export function restartArrival(state: FrameClockState): FrameClockState {
  * The level is judged against how loud this voice actually gets rather than against full scale: a
  * phone microphone in a quiet room never comes near 1, and the sphere answering the absolute
  * number is why the user once saw almost no change however far the answer was turned up. The
- * materialisation plays once, from the start of the arrival. The bands are the clock's own array,
- * not a copy, so the frame is only good until the next step.
+ * materialisation plays once, from the start of the arrival. The bands and his recent syllables are
+ * the clock's own arrays, not copies, so the frame is only good until the next step.
  */
 export function hologramFrameOf(state: FrameClockState): HologramFrame {
   'worklet';
@@ -172,6 +189,7 @@ export function hologramFrameOf(state: FrameClockState): HologramFrame {
     bands: state.bands,
     speaking: state.speaking,
     agitation: activity.agitation,
+    talk: activity.talk,
     burstAge: activity.burstAge,
     burstStrength: activity.burstStrength,
     burstCount: activity.burstCount,
@@ -180,5 +198,7 @@ export function hologramFrameOf(state: FrameClockState): HologramFrame {
     hearing: state.hearing,
     hearingLevel: state.hearingLevel,
     presence: state.presence,
+    voiceWave: state.wave.slots,
+    voiceWavePhase: voiceWavePhaseOf(state.wave),
   };
 }

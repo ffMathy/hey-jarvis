@@ -1,6 +1,7 @@
 /**
  * Renders short clips of the sphere doing one thing each, to WebM, for looking at a change before it
- * is on a device: the vortex he arrives in, the lattice he listens with, and the greeting he says.
+ * is on a device: the vortex he arrives in, the lattice he listens with, the greeting he says as he
+ * arrives, and him speaking once he has formed.
  *
  * Every frame goes through the same voice pipeline the app runs — see `simulated-performance.ts` —
  * so what a clip shows is what the view would draw, not an impression of it. And all of him is drawn
@@ -16,7 +17,7 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { GREETING_SECONDS, MATERIALISE_SECONDS, THOUGHT_FADE_SECONDS } from '../src/index';
+import { GREETING_SECONDS, MATERIALISE_SECONDS, moodOf } from '../src/index';
 import { bytesOf, openRenderPage } from './render-page';
 import { createPerformance, type SimulatedMoment } from './simulated-performance';
 
@@ -52,6 +53,16 @@ const CLIPS: Clip[] = [
     seconds: GREETING_SECONDS + 1.6,
     at: (seconds) => ({ mood: undefined, moodSeconds: 0, greetingSeconds: seconds }),
   },
+  // Speaking once he has formed, as sample mode speaks: the greeting, repeated. The greeting clip
+  // plays while the vortex is still bringing him out, which holds most of what speech does back.
+  {
+    name: 'speaking',
+    seconds: MATERIALISE_SECONDS + 5,
+    at: (seconds) => ({
+      mood: seconds >= MATERIALISE_SECONDS ? moodOf('speaking') : undefined,
+      moodSeconds: Math.max(0, seconds - MATERIALISE_SECONDS),
+    }),
+  },
 ];
 
 async function main() {
@@ -61,7 +72,7 @@ async function main() {
   try {
     await page.evaluate((size) => window.preview.setUp(size), SIZE);
     for (const clip of CLIPS) {
-      const perform = createPerformance(FRAME_SECONDS, THOUGHT_FADE_SECONDS);
+      const perform = createPerformance(FRAME_SECONDS);
       const jpegs: Uint8Array[] = [];
       for (let index = 0; index * FRAME_SECONDS <= BEFORE_SECONDS + clip.seconds; index++) {
         const seconds = index * FRAME_SECONDS - BEFORE_SECONDS;

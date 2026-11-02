@@ -5,6 +5,7 @@ import {
   type HologramFrame,
   SCENE_SEED,
   STREAM_STRIDE,
+  VOICE_WAVE_REACH,
 } from 'hologram';
 import {
   buildHologramRows,
@@ -162,11 +163,15 @@ export function checkPort(
   material.dispose();
   // Lets go of the attributes' buffers; the row geometry they came from was never drawn itself.
   geometry.dispose();
-  return compare(placed, readings[0], readings[1]);
+  return { ...compare(placed, readings[0], readings[1]), voiceWaveShare: state.voiceWaveLargest / VOICE_WAVE_REACH };
 }
 
-function compare(placed: (PlacedFragment | null)[], centres: Float32Array, axes: Float32Array): PortCheck {
-  const check: PortCheck = {
+function compare(
+  placed: (PlacedFragment | null)[],
+  centres: Float32Array,
+  axes: Float32Array,
+): Omit<PortCheck, 'voiceWaveShare'> {
+  const check: Omit<PortCheck, 'voiceWaveShare'> = {
     rows: placed.length,
     drawnOnCpu: 0,
     drawnOnGpu: 0,

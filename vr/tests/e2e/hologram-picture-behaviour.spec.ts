@@ -333,6 +333,61 @@ function coreRingProfile(picture: Picture, pixels: Uint8Array): number[] {
   return totals.map((total, degree) => (counts[degree] ? total / counts[degree] : 0));
 }
 
+/** Where the white-hot ring round the core is looked for, in resting radii from the core. */
+const CORE_RING_INSIDE = 0.15;
+const CORE_RING_OUTSIDE = 0.3;
+
+/**
+ * Where the white-hot ring round the core is, in resting radii from the core's own centre: the
+ * distance, to the nearest pixel, whose circle of pixels is brightest on average between
+ * {@link CORE_RING_INSIDE} and {@link CORE_RING_OUTSIDE}. The ring is the brightest thing in him, so
+ * its line is the peak; the glow round it, which does not move with it, only lifts the floor.
+ */
+function coreRingPeak(picture: Picture, pixels: Uint8Array): number {
+  const { coreAcross, coreDown } = picture.facts;
+  const centreX = SIZE / 2 + coreAcross * picture.radius;
+  const centreY = SIZE / 2 + coreDown * picture.radius;
+  const totals = new Map<number, { light: number; count: number }>();
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      const pixelsOut = Math.round(Math.hypot(x + 0.5 - centreX, y + 0.5 - centreY));
+      const reach = pixelsOut / picture.radius;
+      if (reach < CORE_RING_INSIDE || reach > CORE_RING_OUTSIDE) continue;
+      const total = totals.get(pixelsOut) ?? { light: 0, count: 0 };
+      total.light += luminance(pixels, (y * SIZE + x) * 4);
+      total.count++;
+      totals.set(pixelsOut, total);
+    }
+  }
+  let peak = 0;
+  let brightest = -1;
+  for (const [pixelsOut, { light, count }] of totals) {
+    if (light / count > brightest) {
+      brightest = light / count;
+      peak = pixelsOut;
+    }
+  }
+  return peak / picture.radius;
+}
+
+/** Where the fray's strands and streak arcs lie, in resting radii: off his shell's edge and a little past it. */
+const FRAY_INSIDE = 0.8;
+const FRAY_OUTSIDE = 1.25;
+
+/** How many pixels between {@link FRAY_INSIDE} and {@link FRAY_OUTSIDE} differ at all between two pictures. */
+function changedRoundTheShell(picture: Picture, first: Uint8Array, second: Uint8Array): number {
+  let count = 0;
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      const reach = radiusOf(picture, x, y);
+      if (reach < FRAY_INSIDE || reach > FRAY_OUTSIDE) continue;
+      const at = (y * SIZE + x) * 4;
+      if (first[at] !== second[at] || first[at + 1] !== second[at + 1] || first[at + 2] !== second[at + 2]) count++;
+    }
+  }
+  return count;
+}
+
 /** `profile` less `still`, degree by degree, then averaged over `reach` degrees either side. */
 function movingPart(profile: number[], still: number[], reach: number): number[] {
   return profile.map((_, degree) => {
@@ -522,9 +577,10 @@ test.describe('the hologram', () => {
     // Some forty renders, which SwiftShader draws on the CPU.
     test.setTimeout(300_000);
     const bands = evenBands(picture, 0.7);
-    // Measured when his cage, core ring and chips were last redrawn: a burst adds 410–460 bright
-    // pixels beyond the left limb, the talking sphere changes 2.0 times as much as the calm one and
-    // the agitated one 1.6.
+    // Measured when the fray and the embers were first held for the whole sentence (the talk
+    // envelope): a burst adds 237–265 bright pixels beyond the left limb, the talking sphere changes
+    // 1.95 times as much as the calm one and the agitated one 1.6. (It read 410–460 for the burst
+    // once, but had drifted to 250–280 by the time the fray was held.)
     for (const time of [6, 13.4, 22.8]) {
       // the cage and the embers are round him in both, so count what the burst adds
       const calm = brightBeyondLeftLimb(picture, await picture.render(silence(picture, time)));
@@ -562,6 +618,48 @@ test.describe('the hologram', () => {
     expect(agitatedChange).toBeGreaterThan(calmChange * 1.3);
   });
 
+  test('draws its white-hot ring in toward the eye as a syllable leaves him', async ({ picture }) => {
+    // Each syllable leaves his core as a ring of specks (his body, not this picture), and the
+    // white-hot ring round the core draws in by up to CORE_RING_DRAW of its radius as it goes. Held
+    // against the same frame with no syllable leaving, so his swell, which carries the whole core out
+    // with his voice, is the same in both. Every slot a full syllable draws it all the way in: 0.25 of
+    // 0.22R, swollen with him.
+    const leaving = { voiceWave: new Array(16).fill(1), voiceWavePhase: 0.2 };
+    for (const time of [8.2, 19.6]) {
+      const bands = evenBands(picture, 0.6);
+      const talking = coreRingPeak(picture, await picture.render(speech(time, 0.7, bands)));
+      const syllable = coreRingPeak(picture, await picture.render({ ...speech(time, 0.7, bands), ...leaving }));
+      const quiet = coreRingPeak(picture, await picture.render(silence(picture, time)));
+
+      expect(syllable).toBeLessThan(talking - 0.03);
+      // In silence, where nothing swells him or draws it in, it is where it has always been.
+      expect(Math.abs(quiet - picture.facts.coreRingRadius)).toBeLessThan(0.02);
+    }
+  });
+
+  test('keeps the fray and more embers out between words, while he holds the floor for the sentence', async ({
+    picture,
+  }) => {
+    // Between words his agitation is nothing, but the sentence is not over: the talk envelope holds,
+    // and with it the fray off his shell's edge and more of the embers, as faint hairlines and flecks.
+    // They used to drop back to idle a dozen times a sentence. Held against the same frame with the
+    // envelope let go, so his swell and his glow are the same in both and only what the envelope
+    // holds out differs. Measured when the envelope was added: 385–459 pixels round his shell's edge
+    // changed, almost all of them between 0.8R and 1.2R.
+    for (const time of [6, 13.4, 22.8]) {
+      const betweenWords = {
+        ...silence(picture, time),
+        level: 0.08,
+        bands: evenBands(picture, 0.3),
+        speaking: true,
+      };
+      const held = await picture.render({ ...betweenWords, talk: 1 });
+      const letGo = await picture.render({ ...betweenWords, talk: 0 });
+
+      expect(changedRoundTheShell(picture, held, letGo)).toBeGreaterThan(200);
+    }
+  });
+
   test('shows which frequencies are sounding while he talks, not just that he is talking', async ({ picture }) => {
     // Same moments, same overall level and agitation; only where the energy sits differs. The low
     // notes bring more embers off him, the high ones fray his shell's edge.
@@ -569,8 +667,9 @@ test.describe('the hologram', () => {
     // **0.15, where it was 0.45, because the old picture answered with something far bigger.** Its
     // low notes split the crescent, a band of light round a third of the rim, and that measured
     // 0.63. The embers and the fray that answer them now are hairlines and flecks, and measured
-    // 0.20–0.24 over these moments when his cage, core ring and chips were last redrawn (0.21–0.25
-    // when the picture was first redrawn after the Vision Quest footage). It keeps its teeth: the same
+    // 0.23–0.27 over these moments when the fray and the embers were first held for the whole
+    // sentence (0.20–0.24 when his cage, core ring and chips were last redrawn, and 0.21–0.25 when
+    // the picture was first redrawn after the Vision Quest footage). It keeps its teeth: the same
     // spectrum drawn twice differs by exactly 0, which is what ignoring the bands would score, and
     // it sits under the least of them rather than at it, because a threshold a test clears by
     // three percent is a threshold that fails on the next unrelated thing.

@@ -23,6 +23,9 @@ import {
   TRUSS_THINKING_DIM,
   thoughtTurn,
   turnOfGroup,
+  VOICE_WAVE_ALONG,
+  voiceWavePush,
+  voiceWaveTurn,
 } from '../hologram-drawing';
 
 /**
@@ -198,17 +201,32 @@ interface Unfinished {
   group: number;
   /** How far its row rests from the core, in R, which says which way a gyroscope's arc rocks. */
   fromCore: number;
+  /** How much of its outward lean a ring of his voice takes away (`voiceWaveTurn`): 0 for strokes that keep their way. */
+  alongWave: number;
 }
 
 /**
- * The last step every fragment shares: its group's turn in the view plane — about his middle for
- * the truss, about the core for the rest — then out of the plane into the body's frame.
+ * The last step every fragment shares: pushed out by the rings his syllables send out of his core
+ * (`voiceWavePush`), all but the truss's; its group's turn in the view plane — about his middle for
+ * the truss, about the core for the rest; then out of the plane into the body's frame.
+ *
+ * `plane` is where it was before the push, so the sparkle the strokes read there (`body-strokes.ts`)
+ * rides with each speck as a ring carries it rather than sliding under it.
  */
 function finish(fragment: Unfinished, state: HologramFrameState, basis: ViewBasis): PlacedFragment {
   let { x, y, axisX, axisY } = fragment;
+  const plane: [number, number] = [x, y];
+  if (state.voiceWaveLargest > 0 && fragment.group !== TRUSS_GROUP) {
+    voiceWavePush(x, y, state);
+    voiceWaveTurn(axisX, axisY, x, y, state.waved[2] ?? 0, fragment.alongWave, state);
+    const waved = state.waved;
+    x = waved[0] ?? x;
+    y = waved[1] ?? y;
+    axisX = waved[3] ?? axisX;
+    axisY = waved[4] ?? axisY;
+  }
   let normalX = -axisY * 0.55;
   let normalY = axisX * 0.55;
-  const plane: [number, number] = [x, y];
   if (fragment.group > 0) {
     const radians = (turnOfGroup(fragment.group, fragment.fromCore, state) * Math.PI) / 180;
     const cos = Math.cos(radians);
@@ -333,6 +351,8 @@ export function placeBodyFragment(
       glyph,
       group,
       fromCore: Math.hypot(restX - CORE_X, restY - CORE_Y),
+      // The gyroscope's arcs keep their way as a ring passes through them: they rock instead.
+      alongWave: group === GYRO_GROUP ? 0 : VOICE_WAVE_ALONG,
     },
     state,
     basis,
@@ -408,6 +428,8 @@ export function placeStreamFragment(
       glyph: stream[offset + 9],
       group: 0,
       fromCore: 0,
+      // The stream's strokes keep their way: they are tangents of their latitude.
+      alongWave: 0,
     },
     state,
     basis,

@@ -40,6 +40,8 @@ test('the GPU places every fragment where the CPU reference does', async ({ page
     expect(check.tierDiffers, label).toBeLessThanOrEqual(Math.ceil(check.drawnOnCpu * 0.002));
     expect(check.largestCentreError, label).toBeLessThan(1e-3);
     expect(check.largestAxisError, label).toBeLessThan(1e-3);
+    // Speaking has to send a ring of his voice through him, or the rings' arithmetic goes unchecked.
+    if (moment.phase === 'speaking') expect(check.voiceWaveShare, label).toBeGreaterThan(0.3);
   }
   expect(problems).toEqual([]);
 });
