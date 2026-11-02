@@ -530,19 +530,22 @@ describe('the rings his syllables send out of his core', () => {
 
   it('never push a speck past where the rings melt into his shell, so his limb holds', () => {
     // The 0.94R limb test above measures where a speck is before the rings push it; this is where it
-    // is drawn, with every slot a full syllable and with the real ones.
+    // is drawn, with every slot a full syllable and with the real ones. The whorl's and the arcs' are
+    // turned about the core after the push, which keeps how far they are from it but not from his
+    // middle, so it is measured from the core: inside where the rings melt a speck stays inside it,
+    // and beyond it a speck is not pushed at all.
     for (const moment of [MOMENTS.speaking, everySlotFull]) {
       const state = stateAt(moment);
       const drawn = drawnBody(state).filter(({ placed }) => placed.group !== TRUSS_GROUP);
       expect(drawn.length).toBeGreaterThan(2000);
       for (const { placed } of drawn) {
         const [x, y] = drawnAt(placed);
-        expect(Math.hypot(x, y)).toBeLessThan(0.94);
-        // A speck the rings pushed is never pushed out past where they are gone.
         const before = Math.hypot(placed.plane[0] - CORE_X, placed.plane[1] - CORE_Y);
-        if (placed.group === 0 && before < VOICE_WAVE_GONE) {
-          expect(Math.hypot(x - CORE_X, y - CORE_Y)).toBeLessThan(VOICE_WAVE_GONE);
-        }
+        const after = Math.hypot(x - CORE_X, y - CORE_Y);
+        if (before < VOICE_WAVE_GONE) expect(after).toBeLessThan(VOICE_WAVE_GONE);
+        else expect(after).toBeCloseTo(before, 12);
+        // The globe's specks are drawn where they are pushed, so its limb can be read off directly.
+        if (placed.group === 0) expect(Math.hypot(x, y)).toBeLessThan(0.94);
       }
     }
   });
@@ -555,9 +558,9 @@ describe('the rings his syllables send out of his core', () => {
       const loud = placeBodyFragment(scene.body, offset, spoken, FRONT_VIEW);
       if (loud === null || loud.group !== TRUSS_GROUP) continue;
       const quiet = placeBodyFragment(scene.body, offset, silent, FRONT_VIEW);
-      expect(quiet).not.toBeNull();
-      expect(loud.centre).toEqual(quiet?.centre ?? []);
-      expect(loud.axis).toEqual(quiet?.axis ?? []);
+      if (quiet === null) throw new Error(`truss row ${offset} is drawn while he speaks but not in silence`);
+      expect(loud.centre).toEqual(quiet.centre);
+      expect(loud.axis).toEqual(quiet.axis);
       compared++;
     }
     expect(compared).toBeGreaterThan(150);
