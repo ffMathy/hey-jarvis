@@ -135,9 +135,12 @@ function arrivedShare(into: number, whole: number): number {
  * Every VOICE_WAVE_SLOT_SECONDS of the clock's time the slot being filled is cut and pushed to the
  * front. The rise is shared out between the slots a step crosses by the curve it arrives on: the
  * bands ease exponentially over ATTACK_SECONDS, so by `t` into a step `(1 − e^(−t/τ)) / (1 − e^(−Δ/τ))`
- * of its rise has arrived, whatever the step. A step that cuts more than VOICE_WAVE_SLOTS slots writes
- * only the newest of them; what the older ones would have held is let go, as the hold would have let
- * it go anyway.
+ * of its rise has arrived, whatever the step. A step that cuts more than VOICE_WAVE_SLOTS slots — a
+ * stall — writes only the newest of them: the rise that arrived in the cuts before them is dropped,
+ * and the slot before them is taken to have decayed by the hold through every one. Right after a stall
+ * of under a second that leaves the oldest slots weaker than smooth steps would (after 0.8 s, 0.14 of a
+ * full syllable against 0.27), on rings about to melt into his shell, after a frame late enough to be
+ * a hitch of its own.
  *
  * A step that is not a positive, finite number of seconds changes nothing.
  */
