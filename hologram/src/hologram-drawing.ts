@@ -488,9 +488,12 @@ export const VOICE_WAVE_FULL_CROWDING = 0.2;
  * beats with every syllable the moment it starts, before its ring of specks has got far enough out
  * to be seen. In, never out — the user asked for a small core — and a ring that draws in is nothing
  * like the thinking pulse, which blooms out of it. It is always drawn, so it carries speech on a
- * watch that can afford only a few of his specks.
+ * watch that can afford only a few of his specks: at the density loop's floor, a fortieth of them,
+ * the rings have too few specks to show, and at 0.16 the beat was three pixels on a 340-pixel watch.
+ * At a quarter it reaches 0.17R on real speech, still well clear of the eye's 0.1R, and moves at most
+ * 0.007R a frame.
  */
-export const CORE_RING_DRAW = 0.16;
+export const CORE_RING_DRAW = 0.25;
 
 // Strides of the flat scene tables (the builders describe the fields).
 export const BODY_STRIDE = 9;
