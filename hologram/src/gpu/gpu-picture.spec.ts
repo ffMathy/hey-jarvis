@@ -197,6 +197,21 @@ describe('the picture on the GPU', () => {
     expect(unreadable).toEqual(ring);
   });
 
+  it('draws nothing more while he thinks: the band through his body is the whole of a thought', () => {
+    // Every moment of a pass, the last stretch of it included, where a ring used to bloom out of the
+    // core as each pass ended; quiet and speaking alike.
+    const made = madePicture();
+    const quiet = { level: 0, agitation: 0, burstStrength: 0, burstCount: 0, speaking: false };
+    for (const voice of [{}, quiet]) {
+      for (let time = 5.2; time < 7.8; time += 0.1) {
+        const calm = draw(made, { ...voice, time });
+        const thinking = draw(made, { ...voice, time, thinking: 1 });
+        expect(named(thinking, 'drawElements')).toEqual(named(calm, 'drawElements'));
+        expect(named(thinking, 'stencilFunc')).toEqual(named(calm, 'stencilFunc'));
+      }
+    }
+  });
+
   it('draws more with satellites than without, and none for a satellite that has gone out', () => {
     const made = madePicture();
     const without = named(draw(made), 'drawElements').length;

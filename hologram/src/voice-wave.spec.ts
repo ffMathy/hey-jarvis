@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { advanceFrameClock, createFrameClockState, type FrameClockState, hologramFrameOf } from './frame-clock';
 import { READ_INTERVAL_MS, VOICE_WAVE_SLEW, VOICE_WAVE_SLOT_SECONDS, VOICE_WAVE_SLOTS } from './frame-timing';
+import { HEARD_WAVE_ONSET_SCALE, HEARING_LEVEL_RISE_SECONDS } from './hearing';
 import { analyseFrame, CORE_RING_RADIUS } from './hologram-drawing';
 import { createSimulatedSpectrum, fillSimulatedSpectrum, type SimulatedMood } from './simulated-voice';
 import { simulatedVolume } from './voice-analysis';
@@ -17,6 +18,7 @@ import {
 } from './voice-levels';
 import {
   advanceVoiceWave,
+  createVoiceWaveState,
   HOLD_DECAY,
   syllableRise,
   VOICE_WAVE_FLOOR,
@@ -546,7 +548,7 @@ describe('his recent syllables, as the frame clock keeps them', () => {
     advanceFrameClock(state, 2.5, vowel.level, vowel.bands, true, false, false, 0, 0);
     inspect(state);
     play(simulatedVoice('speaking'), 4, evenClock(144), { state, onFrame: inspect });
-    expect(advanceVoiceWave(wave, 0.5, 0.01)).toBe(wave);
+    expect(advanceVoiceWave(wave, 0.5, 0.01, ATTACK_SECONDS, VOICE_WAVE_ONSET_SCALE)).toBe(wave);
     inspect(state);
 
     expect(framesChecked).toBeGreaterThan(700);
@@ -586,12 +588,43 @@ describe('advanceVoiceWave and syllableRise, given a step that is not one', () =
     const silentBands = new Array<number>(VOICE_BAND_COUNT).fill(0);
 
     for (const step of [0, -0.01, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(advanceVoiceWave(wave, 2, step)).toBe(wave);
+      expect(advanceVoiceWave(wave, 2, step, ATTACK_SECONDS, VOICE_WAVE_ONSET_SCALE)).toBe(wave);
       expect(wave).toEqual(before);
       expect(syllableRise(silentBands, vowel.bands, vowel.level, createVoiceActivityState(), step)).toBe(0);
     }
     // The same rise over a real frame is plainly there.
     expect(syllableRise(silentBands, vowel.bands, vowel.level, createVoiceActivityState(), 1 / 60)).toBeGreaterThan(0);
+  });
+});
+
+describe('advanceVoiceWave, for his voice or theirs', () => {
+  /** A fresh train, stepped once by `deltaSeconds` with `rise` arriving, eased over `attackSeconds` and scaled by `onsetScale`. */
+  const steppedOnce = (rise: number, deltaSeconds: number, attackSeconds: number, onsetScale: number) =>
+    advanceVoiceWave(createVoiceWaveState(), rise, deltaSeconds, attackSeconds, onsetScale);
+
+  it('makes a syllable of as much rise as the scale it is handed says: his bands’, or their loudness’', () => {
+    // A step of exactly a slot cuts one slot, holding all of the step's rise: 1 − e^(−rise / scale).
+    const rise = 0.05;
+    const his = steppedOnce(rise, VOICE_WAVE_SLOT_SECONDS, ATTACK_SECONDS, VOICE_WAVE_ONSET_SCALE);
+    const theirs = steppedOnce(rise, VOICE_WAVE_SLOT_SECONDS, HEARING_LEVEL_RISE_SECONDS, HEARD_WAVE_ONSET_SCALE);
+    expect(his.slots[0]).toBeCloseTo(1 - Math.exp(-rise / VOICE_WAVE_ONSET_SCALE), 12);
+    expect(theirs.slots[0]).toBeCloseTo(1 - Math.exp(-rise / HEARD_WAVE_ONSET_SCALE), 12);
+    // Their loudness rises by a few tenths a syllable, where his bands' summed rise is several: the
+    // same rise is far more of a syllable of theirs than of his.
+    expect(theirs.slots[0]).toBeGreaterThan(4 * (his.slots[0] ?? Number.NaN));
+  });
+
+  it('shares a step’s rise between the slots it crosses by the easing it is handed', () => {
+    // A step of a slot and a half cuts one slot, a third of the way through the step's last part: by
+    // the cut, (1 − e^(−slot/τ)) / (1 − e^(−step/τ)) of the rise has arrived, for that voice's τ.
+    const rise = 0.3;
+    const step = 1.5 * VOICE_WAVE_SLOT_SECONDS;
+    for (const attackSeconds of [ATTACK_SECONDS, HEARING_LEVEL_RISE_SECONDS, 0.2]) {
+      const wave = steppedOnce(rise, step, attackSeconds, VOICE_WAVE_ONSET_SCALE);
+      const arrived = (1 - Math.exp(-VOICE_WAVE_SLOT_SECONDS / attackSeconds)) / (1 - Math.exp(-step / attackSeconds));
+      expect(wave.rise).toBeCloseTo(rise * (1 - arrived), 12);
+      expect(wave.slots[0]).toBeCloseTo(1 - Math.exp((-rise * arrived) / VOICE_WAVE_ONSET_SCALE), 12);
+    }
   });
 });
 
