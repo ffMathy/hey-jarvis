@@ -67,7 +67,7 @@ test('the page asks for an ElevenLabs key first, and checks it with ElevenLabs b
   await page.getByRole('button', { name: 'Check and save' }).click();
   await expect(page.getByRole('alert')).toHaveText('ElevenLabs rejected the API key. Check it in the settings.');
   expect(await page.evaluate((storageKey) => window.localStorage.getItem(storageKey), SETTINGS_KEY)).toBeNull();
-  await expect(primary).toHaveText('Add your ElevenLabs key first');
+  await expect(primary).toHaveText('Set up your Jarvis server or key first');
 
   answer.current = { status: 200, body: { token: 'token', conversation_id: 'conversation' } };
   await key.fill('  sk_right  ');
