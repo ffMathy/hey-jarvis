@@ -42,6 +42,8 @@ test('the GPU places every fragment where the CPU reference does', async ({ page
     expect(check.largestAxisError, label).toBeLessThan(1e-3);
     // Speaking has to send a ring of his voice through him, or the rings' arithmetic goes unchecked.
     if (moment.phase === 'speaking') expect(check.voiceWaveShare, label).toBeGreaterThan(0.3);
+    // And listening a ring of theirs in through the lattice, which pulls its knots the other way.
+    if (moment.phase === 'listening') expect(check.heardWaveShare, label).toBeGreaterThan(0.3);
   }
   expect(problems).toEqual([]);
 });

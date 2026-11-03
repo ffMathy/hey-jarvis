@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'bun:test';
-import { easeHearing, HEARING_THRESHOLD, hearingFromPresence, hearingLevelFromVolume } from './hearing';
+import {
+  easeHearing,
+  easeHearingLevel,
+  HEARING_THRESHOLD,
+  heardRise,
+  hearingFromPresence,
+  hearingLevelFromVolume,
+} from './hearing';
 
 describe('hearing someone', () => {
   it('hears nobody below the firmware threshold, and someone clearly above it', () => {
@@ -35,5 +42,20 @@ describe('hearing someone', () => {
       down = easeHearing(down, 0, 1 / 60);
     }
     expect(up).toBeGreaterThan(1 - down);
+  });
+});
+
+describe('the rise of their loudness, which marks each syllable they say', () => {
+  it('is how far a step lifted their eased loudness, while the score says they speak', () => {
+    const before = 0.2;
+    const eased = easeHearingLevel(before, 0.8, 1 / 60);
+    expect(heardRise(before, eased, 1)).toBe(eased - before);
+    expect(heardRise(before, eased, 0.01)).toBe(eased - before);
+  });
+
+  it('is nothing while it falls or holds, or while the score says nobody is talking, however loud the room gets', () => {
+    expect(heardRise(0.6, easeHearingLevel(0.6, 0.2, 1 / 60), 1)).toBe(0);
+    expect(heardRise(0.6, 0.6, 1)).toBe(0);
+    expect(heardRise(0.1, easeHearingLevel(0.1, 1, 1 / 60), 0)).toBe(0);
   });
 });

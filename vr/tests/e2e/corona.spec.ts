@@ -12,11 +12,12 @@ import { bundle, expect, keepOffline, keepPicture } from './fixtures';
  * The corona Jarvis lights around an entity he is working on, drawn by the real shaders in the
  * browser, photographed and measured.
  *
- * The pictures are for a person to judge whether it reads as his light — warm, a ring and a scan —
- * over black and over a room. The measurements hold the parts of that a regression would break: the
- * colour is his gold and not white or red, the middle is left clear, the band travels up through
- * it on his thinking scan's time, the bloom comes at the end of each pass, it fades with its level,
- * and a far one is drawn no smaller than its least apparent size.
+ * The pictures are for a person to judge whether it reads as his light — warm, a ring and one soft
+ * band — over black and over a room. The measurements hold the parts of that a regression would
+ * break: the colour is his gold and not white or red, the middle is left clear, the band glides up
+ * through it and back down on his thinking band's time, turning back inside the disc, nothing
+ * blooms out of it as a pass ends, it fades with its level, and a far one is drawn no smaller than
+ * its least apparent size.
  *
  * No headset is needed, so the page is a blank one with the probe (`corona-probe.ts`) added to it
  * rather than the app with the emulated Quest.
@@ -34,6 +35,12 @@ const AHEAD: CoronaProbePoint = { x: 0, y: 1.5, z: -1 };
 /** A lamp 0.9 m ahead, at eye height. */
 const CLOSE: CoronaProbePoint = { x: 0, y: 1.5, z: -0.9 };
 const FIELD_OF_VIEW = 30;
+/**
+ * One pass of his thinking band, up or down: hologram's SCAN_SECONDS. Written out, as every time here
+ * is; the probe says where the band is at each, so a pass of another length fails these rather than
+ * passing them by accident.
+ */
+const PASS_SECONDS = 2.6;
 
 async function openProbe(page: Page): Promise<string[]> {
   const problems: string[] = [];
@@ -61,10 +68,6 @@ async function draw(page: Page, request: Partial<CoronaDrawRequest>): Promise<Co
 
 async function row(page: Page, y: number): Promise<CoronaPixel[]> {
   return (await page.evaluate((at) => window.__corona?.row(at), y)) ?? [];
-}
-
-async function column(page: Page, x: number): Promise<CoronaPixel[]> {
-  return (await page.evaluate((at) => window.__corona?.column(at), x)) ?? [];
 }
 
 async function photograph(page: Page, testInfo: TestInfo, name: string) {
@@ -137,40 +140,115 @@ test('is his warm light, with its middle left clear, over black and over a room'
   expect(problems).toEqual([]);
 });
 
-test('sweeps its scan up through the disc, and blooms as each pass ends', async ({ page }, testInfo) => {
+/**
+ * The row the band's dashes are drawn along, in pixels from the top, looked for between `from` and
+ * `to` rim radii below the middle (up is negative): the row whose bluest pixel across the middle of
+ * the disc is the bluest of all. The dashes are his hot strokes' near-white; the halo, the rim and
+ * the ticks are orange, with little blue in them, and the band's glow is the halo's colour.
+ */
+async function bandRow(page: Page, drawn: CoronaProbeDrawn, from: number, to: number): Promise<number> {
+  const where = drawn.spots[0];
+  if (where === undefined) throw new Error('Nothing was drawn.');
+  const top = Math.round(where.y + from * where.radiusPixels);
+  const bottom = Math.round(where.y + to * where.radiusPixels);
+  const left = Math.round(where.x - 0.5 * where.radiusPixels);
+  const right = Math.round(where.x + 0.5 * where.radiusPixels);
+  const bluest = await page.evaluate(
+    ({ top, bottom, left, right }) => {
+      const found: number[] = [];
+      for (let y = top; y <= bottom; y++) {
+        const line = window.__corona?.row(y) ?? [];
+        let most = 0;
+        for (let x = left; x <= right; x++) most = Math.max(most, line[x]?.[2] ?? 0);
+        found.push(most);
+      }
+      return found;
+    },
+    { top, bottom, left, right },
+  );
+  let best = 0;
+  for (let index = 1; index < bluest.length; index++) {
+    if ((bluest[index] ?? 0) > (bluest[best] ?? 0)) best = index;
+  }
+  return top + best;
+}
+
+test('glides its band up through the disc and back down, turning inside it', async ({ page }, testInfo) => {
   const problems = await openProbe(page);
-  // A third of the way below the middle, the middle, and a third above it, on his scan's time.
-  const heights: number[] = [];
-  for (const time of [0.848, 1.3, 1.752]) {
+  // Halfway below the middle, the middle, and halfway above it on the way up — scanAt is -0.5, 0 and
+  // 0.5 a third, a half and two thirds of the way through the first pass — and halfway above, the
+  // middle and halfway below on the way back down, at the same points of the second.
+  const pass = PASS_SECONDS;
+  const rising = [pass / 3, pass / 2, (2 * pass) / 3];
+  const falling = rising.map((time) => pass + time);
+  const found = new Map<number, number>();
+  for (const time of [...rising, ...falling]) {
     const drawn = await draw(page, { time });
     const where = drawn.spots[0];
     if (where === undefined) throw new Error('Nothing was drawn.');
-    const line = await column(page, where.x);
-    const found = brightest(line, where.y - 0.6 * where.radiusPixels, where.y + 0.6 * where.radiusPixels);
+    const at = await bandRow(page, drawn, -0.9, 0.9);
     const expected = where.y - drawn.scanHeight * where.radiusPixels;
-    expect(Math.abs(found.at - expected), `the band at ${time} s`).toBeLessThan(0.08 * where.radiusPixels);
-    heights.push(found.at);
+    expect(Math.abs(at - expected), `the band at ${time.toFixed(3)} s`).toBeLessThan(0.04 * where.radiusPixels);
+    found.set(time, at);
   }
-  expect(heights[1]).toBeLessThan(heights[0] ?? 0);
-  expect(heights[2]).toBeLessThan(heights[1] ?? 0);
+  const heightAt = (time: number) => found.get(time) ?? Number.NaN;
+  // Up the picture on the way up, so fewer pixels from the top; down it on the way back.
+  expect(heightAt(rising[1])).toBeLessThan(heightAt(rising[0]));
+  expect(heightAt(rising[2])).toBeLessThan(heightAt(rising[1]));
+  expect(heightAt(falling[1])).toBeGreaterThan(heightAt(falling[0]));
+  expect(heightAt(falling[2])).toBeGreaterThan(heightAt(falling[1]));
+  // And through the same heights both ways: down through the first pass's points in reverse.
+  for (let index = 0; index < rising.length; index++) {
+    const back = falling[rising.length - 1 - index];
+    expect(Math.abs(heightAt(rising[index]) - heightAt(back)), `at ${index} up and back`).toBeLessThanOrEqual(2);
+  }
 
-  const quiet = await draw(page, { time: 1.3 });
-  const bloomTime = 2.325;
-  const blooming = await draw(page, { time: bloomTime });
-  if (blooming.bloomRadius === null) throw new Error(`No bloom at ${bloomTime} s.`);
-  expect(quiet.bloomRadius).toBeNull();
-  const where = blooming.spots[0];
-  if (where === undefined) throw new Error('Nothing was drawn.');
-  const at = where.x - blooming.bloomRadius * where.radiusPixels;
-  const bloomLine = await row(page, where.y);
-  const bloomPeak = brightest(bloomLine, at - 3, at + 3);
-  await photograph(page, testInfo, 'corona-bloom-black.png');
-  await draw(page, { time: 1.3 });
-  const quietLine = await row(page, where.y);
-  const quietPeak = brightest(quietLine, at - 3, at + 3);
-  expect(luma(bloomPeak.pixel)).toBeGreaterThan(luma(quietPeak.pixel) + 40);
-  await draw(page, { time: bloomTime, background: 'grey' });
-  await photograph(page, testInfo, 'corona-bloom-grey.png');
+  // At the top and the bottom of its travel it turns back well inside the rim, where its dashes are
+  // still drawn across the disc, rather than leaving it.
+  for (const [time, name] of [
+    [pass, 'top'],
+    [2 * pass, 'bottom'],
+  ] as const) {
+    const drawn = await draw(page, { time });
+    const where = drawn.spots[0];
+    if (where === undefined) throw new Error('Nothing was drawn.');
+    const at = await bandRow(page, drawn, -0.95, 0.95);
+    const expected = where.y - drawn.scanHeight * where.radiusPixels;
+    expect(Math.abs(at - expected), `the band at the ${name}`).toBeLessThan(0.04 * where.radiusPixels);
+    expect(Math.abs(at - where.y), `the band at the ${name}`).toBeLessThan(0.8 * where.radiusPixels);
+    expect(Math.abs(at - where.y), `the band at the ${name}`).toBeGreaterThan(0.7 * where.radiusPixels);
+  }
+  await draw(page, { time: pass });
+  await photograph(page, testInfo, 'corona-turning-black.png');
+  await draw(page, { time: pass, background: 'grey' });
+  await photograph(page, testInfo, 'corona-turning-grey.png');
+  expect(problems).toEqual([]);
+});
+
+test('blooms nothing out of its middle as a pass ends: the band is the whole of a thought', async ({ page }) => {
+  const problems = await openProbe(page);
+  // A ring once bloomed out of the middle over the last 0.55 s of every pass; at 2.325 s it was half
+  // way to the rim, 40 levels over what was there before. Now the middle row as a pass ends, with
+  // the band near one end of its travel, is lit just as it is as the pass began, with the band as far
+  // the other way: the band's light is all there is.
+  const pass = PASS_SECONDS;
+  for (const [ending, starting] of [
+    [pass - 0.275, 0.275],
+    [2 * pass - 0.275, pass + 0.275],
+  ]) {
+    const before = await draw(page, { time: starting });
+    const where = before.spots[0];
+    if (where === undefined) throw new Error('Nothing was drawn.');
+    const from = where.x - 0.9 * where.radiusPixels;
+    const to = where.x - 0.1 * where.radiusPixels;
+    const startingPeak = brightest(await row(page, where.y), from, to);
+    const after = await draw(page, { time: ending });
+    expect(Math.abs(after.scanHeight + before.scanHeight)).toBeLessThan(1e-6);
+    const endingPeak = brightest(await row(page, where.y), from, to);
+    expect(luma(endingPeak.pixel), `the middle as the pass ending at ${ending} s ends`).toBeLessThan(
+      luma(startingPeak.pixel) + 3,
+    );
+  }
   expect(problems).toEqual([]);
 });
 

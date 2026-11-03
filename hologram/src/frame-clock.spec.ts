@@ -14,11 +14,20 @@ import {
   READ_INTERVAL_MS,
   THOUGHT_FADE_SECONDS,
 } from './frame-timing';
-import { easeHearing, easeHearingLevel, hearingFromPresence, hearingLevelFromVolume } from './hearing';
+import {
+  easeHearing,
+  easeHearingLevel,
+  HEARD_WAVE_ONSET_SCALE,
+  HEARING_LEVEL_RISE_SECONDS,
+  heardRise,
+  hearingFromPresence,
+  hearingLevelFromVolume,
+} from './hearing';
 import type { HologramFrame } from './hologram-drawing';
 import { createSimulatedSpectrum, fillSimulatedSpectrum, type SimulatedMood, simulatedUserAt } from './simulated-voice';
 import { simulatedVolume } from './voice-analysis';
 import {
+  ATTACK_SECONDS,
   advanceVoiceActivity,
   createVoiceActivityState,
   easeBands,
@@ -29,7 +38,14 @@ import {
   VOICE_BAND_COUNT,
   voiceDrive,
 } from './voice-levels';
-import { advanceVoiceWave, createVoiceWaveState, syllableRise, voiceWavePhaseOf } from './voice-wave';
+import {
+  advanceVoiceWave,
+  createVoiceWaveState,
+  HOLD_DECAY,
+  syllableRise,
+  VOICE_WAVE_ONSET_SCALE,
+  voiceWavePhaseOf,
+} from './voice-wave';
 
 /** The view's step for a frame with no previous one to measure from, as `hologram-view.tsx` has it. */
 const DEFAULT_FRAME_MS = 16;
@@ -77,6 +93,9 @@ function createReferenceLoop(quietestSpeech: number | undefined, speaking: boole
     // sends out of his core. The frames change because the drawing asked for more, not because code
     // moved; each of the lines below that reads it says so too.
     wave: createVoiceWaveState(),
+    // Added on purpose, likewise: their recent syllables, for the rings they send into him through
+    // the listening lattice. Each line below that reads it says so too.
+    heard: createVoiceWaveState(),
   };
   let waiting = 0;
   return {
@@ -100,10 +119,20 @@ function createReferenceLoop(quietestSpeech: number | undefined, speaking: boole
       const towardGone = (inputs.leaving ? -1 : 1) * (deltaSeconds / LEAVING_SECONDS);
       current.presence = Math.min(1, Math.max(0, current.presence + towardGone));
       current.hearing = easeHearing(current.hearing, inputs.targetHearing, deltaSeconds);
+      // Added on purpose: their recent syllables (see `heard` above), from the rise of their loudness.
+      const heardBefore = current.hearingLevel;
       current.hearingLevel = easeHearingLevel(current.hearingLevel, inputs.targetHearingLevel, deltaSeconds);
       advanceVoiceActivity(current.activity, inputs.targetLevel, deltaSeconds);
       // Added on purpose: his recent syllables (see `wave` above).
-      advanceVoiceWave(current.wave, rise, deltaSeconds);
+      advanceVoiceWave(current.wave, rise, deltaSeconds, ATTACK_SECONDS, VOICE_WAVE_ONSET_SCALE);
+      // Added on purpose: their recent syllables (see `heard` above).
+      advanceVoiceWave(
+        current.heard,
+        heardRise(heardBefore, current.hearingLevel, inputs.targetHearing),
+        deltaSeconds,
+        HEARING_LEVEL_RISE_SECONDS,
+        HEARD_WAVE_ONSET_SCALE,
+      );
       return true;
     },
     backInFront() {
@@ -133,6 +162,9 @@ function createReferenceLoop(quietestSpeech: number | undefined, speaking: boole
         // Added on purpose: his recent syllables (see `wave` above).
         voiceWave: current.wave.slots,
         voiceWavePhase: voiceWavePhaseOf(current.wave),
+        // Added on purpose: their recent syllables (see `heard` above).
+        heardWave: current.heard.slots,
+        heardWavePhase: voiceWavePhaseOf(current.heard),
       };
     },
   };
@@ -222,6 +254,7 @@ interface Coverage {
   maximumBursts: number;
   maximumHearing: number;
   maximumSyllable: number;
+  maximumHeardSyllable: number;
   maximumTalk: number;
   gone: boolean;
   fullyThinking: boolean;
@@ -343,6 +376,7 @@ function noteCoverage(coverage: Coverage, state: FrameClockState) {
   coverage.maximumBursts = Math.max(coverage.maximumBursts, state.activity.burstCount);
   coverage.maximumHearing = Math.max(coverage.maximumHearing, state.hearing);
   coverage.maximumSyllable = Math.max(coverage.maximumSyllable, ...state.wave.slots);
+  coverage.maximumHeardSyllable = Math.max(coverage.maximumHeardSyllable, ...state.heard.slots);
   coverage.maximumTalk = Math.max(coverage.maximumTalk, state.activity.talk);
   coverage.gone ||= state.presence === 0;
   coverage.fullyThinking ||= state.thinking === 1;
@@ -367,6 +401,7 @@ function runSideBySide(seed: number, frames: number, quietestSpeech: number | un
     maximumBursts: 0,
     maximumHearing: 0,
     maximumSyllable: 0,
+    maximumHeardSyllable: 0,
     maximumTalk: 0,
     gone: false,
     fullyThinking: false,
@@ -431,6 +466,7 @@ describe('the frame clock, against the view’s frame loop before it was shared'
       expect(coverage.maximumBursts).toBeGreaterThan(10);
       expect(coverage.maximumHearing).toBeGreaterThan(0.5);
       expect(coverage.maximumSyllable).toBeGreaterThan(0.3);
+      expect(coverage.maximumHeardSyllable).toBeGreaterThan(0.3);
       expect(coverage.maximumTalk).toBe(1);
       expect(coverage.gone).toBe(true);
       expect(coverage.fullyThinking).toBe(true);
@@ -481,12 +517,171 @@ describe('restartArrival', () => {
     const level = state.level;
     const thinking = state.thinking;
     const hearing = state.hearing;
+    const heard = structuredClone(state.heard);
+    // Their syllables are in flight, so carrying them on means something.
+    expect(Math.max(...heard.slots)).toBeGreaterThan(0);
     restartArrival(state);
     expect(state.time).toBe(0);
     expect(state.presence).toBe(1);
     expect(state.level).toBe(level);
     expect(state.thinking).toBe(thinking);
     expect(state.hearing).toBe(hearing);
+    expect(state.heard).toEqual(heard);
     expect(hologramFrameOf(state).appearance).toBe(0);
+  });
+});
+
+/** What a clock keeps of their syllables after a frame, copied so later frames cannot overwrite it. */
+interface HeardFrame {
+  time: number;
+  slots: number[];
+  rise: number;
+  /** Whether a slot was cut this frame. */
+  cut: boolean;
+  /** Whether this frame lifted their eased loudness while the score said they spoke: what makes a syllable. */
+  rose: boolean;
+}
+
+/**
+ * Steps a fresh clock at 60 frames a second for `seconds`, with nothing of his voice and the person
+ * talking to him as `heard` says at each frame's moment: the voice-activity score's target and their
+ * loudness's, as `hearingFromPresence` and `hearingLevelFromVolume` give them.
+ */
+function listen(
+  seconds: number,
+  heard: (time: number) => { targetHearing: number; targetHearingLevel: number },
+  state: FrameClockState = createFrameClockState(),
+): HeardFrame[] {
+  const silence = new Array<number>(VOICE_BAND_COUNT).fill(0);
+  const frames: HeardFrame[] = [];
+  for (let step = 1; step <= Math.round(seconds * 60); step++) {
+    const time = step / 60;
+    const { targetHearing, targetHearingLevel } = heard(time);
+    const loudnessBefore = state.hearingLevel;
+    const filledBefore = state.heard.sinceNewest;
+    advanceFrameClock(state, 1 / 60, 0, silence, false, false, false, targetHearing, targetHearingLevel);
+    frames.push({
+      time,
+      slots: [...state.heard.slots],
+      rise: state.heard.rise,
+      cut: state.heard.sinceNewest < filledBefore + 1 / 60 - 1e-9,
+      rose: targetHearing > 0 && state.hearingLevel > loudnessBefore,
+    });
+  }
+  return frames;
+}
+
+/** Their loudness stepping from `quiet` up to `loud` at `onset` seconds and staying there, with the score saying `targetHearing` throughout. */
+function stepUp(onset: number, quiet: number, loud: number, targetHearing: number) {
+  return (time: number) => ({ targetHearing, targetHearingLevel: time < onset - 1e-9 ? quiet : loud });
+}
+
+const largestOf = (frames: HeardFrame[]) => Math.max(...frames.flatMap((frame) => frame.slots));
+
+describe('their recent syllables, as the frame clock keeps them', () => {
+  it('hands the drawing their slots as it hands his: the clock’s own array, and how far the newest has got', () => {
+    const state = createFrameClockState();
+    listen(0.73, stepUp(0.5, 0, 0.7, 1), state);
+    const frame = hologramFrameOf(state);
+    expect(frame.heardWave).toBe(state.heard.slots);
+    expect(frame.heardWavePhase).toBe(voiceWavePhaseOf(state.heard));
+    expect(Math.max(...(frame.heardWave ?? []))).toBeGreaterThan(0.3);
+    // Theirs are theirs: nothing of his voice was heard, and his slots stay empty.
+    expect(state.wave.slots.every((slot) => slot === 0)).toBe(true);
+  });
+
+  it('cuts a ring for a rise of their loudness while the score says they speak, and none for the same rise while it says nobody does', () => {
+    const speaking = listen(1.5, stepUp(0.5, 0.1, 0.7, 1));
+    expect(largestOf(speaking)).toBeGreaterThan(0.3);
+    // A cough, a door, the room: as loud, but the score never said anyone spoke.
+    const nobody = listen(1.5, stepUp(0.5, 0.1, 0.7, 0));
+    expect(largestOf(nobody)).toBe(0);
+    expect(nobody.every((frame) => frame.rise === 0)).toBe(true);
+  });
+
+  it('cuts nothing new while their loudness holds or falls, and lets the ring go', () => {
+    // Up for a tenth of a second — a syllable — then down to a murmur, which it eases toward from
+    // above and so never rises to again, with the score saying they speak throughout.
+    const frames = listen(3, (time) => ({
+      targetHearing: 1,
+      targetHearingLevel: time < 0.5 - 1e-9 ? 0 : time < 0.6 - 1e-9 ? 0.8 : 0.3,
+    }));
+    expect(largestOf(frames)).toBeGreaterThan(0.3);
+    const lastRise = frames.findLast((frame) => frame.rose)?.time ?? Number.NaN;
+    expect(lastRise).toBeLessThan(0.6 + 1e-9);
+    // Every slot cut once the rise has all arrived holds no more than the hold keeps of the one before.
+    const afterIt = frames.filter((frame) => frame.cut && frame.time > lastRise + 0.1);
+    expect(afterIt.length).toBeGreaterThan(50);
+    for (const { slots } of afterIt) {
+      expect(slots[0]).toBeLessThanOrEqual((slots[1] ?? Number.NaN) * HOLD_DECAY + 1e-15);
+    }
+    // And two seconds on, every one of them has let go.
+    expect(frames.at(-1)?.slots.every((slot) => slot === 0)).toBe(true);
+  });
+
+  it('keeps the syllables of someone really talking to him, and only theirs, phrase after phrase', () => {
+    // Sample mode's person talking to him, read every READ_INTERVAL_MS as a session reads them:
+    // phrases with pauses between, the score dropping under the threshold in each pause.
+    const readingSeconds = READ_INTERVAL_MS / 1000;
+    const frames = listen(12, (time) => {
+      const heard = simulatedUserAt(Math.floor(time / readingSeconds + 1e-9) * readingSeconds);
+      return {
+        targetHearing: hearingFromPresence(heard.presence),
+        targetHearingLevel: hearingLevelFromVolume(heard.volume),
+      };
+    });
+    // Rings while they speak, a good share of a syllable each...
+    expect(largestOf(frames)).toBeGreaterThan(0.3);
+    expect(frames.filter((frame) => frame.rose).length).toBeGreaterThan(100);
+    // ...and whenever a tenth of a second has passed with no rise while they spoke — between their
+    // syllables and through every pause — no slot cut is more than the hold keeps of the one before.
+    let lastRise = Number.NEGATIVE_INFINITY;
+    let quietCuts = 0;
+    for (const frame of frames) {
+      if (frame.rose) lastRise = frame.time;
+      if (!frame.cut || frame.time - lastRise <= 0.1) continue;
+      quietCuts++;
+      expect(frame.slots[0]).toBeLessThanOrEqual((frame.slots[1] ?? Number.NaN) * HOLD_DECAY + 1e-15);
+    }
+    expect(quietCuts).toBeGreaterThan(100);
+  });
+
+  it('cuts the same rings of theirs at any frame rate', () => {
+    // Someone really talking to him, read every READ_INTERVAL_MS as the app reads them, stepped at
+    // frame rates whose frames all divide a reading, so every rate sees each reading at the same
+    // moment of the clock and only how the clock eases between them could differ. Their loudness
+    // eased in a straight line, a step at a time, while the slots shared each step's rise out as if
+    // it had eased on an exponential: at 25 frames a second a slot came out up to 0.057 off what
+    // 200 gave, and their rings 6% weaker over a few phrases.
+    const silence = new Array<number>(VOICE_BAND_COUNT).fill(0);
+    const readSeconds = READ_INTERVAL_MS / 1000;
+    const cutsAt = (framesPerSecond: number) => {
+      const state = createFrameClockState();
+      const framesPerReading = Math.round(readSeconds * framesPerSecond);
+      const cuts: number[] = [];
+      let targetHearing = 0;
+      let targetHearingLevel = 0;
+      for (let frame = 0; frame < 6 * framesPerSecond; frame++) {
+        if (frame % framesPerReading === 0) {
+          const user = simulatedUserAt((frame / framesPerReading) * readSeconds);
+          targetHearing = hearingFromPresence(user.presence);
+          targetHearingLevel = hearingLevelFromVolume(user.volume);
+        }
+        const filledBefore = state.heard.sinceNewest;
+        const step = 1 / framesPerSecond;
+        advanceFrameClock(state, step, 0, silence, false, false, false, targetHearing, targetHearingLevel);
+        if (state.heard.sinceNewest < filledBefore + step - 1e-9) cuts.push(state.heard.slots[0] ?? 0);
+      }
+      return cuts;
+    };
+    const finest = cutsAt(200);
+    expect(Math.max(...finest)).toBeGreaterThan(0.2);
+    for (const framesPerSecond of [25, 50, 100]) {
+      const cuts = cutsAt(framesPerSecond);
+      expect(cuts.length).toBe(finest.length);
+      for (let slot = 0; slot < cuts.length; slot++) {
+        expect(cuts[slot]).toBeCloseTo(finest[slot] ?? Number.NaN, 9);
+      }
+    }
   });
 });

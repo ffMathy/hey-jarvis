@@ -12,7 +12,7 @@ GPU, so it pins what can be pinned without one: the scene and what each frame of
 him is (`hologram-drawing.spec.ts`), where the satellites are
 (`satellite-drawing.spec.ts`), his body through its CPU reference
 (`gpu/fragment-3d.spec.ts`: where every fragment lands, the lattice's layers and
-knots, the thinking plane climbing), the picture's glyphs and paths flattened
+knots and their syllables' rings flowing in, the thinking band gliding up and back), the picture's glyphs and paths flattened
 into runs (`gpu/picture-glyphs.spec.ts`, `gpu/picture-layers.spec.ts`), and the
 GPU's passes — the body's and the picture's — against a context that writes its
 calls down (`gpu/gpu-body.spec.ts`, `gpu/gpu-picture.spec.ts`, both over

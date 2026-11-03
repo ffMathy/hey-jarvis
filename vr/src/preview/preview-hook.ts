@@ -72,6 +72,11 @@ export interface PortCheck {
   largestAxisError: number;
   /** How strong the strongest ring of his voice was in the frame compared, as a share of the fullest. */
   voiceWaveShare: number;
+  /**
+   * How strong the strongest ring of their voice flowing into him through the lattice was in the
+   * frame compared, as a share of the fullest of his.
+   */
+  heardWaveShare: number;
 }
 
 /** A moment and a view to compare the GPU port at. */
@@ -130,6 +135,8 @@ export interface PictureFrame {
   hearingLevel?: number;
   voiceWave?: number[];
   voiceWavePhase?: number;
+  heardWave?: number[];
+  heardWavePhase?: number;
 }
 
 /** A satellite round him as `hologram`'s `SatelliteOrbit` has it. */

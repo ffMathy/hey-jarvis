@@ -20,7 +20,7 @@ import { expect, keepPicture, test } from './fixtures';
  *
  * Each still is stepped from a fresh arrival at 72 Hz to a fixed moment, so the same test draws the
  * same frame every time: the moments were picked with the voice tracker's chips in flight, the
- * lattice up and the thinking plane crossing his middle.
+ * lattice up and the thinking band crossing his middle.
  */
 
 /** How far into each phase each still is taken, in steps of 1/72 s. */
@@ -33,7 +33,8 @@ const MOMENTS: Record<PreviewPhase, number> = {
   speaking: 288,
   // Someone mid-phrase, the lattice fully up.
   listening: 86,
-  // Fully in the thought, the plane across his middle.
+  // Fully in the thought, the band across his middle on its way back down (two seconds of settling
+  // first: 3.9 s on his clock, one and a half passes).
   thinking: 137,
   idle: 216,
   // Half gone: halfway back through the vortex, LEAVING_SECONDS being 0.7 s.

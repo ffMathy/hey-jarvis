@@ -173,9 +173,9 @@
       }
     },
     {
-      "name": "thinking-pulse",
+      "name": "thinking-turning-back",
       "frame": {
-        "time": 46.45,
+        "time": 44.3,
         "level": 0,
         "bands": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         "speaking": false,

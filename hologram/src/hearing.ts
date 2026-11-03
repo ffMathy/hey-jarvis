@@ -1,6 +1,8 @@
 /**
  * How the sphere follows the person talking to him: their voice-activity score and loudness, turned
- * into the two eased numbers the drawing's listening lattice reads (`hearing` and `hearingLevel`).
+ * into the two eased numbers the drawing's listening lattice reads (`hearing` and `hearingLevel`), and
+ * the rise of their loudness that marks each syllable they say, which the clock keeps so the
+ * syllables can flow into him through the lattice (`heardRise`).
  *
  * Worklets, like the rest of what the frame loop calls: they run on the UI thread once a frame,
  * and take everything they need as arguments.
@@ -23,9 +25,20 @@ const HEARING_SPAN = 0.15;
  */
 const HEARING_RISE_SECONDS = 0.06;
 const HEARING_FALL_SECONDS = 0.6;
-/** The same for how hard it breathes: quicker, so it follows syllables rather than sentences. */
-const LEVEL_RISE_SECONDS = 0.05;
+/**
+ * The same for how loud they are, as time constants of an exponential ({@link easeHearingLevel}):
+ * quicker, so it follows syllables rather than sentences. The rise is also how their syllables'
+ * onsets arrive, which the clock shares out between its slots by (`advanceVoiceWave`).
+ */
+export const HEARING_LEVEL_RISE_SECONDS = 0.05;
 const LEVEL_FALL_SECONDS = 0.25;
+/**
+ * How much rise of their loudness makes a syllable: a slot holds `1 − e^(−rise / this)`, as his do
+ * (`VOICE_WAVE_ONSET_SCALE`). On sample mode's voice someone's syllables lift their eased loudness by
+ * about 0.3 to 0.5, and a voice at arm's length from a phone by about 0.2 to 0.3, so a quarter fills
+ * most of a slot on either without a louder voice needing to shout.
+ */
+export const HEARD_WAVE_ONSET_SCALE = 0.25;
 
 function clamp01(value: number) {
   'worklet';
@@ -66,8 +79,32 @@ export function easeHearing(current: number, target: number, deltaSeconds: numbe
   return easeToward(current, target, deltaSeconds, HEARING_RISE_SECONDS, HEARING_FALL_SECONDS);
 }
 
-/** One frame's step of how hard the lattice breathes toward how loud they now are. */
+/**
+ * One frame's step of how loud the lattice takes them to be toward how loud they now are.
+ *
+ * Exponential, as `easeLevel` is for his voice, so where it lands does not depend on the frame rate:
+ * two 8 ms steps land where one 16 ms step does. It matters more here than for the lattice's swell:
+ * its rises are the syllables the frame clock keeps for their rings (`heardRise`), and the clock shares
+ * a step's rise out between its slots on exactly this curve (`advanceVoiceWave`). Eased in a straight
+ * line, a step at a time, as `easeHearing` still eases the score, their rings came out up to 0.057 of
+ * a slot apart between 25 and 200 frames a second.
+ */
 export function easeHearingLevel(current: number, target: number, deltaSeconds: number) {
   'worklet';
-  return easeToward(current, target, deltaSeconds, LEVEL_RISE_SECONDS, LEVEL_FALL_SECONDS);
+  if (!(deltaSeconds > 0)) {
+    return current;
+  }
+  const seconds = target > current ? HEARING_LEVEL_RISE_SECONDS : LEVEL_FALL_SECONDS;
+  return current + (target - current) * (1 - Math.exp(-deltaSeconds / seconds));
+}
+
+/**
+ * How much a step lifted their eased loudness, from `previous` to `eased`: what marks a syllable's
+ * onset in their voice, as the rise of his bands marks his (`syllableRise`). Nothing while it fell,
+ * and nothing while the voice-activity score says nobody is talking (`targetHearing` nought), so a
+ * hiss or a room's noise between their phrases sends nothing in.
+ */
+export function heardRise(previous: number, eased: number, targetHearing: number) {
+  'worklet';
+  return targetHearing > 0 && eased > previous ? eased - previous : 0;
 }

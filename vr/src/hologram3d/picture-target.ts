@@ -100,8 +100,8 @@ export function createPictureRenderTarget(size: number): WebGLRenderTarget {
 
 /**
  * A `size`-pixel target, drawn into with `hologram/gpu`'s picture on three's own context: the aura,
- * the core, the cage, the embers, the fray, the chips and the thinking pulse — every layer of the
- * phone's drawing that leaves his body out. His body is drawn in three dimensions beside it.
+ * the core, the cage, the embers, the fray and the chips — every layer of the phone's drawing that
+ * leaves his body out. His body is drawn in three dimensions beside it.
  *
  * It is cleared to transparent black every frame and drawn unfaded: every layer of
  * him is premultiplied light Screened over that, which is the light alone, and the quad fades it with

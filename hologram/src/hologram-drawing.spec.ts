@@ -29,6 +29,7 @@ import {
   PARTICLE_COUNT,
   PICTURE_SHELL_EDGE,
   placeFragment,
+  pushAlongRings,
   pushGyroSpeck,
   RIM_ROLL_DEGREES_PER_SECOND,
   ROLL_DEGREES_PER_SECOND,
@@ -592,6 +593,66 @@ describe('the rings his syllables send out of his core', () => {
     // And a stroke lying straight out of the core stays as it is rather than vanishing.
     voiceWaveTurn(0.03 * outwardX, 0.03 * outwardY, atX, atY, 1, 1, state);
     expect([state.waved[3], state.waved[4]]).toEqual([0.03 * outwardX, 0.03 * outwardY]);
+  });
+
+  it('push exactly as they did before their rings ran the same arithmetic the other way, to the bit', () => {
+    // Their syllables flow in through the lattice by the arithmetic his rings were pushed out by, made
+    // general (pushAlongRings). His must not have moved by so much as the last bit: this is
+    // voiceWavePush as it was, copied line for line, as the reference both are held to.
+    const smooth = (value: number) => {
+      const clamped = value < 0 ? 0 : value > 1 ? 1 : value;
+      return clamped * clamped * (3 - 2 * clamped);
+    };
+    const smoothSlope = (value: number) => (value > 0 && value < 1 ? 6 * value * (1 - value) : 0);
+    const pushedAsItWas = (x: number, y: number, state: ReturnType<typeof analyseFrame>) => {
+      const out = [x, y, 0];
+      if (state.voiceWaveLargest <= 0) return out;
+      const fromCoreX = x - CORE_X;
+      const fromCoreY = y - CORE_Y;
+      const fromCore = Math.sqrt(fromCoreX * fromCoreX + fromCoreY * fromCoreY);
+      if (fromCore <= VOICE_WAVE_FROM || fromCore >= VOICE_WAVE_GONE) return out;
+      const slots = (fromCore - VOICE_WAVE_FROM) / VOICE_WAVE_STEP - state.voiceWavePhase;
+      const wave = voiceWaveSum(state.voiceWave, slots);
+      const waveSlope = voiceWaveSumSlope(state.voiceWave, slots);
+      const comingIn = (fromCore - VOICE_WAVE_FROM) / VOICE_WAVE_TAPER;
+      const goingOut = (VOICE_WAVE_GONE - fromCore) / VOICE_WAVE_TAPER;
+      const taperIn = smooth(comingIn);
+      const taperOut = smooth(goingOut);
+      const taper = taperIn * taperOut;
+      const taperSlope = (smoothSlope(comingIn) * taperOut - taperIn * smoothSlope(goingOut)) / VOICE_WAVE_TAPER;
+      const scale = (fromCore + taper * wave) / fromCore;
+      out[0] = CORE_X + fromCoreX * scale;
+      out[1] = CORE_Y + fromCoreY * scale;
+      out[2] = -(taperSlope * wave + (taper * waveSlope) / VOICE_WAVE_STEP);
+      return out;
+    };
+
+    const random = createRandom(31);
+    let pushed = 0;
+    for (let trial = 0; trial < 40; trial++) {
+      const state = analyseFrame(
+        frameWith({
+          time: 20 + random() * 10,
+          voiceWave: Array.from({ length: VOICE_WAVE_SLOTS }, () => (random() < 0.3 ? 0 : random())),
+          voiceWavePhase: random(),
+        }),
+        SIZE,
+      );
+      for (let speck = 0; speck < 250; speck++) {
+        const x = (random() * 2 - 1) * 0.95;
+        const y = (random() * 2 - 1) * 0.95;
+        const expected = pushedAsItWas(x, y, state);
+        voiceWavePush(x, y, state);
+        expect(state.waved.slice(0, 3)).toEqual(expected);
+        // The general arithmetic run outward, with his ends, is the very same.
+        const general = [Number.NaN, Number.NaN, Number.NaN];
+        pushAlongRings(x, y, state.voiceWave, state.voiceWavePhase, VOICE_WAVE_FROM, VOICE_WAVE_GONE, general);
+        expect(general).toEqual(expected);
+        if (expected[0] !== x) pushed++;
+      }
+    }
+    // Most of them moved, so the comparison is of pushes, not of specks left where they were.
+    expect(pushed).toBeGreaterThan(5000);
   });
 });
 

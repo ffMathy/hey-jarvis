@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'bun:test';
-import { analyseFrame, type HologramFrame, LATTICE_PULL } from '../hologram-drawing';
+import {
+  analyseFrame,
+  HEARD_WAVE_FROM,
+  HEARD_WAVE_GONE,
+  type HologramFrame,
+  LATTICE_PULL,
+  SCAN_DEAL_FROM_HOP,
+  SCAN_FLOOR,
+  SCAN_PROMOTED_SHARE,
+  SCAN_SOFTNESS,
+  SCAN_STRETCH,
+} from '../hologram-drawing';
 import { VOICE_BAND_COUNT } from '../voice-levels';
 import { FRONT_VIEW } from './fragment-3d';
 import {
@@ -90,6 +101,65 @@ describe('the fragment uniforms', () => {
     expect(written).toEqual(state.voiceWave);
     expect(state.voiceWaveLargest).toBeGreaterThan(0);
     expect(uniforms.voiceWaveClock.value).toEqual([state.voiceWaveLargest, 0.35]);
+  });
+
+  it('carry the thinking band’s tilt, as a cosine and a sine worked out on the CPU', () => {
+    const uniforms = createFragmentUniforms();
+    // Level to begin with.
+    expect(uniforms.scanTilt.value).toEqual([1, 0]);
+    // A moment the band leans well over.
+    const state = analyseFrame(frameAt({ time: 1.8, thinking: 1 }), 1);
+    expect(Math.abs(state.scanTiltSin)).toBeGreaterThan(0.3);
+    writeFragmentUniforms(uniforms, state, FRONT_VIEW, 1, Number.POSITIVE_INFINITY);
+    expect(uniforms.scanTilt.value).toEqual([state.scanTiltCos, state.scanTiltSin]);
+    expect(uniforms.scanHeight.value).toBe(state.scan);
+  });
+
+  it('carry their syllables’ rings flowing in through the lattice, newest first, four to a vector, as his are', () => {
+    const uniforms = createFragmentUniforms();
+    // Nobody talking to begin with: nothing to pull, and the shader skips their rings altogether.
+    for (const name of ['heardWave0', 'heardWave1', 'heardWave2', 'heardWave3'] as const) {
+      expect(uniforms[name].value).toEqual([0, 0, 0, 0]);
+    }
+    expect(uniforms.heardWaveClock.value).toEqual([0, 0]);
+
+    const slots = Array.from({ length: 16 }, (_, slot) => ((slot + 2) % 5) / 4);
+    const state = analyseFrame(frameAt({ hearing: 1, hearingLevel: 0.4, heardWave: slots, heardWavePhase: 0.6 }), 1);
+    writeFragmentUniforms(uniforms, state, FRONT_VIEW, 1, Number.POSITIVE_INFINITY);
+    const written = [
+      ...uniforms.heardWave0.value,
+      ...uniforms.heardWave1.value,
+      ...uniforms.heardWave2.value,
+      ...uniforms.heardWave3.value,
+    ];
+    expect(written).toEqual(state.heardWave);
+    expect(state.heardWaveLargest).toBeGreaterThan(0);
+    expect(uniforms.heardWaveClock.value).toEqual([state.heardWaveLargest, 0.6]);
+    // His own are not theirs: he is silent, and his stay empty.
+    expect(uniforms.voiceWaveClock.value).toEqual([0, 0]);
+  });
+
+  it('declare them, and the thinking band’s and the inbound rings’ constants, from hologram', () => {
+    for (const declared of [
+      'uniform vec2 scanTilt;',
+      'uniform vec4 heardWave0;',
+      'uniform vec4 heardWave1;',
+      'uniform vec4 heardWave2;',
+      'uniform vec4 heardWave3;',
+      'uniform vec2 heardWaveClock;',
+      `const float SCAN_SOFTNESS = ${glslFloat(SCAN_SOFTNESS)};`,
+      `const float SCAN_FLOOR = ${glslFloat(SCAN_FLOOR)};`,
+      `const float SCAN_STRETCH = ${glslFloat(SCAN_STRETCH)};`,
+      `const float SCAN_PROMOTED_SHARE = ${glslFloat(SCAN_PROMOTED_SHARE)};`,
+      `const float SCAN_DEAL_FROM_HOP = ${glslFloat(SCAN_DEAL_FROM_HOP)};`,
+      `const float HEARD_WAVE_FROM = ${glslFloat(HEARD_WAVE_FROM)};`,
+      `const float HEARD_WAVE_GONE = ${glslFloat(HEARD_WAVE_GONE)};`,
+    ]) {
+      expect(FRAGMENT_GLSL).toContain(declared);
+    }
+    // The hard-edged band's numbers are gone with it.
+    expect(FRAGMENT_GLSL).not.toContain('SCAN_HALF_WIDTH');
+    expect(FRAGMENT_GLSL).not.toContain('SCAN_BRIGHT_NEARNESS');
   });
 
   it('stand the eye far off, in a number float32 holds, when it is infinitely far', () => {

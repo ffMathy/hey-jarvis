@@ -1,4 +1,4 @@
-import { PULSE_SECONDS, ROLL_DEGREES_PER_SECOND, SCAN_HALF_WIDTH, SCAN_SECONDS } from 'hologram';
+import { ROLL_DEGREES_PER_SECOND, SCAN_SECONDS, SCAN_SOFTNESS, scanAt } from 'hologram';
 import {
   glslColour,
   glslFloat,
@@ -30,10 +30,19 @@ import { ALPHA_FROM_LIGHT } from './view-plane-quad';
  *
  * It is his, not a marker's, so it is made of his parts and keeps his time: the halo's orange
  * (`HALO_PAINTS`), a thin rim in his brightest stroke's colour with a ring of ticks outside it rolling
- * the way his outer rim does, and his thinking scan — a level band sweeping up through the disc once
- * every SCAN_SECONDS, lighting the rim where it passes, and a ring blooming out from the middle for
- * PULSE_SECONDS as each pass finishes. Everything but that scan is quiet, as he is while he thinks.
- * The middle is left clear, so the real lamp is seen through it.
+ * the way his outer rim does, and his thinking band — one level band of broken hot dashes that glides
+ * up through the disc for SCAN_SECONDS and back down for as long, on his own clock (`scanAt`), slowing
+ * as it turns back inside the disc rather than leaving it, and lighting the rim, the ticks and the
+ * halo where it passes, the light falling off either side of it as his does, as a bell SCAN_SOFTNESS
+ * rim radii wide. Its dashes are dealt afresh for each pass, up or down, since each reads a new slice.
+ * Everything but that band is quiet, as he is while he thinks. The middle is left clear, so the real
+ * lamp is seen through it.
+ *
+ * That band is all of it. A ring once bloomed out of the middle to past the rim at the end of every
+ * pass, as one bloomed out of his core, and the band leapt back to the bottom after it; the user found
+ * his thinking dull for it — "there are 2 thinking stripes or pulses, when there should be 1 … The
+ * stripe also looks very sharp" — so the ring went from him and from here, and the band here softened
+ * and turned back as his did.
  *
  * One instanced draw of view-facing quads, one per corona, each turned to the centre eye in its
  * vertex shader so both eyes see the same ring. Blended as his layers are — Screen in colour, raw
@@ -66,38 +75,29 @@ export const MAX_CORONAS = 32;
 /** Drawn after him and before the text panels, which are at 10 and must never be covered. */
 export const CORONA_RENDER_ORDER = 5;
 
-/** How far out from the middle the quad reaches, in rim radii: room for the halo and the bloom. */
+/** How far out from the middle the quad reaches, in rim radii: room for the ticks and the halo. */
 const QUAD_REACH = 1.7;
 
-/** How far the scan band travels, in rim radii: from below the disc to above it, as his does. */
-const SCAN_TRAVEL = 1.15;
-
-/** Where the finishing bloom's ring starts, and how far out it goes, in rim radii: to past the rim. */
-const BLOOM_START = 0.15;
-const BLOOM_TRAVEL = 1.2;
+/**
+ * How far up and down the middle of the band travels, in rim radii from the middle: it turns back
+ * well inside the disc, where its dashes are still drawn across most of it, rather than dwelling at
+ * the rim or beyond it — slowing at each end as it does, wherever it turned would be where it was
+ * seen longest.
+ */
+export const CORONA_SCAN_TRAVEL = 0.75;
 
 /** The rim's radius at `distance` metres from the eye. */
 export function coronaRadiusAt(distance: number): number {
   return Math.max(CORONA_RADIUS_METRES, distance * Math.tan((MIN_APPARENT_RADIUS_DEGREES * Math.PI) / 180));
 }
 
-/** Where the scan band is at `time`, in rim radii from the middle, up positive. */
+/**
+ * Where the middle of the band is at `time`, in rim radii from the middle, up positive: his
+ * `scanAt` over this disc's own travel, starting at the bottom. The fragment shader works it out
+ * from the same formula.
+ */
 export function scanHeightAt(time: number): number {
-  const into = time - Math.floor(time / SCAN_SECONDS) * SCAN_SECONDS;
-  return -SCAN_TRAVEL + (2 * SCAN_TRAVEL * into) / SCAN_SECONDS;
-}
-
-/** How far the finishing bloom has got at `time`, 0–1, or undefined outside it. */
-export function pulseAt(time: number): number | undefined {
-  const into = time - Math.floor(time / SCAN_SECONDS) * SCAN_SECONDS;
-  const start = SCAN_SECONDS - PULSE_SECONDS;
-  return into >= start ? (into - start) / PULSE_SECONDS : undefined;
-}
-
-/** How far out the finishing bloom's ring is at `time`, in rim radii, or undefined outside it. */
-export function bloomRadiusAt(time: number): number | undefined {
-  const bloom = pulseAt(time);
-  return bloom === undefined ? undefined : BLOOM_START + BLOOM_TRAVEL * bloom;
+  return CORONA_SCAN_TRAVEL * scanAt(time);
 }
 
 const VERTEX_SHADER = /* glsl */ `
@@ -124,7 +124,7 @@ void main() {
   vec3 toEye = eye - centre;
   float distance = length(toEye);
   vec3 front = distance > 1e-5 ? toEye / distance : vec3(0.0, 0.0, 1.0);
-  // The world's up made square to the view, so the scan stays level; straight above or below, where
+  // The world's up made square to the view, so the band stays level; straight above or below, where
   // nothing of it is left, the reference space's x stands in.
   vec3 up = vec3(0.0, 1.0, 0.0) - front * front.y;
   up = length(up) > 1e-3 ? normalize(up) : normalize(cross(front, vec3(1.0, 0.0, 0.0)));
@@ -157,21 +157,19 @@ const vec3 BRIGHT = ${glslColour(STROKE_PAINTS.bright.colour)};
 const vec3 HOT = ${glslColour(STROKE_PAINTS.hot.colour)};
 const float THINNEST_PIXELS = ${glslFloat(THINNEST_STROKE_PIXELS)};
 const float SCAN_SECONDS = ${glslFloat(SCAN_SECONDS)};
-const float PULSE_SECONDS = ${glslFloat(PULSE_SECONDS)};
-const float SCAN_HALF_WIDTH = ${glslFloat(SCAN_HALF_WIDTH)};
-const float SCAN_TRAVEL = ${glslFloat(SCAN_TRAVEL)};
-const float BLOOM_START = ${glslFloat(BLOOM_START)};
-const float BLOOM_TRAVEL = ${glslFloat(BLOOM_TRAVEL)};
+const float SCAN_SOFTNESS = ${glslFloat(SCAN_SOFTNESS)};
+const float SCAN_TRAVEL = ${glslFloat(CORONA_SCAN_TRAVEL)};
 const float ROLL_RADIANS_PER_SECOND = ${glslFloat((ROLL_DEGREES_PER_SECOND * CORONA_ROLL_SPEEDUP * Math.PI) / 180)};
+const float PI = 3.141592653589793;
 const float TAU = 6.283185307179586;
 
-// The rim: its half-width, and how lit it is where the scan is nowhere near.
+// The rim: its half-width, and how lit it is where the band is nowhere near.
 const float RIM_HALF = 0.02;
 const float RIM_FLOOR = 0.5;
 // The chips outside it, as on his outer rim: how many places for one, and how far out, in rim radii.
 const float CHIPS = 28.0;
 const float CHIP_MIDDLE = 1.14;
-// The scan band's dashes: how long a place for one is, in rim radii, and how thick a dash is (half).
+// The band's dashes: how long a place for one is, in rim radii, and how thick a dash is (half).
 const float DASH_CELL = 0.14;
 const float DASH_HALF_WIDTH = 0.012;
 // The halo round the rim: how far it spreads and how strong it is at the rim.
@@ -213,8 +211,8 @@ float chips(vec2 point, float radius, float pixel) {
   return present * line(across, halfArc, pixel) * coverage(abs(radius - middle) - halfLength, pixel);
 }
 
-// The scan band's line across the disc, broken into dashes as his strokes are: a new pattern each
-// pass, since each pass reads a new slice.
+// The band's line across the disc, broken into dashes as his strokes are: a new pattern each pass,
+// up or down, since each pass reads a new slice.
 float dashes(vec2 point, float scan, float pass, float pixel) {
   float place = floor(point.x / DASH_CELL);
   float chance = hash(place + 211.0 + pass * 7.0);
@@ -226,41 +224,36 @@ float dashes(vec2 point, float scan, float pass, float pixel) {
 void main() {
   float radius = length(local);
   float pixel = max(length(fwidth(local)) * 0.70710678, 1e-6);
-  float into = mod(time, SCAN_SECONDS);
 
-  // The scan: a level band travelling up through the disc, as his thinking plane does.
-  float scan = -SCAN_TRAVEL + 2.0 * SCAN_TRAVEL * into / SCAN_SECONDS;
-  float nearness = clamp(1.0 - abs(local.y - scan) / SCAN_HALF_WIDTH, 0.0, 1.0);
-  float lit = mix(RIM_FLOOR, 1.0, nearness * nearness);
+  // The band: level, from the bottom of its travel up to the top and back down, as his glides through
+  // him — his scanAt, -cos(pi t / SCAN_SECONDS), over this disc's travel. Taken a whole swing at a
+  // time first, so the cosine is never asked for a large angle, which some GPUs work out coarsely.
+  float swing = mod(time, 2.0 * SCAN_SECONDS);
+  float scan = -SCAN_TRAVEL * cos(PI * swing / SCAN_SECONDS);
+  // How near it is, as a bell, as his light falls off.
+  float apart = (local.y - scan) / SCAN_SOFTNESS;
+  float nearness = exp(-apart * apart);
+  float lit = mix(RIM_FLOOR, 1.0, nearness);
   float inside = 1.0 - smoothstep(0.86, 0.98, radius);
 
-  // The halo round the rim, brighter where the scan passes.
+  // The halo round the rim, brighter where the band passes.
   // Squared by hand: GLSL leaves a negative number raised to a power undefined, and inside the rim
   // this is one.
   float fromRim = (radius - 1.0) / HALO_SPREAD;
   float haloShape = exp(-fromRim * fromRim);
   vec3 light = HALO * (HALO_STRENGTH * haloShape * mix(0.55, 1.0, nearness));
 
-  // The rim, lit up where the scan crosses it.
+  // The rim, lit up where the band crosses it.
   light = screen(light, BRIGHT * (line(radius - 1.0, RIM_HALF, pixel) * lit));
 
-  // The chips, dim, and brighter where the scan passes them.
+  // The chips, dim, and brighter where the band passes them.
   light = screen(light, mix(DIM, BRIGHT, nearness) * (chips(local, radius, pixel) * mix(0.55, 1.0, nearness)));
 
-  // The band itself across the disc: hot dashes with a glow either side, faded towards the rim.
+  // The band itself across the disc: hot dashes with a glow either side, faded towards the rim. The
+  // glow is the nearness squared, as his brightest specks are dealt, so it hugs the dashes.
   float band = dashes(local, scan, floor(time / SCAN_SECONDS), pixel);
   light = screen(light, HOT * (band * inside * 0.95));
   light = screen(light, HALO * (0.2 * nearness * nearness * inside));
-
-  // The step finishing: a ring blooming out from the middle to past the rim, fading as it goes.
-  float bloom = (into - (SCAN_SECONDS - PULSE_SECONDS)) / PULSE_SECONDS;
-  if (bloom >= 0.0) {
-    float bloomRadius = BLOOM_START + BLOOM_TRAVEL * bloom;
-    float strength = 1.0 - bloom;
-    light = screen(light, BRIGHT * (line(radius - bloomRadius, 0.016, pixel) * strength));
-    float fromBloom = (radius - bloomRadius) / 0.12;
-    light = screen(light, HALO * (0.3 * strength * exp(-fromBloom * fromBloom)));
-  }
 
   light *= fade;
   float brightest = max(light.r, max(light.g, light.b));
@@ -285,7 +278,7 @@ export interface Coronas {
    * face `centreEye`, which comes from the frame's viewer pose (three's XR camera lags a frame).
    */
   update(deltaSeconds: number, centreEye: Vector3Like): void;
-  /** Seconds on the rhythm's clock: set it to line the scan up with his, or to draw a still. */
+  /** Seconds on the rhythm's clock: set it to line the band up with his, or to draw a still. */
   time: number;
   /** How much of the room its light hides, as a share of how bright it is; ALPHA_FROM_LIGHT by default. */
   alphaFactor: number;

@@ -24,9 +24,16 @@
  * silence in a development build.
  */
 import { LEAVING_SECONDS, MATERIALISE_SECONDS, MINIMUM_FRAME_SECONDS, THOUGHT_FADE_SECONDS } from './frame-timing';
-import { easeHearing, easeHearingLevel } from './hearing';
+import {
+  easeHearing,
+  easeHearingLevel,
+  HEARD_WAVE_ONSET_SCALE,
+  HEARING_LEVEL_RISE_SECONDS,
+  heardRise,
+} from './hearing';
 import type { HologramFrame } from './hologram-drawing';
 import {
+  ATTACK_SECONDS,
   advanceVoiceActivity,
   createVoiceActivityState,
   easeBands,
@@ -40,6 +47,7 @@ import {
   advanceVoiceWave,
   createVoiceWaveState,
   syllableRise,
+  VOICE_WAVE_ONSET_SCALE,
   type VoiceWaveState,
   voiceWavePhaseOf,
 } from './voice-wave';
@@ -60,7 +68,7 @@ export interface FrameClockState {
   presence: number;
   /** 0–1: the listening lattice, eased toward the latest voice-activity score. */
   hearing: number;
-  /** 0–1: how hard the lattice breathes, eased toward the latest microphone level. */
+  /** 0–1: how loud the person talking to him is, eased toward the latest microphone level. */
   hearingLevel: number;
   /**
    * The voice tracker: what no single frame can see, such as whether the voice just started or
@@ -72,6 +80,11 @@ export interface FrameClockState {
    * `voice-wave.ts`.
    */
   wave: VoiceWaveState;
+  /**
+   * Their recent syllables, newest first, for the rings they send into him through the listening
+   * lattice, kept as his are. See `voice-wave.ts` and `heardRise`.
+   */
+  heard: VoiceWaveState;
 }
 
 /**
@@ -92,6 +105,7 @@ export function createFrameClockState(quietestSpeech = QUIETEST_SPEECH, speaking
     hearingLevel: 0,
     activity: createVoiceActivityState(quietestSpeech),
     wave: createVoiceWaveState(),
+    heard: createVoiceWaveState(),
   };
 }
 
@@ -151,9 +165,17 @@ export function advanceFrameClock(
   state.thinking = fadeToward(state.thinking, thinking, deltaSeconds, THOUGHT_FADE_SECONDS);
   state.presence = fadeToward(state.presence, !leaving, deltaSeconds, LEAVING_SECONDS);
   state.hearing = easeHearing(state.hearing, targetHearing, deltaSeconds);
+  const heardBefore = state.hearingLevel;
   state.hearingLevel = easeHearingLevel(state.hearingLevel, targetHearingLevel, deltaSeconds);
   advanceVoiceActivity(state.activity, targetLevel, deltaSeconds);
-  advanceVoiceWave(state.wave, rise, deltaSeconds);
+  advanceVoiceWave(state.wave, rise, deltaSeconds, ATTACK_SECONDS, VOICE_WAVE_ONSET_SCALE);
+  advanceVoiceWave(
+    state.heard,
+    heardRise(heardBefore, state.hearingLevel, targetHearing),
+    deltaSeconds,
+    HEARING_LEVEL_RISE_SECONDS,
+    HEARD_WAVE_ONSET_SCALE,
+  );
   return state;
 }
 
@@ -161,8 +183,9 @@ export function advanceFrameClock(
  * Back to the start of the arrival vortex, fully present.
  *
  * The arrival is derived from the clock, so winding it back is the whole of it. The voice tracker,
- * his recent syllables, the thought and the lattice carry on as they were, since none of them is part
- * of arriving; the drawing holds his syllables' rings back until the vortex has formed him.
+ * his and their recent syllables, the thought and the lattice carry on as they were, since none of
+ * them is part of arriving; the drawing holds both trains of rings back until the vortex has formed
+ * him.
  */
 export function restartArrival(state: FrameClockState): FrameClockState {
   'worklet';
@@ -177,8 +200,8 @@ export function restartArrival(state: FrameClockState): FrameClockState {
  * The level is judged against how loud this voice actually gets rather than against full scale: a
  * phone microphone in a quiet room never comes near 1, and the sphere answering the absolute
  * number is why the user once saw almost no change however far the answer was turned up. The
- * materialisation plays once, from the start of the arrival. The bands and his recent syllables are
- * the clock's own arrays, not copies, so the frame is only good until the next step.
+ * materialisation plays once, from the start of the arrival. The bands and his and their recent
+ * syllables are the clock's own arrays, not copies, so the frame is only good until the next step.
  */
 export function hologramFrameOf(state: FrameClockState): HologramFrame {
   'worklet';
@@ -200,5 +223,7 @@ export function hologramFrameOf(state: FrameClockState): HologramFrame {
     presence: state.presence,
     voiceWave: state.wave.slots,
     voiceWavePhase: voiceWavePhaseOf(state.wave),
+    heardWave: state.heard.slots,
+    heardWavePhase: voiceWavePhaseOf(state.heard),
   };
 }

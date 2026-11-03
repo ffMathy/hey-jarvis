@@ -59,8 +59,6 @@
 //   drawChips         the latest burst's chips: shards of light thrown off the left of the shell's
 //                     edge on a syllable, each a streak and two splinters with white-hot cores,
 //                     which snap and thin away as they break up rather than fade.
-//   drawThinkingPulse while he thinks: a ring blooming out of the core's ring as each pass of the scan
-//                     plane ends.
 //   drawSatellites    the agents at work for him, circling him (`satellite-drawing.ts`). The headset
 //                     draws its own in the room instead.
 //   (the body)        over all of it, on the GPU in three dimensions (`hologram/gpu`): up to
@@ -81,6 +79,9 @@
 //                     While he talks, each syllable leaves the core as a ring of these specks, pushed
 //                     out and crowded into a crisp line that travels through him and melts into his
 //                     shell (voiceWavePush, VOICE_WAVE_SPEED): all of them but the truss's.
+//                     While someone talks to him, each of their syllables flows the other way, in
+//                     from his edge to his core, as a ring of the listening lattice's knots
+//                     (latticeTarget, HEARD_WAVE_FROM).
 //                     The scene's body and stream tables, and the per-fragment helpers below
 //                     (readFragment, placeFragment, swirlFragment, latticeFragment and the rest),
 //                     are what it is drawn from and held to.
@@ -147,14 +148,19 @@
 //   presence    0-1, and 1 unless he is leaving: the vortex runs backwards (vortexOf), so the
 //               truss and the limb spiral back into the core first, his middle after them, and the
 //               core goes out last, exactly as he came.
-//   thinking    a plane sweeps up through him (SCAN_SECONDS), lighting what it passes, and a ring
-//               blooms out of the core at the end of each pass. Everything but the core's ring
-//               recedes, and every speck but the truss's lies some way dealt afresh each time it
-//               re-lights rather than along its ring (thoughtTurn).
+//   thinking    one soft band glides up through him and back down (SCAN_SECONDS, scanAt), its plane
+//               rocking gently (scanTiltAt), lighting what it passes more than the rest, which keeps
+//               SCAN_FLOOR of its light (scanned). Everything but the core's ring recedes by a third,
+//               and every speck but the truss's lies some way dealt afresh each time it re-lights
+//               rather than along its ring (thoughtTurn).
 //   hearing, hearingLevel
 //               someone is talking to him: the specks snap onto a slowly turning hexagonal lattice
-//               that breathes with their voice (latticeFragment), and the core's glow dims so the
-//               lattice is what is seen.
+//               that swells with how loud they are (latticeFragment, LATTICE_BREATH), and the core's
+//               glow dims so the lattice is what is seen.
+//   heardWave, heardWavePhase
+//               their recent syllables, newest first, as the clock keeps them: each a ring of the
+//               lattice's knots flowing in from his edge to his core (HEARD_WAVE_FROM), as far as the
+//               lattice is up. Left out, there are none.
 //
 // WHAT THE USER ASKED FOR
 // The films lead the look, but where the user has asked for something, that wins. Each request is
@@ -215,6 +221,15 @@
 //   (BODY_RADIANS_PER_SECOND), both asked for over the film.
 // - Listening is the lattice (LATTICE_SPACING), chosen from five candidates, and thinking is the scan
 //   plane (SCAN_SECONDS), asked to be "something completely different".
+// - The lattice moves with their voice: "The listening animation doesn't move much with the voice.
+//   Perhaps spice it up and make it better." Each syllable they say flows in through it from his edge
+//   to his core as a ring of its knots (HEARD_WAVE_FROM), and it swells with how loud they are now
+//   (LATTICE_BREATH); it no longer breathes on a clock of its own.
+// - One thought, softly: "it is currently too dull. Maybe it's because there are 2 thinking stripes or
+//   pulses, when there should be 1 … The stripe also looks very sharp. Maybe it could be more subtly
+//   blending in." The ring that bloomed out of the core at the end of each pass is gone; the band's
+//   light falls off as a bell and its bright specks are dealt by chance, so it thins into him; and
+//   the rest of him keeps SCAN_FLOOR of his light rather than an eighth (SCAN_SECONDS says it all).
 // - A speck reads as a line, not a bead: the median one is at least five times as long as it is wide
 //   (pickFragmentLength).
 //
@@ -276,9 +291,9 @@ export interface HologramFrame {
   /**
    * 0–1: how much of Jarvis's attention is on a thought rather than on you.
    *
-   * Not a voice, and deliberately nothing like one. See {@link SCAN_SECONDS}: at 1 the swarm goes
-   * quiet and a plane sweeps up through him, lighting only what it passes. The view eases this in
-   * and out so entering and leaving a thought is a fade rather than a switch.
+   * Not a voice, and deliberately nothing like one. See {@link SCAN_SECONDS}: at 1 one soft band
+   * glides up through him and back, lighting what it passes more than the rest. The view eases this
+   * in and out so entering and leaving a thought is a fade rather than a switch.
    */
   thinking: number;
   /**
@@ -289,6 +304,15 @@ export interface HologramFrame {
   hearing?: number;
   /** 0–1: how loud they are, eased. Only read while {@link hearing} is above nothing. */
   hearingLevel?: number;
+  /**
+   * Their recent syllables, 0–1 each, newest first, one slot of VOICE_WAVE_SLOT_SECONDS each, as
+   * {@link voiceWave} keeps his: each is a ring of the lattice flowing in from his edge to his core
+   * ({@link HEARD_WAVE_FROM}). The clock's own array, good only until its next step. Left out, there
+   * are none.
+   */
+  heardWave?: number[];
+  /** 0–1: how far their slot being filled has got, so their rings glide between slots rather than stepping. */
+  heardWavePhase?: number;
   /**
    * His recent syllables, 0–1 each, newest first, one slot of VOICE_WAVE_SLOT_SECONDS each: how
    * sharply a syllable started in it (`voice-wave.ts`). Each is a ring his voice sends out of his
@@ -385,24 +409,37 @@ export const GLOW_FROM_ENVELOPE = 0.65;
 export const SWELL_WITH_VOICE = 0.18;
 /**
  * How he listens: while someone talks to him his particles snap onto a hexagonal lattice that turns
- * slowly inside the ball and breathes with their voice — a crystalline, working look that says
- * "listening" without resembling anything he does when he speaks.
+ * slowly inside the ball, and **their words flow into him through it**: each syllable they say
+ * travels in from his edge to his core as a ring of the lattice's knots, pulled in toward the core
+ * and crowded together (see {@link HEARD_WAVE_FROM}) — his own speech run backwards, rings leaving
+ * his core, so a conversation goes out of him and comes back in. A crystalline, working look that
+ * says "listening" without resembling anything he does when he speaks.
  *
  * Chosen from five candidates rendered side by side: drifting clusters, orbital rings, ripples, a
  * galaxy's arms and this. It replaced a ring of ticks round the outside of the ball,
  * which read as a decoration rather than as him paying attention.
+ *
+ * The lattice once breathed instead: its spacing swung by up to 18% on a sine of its own, only scaled
+ * by how loud they were. The swing kept its own time, never theirs, and the user saw it: "The
+ * listening animation doesn't move much with the voice." So nothing of the lattice moves on a clock
+ * of its own any more but its slow turn; what moves it is their voice, syllable by syllable, and it
+ * swells with how loud they are this moment ({@link LATTICE_BREATH}).
  *
  * This is how far apart the lattice's points are.
  */
 export const LATTICE_SPACING = 0.11;
 /** How fast the lattice turns, in radians a second. */
 export const LATTICE_TURN = 0.12;
-/** How much the lattice's spacing swells at full voice, and how quickly it breathes, in radians a second. */
-export const LATTICE_BREATH = 0.18;
-export const LATTICE_PULSE = 2.4;
+/** How much the lattice's spacing swells at full voice: it follows their loudness as it is now, eased over 50 ms rising and 250 falling (`easeHearingLevel`). */
+export const LATTICE_BREATH = 0.12;
 /** How much of the way to their point the particles go at full attention: not quite all of it. */
 export const LATTICE_PULL = 0.88;
-/** How much shorter a stroke is drawn while it is on the lattice, so a point reads as a knot, not a smear. */
+/**
+ * How much shorter a stroke is drawn while it is on the lattice, so a point reads as a knot, not a
+ * smear — except in the crest of a ring of their voice, where the knots crowd together and get their
+ * length back ({@link latticeStrokeShare}), so each syllable flows in as a line of light as well as a
+ * ripple.
+ */
 export const LATTICE_STROKE_SHRINK = 0.55;
 /** How far round a fragment has still to go as it leaves the core in the vortex, in radians: a turn and a half. */
 export const VORTEX_TWIST = 3 * Math.PI;
@@ -425,7 +462,7 @@ export const PICTURE_SHELL_EDGE = 0.88;
  * The white-hot ring round his core, in R from the core: the brightest thing in him. Vision Quest's
  * is at about 0.4 of its S (0.35R here), and Age of Ultron's core is a small eye; the user found the
  * Vision Quest size too big in the hybrid, so it is tighter, which also gives the swirl room round
- * it. The thinking pulse blooms out of it.
+ * it. Their syllables' rings melt into it as they flow in while he listens (HEARD_WAVE_GONE).
  */
 export const CORE_RING_RADIUS = 0.22;
 
@@ -489,14 +526,29 @@ export const VOICE_WAVE_FULL_CROWDING = 0.2;
  * How much of its radius the white-hot ring round his core draws in by as a syllable leaves him:
  * from CORE_RING_RADIUS toward the eye, and back as the syllable's slot lets go, so his palest point
  * beats with every syllable the moment it starts, before its ring of specks has got far enough out
- * to be seen. In, never out — the user asked for a small core — and a ring that draws in is nothing
- * like the thinking pulse, which blooms out of it. It is always drawn, so it carries speech on a
+ * to be seen. In, never out — the user asked for a small core. It is always drawn, so it carries speech on a
  * watch that can afford only a few of his specks: at the density loop's floor, a fortieth of them,
  * the rings have too few specks to show, and at 0.16 the beat was three pixels on a 340-pixel watch.
  * At a quarter it reaches 0.17R on real speech, still well clear of the eye's 0.1R, and moves at most
  * 0.007R a frame.
  */
 export const CORE_RING_DRAW = 0.25;
+
+/**
+ * **Their words flow into him**, at the user's asking: "The listening animation doesn't move much with
+ * the voice. Perhaps spice it up and make it better." Each syllable someone says to him is a ring of
+ * the listening lattice's knots that travels in from his edge to his core, pulled in toward the core
+ * and crowded into a line at its front, and melts into the white-hot ring: his own rings
+ * ({@link VOICE_WAVE_SPEED}) run backwards. The clock keeps how sharply each 40 ms of their voice
+ * started a syllable as it keeps his (`voice-wave.ts`, the frame clock's `heard`), so it is their
+ * syllables that move the lattice, at the moment they say them, and the rings travel at his rings'
+ * speed and are drawn through the same wave (`pushAlongRings`).
+ *
+ * This is where, in R from the core, a ring is born: at the lattice's edge, just inside his limb.
+ */
+export const HEARD_WAVE_FROM = 0.86;
+/** Where a ring has melted into his core, in R from the core: just inside the white-hot ring at CORE_RING_RADIUS. */
+export const HEARD_WAVE_GONE = 0.16;
 
 // Strides of the flat scene tables (the builders describe the fields).
 export const BODY_STRIDE = 9;
@@ -546,32 +598,79 @@ export const SPARKLE_SEED_MIX = 0x2545f491;
 export const AURA_INNER = 0.45;
 export const AURA_OUTER = 1.56;
 /**
- * What Jarvis does while he is working rather than talking: a plane sweeps up through him.
+ * What Jarvis does while he is working rather than talking: **one soft band of light glides up
+ * through him and back down**, again and again, its plane rocking gently from pass to pass.
  *
  * The user asked for a thinking state that does "something completely different", and everything
- * else the sphere does is some mixture of turning, churning and glowing. This is none of those. A
- * horizontal plane travels from the bottom of the ball to the top, and only the fragments it is
- * passing stay lit — the rest fall to {@link SCAN_FLOOR} of their strength, so the swarm goes
- * quiet and a single bright band crosses it. Whatever the band touches is promoted to the bright
- * tier, so the pass reads as a line of attention moving through him rather than as a shadow.
- *
- * It is reading himself, a slice at a time. When the plane reaches the top a ring blooms out from
- * the core to the limb — see {@link PULSE_SECONDS} — and the next pass begins. That bloom is the
- * step finishing, and it is why thinking needs no chip bursts: bursts are what speech does, and a
- * thought that looked like speech would be the one thing this must not be.
+ * else the sphere does is some mixture of turning, churning and glowing. This is none of those: a
+ * plane travels up his height and back, and what it is passing is lit more than the rest. Seen on a
+ * phone, the first design read as dull ("it is currently too dull. Maybe it's because there are 2
+ * thinking stripes or pulses, when there should be 1 … The stripe also looks very sharp. Maybe it
+ * could be more subtly blending in"), and that was three things, each answered here:
+ * - **Two of them.** A ring bloomed out of the core at the end of every pass, beside the band. It is
+ *   gone: the band is the whole of a thought.
+ * - **Sharp.** The band's edge was a threshold — inside it every speck was promoted to the brightest
+ *   tier at full light, outside it none was — and its light fell off in a straight line to nothing.
+ *   Now its light falls off as a bell ({@link SCAN_SOFTNESS}), and a speck is promoted by chance, the
+ *   likelier the nearer the middle it is, dealt afresh each time it re-lights
+ *   ({@link SCAN_DEAL_FROM_HOP}): the band's bright core thins into him rather than stopping at a line.
+ * - **Dull.** Everything the band was not passing fell to an eighth of its strength, so most of a
+ *   thought was a dark ball. Now it keeps {@link SCAN_FLOOR}, and the band's own specks are drawn a
+ *   little longer ({@link SCAN_STRETCH}), so the band reads as activity rather than as a lit slice.
+ *   The band never jumps, either: the old plane left the top and started again at the bottom; this
+ *   one slows at each end and turns back ({@link scanAt}), and its tilt drifts on a clock of its own
+ *   ({@link SCAN_TILT_SECONDS}), so no two passes cross him alike.
  *
  * A pass is slow on purpose. Fast, it reads as a scanner in a film; at this rate it reads as
- * deliberate, which is the half of Jarvis this is for.
+ * deliberate, which is the half of Jarvis this is for. This is how long one pass takes, bottom to
+ * top or top to bottom.
  */
 export const SCAN_SECONDS = 2.6;
-/** How wide the lit band is, in sphere radii: a quarter of him at a time. */
-export const SCAN_HALF_WIDTH = 0.38;
-/** What is left of a fragment the plane is nowhere near. Not zero: he is thinking, not gone. */
-export const SCAN_FLOOR = 0.12;
-/** How near the middle of the band a fragment has to be to be lit to the bright tier. */
-export const SCAN_BRIGHT_NEARNESS = 0.55;
-/** How long the ring takes to bloom from the core to past the limb, at the end of each pass. */
-export const PULSE_SECONDS = 0.55;
+/** How far up and down the middle of the band travels, in R from his centre: it turns back just inside his edge. */
+export const SCAN_TRAVEL = 0.9;
+/** How soft the band is: its light falls to `1/e` of its middle's this far from it, in R. */
+export const SCAN_SOFTNESS = 0.3;
+/** What is left of a speck's light far from the band: he is thinking, not gone, and not dark. */
+export const SCAN_FLOOR = 0.38;
+/** How much longer a speck in the middle of the band is drawn, as a share of its length. */
+export const SCAN_STRETCH = 0.2;
+/**
+ * The most of the specks in the middle of the band it promotes to the brightest tier: not all. All of
+ * them, where his middle is densest, blew the band crossing it out into a blot.
+ */
+export const SCAN_PROMOTED_SHARE = 0.6;
+/** How far the band's plane tilts either way, in radians: 20°. */
+export const SCAN_TILT = 0.35;
+/** How long the tilt takes to rock there and back: not a multiple of a pass, so passes differ. */
+export const SCAN_TILT_SECONDS = 7.1;
+/** What a speck's re-lighting hop is hashed by to deal whether the band promotes it: far from the wander's 23.17 and the thought's 41.73. */
+export const SCAN_DEAL_FROM_HOP = 61.37;
+/**
+ * How much of the aura, the cage and the core's glow recede while he thinks, so the band is what is
+ * seen: a third. They went by a half when his specks were put out to an eighth, and a thought read as
+ * dull; they must still recede, or a thought would be lit like a calm moment and say nothing.
+ */
+export const THOUGHT_PICTURE_DIMMING = 0.35;
+
+/**
+ * Where the band is at `time`, from −1 at the bottom of its travel to 1 at the top: it starts at the
+ * bottom, rises for SCAN_SECONDS, and comes back down, slowing at each end as a pendulum does, so it
+ * never jumps. From the clock alone, like everything else here, so it needs nothing remembered
+ * between frames, and anything that keeps his time — the headset's coronas — can ask it too.
+ */
+export function scanAt(time: number) {
+  'worklet';
+  return -Math.cos((Math.PI * time) / SCAN_SECONDS);
+}
+
+/**
+ * How far the band's plane is tilted at `time`, in radians, anticlockwise as seen from the front: at a
+ * positive tilt the band rises toward his right as the viewer sees it (+x).
+ */
+export function scanTiltAt(time: number) {
+  'worklet';
+  return SCAN_TILT * Math.sin((2 * Math.PI * time) / SCAN_TILT_SECONDS);
+}
 
 /** A fragment is lit for this share of its clock's cycle, fading in and out over a third of that at each end. */
 export const FRAGMENT_DUTY = 0.6;
@@ -2077,8 +2176,8 @@ export function analyseFrame(frame: HologramFrame, size: number) {
   const swell = SWELL_WITH_VOICE * (0.7 * voice + 0.3 * agitation);
   // Full size throughout: the vortex is what carries him out of the core and back into it.
   const radius = size * SPHERE_FRACTION * (1 + swell);
-  const intoScan = time - Math.floor(time / SCAN_SECONDS) * SCAN_SECONDS;
   const thinking = clamp01(frame.thinking);
+  const scanTilt = scanTiltAt(time);
   // How far the vortex has carried his shell of specks out of the core, 0 to 1. By swirlFragment's
   // law a fragment leaves once the swirl passes 0.6 of its order — 0.9 of its reach and a tenth of
   // its id's hash — and has settled 0.4 later, so the middle of the shell is on its way out at about
@@ -2088,22 +2187,31 @@ export function analyseFrame(frame: HologramFrame, size: number) {
   // most of a tenth of the light on at once.
   const shellOut = smooth01((swirl - 0.35) / 0.6);
   // His recent syllables as rings out of his core: held back until the vortex has all but formed him,
-  // as the rest of speech is, and given way to the lattice while someone talks to him and to the scan
-  // plane while he thinks, so a ring is never seen beside the thought's own.
+  // as the rest of speech is, and given way to the lattice while someone talks to him — whose own
+  // rings flow in through it — and to the thinking band while he thinks, so the band is the one thing
+  // moving through him then ("there should be 1").
   const voiceWave = voiceWaveKnots(frame.voiceWave, formed * (1 - hearing) * (1 - thinking));
   let voiceWaveLargest = 0;
   for (let knot = 0; knot < voiceWave.length; knot++) {
     voiceWaveLargest = Math.max(voiceWaveLargest, voiceWave[knot] ?? 0);
   }
+  // Their recent syllables as rings flowing into him through the lattice: only as far as the lattice
+  // is up, and held back, as his are, until the vortex has all but formed him.
+  const heardWave = voiceWaveKnots(frame.heardWave, formed * hearing);
+  let heardWaveLargest = 0;
+  for (let knot = 0; knot < heardWave.length; knot++) {
+    heardWaveLargest = Math.max(heardWaveLargest, heardWave[knot] ?? 0);
+  }
   return {
     time,
     radius,
     thinking,
-    // Where the plane is, sweeping upward — y runs down the screen, so it starts positive. From
-    // the clock alone, like everything else here, so it needs nothing remembered between frames.
-    scan: 1.15 - (2.3 * intoScan) / SCAN_SECONDS,
-    // And how far the ring has bloomed, in the last stretch of each pass.
-    pulse: intoScan > SCAN_SECONDS - PULSE_SECONDS ? (intoScan - (SCAN_SECONDS - PULSE_SECONDS)) / PULSE_SECONDS : 0,
+    // Where the middle of the band is, measured down his height as every y here is: it starts at the
+    // bottom (positive) and rises, then comes back down (scanAt).
+    scan: -SCAN_TRAVEL * scanAt(time),
+    // And how its plane is tilted, as a cosine and a sine, worked out here in double precision.
+    scanTiltCos: Math.cos(scanTilt),
+    scanTiltSin: Math.sin(scanTilt),
     arrival,
     // The picture arrives as the vortex does: the core first, on its own; then everything round the
     // shell of specks, carried out of the core with it (`shellReach`, a share of where it settles),
@@ -2113,26 +2221,27 @@ export function analyseFrame(frame: HologramFrame, size: number) {
     // little behind it. The core comes up over the first 0.4 of the vortex rather than all at once:
     // over a quarter, under the view's own fade, a frame of it turned 8% of the light on at once.
     //
-    // Everything but the core's ring recedes while he thinks, so that the plane sweeping through
-    // him is what the eye is left with. Without this the rest goes on doing what it always does and
-    // the sweep is one more thing happening among several — which is how the first version of
-    // thinking looked, and why it did not read as a different state at all.
+    // Everything but the core's ring recedes while he thinks, so that the band gliding through him
+    // is what the eye is left with. Without this the rest goes on doing what it always does and the
+    // sweep is one more thing happening among several — which is how the first version of thinking
+    // looked, and why it did not read as a different state at all. By a third, where it was a half
+    // (two fifths for the core's glow): that, with his specks put out to an eighth, read as dull.
     coreAlpha: smooth01(swirl / 0.4),
-    auraAlpha: (1 - 0.5 * thinking) * shellOut,
+    auraAlpha: (1 - THOUGHT_PICTURE_DIMMING * thinking) * shellOut,
     // From the 0.04 swirlFragment starts every fragment at, to 1.
     shellReach: 0.04 + 0.96 * shellOut,
-    cageAlpha: (1 - 0.5 * thinking) * smooth01((swirl - 0.4) / 0.6),
+    cageAlpha: (1 - THOUGHT_PICTURE_DIMMING * thinking) * smooth01((swirl - 0.4) / 0.6),
     // The core's glowing disc dims while he listens as well as while he thinks, so the lattice is
     // what is seen.
-    coreGlow: (1 - 0.4 * thinking) * (1 - 0.3 * hearing),
+    coreGlow: (1 - THOUGHT_PICTURE_DIMMING * thinking) * (1 - 0.3 * hearing),
     // Which of the embers show: some of them always, and more while he holds the floor, all of them
     // on the low notes of his voice — as the fray answers the high ones.
     emberShare: EMBERS_IN_SILENCE + (1 - EMBERS_IN_SILENCE) * talk * (EMBERS_WHILE_TALKING + 0.45 * lowDrive),
     swirl,
     hearing,
     hearingLevel,
-    /** Where {@link latticeFragment} leaves a fragment: x, y. */
-    listened: [0, 0],
+    /** Where {@link latticeFragment} leaves a fragment: x, y, and how crowded their rings make its knot. */
+    listened: [0, 0, 0],
     /** Where {@link swirlFragment} leaves a fragment: x, y, its direction, and how much of it shows. */
     swirled: [0, 0, 0, 0, 0],
     agitation,
@@ -2162,8 +2271,12 @@ export function analyseFrame(frame: HologramFrame, size: number) {
     scratch: [0, 0, 0, 0, 0, 0, 0],
     /** The same for whether a fragment is lit at all, and what it is; see {@link readFragment}. */
     reading: [0, 0, 0, 0, 0],
-    /** And for whether the thinking plane is in the middle of one; see {@link scanned}. */
-    scanBright: [0],
+    /**
+     * And for what the thinking band does to one beyond its light: 1 if it promotes it to the
+     * brightest tier, else 0, and how much longer it draws it, as a share of its length; see
+     * {@link scanned}.
+     */
+    scanBright: [0, 0],
     bodyCos: Math.cos(bodyYaw),
     bodySin: Math.sin(bodyYaw),
     /** What the halos and the aura multiply their alpha by: 1 in silence, up to 1 + GLOW_WITH_VOICE. */
@@ -2211,6 +2324,14 @@ export function analyseFrame(frame: HologramFrame, size: number) {
      * how crowded it is there, and its turned stroke.
      */
     waved: [0, 0, 0, 0, 0],
+    /** Their syllables flowing into him through the lattice, newest first, in R: see {@link latticeTarget}. */
+    heardWave,
+    /** How far their newest ring has travelled since its slot was cut, in slots, 0–1. */
+    heardWavePhase: clamp01(frame.heardWavePhase ?? 0),
+    /** Their strongest ring this frame, in R: 0 while nobody is talking to him, when nothing is pulled in at all. */
+    heardWaveLargest,
+    /** Somewhere for {@link latticeTarget} to put a knot pulled in by their rings, and how crowded it is there. */
+    heard: [0, 0, 0],
   };
 }
 
@@ -2389,12 +2510,60 @@ export function thoughtTurn(hop: number, group: number, state: HologramFrameStat
 }
 
 /**
- * Where his syllables' rings push a speck seen at (`x`, `y`) in the view plane: out from the core,
- * by the wave of rings at its distance from the core (VOICE_WAVE_REACH at the most), tapered in over
- * VOICE_WAVE_TAPER from where the rings are born and out before they melt into his shell. Writes the
- * pushed `x` and `y` into `state.waved[0..1]`, and into `state.waved[2]` how crowded the specks are
- * there — the share by which the push brings neighbours closer together, `−du/dρ`, so they are about
- * `1 / (1 − that)` times as dense: what makes a ring a ring.
+ * Where a train of rings pushes a point seen at (`x`, `y`) in the view plane: along the line from the
+ * core, by the wave of rings at its distance from the core (VOICE_WAVE_REACH at the most), tapered in
+ * over VOICE_WAVE_TAPER from where the rings are born (`from`, in R from the core) and out before
+ * they melt away (`gone`). Rings born nearer the core than they melt travel out and push out — his
+ * syllables'; rings born further out travel in and pull in — theirs, flowing into him through the
+ * lattice. `knots` are the rings, newest first, in R (see {@link voiceWaveKnots}), and `phase` how
+ * far the newest has travelled since its slot was cut.
+ *
+ * Writes the pushed `x` and `y` into `out[0..1]`, and into `out[2]` how crowded the points are there
+ * — the share by which the push brings neighbours closer together, `−du/dρ`, so they are about
+ * `1 / (1 − that)` times as dense: what makes a ring a ring. Either way the arithmetic is the same
+ * with distances measured the way the rings travel, so the taper keeps every point short of `gone`
+ * whichever way they go.
+ */
+export function pushAlongRings(
+  x: number,
+  y: number,
+  knots: number[],
+  phase: number,
+  from: number,
+  gone: number,
+  out: number[],
+) {
+  'worklet';
+  out[0] = x;
+  out[1] = y;
+  out[2] = 0;
+  const fromCoreX = x - CORE_X;
+  const fromCoreY = y - CORE_Y;
+  const fromCore = Math.sqrt(fromCoreX * fromCoreX + fromCoreY * fromCoreY);
+  const outward = gone > from ? 1 : -1;
+  const travelled = outward * (fromCore - from);
+  const left = outward * (gone - fromCore);
+  if (travelled <= 0 || left <= 0) return;
+  const slots = travelled / VOICE_WAVE_STEP - phase;
+  const wave = voiceWaveSum(knots, slots);
+  const waveSlope = voiceWaveSumSlope(knots, slots);
+  const comingIn = travelled / VOICE_WAVE_TAPER;
+  const goingOut = left / VOICE_WAVE_TAPER;
+  const taperIn = smooth01(comingIn);
+  const taperOut = smooth01(goingOut);
+  const taper = taperIn * taperOut;
+  const taperSlope = (smooth01Slope(comingIn) * taperOut - taperIn * smooth01Slope(goingOut)) / VOICE_WAVE_TAPER;
+  const scale = (fromCore + outward * taper * wave) / fromCore;
+  out[0] = CORE_X + fromCoreX * scale;
+  out[1] = CORE_Y + fromCoreY * scale;
+  out[2] = -(taperSlope * wave + (taper * waveSlope) / VOICE_WAVE_STEP);
+}
+
+/**
+ * Where his syllables' rings push a speck seen at (`x`, `y`) in the view plane: out from the core
+ * ({@link pushAlongRings}), born at VOICE_WAVE_FROM and melted into his shell by VOICE_WAVE_GONE.
+ * Writes the pushed `x` and `y` into `state.waved[0..1]` and how crowded the specks are there into
+ * `state.waved[2]`.
  *
  * Nothing moves while he is silent, inside where the rings are born or beyond where they are gone.
  * It moves the speck only after it is known whether, and how brightly, it is drawn, and only in the
@@ -2403,27 +2572,13 @@ export function thoughtTurn(hop: number, group: number, state: HologramFrameStat
 export function voiceWavePush(x: number, y: number, state: HologramFrameState) {
   'worklet';
   const out = state.waved;
-  out[0] = x;
-  out[1] = y;
-  out[2] = 0;
-  if (state.voiceWaveLargest <= 0) return;
-  const fromCoreX = x - CORE_X;
-  const fromCoreY = y - CORE_Y;
-  const fromCore = Math.sqrt(fromCoreX * fromCoreX + fromCoreY * fromCoreY);
-  if (fromCore <= VOICE_WAVE_FROM || fromCore >= VOICE_WAVE_GONE) return;
-  const slots = (fromCore - VOICE_WAVE_FROM) / VOICE_WAVE_STEP - state.voiceWavePhase;
-  const wave = voiceWaveSum(state.voiceWave, slots);
-  const waveSlope = voiceWaveSumSlope(state.voiceWave, slots);
-  const comingIn = (fromCore - VOICE_WAVE_FROM) / VOICE_WAVE_TAPER;
-  const goingOut = (VOICE_WAVE_GONE - fromCore) / VOICE_WAVE_TAPER;
-  const taperIn = smooth01(comingIn);
-  const taperOut = smooth01(goingOut);
-  const taper = taperIn * taperOut;
-  const taperSlope = (smooth01Slope(comingIn) * taperOut - taperIn * smooth01Slope(goingOut)) / VOICE_WAVE_TAPER;
-  const scale = (fromCore + taper * wave) / fromCore;
-  out[0] = CORE_X + fromCoreX * scale;
-  out[1] = CORE_Y + fromCoreY * scale;
-  out[2] = -(taperSlope * wave + (taper * waveSlope) / VOICE_WAVE_STEP);
+  if (state.voiceWaveLargest <= 0) {
+    out[0] = x;
+    out[1] = y;
+    out[2] = 0;
+    return;
+  }
+  pushAlongRings(x, y, state.voiceWave, state.voiceWavePhase, VOICE_WAVE_FROM, VOICE_WAVE_GONE, out);
 }
 
 /**
@@ -2573,26 +2728,36 @@ export function readFragment(body: number[], offset: number, state: HologramFram
 }
 
 /**
- * How much of a fragment survives the thinking plane, given where it sits up the ball.
+ * How much of a fragment's light the thinking band leaves it, given where it is in his own frame —
+ * `x` right and `y` down his height, as every y here is — and `hop`, the hash of its id and its blink
+ * that says where it re-lights.
  *
- * At rest this is 1 and costs one comparison. While he thinks, only what the plane is passing stays
- * lit — see {@link SCAN_SECONDS} — and what it is in the *middle* of is lit to the brightest tier
- * whatever it was, which is what makes the pass a line of attention rather than a moving shadow.
+ * At rest this is 1 and costs one comparison. While he thinks, the band's light falls off as a bell
+ * across its tilted plane ({@link SCAN_SOFTNESS}) to SCAN_FLOOR far from it — see {@link SCAN_SECONDS}
+ * — and what it is passing may be promoted to the brightest tier, at full light: by chance, dealt
+ * from `hop` ({@link SCAN_DEAL_FROM_HOP}), as likely as the band's nearness squared times
+ * {@link SCAN_PROMOTED_SHARE}, so the bright specks thin out into the rest of him rather than
+ * stopping at a line.
  *
- * Returns the share to multiply by, and leaves in `state.scanBright` whether this one is near
- * enough the middle of the plane to be promoted. Two answers from one measurement of `nearness`,
- * which is why the second comes back in a scratch rather than being worked out again by the caller.
- * Nothing is promoted when he is not thinking.
+ * Returns the share to multiply by, and leaves in `state.scanBright` whether this one is promoted (1
+ * or 0) and how much longer it is drawn ({@link SCAN_STRETCH} at the band's middle). Several answers
+ * from one measurement of nearness, which is why the rest come back in a scratch rather than being
+ * worked out again by the caller. Nothing is promoted or stretched when he is not thinking.
  */
-export function scanned(y: number, state: HologramFrameState): number {
+export function scanned(x: number, y: number, hop: number, state: HologramFrameState): number {
   'worklet';
+  const out = state.scanBright;
   if (state.thinking <= 0) {
-    state.scanBright[0] = 0;
+    out[0] = 0;
+    out[1] = 0;
     return 1;
   }
-  const nearness = clamp01(1 - Math.abs(y - state.scan) / SCAN_HALF_WIDTH);
-  state.scanBright[0] = nearness > SCAN_BRIGHT_NEARNESS && state.thinking > 0.5 ? 1 : 0;
-  return 1 - state.thinking * (1 - SCAN_FLOOR) * (1 - nearness * nearness);
+  const height = y * state.scanTiltCos + x * state.scanTiltSin;
+  const apart = (height - state.scan) / SCAN_SOFTNESS;
+  const nearness = Math.exp(-apart * apart);
+  out[0] = fraction(hop * SCAN_DEAL_FROM_HOP) < SCAN_PROMOTED_SHARE * state.thinking * nearness * nearness ? 1 : 0;
+  out[1] = SCAN_STRETCH * state.thinking * nearness;
+  return 1 - state.thinking * (1 - SCAN_FLOOR) * (1 - nearness);
 }
 
 /**
@@ -2654,13 +2819,24 @@ export function swirlFragment(
   out[4] = smooth01((travelled - 0.04) * 6) * stretch;
 }
 
-/** Its place on the nearest point of the slowly turning hexagonal grid, which breathes with the voice. */
+/** The lattice's spacing this frame: LATTICE_SPACING, swelled by how loud they are now. */
+export function latticeSpacing(state: HologramFrameState) {
+  'worklet';
+  return LATTICE_SPACING * (1 + LATTICE_BREATH * state.hearingLevel);
+}
+
+/**
+ * Its place on the nearest point of the slowly turning hexagonal grid, which swells with how loud
+ * they are, then pulled in toward the core by their syllables' rings flowing in through it
+ * ({@link HEARD_WAVE_FROM}, {@link pushAlongRings}): the knot moves, so every speck on it goes with
+ * it and the crystal itself ripples inward.
+ */
 export function latticeTarget(x: number, y: number, id: number, state: HologramFrameState, out: number[]) {
   'worklet';
   const turn = state.time * LATTICE_TURN;
   const cos = Math.cos(turn);
   const sin = Math.sin(turn);
-  const spacing = LATTICE_SPACING * (1 + LATTICE_BREATH * state.hearingLevel * Math.sin(state.time * LATTICE_PULSE));
+  const spacing = latticeSpacing(state);
   // Into the grid's own frame, snapped to its nearest row and column — every other row shifted by
   // half a spacing, which is what makes it hexagonal — and back out.
   const localX = x * cos + y * sin;
@@ -2672,13 +2848,34 @@ export function latticeTarget(x: number, y: number, id: number, state: HologramF
   const jitter = (fraction(id * 7.7113) - 0.5) * 0.018;
   const snappedX = column * spacing + shift + jitter;
   const snappedY = row * rowHeight + jitter;
-  out[0] = snappedX * cos - snappedY * sin;
-  out[1] = snappedY * cos + snappedX * sin;
+  const knotX = snappedX * cos - snappedY * sin;
+  const knotY = snappedY * cos + snappedX * sin;
+  out[0] = knotX;
+  out[1] = knotY;
+  out[2] = 0;
+  if (state.heardWaveLargest <= 0) return;
+  const heard = state.heard;
+  pushAlongRings(knotX, knotY, state.heardWave, state.heardWavePhase, HEARD_WAVE_FROM, HEARD_WAVE_GONE, heard);
+  out[0] = heard[0] ?? knotX;
+  out[1] = heard[1] ?? knotY;
+  out[2] = heard[2] ?? 0;
+}
+
+/**
+ * How much of its length a speck keeps on the lattice: LATTICE_STROKE_SHRINK less at full attention,
+ * so a knot is a point rather than a smear, given back where a ring of their voice crowds the knots
+ * together (`crowding`, from {@link latticeTarget}) — all of it at VOICE_WAVE_FULL_CROWDING, as his own
+ * rings lay their strokes along themselves — so each ring of theirs is a line of light flowing in.
+ */
+export function latticeStrokeShare(hearing: number, crowding: number) {
+  'worklet';
+  return 1 - LATTICE_STROKE_SHRINK * hearing * (1 - clamp01(crowding / VOICE_WAVE_FULL_CROWDING));
 }
 
 /**
  * Where a fragment is while he listens: writes x, y into `state.listened` — just where it already
- * is when nobody is talking to him.
+ * is when nobody is talking to him — and after them how crowded their rings make its knot, for
+ * {@link latticeStrokeShare}.
  *
  * As someone starts speaking each fragment moves that share of the way — {@link LATTICE_PULL} at
  * full attention — to the lattice point nearest it, with a little jitter from its id so a point is a
@@ -2692,6 +2889,7 @@ export function latticeFragment(x: number, y: number, id: number, state: Hologra
   if (pull <= 0.001) {
     out[0] = x;
     out[1] = y;
+    out[2] = 0;
     return;
   }
   latticeTarget(x, y, id, state, out);

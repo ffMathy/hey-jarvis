@@ -7,11 +7,9 @@ import {
   fragmentTier,
   GYRO_GROUP,
   type HologramFrameState,
-  LATTICE_BREATH,
   LATTICE_PULL,
-  LATTICE_PULSE,
-  LATTICE_SPACING,
-  LATTICE_STROKE_SHRINK,
+  latticeSpacing,
+  latticeStrokeShare,
   latticeTarget,
   readFragment,
   readShellFragment,
@@ -48,7 +46,9 @@ import {
  *   has come out of the core (so particles leave the core in 3D rather than as a rod along the
  *   view), and the lattice snaps it into layers the grid's own row spacing apart, so the listening
  *   crystal has depth too.
- * - The thinking plane is level with the floor, sweeping up the world's vertical.
+ * - The thinking band's plane is the phone's, in the body's own frame: level with the floor but for
+ *   the tilt it rocks by about the axis towards where the user stood, gliding up the world's
+ *   vertical and back.
  */
 
 export type Vector3Tuple = [number, number, number];
@@ -116,12 +116,6 @@ export function vortexScale(x: number, y: number, id: number, state: HologramFra
   return 0.04 + 0.96 * smooth01((state.swirl - 0.6 * order) / 0.4);
 }
 
-/** The lattice's spacing this frame, as `latticeTarget` breathes it. */
-export function latticeSpacing(state: HologramFrameState) {
-  'worklet';
-  return LATTICE_SPACING * (1 + LATTICE_BREATH * state.hearingLevel * Math.sin(state.time * LATTICE_PULSE));
-}
-
 /**
  * How far apart the lattice's layers are, as a share of its spacing: √(2/3), the height of a
  * tetrahedron on the grid's triangle, so the points sit as tightly front to back as across.
@@ -147,7 +141,8 @@ export function seenLarger(depth: number, eyeDistance: number) {
  * points line up behind one another and the lattice is the phone's knots, and in stereo or from
  * another place the layers come apart into a crystal. Snapped in the plane instead, the layers
  * seen in perspective smear each knot into a streak pointing at the centre. From infinitely far —
- * the phone's view — this is `latticeFragment` exactly.
+ * the phone's view — this is `latticeFragment` exactly. After the place, how crowded their rings make
+ * its knot (`latticeTarget`), which gives a speck back its length (`latticeStrokeShare`).
  */
 function onLattice(
   x: number,
@@ -156,16 +151,21 @@ function onLattice(
   id: number,
   state: HologramFrameState,
   eyeDistance: number,
-): Vector3Tuple {
+): [number, number, number, number] {
   const pull = state.hearing * LATTICE_PULL;
-  if (pull <= 0.001) return [x, y, depth];
+  if (pull <= 0.001) return [x, y, depth, 0];
   const seen = seenLarger(depth, eyeDistance);
   const target = state.listened;
   latticeTarget(x * seen, y * seen, id, state, target);
   const layer = latticeSpacing(state) * LATTICE_LAYER_SHARE;
   const snapped = Math.floor(depth / layer + 0.5) * layer;
   const unseen = 1 / seenLarger(snapped, eyeDistance);
-  return [x + (target[0] * unseen - x) * pull, y + (target[1] * unseen - y) * pull, depth + (snapped - depth) * pull];
+  return [
+    x + (target[0] * unseen - x) * pull,
+    y + (target[1] * unseen - y) * pull,
+    depth + (snapped - depth) * pull,
+    target[2] ?? 0,
+  ];
 }
 
 /**
@@ -271,6 +271,14 @@ function restInThePlane(
 }
 
 /**
+ * How much longer the thinking band draws a body fragment, as `scanned` left it: 1 for the truss's,
+ * which the band leaves alone and which never asked it.
+ */
+function bandStretch(truss: boolean, state: HologramFrameState) {
+  return truss ? 1 : 1 + (state.scanBright[1] ?? 0);
+}
+
+/**
  * A body fragment this frame, or null when it is not drawn: `readFragment`, `placeFragment`,
  * `swirlFragment`, `latticeFragment`, `scanned` and `fragmentTier` in turn, with `placeFragment`
  * turned into three dimensions.
@@ -327,17 +335,21 @@ export function placeBodyFragment(
   if (drawn <= 0) return null;
   // The truss keeps its squares while he listens: never snapped onto the lattice.
   const vortexDepth = depth * vortexScale(x, y, id, state);
-  const [latticeX, latticeY, latticeDepth] = truss
-    ? [swirledX, swirledY, vortexDepth]
+  const [latticeX, latticeY, latticeDepth, crowding] = truss
+    ? [swirledX, swirledY, vortexDepth, 0]
     : onLattice(swirledX, swirledY, vortexDepth, id, state, eyeDistance);
-  // The thinking plane is level: how far down the world's vertical the fragment is.
-  const litHere = truss ? lit : lit * scanned(-intoBody(basis, latticeX, latticeY, latticeDepth)[1], state);
+  // The thinking band's plane is the phone's, in the body's own frame: across it and down the
+  // world's vertical.
+  const inBody = intoBody(basis, latticeX, latticeY, latticeDepth);
+  const litHere = truss ? lit : lit * scanned(inBody[0], -inBody[1], hop, state);
   if (litHere < FRAGMENT_FAINTEST) return null;
   const facing = depth >= -BACK_OF_THE_SHELL;
-  // The thinking plane lights what it is in the middle of to the brightest tier, at full light.
+  // The thinking band lights some of what it is passing to the brightest tier, at full light, and
+  // draws its specks a little longer.
   const scanBright = !truss && state.scanBright[0] > 0 && facing;
+  const stretch = bandStretch(truss, state);
   const plain = facing ? fragmentTier(brightness, litHere * light, id, state.hotShare) : 0;
-  const half = length * 0.5 * litHere * drawn * (1 - LATTICE_STROKE_SHRINK * state.hearing);
+  const half = length * 0.5 * litHere * drawn * latticeStrokeShare(state.hearing, crowding) * stretch;
   return finish(
     {
       x: latticeX,
@@ -400,7 +412,7 @@ export function placeStreamFragment(
   swirlFragment(planeX, planeY, 1, 0, id, state);
   const [swirledX = 0, swirledY = 0, directionX = 0, directionY = 0, drawn = 0] = state.swirled;
   if (drawn <= 0) return null;
-  const [latticeX, latticeY, latticeDepth] = onLattice(
+  const [latticeX, latticeY, latticeDepth, crowding] = onLattice(
     swirledX,
     swirledY,
     depth * vortexScale(planeX, planeY, id, state),
@@ -414,7 +426,7 @@ export function placeStreamFragment(
   const tangentX = sign * dot(tangent, basis.right);
   const tangentY = -sign * dot(tangent, basis.up);
   const tangentDepth = sign * dot(tangent, basis.front);
-  const size = lit * drawn * (1 - LATTICE_STROKE_SHRINK * state.hearing);
+  const size = lit * drawn * latticeStrokeShare(state.hearing, crowding);
   return finish(
     {
       x: latticeX,

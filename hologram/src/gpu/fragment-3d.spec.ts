@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { advanceFrameClock, createFrameClockState, hologramFrameOf } from '../frame-clock';
 import { MATERIALISE_SECONDS, READ_INTERVAL_MS, SCENE_SEED, VOICE_WAVE_SLOTS } from '../frame-timing';
+import { hearingFromPresence, hearingLevelFromVolume } from '../hearing';
 import {
   analyseFrame,
   BACK_OF_THE_SHELL,
@@ -18,10 +19,15 @@ import {
   type HologramFrameState,
   LATTICE_STROKE_SHRINK,
   latticeFragment,
+  latticeStrokeShare,
   latticeTarget,
   placeFragment,
   readFragment,
   readShellFragment,
+  SCAN_FLOOR,
+  SCAN_SECONDS,
+  SCAN_SOFTNESS,
+  SCAN_STRETCH,
   STREAM_STRIDE,
   scanned,
   swirlFragment,
@@ -35,7 +41,7 @@ import {
   voiceWavePush,
   voiceWaveTurn,
 } from '../hologram-drawing';
-import { createSimulatedSpectrum, fillSimulatedSpectrum } from '../simulated-voice';
+import { createSimulatedSpectrum, fillSimulatedSpectrum, simulatedUserAt } from '../simulated-voice';
 import { simulatedVolume } from '../voice-analysis';
 import { foldSpectrum, perceivedLevel, VOICE_BAND_COUNT } from '../voice-levels';
 import {
@@ -78,6 +84,41 @@ function spokenAt(seconds: number): Partial<HologramFrame> {
 /** About 0.13 s after "help" starts: one ring just out of the core, and the ones before it further out. */
 const SPOKEN = spokenAt(1.2);
 
+/**
+ * How someone talking to him leaves the real frame clock `seconds` into what sample mode's person
+ * says, read every READ_INTERVAL_MS as a session reads it: the lattice, how loud they are and their
+ * recent syllables, copied, since the clock's arrays are only good until its next step.
+ */
+function heardAt(seconds: number): Partial<HologramFrame> {
+  const clock = createFrameClockState();
+  const silent = new Array<number>(VOICE_BAND_COUNT).fill(0);
+  const readingSeconds = READ_INTERVAL_MS / 1000;
+  for (let step = 1; step / 60 <= seconds; step++) {
+    const heard = simulatedUserAt(Math.floor(step / 60 / readingSeconds + 1e-9) * readingSeconds);
+    advanceFrameClock(
+      clock,
+      1 / 60,
+      0,
+      silent,
+      false,
+      false,
+      false,
+      hearingFromPresence(heard.presence),
+      hearingLevelFromVolume(heard.volume),
+    );
+  }
+  const frame = hologramFrameOf(clock);
+  return {
+    hearing: frame.hearing,
+    hearingLevel: frame.hearingLevel,
+    heardWave: [...(frame.heardWave ?? [])],
+    heardWavePhase: frame.heardWavePhase,
+  };
+}
+
+/** A second into what they say: one syllable's ring halfway in to his core, and the next just born at his edge. */
+const HEARD = heardAt(1);
+
 /** The moments the drawing is checked at: every phase the body does something different in. */
 const MOMENTS: Record<string, Partial<HologramFrame>> = {
   idle: { time: 10 },
@@ -92,7 +133,9 @@ const MOMENTS: Record<string, Partial<HologramFrame>> = {
     ...SPOKEN,
   },
   thinking: { time: 41.2, thinking: 1 },
+  'half in a thought': { time: 6.5, thinking: 0.5 },
   listening: { time: 12.3, hearing: 1, hearingLevel: 0.6 },
+  'listening to their syllables': { time: 12.3, ...HEARD },
   leaving: { time: 30, presence: 0.5 },
 };
 
@@ -156,25 +199,30 @@ function phoneBody(offset: number, state: HologramFrameState): PhoneFragment | n
   swirlFragment(placed[0], placed[1], placed[5], placed[6], id, state);
   const drawn = state.swirled[4];
   if (drawn <= 0) return null;
-  // The truss keeps its squares: never snapped onto the lattice nor put out by the thinking plane.
+  // The truss keeps its squares: never snapped onto the lattice nor put out by the thinking band.
   const truss = reading[2] === TRUSS_GROUP;
   if (truss) {
     state.listened[0] = state.swirled[0];
     state.listened[1] = state.swirled[1];
+    state.listened[2] = 0;
   } else {
     latticeFragment(state.swirled[0], state.swirled[1], id, state);
   }
+  const x = state.listened[0];
   const y = state.listened[1];
-  const litHere = truss ? lit : lit * scanned(y, state);
+  // The band's plane is measured across him and down his height, where the lattice left it.
+  const litHere = truss ? lit : lit * scanned(x, y, hop, state);
   if (litHere < FRAGMENT_FAINTEST) return null;
   const facing = placed[2] >= -BACK_OF_THE_SHELL;
   // The shell it is seen through dims its paint, not its length: the light picks its tier, except
-  // where the thinking plane lights it to the brightest at full light.
+  // where the thinking band deals it the brightest at full light. The band draws its specks longer
+  // too, and a ring of their voice crowding a knot gives a speck back its length.
   const promoted = !truss && state.scanBright[0] > 0 && facing;
+  const stretch = truss ? 1 : 1 + state.scanBright[1];
   const plain = facing ? fragmentTier(reading[4], litHere * placed[4], id, state.hotShare) : 0;
-  const half = length * 0.5 * litHere * drawn * (1 - LATTICE_STROKE_SHRINK * state.hearing);
+  const half = length * 0.5 * litHere * drawn * latticeStrokeShare(state.hearing, state.listened[2]) * stretch;
   return {
-    x: state.listened[0],
+    x,
     y,
     depth: placed[2],
     alongX: state.swirled[2] * half,
@@ -208,7 +256,7 @@ function phoneStream(offset: number, state: HologramFrameState): PhoneFragment |
   const drawn = state.swirled[4];
   if (drawn <= 0) return null;
   latticeFragment(state.swirled[0], state.swirled[1], id, state);
-  const half = Math.abs(halfX) * lit * drawn * (1 - LATTICE_STROKE_SHRINK * state.hearing);
+  const half = Math.abs(halfX) * lit * drawn * latticeStrokeShare(state.hearing, state.listened[2]);
   return {
     x: state.listened[0],
     y: state.listened[1],
@@ -293,12 +341,12 @@ function compareEveryRow(state: HologramFrameState): number {
 const IDLE = MOMENTS.idle;
 
 /**
- * Enough of him lit at each moment that the comparison means something. Fewer while he arrives,
- * and while he thinks: the plane leaves 0.12 of a fragment's strength wherever it is not passing,
- * which is under the faintest that is drawn for all but the strongest. About 2100 of the scene's
- * rows are lit then, against 3700 at the other moments.
+ * Enough of him lit at each moment that the comparison means something. Fewer while he arrives. Not
+ * while he thinks: the band leaves SCAN_FLOOR of a fragment's strength wherever it is not passing,
+ * enough for most of them to be drawn, so about 3500 of the scene's rows are lit then against 3700 at
+ * the other moments. Under the plane that came before it, which left an eighth, it was about 2100.
  */
-const FEWEST_COMPARED: Record<string, number> = { arriving: 500, thinking: 1500 };
+const FEWEST_COMPARED: Record<string, number> = { arriving: 500 };
 
 describe('a fragment in three dimensions, seen from the front', () => {
   for (const [name, moment] of Object.entries(MOMENTS)) {
@@ -650,33 +698,139 @@ describe('a fragment seen from elsewhere in the room', () => {
   });
 });
 
-describe('the body while he thinks', () => {
-  it('is lit by a plane climbing up through him, from the bottom of the ball to the top', () => {
-    // The state the user asked to be "completely different": a plane travelling up through the
-    // ball, lighting only what it passes. Sampled across one pass — SCAN_SECONDS is 2.6, so this one
-    // runs from 5.2 to 7.8 — and held to the trend across it, since what the plane passes is a lumpy
-    // swarm whose lit middle steps sideways wherever it crosses a dense band.
-    const litHeight = (time: number) => {
-      const state = stateAt({ time, thinking: 1 });
-      let total = 0;
-      let count = 0;
-      for (let offset = 0; offset < scene.body.length; offset += BODY_STRIDE) {
-        const placed = placeBodyFragment(scene.body, offset, state, FRONT_VIEW);
-        // The truss is not lit by the plane: it stays, receding, so the squares do.
-        if (placed === null || placed.group === TRUSS_GROUP) continue;
-        total += placed.plane[1];
-        count++;
-      }
-      return total / count;
-    };
-    const early = [5.4, 5.8, 6.2].map(litHeight);
-    const late = [6.6, 7.0, 7.4].map(litHeight);
+/**
+ * How a body fragment drawn with their rings in flight (`ringed`) compares with the same fragment
+ * drawn without them (`plain`): how much nearer the core it is, and how many times as long. Their
+ * rings move a speck and lengthen it; they never light one, nor put one out, nor touch the truss,
+ * which is never on the lattice.
+ */
+function ringedAgainstPlain(ringed: PlacedFragment | null, plain: PlacedFragment | null) {
+  expect(ringed === null).toBe(plain === null);
+  if (ringed === null || plain === null) return null;
+  expect(ringed.tier).toBe(plain.tier);
+  if (ringed.group === TRUSS_GROUP) {
+    expect(ringed.centre).toEqual(plain.centre);
+    expect(ringed.axis).toEqual(plain.axis);
+    return null;
+  }
+  const before = Math.hypot(plain.plane[0] - CORE_X, plain.plane[1] - CORE_Y);
+  const after = Math.hypot(ringed.plane[0] - CORE_X, ringed.plane[1] - CORE_Y);
+  return { nearer: before - after, longer: length3(ringed.axis) / length3(plain.axis) };
+}
 
-    // Down the view plane is y growing, so a climb is the lit middle's y falling: every sample in
-    // the second half above every one in the first, and by a real distance, in radii.
-    expect(Math.max(...late)).toBeLessThan(Math.min(...early));
-    const mean = (of: number[]) => of.reduce((all, one) => all + one, 0) / of.length;
-    expect(mean(early) - mean(late)).toBeGreaterThan(0.12);
+describe('the body while someone talks to him', () => {
+  it('draws each syllable of theirs as a ring of the lattice’s knots pulled in toward his core, its specks given back the length the lattice takes', () => {
+    const moment = MOMENTS['listening to their syllables'] ?? {};
+    const heard = stateAt(moment);
+    const unheard = stateAt({ ...moment, heardWave: undefined });
+    // A real ring in flight, from the real clock.
+    expect(heard.heardWaveLargest).toBeGreaterThan(0.05);
+    const shrunk = 1 - LATTICE_STROKE_SHRINK * heard.hearing;
+    const compared: { nearer: number; longer: number }[] = [];
+    for (let offset = 0; offset < scene.body.length; offset += BODY_STRIDE) {
+      const ringed = ringedAgainstPlain(
+        placeBodyFragment(scene.body, offset, heard, FRONT_VIEW),
+        placeBodyFragment(scene.body, offset, unheard, FRONT_VIEW),
+      );
+      if (ringed !== null) compared.push(ringed);
+    }
+    expect(compared.length).toBeGreaterThan(2000);
+    for (const { nearer, longer } of compared) {
+      // Only ever in toward the core.
+      expect(nearer).toBeGreaterThanOrEqual(-1e-9);
+      // Never shorter, and at most the whole of what the lattice took from it.
+      expect(longer).toBeGreaterThanOrEqual(1 - 1e-9);
+      expect(longer).toBeLessThanOrEqual(1 / shrunk + 1e-9);
+    }
+    expect(compared.filter(({ nearer }) => nearer > 0.02).length).toBeGreaterThan(500);
+    // The crest's knots, crowded to VOICE_WAVE_FULL_CROWDING or more, are drawn at their full length.
+    expect(compared.filter(({ longer }) => longer > 1 / shrunk - 1e-9).length).toBeGreaterThan(100);
+  });
+});
+
+/**
+ * Every body fragment drawn well inside his limb at this moment, but the truss's, seen from the
+ * front: how far up the band's tilted plane it is (`height`, down his height as every y is), and how
+ * much of its length the band leaves it (`share`) — its half-length over what its clock alone would
+ * draw, which is the band's light at it times how much longer the band draws it.
+ */
+function bandShares(state: HologramFrameState): { height: number; share: number }[] {
+  const reading = [0, 0, 0, 0, 0];
+  return drawnBody(state).flatMap(({ offset, placed }) => {
+    const [x, y] = placed.plane;
+    // The limb takes its own share of a fragment's length past 0.87R; the truss is not the band's.
+    if (placed.group === TRUSS_GROUP || Math.hypot(x, y) > 0.8) return [];
+    const strength = readFragment(scene.body, offset, state, reading);
+    return [
+      {
+        height: y * state.scanTiltCos + x * state.scanTiltSin,
+        share: length3(placed.axis) / (0.5 * (scene.body[offset + 4] ?? Number.NaN) * strength),
+      },
+    ];
+  });
+}
+
+describe('the body while he thinks', () => {
+  it('is lit by one band gliding up through him from the bottom and back down', () => {
+    // The state the user asked to be "completely different", and then for it to be one thing, not
+    // sharp and not dull: a soft band of light travelling up through the ball and back, again and
+    // again. Where it is seen to be is where the specks it lights more than SCAN_FLOOR are, weighted
+    // by how much more. Sampled over a pass up — SCAN_SECONDS is 2.6, so it starts at the bottom at
+    // 5.2 — and the pass back down after it.
+    const seenAt = (time: number) => {
+      let weighted = 0;
+      let weight = 0;
+      for (const { height, share } of bandShares(stateAt({ time, thinking: 1 }))) {
+        weighted += height * (share - SCAN_FLOOR);
+        weight += share - SCAN_FLOOR;
+      }
+      return weighted / weight;
+    };
+    const tenths = (from: number) => Array.from({ length: 11 }, (_, tenth) => from + (tenth * SCAN_SECONDS) / 10);
+    const up = tenths(2 * SCAN_SECONDS).map(seenAt);
+    const down = tenths(3 * SCAN_SECONDS).map(seenAt);
+
+    // Down the view plane is y growing, so a climb is the lit middle's y falling: on every step of
+    // the pass up, and rising again on every step of the pass back down, never leaping across him.
+    for (let step = 1; step < up.length; step++) {
+      expect(up[step]).toBeLessThan(up[step - 1] ?? Number.NaN);
+      expect(down[step]).toBeGreaterThan(down[step - 1] ?? Number.NaN);
+    }
+    // Most of the way across him each way: from low in him to high, and back.
+    expect(up[0]).toBeGreaterThan(0.5);
+    expect(up.at(-1)).toBeLessThan(-0.5);
+    expect(down.at(-1)).toBeGreaterThan(0.5);
+    // Where his specks are thick enough to say, it is where the frame puts it.
+    for (const time of [...tenths(2 * SCAN_SECONDS), ...tenths(3 * SCAN_SECONDS)]) {
+      const scan = stateAt({ time, thinking: 1 }).scan;
+      if (Math.abs(scan) < 0.3) expect(Math.abs(seenAt(time) - scan)).toBeLessThan(0.05);
+    }
+  });
+
+  it('leaves the specks far from the band SCAN_FLOOR of their light, and draws those in its middle SCAN_STRETCH longer', () => {
+    let far = 0;
+    let middle = 0;
+    for (const time of [5.2, 5.9, 6.5, 7.3]) {
+      const state = stateAt({ time, thinking: 1 });
+      const shares = bandShares(state);
+      for (const { height, share } of shares) {
+        const apart = Math.abs(height - state.scan);
+        // Four of its softnesses away, the band's light is all but nought and nothing is stretched.
+        if (apart > 4 * SCAN_SOFTNESS) {
+          expect(share).toBeCloseTo(SCAN_FLOOR, 4);
+          far++;
+        }
+        // Never more than its light at the middle, all of it, and SCAN_STRETCH longer.
+        expect(share).toBeLessThanOrEqual(1 + SCAN_STRETCH + 1e-4);
+        expect(share).toBeGreaterThanOrEqual(SCAN_FLOOR - 1e-4);
+        if (apart < 0.003) {
+          expect(share).toBeCloseTo(1 + SCAN_STRETCH, 3);
+          middle++;
+        }
+      }
+    }
+    expect(far).toBeGreaterThan(500);
+    expect(middle).toBeGreaterThan(10);
   });
 });
 

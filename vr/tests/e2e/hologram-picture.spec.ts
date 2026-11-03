@@ -10,12 +10,15 @@ import { goldenPath, readPictureMoments } from './picture-moments';
  * `fixtures/picture/moments.json`): at rest at three times, so the cage has turned with his body,
  * the core ring's brighter stretches have rolled and the embers have drifted between them; speaking,
  * with his voice's energy spread evenly, in its low notes (the embers) and in its high ones (the
- * fray); a burst held and breaking; thinking, with the scan plane and with its pulse blooming out
- * of the core ring; the listening lattice; the vortex early and late; leaving; satellites; a
- * syllable leaving him, its white-hot ring drawn in, and the gap between two words, the fray held
- * out — both frames as the real frame clock hands them over on the greeting. The
- * preview draws each moment with the GPU picture into a target of its own three.js renderer, exactly
- * as the headset draws it (`picture-check.ts`), and measures how far it is from its golden.
+ * fray); a burst held and breaking; thinking, twice — with his band through his middle, and as it
+ * turns back at the top (`thinking-turning-back`, which was `thinking-pulse` while a ring bloomed
+ * out of the core ring at the end of every pass; the band itself is his body's, so what the picture
+ * shows of a thought is the rest of him receding); the listening lattice; the vortex early and
+ * late; leaving; satellites; a syllable leaving him, its white-hot ring drawn in, and the gap
+ * between two words, the fray held out — both frames as the real frame clock hands them over on the
+ * greeting. The preview draws each moment with the GPU picture into a target of its own three.js
+ * renderer, exactly as the headset draws it (`picture-check.ts`), and measures how far it is from
+ * its golden.
  *
  * So this is a regression test: it says the picture has not moved from what it was when the goldens
  * were drawn, not that it is right. The limits are the ones that held the GPU port to Skia's picture

@@ -829,8 +829,10 @@ test.describe('the hologram', () => {
     // A thought must not brighten him, or a thought and a word say the same thing to anyone
     // glancing at the screen. Speech hardly brightens the picture now — the sparks' glow follows the
     // voice by only a tenth, at the user's asking — so a thought dims it instead: everything but
-    // the core ring recedes, so the plane sweeping through him is what is seen. Measured when his
+    // the core ring recedes, so the band gliding through him is what is seen. Measured when his
     // cage, core ring and chips were last redrawn, inside 0.95R: 28 thinking, 48 calm, 47 speaking.
+    // A thought read as dull, so the rest of him now recedes by a third rather than a half: 21
+    // thinking against 31 calm, inside 0.95R, at these three moments.
     for (const time of [5.4, 6.3, 7.2]) {
       const calm = discBrightness(picture, await picture.render(silence(picture, time)));
       const thought = discBrightness(picture, await picture.render({ ...silence(picture, time), thinking: 1 }));
