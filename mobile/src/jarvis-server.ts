@@ -1,8 +1,9 @@
 import {
   JARVIS_SERVER_ADDRESS_STORAGE_KEY,
-  JARVIS_SERVER_TOKEN_STORAGE_KEY,
+  JARVIS_SERVER_SERVICE_TOKEN_STORAGE_KEY,
+  type JarvisServerServiceToken,
   parseJarvisServerAddress,
-  parseJarvisServerToken,
+  parseJarvisServerServiceToken,
 } from 'hologram';
 import { readStoredValue, writeStoredValue } from './key-value-store';
 
@@ -59,8 +60,8 @@ export async function loadJarvisServerAddress(): Promise<StoredJarvisServerAddre
 }
 
 /**
- * The settings screen changing the server's address or its token: the ones to keep instead,
- * `undefined` for none.
+ * The settings screen changing the server's address or its service token: the ones to keep
+ * instead, `undefined` for none.
  *
  * A save that leaves both fields as they were is no change at all, and is reported as none rather
  * than as the fields' values — see `elevenlabs-fields.tsx` for the address that would otherwise be
@@ -68,7 +69,7 @@ export async function loadJarvisServerAddress(): Promise<StoredJarvisServerAddre
  */
 export interface JarvisServerChange {
   address: string | undefined;
-  token: string | undefined;
+  serviceToken: JarvisServerServiceToken | undefined;
 }
 
 /**
@@ -80,95 +81,55 @@ export async function saveJarvisServerAddress(address: string | undefined): Prom
 }
 
 /**
- * What came back for the token: the same three answers as for the address, read the same way and
- * retried with it.
+ * What came back for the service token: the same three answers as for the address, read the same way
+ * and retried with it.
  */
-export type StoredJarvisServerToken = { kind: 'token'; token: string } | { kind: 'nothing' } | { kind: 'unreadable' };
+export type StoredJarvisServerServiceToken =
+  | { kind: 'serviceToken'; serviceToken: JarvisServerServiceToken }
+  | { kind: 'nothing' }
+  | { kind: 'unreadable' };
 
 /**
- * Reads the stored token for the server: the JWT the Cloudflare Zero Trust application in front of
- * it accepts (`parseJarvisServerToken` in `hologram`). Kept in the keystore like the ElevenLabs key,
- * since it is a credential too, and parsed again on the way out.
+ * Reads the stored service token for the server: the Cloudflare Access Client ID and Client Secret
+ * the Zero Trust application in front of it accepts (`parseJarvisServerServiceToken` in `hologram`).
+ * Kept in the keystore like the ElevenLabs key, since it is a credential too, as one JSON value so
+ * the pair is written and read together, and parsed again on the way out.
  */
-export async function loadJarvisServerToken(): Promise<StoredJarvisServerToken> {
+export async function loadJarvisServerServiceToken(): Promise<StoredJarvisServerServiceToken> {
   let stored: string | undefined;
   try {
-    stored = await readStoredValue(JARVIS_SERVER_TOKEN_STORAGE_KEY);
+    stored = await readStoredValue(JARVIS_SERVER_SERVICE_TOKEN_STORAGE_KEY);
   } catch {
     return { kind: 'unreadable' };
   }
 
-  const parsed = parseJarvisServerToken(stored ?? '');
-  return 'token' in parsed && parsed.token !== undefined ? { kind: 'token', token: parsed.token } : { kind: 'nothing' };
+  const { clientId, clientSecret } = storedPair(stored);
+  const parsed = parseJarvisServerServiceToken(clientId, clientSecret);
+  return 'serviceToken' in parsed && parsed.serviceToken !== undefined
+    ? { kind: 'serviceToken', serviceToken: parsed.serviceToken }
+    : { kind: 'nothing' };
 }
 
-/** Keeps the token, or forgets it, as the address is kept. */
-export async function saveJarvisServerToken(token: string | undefined): Promise<void> {
-  await writeStoredValue(JARVIS_SERVER_TOKEN_STORAGE_KEY, token ?? '');
-}
-
-/**
- * Pairing the phone with the Jarvis server, so that its line to the server needs no Cloudflare
- * Access JWT, which runs out with Access's session and has to be pasted in again.
- *
- * **Through the browser, once.** A native app holds no Access cookie, so the settings screen opens
- * the server's pairing page ({@link phonePairingUrl}) in the phone's browser, where Access signs sir
- * in as it does any page. Its button pairs the phone, and the page sends the browser on to this
- * app's own link, `heyjarvis://paired#token=…`, which the app reads ({@link pairedTokenFromLink}).
- * The server never sends a token anywhere but this app's scheme, whatever asked.
- *
- * **Then never again.** The line opens on the paired path with the token in its hello
- * (`deviceToken` in `hologram`'s `connectToServer`), which the server checks itself. Unpairing the
- * phone on the server closes it for good.
- */
-
-/** Where the token is kept, in the keystore beside the server's JWT. Only the phone pairs this way. */
-export const JARVIS_DEVICE_TOKEN_STORAGE_KEY = 'jarvis.device-token';
-
-/** The server's pairing page for a phone: `PHONE_PAIRING_ROUTE` in `mcp`. */
-export const PHONE_PAIRING_PATH = '/api/devices/pair';
-
-/** The link the pairing page opens this app with: `PHONE_APP_PAIRED_URL` in `mcp`. */
-export const PAIRED_LINK = 'heyjarvis://paired';
-
-/** What a device token looks like: 256 random bits in base64url, or near enough to let through. */
-const DEVICE_TOKEN = /^[A-Za-z0-9_-]{20,128}$/;
-
-/** The page to open in the browser to pair this phone with the server at `address`. */
-export function phonePairingUrl(address: string): string {
-  return `${address}${PHONE_PAIRING_PATH}`;
-}
-
-/**
- * The token in the link the pairing page opened the app with, or `undefined` for any other link.
- *
- * Read with a regular expression, since React Native's `URL` and `URLSearchParams` cannot read one.
- */
-export function pairedTokenFromLink(link: string | null | undefined): string | undefined {
-  if (!link?.toLowerCase().startsWith(`${PAIRED_LINK}#`)) return undefined;
-  const fragment = link.slice(PAIRED_LINK.length + 1);
-  for (const part of fragment.split('&')) {
-    const [name, value = ''] = part.split('=');
-    if (name === 'token' && DEVICE_TOKEN.test(value)) return value;
-  }
-  return undefined;
-}
-
-/** What came back for the device token: the same three answers as for the server's JWT. */
-export type StoredJarvisDeviceToken = { kind: 'token'; token: string } | { kind: 'nothing' } | { kind: 'unreadable' };
-
-/** Reads the token this phone was paired with, if it has been. */
-export async function loadJarvisDeviceToken(): Promise<StoredJarvisDeviceToken> {
-  let stored: string | undefined;
+/** The two halves of a stored service token, or two empty ones for anything that is not a stored pair. */
+function storedPair(stored: string | undefined): { clientId: string; clientSecret: string } {
+  const none = { clientId: '', clientSecret: '' };
+  if (!stored) return none;
+  let value: unknown;
   try {
-    stored = await readStoredValue(JARVIS_DEVICE_TOKEN_STORAGE_KEY);
+    value = JSON.parse(stored);
   } catch {
-    return { kind: 'unreadable' };
+    return none;
   }
-  return stored && DEVICE_TOKEN.test(stored) ? { kind: 'token', token: stored } : { kind: 'nothing' };
+  if (typeof value !== 'object' || value === null) return none;
+  const clientId = 'clientId' in value && typeof value.clientId === 'string' ? value.clientId : '';
+  const clientSecret = 'clientSecret' in value && typeof value.clientSecret === 'string' ? value.clientSecret : '';
+  return { clientId, clientSecret };
 }
 
-/** Keeps the token, or forgets it — when the server it was paired with is changed or cleared. */
-export async function saveJarvisDeviceToken(token: string | undefined): Promise<void> {
-  await writeStoredValue(JARVIS_DEVICE_TOKEN_STORAGE_KEY, token ?? '');
+/** Keeps the service token, or forgets it, as the address is kept. */
+export async function saveJarvisServerServiceToken(serviceToken: JarvisServerServiceToken | undefined): Promise<void> {
+  await writeStoredValue(
+    JARVIS_SERVER_SERVICE_TOKEN_STORAGE_KEY,
+    serviceToken === undefined ? '' : JSON.stringify(serviceToken),
+  );
 }

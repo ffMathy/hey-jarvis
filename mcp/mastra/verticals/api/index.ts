@@ -21,8 +21,6 @@ export {
   PAIRED_CONVERSATION_ROUTE,
   PAIRED_DEVICE_PATH,
   type PairedDeviceDependencies,
-  PHONE_APP_PAIRED_URL,
-  PHONE_PAIRING_ROUTE,
   registerPairedDeviceApi,
   WEB_APP_ORIGINS,
 } from './paired-devices.js';

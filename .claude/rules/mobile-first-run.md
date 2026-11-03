@@ -12,13 +12,14 @@ A new install opens on a three-step tour (`src/onboarding-screen.tsx`), not on t
 | Step | What it does |
 | --- | --- |
 | `agent` | What an agent is, that its tools are what make it an assistant, and links to sign up, build one, and read about webhooks and MCP servers |
-| `credentials` | The API key and the agent ID, with a link to where each is found |
+| `credentials` | The API key and the agent ID, with a link to where each is found — and below them, optional, the Jarvis server's address and its Cloudflare Access service token, without which the phone shows no glance and no camera |
 | `assistant` | The recommendation to hand Jarvis the assistant role, and the button that opens the picker — plus the watch card, when there is a watch, which is where the credentials are handed across to it |
 
 Four things about it are decisions rather than details:
 
 - **The steps, their order and every link live in `src/onboarding.ts`, which imports nothing.** `bun test` cannot parse React Native's Flow types, so anything a test needs an opinion about has to be outside the components — the same reason the contract specs read Kotlin as text. `onboarding.spec.ts` covers the order, the two-step shape in a browser, resuming, the count, and that every link is an `https://elevenlabs.io` address.
 - **A browser gets two steps.** There is no assistant role in a browser and no picker to send anyone to, so the last step would be a recommendation nobody could act on. `onboardingSteps` leaves it out, and the count says "Step 2 of 2" rather than promising a third.
+- **The Jarvis server is asked for on the credentials step too, and optional.** It used to be on the settings screen only, behind a long press nobody was told about, so a phone set up through the tour never knew its server and never showed the glance. The same fields (`elevenlabs-fields.tsx`) save it on both screens, and saving it there hands it to the watch card on the next step.
 - **The credentials are saved the moment they parse, not at the end.** The next step sends the user out to Android's Settings, and the app is not guaranteed to come back alive; a pasted API key held in component state across that is a key lost. Which is why a tour that is resumed with credentials already stored picks up *after* them rather than asking again.
 - **Whether the tour has been walked is remembered separately** (`src/onboarding-storage.ts`), and cannot be inferred from the credentials being there — because the last step comes after they are saved. A read of that flag that *fails* answers "walked": showing the tour to somebody who has a working Jarvis is the worse of the two mistakes, and a first-timer who misses it still lands on the settings screen, which is where this app used to open.
 

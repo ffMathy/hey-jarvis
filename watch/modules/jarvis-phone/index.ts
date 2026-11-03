@@ -1,6 +1,6 @@
 import { requireOptionalNativeModule } from 'expo';
-import type { ElevenLabsSettings } from 'hologram';
-import { parseElevenLabsSettings, parseJarvisServerAddress, parseJarvisServerToken } from 'hologram';
+import type { ElevenLabsSettings, JarvisServerServiceToken } from 'hologram';
+import { parseElevenLabsSettings, parseJarvisServerAddress, parseJarvisServerServiceToken } from 'hologram';
 
 /** What the native side stores, which is the JSON the phone sent with nothing added. */
 interface StoredSettings {
@@ -8,8 +8,10 @@ interface StoredSettings {
   agentId: string;
   /** Only when the phone had one. */
   serverAddress?: string;
-  /** Only when the phone had one. */
-  serverToken?: string;
+  /** Only when the phone had a service token. */
+  serverClientId?: string;
+  /** Only when the phone had a service token. */
+  serverClientSecret?: string;
 }
 
 interface JarvisPhoneNativeModule {
@@ -56,13 +58,14 @@ export function readPhoneServerAddress(): string | undefined {
 }
 
 /**
- * The token for the server the phone handed over beside its address, if it had one: the JWT the
- * Cloudflare Zero Trust application in front of the server accepts. Checked by the rules the phone
- * checked it with.
+ * The service token the phone handed over beside the server's address, if it had one: the
+ * Cloudflare Access Client ID and Client Secret the Zero Trust application in front of the server
+ * accepts. Checked by the rules the phone checked it with.
  */
-export function readPhoneServerToken(): string | undefined {
-  const parsed = parseJarvisServerToken(readStoredSettings()?.serverToken ?? '');
-  return 'token' in parsed ? parsed.token : undefined;
+export function readPhoneServerServiceToken(): JarvisServerServiceToken | undefined {
+  const stored = readStoredSettings();
+  const parsed = parseJarvisServerServiceToken(stored?.serverClientId ?? '', stored?.serverClientSecret ?? '');
+  return 'serviceToken' in parsed ? parsed.serviceToken : undefined;
 }
 
 /** What the native side has stored, or `null` for nothing at all. */

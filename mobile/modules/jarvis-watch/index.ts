@@ -1,5 +1,5 @@
 import { requireOptionalNativeModule } from 'expo';
-import type { ElevenLabsSettings } from 'hologram';
+import type { ElevenLabsSettings, JarvisServerServiceToken } from 'hologram';
 
 /** What the phone can see of the watch beside it. */
 export interface PairedWatch {
@@ -14,8 +14,14 @@ export interface PairedWatch {
 interface JarvisWatchNativeModule {
   findWatch(): Promise<PairedWatch>;
   openJarvisOnTheWatch(): Promise<boolean>;
-  /** An empty `serverAddress` or `serverToken` is none. */
-  sendSettingsToTheWatch(apiKey: string, agentId: string, serverAddress: string, serverToken: string): Promise<boolean>;
+  /** An empty `serverAddress`, or an empty `serverClientId` and `serverClientSecret`, is none. */
+  sendSettingsToTheWatch(
+    apiKey: string,
+    agentId: string,
+    serverAddress: string,
+    serverClientId: string,
+    serverClientSecret: string,
+  ): Promise<boolean>;
   addListener(event: 'onWatchAskedForCredentials', listener: () => void): { remove: () => void };
 }
 
@@ -88,7 +94,7 @@ export const JARVIS_ON_THE_WATCH = 'jarvis_on_the_watch';
 export async function sendSettingsToTheWatch(
   settings: ElevenLabsSettings,
   serverAddress: string | undefined,
-  serverToken: string | undefined,
+  serverServiceToken: JarvisServerServiceToken | undefined,
 ): Promise<boolean> {
   if (!nativeModule) {
     return false;
@@ -98,7 +104,8 @@ export async function sendSettingsToTheWatch(
       settings.apiKey,
       settings.agentId,
       serverAddress ?? '',
-      serverToken ?? '',
+      serverServiceToken?.clientId ?? '',
+      serverServiceToken?.clientSecret ?? '',
     );
   } catch {
     return false;

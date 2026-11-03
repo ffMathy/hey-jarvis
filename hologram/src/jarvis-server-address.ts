@@ -13,8 +13,8 @@
  * for this very computer, where a browser build is tried against a server running beside it.
  *
  * **Not a secret.** The address is an address and nothing else. What may reach the server is for
- * the Cloudflare Zero Trust application in front of it to decide, and the token that application
- * accepts is kept apart (see {@link JARVIS_SERVER_TOKEN_STORAGE_KEY}).
+ * the Cloudflare Zero Trust application in front of it to decide, and the service token that
+ * application accepts is kept apart (see {@link JARVIS_SERVER_SERVICE_TOKEN_STORAGE_KEY}).
  */
 
 /** Where the address is kept, in whatever key-value store the device has. */
@@ -103,35 +103,55 @@ export function parseJarvisServerAddress(typed: string): { address: string | und
 }
 
 /**
- * Where the token for the server is kept, beside its address: a JWT that the Cloudflare Zero Trust
- * application in front of the server accepts, sent with every connection to it (see
- * `jarvis-server-link.ts`). Unlike the address it is a credential, so it is kept as the ElevenLabs
- * key is — the keystore on a phone — and never shown once saved.
+ * A Cloudflare Access service token: the pair Zero Trust hands out under Access → Service Auth, sent
+ * with every connection to the server (see `jarvis-server-link.ts`) so the Access application in
+ * front of it lets a device through.
+ *
+ * **A service token rather than a sign-in's JWT**, because a device has no browser to sign in with
+ * and a JWT lasts only as long as the application's session — a day by default — after which the
+ * line was refused until sir pasted a new one. A service token lasts until it is revoked, can be
+ * revoked on its own, and is what ElevenLabs reaches the same server with.
  */
-export const JARVIS_SERVER_TOKEN_STORAGE_KEY = 'jarvis.server-token';
-
-/** What a JWT looks like: three base64url parts, separated by dots. */
-const JWT = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+export interface JarvisServerServiceToken {
+  readonly clientId: string;
+  readonly clientSecret: string;
+}
 
 /**
- * Turns what was typed into the token to send, or explains why it cannot be one.
- *
- * Nothing typed is a valid answer: a server with nothing in front of it needs no token. A `Bearer `
- * pasted in front of it is forgiven, as is the whitespace a paste picks up; anything that is not a
- * JWT is refused here rather than at Cloudflare, which would only answer with a closed socket.
+ * Where the service token is kept, beside the address. Unlike the address it is a credential, so it
+ * is kept as the ElevenLabs key is — the keystore on a phone — and never shown once saved.
  */
-export function parseJarvisServerToken(typed: string): { token: string | undefined } | { problem: string } {
-  const token = typed.trim().replace(/^bearer\s+/i, '');
-  if (!token) {
-    return { token: undefined };
+export const JARVIS_SERVER_SERVICE_TOKEN_STORAGE_KEY = 'jarvis.server-service-token';
+
+/** How a service token's Client ID ends: Cloudflare mints every one as `<id>.access`. */
+const CLIENT_ID_SUFFIX = '.access';
+
+/**
+ * Turns the Client ID and Client Secret sir typed into the service token to send, or explains why
+ * they cannot be one.
+ *
+ * Both left empty is a valid answer: a server with nothing in front of it needs no token. The
+ * whitespace a paste picks up is forgiven; one without the other, a space inside either, and a
+ * Client ID that is not one — the secret pasted into it, say — are refused here rather than at
+ * Cloudflare, which would only answer with a refused socket.
+ */
+export function parseJarvisServerServiceToken(
+  typedClientId: string,
+  typedClientSecret: string,
+): { serviceToken: JarvisServerServiceToken | undefined } | { problem: string } {
+  const clientId = typedClientId.trim();
+  const clientSecret = typedClientSecret.trim();
+  if (!clientId && !clientSecret) {
+    return { serviceToken: undefined };
   }
-  if (/\s/.test(token)) {
-    return { problem: 'The server token has a space in it. Paste just the token.' };
+  if (!clientId || !clientSecret) {
+    return { problem: 'The service token needs both its Client ID and its Client Secret.' };
   }
-  if (!JWT.test(token)) {
-    return {
-      problem: 'The server token should be a JWT: three parts separated by dots, like eyJhbGci….eyJzdWIi….sig.',
-    };
+  if (/\s/.test(clientId) || /\s/.test(clientSecret)) {
+    return { problem: 'The service token has a space in it. Paste just the Client ID and the Client Secret.' };
   }
-  return { token };
+  if (!clientId.endsWith(CLIENT_ID_SUFFIX) || clientId.length === CLIENT_ID_SUFFIX.length) {
+    return { problem: 'The Client ID should end in .access, like 1a2b3c….access.' };
+  }
+  return { serviceToken: { clientId, clientSecret } };
 }

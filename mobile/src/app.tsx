@@ -12,7 +12,7 @@
 import '@elevenlabs/react-native';
 import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
-import type { ElevenLabsSettings } from 'hologram';
+import type { ElevenLabsSettings, JarvisServerServiceToken } from 'hologram';
 import { AgentSatellitesContext, useAgentSatellites, useJarvisServer } from 'hologram/react/lifecycle';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
@@ -23,13 +23,10 @@ import { ConversationScreen } from './conversation-screen';
 import { GlanceScreen } from './glance-screen';
 import {
   type JarvisServerChange,
-  loadJarvisDeviceToken,
   loadJarvisServerAddress,
-  loadJarvisServerToken,
-  pairedTokenFromLink,
-  saveJarvisDeviceToken,
+  loadJarvisServerServiceToken,
   saveJarvisServerAddress,
-  saveJarvisServerToken,
+  saveJarvisServerServiceToken,
 } from './jarvis-server';
 import { firstOnboardingStep } from './onboarding';
 import { OnboardingScreen } from './onboarding-screen';
@@ -50,16 +47,10 @@ async function readJarvisServerAddress(stillWanted: () => boolean): Promise<stri
   return stored?.kind === 'address' ? stored.address : undefined;
 }
 
-/** The token for the server to use, read as the address is: one that still cannot be read is none. */
-async function readJarvisServerToken(stillWanted: () => boolean): Promise<string | undefined> {
-  const stored = await readTryingAgain(loadJarvisServerToken, stillWanted);
-  return stored?.kind === 'token' ? stored.token : undefined;
-}
-
-/** The token this phone was paired with, read as the address is: one that still cannot be read is none. */
-async function readJarvisDeviceToken(stillWanted: () => boolean): Promise<string | undefined> {
-  const stored = await readTryingAgain(loadJarvisDeviceToken, stillWanted);
-  return stored?.kind === 'token' ? stored.token : undefined;
+/** The service token for the server, read as the address is: one that still cannot be read is none. */
+async function readJarvisServerServiceToken(stillWanted: () => boolean): Promise<JarvisServerServiceToken | undefined> {
+  const stored = await readTryingAgain(loadJarvisServerServiceToken, stillWanted);
+  return stored?.kind === 'serviceToken' ? stored.serviceToken : undefined;
 }
 
 export interface AppProps {
@@ -99,15 +90,11 @@ export function App({ summoned = false, showing }: AppProps) {
    */
   const [serverAddress, setServerAddress] = useState<string | undefined>(undefined);
   /**
-   * The JWT the Cloudflare Zero Trust application in front of the server accepts, if sir has given
-   * one: sent with this phone's and the watch's line to the server. See `jarvis-server.ts`.
+   * The Cloudflare Access service token the Zero Trust application in front of the server accepts,
+   * if sir has given one: sent with this phone's and the watch's line to the server. See
+   * `jarvis-server.ts`.
    */
-  const [serverToken, setServerToken] = useState<string | undefined>(undefined);
-  /**
-   * The token the server gave this phone when it was paired, if it has been: its line then needs no
-   * Access JWT at all (see "Pairing the phone" in `jarvis-server.ts`).
-   */
-  const [deviceToken, setDeviceToken] = useState<string | undefined>(undefined);
+  const [serverServiceToken, setServerServiceToken] = useState<JarvisServerServiceToken | undefined>(undefined);
   /**
    * Whether the first-run tour is already behind this install.
    *
@@ -122,10 +109,10 @@ export function App({ summoned = false, showing }: AppProps) {
 
   // Hands the credentials to the watch whenever it asks, for as long as this app is open. See
   // `answer-the-watch.ts`; the watch only ever asks when it has none of its own.
-  useAnswerTheWatch(settings, serverAddress, serverToken);
+  useAnswerTheWatch(settings, serverAddress, serverServiceToken);
   // The line to sir's Jarvis server, open for as long as the app runs and has an address, whatever
   // screen is showing and whether or not he is talking to Jarvis (`jarvis-server-link.ts` in hologram).
-  const serverLink = useJarvisServer(serverAddress, serverToken, 'phone', deviceToken);
+  const serverLink = useJarvisServer(serverAddress, serverServiceToken, 'phone');
   // Which of his agents a request is using, from that line, drawn round him on whichever screen shows
   // him (`AgentSatellitesContext`). Sample mode has its own, pretended (`sample-screen.tsx`).
   const satellites = useAgentSatellites(serverLink);
@@ -157,8 +144,7 @@ export function App({ summoned = false, showing }: AppProps) {
       // there is a camera to offer.
       const walking = hasWalkedOnboarding();
       const readingServerAddress = readJarvisServerAddress(stillWanted);
-      const readingServerToken = readJarvisServerToken(stillWanted);
-      const readingDeviceToken = readJarvisDeviceToken(stillWanted);
+      const readingServerServiceToken = readJarvisServerServiceToken(stillWanted);
 
       const stored = await readTryingAgain(loadElevenLabsSettings, stillWanted);
       if (stored?.kind === 'settings') {
@@ -167,14 +153,11 @@ export function App({ summoned = false, showing }: AppProps) {
 
       const walked = await walking;
       const storedServerAddress = await readingServerAddress;
-      const storedServerToken = await readingServerToken;
-      const storedDeviceToken = await readingDeviceToken;
+      const storedServerServiceToken = await readingServerServiceToken;
       if (wanted) {
         setHasWalkedTour(walked);
         setServerAddress(storedServerAddress);
-        setServerToken(storedServerToken);
-        // A pairing link the app was opened with may have arrived while this was being read.
-        setDeviceToken((paired) => paired ?? storedDeviceToken);
+        setServerServiceToken(storedServerServiceToken);
         setIsLoaded(true);
       }
     })();
@@ -202,34 +185,18 @@ export function App({ summoned = false, showing }: AppProps) {
     }
     seenSummoning.current = { showing, launchUrl };
     let wanted = true;
-    void Promise.all([
-      readJarvisServerAddress(() => wanted),
-      readJarvisServerToken(() => wanted),
-      readJarvisDeviceToken(() => wanted),
-    ]).then(([storedServerAddress, storedServerToken, storedDeviceToken]) => {
-      if (wanted) {
-        setServerAddress(storedServerAddress);
-        setServerToken(storedServerToken);
-        // The pairing link itself is a new launch URL too, and its token is being kept as this reads.
-        setDeviceToken(pairedTokenFromLink(launchUrl) ?? storedDeviceToken);
-      }
-    });
+    void Promise.all([readJarvisServerAddress(() => wanted), readJarvisServerServiceToken(() => wanted)]).then(
+      ([storedServerAddress, storedServerServiceToken]) => {
+        if (wanted) {
+          setServerAddress(storedServerAddress);
+          setServerServiceToken(storedServerServiceToken);
+        }
+      },
+    );
     return () => {
       wanted = false;
     };
   }, [showing, launchUrl]);
-
-  // The server's pairing page opens the app with its token (`pairedTokenFromLink`): kept, and used
-  // at once, so the line reopens on the paired path. A token the keystore would not keep still works
-  // until the app is closed, and the next pairing keeps it.
-  useEffect(() => {
-    const paired = pairedTokenFromLink(launchUrl);
-    if (paired === undefined) return;
-    setDeviceToken(paired);
-    saveJarvisDeviceToken(paired).catch((error: unknown) => {
-      console.warn('The phone could not keep its pairing with the Jarvis server; pair it again.', error);
-    });
-  }, [launchUrl]);
 
   // Summoned before there is anything to summon: show the hologram rather than a
   // form. Someone who pressed the assistant button asked for Jarvis, and a
@@ -250,21 +217,16 @@ export function App({ summoned = false, showing }: AppProps) {
   };
 
   /**
-   * The settings screen saves the Jarvis server's address with the rest, when sir changed it — and
-   * only then, so an address that could not be read is never overwritten by the empty field that
-   * stood in for it. The tour never asks for one.
+   * The settings screen and the tour's credentials step save the Jarvis server with the rest, when
+   * sir changed it — and only then, so an address that could not be read is never overwritten by the
+   * empty field that stood in for it.
    */
-  const saveSettingsScreen = (saved: ElevenLabsSettings, serverChange: JarvisServerChange | undefined) => {
+  const saveWithServer = (saved: ElevenLabsSettings, serverChange: JarvisServerChange | undefined) => {
     if (serverChange) {
-      // A pairing is with one server: another address, or none, is not paired.
-      if (serverChange.address !== serverAddress) {
-        setDeviceToken(undefined);
-        void saveJarvisDeviceToken(undefined);
-      }
       setServerAddress(serverChange.address);
-      setServerToken(serverChange.token);
+      setServerServiceToken(serverChange.serviceToken);
       void saveJarvisServerAddress(serverChange.address);
-      void saveJarvisServerToken(serverChange.token);
+      void saveJarvisServerServiceToken(serverChange.serviceToken);
     }
     save(saved);
   };
@@ -318,7 +280,9 @@ export function App({ summoned = false, showing }: AppProps) {
         {screen === 'onboarding' ? (
           <OnboardingScreen
             settings={settings}
-            onSaveSettings={save}
+            serverAddress={serverAddress}
+            serverServiceToken={serverServiceToken}
+            onSaveSettings={saveWithServer}
             onFinished={finishTour}
             onSkipToSample={() => setIsSampling(true)}
           />
@@ -327,9 +291,8 @@ export function App({ summoned = false, showing }: AppProps) {
           <SettingsScreen
             settings={settings}
             serverAddress={serverAddress}
-            serverToken={serverToken}
-            paired={deviceToken !== undefined}
-            onSave={saveSettingsScreen}
+            serverServiceToken={serverServiceToken}
+            onSave={saveWithServer}
             onCancel={settings ? () => setIsEditingSettings(false) : undefined}
             onTrySample={settings ? undefined : () => setIsSampling(true)}
           />

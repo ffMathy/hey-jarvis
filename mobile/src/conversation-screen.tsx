@@ -73,8 +73,8 @@ const ON_A_PHONE = Platform.OS !== 'web';
 
 /** What the screen is to a screen reader: on a phone a tap switches modes, and a hold opens settings. */
 const SCREEN_LABEL = ON_A_PHONE
-  ? 'Jarvis. Tap to switch between talking and writing. Press and hold for ElevenLabs settings.'
-  : 'Jarvis. Press and hold for ElevenLabs settings.';
+  ? 'Jarvis. Tap to switch between talking and writing. Press and hold for settings.'
+  : 'Jarvis. Press and hold for settings.';
 
 /**
  * What tapping the screen does: on a phone, once there is a conversation that has not ended, it
@@ -726,7 +726,7 @@ export function ConversationScreen({
           style={styles.settingsLink}
           testID="open-settings"
         >
-          <Text style={styles.settingsLinkLabel}>ElevenLabs settings</Text>
+          <Text style={styles.settingsLinkLabel}>Settings</Text>
         </Pressable>
       )}
     </Pressable>

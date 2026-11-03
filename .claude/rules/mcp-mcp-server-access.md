@@ -16,9 +16,14 @@ with an identity policy.
 (`verticals/api/live-socket.ts`) the phone, the watch and the headset keep open for as long as their
 apps run; the server checks no credential and sends every live event to any socket that says
 hello. Who may reach it is Cloudflare Zero Trust's to decide, in front of the
-tunnel. The phone and the watch can carry a JWT for that (their **Server token** setting), sent on
-the upgrade request as `Authorization: Bearer <jwt>` and `cf-access-token: <jwt>`. The headset runs
-in a browser, which cannot set a header on a WebSocket, so it gets through on Access's own
+tunnel. The phone and the watch can carry a **Cloudflare Access service token** for that (their
+setting of that name, on the tour's credentials step and the settings screen), sent on the upgrade
+request as `CF-Access-Client-Id` and `CF-Access-Client-Secret`. Make it under Zero Trust → Access →
+Service Auth, and allow it with a **Service Auth** policy on the application covering `/api/live`.
+**Never give `/api/live` a Bypass policy:** the server runs a glance's actions — unlocking a door —
+for any socket that names them, so Access is the only lock on them. The headset runs
+in a browser, which cannot set a header on a WebSocket, so it either is paired and uses
+`/api/paired/live` (see **Pairing a device** below), or gets through on Access's own
 `CF_Authorization` cookie instead:
 
 1. **Sign in once in Quest Browser.** The headset's page links to `/api/live` on the server
@@ -78,19 +83,12 @@ headset keeps a token of the server's own.
   and the paired socket below.
 - **`/api/paired/live` is the WebSocket API for paired devices** (`PAIRED_LIVE_SOCKET_PATH` in
   `live-socket.ts`): the same frames as `/api/live`, but its hello has to carry the device's token
-  (`{"type":"hello","device":"phone","token":"…"}`), which the server checks itself, and a socket
+  (`{"type":"hello","device":"vr","token":"…"}`), which the server checks itself, and a socket
   whose hello does not is closed `4401` — never tried again by the device. Frames sent before the
-  check answers are ignored. A paired phone or headset therefore needs neither an Access JWT nor
-  Access's cookie for its line, both of which run out with Access's session.
-- **The phone pairs through its browser** (`GET /api/devices/pair`, `PHONE_PAIRING_ROUTE`), behind
-  Access: a native app holds no Access cookie, so the phone's settings open this page in the browser,
-  Access signs sir in, and its button `POST`s to the same path. That is refused `403` unless
-  `Origin` names this server's own `Host` (and `Sec-Fetch-Site`, where sent, is `same-origin`), so a
-  form elsewhere cannot pair a device; then the device is paired and the browser is sent, `303`, to
-  `heyjarvis://paired#token=…` — always the app's own scheme, never a link the request names. The
-  page is served `no-store`, `X-Frame-Options: DENY` and a CSP that allows no frame. The check reads
-  `Host`, so the tunnel must pass the public hostname through (cloudflared's default; leave its
-  `httpHostHeader` unset).
+  check answers are ignored, glance actions included: here the device token is the lock on them
+  that Access is on `/api/live`. A paired headset therefore needs no Access cookie for its line,
+  which runs out with Access's session. The phone and the watch need no pairing: their service
+  token lasts until it is revoked.
 
 **`/webhooks/*` must bypass Access too.** Every webhook is served under it — today only ElevenLabs'
 post-call webhook, `/webhooks/elevenlabs/post-call` — so one self-hosted application for

@@ -363,17 +363,18 @@ describe('telling the server what sir points at', () => {
   });
 });
 
-describe('the token for the server', () => {
-  const TOKEN = 'eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJqYXJ2aXMifQ.c2lnbmF0dXJl';
+describe('the service token for the server', () => {
+  const SERVICE_TOKEN = { clientId: 'abc123.access', clientSecret: 'shh' };
+  const HEADERS = { 'CF-Access-Client-Id': 'abc123.access', 'CF-Access-Client-Secret': 'shh' };
 
-  it('goes on every upgrade request as a bearer token and as Cloudflare Access’s own header', () => {
+  it('goes on every upgrade request in the two headers Cloudflare Access reads one from', () => {
     const { platform, advance, latest } = fakePlatform();
-    connectToServer({ address: ADDRESS, device: 'phone', token: TOKEN }, platform);
-    expect(latest().headers).toEqual({ Authorization: `Bearer ${TOKEN}`, 'cf-access-token': TOKEN });
+    connectToServer({ address: ADDRESS, device: 'phone', serviceToken: SERVICE_TOKEN }, platform);
+    expect(latest().headers).toEqual(HEADERS);
 
     latest().drop(1006);
     advance(FIRST_RETRY_MS);
-    expect(latest().headers).toEqual({ Authorization: `Bearer ${TOKEN}`, 'cf-access-token': TOKEN });
+    expect(latest().headers).toEqual(HEADERS);
   });
 
   it('adds no header for a server with nothing in front of it', () => {
