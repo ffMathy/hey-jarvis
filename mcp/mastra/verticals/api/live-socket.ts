@@ -358,6 +358,19 @@ export function attachLiveSocket(server: Server, options: LiveSocketOptions): Li
     listen(socket, hello.device);
   };
 
+  /** Lets a socket in on its hello: at once on the open path, once its token checks out on the paired one. */
+  const answerHello = (socket: WebSocket, kind: 'open' | 'paired', hello: z.infer<typeof helloSchema> | undefined) => {
+    if (!hello) {
+      socket.close(LIVE_SOCKET_CLOSE_CODES.badHello);
+      return;
+    }
+    if (kind === 'paired') {
+      void listenIfPaired(socket, hello);
+      return;
+    }
+    listen(socket, hello.device);
+  };
+
   const welcome = (socket: WebSocket, kind: 'open' | 'paired') => {
     let saidHello = false;
     const helloTimer = setTimeout(() => socket.close(LIVE_SOCKET_CLOSE_CODES.helloTimeout), helloTimeoutMs);
@@ -379,17 +392,7 @@ export function attachLiveSocket(server: Server, options: LiveSocketOptions): Li
       saidHello = true;
       clearTimeout(helloTimer);
 
-      const hello = readFrame(helloSchema, data, isBinary);
-      if (!hello) {
-        socket.close(LIVE_SOCKET_CLOSE_CODES.badHello);
-        return;
-      }
-
-      if (kind === 'paired') {
-        void listenIfPaired(socket, hello);
-        return;
-      }
-      listen(socket, hello.device);
+      answerHello(socket, kind, readFrame(helloSchema, data, isBinary));
     });
   };
 

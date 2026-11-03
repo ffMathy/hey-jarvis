@@ -145,7 +145,7 @@ export function phonePairingUrl(address: string): string {
  * Read with a regular expression, since React Native's `URL` and `URLSearchParams` cannot read one.
  */
 export function pairedTokenFromLink(link: string | null | undefined): string | undefined {
-  if (!link || !link.toLowerCase().startsWith(`${PAIRED_LINK}#`)) return undefined;
+  if (!link?.toLowerCase().startsWith(`${PAIRED_LINK}#`)) return undefined;
   const fragment = link.slice(PAIRED_LINK.length + 1);
   for (const part of fragment.split('&')) {
     const [name, value = ''] = part.split('=');
