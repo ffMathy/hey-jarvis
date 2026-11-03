@@ -98,6 +98,35 @@ function readVariable(name: string): string | undefined {
   return process.env[name]?.trim() || undefined;
 }
 
+/** Asks ElevenLabs for the credential, and says it could not be reached rather than throwing `fetch`'s own error. */
+async function askElevenLabs(
+  fetchImplementation: typeof fetch,
+  { transport, participantName }: ConversationCredentialRequest,
+  { apiKey, agentId }: { apiKey: string; agentId: string },
+): Promise<globalThis.Response> {
+  const query = new URLSearchParams(
+    transport === 'webrtc' ? { agent_id: agentId, participant_name: participantName } : { agent_id: agentId },
+  );
+  try {
+    return await fetchImplementation(`${ELEVENLABS_CREDENTIAL_URLS[transport]}?${query}`, {
+      headers: { 'xi-api-key': apiKey },
+      signal: AbortSignal.timeout(ELEVENLABS_TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw new ConversationUnavailableError('Your Jarvis server could not reach ElevenLabs.', { cause: error });
+  }
+}
+
+/** The credential in ElevenLabs' answer, for the transport it was asked for, or `undefined`. */
+function credentialIn(transport: ConversationCredentialRequest['transport'], body: unknown) {
+  if (transport === 'webrtc') {
+    const parsed = tokenResponseSchema.safeParse(body);
+    return parsed.success ? { token: parsed.data.token } : undefined;
+  }
+  const parsed = signedUrlResponseSchema.safeParse(body);
+  return parsed.success ? { signedUrl: parsed.data.signed_url } : undefined;
+}
+
 /**
  * Asks ElevenLabs, with this server's key, for one conversation's credential on the agent sir's
  * devices talk to (`HEY_JARVIS_ELEVENLABS_AGENT_ID`, never the test agent).
@@ -109,7 +138,7 @@ function readVariable(name: string): string | undefined {
 export function createElevenLabsCredentialMinter(
   fetchImplementation: typeof fetch = fetch,
 ): MintConversationCredential {
-  return async ({ transport, participantName }) => {
+  return async (request) => {
     const apiKey = readVariable('HEY_JARVIS_ELEVENLABS_API_KEY');
     const agentId = readVariable('HEY_JARVIS_ELEVENLABS_AGENT_ID');
     if (!apiKey || !agentId) {
@@ -118,32 +147,20 @@ export function createElevenLabsCredentialMinter(
       );
     }
 
-    const query = new URLSearchParams(
-      transport === 'webrtc' ? { agent_id: agentId, participant_name: participantName } : { agent_id: agentId },
-    );
-    let response: globalThis.Response;
-    try {
-      response = await fetchImplementation(`${ELEVENLABS_CREDENTIAL_URLS[transport]}?${query}`, {
-        headers: { 'xi-api-key': apiKey },
-        signal: AbortSignal.timeout(ELEVENLABS_TIMEOUT_MS),
-      });
-    } catch (error) {
-      throw new ConversationUnavailableError('Your Jarvis server could not reach ElevenLabs.', { cause: error });
-    }
+    const response = await askElevenLabs(fetchImplementation, request, { apiKey, agentId });
     if (!response.ok) {
-      logger.warn('[API] ElevenLabs refused a paired device its conversation', { status: response.status, transport });
+      logger.warn('[API] ElevenLabs refused a paired device its conversation', {
+        status: response.status,
+        transport: request.transport,
+      });
       throw new ConversationUnavailableError(`ElevenLabs could not start a conversation (HTTP ${response.status}).`);
     }
 
-    const body: unknown = await response.json().catch(() => undefined);
-    if (transport === 'webrtc') {
-      const parsed = tokenResponseSchema.safeParse(body);
-      if (parsed.success) return { token: parsed.data.token };
-    } else {
-      const parsed = signedUrlResponseSchema.safeParse(body);
-      if (parsed.success) return { signedUrl: parsed.data.signed_url };
+    const credential = credentialIn(request.transport, await response.json().catch(() => undefined));
+    if (credential === undefined) {
+      throw new ConversationUnavailableError('ElevenLabs answered without a conversation credential.');
     }
-    throw new ConversationUnavailableError('ElevenLabs answered without a conversation credential.');
+    return credential;
   };
 }
 

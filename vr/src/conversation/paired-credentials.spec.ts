@@ -7,15 +7,23 @@ import {
   SERVER_UNREACHABLE_PROBLEM,
 } from './paired-credentials';
 
+/** A fake of `fetch`: Bun's carries `preconnect` beside its call signature, so a bare function is not one. */
+function fakeFetch(answer: (url: string | URL | Request, init?: RequestInit) => Promise<Response>): typeof fetch {
+  return Object.assign(answer, { preconnect: fetch.preconnect });
+}
+
 const PAIRING = { address: 'https://jarvis.example.com', deviceToken: 'p'.repeat(43) };
 
 describe('a paired headset’s conversation credentials', () => {
   it('asks the server for a spoken conversation’s token with its own token', async () => {
     const requests: { url: string; init: RequestInit | undefined }[] = [];
-    const token = await pairedCredentials(PAIRING).token(HEADSET_PARTICIPANT_NAME, async (url, init) => {
-      requests.push({ url: String(url), init });
-      return Response.json({ success: true, data: { token: 'livekit-token' } });
-    });
+    const token = await pairedCredentials(PAIRING).token(
+      HEADSET_PARTICIPANT_NAME,
+      fakeFetch(async (url, init) => {
+        requests.push({ url: String(url), init });
+        return Response.json({ success: true, data: { token: 'livekit-token' } });
+      }),
+    );
 
     expect(token).toBe('livekit-token');
     expect(requests).toEqual([
@@ -34,25 +42,33 @@ describe('a paired headset’s conversation credentials', () => {
     const credentials = pairedCredentials(PAIRING);
 
     expect(
-      await credentials.signedUrl(async () => Response.json({ data: { signedUrl: 'wss://example/signed' } })),
+      await credentials.signedUrl(
+        fakeFetch(async () => Response.json({ data: { signedUrl: 'wss://example/signed' } })),
+      ),
     ).toBe('wss://example/signed');
     await expect(
-      credentials.signedUrl(async () => Response.json({ data: { signedUrl: 'ws://plain' } })),
+      credentials.signedUrl(fakeFetch(async () => Response.json({ data: { signedUrl: 'ws://plain' } }))),
     ).rejects.toThrow('not wss://');
   });
 
   it('says it is no longer paired when the server does not know its token', async () => {
     await expect(
-      pairedCredentials(PAIRING).token(HEADSET_PARTICIPANT_NAME, async () => new Response('', { status: 401 })),
+      pairedCredentials(PAIRING).token(
+        HEADSET_PARTICIPANT_NAME,
+        fakeFetch(async () => new Response('', { status: 401 })),
+      ),
     ).rejects.toThrow(NO_LONGER_PAIRED_PROBLEM);
   });
 
   it('passes on the server’s own words for why there is no conversation', async () => {
     await expect(
-      pairedCredentials(PAIRING).token(HEADSET_PARTICIPANT_NAME, async () =>
-        Response.json(
-          { success: false, message: 'ElevenLabs could not start a conversation (HTTP 402).' },
-          { status: 502 },
+      pairedCredentials(PAIRING).token(
+        HEADSET_PARTICIPANT_NAME,
+        fakeFetch(async () =>
+          Response.json(
+            { success: false, message: 'ElevenLabs could not start a conversation (HTTP 402).' },
+            { status: 502 },
+          ),
         ),
       ),
     ).rejects.toThrow('ElevenLabs could not start a conversation (HTTP 402).');
@@ -60,9 +76,12 @@ describe('a paired headset’s conversation credentials', () => {
 
   it('says the server could not be reached when no answer came', async () => {
     await expect(
-      pairedCredentials(PAIRING).token(HEADSET_PARTICIPANT_NAME, async () => {
-        throw new TypeError('Failed to fetch');
-      }),
+      pairedCredentials(PAIRING).token(
+        HEADSET_PARTICIPANT_NAME,
+        fakeFetch(async () => {
+          throw new TypeError('Failed to fetch');
+        }),
+      ),
     ).rejects.toThrow(SERVER_UNREACHABLE_PROBLEM);
   });
 });

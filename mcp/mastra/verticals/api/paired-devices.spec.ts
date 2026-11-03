@@ -15,6 +15,11 @@ import {
   registerPairedDeviceApi,
 } from './paired-devices.js';
 
+/** A fake of `fetch`: Bun's carries `preconnect` beside its call signature, so a bare function is not one. */
+function fakeFetch(answer: (url: string | URL | Request, init?: RequestInit) => Promise<Response>): typeof fetch {
+  return Object.assign(answer, { preconnect: fetch.preconnect });
+}
+
 const HEADSET_PAGE = 'https://ffmathy.github.io';
 const STRANGER_PAGE = 'https://evil.example';
 
@@ -59,10 +64,10 @@ afterAll(async () => {
 });
 
 /** Pairs as the headset's page does: a simple request, plain text, from the page's origin. */
-function pair(name: string, origin: string | undefined = HEADSET_PAGE) {
+function pair(name: string, origin: string | null = HEADSET_PAGE) {
   return fetch(`${baseUrl}${DEVICE_PAIRING_PATH}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'text/plain', ...(origin === undefined ? {} : { Origin: origin }) },
+    headers: { 'Content-Type': 'text/plain', ...(origin === null ? {} : { Origin: origin }) },
     body: name,
   });
 }
@@ -109,7 +114,7 @@ describe('pairing a device', () => {
   });
 
   it('pairs nothing for a request that names no page', async () => {
-    expect((await pair('Not mine', undefined)).status).toBe(403);
+    expect((await pair('Not mine', null)).status).toBe(403);
     expect(await storage.list()).toEqual([]);
   });
 
@@ -212,10 +217,12 @@ describe('minting with ElevenLabs', () => {
 
   it('asks for the agent with the server key, under the device name', async () => {
     const asked: { url: string; key: string | null }[] = [];
-    const minter = createElevenLabsCredentialMinter(async (url, init) => {
-      asked.push({ url: String(url), key: new Headers(init?.headers).get('xi-api-key') });
-      return Response.json({ token: 'livekit-token', conversation_id: 'conv_1' });
-    });
+    const minter = createElevenLabsCredentialMinter(
+      fakeFetch(async (url, init) => {
+        asked.push({ url: String(url), key: new Headers(init?.headers).get('xi-api-key') });
+        return Response.json({ token: 'livekit-token', conversation_id: 'conv_1' });
+      }),
+    );
 
     expect(await minter({ transport: 'webrtc', participantName: 'jarvis-vr' })).toEqual({ token: 'livekit-token' });
     expect(asked).toEqual([
@@ -227,7 +234,7 @@ describe('minting with ElevenLabs', () => {
   });
 
   it('refuses a signed URL that is not a wss:// one', async () => {
-    const minter = createElevenLabsCredentialMinter(async () => Response.json({ signed_url: 'ws://plain' }));
+    const minter = createElevenLabsCredentialMinter(fakeFetch(async () => Response.json({ signed_url: 'ws://plain' })));
 
     await expect(minter({ transport: 'websocket', participantName: 'jarvis-vr' })).rejects.toBeInstanceOf(
       ConversationUnavailableError,
@@ -235,9 +242,11 @@ describe('minting with ElevenLabs', () => {
   });
 
   it('says ElevenLabs could not be reached when the request never got an answer', async () => {
-    const minter = createElevenLabsCredentialMinter(async () => {
-      throw new TypeError('fetch failed');
-    });
+    const minter = createElevenLabsCredentialMinter(
+      fakeFetch(async () => {
+        throw new TypeError('fetch failed');
+      }),
+    );
 
     await expect(minter({ transport: 'webrtc', participantName: 'jarvis-vr' })).rejects.toThrow(
       'Your Jarvis server could not reach ElevenLabs.',
@@ -246,9 +255,11 @@ describe('minting with ElevenLabs', () => {
 
   it('starts nothing on a server without the agent', async () => {
     delete process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID;
-    const minter = createElevenLabsCredentialMinter(async () => {
-      throw new Error('ElevenLabs should not have been asked');
-    });
+    const minter = createElevenLabsCredentialMinter(
+      fakeFetch(async () => {
+        throw new Error('ElevenLabs should not have been asked');
+      }),
+    );
 
     await expect(minter({ transport: 'webrtc', participantName: 'jarvis-vr' })).rejects.toBeInstanceOf(
       ConversationUnavailableError,

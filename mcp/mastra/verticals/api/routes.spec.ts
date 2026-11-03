@@ -15,6 +15,7 @@ import {
   UPLOAD_SLOT_MS,
 } from '../vision/index.js';
 import { EVALUATION_WEBHOOK_ROUTE } from './evaluation-webhook.js';
+import { DEVICE_PAIRING_PATH, PAIRED_CONVERSATION_ROUTE } from './paired-devices.js';
 import {
   createWorkflowApiHandler,
   extractWorkflowError,
@@ -414,12 +415,14 @@ describe('registerWorkflowApi', () => {
 });
 
 describe('registerApiRoutes', () => {
-  it('registers exactly the shopping list endpoint, the photo slots, the photo upload and the post-call webhook', () => {
+  it('registers exactly the shopping list endpoint, the photo slots, the photo upload, the post-call webhook and pairing', () => {
     expect(registeredApiRoutes).toEqual([
       { method: 'POST', path: '/api/shopping-list' },
       { method: 'POST', path: PHOTO_SLOTS_ROUTE },
       { method: 'PUT', path: PHOTO_UPLOAD_ROUTE },
       { method: 'POST', path: EVALUATION_WEBHOOK_ROUTE },
+      { method: 'POST', path: DEVICE_PAIRING_PATH },
+      { method: 'POST', path: PAIRED_CONVERSATION_ROUTE },
     ]);
   });
 
