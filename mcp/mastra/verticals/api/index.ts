@@ -13,6 +13,16 @@ export {
   type LiveServerMessage,
   type LiveSockets,
 } from './live-socket.js';
+export {
+  ConversationUnavailableError,
+  createElevenLabsCredentialMinter,
+  DEVICE_PAIRING_PATH,
+  PAIRED_CONVERSATION_ROUTE,
+  PAIRED_DEVICE_PATH,
+  type PairedDeviceDependencies,
+  registerPairedDeviceApi,
+  WEB_APP_ORIGINS,
+} from './paired-devices.js';
 export { storageRetentionWorkflow } from './retention-workflow.js';
 export {
   type ApiRouteDependencies,

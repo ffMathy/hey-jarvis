@@ -74,7 +74,7 @@ export function primaryButton(facts: PageFacts): PrimaryButton {
   if (facts.xr === 'unsupported') return waiting('Open this page on a Meta Quest or an AR phone');
   if (facts.room === 'entering') return waiting('Opening your room…');
   if (facts.room === 'inside') return waiting('Jarvis is in your room');
-  if (!facts.hasSettings) return waiting('Add your ElevenLabs key first');
+  if (!facts.hasSettings) return waiting('Set up your Jarvis server or key first');
   const { preparation } = facts;
   if (preparation.state === 'running') {
     const fraction = Math.max(0, Math.min(1, preparation.fraction));

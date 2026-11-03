@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import {
+  elevenLabsCredentials,
   type AffectedEntity,
   type AgentActivity,
   type AgentTrackRoom,
@@ -43,7 +44,7 @@ const greetingPlayer: GreetingPlayer = {
 
 function optionsWith(overrides: Partial<HeadsetSessionDependencyOptions> = {}): HeadsetSessionDependencyOptions {
   return {
-    settings: { apiKey: 'sk_a-secret-key', agentId: 'agent_01jz0123456789' },
+    credentials: elevenLabsCredentials({ apiKey: 'sk_a-secret-key', agentId: 'agent_01jz0123456789' }),
     startSession: () => Promise.reject(new Error('Nothing is dialled here.')),
     greeting: greetingPlayer,
     events: { onPhase: () => undefined, onProblem: () => undefined, onCaption: () => undefined },

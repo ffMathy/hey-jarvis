@@ -1,10 +1,12 @@
-import type { ElevenLabsSettings, ServerLink } from 'hologram';
+import { type ConversationCredentials, elevenLabsCredentials, type ServerLink } from 'hologram';
+import { pairedCredentials } from '../conversation/paired-credentials';
 import type { JarvisDebugState } from '../debug-hook';
 import type { MicrophoneGate } from './microphone';
 import { type PreparationTask, runPreparation } from './preparation';
 import { canOpenWithoutAgent, microphoneHelp, type PageFacts, primaryButton } from './prerequisites';
-import { showServerStatus } from './server-status';
-import { checkSettings, type KeyValueStorage, loadSettings, saveSettings } from './settings';
+import { loadPairing, pairWithServer, savePairing } from './pairing';
+import { serverSignInUrl, showServerStatus } from './server-status';
+import { checkSettings, type KeyValueStorage, loadServerAddress, loadSettings, saveSettings } from './settings';
 import { loadVoiceFromWhereHeStands, saveVoiceFromWhereHeStands } from './voice-setting';
 
 /**
@@ -46,13 +48,27 @@ export interface PageDependencies {
    * open. Called straight from the click, so it must ask for the session before it awaits
    * anything: the click's activation expires.
    */
-  enterRoom(mode: RoomMode, settings: ElevenLabsSettings | undefined, onInside: () => void): Promise<RoomOutcome>;
+  enterRoom(mode: RoomMode, credentials: ConversationCredentials | undefined, onInside: () => void): Promise<RoomOutcome>;
   /**
    * The page's line to sir's Jarvis server and its address, for the page to say whether it is
    * connected and offer signing in to it when it is not (`server-status.ts`).
    */
   server: { address: string | undefined; line: Pick<ServerLink, 'onConnectionChange'> };
+  /** Loads the page again, so a newly paired server's address opens the page's line to it. */
+  reload(): void;
   debug: JarvisDebugState;
+}
+
+/**
+ * Where the room's conversations get their tokens: the Jarvis server this headset is paired with,
+ * when it is — the server holds the key, and nothing secret but its own token is kept here — else an
+ * ElevenLabs key saved on this page, else nothing yet.
+ */
+export function conversationCredentials(storage: KeyValueStorage): ConversationCredentials | undefined {
+  const pairing = loadPairing(storage);
+  if (pairing !== undefined) return pairedCredentials(pairing);
+  const settings = loadSettings(storage);
+  return settings === undefined ? undefined : elevenLabsCredentials(settings);
 }
 
 function required<Found extends Element>(root: ParentNode, selector: string, kind: new () => Found): Found {
@@ -83,6 +99,14 @@ export function startPage(document: Document, dependencies: PageDependencies): v
   const settingsSaved = required(document, '#settings-saved', HTMLElement);
   const saveButton = required(document, '#save-settings', HTMLButtonElement);
   const spatialVoice = required(document, '#spatial-voice', HTMLInputElement);
+  const pairingSection = required(document, '#pairing', HTMLDetailsElement);
+  const pairingForm = required(document, '#pairing-form', HTMLFormElement);
+  const serverAddressField = required(document, '#server-address', HTMLInputElement);
+  const pairingProblem = required(document, '#pairing-problem', HTMLElement);
+  const pairingSignIn = required(document, '#pairing-sign-in', HTMLElement);
+  const pairingSignInLink = required(document, '#pairing-sign-in-link', HTMLAnchorElement);
+  const pairingSaved = required(document, '#pairing-saved', HTMLElement);
+  const pairButton = required(document, '#pair', HTMLButtonElement);
 
   showServerStatus(
     {
@@ -98,7 +122,7 @@ export function startPage(document: Document, dependencies: PageDependencies): v
   const stored = loadSettings(storage);
   const facts: PageFacts = {
     xr: 'checking',
-    hasSettings: stored !== undefined,
+    hasSettings: conversationCredentials(storage) !== undefined,
     preparation: { state: 'running', fraction: 0 },
     microphone: dependencies.microphone === undefined ? undefined : 'unknown',
     room: 'outside',
@@ -108,8 +132,10 @@ export function startPage(document: Document, dependencies: PageDependencies): v
   spatialVoice.checked = loadVoiceFromWhereHeStands(storage);
   apiKeyField.value = stored?.apiKey ?? '';
   agentIdField.value = stored?.agentId ?? '';
+  serverAddressField.value = loadServerAddress(storage) ?? '';
   // Open when there is something to fill in; folded away once there is not, so the button is the page.
-  settingsSection.open = stored === undefined;
+  settingsSection.open = !facts.hasSettings;
+  pairingSection.open = !facts.hasSettings;
 
   function say(message: string) {
     status.textContent = message;
@@ -167,7 +193,8 @@ export function startPage(document: Document, dependencies: PageDependencies): v
     say('Opening your room…');
     render();
     // Asked for here, before anything is awaited, while the click's activation still counts.
-    const room = dependencies.enterRoom(mode, mode === 'conversation' ? loadSettings(storage) : undefined, () => {
+    const credentials = mode === 'conversation' ? conversationCredentials(storage) : undefined;
+    const room = dependencies.enterRoom(mode, credentials, () => {
       facts.room = 'inside';
       say('');
       render();
@@ -240,6 +267,46 @@ export function startPage(document: Document, dependencies: PageDependencies): v
     }
     settingsSaved.textContent = 'Saved. ElevenLabs accepted the key and found the agent.';
     settingsSaved.hidden = false;
+    facts.hasSettings = true;
+    render();
+  }
+
+  pairingForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void pairFromForm();
+  });
+
+  async function pairFromForm() {
+    pairingProblem.hidden = true;
+    pairingSignIn.hidden = true;
+    pairingSaved.hidden = true;
+    pairButton.disabled = true;
+    pairButton.textContent = 'Pairing with your server…';
+    const result = await pairWithServer(serverAddressField.value, dependencies.fetch);
+    pairButton.disabled = false;
+    pairButton.textContent = 'Pair this headset';
+    if ('problem' in result) {
+      pairingProblem.textContent = result.problem;
+      pairingProblem.hidden = false;
+      if (result.signIn !== undefined) {
+        pairingSignInLink.href = serverSignInUrl(result.signIn);
+        pairingSignIn.hidden = false;
+      }
+      return;
+    }
+    const problem = savePairing(storage, result.pairing);
+    if (problem !== undefined) {
+      pairingProblem.textContent = problem;
+      pairingProblem.hidden = false;
+      return;
+    }
+    // The page's line to the server was opened as it loaded, at the address it had then.
+    if (result.pairing.address !== dependencies.server.address) {
+      dependencies.reload();
+      return;
+    }
+    pairingSaved.textContent = 'Paired. Your Jarvis server starts his conversations from now on.';
+    pairingSaved.hidden = false;
     facts.hasSettings = true;
     render();
   }

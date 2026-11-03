@@ -1,5 +1,5 @@
 import type { AgentTrackRoom } from './agent-audio-track';
-import type { ElevenLabsSettings } from './elevenlabs-settings';
+import type { ConversationCredentials } from './conversation-token';
 import type { MCPToolCallEvent, ToolCallEvent } from './tool-activity';
 import type { JarvisVoice, JarvisVoiceReaders, UserVoice } from './voice-contract';
 import type { ConversationMessage, WrittenReply } from './written-reply';
@@ -358,8 +358,11 @@ export type FollowAgentVoice = (
  * an object under Bun.
  */
 export interface JarvisSessionDependencies<Timer> {
-  /** Read afresh for every token, so a holder can hand over a getter that follows its settings. */
-  settings: ElevenLabsSettings;
+  /**
+   * Where each conversation's token comes from. Read afresh for every token, so a holder can hand
+   * over a getter that follows its settings.
+   */
+  credentials: ConversationCredentials;
   /**
    * What this device calls itself in the ElevenLabs conversation history — one of the names in
    * `conversation-token.ts`. Required for the reason given there: a default is how one device

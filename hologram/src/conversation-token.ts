@@ -233,3 +233,28 @@ export async function requestSignedConversationUrl(
 
   return signedUrl;
 }
+
+/**
+ * Where one conversation's credential comes from: a WebRTC token for a spoken conversation, a
+ * signed WebSocket URL for a typed one (see {@link requestSignedConversationUrl}).
+ *
+ * The session asks this rather than ElevenLabs, because not every device holds the ElevenLabs key.
+ * The phone and the watch do, and ask ElevenLabs themselves ({@link elevenLabsCredentials}). The
+ * Quest headset can instead be paired with sir's Jarvis server, which holds the key and asks on its
+ * behalf, so that nothing has to be typed on a headset's keyboard and no key is kept in a browser.
+ */
+export interface ConversationCredentials {
+  /** A token for one spoken conversation, under the name this device goes by in the history. */
+  token(participantName: string, fetchImplementation?: typeof fetch): Promise<string>;
+  /** A signed `wss://` URL for one typed conversation. */
+  signedUrl(fetchImplementation?: typeof fetch): Promise<string>;
+}
+
+/** Credentials asked of ElevenLabs directly, with an API key this device holds. */
+export function elevenLabsCredentials(settings: ElevenLabsSettings): ConversationCredentials {
+  return {
+    token: async (participantName, fetchImplementation) =>
+      (await requestConversationToken({ settings, participantName }, fetchImplementation)).token,
+    signedUrl: (fetchImplementation) => requestSignedConversationUrl(settings, fetchImplementation),
+  };
+}

@@ -1,4 +1,4 @@
-import { connectToServer, type ElevenLabsSettings } from 'hologram';
+import { type ConversationCredentials, connectToServer } from 'hologram';
 import type { RoomOptions } from './app/room-runtime';
 import { createGreetingPlayer } from './conversation/greeting-player';
 import { greetingRecordingUrl } from './conversation/greeting-recording';
@@ -235,7 +235,7 @@ async function openRoomWithoutAgent(
 /** The real room: the wake word listening, and an ElevenLabs session on every summon. */
 async function openConversationRoom(
   sessionRequest: Promise<XRSession>,
-  settings: ElevenLabsSettings,
+  credentials: ConversationCredentials,
   audioContext: AudioContext,
   listening: Promise<MediaStream>,
   voiceFromWhereHeStands: boolean,
@@ -272,7 +272,7 @@ async function openConversationRoom(
       voice,
       createConversation: (events) =>
         conversation.createHeadsetSession({
-          settings,
+          credentials,
           startSession: Conversation.startSession,
           greeting,
           audioContext,
@@ -304,11 +304,14 @@ startPage(document, {
   microphone,
   preparations,
   canEnterRoom: () => canEnterRoom(navigator.xr),
-  enterRoom: (mode, settings, onInside) => {
+  reload: () => window.location.reload(),
+  enterRoom: (mode, credentials, onInside) => {
     const xr = navigator.xr;
     if (xr === undefined) return Promise.reject(new Error('This browser has no WebXR.'));
     if (mode !== 'conversation') return openRoomWithoutAgent(mode, requestRoomSession(xr), onInside);
-    if (settings === undefined) return Promise.reject(new Error('Add your ElevenLabs key first.'));
+    if (credentials === undefined) {
+      return Promise.reject(new Error('Pair with your Jarvis server or add an ElevenLabs key first.'));
+    }
     // All of this before anything is awaited, while the click's activation still counts: the
     // audio context his voice is analysed on, the greeting's player (an element that has played
     // inside a gesture may play again outside one), the wake engine's own context — and last the
@@ -319,7 +322,7 @@ startPage(document, {
     const voiceFromWhereHeStands = loadVoiceFromWhereHeStands(browserStorage);
     return openConversationRoom(
       requestRoomSession(xr),
-      settings,
+      credentials,
       audioContext,
       listening,
       voiceFromWhereHeStands,

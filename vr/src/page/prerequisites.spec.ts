@@ -26,7 +26,7 @@ describe('primaryButton', () => {
 
   it('asks for the ElevenLabs key before anything else', () => {
     const button = primaryButton({ ...READY, hasSettings: false, preparation: { state: 'running', fraction: 0.2 } });
-    expect(button).toEqual({ label: 'Add your ElevenLabs key first', enabled: false, action: 'none' });
+    expect(button).toEqual({ label: 'Set up your Jarvis server or key first', enabled: false, action: 'none' });
   });
 
   it('shows how far getting ready has got, in whole percent', () => {
@@ -91,7 +91,7 @@ describe('primaryButton', () => {
       READY,
     ];
     expect(walk.map((facts) => primaryButton(facts).label)).toEqual([
-      'Add your ElevenLabs key first',
+      'Set up your Jarvis server or key first',
       'Getting Jarvis ready… 50%',
       'Allow the microphone',
       'Allow the microphone…',

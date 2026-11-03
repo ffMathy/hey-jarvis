@@ -1,7 +1,6 @@
 import { type AgentTrackRoom, agentAudioTracks } from './agent-audio-track';
 import { isDroppedLine } from './connection-drop';
 import { GIVE_UP_CONNECTING_AFTER_MS, isLive } from './conversation-life';
-import { requestConversationToken, requestSignedConversationUrl } from './conversation-token';
 import {
   DEADLINE_PROBLEM,
   DROPPED_PROBLEM,
@@ -1033,17 +1032,11 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
   };
 
   const requestCredential = (current: Attempt<Timer>): Promise<Credential> => {
-    const { settings } = dependencies;
+    const { credentials } = dependencies;
     if (current.textOnly) {
-      return requestSignedConversationUrl(settings, dependencies.fetch).then((signedUrl) => ({
-        kind: 'signed-url',
-        signedUrl,
-      }));
+      return credentials.signedUrl(dependencies.fetch).then((signedUrl) => ({ kind: 'signed-url', signedUrl }));
     }
-    return requestConversationToken({ settings, participantName }, dependencies.fetch).then(({ token }) => ({
-      kind: 'token',
-      token,
-    }));
+    return credentials.token(participantName, dependencies.fetch).then((token) => ({ kind: 'token', token }));
   };
 
   /** Arms the deadline, unless it is told to wait for ever, and asks for what to dial with. */

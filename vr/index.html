@@ -271,8 +271,38 @@
         </p>
       </section>
 
+      <details id="pairing">
+        <summary>Your Jarvis server</summary>
+        <form id="pairing-form" autocomplete="off" novalidate>
+          <p class="note">
+            Pair this headset with your Jarvis server once, and the server starts his conversations: no ElevenLabs key
+            is typed here or kept in this browser. Pairing goes through your server's sign-in, if it has one; after
+            that the headset needs no sign-in to talk to him.
+          </p>
+          <label for="server-address">Server address</label>
+          <input
+            id="server-address"
+            name="server-address"
+            type="url"
+            inputmode="url"
+            autocomplete="off"
+            autocapitalize="none"
+            autocorrect="off"
+            spellcheck="false"
+            placeholder="https://jarvis.example.com"
+          />
+          <p id="pairing-problem" class="problem" role="alert" hidden></p>
+          <p id="pairing-sign-in" class="note" hidden>
+            <a id="pairing-sign-in-link" href="#" target="_blank" rel="noopener">Sign in to your server</a>, then press
+            Pair again.
+          </p>
+          <p id="pairing-saved" class="saved" role="status" hidden></p>
+          <button id="pair" class="primary" type="submit">Pair this headset</button>
+        </form>
+      </details>
+
       <details id="settings">
-        <summary>Your ElevenLabs agent</summary>
+        <summary>Or your own ElevenLabs key</summary>
         <form id="settings-form" autocomplete="off" novalidate>
           <p class="note">
             Jarvis is an ElevenLabs agent. The API key is kept in this browser's local storage, which is not a
