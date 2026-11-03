@@ -1,5 +1,5 @@
 import { PerspectiveCamera, Scene, Vector3, WebGLRenderer } from 'three';
-import { bloomRadiusAt, coronaRadiusAt, createCoronas, scanHeightAt } from '../../src/hologram3d/corona';
+import { coronaRadiusAt, createCoronas, scanHeightAt } from '../../src/hologram3d/corona';
 import { RENDERER_PARAMETERS } from '../../src/xr/xr-stage';
 
 /**
@@ -40,10 +40,8 @@ export interface CoronaDrawRequest {
 export interface CoronaProbeDrawn {
   spots: { x: number; y: number; leftRim: { x: number; y: number }; radiusPixels: number }[];
   size: number;
-  /** Where the scan band is at the request's time, in rim radii from the middle, up positive. */
+  /** Where the middle of the band is at the request's time, in rim radii from the middle, up positive. */
   scanHeight: number;
-  /** How far out the finishing bloom is, in rim radii, or null outside it. */
-  bloomRadius: number | null;
 }
 
 /** Red, green and blue, 0–255, as the page shows them with the stage behind. */
@@ -53,8 +51,6 @@ export interface CoronaProbe {
   draw(request: CoronaDrawRequest): CoronaProbeDrawn;
   /** One row of the picture as shown, stage and all, left to right. */
   row(y: number): CoronaPixel[];
-  /** One column, top to bottom. */
-  column(x: number): CoronaPixel[];
   /** How many pixels differ from the stage behind by more than `tolerance` in any channel. */
   changed(tolerance: number): number;
 }
@@ -145,16 +141,11 @@ function setUp(): CoronaProbe {
         const leftRim = toCanvas(centre.clone().addScaledVector(right, -radius));
         return { ...middle, leftRim, radiusPixels: Math.hypot(leftRim.x - middle.x, leftRim.y - middle.y) };
       });
-      const bloomRadius = bloomRadiusAt(request.time) ?? null;
-      return { spots, size: SIZE, scanHeight: scanHeightAt(request.time), bloomRadius };
+      return { spots, size: SIZE, scanHeight: scanHeightAt(request.time) };
     },
     row(y) {
       const image = composite();
       return Array.from({ length: SIZE }, (_, x) => pixelAt(image, x, Math.round(y)));
-    },
-    column(x) {
-      const image = composite();
-      return Array.from({ length: SIZE }, (_, y) => pixelAt(image, Math.round(x), y));
     },
     changed(tolerance) {
       const image = composite();

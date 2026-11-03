@@ -163,15 +163,19 @@ export function checkPort(
   material.dispose();
   // Lets go of the attributes' buffers; the row geometry they came from was never drawn itself.
   geometry.dispose();
-  return { ...compare(placed, readings[0], readings[1]), voiceWaveShare: state.voiceWaveLargest / VOICE_WAVE_REACH };
+  return {
+    ...compare(placed, readings[0], readings[1]),
+    voiceWaveShare: state.voiceWaveLargest / VOICE_WAVE_REACH,
+    heardWaveShare: state.heardWaveLargest / VOICE_WAVE_REACH,
+  };
 }
 
 function compare(
   placed: (PlacedFragment | null)[],
   centres: Float32Array,
   axes: Float32Array,
-): Omit<PortCheck, 'voiceWaveShare'> {
-  const check: Omit<PortCheck, 'voiceWaveShare'> = {
+): Omit<PortCheck, 'voiceWaveShare' | 'heardWaveShare'> {
+  const check: Omit<PortCheck, 'voiceWaveShare' | 'heardWaveShare'> = {
     rows: placed.length,
     drawnOnCpu: 0,
     drawnOnGpu: 0,

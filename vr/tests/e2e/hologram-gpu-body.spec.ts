@@ -12,7 +12,7 @@ import { expect, test } from './fixtures';
  * context made the way three made its own, and compares the two drawing buffers byte for byte.
  *
  * The moments are every phase — the arrival's vortex and fade, bursts in flight, the listening
- * lattice, the thinking plane, the leaving fade — near and far, from in front, from the side, from
+ * lattice, the thinking band, the leaving fade — near and far, from in front, from the side, from
  * behind, and from above and below.
  */
 

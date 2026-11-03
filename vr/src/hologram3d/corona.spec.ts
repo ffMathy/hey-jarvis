@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { PULSE_SECONDS, SCAN_HALF_WIDTH, SCAN_SECONDS } from 'hologram';
+import { SCAN_SECONDS, SCAN_SOFTNESS, scanAt } from 'hologram';
 import { glslColour, glslFloat, HALO_PAINTS, STROKE_PAINTS, THINNEST_STROKE_PIXELS } from 'hologram/gpu';
 import {
   CustomBlending,
@@ -9,15 +9,14 @@ import {
   OneMinusSrcColorFactor,
 } from 'three';
 import {
-  bloomRadiusAt,
   CORONA_RADIUS_METRES,
   CORONA_RENDER_ORDER,
+  CORONA_SCAN_TRAVEL,
   type CoronaSpot,
   coronaRadiusAt,
   createCoronas,
   MAX_CORONAS,
   MIN_APPARENT_RADIUS_DEGREES,
-  pulseAt,
   scanHeightAt,
 } from './corona';
 import { ALPHA_FROM_LIGHT } from './view-plane-quad';
@@ -42,26 +41,42 @@ describe('coronaRadiusAt', () => {
   });
 });
 
-describe('the rhythm, which is his thinking scan', () => {
-  it(`sweeps the band up from below the disc to above it once every ${SCAN_SECONDS} s`, () => {
-    expect(scanHeightAt(0)).toBeCloseTo(-1.15, 9);
+describe('the rhythm, which is his thinking band', () => {
+  it(`glides the band up from the bottom of the disc for ${SCAN_SECONDS} s, and back down for as long`, () => {
+    expect(scanHeightAt(0)).toBeCloseTo(-CORONA_SCAN_TRAVEL, 9);
     expect(scanHeightAt(SCAN_SECONDS / 2)).toBeCloseTo(0, 9);
-    expect(scanHeightAt(SCAN_SECONDS * 0.999)).toBeGreaterThan(1.1);
-    expect(scanHeightAt(SCAN_SECONDS * 3 + 0.4)).toBeCloseTo(scanHeightAt(0.4), 9);
+    expect(scanHeightAt(SCAN_SECONDS)).toBeCloseTo(CORONA_SCAN_TRAVEL, 9);
+    expect(scanHeightAt(SCAN_SECONDS * 1.5)).toBeCloseTo(0, 9);
+    expect(scanHeightAt(SCAN_SECONDS * 2)).toBeCloseTo(-CORONA_SCAN_TRAVEL, 9);
+    // Up all the way through the first pass, and down all the way through the second.
+    const step = SCAN_SECONDS / 100;
+    for (let time = step; time <= SCAN_SECONDS; time += step) {
+      expect(scanHeightAt(time)).toBeGreaterThan(scanHeightAt(time - step));
+      expect(scanHeightAt(time + SCAN_SECONDS)).toBeLessThan(scanHeightAt(time + SCAN_SECONDS - step));
+    }
+    expect(scanHeightAt(SCAN_SECONDS * 6 + 0.4)).toBeCloseTo(scanHeightAt(0.4), 9);
   });
 
-  it(`blooms for the last ${PULSE_SECONDS} s of each pass`, () => {
-    expect(pulseAt(0.2)).toBeUndefined();
-    expect(pulseAt(SCAN_SECONDS - PULSE_SECONDS - 0.01)).toBeUndefined();
-    expect(pulseAt(SCAN_SECONDS - PULSE_SECONDS)).toBeCloseTo(0, 9);
-    expect(pulseAt(SCAN_SECONDS - PULSE_SECONDS / 2)).toBeCloseTo(0.5, 9);
-    expect(pulseAt(2 * SCAN_SECONDS - 1e-6)).toBeCloseTo(1, 4);
+  it('keeps his time: where his band is up his height, over its own travel', () => {
+    for (const time of [0, 0.3, 1.1, 2.6, 3.9, 47.25]) {
+      expect(scanHeightAt(time)).toBeCloseTo(CORONA_SCAN_TRAVEL * scanAt(time), 12);
+    }
   });
 
-  it('blooms from near the middle to past the rim', () => {
-    expect(bloomRadiusAt(0.2)).toBeUndefined();
-    expect(bloomRadiusAt(SCAN_SECONDS - PULSE_SECONDS)).toBeLessThan(0.25);
-    expect(bloomRadiusAt(SCAN_SECONDS - 1e-6)).toBeGreaterThan(1.25);
+  it('turns back inside the disc, never leaping from the top to the bottom', () => {
+    // A frame's step anywhere on the swing moves the band only a little: it never jumps.
+    const frame = 1 / 72;
+    let largestStep = 0;
+    let highest = Number.NEGATIVE_INFINITY;
+    let lowest = Number.POSITIVE_INFINITY;
+    for (let time = 0; time < 4 * SCAN_SECONDS; time += frame) {
+      largestStep = Math.max(largestStep, Math.abs(scanHeightAt(time + frame) - scanHeightAt(time)));
+      highest = Math.max(highest, scanHeightAt(time));
+      lowest = Math.min(lowest, scanHeightAt(time));
+    }
+    expect(largestStep).toBeLessThan(0.02);
+    expect(highest).toBeLessThan(0.86);
+    expect(lowest).toBeGreaterThan(-0.86);
   });
 });
 
@@ -133,18 +148,26 @@ describe('createCoronas', () => {
     coronas.dispose();
   });
 
-  it("paints with his palette and keeps his scan's time, taken from where they are defined", () => {
+  it("paints with his palette and keeps his band's time, taken from where they are defined", () => {
     const { fragmentShader, vertexShader } = createCoronas().object.material;
     expect(fragmentShader).toContain(`HALO = ${glslColour(HALO_PAINTS.colour)}`);
     expect(fragmentShader).toContain(`BRIGHT = ${glslColour(STROKE_PAINTS.bright.colour)}`);
     expect(fragmentShader).toContain(`DIM = ${glslColour(STROKE_PAINTS.dim.colour)}`);
     expect(fragmentShader).toContain(`HOT = ${glslColour(STROKE_PAINTS.hot.colour)}`);
     expect(fragmentShader).toContain(`SCAN_SECONDS = ${glslFloat(SCAN_SECONDS)}`);
-    expect(fragmentShader).toContain(`PULSE_SECONDS = ${glslFloat(PULSE_SECONDS)}`);
-    expect(fragmentShader).toContain(`SCAN_HALF_WIDTH = ${glslFloat(SCAN_HALF_WIDTH)}`);
+    expect(fragmentShader).toContain(`SCAN_SOFTNESS = ${glslFloat(SCAN_SOFTNESS)}`);
+    expect(fragmentShader).toContain(`SCAN_TRAVEL = ${glslFloat(CORONA_SCAN_TRAVEL)}`);
     expect(fragmentShader).toContain(`THINNEST_PIXELS = ${glslFloat(THINNEST_STROKE_PIXELS)}`);
     expect(vertexShader).toContain(`RADIUS = ${glslFloat(CORONA_RADIUS_METRES)}`);
     // GLSL leaves a negative number raised to a power undefined, so every square is multiplied out.
     expect(fragmentShader).not.toContain('pow(');
+  });
+
+  it('works the band out as his scanAt does, and blooms no ring as a pass ends', () => {
+    const { fragmentShader } = createCoronas().object.material;
+    expect(fragmentShader).toContain('-SCAN_TRAVEL * cos(PI * swing / SCAN_SECONDS)');
+    expect(fragmentShader).toContain('exp(-apart * apart)');
+    expect(fragmentShader.toLowerCase()).not.toContain('bloom');
+    expect(fragmentShader.toLowerCase()).not.toContain('pulse');
   });
 });
