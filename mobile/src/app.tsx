@@ -12,19 +12,22 @@
 import '@elevenlabs/react-native';
 import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
-import type { ElevenLabsSettings, JarvisServerServiceToken } from 'hologram';
+import type { ElevenLabsSettings, JarvisServerServiceToken, Pairing } from 'hologram';
 import { AgentSatellitesContext, useAgentSatellites, useJarvisServer } from 'hologram/react/lifecycle';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { useAnswerTheWatch } from './answer-the-watch';
 import { chooseScreen, type Screen } from './app-screen';
 import { isAssistLaunch } from './assist-link';
+import { conversationCredentialsOf } from './conversation-credentials';
 import { ConversationScreen } from './conversation-screen';
 import { GlanceScreen } from './glance-screen';
 import {
   type JarvisServerChange,
+  loadJarvisDeviceToken,
   loadJarvisServerAddress,
   loadJarvisServerServiceToken,
+  saveJarvisDeviceToken,
   saveJarvisServerAddress,
   saveJarvisServerServiceToken,
 } from './jarvis-server';
@@ -96,6 +99,17 @@ export function App({ summoned = false, showing }: AppProps) {
    */
   const [serverServiceToken, setServerServiceToken] = useState<JarvisServerServiceToken | undefined>(undefined);
   /**
+   * The token this browser was paired with, if the web build has been paired with the server
+   * (`server-pairing.tsx`): the server then starts every conversation, so no ElevenLabs key is
+   * needed, and the line opens with it rather than Access's cookie. Never set on a device.
+   */
+  const [deviceToken, setDeviceToken] = useState<string | undefined>(undefined);
+  /** Where each conversation's token comes from: see `conversation-credentials.ts`. */
+  const credentials = useMemo(
+    () => conversationCredentialsOf(serverAddress, deviceToken, settings),
+    [serverAddress, deviceToken, settings],
+  );
+  /**
    * Whether the first-run tour is already behind this install.
    *
    * True until told otherwise, so that nothing shows a tour in the frame before the answer
@@ -112,7 +126,7 @@ export function App({ summoned = false, showing }: AppProps) {
   useAnswerTheWatch(settings, serverAddress, serverServiceToken);
   // The line to sir's Jarvis server, open for as long as the app runs and has an address, whatever
   // screen is showing and whether or not he is talking to Jarvis (`jarvis-server-link.ts` in hologram).
-  const serverLink = useJarvisServer(serverAddress, serverServiceToken, 'phone');
+  const serverLink = useJarvisServer(serverAddress, serverServiceToken, 'phone', deviceToken);
   // Which of his agents a request is using, from that line, drawn round him on whichever screen shows
   // him (`AgentSatellitesContext`). Sample mode has its own, pretended (`sample-screen.tsx`).
   const satellites = useAgentSatellites(serverLink);
@@ -145,6 +159,7 @@ export function App({ summoned = false, showing }: AppProps) {
       const walking = hasWalkedOnboarding();
       const readingServerAddress = readJarvisServerAddress(stillWanted);
       const readingServerServiceToken = readJarvisServerServiceToken(stillWanted);
+      const readingDeviceToken = loadJarvisDeviceToken();
 
       const stored = await readTryingAgain(loadElevenLabsSettings, stillWanted);
       if (stored?.kind === 'settings') {
@@ -154,7 +169,9 @@ export function App({ summoned = false, showing }: AppProps) {
       const walked = await walking;
       const storedServerAddress = await readingServerAddress;
       const storedServerServiceToken = await readingServerServiceToken;
+      const storedDeviceToken = await readingDeviceToken;
       if (wanted) {
+        setDeviceToken(storedDeviceToken);
         setHasWalkedTour(walked);
         setServerAddress(storedServerAddress);
         setServerServiceToken(storedServerServiceToken);
@@ -205,10 +222,10 @@ export function App({ summoned = false, showing }: AppProps) {
   // does not fire again once they have gone there, because nothing it depends on
   // has changed.
   useEffect(() => {
-    if (wasSummoned && isLoaded && settings === undefined) {
+    if (wasSummoned && isLoaded && credentials === undefined) {
       setIsSampling(true);
     }
-  }, [wasSummoned, isLoaded, settings]);
+  }, [wasSummoned, isLoaded, credentials]);
 
   const save = (saved: ElevenLabsSettings) => {
     setSettings(saved);
@@ -223,12 +240,29 @@ export function App({ summoned = false, showing }: AppProps) {
    */
   const saveWithServer = (saved: ElevenLabsSettings, serverChange: JarvisServerChange | undefined) => {
     if (serverChange) {
+      // A pairing is with one server: another address, or none, is not paired.
+      if (serverChange.address !== serverAddress) {
+        setDeviceToken(undefined);
+        void saveJarvisDeviceToken(undefined);
+      }
       setServerAddress(serverChange.address);
       setServerServiceToken(serverChange.serviceToken);
       void saveJarvisServerAddress(serverChange.address);
       void saveJarvisServerServiceToken(serverChange.serviceToken);
     }
     save(saved);
+  };
+
+  /**
+   * The web build was paired with the server (`server-pairing.tsx`): its address is kept where the
+   * settings keep it, and the token beside it, and from now on the server starts his conversations.
+   */
+  const savePairing = ({ address, deviceToken: token }: Pairing) => {
+    setServerAddress(address);
+    setDeviceToken(token);
+    setIsEditingSettings(false);
+    void saveJarvisServerAddress(address);
+    void saveJarvisDeviceToken(token);
   };
 
   /**
@@ -247,14 +281,14 @@ export function App({ summoned = false, showing }: AppProps) {
   const tourHasSteps =
     firstOnboardingStep({
       canBeTheAssistant: Platform.OS === 'android',
-      hasSettings: settings !== undefined,
+      hasSettings: credentials !== undefined,
     }) !== undefined;
 
   const screen = chooseScreen({
     isLoaded,
     // Read beside the settings, so the first screen already knows of a kept glance.
     isGlanceRead: opening.read,
-    hasSettings: settings !== undefined,
+    hasSettings: credentials !== undefined,
     isEditingSettings,
     isSampling,
     // Never to somebody who just made the assistant gesture. They asked for Jarvis, and the answer
@@ -283,6 +317,8 @@ export function App({ summoned = false, showing }: AppProps) {
             serverAddress={serverAddress}
             serverServiceToken={serverServiceToken}
             onSaveSettings={saveWithServer}
+            paired={deviceToken !== undefined}
+            onPaired={savePairing}
             onFinished={finishTour}
             onSkipToSample={() => setIsSampling(true)}
           />
@@ -293,16 +329,18 @@ export function App({ summoned = false, showing }: AppProps) {
             serverAddress={serverAddress}
             serverServiceToken={serverServiceToken}
             onSave={saveWithServer}
-            onCancel={settings ? () => setIsEditingSettings(false) : undefined}
-            onTrySample={settings ? undefined : () => setIsSampling(true)}
+            paired={deviceToken !== undefined}
+            onPaired={savePairing}
+            onCancel={credentials ? () => setIsEditingSettings(false) : undefined}
+            onTrySample={credentials ? undefined : () => setIsSampling(true)}
           />
         ) : null}
         {screen === 'glance' && glance && serverLink ? (
           <GlanceScreen glance={glance} requestAction={serverLink.requestGlanceAction} onTalk={opening.startTalking} />
         ) : null}
-        {screen === 'conversation' && settings ? (
+        {screen === 'conversation' && credentials ? (
           <ConversationScreen
-            settings={settings}
+            credentials={credentials}
             serverAddress={serverAddress}
             onEditSettings={() => setIsEditingSettings(true)}
             inSheet={conversationInSheet}

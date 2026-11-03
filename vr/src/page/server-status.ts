@@ -1,4 +1,4 @@
-import { JARVIS_SERVER_SOCKET_PATH, type ServerLink } from 'hologram';
+import { type ServerLink, serverSignInUrl } from 'hologram';
 
 /**
  * What the page says about the line to sir's Jarvis server, and how it offers signing in to it.
@@ -13,11 +13,6 @@ import { JARVIS_SERVER_SOCKET_PATH, type ServerLink } from 'hologram';
  * connect within its longest wait. A browser cannot tell a socket Access turned away from one that
  * never reached the server, so the link is offered whenever the line is not connected.
  */
-
-/** Where a browser goes through the server's Access login: the socket's own path, so the same application covers both. */
-export function serverSignInUrl(address: string): string {
-  return `${address}${JARVIS_SERVER_SOCKET_PATH}`;
-}
 
 /** The status line for a line that is, or is not, connected. */
 export function serverStatusText(connected: boolean): string {

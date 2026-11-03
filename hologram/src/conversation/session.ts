@@ -2,8 +2,7 @@ import { Conversation } from '@elevenlabs/client';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
 import type { AgentTrackRoom } from '../agent-audio-track';
-import { elevenLabsCredentials } from '../conversation-token';
-import type { ElevenLabsSettings } from '../elevenlabs-settings';
+import type { ConversationCredentials } from '../conversation-token';
 import { DEADLINE_PROBLEM } from '../failure-text';
 import { createJarvisSession } from '../jarvis-session';
 import type {
@@ -22,8 +21,12 @@ import { heldVoice } from './held-voice';
 
 /** What a screen tells the session it holds: who is asking, and how this device differs. */
 export interface JarvisSessionOptions {
-  /** Read afresh for every token, so a change reaches the next summoning. */
-  settings: ElevenLabsSettings;
+  /**
+   * Where each conversation's token comes from — `elevenLabsCredentials` for a key this device holds,
+   * `pairedCredentials` for a browser paired with sir's Jarvis server. Read afresh for every token, so
+   * a change reaches the next summoning.
+   */
+  credentials: ConversationCredentials;
   /** What this device calls itself in the ElevenLabs history — see `conversation-token.ts`. */
   participantName: string;
   /** Told every problem that ends a summoning, and where it came from. */
@@ -123,7 +126,7 @@ export function useJarvisSession(options: JarvisSessionOptions): JarvisConversat
     const onADevice = Platform.OS !== 'web';
     return createJarvisSession({
       get credentials() {
-        return elevenLabsCredentials(latest.current.settings);
+        return latest.current.credentials;
       },
       participantName: latest.current.participantName,
       startSession,

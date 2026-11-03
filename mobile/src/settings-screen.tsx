@@ -1,7 +1,8 @@
-import type { ElevenLabsSettings, JarvisServerServiceToken } from 'hologram';
-import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import type { ElevenLabsSettings, JarvisServerServiceToken, Pairing } from 'hologram';
+import { Platform, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { ElevenLabsFields } from './elevenlabs-fields';
 import type { JarvisServerChange } from './jarvis-server';
+import { ServerPairing } from './server-pairing';
 import { theme } from './theme';
 
 interface SettingsScreenProps {
@@ -12,6 +13,10 @@ interface SettingsScreenProps {
   serverServiceToken: JarvisServerServiceToken | undefined;
   /** Called once everything on the screen parses — with the server's change, if sir made one. */
   onSave: (settings: ElevenLabsSettings, serverChange: JarvisServerChange | undefined) => void;
+  /** Whether this browser is paired with the server (`server-pairing.tsx`). */
+  paired: boolean;
+  /** The web build was paired with the server. Only offered in a browser. */
+  onPaired: (pairing: Pairing) => void;
   onCancel: (() => void) | undefined;
   /** Opens sample mode. Only offered before the app is set up, when there is nothing else to look at. */
   onTrySample: (() => void) | undefined;
@@ -45,6 +50,8 @@ export function SettingsScreen({
   serverAddress,
   serverServiceToken,
   onSave,
+  paired,
+  onPaired,
   onCancel,
   onTrySample,
 }: SettingsScreenProps) {
@@ -62,6 +69,10 @@ export function SettingsScreen({
         submitLabel="Save"
         onSubmit={onSave}
       />
+
+      {Platform.OS === 'web' ? (
+        <ServerPairing storedAddress={serverAddress} paired={paired} onPaired={onPaired} />
+      ) : null}
 
       {onCancel ? (
         <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={onCancel}>

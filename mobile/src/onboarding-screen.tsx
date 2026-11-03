@@ -1,5 +1,5 @@
 import * as Linking from 'expo-linking';
-import type { ElevenLabsSettings, JarvisServerServiceToken } from 'hologram';
+import type { ElevenLabsSettings, JarvisServerServiceToken, Pairing } from 'hologram';
 import { useCallback, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { type AssistantSettingsScreen, openAssistantSettings } from '../modules/jarvis-assistant';
@@ -16,6 +16,7 @@ import {
   stepAfterOnboardingStep,
   stepBeforeOnboardingStep,
 } from './onboarding';
+import { ServerPairing } from './server-pairing';
 import { theme } from './theme';
 import { useAssistantRegistration } from './use-assistant-registration';
 import { WatchCard } from './watch-card';
@@ -36,6 +37,13 @@ interface OnboardingScreenProps {
    * be a way to lose it.
    */
   onSaveSettings: (settings: ElevenLabsSettings, serverChange: JarvisServerChange | undefined) => void;
+  /** Whether this browser is paired with the server (`server-pairing.tsx`). */
+  paired: boolean;
+  /**
+   * The web build was paired with the server on the credentials step, in place of a key: the step is
+   * done, as if the values had been saved. Only offered in a browser.
+   */
+  onPaired: (pairing: Pairing) => void;
   /** The tour is over — walked to the end, or skipped from the last step. */
   onFinished: () => void;
   /** Off to sample mode, which is a side trip: the tour is still here to come back to. */
@@ -148,11 +156,15 @@ interface TourServer {
 function CredentialsStep({
   settings,
   server,
+  paired,
   onSubmit,
+  onPaired,
 }: {
   settings: ElevenLabsSettings | undefined;
   server: TourServer;
+  paired: boolean;
   onSubmit: (settings: ElevenLabsSettings, serverChange: JarvisServerChange | undefined) => void;
+  onPaired: (pairing: Pairing) => void;
 }) {
   return (
     <>
@@ -168,6 +180,9 @@ function CredentialsStep({
         submitLabel="Continue"
         onSubmit={onSubmit}
       />
+      {Platform.OS === 'web' ? (
+        <ServerPairing storedAddress={server.address} paired={paired} onPaired={onPaired} />
+      ) : null}
     </>
   );
 }
@@ -269,6 +284,8 @@ export function OnboardingScreen({
   serverAddress,
   serverServiceToken,
   onSaveSettings,
+  paired,
+  onPaired,
   onFinished,
   onSkipToSample,
 }: OnboardingScreenProps) {
@@ -314,6 +331,15 @@ export function OnboardingScreen({
     [onSaveSettings, forward],
   );
 
+  /** Pairing the browser on the credentials step stands in for its values, and moves on the same way. */
+  const pairAndGoOn = useCallback(
+    (pairing: Pairing) => {
+      onPaired(pairing);
+      forward();
+    },
+    [onPaired, forward],
+  );
+
   return (
     <ScrollView contentContainerStyle={styles.container} testID={`onboarding-${step}`}>
       <Text style={styles.progress}>
@@ -322,7 +348,15 @@ export function OnboardingScreen({
       <Text style={styles.title}>{TITLES[step]}</Text>
 
       {step === 'agent' ? <AgentStep /> : null}
-      {step === 'credentials' ? <CredentialsStep settings={settings} server={server} onSubmit={saveAndGoOn} /> : null}
+      {step === 'credentials' ? (
+        <CredentialsStep
+          settings={settings}
+          server={server}
+          paired={paired}
+          onSubmit={saveAndGoOn}
+          onPaired={pairAndGoOn}
+        />
+      ) : null}
       {step === 'assistant' ? <AssistantStep settings={settings} server={server} /> : null}
 
       {/*
