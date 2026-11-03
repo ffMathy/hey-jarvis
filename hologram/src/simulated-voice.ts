@@ -33,8 +33,6 @@ const SYLLABLES_PER_PHRASE = 11;
 const BREATH_SECONDS = 0.75;
 
 /**
- * How loud thinking hums between ticks, and how loud a tick is — as means of the spectrum.
- *
  * How loud thinking hums, as a mean of the spectrum.
  *
  * It looks absurdly small, and that is the curve between here and the tracker: `perceivedLevel`
@@ -156,8 +154,9 @@ function speakingShape(seconds: number): Shape {
 /**
  * A mind working, as far as a *voice* is concerned: almost nothing.
  *
- * Thinking is not a voice, and since the sphere gained a thinking state of its own — the plane
- * sweeping up through it, see `SCAN_SECONDS` — it does not need to pretend to be one. What is left
+ * Thinking is not a voice, and since the sphere gained a thinking state of its own — one soft band
+ * gliding up through it and back down, see `SCAN_SECONDS` and `scanAt` — it does not need to pretend
+ * to be one. What is left
  * here is a hum well under every gate that decides what counts as speech, so the sphere neither
  * glows nor swells nor throws chips.
  *
@@ -167,8 +166,8 @@ function speakingShape(seconds: number): Shape {
  *
  * It used to tick once a pass, loudly enough to make the tracker throw a chip burst. That was a
  * voice imitating a thought, and the user was right that it was not enough: bursts are what speech
- * does. The ring blooming out of the core at the end of each pass replaces it, and that is drawn
- * rather than heard.
+ * does. The band gliding through him is what shows the thought, and that is drawn rather than
+ * heard.
  */
 function thinkingShape(): Shape {
   return { loudness: THINKING_HUM, at: (position) => Math.exp(-position * 1.4) };

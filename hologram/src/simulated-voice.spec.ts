@@ -8,8 +8,8 @@ import { perceivedLevel, QUIETEST_SPEECH } from './voice-levels';
  *
  * What is pinned here is what tells them apart to look at, because there is nothing on the screen
  * that says which one is running. Speech is irregular and loud enough to count as speech; thinking
- * is quiet enough *not* to, except for a tick at the end of each pass — so the sphere sweeps and
- * ticks rather than glowing, and the two moods can never quietly become the same thing.
+ * is quiet enough *not* to — so the sphere shows a thought with its band rather than glowing or
+ * throwing chips, and the two moods can never quietly become the same thing.
  */
 
 /** The strictest gate any platform applies: a browser's, twice the phone's. See `speech-floor.web.ts`. */
@@ -80,8 +80,8 @@ describe('the voices sample mode makes up', () => {
   it('never reaches the level anything counts as speech, so the sphere answers with no bursts', () => {
     // Thinking used to tick loudly once a pass, to make the tracker throw a chip burst. It does
     // not any more: bursts are what *speech* does, and the sphere has a thinking state of its own
-    // now — the plane sweeping through it, and the ring that blooms when a pass finishes. Left
-    // here, the ticks would have Jarvis throwing sparks while he reads a file.
+    // now — one soft band gliding up through it and back. Left here, the ticks would have Jarvis
+    // throwing sparks while he reads a file.
     const levels = readings('thinking', 20);
 
     expect(Math.max(...levels)).toBeLessThan(QUIETEST_SPEECH);

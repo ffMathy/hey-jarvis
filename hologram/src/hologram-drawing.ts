@@ -430,7 +430,7 @@ export const SWELL_WITH_VOICE = 0.18;
 export const LATTICE_SPACING = 0.11;
 /** How fast the lattice turns, in radians a second. */
 export const LATTICE_TURN = 0.12;
-/** How much the lattice's spacing swells at full voice: it follows their loudness as it is now, rising in 50 ms and falling in 250 (`hearing.ts`). */
+/** How much the lattice's spacing swells at full voice: it follows their loudness as it is now, eased over 50 ms rising and 250 falling (`easeHearingLevel`). */
 export const LATTICE_BREATH = 0.12;
 /** How much of the way to their point the particles go at full attention: not quite all of it. */
 export const LATTICE_PULL = 0.88;
@@ -663,7 +663,10 @@ export function scanAt(time: number) {
   return -Math.cos((Math.PI * time) / SCAN_SECONDS);
 }
 
-/** How far the band's plane is tilted at `time`, in radians, clockwise as seen from the front. */
+/**
+ * How far the band's plane is tilted at `time`, in radians, anticlockwise as seen from the front: at a
+ * positive tilt the band rises toward his right as the viewer sees it (+x).
+ */
 export function scanTiltAt(time: number) {
   'worklet';
   return SCAN_TILT * Math.sin((2 * Math.PI * time) / SCAN_TILT_SECONDS);
@@ -2184,8 +2187,9 @@ export function analyseFrame(frame: HologramFrame, size: number) {
   // most of a tenth of the light on at once.
   const shellOut = smooth01((swirl - 0.35) / 0.6);
   // His recent syllables as rings out of his core: held back until the vortex has all but formed him,
-  // as the rest of speech is, and given way to the lattice while someone talks to him and to the scan
-  // plane while he thinks, so a ring is never seen beside the thought's own.
+  // as the rest of speech is, and given way to the lattice while someone talks to him — whose own
+  // rings flow in through it — and to the thinking band while he thinks, so the band is the one thing
+  // moving through him then ("there should be 1").
   const voiceWave = voiceWaveKnots(frame.voiceWave, formed * (1 - hearing) * (1 - thinking));
   let voiceWaveLargest = 0;
   for (let knot = 0; knot < voiceWave.length; knot++) {

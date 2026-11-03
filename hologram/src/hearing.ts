@@ -26,9 +26,9 @@ const HEARING_SPAN = 0.15;
 const HEARING_RISE_SECONDS = 0.06;
 const HEARING_FALL_SECONDS = 0.6;
 /**
- * The same for how loud they are: quicker, so it follows syllables rather than sentences. The rise is
- * also how their syllables' onsets arrive, which the clock shares out between its slots by
- * (`advanceVoiceWave`).
+ * The same for how loud they are, as time constants of an exponential ({@link easeHearingLevel}):
+ * quicker, so it follows syllables rather than sentences. The rise is also how their syllables'
+ * onsets arrive, which the clock shares out between its slots by (`advanceVoiceWave`).
  */
 export const HEARING_LEVEL_RISE_SECONDS = 0.05;
 const LEVEL_FALL_SECONDS = 0.25;
@@ -79,10 +79,23 @@ export function easeHearing(current: number, target: number, deltaSeconds: numbe
   return easeToward(current, target, deltaSeconds, HEARING_RISE_SECONDS, HEARING_FALL_SECONDS);
 }
 
-/** One frame's step of how loud the lattice takes them to be toward how loud they now are. */
+/**
+ * One frame's step of how loud the lattice takes them to be toward how loud they now are.
+ *
+ * Exponential, as `easeLevel` is for his voice, so where it lands does not depend on the frame rate:
+ * two 8 ms steps land where one 16 ms step does. It matters more here than for the lattice's swell:
+ * its rises are the syllables the frame clock keeps for their rings (`heardRise`), and the clock shares
+ * a step's rise out between its slots on exactly this curve (`advanceVoiceWave`). Eased in a straight
+ * line, a step at a time, as `easeHearing` still eases the score, their rings came out up to 0.057 of
+ * a slot apart between 25 and 200 frames a second.
+ */
 export function easeHearingLevel(current: number, target: number, deltaSeconds: number) {
   'worklet';
-  return easeToward(current, target, deltaSeconds, HEARING_LEVEL_RISE_SECONDS, LEVEL_FALL_SECONDS);
+  if (!(deltaSeconds > 0)) {
+    return current;
+  }
+  const seconds = target > current ? HEARING_LEVEL_RISE_SECONDS : LEVEL_FALL_SECONDS;
+  return current + (target - current) * (1 - Math.exp(-deltaSeconds / seconds));
 }
 
 /**

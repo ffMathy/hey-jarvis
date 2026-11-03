@@ -645,4 +645,43 @@ describe('their recent syllables, as the frame clock keeps them', () => {
     }
     expect(quietCuts).toBeGreaterThan(100);
   });
+
+  it('cuts the same rings of theirs at any frame rate', () => {
+    // Someone really talking to him, read every READ_INTERVAL_MS as the app reads them, stepped at
+    // frame rates whose frames all divide a reading, so every rate sees each reading at the same
+    // moment of the clock and only how the clock eases between them could differ. Their loudness
+    // eased in a straight line, a step at a time, while the slots shared each step's rise out as if
+    // it had eased on an exponential: at 25 frames a second a slot came out up to 0.057 off what
+    // 200 gave, and their rings 6% weaker over a few phrases.
+    const silence = new Array<number>(VOICE_BAND_COUNT).fill(0);
+    const readSeconds = READ_INTERVAL_MS / 1000;
+    const cutsAt = (framesPerSecond: number) => {
+      const state = createFrameClockState();
+      const framesPerReading = Math.round(readSeconds * framesPerSecond);
+      const cuts: number[] = [];
+      let targetHearing = 0;
+      let targetHearingLevel = 0;
+      for (let frame = 0; frame < 6 * framesPerSecond; frame++) {
+        if (frame % framesPerReading === 0) {
+          const user = simulatedUserAt((frame / framesPerReading) * readSeconds);
+          targetHearing = hearingFromPresence(user.presence);
+          targetHearingLevel = hearingLevelFromVolume(user.volume);
+        }
+        const filledBefore = state.heard.sinceNewest;
+        const step = 1 / framesPerSecond;
+        advanceFrameClock(state, step, 0, silence, false, false, false, targetHearing, targetHearingLevel);
+        if (state.heard.sinceNewest < filledBefore + step - 1e-9) cuts.push(state.heard.slots[0] ?? 0);
+      }
+      return cuts;
+    };
+    const finest = cutsAt(200);
+    expect(Math.max(...finest)).toBeGreaterThan(0.2);
+    for (const framesPerSecond of [25, 50, 100]) {
+      const cuts = cutsAt(framesPerSecond);
+      expect(cuts.length).toBe(finest.length);
+      for (let slot = 0; slot < cuts.length; slot++) {
+        expect(cuts[slot]).toBeCloseTo(finest[slot] ?? Number.NaN, 9);
+      }
+    }
+  });
 });

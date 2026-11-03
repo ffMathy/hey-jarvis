@@ -500,13 +500,13 @@ vec3 onLattice(vec2 point, float depth, float jitterHash, out float crowding) {
   return vec3(point + (placed - point) * pull, depth + (snappedDepth - depth) * pull);
 }
 
-// What the thinking band leaves of a fragment's light, at (across, down) in the body's own frame:
-// whether it promotes it, by a chance dealt from its hop, and how much longer it draws it. scanned.
 // How much of its length a speck keeps on the lattice: latticeStrokeShare.
 float latticeStrokeShare(float crowding) {
   return 1.0 - STROKE_SHRINK * hearing * (1.0 - clamp01(crowding / VOICE_WAVE_FULL_CROWDING));
 }
 
+// What the thinking band leaves of a fragment's light, at (across, down) in the body's own frame:
+// whether it promotes it, by a chance dealt from its hop, and how much longer it draws it. scanned.
 float scanned(vec2 bodyPoint, float hop, out bool bright, out float stretch) {
   if (thinking <= 0.0) {
     bright = false;

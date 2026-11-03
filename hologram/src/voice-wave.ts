@@ -62,13 +62,19 @@ export const VOICE_WAVE_FLOOR = 1e-3;
 /** The voice tracker's slack for comparing summed frame steps with a duration (see `voice-levels.ts`). */
 const TIME_SLACK_SECONDS = 1e-6;
 
-/** What the clock keeps of his recent syllables. Plain numbers and one array, written in place. */
+/**
+ * What the clock keeps of one voice's recent syllables — his (`wave`) or theirs (`heard`). Plain
+ * numbers and one array, written in place.
+ */
 export interface VoiceWaveState {
   /** VOICE_WAVE_SLOTS slots, 0–1, newest first: how sharply a syllable started in each. */
   slots: number[];
   /** How long ago the newest slot was cut, in seconds: the time the slot being filled has been filling. */
   sinceNewest: number;
-  /** The summed rise of his bands in the slot being filled so far. */
+  /**
+   * The rise gathered so far in the slot being filled: his bands' summed rise (`syllableRise`), or
+   * the rise of their eased loudness (`heardRise`).
+   */
   rise: number;
 }
 
