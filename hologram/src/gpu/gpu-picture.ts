@@ -3,7 +3,6 @@ import {
   AURA_INNER,
   AURA_OUTER,
   CHIP_GONE_SECONDS,
-  CORE_RING_RADIUS,
   CORE_X,
   CORE_Y,
   type HologramFrameState,
@@ -75,7 +74,7 @@ import { sceneSparklePixels } from './sparkle';
  *
  * Drawn layer by layer: the aura round him, the core — its glowing disc, the ringed eye and faint
  * bar across it and the white-hot ring round it — the cage of hairlines turning with his body, the
- * embers drifting off him, and while he talks the fray and the chips; the thinking pulse; and the satellites over him. Each layer is a few draws, each with
+ * embers drifting off him, and while he talks the fray and the chips; and the satellites over him. Each layer is a few draws, each with
  * one paint and one width, from the layers in `picture-layers.ts`, whose vertex shaders work out
  * where everything is this frame. So a frame's JavaScript is a couple of dozen draws' uniforms, and
  * nothing it does grows with what is drawn.
@@ -683,40 +682,6 @@ function drawChips(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) 
   strokeChips(gl, picture, frame, parts.core, 0.007 / 2, WHITE_HOT, 0.55);
 }
 
-// ---- while he thinks --------------------------------------------------------------------------
-
-/** How far out of the core the thinking pulse has bloomed by the time it has gone, in R. */
-const PULSE_REACH = 1.2;
-
-/** A stroke of the thinking pulse, round the core. */
-function strokePulse(
-  gl: HologramGl,
-  picture: GpuPicture,
-  frame: GpuPictureFrame,
-  radius: number,
-  halfWidth: number,
-  colour: number,
-  alpha: number,
-) {
-  'worklet';
-  const layer = picture.arc;
-  beginPath(gl, picture);
-  useLayerAtCore(gl, picture, layer, frame);
-  setSolid(gl, layer, colour, alpha);
-  drawCircle(gl, picture, radius, halfWidth, 0, 0);
-}
-
-/** The ring that blooms out of the core's white-hot ring as a thought's pass finishes (`drawThinkingPulse`). */
-function drawThinkingPulse(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
-  'worklet';
-  const state = frame.state;
-  if (state.thinking * state.pulse <= 0) return;
-  const radius = CORE_RING_RADIUS + (PULSE_REACH - CORE_RING_RADIUS) * state.pulse;
-  const strength = state.thinking * (1 - state.pulse);
-  strokePulse(gl, picture, frame, radius, 0.05 / 2, GLOW, 0.3 * strength);
-  strokePulse(gl, picture, frame, radius, 0.012 / 2, ORANGE, 0.85 * strength);
-}
-
 // ---- satellites -------------------------------------------------------------------------------
 
 /** Writes `glyph`'s runs into a slot of the glyphs' buffer, if that slot does not hold it already. */
@@ -886,7 +851,6 @@ export function drawGpuPicture(gl: HologramGl, picture: GpuPicture, frame: GpuPi
   drawEmbers(gl, picture, frame);
   drawFray(gl, picture, frame);
   drawChips(gl, picture, frame);
-  drawThinkingPulse(gl, picture, frame);
   drawSatellites(gl, picture, frame);
   gl.disable(STENCIL_TEST);
   gl.disable(DEPTH_TEST);

@@ -180,8 +180,8 @@ export function staticSegmentsLayer(paths: StaticPaths): {
 export const ARC_PIECES = 32;
 
 /**
- * One arc whose every number is a uniform — the core's white-hot ring, the aura's band, the thinking
- * pulse, a satellite's flare — lit evenly, or with brighter and dimmer stretches rolling round it.
+ * One arc whose every number is a uniform — the core's white-hot ring, the aura's band, a
+ * satellite's flare — lit evenly, or with brighter and dimmer stretches rolling round it.
  */
 export function arcLayer(): PictureLayerSource {
   return {

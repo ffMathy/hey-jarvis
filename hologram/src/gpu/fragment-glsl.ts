@@ -9,14 +9,18 @@ import {
   FRAGMENT_WANDER,
   GYRO_GIMBAL_SPLIT,
   GYRO_GROUP,
+  HEARD_WAVE_FROM,
+  HEARD_WAVE_GONE,
   type HologramFrameState,
   INNER_LAYER_GROUP,
   LATTICE_PULL,
   LATTICE_STROKE_SHRINK,
   LATTICE_TURN,
-  SCAN_BRIGHT_NEARNESS,
+  latticeSpacing,
+  SCAN_DEAL_FROM_HOP,
   SCAN_FLOOR,
-  SCAN_HALF_WIDTH,
+  SCAN_SOFTNESS,
+  SCAN_STRETCH,
   SHELL_FACE_DIMMING,
   THOUGHT_FROM_HOP,
   THOUGHT_SCATTER,
@@ -31,7 +35,7 @@ import {
   VORTEX_STRETCH,
   VORTEX_TWIST,
 } from '../hologram-drawing';
-import { LATTICE_LAYER_SHARE, latticeSpacing, type ViewBasis } from './fragment-3d';
+import { LATTICE_LAYER_SHARE, type ViewBasis } from './fragment-3d';
 import { glslFloat } from './glsl';
 
 /**
@@ -64,6 +68,8 @@ export interface FragmentUniforms {
   hearing: { value: number };
   thinking: { value: number };
   scanHeight: { value: number };
+  /** The thinking band's tilt, as a cosine and a sine. */
+  scanTilt: { value: [number, number] };
   density: { value: number };
   bodyTurn: { value: [number, number] };
   streamTurn: { value: [number, number] };
@@ -82,6 +88,13 @@ export interface FragmentUniforms {
   voiceWave3: { value: [number, number, number, number] };
   /** The strongest ring, 0 while he is silent, and how far the newest has travelled since its slot was cut. */
   voiceWaveClock: { value: [number, number] };
+  /** Their syllables' rings flowing in through the lattice, in R, newest first, four to a vector, as his are. */
+  heardWave0: { value: [number, number, number, number] };
+  heardWave1: { value: [number, number, number, number] };
+  heardWave2: { value: [number, number, number, number] };
+  heardWave3: { value: [number, number, number, number] };
+  /** Their strongest ring, 0 while nobody talks to him, and how far their newest has travelled since its slot was cut. */
+  heardWaveClock: { value: [number, number] };
 }
 
 export function createFragmentUniforms(): FragmentUniforms {
@@ -94,6 +107,7 @@ export function createFragmentUniforms(): FragmentUniforms {
     hearing: { value: 0 },
     thinking: { value: 0 },
     scanHeight: { value: 0 },
+    scanTilt: { value: [1, 0] },
     density: { value: 1 },
     bodyTurn: { value: [1, 0] },
     streamTurn: { value: [1, 0] },
@@ -110,6 +124,11 @@ export function createFragmentUniforms(): FragmentUniforms {
     voiceWave2: { value: [0, 0, 0, 0] },
     voiceWave3: { value: [0, 0, 0, 0] },
     voiceWaveClock: { value: [0, 0] },
+    heardWave0: { value: [0, 0, 0, 0] },
+    heardWave1: { value: [0, 0, 0, 0] },
+    heardWave2: { value: [0, 0, 0, 0] },
+    heardWave3: { value: [0, 0, 0, 0] },
+    heardWaveClock: { value: [0, 0] },
   };
 }
 
@@ -119,7 +138,7 @@ export function createFragmentUniforms(): FragmentUniforms {
  */
 export const ORTHOGRAPHIC_EYE_DISTANCE = 1e5;
 
-/** Four of the rings his syllables send out of his core, from `first` on, as the vec4 the shader takes them in. */
+/** Four of a train of rings, from `first` on, as the vec4 the shader takes them in. */
 function fourKnots(knots: number[], first: number): [number, number, number, number] {
   'worklet';
   return [knots[first] ?? 0, knots[first + 1] ?? 0, knots[first + 2] ?? 0, knots[first + 3] ?? 0];
@@ -146,6 +165,7 @@ export function writeFragmentUniforms(
   uniforms.hearing.value = state.hearing;
   uniforms.thinking.value = state.thinking;
   uniforms.scanHeight.value = state.scan;
+  uniforms.scanTilt.value = [state.scanTiltCos, state.scanTiltSin];
   uniforms.density.value = density;
   uniforms.bodyTurn.value = [state.bodyCos, state.bodySin];
   uniforms.streamTurn.value = [state.streamCos, state.streamSin];
@@ -173,6 +193,11 @@ export function writeFragmentUniforms(
   uniforms.voiceWave2.value = fourKnots(state.voiceWave, 8);
   uniforms.voiceWave3.value = fourKnots(state.voiceWave, 12);
   uniforms.voiceWaveClock.value = [state.voiceWaveLargest, state.voiceWavePhase];
+  uniforms.heardWave0.value = fourKnots(state.heardWave, 0);
+  uniforms.heardWave1.value = fourKnots(state.heardWave, 4);
+  uniforms.heardWave2.value = fourKnots(state.heardWave, 8);
+  uniforms.heardWave3.value = fourKnots(state.heardWave, 12);
+  uniforms.heardWaveClock.value = [state.heardWaveLargest, state.heardWavePhase];
 }
 
 /** The attributes, uniforms and functions of the fragment arithmetic, for a vertex shader. */
@@ -185,6 +210,7 @@ uniform float swirl;
 uniform float hearing;
 uniform float thinking;
 uniform float scanHeight;
+uniform vec2 scanTilt;
 uniform float density;
 uniform vec2 bodyTurn;
 uniform vec2 streamTurn;
@@ -206,6 +232,12 @@ uniform vec4 voiceWave1;
 uniform vec4 voiceWave2;
 uniform vec4 voiceWave3;
 uniform vec2 voiceWaveClock;
+// Their syllables' rings flowing in through the lattice, as his are kept.
+uniform vec4 heardWave0;
+uniform vec4 heardWave1;
+uniform vec4 heardWave2;
+uniform vec4 heardWave3;
+uniform vec2 heardWaveClock;
 
 // One row of body-rows.ts.
 in vec4 rest;
@@ -217,9 +249,10 @@ in float thinning;
 const float DUTY = ${glslFloat(FRAGMENT_DUTY)};
 const float FAINTEST = ${glslFloat(FRAGMENT_FAINTEST)};
 const float WANDER = ${glslFloat(FRAGMENT_WANDER)};
-const float SCAN_HALF_WIDTH = ${glslFloat(SCAN_HALF_WIDTH)};
+const float SCAN_SOFTNESS = ${glslFloat(SCAN_SOFTNESS)};
 const float SCAN_FLOOR = ${glslFloat(SCAN_FLOOR)};
-const float SCAN_BRIGHT_NEARNESS = ${glslFloat(SCAN_BRIGHT_NEARNESS)};
+const float SCAN_STRETCH = ${glslFloat(SCAN_STRETCH)};
+const float SCAN_DEAL_FROM_HOP = ${glslFloat(SCAN_DEAL_FROM_HOP)};
 const float SHELL_FACE_DIMMING = ${glslFloat(SHELL_FACE_DIMMING)};
 const float BACK_OF_THE_SHELL = ${glslFloat(BACK_OF_THE_SHELL)};
 const float STROKE_SHRINK = ${glslFloat(LATTICE_STROKE_SHRINK)};
@@ -242,6 +275,8 @@ const float VOICE_WAVE_TAPER = ${glslFloat(VOICE_WAVE_TAPER)};
 const float VOICE_WAVE_STEP = ${glslFloat(VOICE_WAVE_STEP)};
 const float VOICE_WAVE_FULL_CROWDING = ${glslFloat(VOICE_WAVE_FULL_CROWDING)};
 const float VOICE_WAVE_ALONG = ${glslFloat(VOICE_WAVE_ALONG)};
+const float HEARD_WAVE_FROM = ${glslFloat(HEARD_WAVE_FROM)};
+const float HEARD_WAVE_GONE = ${glslFloat(HEARD_WAVE_GONE)};
 
 struct Fragment {
   bool visible;
@@ -347,9 +382,87 @@ float seenLarger(float depth) {
   return eyeDistance / max(eyeDistance - depth, 0.1 * eyeDistance);
 }
 
+// voiceWaveKernel and its slope at four offsets at once: the quadratic B-spline the rings are drawn
+// through. step(apart, 0.5) is 1 inside half a slot, as voiceWaveKernel's "apart < 0.5" is; the two
+// pieces meet there, so the edge itself does not matter.
+vec4 voiceWaveKernel(vec4 offset) {
+  vec4 apart = abs(offset);
+  vec4 outside = max(1.5 - apart, 0.0);
+  return mix(0.5 * outside * outside, 0.75 - apart * apart, step(apart, vec4(0.5)));
+}
+
+vec4 voiceWaveKernelSlope(vec4 offset) {
+  vec4 apart = abs(offset);
+  vec4 outside = max(1.5 - apart, 0.0);
+  return mix(-sign(offset) * outside, -2.0 * offset, step(apart, vec4(0.5)));
+}
+
+// voiceWaveSum and voiceWaveSumSlope of a train of rings, four knots to a vector, at slots, together.
+vec2 ringsAt(float slots, vec4 knots0, vec4 knots1, vec4 knots2, vec4 knots3) {
+  vec4 offset = vec4(slots) - vec4(0.0, 1.0, 2.0, 3.0);
+  vec2 wave = vec2(dot(knots0, voiceWaveKernel(offset)), dot(knots0, voiceWaveKernelSlope(offset)));
+  offset -= 4.0;
+  wave += vec2(dot(knots1, voiceWaveKernel(offset)), dot(knots1, voiceWaveKernelSlope(offset)));
+  offset -= 4.0;
+  wave += vec2(dot(knots2, voiceWaveKernel(offset)), dot(knots2, voiceWaveKernelSlope(offset)));
+  offset -= 4.0;
+  wave += vec2(dot(knots3, voiceWaveKernel(offset)), dot(knots3, voiceWaveKernelSlope(offset)));
+  return wave;
+}
+
+float smooth01Slope(float value) {
+  return value > 0.0 && value < 1.0 ? 6.0 * value * (1.0 - value) : 0.0;
+}
+
+// Where a train of rings pushes a point, and how crowded the points are there: out from the core
+// for rings born nearer it than they melt, in toward it for the rest. pushAlongRings.
+vec3 pushAlongRings(
+  vec2 point,
+  vec4 knots0,
+  vec4 knots1,
+  vec4 knots2,
+  vec4 knots3,
+  float phase,
+  float from,
+  float gone
+) {
+  vec2 fromCore = point - CORE;
+  float reach = length(fromCore);
+  float outward = gone > from ? 1.0 : -1.0;
+  float travelled = outward * (reach - from);
+  float left = outward * (gone - reach);
+  if (travelled <= 0.0 || left <= 0.0) return vec3(point, 0.0);
+  vec2 wave = ringsAt(travelled / VOICE_WAVE_STEP - phase, knots0, knots1, knots2, knots3);
+  float comingIn = travelled / VOICE_WAVE_TAPER;
+  float goingOut = left / VOICE_WAVE_TAPER;
+  float taperIn = smooth01(comingIn);
+  float taperOut = smooth01(goingOut);
+  float taper = taperIn * taperOut;
+  float taperSlope = (smooth01Slope(comingIn) * taperOut - taperIn * smooth01Slope(goingOut)) / VOICE_WAVE_TAPER;
+  vec2 pushed = CORE + fromCore * ((reach + outward * taper * wave.x) / reach);
+  return vec3(pushed, -(taperSlope * wave.x + taper * wave.y / VOICE_WAVE_STEP));
+}
+
+// Where his syllables' rings push a speck seen at point, and how crowded the specks are there:
+// voiceWavePush.
+vec3 voiceWavePush(vec2 point) {
+  return pushAlongRings(
+    point,
+    voiceWave0,
+    voiceWave1,
+    voiceWave2,
+    voiceWave3,
+    voiceWaveClock.y,
+    VOICE_WAVE_FROM,
+    VOICE_WAVE_GONE
+  );
+}
+
 // The lattice point for where the centre eye sees the fragment, the depth pulled as far into the
-// nearest layer, and the fragment put where the eye sees it on that point from its layer.
-vec3 onLattice(vec2 point, float depth, float jitterHash) {
+// nearest layer, and the fragment put where the eye sees it on that point from its layer; and how
+// crowded their rings make its knot, which gives a speck back its length (latticeStrokeShare).
+vec3 onLattice(vec2 point, float depth, float jitterHash, out float crowding) {
+  crowding = 0.0;
   float pull = lattice.w;
   if (pull <= 0.001) return vec3(point, depth);
   float cosine = lattice.x;
@@ -364,20 +477,46 @@ vec3 onLattice(vec2 point, float depth, float jitterHash) {
   float jitter = (jitterHash - 0.5) * 0.018;
   vec2 snapped = vec2(column * spacing + shift + jitter, row * rowHeight + jitter);
   vec2 target = vec2(snapped.x * cosine - snapped.y * sine, snapped.y * cosine + snapped.x * sine);
+  // Pulled in toward the core by their syllables' rings flowing in through it: latticeTarget.
+  if (heardWaveClock.x > 0.0) {
+    vec3 pulled = pushAlongRings(
+      target,
+      heardWave0,
+      heardWave1,
+      heardWave2,
+      heardWave3,
+      heardWaveClock.y,
+      HEARD_WAVE_FROM,
+      HEARD_WAVE_GONE
+    );
+    target = pulled.xy;
+    crowding = pulled.z;
+  }
   float layer = spacing * LAYER_SHARE;
   float snappedDepth = roundHalfUp(depth / layer) * layer;
   vec2 placed = target / seenLarger(snappedDepth);
   return vec3(point + (placed - point) * pull, depth + (snappedDepth - depth) * pull);
 }
 
-float scanned(float heightDown, out bool bright) {
+// What the thinking band leaves of a fragment's light, at (across, down) in the body's own frame:
+// whether it promotes it, by a chance dealt from its hop, and how much longer it draws it. scanned.
+// How much of its length a speck keeps on the lattice: latticeStrokeShare.
+float latticeStrokeShare(float crowding) {
+  return 1.0 - STROKE_SHRINK * hearing * (1.0 - clamp01(crowding / VOICE_WAVE_FULL_CROWDING));
+}
+
+float scanned(vec2 bodyPoint, float hop, out bool bright, out float stretch) {
   if (thinking <= 0.0) {
     bright = false;
+    stretch = 0.0;
     return 1.0;
   }
-  float nearness = clamp01(1.0 - abs(heightDown - scanHeight) / SCAN_HALF_WIDTH);
-  bright = nearness > SCAN_BRIGHT_NEARNESS && thinking > 0.5;
-  return 1.0 - thinking * (1.0 - SCAN_FLOOR) * (1.0 - nearness * nearness);
+  float height = bodyPoint.y * scanTilt.x + bodyPoint.x * scanTilt.y;
+  float apart = (height - scanHeight) / SCAN_SOFTNESS;
+  float nearness = exp(-apart * apart);
+  bright = fract(hop * SCAN_DEAL_FROM_HOP) < thinking * nearness * nearness;
+  stretch = SCAN_STRETCH * thinking * nearness;
+  return 1.0 - thinking * (1.0 - SCAN_FLOOR) * (1.0 - nearness);
 }
 
 // A vector of the view plane turned by turn (cosine, sine): clockwise on screen, y down.
@@ -395,55 +534,6 @@ vec2 turnOfGroup(int group, float fromCore) {
 
 vec3 intoBody(vec2 point, float depth) {
   return point.x * viewRight - point.y * viewUp + depth * viewFront;
-}
-
-// voiceWaveKernel and its slope at four offsets at once: the quadratic B-spline the rings are drawn
-// through. step(apart, 0.5) is 1 inside half a slot, as voiceWaveKernel's "apart < 0.5" is; the two
-// pieces meet there, so the edge itself does not matter.
-vec4 voiceWaveKernel(vec4 offset) {
-  vec4 apart = abs(offset);
-  vec4 outside = max(1.5 - apart, 0.0);
-  return mix(0.5 * outside * outside, 0.75 - apart * apart, step(apart, vec4(0.5)));
-}
-
-vec4 voiceWaveKernelSlope(vec4 offset) {
-  vec4 apart = abs(offset);
-  vec4 outside = max(1.5 - apart, 0.0);
-  return mix(-sign(offset) * outside, -2.0 * offset, step(apart, vec4(0.5)));
-}
-
-// voiceWaveSum and voiceWaveSumSlope at slots, together.
-vec2 voiceWaveAt(float slots) {
-  vec4 offset = vec4(slots) - vec4(0.0, 1.0, 2.0, 3.0);
-  vec2 wave = vec2(dot(voiceWave0, voiceWaveKernel(offset)), dot(voiceWave0, voiceWaveKernelSlope(offset)));
-  offset -= 4.0;
-  wave += vec2(dot(voiceWave1, voiceWaveKernel(offset)), dot(voiceWave1, voiceWaveKernelSlope(offset)));
-  offset -= 4.0;
-  wave += vec2(dot(voiceWave2, voiceWaveKernel(offset)), dot(voiceWave2, voiceWaveKernelSlope(offset)));
-  offset -= 4.0;
-  wave += vec2(dot(voiceWave3, voiceWaveKernel(offset)), dot(voiceWave3, voiceWaveKernelSlope(offset)));
-  return wave;
-}
-
-float smooth01Slope(float value) {
-  return value > 0.0 && value < 1.0 ? 6.0 * value * (1.0 - value) : 0.0;
-}
-
-// Where his syllables' rings push a speck seen at point, and how crowded the specks are there:
-// voiceWavePush.
-vec3 voiceWavePush(vec2 point) {
-  vec2 fromCore = point - CORE;
-  float reach = length(fromCore);
-  if (reach <= VOICE_WAVE_FROM || reach >= VOICE_WAVE_GONE) return vec3(point, 0.0);
-  vec2 wave = voiceWaveAt((reach - VOICE_WAVE_FROM) / VOICE_WAVE_STEP - voiceWaveClock.y);
-  float comingIn = (reach - VOICE_WAVE_FROM) / VOICE_WAVE_TAPER;
-  float goingOut = (VOICE_WAVE_GONE - reach) / VOICE_WAVE_TAPER;
-  float taperIn = smooth01(comingIn);
-  float taperOut = smooth01(goingOut);
-  float taper = taperIn * taperOut;
-  float taperSlope = (smooth01Slope(comingIn) * taperOut - taperIn * smooth01Slope(goingOut)) / VOICE_WAVE_TAPER;
-  vec2 pushed = CORE + fromCore * ((reach + taper * wave.x) / reach);
-  return vec3(pushed, -(taperSlope * wave.x + taper * wave.y / VOICE_WAVE_STEP));
 }
 
 // A speck's stroke where a ring crowds the specks together, lying more along the ring and no
@@ -555,17 +645,20 @@ Fragment readBodyFragment() {
   // The truss keeps its squares while he listens, and while he thinks.
   vec3 placed = vec3(swirled.xy, depth * scale);
   bool scanBright = false;
+  float scanStretch = 0.0;
+  float crowding = 0.0;
   float litHere = lit;
   if (!truss) {
-    placed = onLattice(swirled.xy, depth * scale, hashes.w);
-    litHere = lit * scanned(-intoBody(placed.xy, placed.z).y, scanBright);
+    placed = onLattice(swirled.xy, depth * scale, hashes.w, crowding);
+    vec3 body = intoBody(placed.xy, placed.z);
+    litHere = lit * scanned(vec2(body.x, -body.y), hop, scanBright, scanStretch);
   }
   if (litHere < FAINTEST) return hiddenFragment();
   bool facing = depth >= -BACK_OF_THE_SHELL;
   bool promoted = scanBright && facing;
   float plain = facing ? fragmentTier(brightness, litHere * light, hashes.y) : 0.0;
   float tier = promoted ? 2.0 : plain;
-  float halfLength = fragmentLength * 0.5 * litHere * drawn * (1.0 - STROKE_SHRINK * hearing);
+  float halfLength = fragmentLength * 0.5 * litHere * drawn * latticeStrokeShare(crowding) * (1.0 + scanStretch);
   return finishFragment(
     placed,
     swirled.zw * halfLength,
@@ -614,11 +707,12 @@ Fragment readStreamFragment() {
   float scale;
   vec4 swirled = swirlFragment(vec2(planeX, planeY), vec2(1.0, 0.0), hashes.z, drawn, scale);
   if (drawn <= 0.0) return hiddenFragment();
-  vec3 placed = onLattice(swirled.xy, depth * scale, hashes.w);
+  float crowding;
+  vec3 placed = onLattice(swirled.xy, depth * scale, hashes.w, crowding);
   float rightwards = dot(tangent, viewRight) < 0.0 ? -1.0 : 1.0;
   vec2 tangentPlane = rightwards * vec2(dot(tangent, viewRight), -dot(tangent, viewUp));
   float tangentDepth = rightwards * dot(tangent, viewFront);
-  float size = lit * drawn * (1.0 - STROKE_SHRINK * hearing);
+  float size = lit * drawn * latticeStrokeShare(crowding);
   vec2 direction = swirled.zw;
   vec2 axis = vec2(
     tangentPlane.x * direction.x - tangentPlane.y * direction.y,

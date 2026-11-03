@@ -143,6 +143,7 @@ export function createPerformance(frameSeconds: number) {
       // The clock's own arrays, good only until its next step: a frame kept is a frame copied.
       bands: [...frame.bands],
       voiceWave: [...(frame.voiceWave ?? [])],
+      heardWave: [...(frame.heardWave ?? [])],
     };
   };
 }

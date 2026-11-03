@@ -26,6 +26,11 @@
  * of it that arrived before the boundary. A step long enough to cut more than VOICE_WAVE_SLOTS slots
  * — a stall — keeps only the newest, as the change window keeps only its four slices.
  *
+ * **Theirs too.** The clock keeps a second train the same way for whoever is talking to him, whose
+ * syllables flow into him through the listening lattice: the rise of their loudness as it eases
+ * (`heardRise` in `hearing.ts`), at its own scale and on its own easing, which is why
+ * {@link advanceVoiceWave} is handed both.
+ *
  * Every function here is a worklet that allocates nothing: the clock steps it on the phone's UI
  * thread, under Hermes, every frame (see `frame-clock.ts`).
  */
@@ -118,33 +123,37 @@ function pushSlot(slots: number[], value: number): void {
 
 /**
  * What a slot cut now holds, from the rise gathered in it and the slot before it: as sharp as its
- * onset, or what the hold keeps of the one before, whichever is more — but no more than
- * VOICE_WAVE_SLEW above the one before, and nothing at all under {@link VOICE_WAVE_FLOOR}.
+ * onset — `1 − e^(−rise / onsetScale)` — or what the hold keeps of the one before, whichever is more,
+ * but no more than VOICE_WAVE_SLEW above the one before, and nothing at all under
+ * {@link VOICE_WAVE_FLOOR}.
  */
-function slotAfter(previous: number, rise: number): number {
+function slotAfter(previous: number, rise: number, onsetScale: number): number {
   'worklet';
-  const onset = 1 - Math.exp(-rise / VOICE_WAVE_ONSET_SCALE);
+  const onset = 1 - Math.exp(-rise / onsetScale);
   const held = Math.min(Math.max(onset, previous * HOLD_DECAY), previous + VOICE_WAVE_SLEW);
   return held < VOICE_WAVE_FLOOR ? 0 : held;
 }
 
 /**
  * The share of a step's rise that has arrived `into` seconds into a step `deltaSeconds` long, whose
- * whole rise arrives as `whole` = `1 − e^(−Δ/τ)` of the bands' gap: every rising band eases on the
- * same exponential, so `(1 − e^(−t/τ)) / whole`.
+ * whole rise arrives as `whole` = `1 − e^(−Δ/τ)` of the gap, for a voice that eases on an exponential
+ * of `attackSeconds` (τ): `(1 − e^(−t/τ)) / whole`.
  */
-function arrivedShare(into: number, whole: number): number {
+function arrivedShare(into: number, whole: number, attackSeconds: number): number {
   'worklet';
-  return whole > 0 ? (1 - Math.exp(-into / ATTACK_SECONDS)) / whole : 1;
+  return whole > 0 ? (1 - Math.exp(-into / attackSeconds)) / whole : 1;
 }
 
 /**
- * Moves his recent syllables on by `deltaSeconds`, in place, and returns the same state, with `rise`
- * the step's summed band rise from {@link syllableRise}.
+ * Moves recent syllables on by `deltaSeconds`, in place, and returns the same state, with `rise` the
+ * step's rise — his summed band rise from {@link syllableRise}, eased over ATTACK_SECONDS and scaled
+ * by VOICE_WAVE_ONSET_SCALE; or theirs, `heardRise` in `hearing.ts`, on its own easing and scale.
+ * `attackSeconds` is how the voice eases, so a rise that crosses a slot is shared out as it arrived,
+ * and `onsetScale` how much rise makes a syllable (see {@link VOICE_WAVE_ONSET_SCALE}).
  *
  * Every VOICE_WAVE_SLOT_SECONDS of the clock's time the slot being filled is cut and pushed to the
  * front. The rise is shared out between the slots a step crosses by the curve it arrives on: the
- * bands ease exponentially over ATTACK_SECONDS, so by `t` into a step `(1 − e^(−t/τ)) / (1 − e^(−Δ/τ))`
+ * voice eases exponentially over `attackSeconds` (τ), so by `t` into a step `(1 − e^(−t/τ)) / (1 − e^(−Δ/τ))`
  * of its rise has arrived, whatever the step. A step that cuts more than VOICE_WAVE_SLOTS slots — a
  * stall — writes only the newest of them: the rise that arrived in the cuts before them, and any still
  * gathering in the slot being filled, is dropped, and the slot before them is taken to have decayed by
@@ -155,7 +164,13 @@ function arrivedShare(into: number, whole: number): number {
  *
  * A step that is not a positive, finite number of seconds changes nothing.
  */
-export function advanceVoiceWave(wave: VoiceWaveState, rise: number, deltaSeconds: number): VoiceWaveState {
+export function advanceVoiceWave(
+  wave: VoiceWaveState,
+  rise: number,
+  deltaSeconds: number,
+  attackSeconds: number,
+  onsetScale: number,
+): VoiceWaveState {
   'worklet';
   if (!(deltaSeconds > 0) || !Number.isFinite(deltaSeconds)) {
     return wave;
@@ -163,22 +178,26 @@ export function advanceVoiceWave(wave: VoiceWaveState, rise: number, deltaSecond
   const arriving = rise > 0 && Number.isFinite(rise) ? rise : 0;
   const filling = wave.sinceNewest;
   const cuts = Math.floor((filling + deltaSeconds + TIME_SLACK_SECONDS) / VOICE_WAVE_SLOT_SECONDS);
-  const whole = 1 - Math.exp(-deltaSeconds / ATTACK_SECONDS);
+  const whole = 1 - Math.exp(-deltaSeconds / attackSeconds);
   let given = 0;
   let previous = wave.slots[0] ?? 0;
   const firstKept = Math.max(0, cuts - wave.slots.length);
   if (firstKept > 0) {
     // A stall: the cuts before the newest VOICE_WAVE_SLOTS are never seen, so their rise is dropped,
     // and what they would have held decays as the hold would have decayed it.
-    given = arrivedShare(Math.min(deltaSeconds, firstKept * VOICE_WAVE_SLOT_SECONDS - filling), whole);
+    given = arrivedShare(Math.min(deltaSeconds, firstKept * VOICE_WAVE_SLOT_SECONDS - filling), whole, attackSeconds);
     wave.rise = 0;
     previous *= HOLD_DECAY ** firstKept;
   }
   for (let cut = firstKept; cut < cuts; cut++) {
-    const share = arrivedShare(Math.min(deltaSeconds, (cut + 1) * VOICE_WAVE_SLOT_SECONDS - filling), whole);
+    const share = arrivedShare(
+      Math.min(deltaSeconds, (cut + 1) * VOICE_WAVE_SLOT_SECONDS - filling),
+      whole,
+      attackSeconds,
+    );
     wave.rise += arriving * (share - given);
     given = share;
-    previous = slotAfter(previous, wave.rise);
+    previous = slotAfter(previous, wave.rise, onsetScale);
     pushSlot(wave.slots, previous);
     wave.rise = 0;
   }

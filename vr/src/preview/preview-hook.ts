@@ -130,6 +130,8 @@ export interface PictureFrame {
   hearingLevel?: number;
   voiceWave?: number[];
   voiceWavePhase?: number;
+  heardWave?: number[];
+  heardWavePhase?: number;
 }
 
 /** A satellite round him as `hologram`'s `SatelliteOrbit` has it. */
