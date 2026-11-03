@@ -21,7 +21,8 @@ mock.module('./key-value-store', () => ({
   },
 }));
 
-const { loadJarvisServerAddress, saveJarvisServerAddress } = await import('./jarvis-server');
+const { loadJarvisServerAddress, loadJarvisServerServiceToken, saveJarvisServerAddress, saveJarvisServerServiceToken } =
+  await import('./jarvis-server');
 
 const ADDRESS = 'https://jarvis.example.com';
 
@@ -67,5 +68,43 @@ describe('keeping the address', () => {
     await saveJarvisServerAddress(ADDRESS);
 
     expect([...stored.keys()]).toEqual(['jarvis.server-address']);
+  });
+});
+
+describe('keeping the service token', () => {
+  const SERVICE_TOKEN = { clientId: '0123456789abcdef.access', clientSecret: 'fedcba9876543210' };
+
+  beforeEach(() => {
+    stored.clear();
+    storeWorks = true;
+  });
+
+  it('reads back the pair that was saved', async () => {
+    await saveJarvisServerServiceToken(SERVICE_TOKEN);
+
+    expect(await loadJarvisServerServiceToken()).toEqual({ kind: 'serviceToken', serviceToken: SERVICE_TOKEN });
+  });
+
+  it('forgets it when saved as none, and has none on a phone never given one', async () => {
+    expect(await loadJarvisServerServiceToken()).toEqual({ kind: 'nothing' });
+
+    await saveJarvisServerServiceToken(SERVICE_TOKEN);
+    await saveJarvisServerServiceToken(undefined);
+
+    expect(await loadJarvisServerServiceToken()).toEqual({ kind: 'nothing' });
+  });
+
+  it('tells a store that cannot be read apart from one with no service token', async () => {
+    storeWorks = false;
+
+    expect(await loadJarvisServerServiceToken()).toEqual({ kind: 'unreadable' });
+  });
+
+  it('never hands back a stored value that could not have been saved', async () => {
+    stored.set('jarvis.server-service-token', 'not json');
+    expect(await loadJarvisServerServiceToken()).toEqual({ kind: 'nothing' });
+
+    stored.set('jarvis.server-service-token', JSON.stringify({ clientId: 'no-suffix', clientSecret: 'x' }));
+    expect(await loadJarvisServerServiceToken()).toEqual({ kind: 'nothing' });
   });
 });

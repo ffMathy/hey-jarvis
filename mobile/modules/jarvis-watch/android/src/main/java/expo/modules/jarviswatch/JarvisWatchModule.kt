@@ -30,8 +30,9 @@ private const val JARVIS_ON_THE_WATCH = "jarvis_on_the_watch"
  * The two message paths the phone and the watch speak over, and the whole of their protocol.
  *
  * `SETTINGS_PATH` carries the credentials one way, phone to watch, as a JSON object with an
- * `apiKey` and an `agentId` in it, and a `serverAddress` and a `serverToken` when the phone has them
- * — where the watch opens its line to the Jarvis server, and the JWT it sends there. `ASK_PATH` carries nothing at all in the other direction: it is
+ * `apiKey` and an `agentId` in it, and a `serverAddress`, `serverClientId` and `serverClientSecret`
+ * when the phone has them — where the watch opens its line to the Jarvis server, and the Cloudflare
+ * Access service token it sends there. `ASK_PATH` carries nothing at all in the other direction: it is
  * the watch saying it has none and would like some.
  *
  * **A message and not a data item, and that is a security decision rather than a convenience
@@ -49,15 +50,24 @@ private const val ASK_PATH = "/jarvis/ask-for-credentials"
 
 /**
  * What the watch is sent. Read back by `PhoneSettingsStore` on the other side. An empty
- * `serverAddress` or `serverToken` is none, and is left out rather than sent empty.
+ * `serverAddress`, or service token half, is none, and is left out rather than sent empty.
  */
-private fun settingsMessage(apiKey: String, agentId: String, serverAddress: String, serverToken: String): ByteArray {
+private fun settingsMessage(
+  apiKey: String,
+  agentId: String,
+  serverAddress: String,
+  serverClientId: String,
+  serverClientSecret: String,
+): ByteArray {
   val message = JSONObject().put("apiKey", apiKey).put("agentId", agentId)
   if (serverAddress.isNotEmpty()) {
     message.put("serverAddress", serverAddress)
   }
-  if (serverToken.isNotEmpty()) {
-    message.put("serverToken", serverToken)
+  if (serverClientId.isNotEmpty()) {
+    message.put("serverClientId", serverClientId)
+  }
+  if (serverClientSecret.isNotEmpty()) {
+    message.put("serverClientSecret", serverClientSecret)
   }
   return message.toString().toByteArray()
 }
@@ -92,9 +102,10 @@ class JarvisWatchModule : Module() {
         apiKey: String,
         agentId: String,
         serverAddress: String,
-        serverToken: String,
+        serverClientId: String,
+        serverClientSecret: String,
         promise: Promise ->
-      sendSettingsToTheWatch(context(), apiKey, agentId, serverAddress, serverToken, promise)
+      sendSettingsToTheWatch(context(), apiKey, agentId, serverAddress, serverClientId, serverClientSecret, promise)
     }
 
     Events(WATCH_ASKED)
@@ -147,7 +158,8 @@ private fun sendSettingsToTheWatch(
   apiKey: String,
   agentId: String,
   serverAddress: String,
-  serverToken: String,
+  serverClientId: String,
+  serverClientSecret: String,
   promise: Promise,
 ) {
   Wearable.getCapabilityClient(context)
@@ -159,7 +171,7 @@ private fun sendSettingsToTheWatch(
         return@addOnSuccessListener
       }
       Wearable.getMessageClient(context)
-        .sendMessage(watch.id, SETTINGS_PATH, settingsMessage(apiKey, agentId, serverAddress, serverToken))
+        .sendMessage(watch.id, SETTINGS_PATH, settingsMessage(apiKey, agentId, serverAddress, serverClientId, serverClientSecret))
         .addOnSuccessListener { promise.resolve(true) }
         .addOnFailureListener { error ->
           promise.reject("COULD_NOT_SEND", error.message ?: "The watch would not take the credentials.", error)

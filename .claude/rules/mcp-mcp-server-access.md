@@ -16,8 +16,12 @@ with an identity policy.
 (`verticals/api/live-socket.ts`) the phone, the watch and the headset keep open for as long as their
 apps run; the server checks no credential and sends every live event to any socket that says
 hello. Who may reach it is Cloudflare Zero Trust's to decide, in front of the
-tunnel. The phone and the watch can carry a JWT for that (their **Server token** setting), sent on
-the upgrade request as `Authorization: Bearer <jwt>` and `cf-access-token: <jwt>`. The headset runs
+tunnel. The phone and the watch can carry a **Cloudflare Access service token** for that (their
+setting of that name, on the tour's credentials step and the settings screen), sent on the upgrade
+request as `CF-Access-Client-Id` and `CF-Access-Client-Secret`. Make it under Zero Trust → Access →
+Service Auth, and allow it with a **Service Auth** policy on the application covering `/api/live`.
+**Never give `/api/live` a Bypass policy:** the server runs a glance's actions — unlocking a door —
+for any socket that names them, so Access is the only lock on them. The headset runs
 in a browser, which cannot set a header on a WebSocket, so it gets through on Access's own
 `CF_Authorization` cookie instead:
 

@@ -1,8 +1,9 @@
 import {
   type ElevenLabsSettings,
+  type JarvisServerServiceToken,
   parseElevenLabsSettings,
   parseJarvisServerAddress,
-  parseJarvisServerToken,
+  parseJarvisServerServiceToken,
 } from 'hologram';
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -13,12 +14,12 @@ interface ElevenLabsFieldsProps {
   /** What to start with, when there is already something stored. */
   settings: ElevenLabsSettings | undefined;
   /**
-   * Whether to ask for the Jarvis server's address as well, and the one read if one was — which is
-   * not always the one stored, since a read can fail. The settings screen asks; the tour does not,
-   * because photos are something to add once Jarvis works, not something to learn about before he
-   * does.
+   * Whether to ask for the Jarvis server's address and its service token as well, and the ones read
+   * if they were — which is not always the ones stored, since a read can fail. The settings screen
+   * and the tour's credentials step both ask: the server is optional, but a phone set up without it
+   * never shows the glance, and nothing on the tour said where it was set.
    */
-  server?: { storedAddress: string | undefined; storedToken: string | undefined };
+  server?: { storedAddress: string | undefined; storedServiceToken: JarvisServerServiceToken | undefined };
   /** What the button says. "Save" on the settings screen; "Continue" on the tour. */
   submitLabel: string;
   /**
@@ -31,7 +32,7 @@ interface ElevenLabsFieldsProps {
 
 /**
  * The two values, the note about where they are kept, and the button that accepts them — and, on
- * the settings screen, the Jarvis server's address beside them.
+ * where asked for, the Jarvis server's address and service token beside them.
  *
  * Extracted because there are now two screens that ask for them — the settings screen and the
  * credentials step of the first-run tour — and two copies of a field that must not autofill, must
@@ -47,10 +48,11 @@ export function ElevenLabsFields({ settings, server, submitLabel, onSubmit }: El
   const [apiKey, setApiKey] = useState(settings?.apiKey ?? '');
   const [agentId, setAgentId] = useState(settings?.agentId ?? '');
   const [serverAddress, setServerAddress] = useState(server?.storedAddress ?? '');
-  const [serverToken, setServerToken] = useState(server?.storedToken ?? '');
+  const [clientId, setClientId] = useState(server?.storedServiceToken?.clientId ?? '');
+  const [clientSecret, setClientSecret] = useState(server?.storedServiceToken?.clientSecret ?? '');
   /** What the fields started from, which is what a save is measured against. See `submit`. */
   const [startingServerAddress] = useState(server?.storedAddress);
-  const [startingServerToken] = useState(server?.storedToken);
+  const [startingServiceToken] = useState(server?.storedServiceToken);
   const [problem, setProblem] = useState<string | undefined>(undefined);
 
   const submit = () => {
@@ -68,7 +70,7 @@ export function ElevenLabsFields({ settings, server, submitLabel, onSubmit }: El
       return;
     }
 
-    const tokenResult = server ? parseJarvisServerToken(serverToken) : { token: undefined };
+    const tokenResult = server ? parseJarvisServerServiceToken(clientId, clientSecret) : { serviceToken: undefined };
     if ('problem' in tokenResult) {
       setProblem(tokenResult.problem);
       return;
@@ -78,8 +80,10 @@ export function ElevenLabsFields({ settings, server, submitLabel, onSubmit }: El
     // not be read starts the field empty, so saving the field as it stood would erase an address that
     // had only failed to load, when sir came here to change the agent ID.
     const serverChange =
-      server && (serverResult.address !== startingServerAddress || tokenResult.token !== startingServerToken)
-        ? { address: serverResult.address, token: tokenResult.token }
+      server &&
+      (serverResult.address !== startingServerAddress ||
+        !isSameServiceToken(tokenResult.serviceToken, startingServiceToken))
+        ? { address: serverResult.address, serviceToken: tokenResult.serviceToken }
         : undefined;
 
     setProblem(undefined);
@@ -134,9 +138,9 @@ export function ElevenLabsFields({ settings, server, submitLabel, onSubmit }: El
         <View style={styles.field}>
           <Text style={styles.label}>Jarvis server</Text>
           <Text style={styles.explanation}>
-            Optional: the address of your own Jarvis server, to send him photos from the camera button beside him, and
-            for this phone, your watch and your headset to stay in touch with it while you talk. Leave it empty and
-            there is no camera.
+            Optional: the address of your own Jarvis server. With it, opening Jarvis shows the page it made for you, the
+            camera button beside him sends him photos, and this phone, your watch and your headset stay in touch with
+            it. Leave it empty and he works without it.
           </Text>
           <TextInput
             style={styles.input}
@@ -157,24 +161,37 @@ export function ElevenLabsFields({ settings, server, submitLabel, onSubmit }: El
 
       {server ? (
         <View style={styles.field}>
-          <Text style={styles.label}>Server token</Text>
+          <Text style={styles.label}>Cloudflare Access service token</Text>
           <Text style={styles.explanation}>
-            Optional: the JWT that Cloudflare Zero Trust in front of your Jarvis server accepts. This phone and your
-            watch send it as a bearer token when they connect. A browser cannot send it, so the web build and the
-            headset connect without it.
+            Optional: only if Cloudflare Zero Trust protects your Jarvis server. Make one under Access → Service Auth,
+            allow it with a Service Auth policy on the server's application, and paste its Client ID and Client Secret.
+            This phone and your watch send it when they connect. A browser cannot, so the web build and the headset
+            connect without it.
           </Text>
           <TextInput
             style={styles.input}
-            value={serverToken}
-            onChangeText={setServerToken}
+            value={clientId}
+            onChangeText={setClientId}
+            autoCapitalize="none"
+            autoCorrect={false}
+            // Part of a credential, kept out of password managers like the API key.
+            autoComplete="off"
+            importantForAutofill="no"
+            placeholder="Client ID: 1a2b3c….access"
+            testID="jarvis-server-client-id"
+            placeholderTextColor={theme.colors.mutedText}
+          />
+          <TextInput
+            style={styles.input}
+            value={clientSecret}
+            onChangeText={setClientSecret}
             autoCapitalize="none"
             autoCorrect={false}
             secureTextEntry
-            // A credential, kept out of password managers like the API key.
             autoComplete="off"
             importantForAutofill="no"
-            placeholder="eyJhbGci…"
-            testID="jarvis-server-token"
+            placeholder="Client Secret"
+            testID="jarvis-server-client-secret"
             placeholderTextColor={theme.colors.mutedText}
           />
         </View>
@@ -191,6 +208,14 @@ export function ElevenLabsFields({ settings, server, submitLabel, onSubmit }: El
       </Pressable>
     </>
   );
+}
+
+/** Whether two service tokens are the same pair, either of them perhaps none. */
+function isSameServiceToken(
+  first: JarvisServerServiceToken | undefined,
+  second: JarvisServerServiceToken | undefined,
+): boolean {
+  return first?.clientId === second?.clientId && first?.clientSecret === second?.clientSecret;
 }
 
 const styles = StyleSheet.create({

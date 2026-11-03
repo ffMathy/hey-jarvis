@@ -1,4 +1,4 @@
-import type { ElevenLabsSettings } from 'hologram';
+import type { ElevenLabsSettings, JarvisServerServiceToken } from 'hologram';
 import { useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -28,12 +28,11 @@ interface WatchCardProps {
    */
   settings: ElevenLabsSettings | undefined;
   /**
-   * The Jarvis server's address, handed over with the credentials. Absent on the tour, which does not
-   * ask for one; the watch is sent it the next time it asks (`answer-the-watch.ts`).
+   * The Jarvis server's address, handed over with the credentials, or `undefined` for none.
    */
-  serverAddress?: string;
-  /** The token for the server, handed over beside its address. */
-  serverToken?: string;
+  serverAddress: string | undefined;
+  /** The server's service token, handed over beside its address. */
+  serverServiceToken: JarvisServerServiceToken | undefined;
 }
 
 /** Nothing found, and what is shown until the first answer comes back. */
@@ -94,7 +93,7 @@ function usePairedWatch(): PairedWatch {
  * watch is side-loaded with `adb` — see `.claude/rules/watch.md` — and the button says so rather than
  * sending the user to a page that will tell them the item was not found.
  */
-export function WatchCard({ settings, serverAddress, serverToken }: WatchCardProps) {
+export function WatchCard({ settings, serverAddress, serverServiceToken }: WatchCardProps) {
   const watch = usePairedWatch();
 
   // The Data Layer is Android's, and a browser has no watch beside it.
@@ -105,7 +104,12 @@ export function WatchCard({ settings, serverAddress, serverToken }: WatchCardPro
   const name = watch.name ?? 'your watch';
 
   return watch.hasJarvis ? (
-    <HandingOverTheKey name={name} settings={settings} serverAddress={serverAddress} serverToken={serverToken} />
+    <HandingOverTheKey
+      name={name}
+      settings={settings}
+      serverAddress={serverAddress}
+      serverServiceToken={serverServiceToken}
+    />
   ) : (
     <PuttingHimOnTheWatch name={name} />
   );
@@ -122,12 +126,12 @@ function HandingOverTheKey({
   name,
   settings,
   serverAddress,
-  serverToken,
+  serverServiceToken,
 }: {
   name: string;
   settings: ElevenLabsSettings | undefined;
   serverAddress: string | undefined;
-  serverToken: string | undefined;
+  serverServiceToken: JarvisServerServiceToken | undefined;
 }) {
   const [handover, setHandover] = useState<'ready' | 'sending' | 'sent'>('ready');
   const [problem, setProblem] = useState<string | undefined>(undefined);
@@ -138,7 +142,7 @@ function HandingOverTheKey({
     }
     setHandover('sending');
     setProblem(undefined);
-    void sendSettingsToTheWatch(settings, serverAddress, serverToken).then((sent) => {
+    void sendSettingsToTheWatch(settings, serverAddress, serverServiceToken).then((sent) => {
       setHandover(sent ? 'sent' : 'ready');
       if (!sent) {
         setProblem(
@@ -146,7 +150,7 @@ function HandingOverTheKey({
         );
       }
     });
-  }, [settings, serverAddress, serverToken]);
+  }, [settings, serverAddress, serverServiceToken]);
 
   return (
     <View style={styles.card} testID="watch-card">

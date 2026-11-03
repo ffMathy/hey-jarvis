@@ -34,11 +34,12 @@ internal object PhoneSettingsStore {
   private const val SERVER_ADDRESS = "serverAddress"
 
   /**
-   * The JWT the Cloudflare Zero Trust application in front of the server accepts, when the phone has
-   * one: a credential, kept encrypted beside the ElevenLabs key. Checked in JavaScript
-   * (`readPhoneServerToken`).
+   * The Cloudflare Access service token the Zero Trust application in front of the server accepts,
+   * when the phone has one: a credential in two halves, kept encrypted beside the ElevenLabs key.
+   * Checked in JavaScript (`readPhoneServerServiceToken`).
    */
-  private const val SERVER_TOKEN = "serverToken"
+  private const val SERVER_CLIENT_ID = "serverClientId"
+  private const val SERVER_CLIENT_SECRET = "serverClientSecret"
 
   /**
    * The store, or null when it cannot be opened at all.
@@ -90,12 +91,19 @@ internal object PhoneSettingsStore {
     }
 
     val serverAddress = settings.optString(SERVER_ADDRESS).trim()
-    val serverToken = settings.optString(SERVER_TOKEN).trim()
+    val serverClientId = settings.optString(SERVER_CLIENT_ID).trim()
+    val serverClientSecret = settings.optString(SERVER_CLIENT_SECRET).trim()
     val preferences = preferences(context) ?: return false
     val editor = preferences.edit().putString(API_KEY, apiKey).putString(AGENT_ID, agentId)
-    // A phone that has forgotten its address or token hands over none, and the watch forgets it too.
+    // A phone that has forgotten its address or service token hands over none, and the watch forgets
+    // it too.
     if (serverAddress.isEmpty()) editor.remove(SERVER_ADDRESS) else editor.putString(SERVER_ADDRESS, serverAddress)
-    if (serverToken.isEmpty()) editor.remove(SERVER_TOKEN) else editor.putString(SERVER_TOKEN, serverToken)
+    if (serverClientId.isEmpty()) editor.remove(SERVER_CLIENT_ID) else editor.putString(SERVER_CLIENT_ID, serverClientId)
+    if (serverClientSecret.isEmpty()) {
+      editor.remove(SERVER_CLIENT_SECRET)
+    } else {
+      editor.putString(SERVER_CLIENT_SECRET, serverClientSecret)
+    }
     editor.commit()
     return true
   }
@@ -110,7 +118,9 @@ internal object PhoneSettingsStore {
     }
     val stored = mutableMapOf(API_KEY to apiKey, AGENT_ID to agentId)
     preferences.getString(SERVER_ADDRESS, null)?.takeIf { it.isNotEmpty() }?.let { stored[SERVER_ADDRESS] = it }
-    preferences.getString(SERVER_TOKEN, null)?.takeIf { it.isNotEmpty() }?.let { stored[SERVER_TOKEN] = it }
+    for (key in listOf(SERVER_CLIENT_ID, SERVER_CLIENT_SECRET)) {
+      preferences.getString(key, null)?.takeIf { it.isNotEmpty() }?.let { stored[key] = it }
+    }
     return stored
   }
 
