@@ -19,12 +19,12 @@ import {
   type PhotoKind,
   type PhotoMediaType,
 } from '../vision/index.js';
-import { type PairedDeviceDependencies, registerPairedDeviceApi } from './paired-devices.js';
 import {
   type EvaluationWebhookDependencies,
   registerEvaluationWebhookApi,
   WEBHOOKS_PATH,
 } from './evaluation-webhook.js';
+import { type PairedDeviceDependencies, registerPairedDeviceApi } from './paired-devices.js';
 
 /**
  * Standard API response structure for workflow endpoints.

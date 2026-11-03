@@ -2,9 +2,9 @@ import { type ConversationCredentials, elevenLabsCredentials, type ServerLink } 
 import { pairedCredentials } from '../conversation/paired-credentials';
 import type { JarvisDebugState } from '../debug-hook';
 import type { MicrophoneGate } from './microphone';
+import { loadPairing, pairWithServer, savePairing } from './pairing';
 import { type PreparationTask, runPreparation } from './preparation';
 import { canOpenWithoutAgent, microphoneHelp, type PageFacts, primaryButton } from './prerequisites';
-import { loadPairing, pairWithServer, savePairing } from './pairing';
 import { serverSignInUrl, showServerStatus } from './server-status';
 import { checkSettings, type KeyValueStorage, loadServerAddress, loadSettings, saveSettings } from './settings';
 import { loadVoiceFromWhereHeStands, saveVoiceFromWhereHeStands } from './voice-setting';
@@ -48,7 +48,11 @@ export interface PageDependencies {
    * open. Called straight from the click, so it must ask for the session before it awaits
    * anything: the click's activation expires.
    */
-  enterRoom(mode: RoomMode, credentials: ConversationCredentials | undefined, onInside: () => void): Promise<RoomOutcome>;
+  enterRoom(
+    mode: RoomMode,
+    credentials: ConversationCredentials | undefined,
+    onInside: () => void,
+  ): Promise<RoomOutcome>;
   /**
    * The page's line to sir's Jarvis server and its address, for the page to say whether it is
    * connected and offer signing in to it when it is not (`server-status.ts`).

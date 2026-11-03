@@ -106,7 +106,9 @@ function readVariable(name: string): string | undefined {
  *
  * @param fetchImplementation - Injectable so the spec can answer for ElevenLabs.
  */
-export function createElevenLabsCredentialMinter(fetchImplementation: typeof fetch = fetch): MintConversationCredential {
+export function createElevenLabsCredentialMinter(
+  fetchImplementation: typeof fetch = fetch,
+): MintConversationCredential {
   return async ({ transport, participantName }) => {
     const apiKey = readVariable('HEY_JARVIS_ELEVENLABS_API_KEY');
     const agentId = readVariable('HEY_JARVIS_ELEVENLABS_AGENT_ID');

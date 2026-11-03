@@ -50,7 +50,31 @@ sends a CORS preflight (`OPTIONS`) before each.
 conversation that ElevenLabs, asked with this server's own API key, reports as in progress on
 Jarvis's agent; sending the photo needs the slot's token, 128 random bits handed straight to the
 phone, good for five minutes and one photo, and claimed before a byte of the body is read (see
-[Vision Vertical](mcp-vision-vertical.md#vision-vertical)). Nothing else under `/api` is reachable without Access, but `/api/live`.
+[Vision Vertical](mcp-vision-vertical.md#vision-vertical)). Nothing else under `/api` is reachable without Access, but `/api/live` and `/api/paired/*`.
+
+**Pairing a device** (`verticals/api/paired-devices.ts`, table `paired_devices` in
+`storage/paired-devices.ts`). The Quest headset can be paired with this server instead of holding an
+ElevenLabs key: the server keeps the key and mints each conversation's credential for it, and the
+headset keeps a token of the server's own.
+
+- **`POST /api/devices` stays behind Access.** The headset's page sends it as a simple request —
+  plain text (the device's name), no headers of its own, `credentials: 'include'` — so it has no
+  preflight, which would carry no cookie, and Access's `CF_Authorization` cookie goes with it (the
+  same cookie, and the same `SameSite=None` setting, as `/api/live` above). It is refused `403` unless
+  its `Origin` is one of `WEB_APP_ORIGINS` (GitHub Pages, and the headset's dev server), because a
+  browser sends that cookie with a simple cross-site request from any page. It answers `201` with
+  `{ id, token }`: 256 random bits, handed over once; only its SHA-256 is stored.
+- **`GET /api/devices`** lists them (never with a token) and **`DELETE /api/devices/<id>`** unpairs
+  one, so a lost headset is one device revoked rather than the ElevenLabs key.
+- **`/api/paired/*` must bypass Access.** `POST /api/paired/conversation` takes
+  `Authorization: Bearer <token>` and `{ "transport": "webrtc" | "websocket", "participantName":
+  "jarvis-…" }`, and answers `{ token }` or a `wss://` `{ signedUrl }` minted with
+  `HEY_JARVIS_ELEVENLABS_API_KEY` on `HEY_JARVIS_ELEVENLABS_AGENT_ID` (never the test agent): `401`
+  for a token no paired device has, `400` for a malformed request, `502` when ElevenLabs could not
+  start a conversation — with a message for the device to show. The token is the credential, so the
+  headset never has to sign in to Access again once it is paired. In Zero Trust → Access →
+  Applications, add a self-hosted application for `<your MCP hostname>/api/paired/*` with a single
+  **Bypass** policy (include: Everyone); it covers the preflight its `Authorization` header needs.
 
 **`/webhooks/*` must bypass Access too.** Every webhook is served under it — today only ElevenLabs'
 post-call webhook, `/webhooks/elevenlabs/post-call` — so one self-hosted application for

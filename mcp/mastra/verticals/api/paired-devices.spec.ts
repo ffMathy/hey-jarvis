@@ -152,7 +152,10 @@ describe('a paired device asking for a conversation', () => {
     const pairing = await (await pair('Lost headset')).json();
 
     const unpaired = await fetch(`${baseUrl}${DEVICE_PAIRING_PATH}/${pairing.data.id}`, { method: 'DELETE' });
-    const response = await askForConversation(pairing.data.token, { transport: 'webrtc', participantName: 'jarvis-vr' });
+    const response = await askForConversation(pairing.data.token, {
+      transport: 'webrtc',
+      participantName: 'jarvis-vr',
+    });
 
     expect(unpaired.status).toBe(200);
     expect(response.status).toBe(401);

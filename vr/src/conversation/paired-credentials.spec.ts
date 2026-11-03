@@ -33,12 +33,12 @@ describe('a paired headset’s conversation credentials', () => {
   it('asks for a signed URL for a typed conversation, and takes only a wss:// one', async () => {
     const credentials = pairedCredentials(PAIRING);
 
-    expect(await credentials.signedUrl(async () => Response.json({ data: { signedUrl: 'wss://example/signed' } }))).toBe(
-      'wss://example/signed',
-    );
-    await expect(credentials.signedUrl(async () => Response.json({ data: { signedUrl: 'ws://plain' } }))).rejects.toThrow(
-      'not wss://',
-    );
+    expect(
+      await credentials.signedUrl(async () => Response.json({ data: { signedUrl: 'wss://example/signed' } })),
+    ).toBe('wss://example/signed');
+    await expect(
+      credentials.signedUrl(async () => Response.json({ data: { signedUrl: 'ws://plain' } })),
+    ).rejects.toThrow('not wss://');
   });
 
   it('says it is no longer paired when the server does not know its token', async () => {
@@ -50,7 +50,10 @@ describe('a paired headset’s conversation credentials', () => {
   it('passes on the server’s own words for why there is no conversation', async () => {
     await expect(
       pairedCredentials(PAIRING).token(HEADSET_PARTICIPANT_NAME, async () =>
-        Response.json({ success: false, message: 'ElevenLabs could not start a conversation (HTTP 402).' }, { status: 502 }),
+        Response.json(
+          { success: false, message: 'ElevenLabs could not start a conversation (HTTP 402).' },
+          { status: 502 },
+        ),
       ),
     ).rejects.toThrow('ElevenLabs could not start a conversation (HTTP 402).');
   });

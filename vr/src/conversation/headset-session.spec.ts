@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 import {
-  elevenLabsCredentials,
   type AffectedEntity,
   type AgentActivity,
   type AgentTrackRoom,
+  elevenLabsCredentials,
   type GreetingPlayer,
   HEADSET_PARTICIPANT_NAME,
 } from 'hologram';

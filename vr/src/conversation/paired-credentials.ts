@@ -68,7 +68,8 @@ async function ask(
   if (response.status === 401) throw new Error(NO_LONGER_PAIRED_PROBLEM);
   if (!response.ok) {
     throw new Error(
-      (await refusalMessage(response)) ?? `Your Jarvis server could not start a conversation (HTTP ${response.status}).`,
+      (await refusalMessage(response)) ??
+        `Your Jarvis server could not start a conversation (HTTP ${response.status}).`,
     );
   }
   const credential = credentialIn(await response.json(), field);
@@ -87,6 +88,11 @@ export function pairedCredentials(pairing: Pairing): ConversationCredentials {
     signedUrl: (fetchImplementation = fetch) =>
       // ElevenLabs names no participant on a signed URL; the server asks the same way, and is told
       // the headset's name only because every request names its device.
-      ask(pairing, { transport: 'websocket', participantName: HEADSET_PARTICIPANT_NAME }, 'signedUrl', fetchImplementation),
+      ask(
+        pairing,
+        { transport: 'websocket', participantName: HEADSET_PARTICIPANT_NAME },
+        'signedUrl',
+        fetchImplementation,
+      ),
   };
 }
