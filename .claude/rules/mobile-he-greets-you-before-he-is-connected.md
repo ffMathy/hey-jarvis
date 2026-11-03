@@ -48,6 +48,6 @@ Still to settle on a device: that he is heard this way, and that `vad_score` eve
 WebRTC as they do over the firmware's socket.
 
 The sphere also shows the user being heard: while ElevenLabs' `vad_score` says someone is
-speaking, his particles snap onto a lattice that turns inside him, breathing harder the louder the
-microphone is. The session's `user` feeds it, and it ignores the score while Jarvis speaks, since
+speaking, his particles snap onto a lattice that turns inside him and swells the louder the
+microphone is, and each syllable it hears flows in through the lattice to his core as a ring. The session's `user` feeds it, and it ignores the score while Jarvis speaks, since
 the microphone hears him too.

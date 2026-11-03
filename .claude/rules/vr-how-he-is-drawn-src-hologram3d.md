@@ -36,7 +36,7 @@ materials, targets and meshes:
 
 3. **The picture** (`picture-target.ts`), once a frame, before either eye:
    `hologram/gpu`'s `drawGpuPicture` — everything flat that the phone draws, the
-   aura, the core, the cage, the embers, the fray, the chips, the pulse,
+   aura, the core, the cage, the embers, the fray, the chips,
    everything but the body and the stream — into a 512-pixel
    `WebGLRenderTarget` with a depth and a stencil buffer, which the picture needs
    (`gpu-picture.ts` says why). It is drawn with raw GL calls on
@@ -90,8 +90,9 @@ turns of the groups held in the view plane (the whorl's, the arcs' rocking, the
 truss's roll), a glyph's direction and its scatter while he thinks, and the rings his syllables
 push out of his core (`voiceWavePush`, after visibility and tier are decided) — done in the plane through his centre
 that faces the centre eye. Depth is kept: the vortex scales it, the lattice snaps
-it into layers where the centre eye sees them line up, the thinking plane is
-level with the floor. Its `fragment-glsl.ts` is that file, line for line, in
+it into layers where the centre eye sees them line up, and their syllables'
+rings pull its knots in where the centre eye sees them; the thinking band's
+plane is level with the floor but for the tilt it rocks by. Its `fragment-glsl.ts` is that file, line for line, in
 GLSL; each draw evaluates it in its vertex shader (three 0.186 has no transform
 feedback, and a float state pass needs an extension a Quest may not have). The
 unit tests hold `fragment-3d.ts` to the phone; `hologram-port.spec.ts` holds the

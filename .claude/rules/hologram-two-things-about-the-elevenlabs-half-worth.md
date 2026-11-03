@@ -30,13 +30,15 @@ It also makes up someone talking *to* him (`simulatedUserAt`) — a voice-activi
 microphone level — for sample mode's listening phase.
 
 **Listening is not a voice of his.** While someone talks to Jarvis his particles snap onto a
-hexagonal lattice that turns slowly inside the ball and breathes with how loud they are
+hexagonal lattice that turns slowly inside the ball and swells with how loud they are, and each
+syllable they say flows in through it from his edge to his core as a lit ring of its knots
 (`latticeFragment`, `latticeTarget`); the core's glow dims so the lattice is what is seen. It is
 driven by a `UserVoice` — ElevenLabs' `vad_score` and the microphone's input level in a
 conversation, `simulatedUserAt` in sample mode — handed to the view as `user`, eased per frame by
 `hearing.ts`. Only the score switches it on, past the firmware's own 0.25, so the phone, the watch
-and the Voice preview agree on when someone is speaking; the level only sets how hard the lattice
-breathes. It replaced a ring of ticks outside the limb, which the user found too plain, and was
+and the Voice preview agree on when someone is speaking; the level sets how far the lattice swells,
+and its rises — counted only while the score says they speak (`heardRise`) — are the syllables the
+frame clock keeps for the rings. It replaced a ring of ticks outside the limb, which the user found too plain, and was
 chosen over drifting clusters, orbital rings, ripples and a galaxy's arms.
 
 **The arrival is a vortex.** Particles leave the core nearest first and spiral out a turn and a

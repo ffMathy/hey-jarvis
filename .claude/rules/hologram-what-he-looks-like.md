@@ -36,7 +36,7 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
   sharply each 40 ms of his voice started a syllable (`hologram/src/voice-wave.ts`), and each slot is
   a ring `VOICE_WAVE_STEP` further out than the next (`voiceWaveKnots`, `voiceWavePush`,
   `voiceWaveTurn`). Every speck but the truss's; the arcs and the stream are carried out but keep
-  their way. Held back until he has formed, and given way to the lattice and the scan plane.
+  their way. Held back until he has formed, and given way to the lattice and the thinking band.
 - **The whorl:** the old body's spiral through his middle, two arms winding out from just outside
   the core's eye at 0.1R to about 0.78R, made of specks (`WHORL_SHARE` of the body's draws,
   `pushWhorlSpeck`) held in the plane of the view and turning slowly about the core against the
@@ -68,8 +68,20 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
 - **The fray and the chips:** strands and streaks off the shell's edge while he talks, and shards
   of light thrown off its left on a syllable, streaking back the way they came and snapping as they
   break up (`drawFray`, `drawChips`).
-- **The thinking pulse and the satellites:** a ring blooming out of the core as each pass of the
-  scan plane ends, and the agents at work circling him (`drawThinkingPulse`, `drawSatellites`).
+- **The listening lattice:** while someone talks to him his specks snap onto a slowly turning
+  hexagonal lattice (`latticeFragment`, `latticeTarget`) that swells with how loud they are now
+  (`LATTICE_BREATH`), and each syllable they say flows in through it, from `HEARD_WAVE_FROM` at his
+  edge to `HEARD_WAVE_GONE` inside the white-hot ring, as a ring of its knots pulled in toward the
+  core and crowded into a line whose knots get back the length the lattice shrinks away
+  (`pushAlongRings`, `latticeStrokeShare`) — his own rings run backwards. The frame clock keeps
+  their syllables as it keeps his (`heard`, from `heardRise` in `hearing.ts`).
+- **The thinking band:** one soft band gliding up through him and back down (`SCAN_SECONDS` a pass,
+  `scanAt`), its plane rocking up to 20° on a clock of its own (`scanTiltAt`), its light falling
+  off as a bell (`SCAN_SOFTNESS`) to `SCAN_FLOOR` of his light, some of its specks promoted to the
+  brightest tier by chance (`SCAN_PROMOTED_SHARE`, dealt from each speck's re-lighting) and drawn a
+  little longer (`SCAN_STRETCH`) — `scanned`. The aura, the cage and the core's glow recede by
+  `THOUGHT_PICTURE_DIMMING` meanwhile.
+- **The satellites:** the agents at work circling him (`drawSatellites`).
 
 ## What the user asked for, which a change must keep
 
@@ -116,6 +128,24 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
   (`BODY_RADIANS_PER_SECOND`).
 - **Listening is the lattice** (`latticeFragment`) and **thinking is the scan plane**
   (`SCAN_SECONDS`).
+- **The lattice moves with their voice** ("The listening animation doesn't move much with the
+  voice. Perhaps spice it up and make it better"): it once breathed on a sine of its own, only
+  scaled by their loudness, so it kept its own time and never theirs. Now each syllable they say
+  flows in from his edge to his core as a lit ring of its knots, and it swells with how loud they
+  are this moment; nothing of it moves on a clock of its own but its slow turn. On sample mode's
+  listening clip the lattice moves 3.4 times as much from frame to frame as it did (the mean change
+  of his light's radial profile, 0.066 against 0.020), with his light and hue unchanged. Do not
+  give it a clock of its own back.
+- **One thought, softly** ("As for the thinking animation, it is currently too dull. Maybe it's
+  because there are 2 thinking stripes or pulses, when there should be 1 … The stripe also looks
+  very sharp. Maybe it could be more subtly blending in"): the ring that bloomed out of the core at
+  the end of every pass is gone, so the band is the whole of a thought; its edge is a bell and its
+  bright specks are dealt by chance rather than past a threshold, so it thins into him; the rest of
+  him keeps `SCAN_FLOOR` (0.38) of his light rather than an eighth, and the picture recedes by a
+  third rather than a half; and it glides up and back like a pendulum rather than wrapping from top
+  to bottom. Over a thought at 400 px his mean luma is about 90 where it was 58 (calm is 118), his
+  hue 26° and near-white 0.16% of his light. A radar sweep round the core and an orbiting comet were
+  tried beside it: the sweep is one more rotation, and the comet too faint to read.
 - **A speck reads as a line, not a bead:** the median one is at least five times as long as it is
   wide (`pickFragmentLength`).
 - **The squares are particles, and fewer** ("The squares along the edge should be made from moving
