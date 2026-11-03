@@ -19,6 +19,7 @@ import {
   latticeSpacing,
   SCAN_DEAL_FROM_HOP,
   SCAN_FLOOR,
+  SCAN_PROMOTED_SHARE,
   SCAN_SOFTNESS,
   SCAN_STRETCH,
   SHELL_FACE_DIMMING,
@@ -252,6 +253,7 @@ const float WANDER = ${glslFloat(FRAGMENT_WANDER)};
 const float SCAN_SOFTNESS = ${glslFloat(SCAN_SOFTNESS)};
 const float SCAN_FLOOR = ${glslFloat(SCAN_FLOOR)};
 const float SCAN_STRETCH = ${glslFloat(SCAN_STRETCH)};
+const float SCAN_PROMOTED_SHARE = ${glslFloat(SCAN_PROMOTED_SHARE)};
 const float SCAN_DEAL_FROM_HOP = ${glslFloat(SCAN_DEAL_FROM_HOP)};
 const float SHELL_FACE_DIMMING = ${glslFloat(SHELL_FACE_DIMMING)};
 const float BACK_OF_THE_SHELL = ${glslFloat(BACK_OF_THE_SHELL)};
@@ -514,7 +516,7 @@ float scanned(vec2 bodyPoint, float hop, out bool bright, out float stretch) {
   float height = bodyPoint.y * scanTilt.x + bodyPoint.x * scanTilt.y;
   float apart = (height - scanHeight) / SCAN_SOFTNESS;
   float nearness = exp(-apart * apart);
-  bright = fract(hop * SCAN_DEAL_FROM_HOP) < thinking * nearness * nearness;
+  bright = fract(hop * SCAN_DEAL_FROM_HOP) < SCAN_PROMOTED_SHARE * thinking * nearness * nearness;
   stretch = SCAN_STRETCH * thinking * nearness;
   return 1.0 - thinking * (1.0 - SCAN_FLOOR) * (1.0 - nearness);
 }

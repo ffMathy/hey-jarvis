@@ -633,7 +633,12 @@ export const SCAN_SOFTNESS = 0.3;
 /** What is left of a speck's light far from the band: he is thinking, not gone, and not dark. */
 export const SCAN_FLOOR = 0.38;
 /** How much longer a speck in the middle of the band is drawn, as a share of its length. */
-export const SCAN_STRETCH = 0.35;
+export const SCAN_STRETCH = 0.2;
+/**
+ * The most of the specks in the middle of the band it promotes to the brightest tier: not all. All of
+ * them, where his middle is densest, blew the band crossing it out into a blot.
+ */
+export const SCAN_PROMOTED_SHARE = 0.6;
 /** How far the band's plane tilts either way, in radians: 20°. */
 export const SCAN_TILT = 0.35;
 /** How long the tilt takes to rock there and back: not a multiple of a pass, so passes differ. */
@@ -2726,8 +2731,9 @@ export function readFragment(body: number[], offset: number, state: HologramFram
  * At rest this is 1 and costs one comparison. While he thinks, the band's light falls off as a bell
  * across its tilted plane ({@link SCAN_SOFTNESS}) to SCAN_FLOOR far from it — see {@link SCAN_SECONDS}
  * — and what it is passing may be promoted to the brightest tier, at full light: by chance, dealt
- * from `hop` ({@link SCAN_DEAL_FROM_HOP}), as likely as the band's nearness squared, so the bright
- * specks thin out into the rest of him rather than stopping at a line.
+ * from `hop` ({@link SCAN_DEAL_FROM_HOP}), as likely as the band's nearness squared times
+ * {@link SCAN_PROMOTED_SHARE}, so the bright specks thin out into the rest of him rather than
+ * stopping at a line.
  *
  * Returns the share to multiply by, and leaves in `state.scanBright` whether this one is promoted (1
  * or 0) and how much longer it is drawn ({@link SCAN_STRETCH} at the band's middle). Several answers
@@ -2745,7 +2751,7 @@ export function scanned(x: number, y: number, hop: number, state: HologramFrameS
   const height = y * state.scanTiltCos + x * state.scanTiltSin;
   const apart = (height - state.scan) / SCAN_SOFTNESS;
   const nearness = Math.exp(-apart * apart);
-  out[0] = fraction(hop * SCAN_DEAL_FROM_HOP) < state.thinking * nearness * nearness ? 1 : 0;
+  out[0] = fraction(hop * SCAN_DEAL_FROM_HOP) < SCAN_PROMOTED_SHARE * state.thinking * nearness * nearness ? 1 : 0;
   out[1] = SCAN_STRETCH * state.thinking * nearness;
   return 1 - state.thinking * (1 - SCAN_FLOOR) * (1 - nearness);
 }
