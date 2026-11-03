@@ -13,6 +13,7 @@ import {
   NOT_CONNECTED_RESULT,
   TIMED_OUT_RESULT,
 } from './glance';
+import type { JarvisServerServiceToken } from './jarvis-server-address';
 
 /**
  * A device's line to the Jarvis server: a WebSocket each device that is Jarvis — the phone, the
@@ -132,23 +133,26 @@ export interface ServerLinkOptions {
   address: string | undefined;
   device: JarvisDevice;
   /**
-   * The JWT the Cloudflare Zero Trust application in front of the server accepts, as
-   * `parseJarvisServerToken` gives it, or `undefined` for a server with nothing in front of it. See
-   * {@link serverAuthorizationHeaders} for how it is sent.
+   * The Cloudflare Access service token the Zero Trust application in front of the server accepts,
+   * as `parseJarvisServerServiceToken` gives it, or `undefined` for a server with nothing in front
+   * of it. See {@link serverAuthorizationHeaders} for how it is sent.
    */
-  token?: string;
+  serviceToken?: JarvisServerServiceToken;
 }
 
 /**
- * The headers a token travels in on the socket's upgrade request: `Authorization: Bearer`, and
- * `cf-access-token`, the header Cloudflare Access reads an Access JWT from. Both, so the token gets
- * through whichever way the application in front of the server is set to read it.
+ * The headers a service token travels in on the socket's upgrade request: `CF-Access-Client-Id` and
+ * `CF-Access-Client-Secret`, the two Cloudflare Access reads a service token from.
  *
  * Only a phone and a watch can send them: a browser cannot set a header on a WebSocket, so the
  * headset's page and the phone's web build connect without them.
  */
-export function serverAuthorizationHeaders(token: string | undefined): Readonly<Record<string, string>> {
-  return token === undefined ? {} : { Authorization: `Bearer ${token}`, 'cf-access-token': token };
+export function serverAuthorizationHeaders(
+  serviceToken: JarvisServerServiceToken | undefined,
+): Readonly<Record<string, string>> {
+  return serviceToken === undefined
+    ? {}
+    : { 'CF-Access-Client-Id': serviceToken.clientId, 'CF-Access-Client-Secret': serviceToken.clientSecret };
 }
 
 /** A line that is open, or trying to be. */
@@ -311,7 +315,7 @@ export function connectToServer(
     return NO_LINE;
   }
   const url = serverSocketUrl(options.address);
-  const headers = serverAuthorizationHeaders(options.token);
+  const headers = serverAuthorizationHeaders(options.serviceToken);
   const hello = JSON.stringify({ type: 'hello', device: options.device });
   let socket: ServerSocket | undefined;
   /** The socket the server has said `ready` on, while it is still the one open. */

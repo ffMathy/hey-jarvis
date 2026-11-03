@@ -12,9 +12,10 @@ tools at all, on any device. Both travel over the WebSocket each device keeps
 open to sir's Jarvis server for as long as its app runs, across conversations
 and between them (`jarvis-server-link.ts`; the server's end is
 `mcp/mastra/verticals/api/live-socket.ts`). The line knows nothing of
-conversations: `connectToServer` opens it — with the JWT for the Cloudflare
-Zero Trust application in front of the server on the upgrade request, as
-`Authorization: Bearer` and `cf-access-token`, when the device has one
+conversations: `connectToServer` opens it — with the Cloudflare Access service
+token for the Zero Trust application in front of the server on the upgrade
+request, as `CF-Access-Client-Id` and `CF-Access-Client-Secret`, when the device
+has one
 (`serverAuthorizationHeaders`; React Native's `WebSocket` takes headers, a
 browser's cannot, so the headset and the phone's web build connect without
 them) — says `hello` with the device, and

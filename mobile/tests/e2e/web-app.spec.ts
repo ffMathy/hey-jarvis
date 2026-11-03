@@ -767,8 +767,8 @@ const CAMERA_CLOSED = 'Sir closed the camera without sending a photo.';
  * Opens the settings screen from the conversation, types the Jarvis server's address into it — or
  * clears it, given an empty one — and saves, leaving the app back on the conversation screen.
  *
- * The settings screen rather than the tour, because the tour does not ask for it: photos are
- * something to add once Jarvis works. See `settings-screen.tsx`.
+ * The settings screen rather than the tour: it is where the address is changed once Jarvis works,
+ * and the tour's own fields are covered on their own below.
  */
 async function saveJarvisServer(page: Page, address: string): Promise<void> {
   await page.getByTestId('open-settings').click();
@@ -1133,6 +1133,31 @@ test('refuses anything but a Jarvis server’s own https address, and saves noth
   await page.reload();
   await page.getByTestId('open-settings').click();
   await expect(page.getByTestId('jarvis-server')).toHaveValue(JARVIS_SERVER);
+});
+
+test('asks for the Jarvis server and its service token on the tour, and keeps them', async ({ page }) => {
+  const CLIENT_ID = '0123456789abcdef0123456789abcdef.access';
+  await page.goto('/');
+  await walkToCredentials(page);
+  await page.getByTestId('api-key').fill(API_KEY);
+  await page.getByTestId('agent-id').fill(AGENT_ID);
+  await page.getByTestId('jarvis-server').fill(JARVIS_SERVER);
+
+  // Half a service token is refused there and then, and the tour stays where it is.
+  await page.getByTestId('jarvis-server-client-id').fill(CLIENT_ID);
+  await page.getByTestId('save-settings').click();
+  await expect(page.getByTestId('settings-problem')).toContainText('both its Client ID and its Client Secret');
+  await expect(page.getByTestId('onboarding-credentials')).toBeVisible();
+
+  await page.getByTestId('jarvis-server-client-secret').fill('fedcba9876543210');
+  await page.getByTestId('save-settings').click();
+  await expect(page.getByTestId('hologram')).toBeVisible();
+
+  // Kept across a reload, and shown on the settings screen it is changed on afterwards.
+  await page.reload();
+  await page.getByTestId('open-settings').click();
+  await expect(page.getByTestId('jarvis-server')).toHaveValue(JARVIS_SERVER);
+  await expect(page.getByTestId('jarvis-server-client-id')).toHaveValue(CLIENT_ID);
 });
 
 test('leaves an address that could not be read alone when the rest of the settings are saved', async ({ page }) => {

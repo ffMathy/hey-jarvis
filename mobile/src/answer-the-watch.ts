@@ -1,10 +1,10 @@
-import type { ElevenLabsSettings } from 'hologram';
+import type { ElevenLabsSettings, JarvisServerServiceToken } from 'hologram';
 import { useEffect } from 'react';
 import { sendSettingsToTheWatch, whenTheWatchAsksForCredentials } from '../modules/jarvis-watch';
 
 /**
  * Answers the watch when it asks for the ElevenLabs credentials, and the Jarvis server's address and
- * token with them when the phone has them (`jarvis-server.ts`).
+ * service token with them when the phone has them (`jarvis-server.ts`).
  *
  * The watch asks on every start it makes with none — see `watch/src/phone-settings.ts` — and only
  * a *running* phone app can answer, because the credentials live behind the keystore in
@@ -26,14 +26,14 @@ import { sendSettingsToTheWatch, whenTheWatchAsksForCredentials } from '../modul
 export function useAnswerTheWatch(
   settings: ElevenLabsSettings | undefined,
   serverAddress: string | undefined,
-  serverToken: string | undefined,
+  serverServiceToken: JarvisServerServiceToken | undefined,
 ): void {
   useEffect(() => {
     if (!settings) {
       return;
     }
     return whenTheWatchAsksForCredentials(() => {
-      void sendSettingsToTheWatch(settings, serverAddress, serverToken);
+      void sendSettingsToTheWatch(settings, serverAddress, serverServiceToken);
     });
-  }, [settings, serverAddress, serverToken]);
+  }, [settings, serverAddress, serverServiceToken]);
 }

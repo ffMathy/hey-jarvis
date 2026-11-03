@@ -1,9 +1,10 @@
 import * as Linking from 'expo-linking';
-import type { ElevenLabsSettings } from 'hologram';
+import type { ElevenLabsSettings, JarvisServerServiceToken } from 'hologram';
 import { useCallback, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { type AssistantSettingsScreen, openAssistantSettings } from '../modules/jarvis-assistant';
 import { ElevenLabsFields } from './elevenlabs-fields';
+import type { JarvisServerChange } from './jarvis-server';
 import {
   AGENT_LINKS,
   CREDENTIAL_LINKS,
@@ -22,14 +23,19 @@ import { WatchCard } from './watch-card';
 interface OnboardingScreenProps {
   /** Credentials already stored, which happens when the tour is resumed. See {@link OnboardingGround}. */
   settings: ElevenLabsSettings | undefined;
+  /** The Jarvis server's address as it was read, if one was. See `jarvis-server.ts`. */
+  serverAddress: string | undefined;
+  /** The server's service token as it was read, if one was. */
+  serverServiceToken: JarvisServerServiceToken | undefined;
   /**
-   * Called the moment the two values parse, rather than at the end of the tour.
+   * Called the moment the values parse, rather than at the end of the tour — with the Jarvis
+   * server's change, if sir made one.
    *
    * The step after this one sends the user out to Android's settings, from where the app is not
    * guaranteed to come back alive. Holding a pasted API key in component state across that would
    * be a way to lose it.
    */
-  onSaveSettings: (settings: ElevenLabsSettings) => void;
+  onSaveSettings: (settings: ElevenLabsSettings, serverChange: JarvisServerChange | undefined) => void;
   /** The tour is over — walked to the end, or skipped from the last step. */
   onFinished: () => void;
   /** Off to sample mode, which is a side trip: the tour is still here to come back to. */
@@ -133,21 +139,35 @@ function AgentStep() {
   );
 }
 
+/** What the tour knows of the Jarvis server: both as they were read, either perhaps none. */
+interface TourServer {
+  address: string | undefined;
+  serviceToken: JarvisServerServiceToken | undefined;
+}
+
 function CredentialsStep({
   settings,
+  server,
   onSubmit,
 }: {
   settings: ElevenLabsSettings | undefined;
-  onSubmit: (settings: ElevenLabsSettings) => void;
+  server: TourServer;
+  onSubmit: (settings: ElevenLabsSettings, serverChange: JarvisServerChange | undefined) => void;
 }) {
   return (
     <>
       <Text style={styles.body}>
         Two values, both from the ElevenLabs dashboard: which agent is Jarvis, and a key that lets this app open a
-        conversation with him. The key goes to ElevenLabs and nowhere else.
+        conversation with him. The key goes to ElevenLabs and nowhere else. If you run your own Jarvis server, its
+        address goes below them; it can also be added later, by holding the screen he is on.
       </Text>
       <TourLinks links={CREDENTIAL_LINKS} />
-      <ElevenLabsFields settings={settings} submitLabel="Continue" onSubmit={onSubmit} />
+      <ElevenLabsFields
+        settings={settings}
+        server={{ storedAddress: server.address, storedServiceToken: server.serviceToken }}
+        submitLabel="Continue"
+        onSubmit={onSubmit}
+      />
     </>
   );
 }
@@ -163,7 +183,7 @@ function CredentialsStep({
  * It answers again when the app comes back to the foreground, because that is the only moment the
  * answer can have changed without anything here being called. See `use-assistant-registration.ts`.
  */
-function AssistantStep({ settings }: { settings: ElevenLabsSettings | undefined }) {
+function AssistantStep({ settings, server }: { settings: ElevenLabsSettings | undefined; server: TourServer }) {
   const { roleHeld, voiceInteractionActive, settingsReachable } = useAssistantRegistration();
   const [went, setWent] = useState<AssistantSettingsScreen | undefined>(undefined);
   const [problem, setProblem] = useState<string | undefined>(undefined);
@@ -190,7 +210,7 @@ function AssistantStep({ settings }: { settings: ElevenLabsSettings | undefined 
             Everything else works the same.
           </Text>
         )}
-        <WatchCard settings={settings} />
+        <WatchCard settings={settings} serverAddress={server.address} serverServiceToken={server.serviceToken} />
       </>
     );
   }
@@ -227,7 +247,7 @@ function AssistantStep({ settings }: { settings: ElevenLabsSettings | undefined 
         </Text>
       ) : null}
 
-      <WatchCard settings={settings} />
+      <WatchCard settings={settings} serverAddress={server.address} serverServiceToken={server.serviceToken} />
     </>
   );
 }
@@ -244,7 +264,15 @@ function AssistantStep({ settings }: { settings: ElevenLabsSettings | undefined 
  * before it can answer is an assistant that answers late, see `app.tsx` — and a wizard is a
  * `useState` holding which of three screens is showing.
  */
-export function OnboardingScreen({ settings, onSaveSettings, onFinished, onSkipToSample }: OnboardingScreenProps) {
+export function OnboardingScreen({
+  settings,
+  serverAddress,
+  serverServiceToken,
+  onSaveSettings,
+  onFinished,
+  onSkipToSample,
+}: OnboardingScreenProps) {
+  const server = { address: serverAddress, serviceToken: serverServiceToken };
   /**
    * The shape of the tour, fixed when it opens rather than recomputed as it is walked.
    *
@@ -279,8 +307,8 @@ export function OnboardingScreen({ settings, onSaveSettings, onFinished, onSkipT
 
   /** The credentials step saves and moves on in one action, so its button is the form's. */
   const saveAndGoOn = useCallback(
-    (saved: ElevenLabsSettings) => {
-      onSaveSettings(saved);
+    (saved: ElevenLabsSettings, serverChange: JarvisServerChange | undefined) => {
+      onSaveSettings(saved, serverChange);
       forward();
     },
     [onSaveSettings, forward],
@@ -294,8 +322,8 @@ export function OnboardingScreen({ settings, onSaveSettings, onFinished, onSkipT
       <Text style={styles.title}>{TITLES[step]}</Text>
 
       {step === 'agent' ? <AgentStep /> : null}
-      {step === 'credentials' ? <CredentialsStep settings={settings} onSubmit={saveAndGoOn} /> : null}
-      {step === 'assistant' ? <AssistantStep settings={settings} /> : null}
+      {step === 'credentials' ? <CredentialsStep settings={settings} server={server} onSubmit={saveAndGoOn} /> : null}
+      {step === 'assistant' ? <AssistantStep settings={settings} server={server} /> : null}
 
       {/*
         The credentials step's own button is what moves it on, so it does not get a second one.
