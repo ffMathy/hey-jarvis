@@ -16,6 +16,7 @@ import {
   MAX_FRAME_BYTES,
   MAX_GLANCE_REQUEST_ID_LENGTH,
   MAX_LIVE_SOCKETS,
+  PAIRED_LIVE_SOCKET_PATH,
 } from './live-socket.js';
 
 let server: Server | undefined;
@@ -426,5 +427,81 @@ describe('the glance on the live socket', () => {
       actionId: 'x'.repeat(64),
     });
     expect(Buffer.byteLength(longest)).toBeLessThan(MAX_FRAME_BYTES);
+  });
+});
+
+describe('the paired live socket', () => {
+  const PAIRED_TOKEN = 'p'.repeat(43);
+  const isPairedDevice = async (token: string) => token === PAIRED_TOKEN;
+
+  function pairedHello(token?: string): string {
+    return JSON.stringify({ type: 'hello', device: 'phone', ...(token === undefined ? {} : { token }) });
+  }
+
+  it('says ready to a hello with a paired device’s token, and sends it every live event', async () => {
+    const { url } = await serve({ isPairedDevice });
+    const socket = await connect(url(PAIRED_LIVE_SOCKET_PATH));
+
+    const ready = nextEvent(socket);
+    socket.send(pairedHello(PAIRED_TOKEN));
+    expect(await ready).toEqual({ message: { type: 'ready' } });
+
+    const sent = nextEvent(socket);
+    publishLiveEvent({ type: 'affectedEntities', entities: [{ id: 'calendar.family' }] });
+    expect(await sent).toEqual({ message: { type: 'affectedEntities', entities: [{ id: 'calendar.family' }] } });
+  });
+
+  it('closes a hello with no token, or one no paired device has, and sends it nothing', async () => {
+    const { url } = await serve({ isPairedDevice });
+    const withNone = await connect(url(PAIRED_LIVE_SOCKET_PATH));
+    const withMadeUp = await connect(url(PAIRED_LIVE_SOCKET_PATH));
+
+    const closedWithNone = nextEvent(withNone);
+    const closedWithMadeUp = nextEvent(withMadeUp);
+    withNone.send(pairedHello());
+    withMadeUp.send(pairedHello('m'.repeat(43)));
+
+    expect(await closedWithNone).toEqual({ closed: LIVE_SOCKET_CLOSE_CODES.unpaired });
+    expect(await closedWithMadeUp).toEqual({ closed: LIVE_SOCKET_CLOSE_CODES.unpaired });
+    expect(live?.listening).toBe(0);
+  });
+
+  it('acts on nothing a socket sends while its token is still being checked', async () => {
+    let letThrough: (paired: boolean) => void = () => undefined;
+    const { url } = await serve({
+      isPairedDevice: () =>
+        new Promise<boolean>((resolve) => {
+          letThrough = resolve;
+        }),
+      currentGlance: async () => GLANCE,
+    });
+    const socket = await connect(url(PAIRED_LIVE_SOCKET_PATH));
+    const closed = nextEvent(socket);
+
+    socket.send(pairedHello('m'.repeat(43)));
+    socket.send(
+      JSON.stringify({ type: 'glanceAction', requestId: 'r1', glanceId: GLANCE.id, actionId: GLANCE.actions[0]?.id }),
+    );
+    await Bun.sleep(50);
+    letThrough(false);
+
+    expect(await closed).toEqual({ closed: LIVE_SOCKET_CLOSE_CODES.unpaired });
+    expect(ranRequests).toEqual([]);
+  });
+
+  it('asks nothing of a hello on the open path, which Access stands in front of', async () => {
+    const asked: string[] = [];
+    const { url } = await serve({
+      isPairedDevice: async (token) => {
+        asked.push(token);
+        return false;
+      },
+    });
+    const socket = await connect(url());
+
+    const ready = nextEvent(socket);
+    socket.send(pairedHello('m'.repeat(43)));
+    expect(await ready).toEqual({ message: { type: 'ready' } });
+    expect(asked).toEqual([]);
   });
 });

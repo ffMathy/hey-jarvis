@@ -2,6 +2,7 @@ import { Conversation } from '@elevenlabs/client';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
 import type { AgentTrackRoom } from '../agent-audio-track';
+import { elevenLabsCredentials } from '../conversation-token';
 import type { ElevenLabsSettings } from '../elevenlabs-settings';
 import { DEADLINE_PROBLEM } from '../failure-text';
 import { createJarvisSession } from '../jarvis-session';
@@ -121,8 +122,8 @@ export function useJarvisSession(options: JarvisSessionOptions): JarvisConversat
     const { findRoom, followAgentVoice, captions, untilOnline } = latest.current;
     const onADevice = Platform.OS !== 'web';
     return createJarvisSession({
-      get settings() {
-        return latest.current.settings;
+      get credentials() {
+        return elevenLabsCredentials(latest.current.settings);
       },
       participantName: latest.current.participantName,
       startSession,

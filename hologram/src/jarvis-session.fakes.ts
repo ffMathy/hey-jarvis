@@ -1,5 +1,5 @@
 import type { AgentTrackRoom } from './agent-audio-track';
-import { HEADSET_PARTICIPANT_NAME } from './conversation-token';
+import { elevenLabsCredentials, HEADSET_PARTICIPANT_NAME } from './conversation-token';
 import { createJarvisSession } from './jarvis-session';
 import type {
   CallAudio,
@@ -580,7 +580,7 @@ export function createHarness(
   let followsStopped = 0;
 
   const session = createJarvisSession({
-    settings: { apiKey: 'sk_a-secret-key', agentId: 'agent_01jz0123456789' },
+    credentials: elevenLabsCredentials({ apiKey: 'sk_a-secret-key', agentId: 'agent_01jz0123456789' }),
     participantName: HEADSET_PARTICIPANT_NAME,
     startSession: sdk.startSession,
     greeting: greeting.player,

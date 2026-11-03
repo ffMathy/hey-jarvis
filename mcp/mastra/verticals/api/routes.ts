@@ -24,6 +24,7 @@ import {
   registerEvaluationWebhookApi,
   WEBHOOKS_PATH,
 } from './evaluation-webhook.js';
+import { type PairedDeviceDependencies, registerPairedDeviceApi } from './paired-devices.js';
 
 /**
  * Standard API response structure for workflow endpoints.
@@ -536,6 +537,8 @@ export interface ApiRouteDependencies {
   isLiveJarvisConversation?: LiveConversationCheck;
   /** What the post-call webhook starts a fix with, and the clock it checks signatures against. */
   evaluationWebhook?: EvaluationWebhookDependencies;
+  /** Where paired devices are kept, and how their conversations are minted. */
+  pairedDevices?: PairedDeviceDependencies;
 }
 
 /**
@@ -574,6 +577,11 @@ export function registerApiRoutes(router: Router, dependencies: ApiRouteDependen
     method: 'POST',
     path: registerEvaluationWebhookApi(router, dependencies.evaluationWebhook),
   });
+
+  // Devices paired with this server, which then starts their conversations: the Quest headset
+  for (const path of registerPairedDeviceApi(router, dependencies.pairedDevices)) {
+    registeredRoutes.push({ method: 'POST', path });
+  }
 
   // Add more workflow APIs here as needed:
   // registeredRoutes.push({ method: 'POST', path: registerWorkflowApi(router, { path: '/api/weather', workflow: weatherWorkflow }) });

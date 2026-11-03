@@ -3,8 +3,8 @@ import {
   type AgentActivity,
   type AgentTrackRoom,
   activityOfMessage,
+  type ConversationCredentials,
   createJarvisSession,
-  type ElevenLabsSettings,
   type GreetingPlayer,
   HEADSET_PARTICIPANT_NAME,
   type JarvisServerMessage,
@@ -31,7 +31,8 @@ export const HEADSET_OFFLINE_PROBLEM =
 
 /** What the room hands over for each session; the rest is the headset's and is filled in here. */
 export interface HeadsetSessionOptions {
-  settings: ElevenLabsSettings;
+  /** Where each conversation's token comes from: the paired server, or a key this page holds. */
+  credentials: ConversationCredentials;
   /** Conversation.startSession from '@elevenlabs/client'. */
   startSession: StartSession;
   greeting: GreetingPlayer;

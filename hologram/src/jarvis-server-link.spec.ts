@@ -228,6 +228,27 @@ describe('a line to the server', () => {
     expect(sockets).toHaveLength(9);
   });
 
+  it('opens on the paired path with the device token in its hello, and no Access headers of its own', () => {
+    const { platform, latest } = fakePlatform();
+    connectToServer({ address: ADDRESS, device: 'phone', deviceToken: 'p'.repeat(43) }, platform);
+
+    const socket = latest();
+    expect(socket.url).toBe('wss://jarvis.example.com/api/paired/live');
+    expect(socket.headers).toEqual({});
+    socket.open();
+    expect(socket.sent.map((frame) => JSON.parse(frame))).toEqual([
+      { type: 'hello', device: 'phone', token: 'p'.repeat(43) },
+    ]);
+  });
+
+  it('never tries again once the server says the device is not paired', () => {
+    const { platform, sockets, advance, latest } = fakePlatform();
+    connectToServer({ address: ADDRESS, device: 'phone', deviceToken: 'p'.repeat(43) }, platform);
+    latest().drop(4401);
+    advance(LONGEST_RETRY_MS * 10);
+    expect(sockets).toHaveLength(1);
+  });
+
   it('never tries again after the server could not read its hello', () => {
     const { platform, sockets, advance, latest } = fakePlatform();
     connectToServer({ address: ADDRESS, device: 'watch' }, platform);

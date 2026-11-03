@@ -9,6 +9,7 @@ import { EntityNoiseBaselineStorage } from './entity-noise-baseline.js';
 import { ImportantChangeStorage } from './important-changes.js';
 import { withFallbacks } from './observability.js';
 import { ObservabilityLogStorage } from './observability-logs.js';
+import { PairedDeviceStorage } from './paired-devices.js';
 import { SQLITE_BUSY_TIMEOUT_MS } from './sqlite-client.js';
 import { SubscriptionStorage } from './subscriptions.js';
 import { TokenUsageStorage } from './token-usage.js';
@@ -235,6 +236,16 @@ export async function getImportantChangeStorage(): Promise<ImportantChangeStorag
   return importantChangeStorageInstance;
 }
 
+let pairedDeviceStorageInstance: PairedDeviceStorage | null = null;
+
+export async function getPairedDeviceStorage(): Promise<PairedDeviceStorage> {
+  if (!pairedDeviceStorageInstance) {
+    await ensureDatabaseDirectory();
+    pairedDeviceStorageInstance = new PairedDeviceStorage(getSqlDatabasePath());
+  }
+  return pairedDeviceStorageInstance;
+}
+
 export { CredentialsStorage } from './credentials.js';
 export { type DeviceStateChange, DeviceStateStorage, type StoredDeviceState } from './device-state.js';
 export { EmailStateStorage, type LastEmailState } from './email-state.js';
@@ -245,6 +256,7 @@ export {
 } from './entity-noise-baseline.js';
 export { type ImportantChange, ImportantChangeStorage } from './important-changes.js';
 export { ObservabilityLogStorage } from './observability-logs.js';
+export { type PairedDevice, PairedDeviceStorage } from './paired-devices.js';
 export {
   type EmbeddedSubscription,
   type NewSubscription,

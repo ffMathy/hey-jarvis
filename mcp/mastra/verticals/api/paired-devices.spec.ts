@@ -1,0 +1,268 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+import express from 'express';
+import { mkdtemp, rm } from 'fs/promises';
+import type { Server } from 'http';
+import { tmpdir } from 'os';
+import path from 'path';
+import { PairedDeviceStorage } from '../../storage/paired-devices.js';
+import {
+  type ConversationCredentialRequest,
+  ConversationUnavailableError,
+  createElevenLabsCredentialMinter,
+  DEVICE_PAIRING_PATH,
+  type MintConversationCredential,
+  PAIRED_CONVERSATION_ROUTE,
+  registerPairedDeviceApi,
+} from './paired-devices.js';
+
+/** A fake of `fetch`: Bun's carries `preconnect` beside its call signature, so a bare function is not one. */
+function fakeFetch(answer: (url: string | URL | Request, init?: RequestInit) => Promise<Response>): typeof fetch {
+  return Object.assign(answer, { preconnect: fetch.preconnect });
+}
+
+const HEADSET_PAGE = 'https://ffmathy.github.io';
+const STRANGER_PAGE = 'https://evil.example';
+
+const databaseDirectory = await mkdtemp(path.join(tmpdir(), 'paired-devices-'));
+let databaseCount = 0;
+let storage: PairedDeviceStorage;
+let minted: ConversationCredentialRequest[] = [];
+let mint: MintConversationCredential;
+let server: Server;
+let baseUrl: string;
+
+beforeEach(() => {
+  databaseCount++;
+  storage = new PairedDeviceStorage(path.join(databaseDirectory, `paired-${databaseCount}.db`));
+  minted = [];
+  mint = async (request) => {
+    minted.push(request);
+    return request.transport === 'webrtc' ? { token: 'livekit-token' } : { signedUrl: 'wss://example/signed' };
+  };
+});
+
+beforeAll(async () => {
+  const app = express();
+  // The server's own JSON parser runs in front of every route, as in `mcp-server.ts`.
+  app.use(express.json());
+  const router = express.Router();
+  registerPairedDeviceApi(router, {
+    store: async () => storage,
+    mintConversationCredential: (request) => mint(request),
+  });
+  app.use(router);
+  server = app.listen(0, '127.0.0.1');
+  await new Promise<void>((resolve) => server.once('listening', () => resolve()));
+  const address = server.address();
+  if (address === null || typeof address === 'string') throw new Error('Expected a TCP port');
+  baseUrl = `http://127.0.0.1:${address.port}`;
+});
+
+afterAll(async () => {
+  server.close();
+  await rm(databaseDirectory, { force: true, recursive: true });
+});
+
+/** Pairs as the headset's page does: a simple request, plain text, from the page's origin. */
+function pair(name: string, origin: string | null = HEADSET_PAGE) {
+  return fetch(`${baseUrl}${DEVICE_PAIRING_PATH}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain', ...(origin === null ? {} : { Origin: origin }) },
+    body: name,
+  });
+}
+
+async function pairedToken(name = 'Quest 3'): Promise<string> {
+  const response = await pair(name);
+  const { data } = (await response.json()) as { data: { token: string } };
+  return data.token;
+}
+
+function askForConversation(token: string | undefined, body: unknown) {
+  return fetch(`${baseUrl}${PAIRED_CONVERSATION_ROUTE}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Origin: HEADSET_PAGE,
+      ...(token === undefined ? {} : { Authorization: `Bearer ${token}` }),
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+describe('pairing a device', () => {
+  it('hands the page a token it can read, and lists the device without it', async () => {
+    const response = await pair('Quest 3');
+
+    expect(response.status).toBe(201);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(HEADSET_PAGE);
+    expect(response.headers.get('Access-Control-Allow-Credentials')).toBe('true');
+    const { data } = (await response.json()) as { data: { id: string; token: string } };
+    expect(data.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+
+    const listed = await (await fetch(`${baseUrl}${DEVICE_PAIRING_PATH}`)).json();
+    expect(listed.data).toEqual([{ id: data.id, name: 'Quest 3', pairedAt: expect.any(String), lastUsedAt: null }]);
+    expect(JSON.stringify(listed)).not.toContain(data.token);
+  });
+
+  it('pairs nothing for a page that is not one of the web apps', async () => {
+    const response = await pair('Not mine', STRANGER_PAGE);
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull();
+    expect(await storage.list()).toEqual([]);
+  });
+
+  it('pairs nothing for a request that names no page', async () => {
+    expect((await pair('Not mine', null)).status).toBe(403);
+    expect(await storage.list()).toEqual([]);
+  });
+
+  it('lists a device that gives no name under a name of its own', async () => {
+    await pair('   ');
+    expect((await storage.list()).map((device) => device.name)).toEqual(['A device']);
+  });
+});
+
+describe('a paired device asking for a conversation', () => {
+  it('is minted a token for a spoken conversation, under its own name', async () => {
+    const token = await pairedToken();
+
+    const response = await askForConversation(token, { transport: 'webrtc', participantName: 'jarvis-vr' });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(HEADSET_PAGE);
+    expect((await response.json()).data).toEqual({ token: 'livekit-token' });
+    expect(minted).toEqual([{ transport: 'webrtc', participantName: 'jarvis-vr' }]);
+    expect((await storage.list())[0]?.lastUsedAt).not.toBeNull();
+  });
+
+  it('is minted a signed URL for a typed conversation', async () => {
+    const token = await pairedToken();
+
+    const response = await askForConversation(token, { transport: 'websocket', participantName: 'jarvis-vr' });
+
+    expect((await response.json()).data).toEqual({ signedUrl: 'wss://example/signed' });
+  });
+
+  it('is refused without a token, and with one nobody was given', async () => {
+    const withNone = await askForConversation(undefined, { transport: 'webrtc', participantName: 'jarvis-vr' });
+    const withMadeUp = await askForConversation('a'.repeat(43), { transport: 'webrtc', participantName: 'jarvis-vr' });
+
+    expect([withNone.status, withMadeUp.status]).toEqual([401, 401]);
+    expect(minted).toEqual([]);
+  });
+
+  it('is refused once it has been unpaired', async () => {
+    const pairing = await (await pair('Lost headset')).json();
+
+    const unpaired = await fetch(`${baseUrl}${DEVICE_PAIRING_PATH}/${pairing.data.id}`, { method: 'DELETE' });
+    const response = await askForConversation(pairing.data.token, {
+      transport: 'webrtc',
+      participantName: 'jarvis-vr',
+    });
+
+    expect(unpaired.status).toBe(200);
+    expect(response.status).toBe(401);
+    expect(minted).toEqual([]);
+  });
+
+  it('says what went wrong when no conversation can be had', async () => {
+    const token = await pairedToken();
+    mint = async () => {
+      throw new ConversationUnavailableError('ElevenLabs could not start a conversation (HTTP 402).');
+    };
+
+    const response = await askForConversation(token, { transport: 'webrtc', participantName: 'jarvis-vr' });
+
+    expect(response.status).toBe(502);
+    expect((await response.json()).message).toBe('ElevenLabs could not start a conversation (HTTP 402).');
+  });
+
+  it('is refused a name that is not one of the devices', async () => {
+    const token = await pairedToken();
+
+    const response = await askForConversation(token, { transport: 'webrtc', participantName: 'anything&agent_id=x' });
+
+    expect(response.status).toBe(400);
+    expect(minted).toEqual([]);
+  });
+
+  it('answers the preflight its Authorization header needs', async () => {
+    const preflight = await fetch(`${baseUrl}${PAIRED_CONVERSATION_ROUTE}`, {
+      method: 'OPTIONS',
+      headers: { Origin: HEADSET_PAGE, 'Access-Control-Request-Headers': 'authorization,content-type' },
+    });
+
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('Access-Control-Allow-Headers')).toContain('Authorization');
+  });
+});
+
+describe('minting with ElevenLabs', () => {
+  const variables = ['HEY_JARVIS_ELEVENLABS_API_KEY', 'HEY_JARVIS_ELEVENLABS_AGENT_ID'] as const;
+  const saved = Object.fromEntries(variables.map((name) => [name, process.env[name]]));
+
+  beforeEach(() => {
+    process.env.HEY_JARVIS_ELEVENLABS_API_KEY = 'sk_server-key';
+    process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID = 'agent_01jz';
+  });
+
+  afterAll(() => {
+    for (const name of variables) {
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
+    }
+  });
+
+  it('asks for the agent with the server key, under the device name', async () => {
+    const asked: { url: string; key: string | null }[] = [];
+    const minter = createElevenLabsCredentialMinter(
+      fakeFetch(async (url, init) => {
+        asked.push({ url: String(url), key: new Headers(init?.headers).get('xi-api-key') });
+        return Response.json({ token: 'livekit-token', conversation_id: 'conv_1' });
+      }),
+    );
+
+    expect(await minter({ transport: 'webrtc', participantName: 'jarvis-vr' })).toEqual({ token: 'livekit-token' });
+    expect(asked).toEqual([
+      {
+        url: 'https://api.elevenlabs.io/v1/convai/conversation/token?agent_id=agent_01jz&participant_name=jarvis-vr',
+        key: 'sk_server-key',
+      },
+    ]);
+  });
+
+  it('refuses a signed URL that is not a wss:// one', async () => {
+    const minter = createElevenLabsCredentialMinter(fakeFetch(async () => Response.json({ signed_url: 'ws://plain' })));
+
+    await expect(minter({ transport: 'websocket', participantName: 'jarvis-vr' })).rejects.toBeInstanceOf(
+      ConversationUnavailableError,
+    );
+  });
+
+  it('says ElevenLabs could not be reached when the request never got an answer', async () => {
+    const minter = createElevenLabsCredentialMinter(
+      fakeFetch(async () => {
+        throw new TypeError('fetch failed');
+      }),
+    );
+
+    await expect(minter({ transport: 'webrtc', participantName: 'jarvis-vr' })).rejects.toThrow(
+      'Your Jarvis server could not reach ElevenLabs.',
+    );
+  });
+
+  it('starts nothing on a server without the agent', async () => {
+    delete process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID;
+    const minter = createElevenLabsCredentialMinter(
+      fakeFetch(async () => {
+        throw new Error('ElevenLabs should not have been asked');
+      }),
+    );
+
+    await expect(minter({ transport: 'webrtc', participantName: 'jarvis-vr' })).rejects.toBeInstanceOf(
+      ConversationUnavailableError,
+    );
+  });
+});

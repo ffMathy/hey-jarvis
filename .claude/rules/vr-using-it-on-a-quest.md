@@ -10,10 +10,26 @@ paths:
 Open **https://ffmathy.github.io/hey-jarvis/vr/** in Quest Browser. Quest 3
 and 3S are the target; Quest 2 and Pro work, without the room scan.
 
-1. **The ElevenLabs agent.** The page asks for an API key and an agent ID once,
-   and checks them by minting a token before keeping them. They are the phone's
-   settings, stored the phone's way on the same origin, so a browser that has
-   the phone's web build set up already has them.
+1. **Your Jarvis server, or an ElevenLabs key.** Either is set up once, and
+   the page offers both until one is:
+   - **Pair this headset** with your Jarvis server (`page/pairing.ts`): type its
+     address, press Pair. If Cloudflare Access is in front of it and the browser
+     has not signed in yet, the page says so and links to the sign-in; sign in,
+     press Pair again. From then on the server starts every conversation
+     (`conversation/paired-credentials.ts`), no ElevenLabs key is typed or kept
+     here, and Access's sign-in is never needed again — not for a conversation,
+     and not for the line to the server either, which a paired headset opens on
+     `/api/paired/live` with its token (so the page offers no sign-in for it).
+     Pairing reloads the page, to open that line. The
+     address is kept where the phone's web build keeps it, and the device token
+     under `jarvis.headset-device-token`. A headset unpaired on the server says
+     so in the room, and is paired again from the page. See "Pairing a device" in
+     `.claude/rules/mcp-mcp-server-access.md` for the server's side, and the Access
+     bypass `/api/paired/*` needs.
+   - **Or an ElevenLabs API key and agent ID**, checked by minting a token before
+     they are kept. They are the phone's settings, stored the phone's way on the
+     same origin, so a browser that has the phone's web build set up already has
+     them. A paired server wins over a saved key.
 2. **Getting ready.** The wake-word models load with a progress bar while you
    read the page.
 3. **Allow the microphone** — the first tap. Skipped when the browser says the
