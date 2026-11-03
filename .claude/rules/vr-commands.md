@@ -12,6 +12,8 @@ timeout 60  bunx turbo initialize --filter=vr   # the wasm into public/vendor/ (
 timeout 300 bunx turbo build --filter=vr        # initialize, lint, typecheck, then vite build → dist/vr
 timeout 300 bunx turbo test --filter=vr         # the offline unit tests
 timeout 1200 bunx turbo e2e --filter=vr         # the browser tests, against a fresh build
+timeout 600 bunx turbo e2e --filter=vr -- tests/e2e/page.spec.ts  # one spec file: a single --, since with
+                                                # two Playwright ignores the file and runs them all
 timeout 60  bunx turbo lint --filter=vr
 bunx turbo serve --filter=vr                    # Vite's dev server on the LAN (persistent: run it in the background)
 timeout 3600 bun vr/.scripts/render-demo.ts     # the demo video, after a build (see "The demo video")
