@@ -74,7 +74,23 @@ headset keeps a token of the server's own.
   start a conversation — with a message for the device to show. The token is the credential, so the
   headset never has to sign in to Access again once it is paired. In Zero Trust → Access →
   Applications, add a self-hosted application for `<your MCP hostname>/api/paired/*` with a single
-  **Bypass** policy (include: Everyone); it covers the preflight its `Authorization` header needs.
+  **Bypass** policy (include: Everyone); it covers the preflight its `Authorization` header needs,
+  and the paired socket below.
+- **`/api/paired/live` is the WebSocket API for paired devices** (`PAIRED_LIVE_SOCKET_PATH` in
+  `live-socket.ts`): the same frames as `/api/live`, but its hello has to carry the device's token
+  (`{"type":"hello","device":"phone","token":"…"}`), which the server checks itself, and a socket
+  whose hello does not is closed `4401` — never tried again by the device. Frames sent before the
+  check answers are ignored. A paired phone or headset therefore needs neither an Access JWT nor
+  Access's cookie for its line, both of which run out with Access's session.
+- **The phone pairs through its browser** (`GET /api/devices/pair`, `PHONE_PAIRING_ROUTE`), behind
+  Access: a native app holds no Access cookie, so the phone's settings open this page in the browser,
+  Access signs sir in, and its button `POST`s to the same path. That is refused `403` unless
+  `Origin` names this server's own `Host` (and `Sec-Fetch-Site`, where sent, is `same-origin`), so a
+  form elsewhere cannot pair a device; then the device is paired and the browser is sent, `303`, to
+  `heyjarvis://paired#token=…` — always the app's own scheme, never a link the request names. The
+  page is served `no-store`, `X-Frame-Options: DENY` and a CSP that allows no frame. The check reads
+  `Host`, so the tunnel must pass the public hostname through (cloudflared's default; leave its
+  `httpHostHeader` unset).
 
 **`/webhooks/*` must bypass Access too.** Every webhook is served under it — today only ElevenLabs'
 post-call webhook, `/webhooks/elevenlabs/post-call` — so one self-hosted application for

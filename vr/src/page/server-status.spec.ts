@@ -36,7 +36,7 @@ describe('the server’s status on the page', () => {
   it('offers signing in only while the line is not connected', () => {
     const elements = fakeElements();
     const { line, setConnected } = fakeLine();
-    showServerStatus(elements, 'https://jarvis.example.com', line);
+    showServerStatus(elements, { address: 'https://jarvis.example.com', paired: false }, line);
 
     expect(elements.section.hidden).toBe(false);
     expect(elements.signInLink.href).toBe('https://jarvis.example.com/api/live');
@@ -51,10 +51,21 @@ describe('the server’s status on the page', () => {
     expect(elements.signIn.hidden).toBe(false);
   });
 
+  it('never offers signing in to a paired headset, whose line Access does not stand in front of', () => {
+    const elements = fakeElements();
+    const { line, setConnected } = fakeLine();
+    showServerStatus(elements, { address: 'https://jarvis.example.com', paired: true }, line);
+
+    expect(elements.signIn.hidden).toBe(true);
+    setConnected(true);
+    setConnected(false);
+    expect(elements.signIn.hidden).toBe(true);
+  });
+
   it('shows nothing about a server the page has no address for', () => {
     const elements = fakeElements();
     elements.section.hidden = false;
-    showServerStatus(elements, undefined, fakeLine().line);
+    showServerStatus(elements, { address: undefined, paired: false }, fakeLine().line);
     expect(elements.section.hidden).toBe(true);
   });
 });

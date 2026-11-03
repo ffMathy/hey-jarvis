@@ -17,7 +17,10 @@ and 3S are the target; Quest 2 and Pro work, without the room scan.
      has not signed in yet, the page says so and links to the sign-in; sign in,
      press Pair again. From then on the server starts every conversation
      (`conversation/paired-credentials.ts`), no ElevenLabs key is typed or kept
-     here, and Access's sign-in is never needed for a conversation again. The
+     here, and Access's sign-in is never needed again — not for a conversation,
+     and not for the line to the server either, which a paired headset opens on
+     `/api/paired/live` with its token (so the page offers no sign-in for it).
+     Pairing reloads the page, to open that line. The
      address is kept where the phone's web build keeps it, and the device token
      under `jarvis.headset-device-token`. A headset unpaired on the server says
      so in the room, and is paired again from the page. See "Pairing a device" in

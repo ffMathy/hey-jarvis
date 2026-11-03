@@ -7,6 +7,7 @@ import { initialDebugState, publishDebugState } from './debug-hook';
 import { sampleEntityStorage } from './entities/sample-entities';
 import { createBrowserMicrophoneKeeper } from './page/microphone';
 import { type RoomOutcome, startPage } from './page/page';
+import { loadPairing } from './page/pairing';
 import type { PreparationTask } from './page/preparation';
 import { type KeyValueStorage, loadServerAddress } from './page/settings';
 import { loadVoiceFromWhereHeStands } from './page/voice-setting';
@@ -105,7 +106,9 @@ const browserStorage: KeyValueStorage = {
  * this origin by the phone's web build, it is no line at all.
  */
 const serverAddress = loadServerAddress(browserStorage);
-const serverLink = connectToServer({ address: serverAddress, device: 'vr' });
+/** A paired headset opens its line with its own token, which needs no Access cookie (`page/pairing.ts`). */
+const pairing = loadPairing(browserStorage);
+const serverLink = connectToServer({ address: serverAddress, device: 'vr', deviceToken: pairing?.deviceToken });
 
 /**
  * His voice from where he stands, made once for the page: it can take the greeting's element into
@@ -297,7 +300,7 @@ async function openConversationRoom(
 
 startPage(document, {
   storage: browserStorage,
-  server: { address: serverAddress, line: serverLink },
+  server: { address: serverAddress, paired: pairing !== undefined, line: serverLink },
   // Handed on as the plain global and only ever called as a plain function, which is how the
   // browser's fetch expects to be called.
   fetch,

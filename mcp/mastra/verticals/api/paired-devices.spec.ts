@@ -12,6 +12,8 @@ import {
   DEVICE_PAIRING_PATH,
   type MintConversationCredential,
   PAIRED_CONVERSATION_ROUTE,
+  PHONE_APP_PAIRED_URL,
+  PHONE_PAIRING_ROUTE,
   registerPairedDeviceApi,
 } from './paired-devices.js';
 
@@ -264,5 +266,43 @@ describe('minting with ElevenLabs', () => {
     await expect(minter({ transport: 'webrtc', participantName: 'jarvis-vr' })).rejects.toBeInstanceOf(
       ConversationUnavailableError,
     );
+  });
+});
+
+describe('pairing the phone through its browser', () => {
+  function pressPair(headers: Record<string, string>) {
+    return fetch(`${baseUrl}${PHONE_PAIRING_ROUTE}`, { method: 'POST', headers, redirect: 'manual' });
+  }
+
+  it('shows a page with a button, kept out of frames and caches', async () => {
+    const response = await fetch(`${baseUrl}${PHONE_PAIRING_ROUTE}`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('X-Frame-Options')).toBe('DENY');
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(await response.text()).toContain(`<form method="post" action="${PHONE_PAIRING_ROUTE}">`);
+    expect(await storage.list()).toEqual([]);
+  });
+
+  it('pairs the phone when the page’s own button is pressed, and hands the app its token', async () => {
+    const host = new URL(baseUrl).host;
+    const response = await pressPair({ Origin: `https://${host}`, Host: host, 'Sec-Fetch-Site': 'same-origin' });
+
+    expect(response.status).toBe(303);
+    const location = new URL(response.headers.get('Location') ?? '');
+    expect(`${location.protocol}//${location.host}`).toBe(PHONE_APP_PAIRED_URL);
+    const token = new URLSearchParams(location.hash.slice(1)).get('token') ?? '';
+    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(await storage.authenticate(token)).toMatchObject({ name: 'Android phone' });
+  });
+
+  it('pairs nothing for a press from another site', async () => {
+    const host = new URL(baseUrl).host;
+    const fromElsewhere = await pressPair({ Origin: STRANGER_PAGE, 'Sec-Fetch-Site': 'cross-site' });
+    const withNoOrigin = await pressPair({});
+    const sameHostCrossSite = await pressPair({ Origin: `https://${host}`, 'Sec-Fetch-Site': 'cross-site' });
+
+    expect([fromElsewhere.status, withNoOrigin.status, sameHostCrossSite.status]).toEqual([403, 403, 403]);
+    expect(await storage.list()).toEqual([]);
   });
 });

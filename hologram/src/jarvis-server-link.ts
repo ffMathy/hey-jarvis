@@ -36,6 +36,13 @@ import {
 /** Where the server serves the socket, after its address. Spelled as the server spells it. */
 export const JARVIS_SERVER_SOCKET_PATH = '/api/live';
 
+/**
+ * Where a device paired with the server opens its socket instead (`PAIRED_LIVE_SOCKET_PATH` in
+ * `mcp`): a path Cloudflare Access lets through, where the server itself checks the device's token,
+ * sent in the hello. So a paired device needs no Access JWT and no cookie, which expire.
+ */
+export const JARVIS_SERVER_PAIRED_SOCKET_PATH = '/api/paired/live';
+
 /** Which device a line is from, as the server's log names it. */
 export type JarvisDevice = 'phone' | 'watch' | 'vr';
 
@@ -44,7 +51,7 @@ export type JarvisDevice = 'phone' | 'watch' | 'vr';
  * which it would only refuse again. Every other close — a dropped connection, a server restarting —
  * is tried again.
  */
-export const FINAL_SERVER_SOCKET_CLOSE_CODES: ReadonlySet<number> = new Set([4400]);
+export const FINAL_SERVER_SOCKET_CLOSE_CODES: ReadonlySet<number> = new Set([4400, 4401]);
 
 /** How long the first retry waits; each one after waits twice as long as the last. */
 export const FIRST_RETRY_MS = 1_000;
@@ -137,6 +144,12 @@ export interface ServerLinkOptions {
    * {@link serverAuthorizationHeaders} for how it is sent.
    */
   token?: string;
+  /**
+   * The token this device was paired with, when it is paired: the line then opens on
+   * {@link JARVIS_SERVER_PAIRED_SOCKET_PATH} and says it in the hello. A server that no longer knows
+   * it closes the socket with 4401, after which the line is not tried again.
+   */
+  deviceToken?: string;
 }
 
 /**
@@ -195,9 +208,12 @@ export interface ServerLink {
   close(): void;
 }
 
-/** The socket's URL for a server at `address`: `wss` for `https`, `ws` for this computer's `http`. */
-export function serverSocketUrl(address: string): string {
-  return `${address.replace(/^http/, 'ws')}${JARVIS_SERVER_SOCKET_PATH}`;
+/**
+ * The socket's URL for a server at `address`: `wss` for `https`, `ws` for this computer's `http`; on
+ * the paired path for a paired device.
+ */
+export function serverSocketUrl(address: string, paired = false): string {
+  return `${address.replace(/^http/, 'ws')}${paired ? JARVIS_SERVER_PAIRED_SOCKET_PATH : JARVIS_SERVER_SOCKET_PATH}`;
 }
 
 /** The `pointing` frame for `entity`: `null` for nothing, and for an entity without a usable id. */
@@ -310,9 +326,14 @@ export function connectToServer(
   if (options.address === undefined) {
     return NO_LINE;
   }
-  const url = serverSocketUrl(options.address);
+  const { deviceToken } = options;
+  const url = serverSocketUrl(options.address, deviceToken !== undefined);
   const headers = serverAuthorizationHeaders(options.token);
-  const hello = JSON.stringify({ type: 'hello', device: options.device });
+  const hello = JSON.stringify({
+    type: 'hello',
+    device: options.device,
+    ...(deviceToken === undefined ? {} : { token: deviceToken }),
+  });
   let socket: ServerSocket | undefined;
   /** The socket the server has said `ready` on, while it is still the one open. */
   let ready: ServerSocket | undefined;

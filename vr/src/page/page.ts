@@ -57,7 +57,7 @@ export interface PageDependencies {
    * The page's line to sir's Jarvis server and its address, for the page to say whether it is
    * connected and offer signing in to it when it is not (`server-status.ts`).
    */
-  server: { address: string | undefined; line: Pick<ServerLink, 'onConnectionChange'> };
+  server: { address: string | undefined; paired: boolean; line: Pick<ServerLink, 'onConnectionChange'> };
   /** Loads the page again, so a newly paired server's address opens the page's line to it. */
   reload(): void;
   debug: JarvisDebugState;
@@ -119,7 +119,7 @@ export function startPage(document: Document, dependencies: PageDependencies): v
       signIn: required(document, '#server-sign-in', HTMLElement),
       signInLink: required(document, '#server-sign-in-link', HTMLAnchorElement),
     },
-    dependencies.server.address,
+    dependencies.server,
     dependencies.server.line,
   );
 
@@ -137,6 +137,11 @@ export function startPage(document: Document, dependencies: PageDependencies): v
   apiKeyField.value = stored?.apiKey ?? '';
   agentIdField.value = stored?.agentId ?? '';
   serverAddressField.value = loadServerAddress(storage) ?? '';
+  const pairing = loadPairing(storage);
+  if (pairing !== undefined) {
+    pairingSaved.textContent = `Paired with ${pairing.address}. Your server starts his conversations.`;
+    pairingSaved.hidden = false;
+  }
   // Open when there is something to fill in; folded away once there is not, so the button is the page.
   settingsSection.open = !facts.hasSettings;
   pairingSection.open = !facts.hasSettings;
@@ -283,7 +288,6 @@ export function startPage(document: Document, dependencies: PageDependencies): v
   async function pairFromForm() {
     pairingProblem.hidden = true;
     pairingSignIn.hidden = true;
-    pairingSaved.hidden = true;
     pairButton.disabled = true;
     pairButton.textContent = 'Pairing with your server…';
     const result = await pairWithServer(serverAddressField.value, dependencies.fetch);
@@ -304,15 +308,9 @@ export function startPage(document: Document, dependencies: PageDependencies): v
       pairingProblem.hidden = false;
       return;
     }
-    // The page's line to the server was opened as it loaded, at the address it had then.
-    if (result.pairing.address !== dependencies.server.address) {
-      dependencies.reload();
-      return;
-    }
-    pairingSaved.textContent = 'Paired. Your Jarvis server starts his conversations from now on.';
-    pairingSaved.hidden = false;
-    facts.hasSettings = true;
-    render();
+    // The page's line to the server was opened as it loaded, without this token, and perhaps at
+    // another address: loaded again, it opens on the paired path with the token.
+    dependencies.reload();
   }
 
   async function checkSupport() {

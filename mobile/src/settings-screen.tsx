@@ -1,7 +1,8 @@
+import * as Linking from 'expo-linking';
 import type { ElevenLabsSettings } from 'hologram';
-import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { ElevenLabsFields } from './elevenlabs-fields';
-import type { JarvisServerChange } from './jarvis-server';
+import { type JarvisServerChange, phonePairingUrl } from './jarvis-server';
 import { theme } from './theme';
 
 interface SettingsScreenProps {
@@ -10,6 +11,8 @@ interface SettingsScreenProps {
   serverAddress: string | undefined;
   /** The token for the server as it was read, if one was. See `jarvis-server.ts`. */
   serverToken: string | undefined;
+  /** Whether this phone is paired with the server, so its line needs no server token. */
+  paired: boolean;
   /** Called once everything on the screen parses — with the server address's change, if sir made one. */
   onSave: (settings: ElevenLabsSettings, serverChange: JarvisServerChange | undefined) => void;
   onCancel: (() => void) | undefined;
@@ -44,6 +47,7 @@ export function SettingsScreen({
   settings,
   serverAddress,
   serverToken,
+  paired,
   onSave,
   onCancel,
   onTrySample,
@@ -63,6 +67,10 @@ export function SettingsScreen({
         onSubmit={onSave}
       />
 
+      {serverAddress !== undefined && Platform.OS !== 'web' ? (
+        <ServerPairing address={serverAddress} paired={paired} />
+      ) : null}
+
       {onCancel ? (
         <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={onCancel}>
           <Text style={styles.secondaryButtonLabel}>Cancel</Text>
@@ -75,6 +83,32 @@ export function SettingsScreen({
         </Pressable>
       ) : null}
     </ScrollView>
+  );
+}
+
+/**
+ * Pairing with the server, so the line to it needs no Access JWT that runs out: the server's pairing
+ * page in the browser, through Access's sign-in once (see "Pairing the phone" in `jarvis-server.ts`).
+ * Only on a device: the pairing page hands its token back through this app's own link, which a
+ * browser cannot be opened by.
+ */
+function ServerPairing({ address, paired }: { address: string; paired: boolean }) {
+  return (
+    <>
+      <Text style={styles.explanation}>
+        {paired
+          ? 'This phone is paired with your Jarvis server, so it needs no server token. Pair it again if the server forgot it.'
+          : 'Pair this phone with your Jarvis server once, and it needs no server token that runs out. Your browser opens your server’s sign-in, then comes back here.'}
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        style={styles.secondaryButton}
+        onPress={() => void Linking.openURL(phonePairingUrl(address))}
+        testID="pair-with-server"
+      >
+        <Text style={styles.secondaryButtonLabel}>{paired ? 'Pair again' : 'Pair with your Jarvis server'}</Text>
+      </Pressable>
+    </>
   );
 }
 

@@ -12,6 +12,7 @@ export {
   LIVE_SOCKET_PATH,
   type LiveServerMessage,
   type LiveSockets,
+  PAIRED_LIVE_SOCKET_PATH,
 } from './live-socket.js';
 export {
   ConversationUnavailableError,
@@ -20,6 +21,8 @@ export {
   PAIRED_CONVERSATION_ROUTE,
   PAIRED_DEVICE_PATH,
   type PairedDeviceDependencies,
+  PHONE_APP_PAIRED_URL,
+  PHONE_PAIRING_ROUTE,
   registerPairedDeviceApi,
   WEB_APP_ORIGINS,
 } from './paired-devices.js';

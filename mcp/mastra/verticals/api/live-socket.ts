@@ -2,6 +2,7 @@ import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { type RawData, type WebSocket, WebSocketServer } from 'ws';
 import { z } from 'zod';
+import { getPairedDeviceStorage } from '../../storage/index.js';
 import { type LiveEvent, onLiveEvent } from '../../utils/live-events.js';
 import { logger } from '../../utils/logger.js';
 import { forgetPointing, reportPointing } from '../../utils/pointing.js';
@@ -56,6 +57,18 @@ import { readCurrentGlance, type StoredGlance, toGlanceSummary } from '../visual
 /** Where a device opens its socket. Spelled out, since every device builds this exact path. */
 export const LIVE_SOCKET_PATH = '/api/live';
 
+/**
+ * Where a device paired with this server opens its socket instead: under `/api/paired/`, which
+ * bypasses Cloudflare Access (see "Pairing a device" in `.claude/rules/mcp-mcp-server-access.md`),
+ * so it is this server that checks who is asking. Its hello has to carry the device's token, and a
+ * socket whose hello does not carry one a paired device has is closed with `unpaired`.
+ *
+ * This is what lets a phone or a headset keep its line open with no Access session at all: the
+ * token it was paired with never expires, where an Access JWT or cookie lasts only as long as the
+ * application's session.
+ */
+export const PAIRED_LIVE_SOCKET_PATH = '/api/paired/live';
+
 /** How long a socket has to say hello before it is closed. */
 export const HELLO_TIMEOUT_MS = 10_000;
 
@@ -76,6 +89,8 @@ export const MAX_FRAME_BYTES = 1024;
 export const LIVE_SOCKET_CLOSE_CODES = {
   /** The first frame was not a hello. */
   badHello: 4400,
+  /** A hello on {@link PAIRED_LIVE_SOCKET_PATH} carried no token a paired device has. */
+  unpaired: 4401,
   /** No hello arrived within {@link HELLO_TIMEOUT_MS}. */
   helloTimeout: 4408,
 } as const;
@@ -86,6 +101,8 @@ export const LIVE_SOCKET_DEVICES = ['phone', 'watch', 'vr'] as const;
 const helloSchema = z.object({
   type: z.literal('hello'),
   device: z.enum(LIVE_SOCKET_DEVICES),
+  /** A paired device's token: required on {@link PAIRED_LIVE_SOCKET_PATH}, ignored elsewhere. */
+  token: z.string().min(1).max(128).optional(),
 });
 
 const pointingSchema = z.object({
@@ -147,6 +164,11 @@ export interface LiveSocketOptions {
   /** {@link HELLO_TIMEOUT_MS} unless a spec would rather not wait it out. */
   helloTimeoutMs?: number;
   /**
+   * Whether a token belongs to a paired device; the paired devices' storage unless a spec says
+   * otherwise. Asked only for a hello on {@link PAIRED_LIVE_SOCKET_PATH}.
+   */
+  isPairedDevice?: (token: string) => Promise<boolean>;
+  /**
    * Runs a glance action's prompt to completion, as a request routed like the same words spoken,
    * and says how it went. Handed in by `mcp-server.ts`, which holds the Mastra instance routing
    * plans against; a spec hands in a fake.
@@ -156,10 +178,20 @@ export interface LiveSocketOptions {
   currentGlance?: () => Promise<StoredGlance | undefined>;
 }
 
-/** Whether an upgrade is for {@link LIVE_SOCKET_PATH}, in any case and with any query, as Express would route it. */
-function isLiveSocketRequest(request: IncomingMessage): boolean {
-  const path = (request.url ?? '').split('?')[0]?.toLowerCase();
-  return path === LIVE_SOCKET_PATH || path === `${LIVE_SOCKET_PATH}/`;
+/**
+ * Which socket an upgrade is for — {@link LIVE_SOCKET_PATH}, {@link PAIRED_LIVE_SOCKET_PATH} — in any
+ * case and with any query, as Express would route it; or `undefined` for neither.
+ */
+function socketKindOf(request: IncomingMessage): 'open' | 'paired' | undefined {
+  const path = (request.url ?? '').split('?')[0]?.toLowerCase().replace(/\/$/, '');
+  if (path === LIVE_SOCKET_PATH) return 'open';
+  if (path === PAIRED_LIVE_SOCKET_PATH) return 'paired';
+  return undefined;
+}
+
+/** Whether a token is a paired device's, asked of the paired devices' storage. */
+async function isPairedDeviceInStorage(token: string): Promise<boolean> {
+  return (await (await getPairedDeviceStorage()).authenticate(token)) !== undefined;
 }
 
 /** Refuses an upgrade before it becomes a socket. */
@@ -283,6 +315,7 @@ function createGlanceActionRunner(
  */
 export function attachLiveSocket(server: Server, options: LiveSocketOptions): LiveSockets {
   const helloTimeoutMs = options.helloTimeoutMs ?? HELLO_TIMEOUT_MS;
+  const isPairedDevice = options.isPairedDevice ?? isPairedDeviceInStorage;
   const currentGlance = options.currentGlance ?? (() => readCurrentGlance());
   const runGlanceAction = createGlanceActionRunner(currentGlance, options.runRequest);
   const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES });
@@ -302,7 +335,30 @@ export function attachLiveSocket(server: Server, options: LiveSocketOptions): Li
     }
   };
 
-  const welcome = (socket: WebSocket) => {
+  /** Starts sending a socket that has said hello every live event. */
+  const listen = (socket: WebSocket, device: (typeof LIVE_SOCKET_DEVICES)[number]) => {
+    listening.add(socket);
+    socket.once('close', () => {
+      listening.delete(socket);
+      forgetPointing(socket);
+    });
+    logger.info('[Live] Socket ready', { device, open: sockets.clients.size });
+    socket.send(JSON.stringify({ type: 'ready' } satisfies LiveServerMessage));
+    void sendCurrentGlance(socket, currentGlance);
+  };
+
+  /** Lets a hello on the paired path in only with a paired device's token. */
+  const listenIfPaired = async (socket: WebSocket, hello: z.infer<typeof helloSchema>) => {
+    const paired = hello.token !== undefined && (await isPairedDevice(hello.token).catch(() => false));
+    if (socket.readyState !== socket.OPEN) return;
+    if (!paired) {
+      socket.close(LIVE_SOCKET_CLOSE_CODES.unpaired);
+      return;
+    }
+    listen(socket, hello.device);
+  };
+
+  const welcome = (socket: WebSocket, kind: 'open' | 'paired') => {
     let saidHello = false;
     const helloTimer = setTimeout(() => socket.close(LIVE_SOCKET_CLOSE_CODES.helloTimeout), helloTimeoutMs);
     socket.once('close', () => clearTimeout(helloTimer));
@@ -315,7 +371,9 @@ export function attachLiveSocket(server: Server, options: LiveSocketOptions): Li
         return;
       }
       if (saidHello) {
-        handleFrameAfterHello(socket, data, isBinary);
+        // Only once it is listening: a paired socket's token may still be being checked, and a frame
+        // it sends meanwhile — a glance action runs a request — is not yet any device's.
+        if (listening.has(socket)) handleFrameAfterHello(socket, data, isBinary);
         return;
       }
       saidHello = true;
@@ -327,19 +385,17 @@ export function attachLiveSocket(server: Server, options: LiveSocketOptions): Li
         return;
       }
 
-      listening.add(socket);
-      socket.once('close', () => {
-        listening.delete(socket);
-        forgetPointing(socket);
-      });
-      logger.info('[Live] Socket ready', { device: hello.device, open: sockets.clients.size });
-      socket.send(JSON.stringify({ type: 'ready' } satisfies LiveServerMessage));
-      void sendCurrentGlance(socket, currentGlance);
+      if (kind === 'paired') {
+        void listenIfPaired(socket, hello);
+        return;
+      }
+      listen(socket, hello.device);
     });
   };
 
   const onUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
-    if (!isLiveSocketRequest(request)) {
+    const kind = socketKindOf(request);
+    if (kind === undefined) {
       refuseUpgrade(socket, 404, 'Not Found');
       return;
     }
@@ -352,7 +408,7 @@ export function attachLiveSocket(server: Server, options: LiveSocketOptions): Li
       webSocket.on('pong', () => answeredLastPing.set(webSocket, true));
       // A socket that errors is closed by `ws` itself; listening keeps the error from being thrown.
       webSocket.on('error', () => undefined);
-      welcome(webSocket);
+      welcome(webSocket, kind);
     });
   };
   server.on('upgrade', onUpgrade);

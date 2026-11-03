@@ -23,8 +23,11 @@ import { ConversationScreen } from './conversation-screen';
 import { GlanceScreen } from './glance-screen';
 import {
   type JarvisServerChange,
+  loadJarvisDeviceToken,
   loadJarvisServerAddress,
   loadJarvisServerToken,
+  pairedTokenFromLink,
+  saveJarvisDeviceToken,
   saveJarvisServerAddress,
   saveJarvisServerToken,
 } from './jarvis-server';
@@ -50,6 +53,12 @@ async function readJarvisServerAddress(stillWanted: () => boolean): Promise<stri
 /** The token for the server to use, read as the address is: one that still cannot be read is none. */
 async function readJarvisServerToken(stillWanted: () => boolean): Promise<string | undefined> {
   const stored = await readTryingAgain(loadJarvisServerToken, stillWanted);
+  return stored?.kind === 'token' ? stored.token : undefined;
+}
+
+/** The token this phone was paired with, read as the address is: one that still cannot be read is none. */
+async function readJarvisDeviceToken(stillWanted: () => boolean): Promise<string | undefined> {
+  const stored = await readTryingAgain(loadJarvisDeviceToken, stillWanted);
   return stored?.kind === 'token' ? stored.token : undefined;
 }
 
@@ -95,6 +104,11 @@ export function App({ summoned = false, showing }: AppProps) {
    */
   const [serverToken, setServerToken] = useState<string | undefined>(undefined);
   /**
+   * The token the server gave this phone when it was paired, if it has been: its line then needs no
+   * Access JWT at all (see "Pairing the phone" in `jarvis-server.ts`).
+   */
+  const [deviceToken, setDeviceToken] = useState<string | undefined>(undefined);
+  /**
    * Whether the first-run tour is already behind this install.
    *
    * True until told otherwise, so that nothing shows a tour in the frame before the answer
@@ -111,7 +125,7 @@ export function App({ summoned = false, showing }: AppProps) {
   useAnswerTheWatch(settings, serverAddress, serverToken);
   // The line to sir's Jarvis server, open for as long as the app runs and has an address, whatever
   // screen is showing and whether or not he is talking to Jarvis (`jarvis-server-link.ts` in hologram).
-  const serverLink = useJarvisServer(serverAddress, serverToken, 'phone');
+  const serverLink = useJarvisServer(serverAddress, serverToken, 'phone', deviceToken);
   // Which of his agents a request is using, from that line, drawn round him on whichever screen shows
   // him (`AgentSatellitesContext`). Sample mode has its own, pretended (`sample-screen.tsx`).
   const satellites = useAgentSatellites(serverLink);
@@ -144,6 +158,7 @@ export function App({ summoned = false, showing }: AppProps) {
       const walking = hasWalkedOnboarding();
       const readingServerAddress = readJarvisServerAddress(stillWanted);
       const readingServerToken = readJarvisServerToken(stillWanted);
+      const readingDeviceToken = readJarvisDeviceToken(stillWanted);
 
       const stored = await readTryingAgain(loadElevenLabsSettings, stillWanted);
       if (stored?.kind === 'settings') {
@@ -153,10 +168,13 @@ export function App({ summoned = false, showing }: AppProps) {
       const walked = await walking;
       const storedServerAddress = await readingServerAddress;
       const storedServerToken = await readingServerToken;
+      const storedDeviceToken = await readingDeviceToken;
       if (wanted) {
         setHasWalkedTour(walked);
         setServerAddress(storedServerAddress);
         setServerToken(storedServerToken);
+        // A pairing link the app was opened with may have arrived while this was being read.
+        setDeviceToken((paired) => paired ?? storedDeviceToken);
         setIsLoaded(true);
       }
     })();
@@ -184,18 +202,34 @@ export function App({ summoned = false, showing }: AppProps) {
     }
     seenSummoning.current = { showing, launchUrl };
     let wanted = true;
-    void Promise.all([readJarvisServerAddress(() => wanted), readJarvisServerToken(() => wanted)]).then(
-      ([storedServerAddress, storedServerToken]) => {
-        if (wanted) {
-          setServerAddress(storedServerAddress);
-          setServerToken(storedServerToken);
-        }
-      },
-    );
+    void Promise.all([
+      readJarvisServerAddress(() => wanted),
+      readJarvisServerToken(() => wanted),
+      readJarvisDeviceToken(() => wanted),
+    ]).then(([storedServerAddress, storedServerToken, storedDeviceToken]) => {
+      if (wanted) {
+        setServerAddress(storedServerAddress);
+        setServerToken(storedServerToken);
+        // The pairing link itself is a new launch URL too, and its token is being kept as this reads.
+        setDeviceToken(pairedTokenFromLink(launchUrl) ?? storedDeviceToken);
+      }
+    });
     return () => {
       wanted = false;
     };
   }, [showing, launchUrl]);
+
+  // The server's pairing page opens the app with its token (`pairedTokenFromLink`): kept, and used
+  // at once, so the line reopens on the paired path. A token the keystore would not keep still works
+  // until the app is closed, and the next pairing keeps it.
+  useEffect(() => {
+    const paired = pairedTokenFromLink(launchUrl);
+    if (paired === undefined) return;
+    setDeviceToken(paired);
+    saveJarvisDeviceToken(paired).catch((error: unknown) => {
+      console.warn('The phone could not keep its pairing with the Jarvis server; pair it again.', error);
+    });
+  }, [launchUrl]);
 
   // Summoned before there is anything to summon: show the hologram rather than a
   // form. Someone who pressed the assistant button asked for Jarvis, and a
@@ -222,6 +256,11 @@ export function App({ summoned = false, showing }: AppProps) {
    */
   const saveSettingsScreen = (saved: ElevenLabsSettings, serverChange: JarvisServerChange | undefined) => {
     if (serverChange) {
+      // A pairing is with one server: another address, or none, is not paired.
+      if (serverChange.address !== serverAddress) {
+        setDeviceToken(undefined);
+        void saveJarvisDeviceToken(undefined);
+      }
       setServerAddress(serverChange.address);
       setServerToken(serverChange.token);
       void saveJarvisServerAddress(serverChange.address);
@@ -289,6 +328,7 @@ export function App({ summoned = false, showing }: AppProps) {
             settings={settings}
             serverAddress={serverAddress}
             serverToken={serverToken}
+            paired={deviceToken !== undefined}
             onSave={saveSettingsScreen}
             onCancel={settings ? () => setIsEditingSettings(false) : undefined}
             onTrySample={settings ? undefined : () => setIsSampling(true)}

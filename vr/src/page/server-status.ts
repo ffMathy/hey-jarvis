@@ -34,13 +34,24 @@ export interface ServerStatusElements {
   signInLink: { href: string };
 }
 
+/** Where the page's line goes: the server's address, if any, and whether this headset is paired with it. */
+export interface ServerStatusSource {
+  address: string | undefined;
+  /**
+   * A paired headset's line goes through the server's own check of its token, not Access, so
+   * signing in to Access would not connect it, and is never offered.
+   */
+  paired: boolean;
+}
+
 /**
  * Shows the server's section when there is an address, and keeps it told of the line: the status,
- * and the way to sign in while it is not connected. Returns how to stop.
+ * and, for a headset that is not paired, the way to sign in while it is not connected. Returns how
+ * to stop.
  */
 export function showServerStatus(
   elements: ServerStatusElements,
-  address: string | undefined,
+  { address, paired }: ServerStatusSource,
   line: Pick<ServerLink, 'onConnectionChange'>,
 ): () => void {
   if (address === undefined) {
@@ -51,6 +62,6 @@ export function showServerStatus(
   elements.signInLink.href = serverSignInUrl(address);
   return line.onConnectionChange((connected) => {
     elements.status.textContent = serverStatusText(connected);
-    elements.signIn.hidden = connected;
+    elements.signIn.hidden = connected || paired;
   });
 }

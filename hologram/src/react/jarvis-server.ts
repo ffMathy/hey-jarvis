@@ -5,7 +5,8 @@ import { connectToServer, type JarvisDevice, type ServerLink } from '../jarvis-s
  * Keeps the app's line to the Jarvis server open for as long as the component holding it is mounted
  * and the app has a server address: across conversations and between them (see
  * `jarvis-server-link.ts`), with the token the Cloudflare Zero Trust application in front of it
- * accepts, when there is one. A new address or token closes the old line and opens a new one; no
+ * accepts, when there is one — or with the token it was paired with, when it is paired, which never
+ * needs Access at all. A new address or token closes the old line and opens a new one; no
  * address closes it.
  *
  * Returns the line while it is open, for whatever wants to hear the server: the phone hands it to
@@ -15,15 +16,16 @@ export function useJarvisServer(
   address: string | undefined,
   token: string | undefined,
   device: JarvisDevice,
+  deviceToken?: string,
 ): ServerLink | undefined {
   const [line, setLine] = useState<ServerLink | undefined>(undefined);
   useEffect(() => {
-    const link = connectToServer({ address, token, device });
+    const link = connectToServer({ address, token, device, deviceToken });
     setLine(link);
     return () => {
       setLine(undefined);
       link.close();
     };
-  }, [address, token, device]);
+  }, [address, token, device, deviceToken]);
   return line;
 }
