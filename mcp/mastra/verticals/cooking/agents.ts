@@ -1,14 +1,20 @@
 import type { Agent } from '@mastra/core/agent';
 import { createAgent, LOW_THINKING_PROVIDER_OPTIONS } from '../../utils/index.js';
+import { currentBabyMealGuidance } from './baby-food.js';
 import { cookingTools } from './tools.js';
 import { generateMealPlanWorkflow } from './workflows.js';
 
-// Main cooking agent with access to meal planning workflow and recipe search
-export async function getCookingAgent(): Promise<Agent> {
-  return createAgent({
-    id: 'cooking',
-    name: 'Cooking',
-    instructions: `You are a comprehensive cooking and meal planning assistant specializing in Danish recipes from Valdemarsro.
+/**
+ * What the cooking agent is told. With a baby in the household, it also keeps to the advice for
+ * the baby's age (`./baby-food.ts`) whenever it suggests or describes a dinner.
+ */
+export function cookingAgentInstructions(babyGuidance: string | undefined): string {
+  const babyRules = babyGuidance
+    ? `
+- When you suggest, choose or describe a dinner, prefer one the baby can share, following its advice below, and say briefly how to prepare the baby's portion where it differs from the adults'`
+    : '';
+
+  const instructions = `You are a comprehensive cooking and meal planning assistant specializing in Danish recipes from Valdemarsro.
 
 Your capabilities:
 1. Search for recipes using Danish search terms
@@ -28,15 +34,26 @@ Key rules:
 - Provide detailed recipe information
 - Filter for "Aftensmad" (dinner) category when appropriate
 - Avoid weird soups like "burgersuppe", "tacosuppe", "lasagnesuppe"
-- For meal planning requests, delegate to the generateMealPlanWorkflow workflow
+- For meal planning requests, delegate to the generateMealPlanWorkflow workflow${babyRules}
 
 Acting quickly:
 - Every tool call is a round trip the user waits through, so use as few as the request allows.
 - searchRecipes returns the recipes in full, ingredients and directions included. Answer from its results; only call getRecipeById for a recipe you know by id and do not already have.
 - When you need several searches, make them together in the same step rather than one after another.
-- To browse the whole catalogue, use getRecipeCatalog, never getAllRecipes, which returns every recipe in full.`,
+- To browse the whole catalogue, use getRecipeCatalog, never getAllRecipes, which returns every recipe in full.`;
 
-    description: 'Comprehensive cooking agent for recipe search and meal planning',
+  return babyGuidance ? `${instructions}\n\n${babyGuidance}` : instructions;
+}
+
+// Main cooking agent with access to meal planning workflow and recipe search
+export async function getCookingAgent(): Promise<Agent> {
+  return createAgent({
+    id: 'cooking',
+    name: 'Cooking',
+    // Resolved on every request: the server stays up for days, and the baby keeps growing.
+    instructions: async () => cookingAgentInstructions(currentBabyMealGuidance()),
+    description:
+      "Comprehensive cooking agent for recipe search and meal planning, including what the household's baby can be given from the family's dinners",
     tools: cookingTools,
     workflows: {
       generateMealPlanWorkflow,

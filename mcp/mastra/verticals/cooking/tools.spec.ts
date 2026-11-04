@@ -8,7 +8,8 @@
  * Valdemarsro is faked at `fetch`, scoped to each test.
  */
 
-import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { fakeValdemarsro, valdemarsroRecipe } from '../../../tests/utils/fake-valdemarsro.js';
 import { executeTool } from '../../utils/tool-factory.js';
 import {
   collectPages,
@@ -20,42 +21,6 @@ import {
 } from './tools.js';
 
 const API_KEY_ENV = 'HEY_JARVIS_VALDEMARSRO_API_KEY';
-
-function valdemarsroRecipe(recipeId: number) {
-  return {
-    recipe_id: recipeId,
-    title: `Opskrift ${recipeId}`,
-    description: '<p>Nem aftensmad</p>',
-    directions: 'Kog det hele.',
-    categories: [{ name: 'Aftensmad' }],
-    ingredients: [{ ingrediens: { name: 'løg' }, maengde: '1', enhed: 'stk' }],
-    url: `https://www.valdemarsro.dk/${recipeId}`,
-    media: `https://www.valdemarsro.dk/${recipeId}.jpg`,
-    fields: {},
-  };
-}
-
-/**
- * A stand-in for `fetch` that hands each request's URL to `handle`, and records it.
- *
- * Bun's `fetch` carries a `preconnect` function as well as its call signature, so a bare
- * function is not one; the real `preconnect` is carried over to make it whole.
- */
-function fakeValdemarsro(handle: (url: URL) => unknown) {
-  const paths: string[] = [];
-  const fetchSpy = spyOn(globalThis, 'fetch').mockImplementation(
-    Object.assign(
-      async (input: Parameters<typeof fetch>[0]) => {
-        const url = new URL(String(input));
-        paths.push(url.pathname);
-        return new Response(JSON.stringify(handle(url)));
-      },
-      { preconnect: globalThis.fetch.preconnect },
-    ),
-  );
-
-  return { paths, fetchSpy };
-}
 
 /**
  * A listing of `pageCount` pages of `pageSize` numbered items, as the one-page-at-a-time walk

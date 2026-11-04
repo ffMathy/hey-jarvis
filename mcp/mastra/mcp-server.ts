@@ -15,6 +15,7 @@ import {
   registerArtifactRoutes,
   registerShoppingTriggers,
   startHomeAssistantEventMonitor,
+  whyBabyMealsAreOff,
   whyEvaluationFixesAreOff,
   whyPhotoSlotsAreOff,
   withoutUploadToken,
@@ -157,6 +158,13 @@ export async function startMcpServer() {
   const evaluationFixesOffBecause = whyEvaluationFixesAreOff();
   if (evaluationFixesOffBecause) {
     console.warn(`⚠️ ${evaluationFixesOffBecause}`);
+  }
+
+  // The baby's birth date is kept in 1Password (mcp/op.optional.env), so say once when the cooking
+  // vertical has no baby to plan for, or cannot read the date — never the date itself
+  const babyMealsOffBecause = whyBabyMealsAreOff();
+  if (babyMealsOffBecause) {
+    console.warn(`⚠️ ${babyMealsOffBecause}`);
   }
 
   // Log token usage summary on startup
