@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  type createAgent,
   createAgentStep,
   createStep,
   createToolStep,
@@ -10,6 +11,7 @@ import {
 import { executeTool } from '../../utils/tool-factory.js';
 import { getSendEmailAndAwaitResponseWorkflow } from '../human-in-the-loop/workflows.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
+import { currentBabyMealGuidance } from './baby-food.js';
 import {
   MAX_RECIPE_CANDIDATES,
   RECIPES_PER_MEAL_PLAN,
@@ -22,28 +24,77 @@ import { getRecipeById, getRecipeCatalog, recipeSchema } from './tools.js';
 // Use Gemini Flash for cooking workflows - better quality for recipe processing
 const cookingModel = getModel('gemini-flash-latest');
 
-// The household has a baby who is learning to eat and tastes the family's dinner. The rules follow
-// "Mad til børn" (Mejeriforeningen / Landbrug & Fødevarer, 2025), which matches the Danish Health
-// Authority's advice for babies of 6-12 months. Both the recipe selector and the scheduler get them.
-const BABY_TASTING_GUIDELINES = `The household has a baby who is learning to eat, somewhere between 6 and 12 months old.
-The dinners are for the adults: they must still be proper, tasty adult food, scaled for the adults only.
-But the baby tastes the same dinner, so it can learn the family's food. Every dinner must therefore also
-give the baby a safe tasting portion, following the Danish guidance ("Mad til børn", 2025):
+/** The model the meal plan's agents run on. */
+type MealPlanModel = NonNullable<Parameters<typeof createAgent>[0]['model']>;
 
-- Not too spicy: no chili heat or strong spices in the baby's portion. Mild spices and herbs are good,
-  since learning new tastes is the point
-- Go easy on salt: the baby's portion should be as unsalted as possible
-- No honey in anything the baby tastes, not even cooked into a sauce or glaze
-- No large predatory fish: tuna (tinned tuna too), swordfish, pike, halibut ("hellefisk") and porbeagle
-  ("sildehaj"). Salmon, cod, saithe, plaice, mackerel, herring, prawns and mussels are all fine
-- Eggs only when fully cooked through, never raw or runny
-- Nothing the baby can choke on: no whole nuts, peanuts, seeds, whole grapes, popcorn, or pieces of raw,
-  hard vegetables such as carrot
-- Spinach, beetroot, fennel, rocket and celery only in small amounts, as the baby tolerates little nitrate
-- Fresh herbs and leafy greens only when heated through in the dish, never sprinkled raw on the baby's portion
-- Little cinnamon, and no tea
-- Meat, poultry or fish give the baby the iron it needs, so dinners with one of them are good
-- The baby's portion is cut into small, soft pieces (or roughly mashed), and served lukewarm`;
+/** Numbers each rule, the way the agents' instructions list them. */
+function numbered(rules: string[]): string {
+  return rules.map((rule, index) => `${index + 1}. ${rule}`).join('\n');
+}
+
+/**
+ * What the recipe selector is told. With a baby to feed, it also picks dinners the baby can share,
+ * from the advice for the baby's age (`./baby-food.ts`).
+ */
+export function mealPlanRecipeSelectorInstructions(babyGuidance: string | undefined): string {
+  const rules = [
+    'Only pick recipes from the candidates you are given, by their id',
+    'Prefer dinner dishes ("aftensmad")',
+    'Pick recipes that differ from each other in main ingredient and style',
+    "Honour the user's preferences when they are given",
+    'Avoid weird soups such as "burgersuppe", "tacosuppe" and "lasagnesuppe"',
+    ...(babyGuidance
+      ? [
+          'Pick dinners the baby can share: follow its advice below on choosing dinners, and skip a dish built around something it must not have yet',
+        ]
+      : []),
+  ];
+
+  return [
+    'You are a recipe selection specialist.',
+    `Your ONLY job is to pick exactly ${RECIPES_PER_MEAL_PLAN} recipes for a weekly dinner plan.`,
+    `Selection rules:\n${numbered(rules)}`,
+    ...(babyGuidance ? [babyGuidance] : []),
+    'Return only the ids. Do NOT invent ids, and do NOT write the meal plan.',
+  ].join('\n\n');
+}
+
+/**
+ * What the scheduler is told. With a baby to feed, it also adapts each dinner so the baby can share
+ * it, and adds a "Til baby:" direction saying how.
+ */
+export function mealPlanSchedulerInstructions(babyGuidance: string | undefined): string {
+  const rules = [
+    babyGuidance
+      ? "Scale ingredients for 6 people (2 people × 3 days per recipe). The baby's share comes out of those portions; add more only where its advice says to cook extra for it"
+      : 'Scale ingredients for 6 people (2 people × 3 days per recipe)',
+    `Order recipes by ingredient expiry speed:
+   - Meat and dairy first
+   - Fresh herbs and vegetables next
+   - Pantry staples last`,
+    'Assign Danish weekday names',
+    'Ensure proper ingredient quantities',
+    ...(babyGuidance
+      ? [
+          `Adapt the directions so the baby can share each dinner, following its advice below, without changing the dish for the adults:
+   - Where a recipe adds chili or most of its salt, move that to after the baby's portion has been set aside, or to the table
+   - Add one direction, in the same language as the recipe's directions and starting with "Til baby:", that says when to set the baby's portion aside, how to prepare and serve it at its age (what to leave out of it, and how to mash, blend or cut it), and how to keep and reheat its portions for the following days
+   - Leave out of the baby's portion anything its advice rules out`,
+        ]
+      : []),
+  ];
+
+  return [
+    'You are a meal scheduling specialist.',
+    'Your ONLY job is to take selected recipes and create a weekly schedule.',
+    `Scheduling rules:\n${numbered(rules)}`,
+    ...(babyGuidance ? [babyGuidance] : []),
+    `Do NOT:
+- Search for new recipes
+- Select different recipes
+- Format for email presentation`,
+  ].join('\n\n');
+}
 
 // Response schema for meal plan feedback - captures the human's free-form response
 const mealPlanFeedbackResponseSchema = z.object({
@@ -76,15 +127,23 @@ const generateMealPlanStateSchema = z
   })
   .partial();
 
-export const generateMealPlanWorkflow = createWorkflow({
-  id: 'generateMealPlanWorkflow',
-  inputSchema: z.object({
-    preferences: z.string().optional().describe('Optional preferences for the meal plan'),
-  }),
-  outputSchema: z.object({
-    mealplan: mealPlanSchema,
-  }),
-})
+/**
+ * The meal plan, with its agents running on `model`. The household's runs on Gemini Flash; a spec
+ * hands in a scripted model to see what each agent is told.
+ *
+ * The agents' instructions are resolved on every run rather than when the workflow is built: the
+ * server stays up for days, and what the baby may eat changes as it grows.
+ */
+export function buildGenerateMealPlanWorkflow(model: MealPlanModel) {
+  return createWorkflow({
+    id: 'generateMealPlanWorkflow',
+    inputSchema: z.object({
+      preferences: z.string().optional().describe('Optional preferences for the meal plan'),
+    }),
+    outputSchema: z.object({
+      mealplan: mealPlanSchema,
+    }),
+  })
   .then(
     createStep({
       id: 'store-preferences',
@@ -150,29 +209,10 @@ export const generateMealPlanWorkflow = createWorkflow({
       id: 'select-meal-plan-recipes',
       description: "Picks the recipes this week's meal plan will be built from",
       agentConfig: {
-        model: cookingModel,
+        model,
         id: 'mealPlanRecipeSelector',
         name: 'MealPlanRecipeSelector',
-        instructions: `You are a recipe selection specialist.
-
-      Your ONLY job is to pick exactly ${RECIPES_PER_MEAL_PLAN} recipes for a weekly dinner plan.
-
-      Selection rules:
-      1. Only pick recipes from the candidates you are given, by their id
-      2. Prefer dinner dishes ("aftensmad")
-      3. Pick recipes that differ from each other in main ingredient and style
-      4. Honour the user's preferences when they are given
-      5. Avoid weird soups such as "burgersuppe", "tacosuppe" and "lasagnesuppe"
-      6. Pick dishes the baby can taste as well (see below). Skip dishes that are hot or strongly spiced
-         all the way through, or built around something the baby must not eat (tuna, honey glaze, nuts,
-         raw egg). A dish whose heat or salt can be added at the end is fine, since the baby's portion
-         can be set aside first
-      7. Prefer dishes whose parts can be served separately (meat, potatoes or rice, vegetables), so the
-         baby can taste each one on its own
-
-      ${BABY_TASTING_GUIDELINES}
-
-      Return only the ids. Do NOT invent ids, and do NOT write the meal plan.`,
+        instructions: async () => mealPlanRecipeSelectorInstructions(currentBabyMealGuidance()),
         description: 'Specialized agent for picking the recipes behind a weekly meal plan',
         // Picking two varied dinners from a shortlist is a light choice. The scheduling step after
         // it, which scales every ingredient, keeps the default thinking.
@@ -235,37 +275,10 @@ Return the ids of the recipes you picked.${preferencesText}`;
       id: 'generate-complete-meal-plan',
       description: 'Schedules the selected recipes across the week',
       agentConfig: {
-        model: cookingModel,
+        model,
         id: 'mealPlanGenerator',
         name: 'MealPlanGenerator',
-        instructions: `You are a meal scheduling specialist.
-      
-      Your ONLY job is to take selected recipes and create a weekly schedule.
-      
-      Scheduling rules:
-      1. Scale ingredients for 6 people (2 people × 3 days per recipe)
-      2. Order recipes by ingredient expiry speed:
-         - Meat and dairy first
-         - Fresh herbs and vegetables next
-         - Pantry staples last
-      3. Assign Danish weekday names
-      4. Ensure proper ingredient quantities
-      5. Adapt the directions so the baby can taste the dinner (see below), without changing the
-         dish for the adults:
-         - Where a recipe adds chili, strong spices or most of its salt, move that to the end, after
-           the baby's portion has been set aside, or serve it at the table
-         - Add one direction, in the same language as the recipe's directions and starting with
-           "Til baby:", that says when to set the baby's portion aside and how to serve it
-           (for example: cut into small, soft pieces, without the raw herbs, lukewarm)
-         - Leave out of the baby's portion anything the guidelines rule out
-         - Do not add extra quantities for the baby, who only tastes
-
-      ${BABY_TASTING_GUIDELINES}
-
-      Do NOT:
-      - Search for new recipes
-      - Select different recipes
-      - Format for email presentation`,
+        instructions: async () => mealPlanSchedulerInstructions(currentBabyMealGuidance()),
         description: 'Specialized agent for creating weekly meal plan schedules',
       },
       stateSchema: generateMealPlanStateSchema,
@@ -287,6 +300,9 @@ Use every recipe given, and only those recipes. Generate the complete meal plan 
     }),
   )
   .commit();
+}
+
+export const generateMealPlanWorkflow = buildGenerateMealPlanWorkflow(cookingModel);
 
 // Uses Gemini Flash for cooking workflow - better quality for recipe processing
 const generateMealPlanEmail = createAgentStep({
@@ -311,7 +327,7 @@ Format requirements (for every recipe in the plan):
 
 Special features:
 - Add "save X g for later" notes (50% transparent, smaller font) for ingredients used in multiple recipes
-- Keep the direction starting with "Til baby:" (how to set aside the baby's tasting portion), and make that label bold
+- Keep any direction starting with "Til baby:" (how to set aside, prepare and keep the baby's portion), and make that label bold
 - Use colors compatible with light/dark email themes
 - Include proper spacing between sections
 - Make HTML email-client compatible with inline styles

@@ -24,12 +24,11 @@ mcp/
 │   │   │   ├── workflows.ts
 │   │   │   └── index.ts
 │   │   ├── cooking/     # Cooking vertical
-│   │   │   ├── agent.ts        # General recipe search agent
+│   │   │   ├── agents.ts         # Cooking agent: recipe search and meal planning
+│   │   │   ├── baby-food.ts      # The baby's age, and what it can have from the dinner
+│   │   │   ├── recipe-catalog.ts # Shortlisting the catalogue for a meal plan
 │   │   │   ├── tools.ts
-│   │   │   ├── meal-planning/  # Sub-vertical for meal planning
-│   │   │   │   ├── agents.ts   # 3 specialized meal planning agents
-│   │   │   │   ├── workflows.ts
-│   │   │   │   └── index.ts
+│   │   │   ├── workflows.ts      # Meal plan, and the weekly plan with feedback by email
 │   │   │   └── index.ts
 │   │   ├── coding/      # GitHub repository management
 │   │   │   ├── agent.ts          # Coding agent

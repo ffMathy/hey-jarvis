@@ -69,7 +69,7 @@ const getCurrentWeatherStep = createToolStep({
 - **After**: Tool-as-step for recipe fetching + agent-as-step for meal planning
 - **Improvement**: Tool-as-step for `getRecipeCatalog`, agent-as-step for `mealPlanRecipeSelector` and `mealPlanGenerator`
 - **Token budget**: Recipes are chosen from the compact catalogue and only the chosen ones are fetched in full with `getRecipeById`, so no prompt ever carries every recipe
-- **Baby tasting**: The household's baby is learning to eat and tastes the adults' dinner. `BABY_TASTING_GUIDELINES` in `cooking/workflows.ts` (from "Mad til børn", 2025) goes to both `mealPlanRecipeSelector` and `mealPlanGenerator`. It covers mild heat, little salt, no honey, no large predatory fish, and choking hazards. The generator moves chili and salt to after the baby's portion is set aside, and adds a "Til baby:" direction to each recipe
+- **The baby's share**: The household's baby eats from the adults' dinner. `currentBabyMealGuidance()` (`cooking/baby-food.ts`, from the Danish Health Authority's "Mad til små", 2020) gives both `mealPlanRecipeSelector` and `mealPlanGenerator` the advice for the baby's age on the day of the run, resolved per run rather than at boot. The selector picks dinners the baby can share; the generator moves chili and salt to after the baby's portion is set aside, and adds a "Til baby:" direction to each recipe. See [The Baby's Share of the Dinner](mcp-cooking-baby-food.md)
 
 ### **Shopping List Workflow**
 - **Before**: 5 complex custom steps with inline agent creation

@@ -18,18 +18,18 @@ Provides intelligent weather information and forecasting capabilities:
 
 **Converted from n8n**: This agent replicates the exact functionality of the original n8n Weather Agent workflow, including the same system message, tools, and behavior patterns.
 
-## Recipe Search Agent
-Provides general cooking and recipe search capabilities:
-- **4 Valdemarsro tools**: Recipe search, get by ID, get all recipes, and search filters
+## Cooking Agent
+Provides cooking, recipe search and meal planning capabilities:
+- **5 Valdemarsro tools**: Recipe search, get by ID, the compact catalogue, get all recipes, and search filters
 - **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
 - **Danish recipe focus**: Specialized for Danish cuisine from Valdemarsro website
 - **General purpose**: Handles recipe search, information retrieval, and general cooking questions
-- **Clear boundaries**: Does NOT handle meal planning, scheduling, or email formatting
-
-**Part of cooking vertical**: This agent handles general recipe-related queries, while specialized meal planning agents handle the complex multi-step planning workflows.
+- **Meal planning**: Hands meal plans to `generateMealPlanWorkflow`, whose specialized agents pick, schedule and format the week's dinners
+- **The baby**: Suggests and plans dinners the household's baby can share at its age, following the Danish Health Authority's "Mad til små" (see [The Baby's Share of the Dinner](mcp-cooking-baby-food.md))
 
 ## Split into its own rules
 
+- [The Baby's Share of the Dinner](mcp-cooking-baby-food.md)
 - [Shopping List Agent](mcp-shopping-list-agent.md)
 - [Notification Agent](mcp-notification-agent.md)
 - [Presence Vertical (Shortcuts Only)](mcp-presence-vertical-shortcuts-only.md)

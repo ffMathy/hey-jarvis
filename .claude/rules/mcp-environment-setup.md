@@ -20,6 +20,7 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **Shopping (Search)**: `HEY_JARVIS_ALGOLIA_API_KEY`, `HEY_JARVIS_ALGOLIA_APPLICATION_ID`, `HEY_JARVIS_BILKA_USER_TOKEN` for product search
 - **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI (test agent ID `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` takes precedence for phone calls). The key and the agent ids also confirm that the phone's conversation is live before a photo slot is opened — there either agent counts — so without them photo uploads are off (see [Vision Vertical](mcp-vision-vertical.md#vision-vertical))
 - **Recipes**: `HEY_JARVIS_VALDEMARSRO_API_KEY` for Danish recipe data
+- **The baby (optional)**: `HEY_JARVIS_BABY_BIRTH_DATE`, `YYYY-MM-DD`, resolved from `op://Jarvis/Baby/Birth date` through `mcp/op.optional.env` and never written into the code, so meal plans follow the advice for the baby's age (see [The Baby's Share of the Dinner](mcp-cooking-baby-food.md))
 - **GitHub**: `HEY_JARVIS_GITHUB_API_TOKEN` for GitHub API access (coding agent and error reporting processor)
 - **Claude Code sessions**: `HEY_JARVIS_CLAUDE_CODE_SSH_TARGET`, `HEY_JARVIS_CLAUDE_CODE_SSH_PRIVATE_KEY` to reach the host whose Docker Sandbox the coding vertical runs Claude Code in, and `HEY_JARVIS_CLAUDE_CODE_OAUTH_TOKEN` to bill it to the Claude subscription
 - **WiFi**: `HEY_JARVIS_WIFI_SSID`, `HEY_JARVIS_WIFI_PASSWORD` for Home Assistant Voice Firmware
