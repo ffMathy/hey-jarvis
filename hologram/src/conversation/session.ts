@@ -22,9 +22,8 @@ import { heldVoice } from './held-voice';
 /** What a screen tells the session it holds: who is asking, and how this device differs. */
 export interface JarvisSessionOptions {
   /**
-   * Where each conversation's token comes from — `elevenLabsCredentials` for a key this device holds,
-   * `pairedCredentials` for a browser paired with sir's Jarvis server. Read afresh for every token, so
-   * a change reaches the next summoning.
+   * Where each conversation's token comes from — `pairedCredentials`, from the Jarvis server this
+   * device is paired with. Read afresh for every token, so a change reaches the next summoning.
    */
   credentials: ConversationCredentials;
   /** What this device calls itself in the ElevenLabs history — see `conversation-token.ts`. */

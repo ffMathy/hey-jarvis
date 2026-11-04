@@ -1,6 +1,7 @@
 import type { AgentTrackRoom } from './agent-audio-track';
-import { elevenLabsCredentials, HEADSET_PARTICIPANT_NAME } from './conversation-token';
+import { HEADSET_PARTICIPANT_NAME } from './conversation-token';
 import { createJarvisSession } from './jarvis-session';
+import { pairedCredentials } from './paired-device';
 import type {
   CallAudio,
   GreetingPlayer,
@@ -102,12 +103,47 @@ export function createFakeClock() {
 
 export type FakeClock = ReturnType<typeof createFakeClock>;
 
-/** The token endpoint, answering each request only when the test says how. */
+/** Where the harness's session is paired, and the token it was paired with. */
+export const PAIRED_SERVER_ADDRESS = 'https://jarvis.example.com';
+export const PAIRED_DEVICE_TOKEN = 'd'.repeat(43);
+
+/** What a device asks the paired server for, read back out of the request's JSON body. */
+export interface PairedConversationRequest {
+  transport?: unknown;
+  participantName?: unknown;
+}
+
+function pairedRequestOf(body: RequestInit['body']): PairedConversationRequest {
+  if (typeof body !== 'string') return {};
+  const parsed: unknown = JSON.parse(body);
+  if (typeof parsed !== 'object' || parsed === null) return {};
+  return {
+    transport: 'transport' in parsed ? parsed.transport : undefined,
+    participantName: 'participantName' in parsed ? parsed.participantName : undefined,
+  };
+}
+
+/**
+ * The paired server's conversation endpoint (`POST /api/paired/conversation` in `mcp`), answering
+ * each request only when the test says how, in the shapes the server answers with.
+ */
 export function createFakeTokenEndpoint() {
-  const requests: Array<{ url: URL; headers: Headers; answer: Deferred<Response> }> = [];
+  const requests: Array<{
+    url: URL;
+    method: string | undefined;
+    headers: Headers;
+    body: PairedConversationRequest;
+    answer: Deferred<Response>;
+  }> = [];
   const fetchToken = async (input: string | URL | Request, init?: RequestInit) => {
     const answer = deferred<Response>();
-    requests.push({ url: new URL(String(input)), headers: new Headers(init?.headers), answer });
+    requests.push({
+      url: new URL(String(input)),
+      method: init?.method,
+      headers: new Headers(init?.headers),
+      body: pairedRequestOf(init?.body),
+      answer,
+    });
     return answer.promise;
   };
   const latest = () => {
@@ -117,32 +153,25 @@ export function createFakeTokenEndpoint() {
     }
     return request;
   };
+  const answerWith = (status: number, body: unknown) =>
+    latest().answer.resolve(
+      new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
+    );
 
   return {
     // `preconnect` because Bun's `fetch` has one, and the session takes Bun's type under test.
     fetch: Object.assign(fetchToken, { preconnect: () => undefined }),
     requests,
     grant(token = 'a-webrtc-token') {
-      latest().answer.resolve(
-        new Response(JSON.stringify({ token, conversation_id: 'conv_1' }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        }),
-      );
+      answerWith(200, { success: true, data: { token } });
     },
     /** Answers a request for a signed URL, which is what a conversation held in writing asks for. */
     sign(signedUrl = 'wss://api.elevenlabs.io/v1/convai/conversation?agent_id=x&conversation_signature=y') {
-      latest().answer.resolve(
-        new Response(JSON.stringify({ signed_url: signedUrl }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        }),
-      );
+      answerWith(200, { success: true, data: { signedUrl } });
     },
-    refuse(status: number, body: unknown = {}) {
-      latest().answer.resolve(
-        new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
-      );
+    /** The server refusing, with its `{ message }` when it gives one. */
+    refuse(status: number, message?: string) {
+      answerWith(status, message === undefined ? { success: false } : { success: false, message });
     },
     /** What a browser does when no server answered at all. */
     goOffline() {
@@ -580,7 +609,7 @@ export function createHarness(
   let followsStopped = 0;
 
   const session = createJarvisSession({
-    credentials: elevenLabsCredentials({ apiKey: 'sk_a-secret-key', agentId: 'agent_01jz0123456789' }),
+    credentials: pairedCredentials({ address: PAIRED_SERVER_ADDRESS, deviceToken: PAIRED_DEVICE_TOKEN }),
     participantName: HEADSET_PARTICIPANT_NAME,
     startSession: sdk.startSession,
     greeting: greeting.player,

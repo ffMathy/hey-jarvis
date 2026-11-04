@@ -22,10 +22,7 @@ class FakeSocket implements ServerSocket {
   readonly sent: string[] = [];
   closedByDevice = false;
 
-  constructor(
-    readonly url: string,
-    readonly headers: Readonly<Record<string, string>>,
-  ) {}
+  constructor(readonly url: string) {}
 
   send(data: string) {
     this.sent.push(data);
@@ -58,8 +55,8 @@ function fakePlatform() {
   const waiting: { at: number; callback: () => void; cancelled: boolean }[] = [];
   let now = 0;
   const platform: ServerLinkPlatform = {
-    openSocket: (url, headers) => {
-      const socket = new FakeSocket(url, headers);
+    openSocket: (url) => {
+      const socket = new FakeSocket(url);
       sockets.push(socket);
       return socket;
     },
@@ -228,13 +225,12 @@ describe('a line to the server', () => {
     expect(sockets).toHaveLength(9);
   });
 
-  it('opens on the paired path with the device token in its hello, and no Access headers of its own', () => {
+  it('opens on the paired path with the device token in its hello', () => {
     const { platform, latest } = fakePlatform();
     connectToServer({ address: ADDRESS, device: 'phone', deviceToken: 'p'.repeat(43) }, platform);
 
     const socket = latest();
     expect(socket.url).toBe('wss://jarvis.example.com/api/paired/live');
-    expect(socket.headers).toEqual({});
     socket.open();
     expect(socket.sent.map((frame) => JSON.parse(frame))).toEqual([
       { type: 'hello', device: 'phone', token: 'p'.repeat(43) },
@@ -360,27 +356,6 @@ describe('telling the server what sir points at', () => {
     latest().receive('{"type":"ready"}');
 
     expect(pointingSent(latest())).toEqual([]);
-  });
-});
-
-describe('the service token for the server', () => {
-  const SERVICE_TOKEN = { clientId: 'abc123.access', clientSecret: 'shh' };
-  const HEADERS = { 'CF-Access-Client-Id': 'abc123.access', 'CF-Access-Client-Secret': 'shh' };
-
-  it('goes on every upgrade request in the two headers Cloudflare Access reads one from', () => {
-    const { platform, advance, latest } = fakePlatform();
-    connectToServer({ address: ADDRESS, device: 'phone', serviceToken: SERVICE_TOKEN }, platform);
-    expect(latest().headers).toEqual(HEADERS);
-
-    latest().drop(1006);
-    advance(FIRST_RETRY_MS);
-    expect(latest().headers).toEqual(HEADERS);
-  });
-
-  it('adds no header for a server with nothing in front of it', () => {
-    const { platform, latest } = fakePlatform();
-    connectToServer({ address: ADDRESS, device: 'phone' }, platform);
-    expect(latest().headers).toEqual({});
   });
 });
 

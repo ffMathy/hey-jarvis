@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { parseJarvisServerAddress, parseJarvisServerServiceToken } from './jarvis-server-address';
+import { parseJarvisServerAddress } from './jarvis-server-address';
 
 const ADDRESS = 'https://jarvis.example.com';
 
@@ -85,35 +85,5 @@ describe('reading the address sir typed', () => {
         problem: "The Jarvis server's address should look like https://jarvis.example.com.",
       });
     }
-  });
-});
-
-describe('reading the service token sir pasted', () => {
-  const CLIENT_ID = '0123456789abcdef0123456789abcdef.access';
-  const CLIENT_SECRET = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
-
-  it('takes a Client ID and a Client Secret, forgiving the whitespace a paste picks up', () => {
-    expect(parseJarvisServerServiceToken(CLIENT_ID, CLIENT_SECRET)).toEqual({
-      serviceToken: { clientId: CLIENT_ID, clientSecret: CLIENT_SECRET },
-    });
-    expect(parseJarvisServerServiceToken(`  ${CLIENT_ID}\n`, `\t${CLIENT_SECRET} `)).toEqual({
-      serviceToken: { clientId: CLIENT_ID, clientSecret: CLIENT_SECRET },
-    });
-  });
-
-  it('takes nothing typed in either as no service token', () => {
-    expect(parseJarvisServerServiceToken('  ', '')).toEqual({ serviceToken: undefined });
-  });
-
-  it('refuses one without the other', () => {
-    expect(parseJarvisServerServiceToken(CLIENT_ID, '')).toHaveProperty('problem');
-    expect(parseJarvisServerServiceToken('', CLIENT_SECRET)).toHaveProperty('problem');
-  });
-
-  it('refuses a space inside either, and a Client ID that is not one', () => {
-    expect(parseJarvisServerServiceToken(`${CLIENT_ID} x`, CLIENT_SECRET)).toHaveProperty('problem');
-    expect(parseJarvisServerServiceToken(CLIENT_ID, 'two words')).toHaveProperty('problem');
-    expect(parseJarvisServerServiceToken(CLIENT_SECRET, CLIENT_ID)).toHaveProperty('problem');
-    expect(parseJarvisServerServiceToken('.access', CLIENT_SECRET)).toHaveProperty('problem');
   });
 });

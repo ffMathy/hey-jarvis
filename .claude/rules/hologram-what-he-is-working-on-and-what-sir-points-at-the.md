@@ -12,14 +12,11 @@ tools at all, on any device. Both travel over the WebSocket each device keeps
 open to sir's Jarvis server for as long as its app runs, across conversations
 and between them (`jarvis-server-link.ts`; the server's end is
 `mcp/mastra/verticals/api/live-socket.ts`). The line knows nothing of
-conversations: `connectToServer` opens it — with the Cloudflare Access service
-token for the Zero Trust application in front of the server on the upgrade
-request, as `CF-Access-Client-Id` and `CF-Access-Client-Secret`, when the device
-has one
-(`serverAuthorizationHeaders`; React Native's `WebSocket` takes headers, a
-browser's cannot, so the headset and the phone's web build connect without
-them) — says `hello` with the device, and
-tries again after a drop until it is closed. The phone and the watch hold it
+conversations: `connectToServer` opens it on `/api/paired/live`, a path
+Cloudflare Access lets through, says `hello` with the device and the token it was
+paired with (`deviceToken`), which the server checks itself — no headers go on
+the upgrade request — and tries again after a drop until it is closed, or until
+the server refuses the token for good (4401). The phone and the watch hold it
 from their app component (`useJarvisServer`, in `hologram/react/lifecycle`), and
 the headset's page opens it once as it loads and hands it to each session. A
 device with no server address has no line, and loses nothing but these two.

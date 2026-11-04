@@ -13,7 +13,6 @@ import {
   NOT_CONNECTED_RESULT,
   TIMED_OUT_RESULT,
 } from './glance';
-import type { JarvisServerServiceToken } from './jarvis-server-address';
 
 /**
  * A device's line to the Jarvis server: a WebSocket each device that is Jarvis — the phone, the
@@ -90,30 +89,19 @@ export interface ServerSocket {
 
 /** What a line needs from outside itself, so a spec can hand it a fake socket and a clock. */
 export interface ServerLinkPlatform {
-  /** Opens a socket to `url`, with `headers` on its upgrade request where the platform can send them. */
-  openSocket(url: string, headers: Readonly<Record<string, string>>): ServerSocket;
+  /** Opens a socket to `url`. */
+  openSocket(url: string): ServerSocket;
   /** Calls `callback` once `milliseconds` have passed, unless the function it returns is called first. */
   after(milliseconds: number, callback: () => void): () => void;
 }
 
 /**
- * React Native's `WebSocket`, which takes the upgrade request's headers as a third argument. A
- * browser's has no such argument and ignores it: a page cannot set a header on a WebSocket at all.
- * The global is assignable to this as it is, since a constructor that takes fewer arguments may
- * stand in for one that is handed more.
- */
-interface WebSocketWithHeaders {
-  new (url: string, protocols: undefined, options: { headers: Readonly<Record<string, string>> }): WebSocket;
-}
-
-/**
  * The global `WebSocket`, as a {@link ServerSocket}: its handlers are called with no more than a line
- * reads, and `headers` go on the upgrade request on a phone and a watch (React Native) and are
- * dropped by a browser.
+ * reads. No headers go with it — a browser cannot set one on a WebSocket — so whatever proves who is
+ * asking travels in the hello instead (`deviceToken`).
  */
-function openWebSocket(url: string, headers: Readonly<Record<string, string>>): ServerSocket {
-  const HeaderedWebSocket: WebSocketWithHeaders = WebSocket;
-  const webSocket = new HeaderedWebSocket(url, undefined, { headers });
+function openWebSocket(url: string): ServerSocket {
+  const webSocket = new WebSocket(url);
   const socket: ServerSocket = {
     onopen: null,
     onmessage: null,
@@ -140,33 +128,11 @@ export interface ServerLinkOptions {
   address: string | undefined;
   device: JarvisDevice;
   /**
-   * The Cloudflare Access service token the Zero Trust application in front of the server accepts,
-   * as `parseJarvisServerServiceToken` gives it, or `undefined` for a server with nothing in front
-   * of it. See {@link serverAuthorizationHeaders} for how it is sent.
-   */
-  serviceToken?: JarvisServerServiceToken;
-  /**
-   * The token this device was paired with, when it is paired — the headset, whose browser cannot
-   * send a service token's headers on a WebSocket: the line then opens on
-   * {@link JARVIS_SERVER_PAIRED_SOCKET_PATH} and says it in the hello. A server that no longer knows
-   * it closes the socket with 4401, after which the line is not tried again.
+   * The token this device was paired with (`paired-device.ts`), when it is paired: the line then
+   * opens on {@link JARVIS_SERVER_PAIRED_SOCKET_PATH} and says it in the hello. A server that no
+   * longer knows it closes the socket with 4401, after which the line is not tried again.
    */
   deviceToken?: string;
-}
-
-/**
- * The headers a service token travels in on the socket's upgrade request: `CF-Access-Client-Id` and
- * `CF-Access-Client-Secret`, the two Cloudflare Access reads a service token from.
- *
- * Only a phone and a watch can send them: a browser cannot set a header on a WebSocket, so the
- * headset's page and the phone's web build connect without them.
- */
-export function serverAuthorizationHeaders(
-  serviceToken: JarvisServerServiceToken | undefined,
-): Readonly<Record<string, string>> {
-  return serviceToken === undefined
-    ? {}
-    : { 'CF-Access-Client-Id': serviceToken.clientId, 'CF-Access-Client-Secret': serviceToken.clientSecret };
 }
 
 /** A line that is open, or trying to be. */
@@ -333,7 +299,6 @@ export function connectToServer(
   }
   const { deviceToken } = options;
   const url = serverSocketUrl(options.address, deviceToken !== undefined);
-  const headers = serverAuthorizationHeaders(options.serviceToken);
   const hello = JSON.stringify({
     type: 'hello',
     device: options.device,
@@ -408,7 +373,7 @@ export function connectToServer(
     cancelRetry = undefined;
     let opened: ServerSocket;
     try {
-      opened = platform.openSocket(url, headers);
+      opened = platform.openSocket(url);
     } catch {
       tryAgainLater();
       return;

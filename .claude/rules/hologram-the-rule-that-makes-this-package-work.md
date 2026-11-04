@@ -26,11 +26,12 @@ bundler would drop it anyway — the test counts what the source says. Until the
 GPU drew all of him it had one exception, Skia's enums, which the drawing read
 as values.
 
-The two ElevenLabs files keep the same rule for the same payoff. `fetch` is a
-global rather than an import, so the token request and every failure ElevenLabs
-can answer with — a rejected key, a key without permission, an unknown agent, an
-account out of credits, a rate limit — are driven in `conversation-token.spec.ts`
-with no account, no credential, no SDK and no device.
+The conversation's files keep the same rule for the same payoff. `fetch` is a
+global rather than an import, so asking the paired server for a conversation's
+credential (`pairedCredentials` in `paired-device.ts`) and every way that fails —
+a server that is not reached, a device it no longer knows (401), its own message
+for anything else — are driven in `paired-device.spec.ts` and the session's specs
+with no server, no ElevenLabs account, no SDK and no device.
 
 **`hologram/gpu` keeps the same rule.** It runs in four places too — under `bun
 test`, in the headset's browser beside three.js, in the phone's web build and on

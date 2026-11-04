@@ -15,12 +15,13 @@ a pocket or in a headset. All three constants are in `conversation-token.ts`
 and none is the default, because a default is how the watch ends up filed under
 the phone's name.
 
-**Nothing from an error response is ever repeated back.** `conversation-token.ts`
-reads only `detail.status` and `detail.code`, and only when they look like the
-fixed identifiers they are. The free-text message beside them is never read: it
-can echo the request, and the request carried the API key. There is a test that
-puts a key-shaped string in every field of every failure and asserts it never
-reaches the message.
+**No device holds an ElevenLabs key.** Every conversation's credential comes from
+sir's Jarvis server, which the device is paired with (`pairedCredentials` in
+`paired-device.ts`): the server holds the key and asks ElevenLabs on the device's
+behalf. A 401 means the server no longer knows the device
+(`NO_LONGER_PAIRED_PROBLEM`), a request that reached no server says so
+(`SERVER_UNREACHABLE_PROBLEM`), and any other refusal's `message` is passed on,
+unless it looks like a credential (`failure-text.ts`).
 
 `simulated-voice.ts` is the one place with no `'worklet'` on anything, and that is deliberate: it
 is read where a voice is read — the JS thread, every 40 ms — and never on the UI thread. It makes

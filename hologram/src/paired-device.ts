@@ -4,15 +4,13 @@ import { parseJarvisServerAddress } from './jarvis-server-address';
 import { JARVIS_SERVER_SOCKET_PATH } from './jarvis-server-link';
 
 /**
- * Pairing a browser with sir's Jarvis server, so that the server starts its conversations and no
- * ElevenLabs key has to be typed in or kept in the browser's storage — and so that the browser's
- * line to the server needs no Cloudflare Access cookie, which runs out with Access's session.
+ * Pairing a device with sir's Jarvis server, which is the only way any device gets a conversation:
+ * the server holds the ElevenLabs key and starts each conversation on the device's behalf, so no key
+ * is typed in or kept on a phone, a watch or in a browser — and the device's line to the server
+ * needs no Cloudflare Access cookie or service token, both of which run out or have to be pasted.
  *
- * Shared by the two pages that run in a browser: the headset's (`vr/`) and the phone app's web
- * build (`mobile/`, on web). Both are served from the same origin, so they share `localStorage`, and
- * a browser paired on one of them is paired on both. The phone and the watch apps do not pair: they
- * hold a Cloudflare Access service token, which lasts until it is revoked, and a browser cannot send
- * its headers on a WebSocket.
+ * The headset's page (`vr/`) and the phone app's web build (`mobile/`, on web) are served from the
+ * same origin, so they share `localStorage`, and a browser paired on one of them is paired on both.
  *
  * **Once, through Cloudflare Access.** Pairing is the one request that has to prove who is asking.
  * It is sent with the browser's cookies, so Access's `CF_Authorization` cookie for the server goes
@@ -26,7 +24,7 @@ import { JARVIS_SERVER_SOCKET_PATH } from './jarvis-server-link';
  * on paths Access lets through, where the server checks the token itself.
  */
 
-/** Where a browser keeps the token it was paired with, beside the server's address. */
+/** Where a device keeps the token it was paired with, beside the server's address. */
 export const JARVIS_DEVICE_TOKEN_STORAGE_KEY = 'jarvis.device-token';
 
 /** Where a browser is paired: `DEVICE_PAIRING_PATH` in `mcp`. */
@@ -168,7 +166,7 @@ async function askServer(
   return credential;
 }
 
-/** Credentials asked of the server the browser is paired with, rather than of ElevenLabs with a key. */
+/** Credentials asked of the server the device is paired with, which asks ElevenLabs for them. */
 export function pairedCredentials(pairing: Pairing): ConversationCredentials {
   return {
     token: (participantName, fetchImplementation = fetch) =>
