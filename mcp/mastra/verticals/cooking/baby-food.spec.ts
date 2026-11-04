@@ -128,6 +128,23 @@ describe('babyFoodAdviceAt', () => {
     expect(adviceMentioning(24, 'skyr')).toHaveLength(0);
   });
 
+  it('keeps peanuts, whole nuts and popcorn out until about 3 years (pp. 29, 113)', () => {
+    expect(adviceMentioning(35, 'peanuts')).toHaveLength(1);
+    expect(adviceMentioning(36, 'peanuts')).toHaveLength(0);
+  });
+
+  it('mixes meat into its mash at first, and keeps the parts of the dinner apart from 9 months (pp. 21, 27)', () => {
+    expect(adviceMentioning(6, 'mixed into its vegetable mash')).toHaveLength(1);
+    expect(adviceMentioning(6, 'not mixed together')).toHaveLength(0);
+    expect(adviceMentioning(9, 'not mixed together')).toHaveLength(1);
+  });
+
+  it('allows cow\'s milk only cooked into family dishes before 9 months, and about 1 dl a day after (p. 89)', () => {
+    expect(adviceMentioning(8, 'made for the whole family')).toHaveLength(1);
+    expect(adviceMentioning(9, 'about 1 dl of milk a day')).toHaveLength(1);
+    expect(adviceMentioning(12, "cow's milk")).toHaveLength(0);
+  });
+
   it('cooks extra for its lunch only once it is 1 year (p. 33)', () => {
     expect(adviceMentioning(11, 'cook a little extra')).toHaveLength(0);
     expect(adviceMentioning(12, 'cook a little extra')).toHaveLength(1);

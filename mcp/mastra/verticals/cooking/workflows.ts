@@ -66,7 +66,7 @@ export function mealPlanRecipeSelectorInstructions(babyGuidance: string | undefi
 export function mealPlanSchedulerInstructions(babyGuidance: string | undefined): string {
   const rules = [
     babyGuidance
-      ? "Scale ingredients for 6 people (2 people × 3 days per recipe). The baby's share comes out of those portions; add more only where its advice says to cook extra for it"
+      ? "Scale ingredients for 6 people (2 people × 3 days per recipe), plus a little for the baby's share of each day: its appetite decides how much it eats, and its advice says when to cook extra for it"
       : 'Scale ingredients for 6 people (2 people × 3 days per recipe)',
     `Order recipes by ingredient expiry speed:
    - Meat and dairy first
@@ -77,7 +77,7 @@ export function mealPlanSchedulerInstructions(babyGuidance: string | undefined):
     ...(babyGuidance
       ? [
           `Adapt the directions so the baby can share each dinner, following its advice below, without changing the dish for the adults:
-   - Where a recipe adds chili or most of its salt, move that to after the baby's portion has been set aside, or to the table
+   - Where a recipe adds chili or most of its salt, move that to after the baby's portion has been set aside. Chili may be served at the table instead, but never salt, which is kept off the table
    - Add one direction, in the same language as the recipe's directions and starting with "Til baby:", that says when to set the baby's portion aside, how to prepare and serve it at its age (what to leave out of it, and how to mash, blend or cut it), and how to keep and reheat its portions for the following days
    - Leave out of the baby's portion anything its advice rules out`,
         ]

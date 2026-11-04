@@ -116,6 +116,9 @@ describe('generateMealPlanWorkflow', () => {
       expect(toldTo).toContain('fried fish waits until it is 9 months');
     }
     expect(atSixMonths.scheduler).toContain('"Til baby:"');
+    // "Lad være med at sætte salt på bordet" (p. 96): the salt held back for the baby is not
+    // offered at the table instead.
+    expect(atSixMonths.scheduler).toContain('never salt, which is kept off the table');
 
     // The same workflow, built once, three months on: the advice has moved with the baby.
     expect(atNineMonths.result.status).toBe('success');

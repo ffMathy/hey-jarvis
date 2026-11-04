@@ -130,15 +130,14 @@ export const BABY_FOOD_ADVICE: readonly BabyFoodAdvice[] = [
   {
     section: 'choosing',
     fromMonths: 6,
-    untilMonths: 9,
-    pages: [21, 103],
-    text: 'It needs meat or fish every day for its iron, so a dinner with meat, poultry or fish is the one to share',
+    pages: [21, 93, 103, 108],
+    text: 'It needs meat or fish every day for its iron, and its lunch and dinner should each have one of them, so a dinner with meat, poultry or fish is the one to share. Eggs and pulses are part of its varied food too; a vegetarian dinner needs pulses, eggs and dairy instead, and a vegan one is not enough for it',
   },
   {
     section: 'choosing',
-    fromMonths: 9,
-    pages: [27, 103, 108],
-    text: 'Meat, poultry or fish at most dinners gives it the iron and zinc it needs; pulses or eggs can stand in for them in a vegetarian dinner',
+    fromMonths: 6,
+    pages: [22, 93, 113],
+    text: 'Potatoes are its everyday staple, boiled rather than fried or cooked in cream or cheese; rice and pasta are a change now and then',
   },
   {
     section: 'choosing',
@@ -149,8 +148,8 @@ export const BABY_FOOD_ADVICE: readonly BabyFoodAdvice[] = [
   {
     section: 'choosing',
     fromMonths: 4,
-    pages: [29, 107],
-    text: 'It must not have rice every day, because of arsenic: never two dinners in the same week that are both served with rice',
+    pages: [29, 95, 107],
+    text: 'It must not have rice every day, because of arsenic: never two dinners in the same week that are both served with rice, and when a dinner with rice lasts several days, give it potatoes, pasta or bulgur instead on some of them',
   },
   {
     section: 'choosing',
@@ -216,9 +215,15 @@ export const BABY_FOOD_ADVICE: readonly BabyFoodAdvice[] = [
   },
   {
     section: 'preparing',
-    fromMonths: 6,
-    pages: [27, 47],
+    fromMonths: 9,
+    pages: [27, 47, 113],
     text: 'Its plate has the parts of the dinner side by side, not mixed together, cut into small bite-sized pieces, so it can see and choose what it eats',
+  },
+  {
+    section: 'preparing',
+    fromMonths: 6,
+    pages: [95, 96],
+    text: 'Meat is not fried or grilled to a dark crust, and is fried in oil rather than butter',
   },
   {
     section: 'preparing',
@@ -229,10 +234,17 @@ export const BABY_FOOD_ADVICE: readonly BabyFoodAdvice[] = [
   },
   {
     section: 'preparing',
-    fromMonths: 6,
+    fromMonths: 4,
+    untilMonths: 9,
+    pages: [89, 104],
+    text: "Cow's milk only as cooked into a dish made for the whole family, such as mince or a sauce; milk to drink waits until it is 1 year",
+  },
+  {
+    section: 'preparing',
+    fromMonths: 9,
     untilMonths: 12,
-    pages: [104],
-    text: "Milk, cream and cheese cooked into the family's food are fine; only milk to drink waits until it is 1 year",
+    pages: [89, 104],
+    text: "Food made with cow's milk is fine, up to about 1 dl of milk a day; milk to drink waits until it is 1 year",
   },
   {
     section: 'preparing',
@@ -279,34 +291,34 @@ export const BABY_FOOD_ADVICE: readonly BabyFoodAdvice[] = [
     fromMonths: 6,
     untilMonths: 12,
     pages: [105],
-    text: 'Spinach, beetroot, fennel and celery only as about a tenth of its portion, because of nitrate; a dish where they are more than that, only about every 14 days',
+    text: "Spinach, beetroot, fennel and celery (spinat, rødbede, fennikel, selleri) only as about a tenth of its portion, because of nitrate. A dish where they are more than that, only about every 14 days: when such a dinner lasts several days, it is the baby's on one of them only",
   },
   {
     section: 'limits',
     fromMonths: 4,
-    pages: [14, 20, 96],
-    text: 'No salt added to its food: potatoes, rice, pasta and vegetables are cooked with only a little salt, the rest of the dinner is salted lightly or after its portion is set aside, and salty dishes and salty meat and fish products stay out of its share',
+    pages: [14, 20, 48, 80, 93, 96],
+    text: 'No salt added to its food: potatoes, rice, pasta and vegetables are cooked with only a little salt, the rest of the dinner is salted lightly or after its portion is set aside, and salt is not put on the table. Salty dishes, salty meat and fish products, pesto, stock and much cheese stay out of its share',
   },
   {
     section: 'limits',
     fromMonths: 4,
     untilMonths: 12,
     pages: [102],
-    text: 'No honey in anything it eats, cooked or not, until it is 1 year, because of infant botulism',
+    text: 'No honey (honning) in anything it eats, cooked or not, until it is 1 year, because of infant botulism',
   },
   {
     section: 'limits',
     fromMonths: 4,
     untilMonths: THREE_YEARS,
     pages: [94, 100],
-    text: 'No tinned tuna until it is 3 years; after that at most one ordinary tin a week, and never white or albacore tuna',
+    text: 'No tinned tuna (tun på dåse) until it is 3 years; after that at most one ordinary tin a week, and never white or albacore tuna',
   },
   {
     section: 'limits',
     fromMonths: 4,
     untilMonths: FOURTEEN_YEARS,
     pages: [94, 100],
-    text: 'No tuna steaks or other large predatory fish, because of mercury: pike, halibut, swordfish, perch, zander, oilfish, escolar, ray and shark',
+    text: 'No tuna steaks or other large predatory fish, because of mercury: tuna, pike, halibut, swordfish, perch, zander, oilfish, escolar, ray and shark (tun, gedde, helleflynder, sværdfisk, aborre, sandart, oliefisk, escolar, rokke, haj)',
   },
   {
     section: 'limits',
@@ -323,15 +335,15 @@ export const BABY_FOOD_ADVICE: readonly BabyFoodAdvice[] = [
   {
     section: 'limits',
     fromMonths: 4,
-    pages: [23, 29, 94, 108],
-    text: 'Nothing it can choke on: soft food in small pieces, someone watching it through the whole meal, grapes cut lengthwise with the seeds out, nuts and oily seeds only finely chopped, and no popcorn or peanuts',
+    pages: [23, 29, 94, 108, 113],
+    text: 'Nothing it can choke on: soft food in small pieces, someone watching it through the whole meal, grapes cut lengthwise with the seeds out, and nuts and oily seeds only finely chopped',
   },
   {
     section: 'limits',
     fromMonths: 4,
     untilMonths: THREE_YEARS,
-    pages: [29],
-    text: 'No hard raw food to gnaw on, such as whole raw carrots or carrot sticks, until it is about 3 years',
+    pages: [29, 113],
+    text: 'No peanuts, whole nuts or popcorn, and no hard food to bite or gnaw on, such as whole raw carrots, carrot sticks or hard fruit, until it is about 3 years',
   },
   {
     section: 'limits',
@@ -402,8 +414,8 @@ export const BABY_FOOD_ADVICE: readonly BabyFoodAdvice[] = [
   {
     section: 'keeping',
     fromMonths: 4,
-    pages: [107],
-    text: 'What it leaves on its plate is thrown away, and so are leftovers that had raw herbs sprinkled on them',
+    pages: [102, 107],
+    text: "What it leaves on its plate is thrown away, and so is every leftover that had raw herbs sprinkled on it: raw herbs go on the adults' plates only, never into the pot",
   },
   {
     section: 'keeping',
