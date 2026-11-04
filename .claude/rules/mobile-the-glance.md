@@ -27,11 +27,11 @@ The line's half — parsing both server messages, `ServerLink.onGlance`, `reques
 `useGlance` — is `hologram`'s: see [the line to the server](hologram-what-he-is-working-on-and-what-sir-points-at-the.md).
 
 - **Which screen is `chooseScreen` in `src/app-screen.ts`.** The glance only when the app was opened,
-  is set up, has a server address and has a glance no older than `GLANCE_SHOWN_FOR_MS` (a day, as long
+  is paired with the server and has a glance no older than `GLANCE_SHOWN_FOR_MS` (a day, as long
   as the server hosts its page — **not** the server's three-hour `GLANCE_MAX_AGE_MS`, which is when a
   rebuild *starts*: the current glance is often a little over three hours old, and all night, when
-  nothing is rebuilt, far older). Otherwise the conversation, exactly as before glances — no
-  server, or none sent. **Never in the middle of a conversation**: the conversation screen reports
+  nothing is rebuilt, far older). Otherwise the conversation, exactly as before glances — none
+  sent. **Never in the middle of a conversation**: the conversation screen reports
   whether one is under way (`useBackToGlance` in `src/back-to-glance.tsx`: starting, greeting,
   connecting, live, hanging up, or still fading out), and a glance that arrives meanwhile waits for
   him to go. A conversation that never opened is not under way, so a failed one gives way to the glance.
@@ -69,7 +69,8 @@ it — that is what the `.web.tsx` pair is for.
 
 **Tested:** `app-screen.spec.ts`, `glance-bridge.spec.ts`, `glance-actions.spec.ts` and
 `glance-storage.spec.ts` offline; and in `tests/e2e/web-app.spec.ts` a Jarvis server played by the
-test (`playTheJarvisServer`: the `/api/live` socket answering the hello with `ready` and a `glance`,
+test (`playTheJarvisServer`: the `/api/paired/live` socket answering the hello — which carries the
+browser's device token — with `ready` and a `glance`,
 and every `glanceAction` with a result, and the page served by `page.route`) — the app opened on the
 glance's `<iframe>` at its URL, the talk button and the way back, an unlisted action asking nothing, a
 press asking `window.confirm` with the prompt rather than the button's label, the `glanceAction` frame

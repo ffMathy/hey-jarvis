@@ -1,42 +1,32 @@
 import {
   JARVIS_DEVICE_TOKEN_STORAGE_KEY,
   JARVIS_SERVER_ADDRESS_STORAGE_KEY,
-  JARVIS_SERVER_SERVICE_TOKEN_STORAGE_KEY,
-  type JarvisServerServiceToken,
   parseJarvisServerAddress,
-  parseJarvisServerServiceToken,
   parseStoredDeviceToken,
 } from 'hologram';
 import { readStoredValue, writeStoredValue } from './key-value-store';
 
 /**
- * The Jarvis server's address, kept on the phone: where it sends sir's photos, and where it, the
- * watch and the headset open their line to the server during a conversation (`jarvis-server-link.ts`
- * in `hologram`). What an address may be is `hologram`'s to say (`jarvis-server-address.ts`); this
- * is where the phone keeps one.
+ * Where the phone keeps its pairing with sir's Jarvis server: the server's address, and the token
+ * the server gave this phone when it was paired with it. Pairing is the only way the app is set up
+ * (`paired-device.ts` in `hologram`): the server holds the ElevenLabs key and starts every
+ * conversation, the camera sends its photos there, and the line to it (`jarvis-server-link.ts` in
+ * `hologram`) opens with the token. What an address may be is `hologram`'s to say
+ * (`jarvis-server-address.ts`); this is where the phone keeps one.
  *
- * **Optional.** Talking to Jarvis needs nothing but ElevenLabs, as it always has, so a phone without
- * an address talks to him exactly as before: no camera button beside him, nothing told to the agent
- * about one (`use-photo-sending.ts`), and no line to the server. See "Showing him something" in
- * `.claude/rules/mobile.md`.
- *
- * **Handed to the watch**, with the ElevenLabs settings (`answer-the-watch.ts`), so it opens the same
- * line; the headset's page reads it from the `localStorage` it shares with the phone's web build. It
- * is kept under a storage key of its own, so it and the settings can be saved and read without either
- * having to know the other's shape.
+ * **Handed to the watch** (`answer-the-watch.ts`), which shares this phone's pairing rather than
+ * having one of its own. The web build's are under `hologram`'s keys in the `localStorage` it shares
+ * with the headset's page, so a browser paired on either is paired on both.
  */
 
 /**
- * What came back: an address, none kept, or a read that failed — the same three answers
- * `settings-storage.ts` gives, for the same reason.
+ * What came back: a value, none kept, or a read that failed.
  *
- * **A read that fails is not yet "no address".** It is read at the same moment as the settings, from
- * the same keystore, in a window the system has only just made — exactly the read that can throw
- * while the native module is still coming up. Folded into "none", one such throw would take the
- * camera away from a summoning of the assistant's window with the address in the keystore the whole
- * time. So `app.tsx` tries again, as it does for the settings (`read-again.ts`), and only an address
- * that still cannot be read is no address: the camera stays off, which is what failing closed means
- * here.
+ * **A read that fails is not yet "nothing".** The pairing is read from the keystore in a window the
+ * system has only just made — exactly the read that can throw while the native module is still
+ * coming up. Folded into "none", one such throw would make a summoned Jarvis look like a phone that
+ * was never set up, and open sample mode with the pairing in the keystore the whole time. So
+ * `app.tsx` tries again (`read-again.ts`), and only a value that still cannot be read is none.
  */
 export type StoredJarvisServerAddress =
   | { kind: 'address'; address: string }
@@ -62,94 +52,71 @@ export async function loadJarvisServerAddress(): Promise<StoredJarvisServerAddre
 }
 
 /**
- * The settings screen changing the server's address or its service token: the ones to keep
- * instead, `undefined` for none.
- *
- * A save that leaves both fields as they were is no change at all, and is reported as none rather
- * than as the fields' values — see `elevenlabs-fields.tsx` for the address that would otherwise be
- * erased.
- */
-export interface JarvisServerChange {
-  address: string | undefined;
-  serviceToken: JarvisServerServiceToken | undefined;
-}
-
-/**
  * Keeps the address, or forgets it. No address is stored as an empty string, which reads back as
- * none — the store has no way to delete an entry, and an empty one is what an unset field saves as.
+ * none — the store has no way to delete an entry.
  */
 export async function saveJarvisServerAddress(address: string | undefined): Promise<void> {
   await writeStoredValue(JARVIS_SERVER_ADDRESS_STORAGE_KEY, address ?? '');
 }
 
-/**
- * What came back for the service token: the same three answers as for the address, read the same way
- * and retried with it.
- */
-export type StoredJarvisServerServiceToken =
-  | { kind: 'serviceToken'; serviceToken: JarvisServerServiceToken }
-  | { kind: 'nothing' }
-  | { kind: 'unreadable' };
+/** What came back for the device token: the same three answers as for the address. */
+export type StoredJarvisDeviceToken = { kind: 'token'; token: string } | { kind: 'nothing' } | { kind: 'unreadable' };
 
-/**
- * Reads the stored service token for the server: the Cloudflare Access Client ID and Client Secret
- * the Zero Trust application in front of it accepts (`parseJarvisServerServiceToken` in `hologram`).
- * Kept in the keystore like the ElevenLabs key, since it is a credential too, as one JSON value so
- * the pair is written and read together, and parsed again on the way out.
- */
-export async function loadJarvisServerServiceToken(): Promise<StoredJarvisServerServiceToken> {
+/** Reads the token this device was paired with, if it has been, checked as `hologram` checks one. */
+export async function loadJarvisDeviceToken(): Promise<StoredJarvisDeviceToken> {
   let stored: string | undefined;
   try {
-    stored = await readStoredValue(JARVIS_SERVER_SERVICE_TOKEN_STORAGE_KEY);
+    stored = await readStoredValue(JARVIS_DEVICE_TOKEN_STORAGE_KEY);
   } catch {
     return { kind: 'unreadable' };
   }
-
-  const { clientId, clientSecret } = storedPair(stored);
-  const parsed = parseJarvisServerServiceToken(clientId, clientSecret);
-  return 'serviceToken' in parsed && parsed.serviceToken !== undefined
-    ? { kind: 'serviceToken', serviceToken: parsed.serviceToken }
-    : { kind: 'nothing' };
-}
-
-/** The two halves of a stored service token, or two empty ones for anything that is not a stored pair. */
-function storedPair(stored: string | undefined): { clientId: string; clientSecret: string } {
-  const none = { clientId: '', clientSecret: '' };
-  if (!stored) return none;
-  let value: unknown;
-  try {
-    value = JSON.parse(stored);
-  } catch {
-    return none;
-  }
-  if (typeof value !== 'object' || value === null) return none;
-  const clientId = 'clientId' in value && typeof value.clientId === 'string' ? value.clientId : '';
-  const clientSecret = 'clientSecret' in value && typeof value.clientSecret === 'string' ? value.clientSecret : '';
-  return { clientId, clientSecret };
-}
-
-/** Keeps the service token, or forgets it, as the address is kept. */
-export async function saveJarvisServerServiceToken(serviceToken: JarvisServerServiceToken | undefined): Promise<void> {
-  await writeStoredValue(
-    JARVIS_SERVER_SERVICE_TOKEN_STORAGE_KEY,
-    serviceToken === undefined ? '' : JSON.stringify(serviceToken),
-  );
-}
-
-/**
- * Reads the token this browser was paired with (`paired-device.ts` in `hologram`), if it was: kept
- * under `hologram`'s key, so a browser paired on the headset's page, on the same origin, is paired
- * here too. Only the web build pairs; on a device nothing is ever kept under it.
- */
-export async function loadJarvisDeviceToken(): Promise<string | undefined> {
-  try {
-    return parseStoredDeviceToken(await readStoredValue(JARVIS_DEVICE_TOKEN_STORAGE_KEY));
-  } catch {
-    return undefined;
-  }
+  const token = parseStoredDeviceToken(stored);
+  return token === undefined ? { kind: 'nothing' } : { kind: 'token', token };
 }
 
 /** Keeps the token, or forgets it — when the server it was paired with is changed or cleared. */
 export async function saveJarvisDeviceToken(token: string | undefined): Promise<void> {
   await writeStoredValue(JARVIS_DEVICE_TOKEN_STORAGE_KEY, token ?? '');
+}
+
+/**
+ * Pairing the phone app with the server, which a browser does with `pairWithServer` instead.
+ *
+ * **Through the browser, once.** A native app holds no Cloudflare Access cookie, so the app opens
+ * the server's pairing page ({@link phonePairingUrl}) in the phone's browser, where Access signs sir
+ * in as it does any page. Its button pairs the phone, and the page sends the browser on to this
+ * app's own link, `heyjarvis://paired#token=…`, which the app reads ({@link pairedTokenFromLink})
+ * and keeps beside the address it opened the page for. The server never sends a token anywhere but
+ * this app's scheme, whatever asked.
+ *
+ * **Then never again.** Every conversation is asked of the server with the token, and the line
+ * opens on the paired path with it in its hello. Unpairing the phone on the server ends both — for
+ * the watch too, which holds the same token.
+ */
+
+/** The server's pairing page for the phone app: `PHONE_PAIRING_ROUTE` in `mcp`. */
+export const PHONE_PAIRING_PATH = '/api/devices/pair';
+
+/** The link the pairing page opens this app with: `PHONE_APP_PAIRED_URL` in `mcp`. */
+export const PAIRED_LINK = 'heyjarvis://paired';
+
+/** The page to open in the browser to pair this phone with the server at `address`. */
+export function phonePairingUrl(address: string): string {
+  return `${address}${PHONE_PAIRING_PATH}`;
+}
+
+/**
+ * The token in the link the pairing page opened the app with, or `undefined` for any other link.
+ *
+ * Read by hand rather than with `URL`, since React Native's `URL` and `URLSearchParams` cannot read
+ * one. The token is base64url, so the server's `URLSearchParams` wrote it as it is.
+ */
+export function pairedTokenFromLink(link: string | null | undefined): string | undefined {
+  if (!link?.toLowerCase().startsWith(`${PAIRED_LINK}#`)) return undefined;
+  const fragment = link.slice(PAIRED_LINK.length + 1);
+  for (const part of fragment.split('&')) {
+    const [name, value] = part.split('=');
+    if (name === 'token') return parseStoredDeviceToken(value);
+  }
+  return undefined;
 }

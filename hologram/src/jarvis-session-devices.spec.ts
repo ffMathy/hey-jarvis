@@ -4,6 +4,7 @@ import { PHONE_PARTICIPANT_NAME, WATCH_PARTICIPANT_NAME } from './conversation-t
 import { DEADLINE_PROBLEM, DROPPED_PROBLEM, OFFLINE_PROBLEM } from './failure-text';
 import { REDIAL_GIVE_UP_AFTER_MS, RELEASE_HELD_VOICE_AFTER_MS } from './jarvis-session';
 import { createFakeCallAudio, createFakeHeldVoice, createHarness, settle } from './jarvis-session.fakes';
+import { NO_LONGER_PAIRED_PROBLEM, SERVER_UNREACHABLE_PROBLEM } from './paired-device';
 import type { JarvisSessionDependencies } from './session-contract';
 
 /**
@@ -82,7 +83,7 @@ describe('greeting inside the call’s audio, on a phone and a watch', () => {
     expect(phone.greeting.log).toEqual([]);
     // The token is asked for beside him, as on every device that needs no network brought up.
     expect(phone.tokens.requests).toHaveLength(1);
-    expect(phone.tokens.requests[0]?.url.searchParams.get('participant_name')).toBe(PHONE_PARTICIPANT_NAME);
+    expect(phone.tokens.requests[0]?.body).toEqual({ transport: 'webrtc', participantName: PHONE_PARTICIPANT_NAME });
 
     await settle();
     expect(phone.greeting.log).toEqual(['wait-for-route']);
@@ -439,7 +440,7 @@ describe('what the SDK’s React provider used to get wrong on the phone and the
     expect(phone.callAudio.log).toEqual(['start', 'stop']);
   });
 
-  it('says a dropped room, and a missing network, in words rather than in LiveKit’s or the platform’s', async () => {
+  it('says a dropped room, an unreachable server and a missing network in words rather than in LiveKit’s or the platform’s', async () => {
     const dropped = onAPhone();
     await goLiveOn(dropped);
     dropped.sdk.latest.drop('LiveKit connection state changed to disconnected', 'connection_state_changed');
@@ -447,12 +448,20 @@ describe('what the SDK’s React provider used to get wrong on the phone and the
     expect(dropped.events.problems).toEqual([DROPPED_PROBLEM]);
     expect(dropped.events.sources).toEqual(['session']);
 
-    const offline = onAPhone();
-    offline.session.summon();
-    offline.tokens.goOffline();
+    const unreachable = onAPhone();
+    unreachable.session.summon();
+    unreachable.tokens.goOffline();
     await settle();
+    expect(unreachable.events.problems).toEqual([SERVER_UNREACHABLE_PROBLEM]);
+    expect(unreachable.events.sources).toEqual(['reaching']);
+
+    const offline = onAPhone();
+    await greetOn(offline);
+    offline.tokens.grant();
+    await settle();
+    await offline.sdk.latest.reject(new TypeError('Network request failed'));
     expect(offline.events.problems).toEqual([OFFLINE_PROBLEM]);
-    expect(offline.events.sources).toEqual(['reaching']);
+    expect(offline.events.sources).toEqual(['session']);
   });
 
   it('says where each failure came from, so a phone can say the session’s louder', async () => {
@@ -595,7 +604,8 @@ describe('in a browser', () => {
     expect(browser.session.phase).toBe('connecting');
     expect(browser.greeting.plays).toBe(0);
     expect(browser.tokens.requests).toHaveLength(1);
-    expect(browser.tokens.requests[0]?.url.pathname).toBe('/v1/convai/conversation/get-signed-url');
+    expect(browser.tokens.requests[0]?.url.pathname).toBe('/api/paired/conversation');
+    expect(browser.tokens.requests[0]?.body).toMatchObject({ transport: 'websocket' });
 
     browser.tokens.sign();
     await settle();
@@ -630,10 +640,10 @@ describe('in a browser', () => {
   it('says why a signed URL could not be had', async () => {
     const browser = inABrowser();
     browser.session.summon({ textOnly: true });
-    browser.tokens.refuse(401, { detail: { status: 'invalid_api_key' } });
+    browser.tokens.refuse(401);
     await settle();
 
-    expect(browser.events.problems).toEqual(['ElevenLabs rejected the API key. Check it in the settings.']);
+    expect(browser.events.problems).toEqual([NO_LONGER_PAIRED_PROBLEM]);
     expect(browser.events.sources).toEqual(['reaching']);
     expect(browser.session.phase).toBe('failed');
   });
@@ -684,7 +694,7 @@ describe('on a watch, which has to get off its phone’s Bluetooth first', () =>
     watch.online();
     await settle();
     expect(watch.tokens.requests).toHaveLength(1);
-    expect(watch.tokens.requests[0]?.url.searchParams.get('participant_name')).toBe(WATCH_PARTICIPANT_NAME);
+    expect(watch.tokens.requests[0]?.body).toEqual({ transport: 'webrtc', participantName: WATCH_PARTICIPANT_NAME });
   });
 
   it('starts its deadline only once the network is up, and says what the watch says, then', async () => {

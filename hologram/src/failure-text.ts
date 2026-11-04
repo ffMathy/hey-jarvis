@@ -2,7 +2,7 @@
  * What a summoning that failed says, for every way it can fail, on every device that holds one.
  *
  * The texts are the phone's wherever the phone had one, so the same failure reads the same
- * everywhere: the token request's own messages (`describeFailure` in `conversation-token.ts`, which
+ * everywhere: the paired server's own messages (`pairedCredentials` in `paired-device.ts`, which
  * reach the session as the rejection's message), the deadline's, the refused microphone's and the
  * generic ones. What the headset added are the raw texts the phone used to show verbatim and should
  * not — the platform's own words for being offline, and LiveKit's for a room that would not open or
@@ -16,7 +16,7 @@ import type { SessionEnding } from './session-contract';
 export const DEADLINE_PROBLEM = 'Jarvis did not answer. ElevenLabs may be unreachable, or the settings may be wrong.';
 
 /**
- * A `fetch` that never reached a server. A device that knows what it is connected through says so
+ * A start that never reached ElevenLabs. A device that knows what it is connected through says so
  * more exactly: the session takes its own text as `offlineProblem`.
  */
 export const OFFLINE_PROBLEM = 'ElevenLabs could not be reached. Check the internet connection.';
@@ -43,7 +43,7 @@ export const ENDED_UNEXPECTEDLY_PROBLEM = 'The conversation with Jarvis ended un
 /**
  * Anything that looks like a credential. A message is never shown with one in it — the SDK's and
  * LiveKit's texts are not written for a screen, and the token and the key are both in the requests
- * they describe — for the same reason `conversation-token.ts` never reads an error body's text.
+ * they describe.
  */
 const CREDENTIAL = /sk_[A-Za-z0-9]{6,}|eyJ[A-Za-z0-9_-]{10,}|access_token/;
 
@@ -70,11 +70,12 @@ function isNetworkFailure(error: unknown): boolean {
   return error instanceof TypeError;
 }
 
-/** Why the token request failed. Its own messages are already written for the user. */
-export function describeTokenFailure(error: unknown, offline = OFFLINE_PROBLEM): string {
-  if (isNetworkFailure(error)) {
-    return offline;
-  }
+/**
+ * Why asking the paired server for a credential failed. Its messages are already written for the
+ * user — a server that could not be reached included (`SERVER_UNREACHABLE_PROBLEM`) — so they are
+ * passed on, unless there is nothing or nothing safe in them.
+ */
+export function describeTokenFailure(error: unknown): string {
   return safely(messageOf(error), UNREACHABLE_PROBLEM);
 }
 

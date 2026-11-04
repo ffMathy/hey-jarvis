@@ -1,8 +1,8 @@
-import type { ElevenLabsSettings, JarvisServerServiceToken } from 'hologram';
+import type { Pairing } from 'hologram';
 import { useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { findWatch, openJarvisOnTheWatch, type PairedWatch, sendSettingsToTheWatch } from '../modules/jarvis-watch';
+import { findWatch, openJarvisOnTheWatch, type PairedWatch, sendPairingToTheWatch } from '../modules/jarvis-watch';
 import { theme } from './theme';
 
 /**
@@ -20,19 +20,13 @@ const JARVIS_IS_ON_PLAY = false;
 
 interface WatchCardProps {
   /**
-   * The credentials to offer the watch, when there are any.
+   * This phone's pairing with the Jarvis server, which the watch shares, when there is one.
    *
-   * Undefined on the tour's last step before they are saved — which cannot happen, since that step
-   * comes after the credentials one — and on any screen that has none. The card then says Jarvis is
+   * Undefined on the tour's last step before the phone is paired — which cannot happen, since that
+   * step comes after the server one — and on any screen that has none. The card then says Jarvis is
    * there without offering a handover, which is the truth.
    */
-  settings: ElevenLabsSettings | undefined;
-  /**
-   * The Jarvis server's address, handed over with the credentials, or `undefined` for none.
-   */
-  serverAddress: string | undefined;
-  /** The server's service token, handed over beside its address. */
-  serverServiceToken: JarvisServerServiceToken | undefined;
+  pairing: Pairing | undefined;
 }
 
 /** Nothing found, and what is shown until the first answer comes back. */
@@ -67,17 +61,18 @@ function usePairedWatch(): PairedWatch {
 }
 
 /**
- * Jarvis on the watch: whether he is there, how to put him there, and the key he needs once he is.
+ * Jarvis on the watch: whether he is there, how to put him there, and the pairing he needs once he is.
  *
  * Two cards in one, because the answer to "what is worth saying about the watch" changes entirely
  * with whether the app is on it.
  *
- * **He is there.** Then what the watch is missing is the ElevenLabs credentials, and this is where
- * they are handed over — see `sendSettingsToTheWatch`. The watch never asks for them on its own
- * keyboard, and the phone's is the only one they should ever be typed on. It usually happens
- * without this button: the watch asks whenever it starts with none and `answer-the-watch.ts`
- * answers, so the button is for the case where the watch was not running when it mattered, and for
- * rotating a key.
+ * **He is there.** Then what the watch is missing is this phone's pairing with the Jarvis server —
+ * its address and the token the server gave the phone — and this is where it is handed over — see
+ * `sendPairingToTheWatch`. The watch has no keyboard to pair with and no browser to sign in to
+ * Access with, so it shares the phone's pairing rather than having one of its own. It usually
+ * happens without this button: the watch asks whenever it starts with none, and the phone sends
+ * every new pairing, both in `answer-the-watch.ts`; so the button is for the case where the watch
+ * was out of range when it mattered.
  *
  * **He is not.** Then the only thing worth offering is a way to install him, and there is barely
  * one — read on.
@@ -93,7 +88,7 @@ function usePairedWatch(): PairedWatch {
  * watch is side-loaded with `adb` — see `.claude/rules/watch.md` — and the button says so rather than
  * sending the user to a page that will tell them the item was not found.
  */
-export function WatchCard({ settings, serverAddress, serverServiceToken }: WatchCardProps) {
+export function WatchCard({ pairing }: WatchCardProps) {
   const watch = usePairedWatch();
 
   // The Data Layer is Android's, and a browser has no watch beside it.
@@ -104,65 +99,48 @@ export function WatchCard({ settings, serverAddress, serverServiceToken }: Watch
   const name = watch.name ?? 'your watch';
 
   return watch.hasJarvis ? (
-    <HandingOverTheKey
-      name={name}
-      settings={settings}
-      serverAddress={serverAddress}
-      serverServiceToken={serverServiceToken}
-    />
+    <HandingOverThePairing name={name} pairing={pairing} />
   ) : (
     <PuttingHimOnTheWatch name={name} />
   );
 }
 
 /**
- * He is on the watch, so what is left is the credentials it needs in order to use him.
+ * He is on the watch, so what is left is the pairing it needs in order to use him.
  *
  * Three states rather than two, because "sent" is worth showing: the handover is silent on this
  * side — the watch stores it and says nothing back — so without a word here there is no way to
  * tell a successful send from a button that did nothing.
  */
-function HandingOverTheKey({
-  name,
-  settings,
-  serverAddress,
-  serverServiceToken,
-}: {
-  name: string;
-  settings: ElevenLabsSettings | undefined;
-  serverAddress: string | undefined;
-  serverServiceToken: JarvisServerServiceToken | undefined;
-}) {
+function HandingOverThePairing({ name, pairing }: { name: string; pairing: Pairing | undefined }) {
   const [handover, setHandover] = useState<'ready' | 'sending' | 'sent'>('ready');
   const [problem, setProblem] = useState<string | undefined>(undefined);
 
   const send = useCallback(() => {
-    if (!settings) {
+    if (!pairing) {
       return;
     }
     setHandover('sending');
     setProblem(undefined);
-    void sendSettingsToTheWatch(settings, serverAddress, serverServiceToken).then((sent) => {
+    void sendPairingToTheWatch(pairing).then((sent) => {
       setHandover(sent ? 'sent' : 'ready');
       if (!sent) {
-        setProblem(
-          'The watch would not take the credentials. It may be out of range, or Jarvis may not be running on it.',
-        );
+        setProblem('The watch would not take the pairing. It may be out of range, or Jarvis may not be on it.');
       }
     });
-  }, [settings, serverAddress, serverServiceToken]);
+  }, [pairing]);
 
   return (
     <View style={styles.card} testID="watch-card">
       <Text style={styles.cardHeading}>Jarvis is on {name}</Text>
       <Text style={styles.cardBody}>Hold the side button there, and he answers on your wrist too.</Text>
 
-      {settings ? (
+      {pairing ? (
         <>
           <Text style={styles.cardBody}>
             {handover === 'sent'
-              ? `Sent. ${name} keeps them in its own keystore, and can hold a conversation on its own from now on.`
-              : 'The watch needs the same ElevenLabs key and agent. Send them across rather than typing them on a watch.'}
+              ? `Sent. ${name} keeps it in its own keystore, and can hold a conversation on its own from now on.`
+              : 'The watch shares this phone’s pairing with your Jarvis server, so unpairing the phone unpairs it too. Send it across rather than pairing on a watch.'}
           </Text>
           <Pressable
             accessibilityRole="button"
@@ -175,7 +153,7 @@ function HandingOverTheKey({
               <ActivityIndicator color={theme.colors.accentText} />
             ) : (
               <Text style={styles.cardButtonLabel}>
-                {handover === 'sent' ? `Send to ${name} again` : `Send the key to ${name}`}
+                {handover === 'sent' ? `Send to ${name} again` : `Send the pairing to ${name}`}
               </Text>
             )}
           </Pressable>

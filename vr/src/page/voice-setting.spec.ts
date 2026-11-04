@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { JARVIS_DEVICE_TOKEN_STORAGE_KEY, JARVIS_SERVER_ADDRESS_STORAGE_KEY } from 'hologram';
 import type { KeyValueStorage } from './settings';
 import {
   loadVoiceFromWhereHeStands,
@@ -44,7 +45,8 @@ describe('"His voice from where he stands"', () => {
     expect(saveVoiceFromWhereHeStands(refusingStorage, false)).toContain('would not keep the setting');
   });
 
-  it('is kept apart from the ElevenLabs settings the phone shares', () => {
-    expect(VOICE_FROM_WHERE_HE_STANDS_KEY).not.toBe('jarvis.elevenlabs-settings');
+  it('is kept apart from the pairing the phone’s web build shares', () => {
+    expect(VOICE_FROM_WHERE_HE_STANDS_KEY).not.toBe(JARVIS_SERVER_ADDRESS_STORAGE_KEY);
+    expect(VOICE_FROM_WHERE_HE_STANDS_KEY).not.toBe(JARVIS_DEVICE_TOKEN_STORAGE_KEY);
   });
 });

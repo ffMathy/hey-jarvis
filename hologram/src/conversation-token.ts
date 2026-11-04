@@ -1,22 +1,3 @@
-import type { ElevenLabsSettings } from './elevenlabs-settings';
-
-/** The ElevenLabs endpoint that mints a WebRTC token for one conversation with an agent. */
-export const CONVERSATION_TOKEN_URL = 'https://api.elevenlabs.io/v1/convai/conversation/token';
-
-/**
- * The endpoint that signs a WebSocket URL for one conversation with an agent instead.
- *
- * The second transport, for the one conversation that cannot be held over the first. See
- * {@link requestSignedConversationUrl}.
- */
-export const SIGNED_CONVERSATION_URL = 'https://api.elevenlabs.io/v1/convai/conversation/get-signed-url';
-
-/** What `@elevenlabs/react-native` needs in order to open a WebRTC session. */
-export interface ConversationToken {
-  token: string;
-  conversationId: string;
-}
-
 /**
  * What each device calls itself in the ElevenLabs conversation history.
  *
@@ -24,237 +5,29 @@ export interface ConversationToken {
  * told apart: a conversation held on the wrist should be distinguishable in the history from one
  * held on the phone, from one held in a headset, from one held through the house speakers, and from
  * one held over the phone line. Apps each naming themselves would drift into two names for the same
- * thing.
+ * thing. The paired server asks ElevenLabs under the name it is sent.
  */
 export const PHONE_PARTICIPANT_NAME = 'jarvis-android';
 export const WATCH_PARTICIPANT_NAME = 'jarvis-wear';
 /** The Quest headset's, where he stands in the room with you (`vr/`). */
 export const HEADSET_PARTICIPANT_NAME = 'jarvis-vr';
 
-/** Everything one conversation needs before it can be asked for: whose agent, and who is asking. */
-export interface ConversationRequest {
-  /** The API key to ask with, and the agent to ask for. */
-  settings: ElevenLabsSettings;
-  /** Which device this is — one of the names above. Required, so no app can borrow another's. */
-  participantName: string;
-}
-
-/**
- * Narrows the signed-URL response the same way, and refuses anything that is not a `wss://` URL.
- *
- * Checked rather than trusted, because this string is handed straight to a `WebSocket`: anything
- * else there is either a downgrade to plaintext or a scheme nobody meant to open.
- */
-function readSignedUrl(payload: unknown): string | undefined {
-  if (typeof payload !== 'object' || payload === null || !('signed_url' in payload)) {
-    return undefined;
-  }
-
-  const { signed_url: signedUrl } = payload;
-  return typeof signedUrl === 'string' && signedUrl.startsWith('wss://') ? signedUrl : undefined;
-}
-
-/** Narrows ElevenLabs' response without trusting its shape. */
-function readToken(payload: unknown): ConversationToken | undefined {
-  if (typeof payload !== 'object' || payload === null || !('token' in payload)) {
-    return undefined;
-  }
-
-  const { token } = payload;
-  const conversationId = 'conversation_id' in payload ? payload.conversation_id : undefined;
-  if (typeof token !== 'string' || !token || typeof conversationId !== 'string') {
-    return undefined;
-  }
-
-  return { token, conversationId };
-}
-
-/**
- * The machine-readable reason ElevenLabs gives for a failure, if it gives one.
- *
- * Only `detail.status` and `detail.code` are read, and only when they look like
- * the identifiers they are — `invalid_api_key`, `missing_permissions` — because
- * those are fixed values. The free-text message beside them is never read: it
- * can echo the request, and the request carried the API key.
- */
-function readFailureReason(payload: unknown): string | undefined {
-  if (typeof payload !== 'object' || payload === null || !('detail' in payload)) {
-    return undefined;
-  }
-
-  const { detail } = payload;
-  if (typeof detail !== 'object' || detail === null) {
-    return undefined;
-  }
-
-  const status = 'status' in detail ? detail.status : undefined;
-  const code = 'code' in detail ? detail.code : undefined;
-  for (const candidate of [status, code]) {
-    if (typeof candidate === 'string' && /^[a-z_]{3,64}$/.test(candidate)) {
-      return candidate;
-    }
-  }
-
-  return undefined;
-}
-
-/** Reasons ElevenLabs gives for each kind of failure, as far as they are known. */
-const REJECTED_KEY_REASONS = ['invalid_api_key', 'missing_api_key'];
-const MISSING_PERMISSION_REASONS = ['missing_permissions', 'insufficient_permissions'];
-const UNKNOWN_AGENT_REASONS = ['invalid_agent_id', 'agent_not_found', 'document_not_found'];
-const NO_CREDIT_REASONS = ['insufficient_credits', 'quota_exceeded'];
-
-/**
- * Explains an unsuccessful response in terms of what the user can do about it,
- * because each failure has a different fix and "request failed" points at none.
- *
- * The reason ElevenLabs names wins over the status code, since one status covers
- * several fixes — a 401 is a wrong key, but also a right key without permission.
- * The response body itself is never shown (see {@link readFailureReason}).
- */
-function describeFailure(status: number, reason: string | undefined): string {
-  if (reason && MISSING_PERMISSION_REASONS.includes(reason)) {
-    return 'The API key is not allowed to start conversations. Give it access to the agents platform, or use another key.';
-  }
-
-  if (reason === 'detected_unusual_activity') {
-    return 'ElevenLabs has restricted this account. Sign in to ElevenLabs to see why.';
-  }
-
-  if ((reason && UNKNOWN_AGENT_REASONS.includes(reason)) || status === 404) {
-    return 'ElevenLabs has no agent with that ID on this account. Check the agent ID in the settings.';
-  }
-
-  if ((reason && NO_CREDIT_REASONS.includes(reason)) || status === 402) {
-    return 'The ElevenLabs account has run out of credits.';
-  }
-
-  if ((reason && REJECTED_KEY_REASONS.includes(reason)) || status === 401) {
-    return 'ElevenLabs rejected the API key. Check it in the settings.';
-  }
-
-  if (status === 403) {
-    return 'The API key is not allowed to start conversations. Give it access to the agents platform, or use another key.';
-  }
-
-  if (status === 429) {
-    return 'ElevenLabs is busy with too many conversations on this account. Try again shortly.';
-  }
-
-  return `ElevenLabs could not start a conversation (HTTP ${status}).`;
-}
-
-/** Reads an error body for its reason, treating anything unreadable as no reason. */
-async function failureReason(response: Response): Promise<string | undefined> {
-  try {
-    return readFailureReason(await response.json());
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Asks ElevenLabs for a token for one conversation with the Jarvis agent.
- *
- * WebRTC, because that is the only transport `@elevenlabs/react-native` supports on a device: it
- * throws outright on a signed WebSocket URL. It is also the only one that carries audio, so this
- * is what every spoken conversation asks for, everywhere. The exception is a browser with no
- * microphone, which has no audio to carry and cannot use WebRTC at all — see
- * {@link requestSignedConversationUrl}.
- *
- * @param request - Whose agent to ask for, and which device is asking.
- * @param fetchImplementation - Injectable so the tests can exercise every failure
- *   path without an ElevenLabs account.
- */
-export async function requestConversationToken(
-  { settings, participantName }: ConversationRequest,
-  fetchImplementation: typeof fetch = fetch,
-): Promise<ConversationToken> {
-  const query = new URLSearchParams({ agent_id: settings.agentId, participant_name: participantName });
-
-  const response = await fetchImplementation(`${CONVERSATION_TOKEN_URL}?${query}`, {
-    method: 'GET',
-    headers: { 'xi-api-key': settings.apiKey },
-  });
-
-  if (!response.ok) {
-    throw new Error(describeFailure(response.status, await failureReason(response)));
-  }
-
-  const token = readToken(await response.json());
-  if (!token) {
-    throw new Error('ElevenLabs answered without a conversation token.');
-  }
-
-  return token;
-}
-
-/**
- * Asks ElevenLabs to sign a WebSocket URL for one conversation with the Jarvis agent.
- *
- * **This is how a conversation is held with no microphone**, and the only reason a second
- * transport exists here. A text-only conversation publishes no audio, and ElevenLabs' WebRTC room
- * waits for the client to publish some before it finishes coming up — so a typed conversation
- * dialled over WebRTC neither connects nor fails: it sits in `connecting` for ever, which is
- * exactly what a browser with the microphone switched off showed. The SDK infers the same
- * transport when it is left to choose, and it cannot be left to choose here, because a
- * conversation token can only be spent on WebRTC.
- *
- * So the transport follows the conversation: a spoken one gets a token and WebRTC, a typed one
- * gets this and a socket. Only a browser ever needs it — a phone with no microphone says so and
- * stops, and `@elevenlabs/react-native` refuses a signed URL outright on a device.
- *
- * No participant name, because this endpoint takes only the agent: a typed conversation is the
- * one that does not name itself in the history, and that is the whole of what it costs.
- *
- * @param settings - The API key to ask with, and the agent to ask for.
- * @param fetchImplementation - Injectable so the tests can exercise every failure path without an
- *   ElevenLabs account.
- */
-export async function requestSignedConversationUrl(
-  settings: ElevenLabsSettings,
-  fetchImplementation: typeof fetch = fetch,
-): Promise<string> {
-  const query = new URLSearchParams({ agent_id: settings.agentId });
-
-  const response = await fetchImplementation(`${SIGNED_CONVERSATION_URL}?${query}`, {
-    method: 'GET',
-    headers: { 'xi-api-key': settings.apiKey },
-  });
-
-  if (!response.ok) {
-    throw new Error(describeFailure(response.status, await failureReason(response)));
-  }
-
-  const signedUrl = readSignedUrl(await response.json());
-  if (!signedUrl) {
-    throw new Error('ElevenLabs answered without a conversation URL.');
-  }
-
-  return signedUrl;
-}
-
 /**
  * Where one conversation's credential comes from: a WebRTC token for a spoken conversation, a
- * signed WebSocket URL for a typed one (see {@link requestSignedConversationUrl}).
+ * signed WebSocket URL for a typed one.
  *
- * The session asks this rather than ElevenLabs, because not every device holds the ElevenLabs key.
- * The phone and the watch do, and ask ElevenLabs themselves ({@link elevenLabsCredentials}). The
- * Quest headset can instead be paired with sir's Jarvis server, which holds the key and asks on its
- * behalf, so that nothing has to be typed on a headset's keyboard and no key is kept in a browser.
+ * WebRTC for every spoken conversation, because it is the only transport `@elevenlabs/react-native`
+ * supports on a device and the only one that carries audio. A signed URL only for a browser with no
+ * microphone: a text-only conversation publishes no audio, and ElevenLabs' WebRTC room waits for
+ * some before it finishes coming up, so a typed conversation dialled over WebRTC would sit in
+ * `connecting` for ever.
+ *
+ * No device holds an ElevenLabs key. Every one is paired with sir's Jarvis server, which holds the
+ * key and asks ElevenLabs on the device's behalf (`pairedCredentials` in `paired-device.ts`).
  */
 export interface ConversationCredentials {
   /** A token for one spoken conversation, under the name this device goes by in the history. */
   token(participantName: string, fetchImplementation?: typeof fetch): Promise<string>;
   /** A signed `wss://` URL for one typed conversation. */
   signedUrl(fetchImplementation?: typeof fetch): Promise<string>;
-}
-
-/** Credentials asked of ElevenLabs directly, with an API key this device holds. */
-export function elevenLabsCredentials(settings: ElevenLabsSettings): ConversationCredentials {
-  return {
-    token: async (participantName, fetchImplementation) =>
-      (await requestConversationToken({ settings, participantName }, fetchImplementation)).token,
-    signedUrl: (fetchImplementation) => requestSignedConversationUrl(settings, fetchImplementation),
-  };
 }

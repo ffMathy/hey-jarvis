@@ -14,6 +14,7 @@ import {
   insideLivingRoom,
   lengthenTheGreeting,
   openSampleMode,
+  PAIRING,
   photographError,
   pressB,
   roomReport,
@@ -21,15 +22,15 @@ import {
   tap,
   trigger,
   untilListening,
-  withSavedSettings,
+  withPairing,
 } from './app-driver';
 import { expect, photograph, test } from './fixtures';
 
 /**
  * The whole app in the emulated Quest 3's living room: the real page, the wake engine listening to
  * Chromium's fake microphone, the room model placing him, the 3D hologram, and the ElevenLabs
- * session — with ElevenLabs answered from here and LiveKit's socket closed by the fixture, so no
- * summon ever connects. What a summon does up to that point, and how every way it ends is handled,
+ * session — with the paired Jarvis server answered from here and LiveKit's socket closed by the
+ * fixture, so no summon ever connects. What a summon does up to that point, and how every way it ends is handled,
  * is what this checks; `app-wake-word.spec.ts` does it again summoned by a spoken "hey jarvis".
  *
  * The pictures are for looking at: the emulator draws the room with SwiftShader, a frame or two a
@@ -39,8 +40,8 @@ import { expect, photograph, test } from './fixtures';
  * it is photographed.
  */
 
-/** hologram's `describeFailure` for a 401, the phone's words for a key ElevenLabs refused. */
-const REJECTED_KEY = 'ElevenLabs rejected the API key. Check it in the settings.';
+/** hologram's `NO_LONGER_PAIRED_PROBLEM`: what a 401 from the paired server means. */
+const NO_LONGER_PAIRED = 'This device is no longer paired with your Jarvis server. Pair it again in the settings.';
 
 test('a page opened to be filmed shows sample mode without its frame-rate readout', async ({ page }) => {
   const problems = collectProblems(page);
@@ -103,18 +104,18 @@ test('sample mode walks every mood in the room on a select on him, and leaves on
   expect(problems).toEqual([]);
 });
 
-test('a select summons him; a key ElevenLabs rejects is said on a panel, and the wake word is armed again', async ({
+test('a select summons him; a server that no longer knows the headset is said on a panel, and the wake word is armed again', async ({
   page,
 }, testInfo) => {
   const problems = collectProblems(page);
   // Refused once he is greeting, so that one summon is one greeting on any machine: see `answerTokens`.
   const requests = await answerTokens(page, {
     status: 401,
-    body: { detail: { status: 'invalid_api_key' } },
+    body: { success: false, message: 'Unknown device token' },
     untilGreeting: true,
   });
   await countGreetings(page);
-  await withSavedSettings(page);
+  await withPairing(page);
   // Held until it is dismissed, so that its picture is of the panel however long it takes.
   await enterRoom(page, appPage('errors=held'));
   await untilListening(page);
@@ -129,15 +130,13 @@ test('a select summons him; a key ElevenLabs rejects is said on a panel, and the
   await tap(page);
   await expect.poll(() => scene(page), { timeout: 60000 }).toBe('failed');
   const failed = await roomReport(page);
-  expect(await photographError(page, testInfo, 'app-error-rejected-key.png')).toEqual([REJECTED_KEY]);
-  expect(failed.view.panels.error).toEqual([REJECTED_KEY]);
+  expect(await photographError(page, testInfo, 'app-error-no-longer-paired.png')).toEqual([NO_LONGER_PAIRED]);
+  expect(failed.view.panels.error).toEqual([NO_LONGER_PAIRED]);
   expect(failed.view.hologram).toBe('shown');
   expect(failed.view.wakeArmed).toBe(false);
   expect(failed.recentEffects).toEqual(expect.arrayContaining(['arrive', 'summon', 'remember-problem']));
-  expect(new Set(requests.map((request) => request.url.searchParams.get('participant_name')))).toEqual(
-    new Set(['jarvis-vr']),
-  );
-  expect(new Set(requests.map((request) => request.apiKey))).toEqual(new Set(['sk_room_test']));
+  expect(requests.map((request) => request.body)).toEqual([{ transport: 'webrtc', participantName: 'jarvis-vr' }]);
+  expect(requests.map((request) => request.authorization)).toEqual([`Bearer ${PAIRING.deviceToken}`]);
   // One summon, one greeting.
   expect(requests).toHaveLength(1);
   expect(await greetingPlays(page)).toBe(1);
@@ -168,7 +167,7 @@ test('holding the trigger while he greets you hangs up, and stops the greeting',
   await answerTokens(page, 'never');
   await lengthenTheGreeting(page);
   await countGreetings(page);
-  await withSavedSettings(page);
+  await withPairing(page);
   await enterRoom(page, appPage('deadline=never'));
   await untilListening(page);
 
@@ -199,7 +198,7 @@ test('B sends him away; blurred ignores the buttons; hidden ends the call quietl
   const problems = collectProblems(page);
   // Never answered, and never given up on, so he is present until a button or the headset ends it.
   await answerTokens(page, 'never');
-  await withSavedSettings(page);
+  await withPairing(page);
   await enterRoom(page, appPage('deadline=never'));
   await untilListening(page);
 

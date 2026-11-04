@@ -36,8 +36,8 @@ sir asks      agent ─ routePromptWorkflow "What does the message on his screen
   does for a photo, and with `kind: "screenshot"`, so the server never treats it as a photo sir sent:
   it is never *waiting*, never brought up in a later reply, never stands in for "the latest photo",
   and it is kept for a day, as a photo is, counted apart from his photos rather than instead of
-  them (`.claude/rules/mcp-vision-vertical.md`, "Vision"). Only the tree drawn in the assistant's window sends one (`useScreenshotSending`), and
-  only with a server address.
+  them (`.claude/rules/mcp-vision-vertical.md`, "Vision"). Only the tree drawn in the assistant's window sends one (`useScreenshotSending`), to the
+  server the phone is paired with.
 - **The agent is told in a note, never a turn, and nothing is said when it fails.** Sir asked nothing
   about his screen, so `screenshotTaken` is a contextual update, and the prompt ("Photos") has the
   agent say nothing of it until he asks about something on his screen — then route the question with

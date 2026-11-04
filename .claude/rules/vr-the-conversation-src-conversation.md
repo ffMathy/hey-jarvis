@@ -23,17 +23,14 @@ it for as long as the page is open: through the 2D page, every room and every
 conversation, and between them. `createHeadsetSession` is handed it (`server`),
 listens to it for as long as the session lasts, and returns the session with
 the line's `point`.
-- **It carries no token, and signs in with a cookie instead.** A browser cannot
-  set a header on a WebSocket, so the headset cannot send the JWT the phone and
-  the watch send to Cloudflare Zero Trust. It gets through on Access's
-  `CF_Authorization` cookie: the 2D page shows whether the line is connected
-  (`page/server-status.ts`, from the line's `onConnectionChange`), and while it
-  is not, links to the socket's own path (`/api/live`), where Access shows its
-  login in a new tab and sets the cookie; the server has no page there, and the
-  tab can be closed once the login is done. The line's own
-  retries connect within half a minute after. The Access application has to
-  hand out that cookie as `SameSite=None` — see "MCP Server Access" in
-  `.claude/rules/mcp.md`.
+- **The line carries the headset's device token, and only a paired headset has
+  one.** A browser cannot set a header on a WebSocket, so the token goes in the
+  line's hello, on `/api/paired/live`, which Access lets through for the server
+  to check itself; it is the only socket the server serves. Before the headset is
+  paired there is no line at all. The 2D page shows whether a paired headset's
+  line is connected (`page/server-status.ts`, from the line's
+  `onConnectionChange`). See "MCP Server Access" in
+  `.claude/rules/mcp-mcp-server-access.md`.
 - **What he is working on comes in on it.** The server broadcasts an
   `affectedEntities` frame to every device that has said hello as soon as a tool
   in a request reports what it touched; `serverMessageHandler` hands those

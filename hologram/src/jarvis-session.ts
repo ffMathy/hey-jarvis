@@ -1055,7 +1055,7 @@ export function createJarvisSession<Timer>(dependencies: JarvisSessionDependenci
       },
       (error: unknown) => {
         if (isCurrent(current)) {
-          fail(current, describeTokenFailure(error, offlineProblem), 'reaching');
+          fail(current, describeTokenFailure(error), 'reaching');
         }
       },
     );

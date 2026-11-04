@@ -149,7 +149,7 @@ export interface SummonOptions {
   /**
    * Held in writing on both sides: a signed URL and a socket rather than a token and a room, no
    * recorded greeting, and every line he writes shown and mimed. For a browser whose microphone
-   * was refused, which has no audio for a room to wait for (see `requestSignedConversationUrl`).
+   * was refused, which has no audio for a room to wait for (see `ConversationCredentials`).
    */
   textOnly?: boolean;
   /**
@@ -395,7 +395,7 @@ export interface JarvisSessionDependencies<Timer> {
   halfDuplexMayJudge?: () => boolean;
   /** Which of his lines a voice conversation writes down; `while-writing` when left out. */
   captions?: CaptionRule;
-  /** What a request that reached no server says, where "the internet connection" can be more exact. */
+  /** What a start that reached no ElevenLabs says, where "the internet connection" can be more exact. */
   offlineProblem?: string;
   /** What the deadline says when it gives up, asked at that moment; `DEADLINE_PROBLEM` when left out. */
   deadlineProblem?: () => string;

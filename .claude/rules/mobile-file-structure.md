@@ -9,8 +9,9 @@ paths:
 
 ```
 ../hologram/src/                  # Jarvis himself, shared with the watch — see .claude/rules/hologram.md
-├── elevenlabs-settings.ts        # the two credentials, and what is wrong with them
-├── conversation-token.ts         # minting a token, and every ElevenLabs failure explained
+├── paired-device.ts              # pairing with sir's Jarvis server, and asking it for each conversation
+├── conversation-token.ts         # each device's name in the history, and what a conversation's credential is
+├── jarvis-server-address.ts      # what the server's address may be
 ├── hologram-drawing.ts           # what one frame of the hologram looks like (worklets)
 ├── voice-analysis.ts             # the FFT and RMS, the same for live audio and the emulator replay
 ├── voice-levels.ts               # spectrum folding, easing, and the agitation/burst tracker
@@ -54,16 +55,19 @@ mobile/
     ├── confirm-glance-action.ts      # Alert.alert …
     ├── confirm-glance-action.web.ts  # … window.confirm
     ├── back-to-glance.tsx        # what the conversation tells the app, and the way back to the glance
-    ├── onboarding-screen.tsx     # the first-run tour: agents, credentials, assistant role
-    ├── onboarding.ts             # its steps, which of them this device has, and every link
+    ├── onboarding-screen.tsx     # the first-run tour: the Jarvis server and pairing, the assistant role
+    ├── onboarding.ts             # its steps, and which of them this device has
     ├── onboarding-storage.ts     # whether the tour has been walked
     ├── conversation-screen.tsx   # the hologram, and nothing else on the screen but a faint camera
-    ├── settings-screen.tsx       # the two fields with no tour around them, for coming back to, and the Jarvis server
-    ├── elevenlabs-fields.tsx     # the fields themselves, shared with the tour (which skips the server)
-    ├── settings-storage.ts       # platform-agnostic half of persistence (the key and format are hologram's)
+    ├── settings-screen.tsx       # pairing with no tour around it, for coming back to, forgetting the server, the watch card
+    ├── server-pairing.tsx        # the server's address and the pair button, shared with the tour
+    ├── pair-with-server.ts       # pairing the phone app: the server's pairing page in the browser …
+    ├── pair-with-server.web.ts   # … and a browser pairing itself, through Access's cookie
+    ├── use-pairing.ts            # the pairing: read, read again on a summoning, and the link the page opens the app with
+    ├── conversation-credentials.ts  # every conversation asked of the paired server, or none
     ├── read-again.ts             # reading the keystore again when the reading, not the value, failed
-    ├── watch-card.tsx            # whether Jarvis is on the paired watch, and the key handover
-    ├── answer-the-watch.ts       # sends the credentials across whenever the watch asks
+    ├── watch-card.tsx            # whether Jarvis is on the paired watch, and handing it the pairing
+    ├── answer-the-watch.ts       # sends the pairing across whenever the watch asks, and whenever it is new
     ├── use-assistant-registration.ts  # whether Jarvis still holds the assistant role
     ├── assist-link.ts            # what "opened by the assistant" looks like
     ├── assistant-window.ts       # the window the assistant gesture opens, and retracting it
@@ -83,7 +87,7 @@ mobile/
     ├── photo-sending.ts          # one tap, from the camera opening to Jarvis hearing how it went
     ├── photo-messages.ts         # every word the phone puts into the conversation about the camera
     ├── photo-upload.ts           # asking the Jarvis server for a slot, sending the photo to it, reading back its id
-    ├── jarvis-server.ts          # where the Jarvis server's address is kept (what it may be is hologram's)
+    ├── jarvis-server.ts          # where the pairing is kept, and the phone's pairing page and link
     ├── camera-button.tsx         # the camera beside him
     ├── take-photo.ts             # the phone's own camera app, through modules/jarvis-assistant …
     ├── take-photo.web.ts         # … and a file picker in a browser
@@ -109,7 +113,7 @@ dropping of what an interruption leaves queued, text mode's muted microphone and
 "One conversation, three devices" in `.claude/rules/hologram-one-conversation-three-devices.md`. So are whether a conversation is open
 or has ended (`conversation-life.ts`), his voice analysed from what a browser plays
 (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), his last written line
-(`written-reply.ts`), and the settings' storage key and format (`elevenlabs-settings.ts`). They are
+(`written-reply.ts`), and pairing with the server and the pairing's storage keys (`paired-device.ts`). They are
 in `hologram/src/`, with their specs. What this app hands the session is only what is its own: its
 name in the history, its `Room` check, how it follows his track (`jarvis-voice.ts`), its toast, and
 the microphone it asks for before summoning him.

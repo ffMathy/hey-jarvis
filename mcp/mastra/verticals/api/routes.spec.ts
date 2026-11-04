@@ -15,7 +15,7 @@ import {
   UPLOAD_SLOT_MS,
 } from '../vision/index.js';
 import { EVALUATION_WEBHOOK_ROUTE } from './evaluation-webhook.js';
-import { DEVICE_PAIRING_PATH, PAIRED_CONVERSATION_ROUTE } from './paired-devices.js';
+import { DEVICE_PAIRING_PATH, PAIRED_CONVERSATION_ROUTE, PHONE_PAIRING_ROUTE } from './paired-devices.js';
 import {
   createWorkflowApiHandler,
   extractWorkflowError,
@@ -422,6 +422,7 @@ describe('registerApiRoutes', () => {
       { method: 'PUT', path: PHOTO_UPLOAD_ROUTE },
       { method: 'POST', path: EVALUATION_WEBHOOK_ROUTE },
       { method: 'POST', path: DEVICE_PAIRING_PATH },
+      { method: 'POST', path: PHONE_PAIRING_ROUTE },
       { method: 'POST', path: PAIRED_CONVERSATION_ROUTE },
     ]);
   });

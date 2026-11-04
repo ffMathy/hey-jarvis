@@ -31,7 +31,7 @@ export const HEADSET_OFFLINE_PROBLEM =
 
 /** What the room hands over for each session; the rest is the headset's and is filled in here. */
 export interface HeadsetSessionOptions {
-  /** Where each conversation's token comes from: the paired server, or a key this page holds. */
+  /** Where each conversation's token comes from: the Jarvis server this headset is paired with. */
   credentials: ConversationCredentials;
   /** Conversation.startSession from '@elevenlabs/client'. */
   startSession: StartSession;

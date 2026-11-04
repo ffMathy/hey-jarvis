@@ -6,15 +6,13 @@ import { blockExternalRequests } from './external-requests';
  *
  * Everything here is the production web export — the same bundle `expo export`
  * produces for deployment — served over HTTP and clicked through with Chromium.
- * What it cannot cover is the ElevenLabs session itself, which needs a real API
- * key and real quota; the token request is where the browser is stopped, and the
- * assertions are about what the app sends to ElevenLabs rather than what
- * ElevenLabs does with it.
+ * Sir's Jarvis server is played by the test: it pairs the browser
+ * (`POST /api/devices`) and starts each conversation (`POST /api/paired/conversation`),
+ * as the real one does with ElevenLabs behind it. What this cannot cover is the
+ * ElevenLabs session itself, which needs real quota; the conversation request is
+ * where the browser is stopped, and the assertions are about what the app sends
+ * the server rather than what ElevenLabs does with what it is handed.
  */
-
-const CONVERSATION_TOKEN_URL = 'https://api.elevenlabs.io/v1/convai/conversation/token**';
-/** What a typed conversation asks for instead: a socket, not a room. See `conversation-token.ts`. */
-const SIGNED_URL_URL = 'https://api.elevenlabs.io/v1/convai/conversation/get-signed-url**';
 
 declare global {
   interface Window {
@@ -29,25 +27,127 @@ declare global {
   }
 }
 
-const API_KEY = 'sk_not-a-real-key';
-const AGENT_ID = 'agent_01jz0123456789';
+/** Sir's Jarvis server, as he would type it. Answered by `page.route` below, and nowhere else. */
+const JARVIS_SERVER = 'https://jarvis.example.test';
+
+/** Where the browser is paired: `DEVICE_PAIRING_PATH` in `hologram`. */
+const PAIRING_URL = `${JARVIS_SERVER}/api/devices`;
+
+/** Where a paired browser asks for each conversation: `PAIRED_CONVERSATION_PATH` in `hologram`. */
+const CONVERSATION_URL = `${JARVIS_SERVER}/api/paired/conversation`;
+
+/** The token the server pairs this browser with: base64url, as the server mints them. */
+const DEVICE_TOKEN = 'cGFpcmVkLWJyb3dzZXItdG9rZW4tMDEyMzQ1Njc4OQ';
+
+/** A signed URL as ElevenLabs makes one, handed on by the server for a typed conversation. */
+const SIGNED_URL = 'wss://api.elevenlabs.io/v1/convai/conversation?agent_id=x&conversation_signature=y';
+
+/** An answer from the Jarvis server, in its JSON envelope. */
+interface ServerAnswer {
+  status: number;
+  body: unknown;
+}
+
+/** The server pairing the browser, and handing it its token. */
+function pairedWith(token: string): ServerAnswer {
+  return { status: 201, body: { success: true, message: 'Device paired', data: { token } } };
+}
 
 /**
- * Answers a request to the token endpoint the way ElevenLabs would.
- *
- * The API key travels in a custom header, which in a real browser makes the
- * request cross-origin with a preflight. Playwright answers preflights for routed
- * requests itself, so this suite cannot tell whether ElevenLabs' own CORS policy
- * allows the app's origin; what it can check is that the request carries no
- * header beyond the key, which is what that preflight would have to allow.
+ * The headers a credentialed request needs back before the browser shows the page the answer: the
+ * page's own origin, never `*`, and leave to read it with the cookie it was sent with. The server's
+ * real CORS is `allowWebAppsWithCredentials` in `mcp`; Playwright does not apply it for a routed
+ * request, so the test answers as it does.
  */
-async function answerTokenRequest(route: Route, status: number, body: unknown): Promise<void> {
-  await route.fulfill({
-    status,
-    contentType: 'application/json',
-    headers: { 'access-control-allow-origin': '*' },
-    body: JSON.stringify(body),
+function credentialedCors(route: Route): Record<string, string> {
+  return {
+    'access-control-allow-origin': route.request().headers().origin ?? '',
+    'access-control-allow-credentials': 'true',
+  };
+}
+
+/** A pairing request, as far as these tests read it. */
+interface PairingRequest {
+  method: string;
+  contentType: string | undefined;
+  body: string | null;
+}
+
+/**
+ * Plays the server's pairing route: every request is kept, and answered with `answer`, or — for
+ * `'unreachable'` — not answered at all, which is how Cloudflare Access's login looks to a page,
+ * since it answers without the CORS headers the browser needs to show it anything. Registered after
+ * whatever came before, so it wins: Playwright tries the most recently added route first.
+ */
+async function answerPairing(page: Page, answer: ServerAnswer | 'unreachable'): Promise<PairingRequest[]> {
+  const requests: PairingRequest[] = [];
+  await page.route(PAIRING_URL, async (route: Route) => {
+    const request = route.request();
+    requests.push({
+      method: request.method(),
+      contentType: request.headers()['content-type'],
+      body: request.postData(),
+    });
+    if (answer === 'unreachable') {
+      await route.abort();
+      return;
+    }
+    await route.fulfill({
+      status: answer.status,
+      contentType: 'application/json',
+      headers: credentialedCors(route),
+      body: JSON.stringify(answer.body),
+    });
   });
+  return requests;
+}
+
+/** A conversation request the server was sent, as far as these tests read it. */
+interface ConversationRequest {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  body: { transport?: string; participantName?: string };
+}
+
+/** What the server answers a conversation request with: a credential for its transport. */
+function aCredentialFor(request: ConversationRequest): ServerAnswer {
+  return {
+    status: 200,
+    body: {
+      success: true,
+      data: request.body.transport === 'websocket' ? { signedUrl: SIGNED_URL } : { token: 'a-webrtc-token' },
+    },
+  };
+}
+
+/**
+ * Plays the server's conversation route: every request is kept, and answered by `answer` — a
+ * credential for the transport asked for, unless the test says otherwise.
+ */
+async function answerConversations(
+  page: Page,
+  answer: (request: ConversationRequest) => ServerAnswer = aCredentialFor,
+): Promise<ConversationRequest[]> {
+  const requests: ConversationRequest[] = [];
+  await page.route(CONVERSATION_URL, async (route: Route) => {
+    const request = route.request();
+    const asked = {
+      url: request.url(),
+      method: request.method(),
+      headers: request.headers(),
+      body: JSON.parse(request.postData() ?? '{}'),
+    };
+    requests.push(asked);
+    const { status, body } = answer(asked);
+    await route.fulfill({
+      status,
+      contentType: 'application/json',
+      headers: { 'access-control-allow-origin': '*' },
+      body: JSON.stringify(body),
+    });
+  });
+  return requests;
 }
 
 /**
@@ -82,33 +182,27 @@ function isBrowserHeader(name: string): boolean {
 }
 
 /**
- * Walks the first-run tour as far as the step that asks for the two values.
+ * Pairs the browser on the tour, leaving the app on the conversation screen.
  *
- * A new install no longer opens on a form. It opens on what an ElevenLabs agent is, because the
- * form is unanswerable until you know — see `onboarding.ts`. In a browser that tour is two steps
- * rather than three: there is no assistant role here to hand Jarvis.
+ * A new install opens on the tour's one step in a browser — what the Jarvis server is, and pairing
+ * with it (`onboarding.ts`) — and pairing is what finishes it. What says the app arrived is the
+ * hologram, because that is all the conversation screen is: no title and no status line. It opens
+ * the conversation by itself, so there is nothing to press — see `conversation-screen.tsx`.
  */
-async function walkToCredentials(page: Page): Promise<void> {
-  await expect(page.getByTestId('onboarding-agent')).toBeVisible();
-  await page.getByTestId('onboarding-next').click();
-  await expect(page.getByTestId('api-key')).toBeVisible();
+async function pairWithJarvis(page: Page, typed = JARVIS_SERVER): Promise<void> {
+  await expect(page.getByTestId('onboarding-server')).toBeVisible();
+  await page.getByTestId('jarvis-server').fill(typed);
+  await page.getByTestId('pair-with-server').click();
+  await expect(page.getByTestId('hologram')).toBeVisible();
+  await expect(page.getByTestId('jarvis-server')).toHaveCount(0);
 }
 
-/**
- * Walks the tour, fills in the two values and saves, leaving the app on the conversation screen.
- *
- * What says it arrived is the hologram, because that is all the conversation screen is now: no
- * title, no status line, and no camera button until sir has told the phone where his Jarvis server
- * is. It opens the conversation by itself, so there is nothing to press and nothing to read — see
- * `conversation-screen.tsx`.
- */
-async function configureElevenLabs(page: Page): Promise<void> {
-  await walkToCredentials(page);
-  await page.getByTestId('api-key').fill(API_KEY);
-  await page.getByTestId('agent-id').fill(AGENT_ID);
-  await page.getByTestId('save-settings').click();
-  await expect(page.getByTestId('hologram')).toBeVisible();
-  await expect(page.getByTestId('api-key')).toHaveCount(0);
+/** What the page keeps in `localStorage` under a key, read by name, which goes through no wrapper. */
+async function storedValue(page: Page, key: string): Promise<string | null> {
+  return page.evaluate((name) => {
+    const value: unknown = window.localStorage[name];
+    return typeof value === 'string' ? value : null;
+  }, key);
 }
 
 /**
@@ -194,72 +288,134 @@ test.beforeEach(async ({ page }) => {
   await blockExternalRequests(page);
   await countMicrophones(page);
   await listenForSounds(page);
+  // The server pairs whoever asks, unless a test says otherwise by answering after this.
+  await answerPairing(page, pairedWith(DEVICE_TOKEN));
 });
 
-test('opens on the tour, which explains what an agent is before asking for one', async ({ page }) => {
+test('opens on the tour, which says what the Jarvis server is and asks for nothing but pairing', async ({ page }) => {
   await page.goto('/');
 
-  // The first screen of a new install used to be two empty fields, which is a fair question to
-  // ask somebody who already has an API key and an unanswerable one for everybody else.
-  await expect(page.getByTestId('onboarding-agent')).toBeVisible();
-  await expect(page.getByTestId('api-key')).toHaveCount(0);
-  // Including the link that is the point of the step: an agent is worth having because it can be
-  // wired to your own services, and that wiring is done on their site rather than in this app.
-  await expect(page.getByTestId('link-sign-up')).toBeVisible();
-  await expect(page.getByTestId('link-agent-tools')).toBeVisible();
-  // Nowhere to go back to from the first step, so nothing offers it.
+  const server = page.getByTestId('onboarding-server');
+  await expect(server).toBeVisible();
+  await expect(server).toContainText('Jarvis server');
+  await expect(page.getByTestId('jarvis-server')).toBeVisible();
+  await expect(page.getByTestId('pair-with-server')).toBeVisible();
+  // No ElevenLabs key, no agent ID and no service token: the server holds every one of them.
+  for (const removed of ['api-key', 'agent-id', 'jarvis-server-client-id', 'jarvis-server-client-secret']) {
+    await expect(page.getByTestId(removed)).toHaveCount(0);
+  }
+  // One step in a browser, which has no assistant role to offer him: no count promising more, and
+  // nowhere to go back to, or on to before pairing.
+  await expect(page.getByTestId('onboarding-progress')).toHaveCount(0);
   await expect(page.getByTestId('onboarding-back')).toHaveCount(0);
+  await expect(page.getByTestId('onboarding-next')).toHaveCount(0);
 
-  await page.getByTestId('onboarding-next').click();
-
-  const credentials = page.getByTestId('onboarding-credentials');
-  await expect(credentials).toBeVisible();
-  await expect(page.getByTestId('api-key')).toBeVisible();
-  await expect(page.getByTestId('agent-id')).toBeVisible();
-  // Two steps in a browser, not three. A count promising a step nobody here can reach would be
-  // worse than no count at all.
-  await expect(credentials).toContainText('Step 2 of 2');
-  // Both links to where the two values are found, since neither is somewhere this app can look.
-  await expect(page.getByTestId('link-agent-id')).toBeVisible();
-  await expect(page.getByTestId('link-api-key')).toBeVisible();
-
-  // The web build keeps the key somewhere materially less safe than the phone
-  // does, and the screen has to say so rather than imply a keystore.
+  // The web build keeps the token somewhere materially less safe than the phone does, and the
+  // screen has to say so rather than imply a keystore.
   await expect(page.getByTestId('storage-note')).toContainText('local storage');
-
-  // And back out again, without losing the tour.
-  await page.getByTestId('onboarding-back').click();
-  await expect(page.getByTestId('onboarding-agent')).toBeVisible();
 });
 
-test('refuses to save without an agent ID', async ({ page }) => {
+test('pairs through Access’s cookie, opens the conversation, and remembers it across a reload', async ({ page }) => {
+  const pairings = await answerPairing(page, pairedWith(DEVICE_TOKEN));
+
   await page.goto('/');
-  await walkToCredentials(page);
+  await pairWithJarvis(page);
 
-  await page.getByTestId('api-key').fill(API_KEY);
-  await page.getByTestId('save-settings').click();
+  // One request, as a browser sends without a preflight — which would carry no cookie, and be
+  // answered by Access's login — naming this browser for the server's list of devices.
+  expect(pairings).toEqual([{ method: 'POST', contentType: 'text/plain', body: 'Phone web app' }]);
 
-  await expect(page.getByTestId('settings-problem')).toContainText('agent');
-  // Still on the same step: a refused save must not fall through, and must not move the tour on.
-  await expect(page.getByTestId('onboarding-credentials')).toBeVisible();
-  await expect(page.getByTestId('hologram')).toHaveCount(0);
-});
-
-test('saves valid settings, shows the conversation, and remembers across a reload', async ({ page }) => {
-  await page.goto('/');
-  await configureElevenLabs(page);
-
-  // No readout: the frame-rate and particle count are sample mode's alone. The conversation
-  // screen used to carry a faint copy of them in a browser, and must not again.
-  await expect(page.getByTestId('hologram')).toBeVisible();
+  // No readout: the frame-rate and particle count are sample mode's alone.
   await expect(page.getByTestId('frame-rate')).toHaveCount(0);
+
+  // Kept under `hologram`'s keys, which the headset's page on the same origin reads too, and the
+  // tour remembered as walked.
+  expect(await storedValue(page, 'jarvis.server-address')).toBe(JARVIS_SERVER);
+  expect(await storedValue(page, 'jarvis.device-token')).toBe(DEVICE_TOKEN);
+  expect(await storedValue(page, 'jarvis.onboarding-walked')).not.toBeNull();
 
   await page.reload();
 
-  // Straight back to the conversation, which is only possible if the settings
-  // survived in localStorage — the native keystore path throws on web.
+  // Straight back to the conversation, which is only possible if the pairing survived in
+  // localStorage — the native keystore path throws on web.
   await expect(page.getByTestId('hologram')).toBeVisible();
-  await expect(page.getByTestId('api-key')).toHaveCount(0);
+  await expect(page.getByTestId('jarvis-server')).toHaveCount(0);
+});
+
+test('refuses anything but a Jarvis server’s own https address, and asks nothing of it', async ({ page }) => {
+  const pairings = await answerPairing(page, pairedWith(DEVICE_TOKEN));
+  await page.goto('/');
+
+  for (const { typed, problem } of [
+    { typed: '', problem: 'Enter your Jarvis server' },
+    { typed: 'http://jarvis.example.test', problem: 'has to start with https://' },
+    { typed: 'https://jarvis.example.test/api/photos', problem: 'with no path after it' },
+    { typed: 'https://sir:secret@jarvis.example.test', problem: 'no user name or password' },
+  ]) {
+    await page.getByTestId('jarvis-server').fill(typed);
+    await page.getByTestId('pair-with-server').click();
+    await expect(page.getByTestId('pairing-problem')).toContainText(problem);
+  }
+
+  // Still on the tour: a refused address must not fall through, and nothing reached the server.
+  await expect(page.getByTestId('onboarding-server')).toBeVisible();
+  await expect(page.getByTestId('hologram')).toHaveCount(0);
+  expect(pairings).toEqual([]);
+  expect(await storedValue(page, 'jarvis.device-token')).toBeNull();
+});
+
+test('keeps a bare host as the https origin it names', async ({ page }) => {
+  await page.goto('/');
+  await pairWithJarvis(page, 'jarvis.example.test/');
+
+  await page.reload();
+  await page.getByTestId('open-settings').click();
+  await expect(page.getByTestId('jarvis-server')).toHaveValue(JARVIS_SERVER);
+});
+
+test('offers the server’s sign-in when it did not answer, and pairs once asked again', async ({ page }) => {
+  await answerPairing(page, 'unreachable');
+  await page.goto('/');
+
+  await page.getByTestId('jarvis-server').fill(JARVIS_SERVER);
+  await page.getByTestId('pair-with-server').click();
+
+  // What Access's login looks like from a page: no answer it can read. So the way on is to sign in
+  // to the server in this browser, and then pair again — and the tour stays where it is.
+  await expect(page.getByTestId('pairing-problem')).toContainText('did not answer');
+  await expect(page.getByTestId('pairing-sign-in')).toBeVisible();
+  await expect(page.getByTestId('onboarding-server')).toBeVisible();
+  expect(await storedValue(page, 'jarvis.device-token')).toBeNull();
+
+  // Signed in: the server answers now.
+  await answerPairing(page, pairedWith(DEVICE_TOKEN));
+  await page.getByTestId('pair-with-server').click();
+  await expect(page.getByTestId('hologram')).toBeVisible();
+  expect(await storedValue(page, 'jarvis.device-token')).toBe(DEVICE_TOKEN);
+});
+
+test('says why the server would not pair this browser, and offers no sign-in for a refusal', async ({ page }) => {
+  await answerPairing(page, { status: 403, body: { success: false, message: 'Forbidden' } });
+  await page.goto('/');
+
+  await page.getByTestId('jarvis-server').fill(JARVIS_SERVER);
+  await page.getByTestId('pair-with-server').click();
+
+  await expect(page.getByTestId('pairing-problem')).toContainText('would not pair this browser (HTTP 403)');
+  await expect(page.getByTestId('pairing-sign-in')).toHaveCount(0);
+  await expect(page.getByTestId('onboarding-server')).toBeVisible();
+});
+
+test('pairs with nothing when the server answers without a token', async ({ page }) => {
+  await answerPairing(page, { status: 201, body: { success: true, data: {} } });
+  await page.goto('/');
+
+  await page.getByTestId('jarvis-server').fill(JARVIS_SERVER);
+  await page.getByTestId('pair-with-server').click();
+
+  await expect(page.getByTestId('pairing-problem')).toContainText('without a token');
+  await expect(page.getByTestId('hologram')).toHaveCount(0);
+  expect(await storedValue(page, 'jarvis.device-token')).toBeNull();
 });
 
 test('draws the hologram on WebGL 2 and keeps it moving, with nothing to fetch first', async ({ page }) => {
@@ -273,7 +429,7 @@ test('draws the hologram on WebGL 2 and keeps it moving, with nothing to fetch f
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
   await page.goto('/');
-  await configureElevenLabs(page);
+  await pairWithJarvis(page);
 
   // All of him is one canvas holding a WebGL 2 context: there is no second canvas for the rest of
   // him, and no WebAssembly to wait for before he can be drawn.
@@ -296,9 +452,8 @@ test('draws the hologram on WebGL 2 and keeps it moving, with nothing to fetch f
 
 test('offers sample mode from the tour, walks its moods on a tap, and comes back from it', async ({ page }) => {
   await page.goto('/');
-  // Offered on every step of the tour: somebody who has just installed this wants to know whether
-  // it is worth signing up for anything, and the honest answer to that is the sphere rather than
-  // another paragraph.
+  // Offered on the tour: somebody who has just installed this wants to know whether it is worth
+  // setting anything up, and the honest answer to that is the sphere rather than another paragraph.
   await page.getByTestId('try-sample').click();
 
   // Sample mode is Jarvis and nothing else — no title, no status line, no way out but tapping
@@ -332,7 +487,7 @@ test('offers sample mode from the tour, walks its moods on a tap, and comes back
   await page.mouse.click(20, 20);
   // And back to the tour rather than past it. Sample mode is a side trip taken from setup and
   // returned to, which is why the tour is not marked as walked on the way out to it.
-  await expect(page.getByTestId('onboarding-agent')).toBeVisible();
+  await expect(page.getByTestId('onboarding-server')).toBeVisible();
 });
 
 test('keeps the conversation screen working in a browser without WebGL 2', async ({ page }) => {
@@ -349,7 +504,7 @@ test('keeps the conversation screen working in a browser without WebGL 2', async
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
   await page.goto('/');
-  await configureElevenLabs(page);
+  await pairWithJarvis(page);
 
   // The hologram is decoration. With nothing to draw him with there is no GL view at all, and his
   // square is held empty rather than letting the screen jump.
@@ -359,50 +514,40 @@ test('keeps the conversation screen working in a browser without WebGL 2', async
   expect((await hologram.boundingBox())?.width ?? 0).toBeGreaterThan(0);
   // And the screen is still the conversation rather than having fallen back to setup: the drawing
   // failing must not take the thing it decorates with it.
-  await expect(page.getByTestId('api-key')).toHaveCount(0);
+  await expect(page.getByTestId('jarvis-server')).toHaveCount(0);
   expect(pageErrors).toEqual([]);
 });
 
-test('asks ElevenLabs for a conversation token for the agent, with the API key', async ({ page }) => {
-  const tokenRequests: Array<{ url: URL; method: string; headers: Record<string, string> }> = [];
-
-  await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
-    tokenRequests.push({
-      url: new URL(route.request().url()),
-      method: route.request().method(),
-      headers: route.request().headers(),
-    });
-
-    await answerTokenRequest(route, 200, { token: 'a-webrtc-token', conversation_id: 'conv_1' });
-  });
+test('asks the paired server for each conversation, with this browser’s token and the phone’s name', async ({
+  page,
+}) => {
+  const asked = await answerConversations(page);
 
   await page.goto('/');
-  await configureElevenLabs(page);
+  await pairWithJarvis(page);
 
-  await expect.poll(() => tokenRequests.length).toBe(1);
-  const [request] = tokenRequests;
-  expect(request?.method).toBe('GET');
-  expect(request?.headers['xi-api-key']).toBe(API_KEY);
-  expect(request?.url.searchParams.get('agent_id')).toBe(AGENT_ID);
-  expect(request?.url.searchParams.get('participant_name')).toBe('jarvis-android');
-  expect(request?.url.toString()).not.toContain(API_KEY);
-  // Nothing but the key, so the cross-origin preflight has only that to allow.
+  await expect.poll(() => asked.length).toBe(1);
+  const [request] = asked;
+  expect(request?.method).toBe('POST');
+  expect(request?.url).toBe(CONVERSATION_URL);
+  expect(request?.headers.authorization).toBe(`Bearer ${DEVICE_TOKEN}`);
+  expect(request?.headers['content-type']).toBe('application/json');
+  // A spoken conversation, under the name the phone goes by in the history.
+  expect(request?.body).toEqual({ transport: 'webrtc', participantName: 'jarvis-android' });
+  // The token travels in its header and nowhere else, and no ElevenLabs key goes anywhere at all.
+  expect(request?.url).not.toContain(DEVICE_TOKEN);
   const chosenHeaders = Object.keys(request?.headers ?? {}).filter((name) => !isBrowserHeader(name));
-  expect(chosenHeaders).toEqual(['xi-api-key']);
+  expect(chosenHeaders.toSorted()).toEqual(['authorization', 'content-type']);
 });
 
 test('greets you from the recording while the conversation is still being dialled', async ({ page }) => {
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
-  let tokenRequests = 0;
-  await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
-    tokenRequests++;
-    await answerTokenRequest(route, 200, { token: 'a-webrtc-token', conversation_id: 'conv_1' });
-  });
+  const asked = await answerConversations(page);
   await keepDialling(page);
 
   await page.goto('/');
-  await configureElevenLabs(page);
+  await pairWithJarvis(page);
 
   // "Hello sir, how can I help?" — the firmware's recording, bundled into the export and played
   // the moment he is summoned, while the session is dialled behind it rather than after it. That the
@@ -413,25 +558,25 @@ test('greets you from the recording while the conversation is still being dialle
   const [greeting] = (await page.evaluate(() => window.soundsPlayed)) ?? [];
   expect(new URL(greeting ?? '').hostname).toBe('localhost');
   expect(greeting).toMatch(/greeting.*\.mp3/);
-  await expect.poll(() => tokenRequests).toBe(1);
+  await expect.poll(() => asked.length).toBe(1);
 
   expect(pageErrors).toEqual([]);
 });
 
 test('greets from the recording in a browser nobody has touched since it loaded', async ({ page }) => {
-  let tokenRequests = 0;
-  const answer = async (route: Route) => {
-    tokenRequests++;
-    await answerTokenRequest(route, 200, { token: 'a-webrtc-token', conversation_id: 'conv_1' });
+  let conversationRequests = 0;
+  const answer = (request: ConversationRequest) => {
+    conversationRequests++;
+    return aCredentialFor(request);
   };
-  await page.route(CONVERSATION_TOKEN_URL, answer);
+  await answerConversations(page, answer);
   await keepDialling(page);
 
   await page.goto('/');
-  await configureElevenLabs(page);
-  await expect.poll(() => tokenRequests).toBe(1);
+  await pairWithJarvis(page);
+  await expect.poll(() => conversationRequests).toBe(1);
 
-  // A second tab onto the saved settings lands straight on the conversation with no click behind
+  // A second tab onto the saved pairing lands straight on the conversation with no click behind
   // it, and a browser will not start a sound then — unless the page is using the microphone. So
   // the microphone asked for before the session is held open until the greeting has started, and
   // he greets from the recording here too, rather than leaving it to the agent's own voice.
@@ -445,10 +590,10 @@ test('greets from the recording in a browser nobody has touched since it loaded'
   await blockExternalRequests(untouched);
   await countMicrophones(untouched);
   await listenForSounds(untouched);
-  await untouched.route(CONVERSATION_TOKEN_URL, answer);
+  await answerConversations(untouched, answer);
   await keepDialling(untouched);
   await untouched.goto('/');
-  await expect.poll(() => tokenRequests).toBe(2);
+  await expect.poll(() => conversationRequests).toBe(2);
 
   await expect.poll(() => untouched.evaluate(() => window.soundsPlayed)).toHaveLength(1);
   const [greeting] = (await untouched.evaluate(() => window.soundsPlayed)) ?? [];
@@ -470,74 +615,118 @@ test('greets from the recording in a browser nobody has touched since it loaded'
   expect(pageErrors).toEqual([]);
 });
 
-test('explains a rejected API key in terms of the setting to fix', async ({ page }) => {
-  await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
-    await answerTokenRequest(route, 401, { detail: { status: 'invalid_api_key' } });
-  });
+test('says so when the server no longer knows this browser', async ({ page }) => {
+  await answerConversations(page, () => ({ status: 401, body: { success: false, message: 'Unauthorized' } }));
 
   await page.goto('/');
-  await configureElevenLabs(page);
+  await pairWithJarvis(page);
 
-  await expect(page.getByTestId('conversation-problem')).toContainText('rejected the API key');
+  // Unpaired on the server, or the server lost its pairings: the way on is to pair again.
+  await expect(page.getByTestId('conversation-problem')).toContainText('no longer paired');
 });
 
-test('explains an agent ID the account does not have', async ({ page }) => {
-  await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
-    await answerTokenRequest(route, 404, { detail: 'Not found' });
-  });
+test('passes on what the server says when it cannot start a conversation', async ({ page }) => {
+  const NO_KEY = 'Your Jarvis server has no ElevenLabs key or agent to start a conversation with.';
+  await answerConversations(page, () => ({ status: 503, body: { success: false, message: NO_KEY } }));
 
   await page.goto('/');
-  await configureElevenLabs(page);
+  await pairWithJarvis(page);
 
-  await expect(page.getByTestId('conversation-problem')).toContainText('no agent with that ID');
+  await expect(page.getByTestId('conversation-problem')).toContainText(NO_KEY);
 });
 
-test('lets the settings be reopened and corrected, and uses the correction', async ({ page }) => {
-  const agentIds: Array<string | null> = [];
-  await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
-    agentIds.push(new URL(route.request().url()).searchParams.get('agent_id'));
-    await answerTokenRequest(route, 404, { detail: 'Not found' });
-  });
+test('says the server could not be reached when it does not answer for a conversation', async ({ page }) => {
+  // No route for the conversation: `blockExternalRequests` aborts it, as a server that is down does.
+  await page.goto('/');
+  await pairWithJarvis(page);
+
+  await expect(page.getByTestId('conversation-problem')).toContainText('could not be reached');
+});
+
+test('lets the browser be paired again from the settings, and uses the new token', async ({ page }) => {
+  const asked = await answerConversations(page);
 
   await page.goto('/');
-  await configureElevenLabs(page);
+  await pairWithJarvis(page);
+  await expect.poll(() => asked.length).toBe(1);
 
   // A link, because this is a browser. On a phone the same screen has nothing on it and settings
   // are a long press; see `conversation-screen.tsx` for why the two differ.
   await page.getByTestId('open-settings').click();
   // Sample mode is for before there is a Jarvis to talk to, not after.
   await expect(page.getByTestId('try-sample')).toHaveCount(0);
-  // Both values come back, so fixing one does not mean pasting the key again.
-  await expect(page.getByTestId('api-key')).toHaveValue(API_KEY);
-  await expect(page.getByTestId('agent-id')).toHaveValue(AGENT_ID);
+  // The server comes back, so pairing again does not mean typing it again.
+  await expect(page.getByTestId('jarvis-server')).toHaveValue(JARVIS_SERVER);
+  await expect(page.getByTestId('pair-with-server')).toHaveText('Pair again');
 
-  await page.getByTestId('agent-id').fill('agent_corrected');
-  await page.getByTestId('save-settings').click();
+  const NEW_TOKEN = 'cGFpcmVkLWFnYWluLXdpdGgtYS1uZXctdG9rZW4';
+  await answerPairing(page, pairedWith(NEW_TOKEN));
+  await page.getByTestId('pair-with-server').click();
   await expect(page.getByTestId('hologram')).toBeVisible();
 
-  // Two requests, and the first one is the point of the screen: it opens the conversation itself,
-  // so the original agent ID was tried the moment the settings were saved, failed with a 404, and
-  // is what sent the user back to correct it. Then the corrected one. A single request here would
-  // mean the screen had gone back to waiting to be asked.
-  await expect.poll(() => agentIds).toEqual([AGENT_ID, 'agent_corrected']);
+  // Two requests: the first opened the conversation the tour landed on, the second the one the new
+  // pairing opened, with the token it brought.
+  await expect
+    .poll(() => asked.map((request) => request.headers.authorization))
+    .toEqual([`Bearer ${DEVICE_TOKEN}`, `Bearer ${NEW_TOKEN}`]);
+  expect(await storedValue(page, 'jarvis.device-token')).toBe(NEW_TOKEN);
+});
+
+test('forgets the server, and with it the pairing and the conversation', async ({ page }) => {
+  const asked = await answerConversations(page);
+  await page.goto('/');
+  await pairWithJarvis(page);
+  await expect.poll(() => asked.length).toBe(1);
+
+  await page.getByTestId('open-settings').click();
+  await page.getByTestId('forget-server').click();
+
+  // Not set up any more: the settings screen with nothing to cancel back to, and sample mode offered.
+  await expect(page.getByTestId('forget-server')).toHaveCount(0);
+  await expect(page.getByTestId('cancel-settings')).toHaveCount(0);
+  await expect(page.getByTestId('try-sample')).toBeVisible();
+  await expect(page.getByTestId('hologram')).toHaveCount(0);
+  expect(await storedValue(page, 'jarvis.server-address')).toBe('');
+  expect(await storedValue(page, 'jarvis.device-token')).toBe('');
+
+  // And across a reload, where the walked tour leaves the settings screen rather than the tour.
+  await page.reload();
+  await expect(page.getByTestId('jarvis-server')).toHaveValue('');
+  await expect(page.getByTestId('onboarding-server')).toHaveCount(0);
+  expect(asked).toHaveLength(1);
+});
+
+test('reads a pairing that could not be read again, rather than taking it for none', async ({ page }) => {
+  await answerConversations(page);
+  await page.goto('/');
+  await pairWithJarvis(page);
+
+  // The store refusing to give the token up once, as a keystore can in a window still coming up: it
+  // is there, and the first read of it throws.
+  await page.addInitScript(() => {
+    const getItem = Storage.prototype.getItem;
+    let refused = false;
+    Storage.prototype.getItem = function (this: Storage, key: string) {
+      if (key === 'jarvis.device-token' && !refused) {
+        refused = true;
+        throw new DOMException('The token cannot be read just now', 'SecurityError');
+      }
+      return getItem.call(this, key);
+    };
+  });
+  await page.reload();
+
+  // Still paired: the conversation, not the settings screen a phone never set up would open on.
+  await expect(page.getByTestId('hologram')).toBeVisible();
+  await expect(page.getByTestId('jarvis-server')).toHaveCount(0);
 });
 
 test('offers a field to type into when the browser refuses the microphone', async ({ page }) => {
-  const asked: string[] = [];
   await refuseMicrophone(page);
-  await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
-    asked.push('token');
-    await answerTokenRequest(route, 200, { token: 'a-webrtc-token', conversation_id: 'conv_1' });
-  });
-  await page.route(SIGNED_URL_URL, async (route: Route) => {
-    asked.push('signed-url');
-    await answerTokenRequest(route, 200, {
-      signed_url: 'wss://api.elevenlabs.io/v1/convai/conversation?agent_id=x&conversation_signature=y',
-    });
-  });
+  const asked = await answerConversations(page);
 
   await page.goto('/');
-  await configureElevenLabs(page);
+  await pairWithJarvis(page);
 
   // The conversation still opens — ElevenLabs runs it as text on both sides — so this is a fallback
   // rather than the failure a phone reports.
@@ -546,8 +735,8 @@ test('offers a field to type into when the browser refuses the microphone', asyn
   // And it is dialled over a socket rather than over WebRTC, which is the whole of the fix for a
   // browser that sat on "Connecting…" for ever: a WebRTC room nobody publishes audio into never
   // finishes coming up, and a conversation token can only be spent on one. So a typed conversation
-  // asks to have a URL signed and never asks for a token at all.
-  await expect.poll(() => asked).toEqual(['signed-url']);
+  // asks the server for a signed URL and never for a token at all.
+  await expect.poll(() => asked.map((request) => request.body.transport)).toEqual(['websocket']);
 
   // It gets no further than opening, because this suite closes every socket to ElevenLabs, so there
   // *is* a connection error on screen and there is supposed to be. What matters is which error: a
@@ -563,18 +752,10 @@ test('offers a field to type into when the browser refuses the microphone', asyn
 });
 
 test('offers the same field beside a microphone that works', async ({ page }) => {
-  const asked: string[] = [];
-  await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
-    asked.push('token');
-    await answerTokenRequest(route, 200, { token: 'a-webrtc-token', conversation_id: 'conv_1' });
-  });
-  await page.route(SIGNED_URL_URL, async (route: Route) => {
-    asked.push('signed-url');
-    await answerTokenRequest(route, 200, { signed_url: 'wss://api.elevenlabs.io/v1/convai/conversation' });
-  });
+  const asked = await answerConversations(page);
 
   await page.goto('/');
-  await configureElevenLabs(page);
+  await pairWithJarvis(page);
 
   // Typing used to be what you got *instead* of talking, and only in a browser that had refused the
   // microphone — which is the one session ElevenLabs is asked not to speak in, so Jarvis answered
@@ -585,7 +766,7 @@ test('offers the same field beside a microphone that works', async ({ page }) =>
   // And this is still an ordinary voice conversation, which is the whole point of the field being
   // here: a token for a WebRTC room, never the signed URL a text-only session runs on. Asking for
   // the latter would mean the screen had quietly made this a written conversation after all.
-  await expect.poll(() => asked).toEqual(['token']);
+  await expect.poll(() => asked.map((request) => request.body.transport)).toEqual(['webrtc']);
 
   // The sphere is still the screen. A field appearing under it must not cost the drawing.
   await expect(page.getByTestId('hologram')).toBeVisible();
@@ -595,7 +776,7 @@ test('offers the same field beside a microphone that works', async ({ page }) =>
  * Plays ElevenLabs' side of a text-only conversation, so a reply can be seen arriving.
  *
  * **Every other test in this file closes the socket**, which is right for them — they are about
- * what the app sends, and a real session needs a real key and real quota. It is also why nothing
+ * what the app sends, and a real session needs a real agent and real quota. It is also why nothing
  * here ever saw an *answer*, and why the fallback could ship unable to show one: the field was
  * asserted visible, the conversation was asserted dialled correctly, and the half where Jarvis
  * says something back had no coverage at all.
@@ -655,16 +836,12 @@ async function answerAsJarvis(page: Page, replies: string[]): Promise<{ heard: s
 
 test('shows what Jarvis writes back when there is no voice to say it in', async ({ page }) => {
   await refuseMicrophone(page);
-  await page.route(SIGNED_URL_URL, async (route: Route) => {
-    await answerTokenRequest(route, 200, {
-      signed_url: 'wss://api.elevenlabs.io/v1/convai/conversation?agent_id=x&conversation_signature=y',
-    });
-  });
+  await answerConversations(page);
   // One answer, so the second question below is one he has not answered yet.
   const { heard, initiations } = await answerAsJarvis(page, ['Good evening.']);
 
   await page.goto('/');
-  await configureElevenLabs(page);
+  await pairWithJarvis(page);
 
   // The field only takes input once the session is up, so this is the handshake above having
   // worked. `toBeEditable` rather than `toBeEnabled`: react-native-web turns `editable={false}`
@@ -704,12 +881,10 @@ test('shows what Jarvis writes back when there is no voice to say it in', async 
 });
 
 test('says nothing to type into when no conversation was opened at all', async ({ page }) => {
-  await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
-    await answerTokenRequest(route, 401, { detail: { status: 'invalid_api_key' } });
-  });
+  await answerConversations(page, () => ({ status: 401, body: { success: false, message: 'Unauthorized' } }));
 
   await page.goto('/');
-  await configureElevenLabs(page);
+  await pairWithJarvis(page);
 
   // A field is somewhere to write to Jarvis, so it belongs to a conversation rather than to the
   // screen: a `start` that never got as far as a session has none to offer, and the line saying
@@ -719,17 +894,8 @@ test('says nothing to type into when no conversation was opened at all', async (
   await expect(page.getByTestId('typed-message')).toHaveCount(0);
 });
 
-/** Sir's Jarvis server, as he would type it into the settings screen. Answered by `page.route` below, and nowhere else. */
-const JARVIS_SERVER = 'https://jarvis.example.test';
-
 /** Where the server says to send a photo: its upload route, and a slot's 22-character token. */
 const UPLOAD_PATH = '/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ';
-
-/** An answer from the Jarvis server, in its JSON envelope. */
-interface ServerAnswer {
-  status: number;
-  body: unknown;
-}
 
 /** The server opening a slot for the conversation, and saying where to send the photo. */
 const SLOT_OPENED: ServerAnswer = {
@@ -764,16 +930,12 @@ const CAMERA_OPENED = 'Sir has opened the camera on his phone to send you a phot
 const CAMERA_CLOSED = 'Sir closed the camera without sending a photo.';
 
 /**
- * Opens the settings screen from the conversation, types the Jarvis server's address into it — or
- * clears it, given an empty one — and saves, leaving the app back on the conversation screen.
- *
- * The settings screen rather than the tour: it is where the address is changed once Jarvis works,
- * and the tour's own fields are covered on their own below.
+ * Ends the conversation on screen and opens another, the way sir would: the settings, which end the
+ * screen's session, and straight back out of them, to a screen that opens a new one.
  */
-async function saveJarvisServer(page: Page, address: string): Promise<void> {
+async function reopenTheConversation(page: Page): Promise<void> {
   await page.getByTestId('open-settings').click();
-  await page.getByTestId('jarvis-server').fill(address);
-  await page.getByTestId('save-settings').click();
+  await page.getByTestId('cancel-settings').click();
   await expect(page.getByTestId('hologram')).toBeVisible();
   await expect(page.getByTestId('jarvis-server')).toHaveCount(0);
 }
@@ -878,42 +1040,27 @@ async function answerForTheServer(page: Page, url: string, answer: ServerAnswer)
 
 /**
  * Opens a text-only conversation with a socket the test listens on as the agent, and sir's Jarvis
- * server answering a slot request with `slotAnswer` and a photo with `uploadAnswer` — having told the
- * phone where that server is, unless `serverAddress` is `undefined`.
+ * server answering a slot request with `slotAnswer` and a photo with `uploadAnswer`.
  *
- * **The address is given the way sir would give it**: ElevenLabs set up on the tour, a conversation
- * opened without a camera, and the address saved on the settings screen while that conversation is
- * still connected. Going to the settings ends it, since the session is the conversation screen's, and
- * the screen opens another on coming back, which knows the address (see `settings-screen.tsx`) — so
- * what this returns is the second conversation, and everything after the last opening in `heard` is
- * what it heard.
+ * Every conversation has a camera now: pairing with the server is the only way to have one, and the
+ * server is where the photo goes. So the conversation the tour lands on is the one to show things to.
  */
 async function openAConversationToShowThingsTo(
   page: Page,
   {
-    serverAddress,
     slotAnswer = SLOT_OPENED,
     uploadAnswer = PHOTO_RECEIVED,
-  }: { serverAddress: string | undefined; slotAnswer?: ServerAnswer; uploadAnswer?: ServerAnswer },
+  }: { slotAnswer?: ServerAnswer; uploadAnswer?: ServerAnswer } = {},
 ) {
   await refuseMicrophone(page);
-  await page.route(SIGNED_URL_URL, async (route: Route) => {
-    await answerTokenRequest(route, 200, {
-      signed_url: 'wss://api.elevenlabs.io/v1/convai/conversation?agent_id=x&conversation_signature=y',
-    });
-  });
+  await answerConversations(page);
   const heard = await listenAsTheAgent(page);
   const slotRequests = await answerForTheServer(page, `${JARVIS_SERVER}/api/photos/slots`, slotAnswer);
   const uploads = await answerForTheServer(page, `${JARVIS_SERVER}${UPLOAD_PATH}`, uploadAnswer);
 
   await page.goto('/');
-  await configureElevenLabs(page);
+  await pairWithJarvis(page);
   await expect(page.getByTestId('typed-message')).toBeEditable();
-  if (serverAddress !== undefined) {
-    await saveJarvisServer(page, serverAddress);
-    await expect.poll(() => conversationsOpened(heard)).toBe(2);
-    await expect(page.getByTestId('typed-message')).toBeEditable();
-  }
 
   return { heard, slotRequests, uploads };
 }
@@ -930,57 +1077,29 @@ async function showAPhoto(page: Page): Promise<void> {
   await (await openTheCamera(page)).setFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: ONE_PIXEL });
 }
 
-test('tells Jarvis there is a camera button once a Jarvis server is set, and puts one beside him', async ({ page }) => {
-  const { heard } = await openAConversationToShowThingsTo(page, { serverAddress: JARVIS_SERVER });
+test('tells Jarvis once there is a camera button, and puts one beside him', async ({ page }) => {
+  const { heard } = await openAConversationToShowThingsTo(page);
 
-  // The conversation the tour landed on knew of no server, and was told of no button; the one that
-  // replaced it is told once — which is what lets the agent suggest the button, and nowhere else.
-  const beforeTheServer = heard.slice(0, heard.length - sinceTheLastConversationOpened(heard).length);
-  expect(textsOf(beforeTheServer, 'contextual_update')).not.toContain(CAMERA_BUTTON_HERE);
-  await expect
-    .poll(() => textsOf(sinceTheLastConversationOpened(heard), 'contextual_update'))
-    .toEqual([CAMERA_BUTTON_HERE]);
+  // Told once — which is what lets the agent suggest the button, and nowhere else.
+  await expect.poll(() => textsOf(heard, 'contextual_update')).toEqual([CAMERA_BUTTON_HERE]);
 
   // Faint, and there: the one thing on the screen besides him.
   await expect(page.getByTestId('open-camera')).toBeVisible();
   await expect(page.getByTestId('hologram')).toBeVisible();
 });
 
-test('offers no camera without a Jarvis server, and tells Jarvis of none', async ({ page }) => {
-  const { heard, slotRequests } = await openAConversationToShowThingsTo(page, { serverAddress: undefined });
-
-  // Nowhere to send a photo, so nothing beside him and nothing said about a button to the agent,
-  // whose prompt then knows photos cannot come from this device.
-  await expect(page.getByTestId('open-camera')).toHaveCount(0);
-  expect(textsOf(heard, 'contextual_update')).not.toContain(CAMERA_BUTTON_HERE);
-  expect(slotRequests).toHaveLength(0);
-});
-
-test('takes the camera away from the next conversation when the Jarvis server is cleared', async ({ page }) => {
-  const { heard } = await openAConversationToShowThingsTo(page, { serverAddress: JARVIS_SERVER });
-  await expect.poll(() => textsOf(heard, 'contextual_update')).toContain(CAMERA_BUTTON_HERE);
-
-  await saveJarvisServer(page, '');
-  await expect.poll(() => conversationsOpened(heard)).toBe(3);
-  await expect(page.getByTestId('typed-message')).toBeEditable();
-
-  expect(textsOf(sinceTheLastConversationOpened(heard), 'contextual_update')).not.toContain(CAMERA_BUTTON_HERE);
-  await expect(page.getByTestId('open-camera')).toHaveCount(0);
-});
-
 test('sends a photo to the Jarvis server when the camera button is tapped, and tells Jarvis its name', async ({
   page,
 }) => {
-  const { heard, slotRequests, uploads } = await openAConversationToShowThingsTo(page, {
-    serverAddress: JARVIS_SERVER,
-  });
+  const { heard, slotRequests, uploads } = await openAConversationToShowThingsTo(page);
 
   await showAPhoto(page);
 
   // The agent is told the camera is open, in the background, so it waits for the photo.
   await expect.poll(() => textsOf(heard, 'contextual_update')).toContain(CAMERA_OPENED);
 
-  // A slot is asked for at the address sir typed, for this conversation — its id, and nothing else.
+  // A slot is asked for at the server this browser is paired with, for this conversation — its id,
+  // and nothing else: not the device token, which the photo routes do not ask for.
   await expect.poll(() => slotRequests.length).toBe(1);
   expect(slotRequests[0]?.method).toBe('POST');
   expect(slotRequests[0]?.contentType).toBe('application/json');
@@ -1002,9 +1121,7 @@ test('sends a photo to the Jarvis server when the camera button is tapped, and t
 });
 
 test('keeps the call alive while the camera is open, and says so when sir backs out', async ({ page }) => {
-  const { heard, slotRequests, uploads } = await openAConversationToShowThingsTo(page, {
-    serverAddress: JARVIS_SERVER,
-  });
+  const { heard, slotRequests, uploads } = await openAConversationToShowThingsTo(page);
 
   const chooser = await openTheCamera(page);
   await expect.poll(() => textsOf(heard, 'contextual_update')).toContain(CAMERA_OPENED);
@@ -1025,10 +1142,7 @@ test('keeps the call alive while the camera is open, and says so when sir backs 
 });
 
 test('tells Jarvis the photo did not reach him when the server will not confirm the conversation', async ({ page }) => {
-  const { heard, slotRequests, uploads } = await openAConversationToShowThingsTo(page, {
-    serverAddress: JARVIS_SERVER,
-    slotAnswer: NOT_LIVE,
-  });
+  const { heard, slotRequests, uploads } = await openAConversationToShowThingsTo(page, { slotAnswer: NOT_LIVE });
 
   await showAPhoto(page);
 
@@ -1043,7 +1157,7 @@ test('tells Jarvis the photo did not reach him when the server will not confirm 
 test('tells Jarvis a picked file that will not draw could not be read, not that the camera was closed', async ({
   page,
 }) => {
-  const { heard, uploads } = await openAConversationToShowThingsTo(page, { serverAddress: JARVIS_SERVER });
+  const { heard, uploads } = await openAConversationToShowThingsTo(page);
 
   // An image the picker lets through and the browser cannot decode, as a desktop meets an iPhone's HEIC.
   await (await openTheCamera(page)).setFiles({
@@ -1064,15 +1178,15 @@ test('tells Jarvis a picked file that will not draw could not be read, not that 
 test('still sends a photo whose conversation ended while the camera was open, and tells the next one nothing', async ({
   page,
 }) => {
-  const { heard, uploads } = await openAConversationToShowThingsTo(page, { serverAddress: JARVIS_SERVER });
+  const { heard, uploads } = await openAConversationToShowThingsTo(page);
 
   const chooser = await openTheCamera(page);
   await expect.poll(() => textsOf(heard, 'contextual_update')).toContain(CAMERA_OPENED);
 
   // The conversation ends while sir frames the shot — here by going to the settings, which ends the
   // screen's session — and the screen opens a new one on coming back.
-  await saveJarvisServer(page, JARVIS_SERVER);
-  await expect.poll(() => conversationsOpened(heard)).toBe(3);
+  await reopenTheConversation(page);
+  await expect.poll(() => conversationsOpened(heard)).toBe(2);
   await expect(page.getByTestId('typed-message')).toBeEditable();
 
   // Only now is the photo picked, so it is on its way while the new conversation is the one open.
@@ -1094,113 +1208,6 @@ test('still sends a photo whose conversation ended while the camera was open, an
   expect(textsOf(heard, 'user_message')).not.toContain("I've sent you a photo (photo photo7).");
   await expect(page.getByTestId('open-camera')).toBeVisible();
 });
-
-test('refuses anything but a Jarvis server’s own https address, and saves nothing with it', async ({ page }) => {
-  await page.goto('/');
-  await configureElevenLabs(page);
-
-  await page.getByTestId('open-settings').click();
-  await expect(page.getByTestId('jarvis-server')).toHaveValue('');
-  // Not a secret, so the note on where secrets are kept says nothing of it.
-  await expect(page.getByTestId('storage-note')).not.toContainText('server');
-
-  // A change to another field on the same screen, so "saves nothing" is something to check.
-  await page.getByTestId('agent-id').fill('agent_changed');
-  for (const { typed, problem } of [
-    { typed: 'http://jarvis.example.test', problem: 'has to start with https://' },
-    { typed: 'https://jarvis.example.test/api/photos', problem: 'with no path after it' },
-    { typed: 'https://sir:secret@jarvis.example.test', problem: 'no user name or password' },
-  ]) {
-    await page.getByTestId('jarvis-server').fill(typed);
-    await page.getByTestId('save-settings').click();
-    await expect(page.getByTestId('settings-problem')).toContainText(problem);
-  }
-  // Still on the settings screen: a refused save must not fall through to the conversation.
-  await expect(page.getByTestId('jarvis-server')).toBeVisible();
-  await expect(page.getByTestId('hologram')).toHaveCount(0);
-
-  // Nothing was kept — not the address, and not the agent ID saved beside it.
-  await page.reload();
-  await expect(page.getByTestId('hologram')).toBeVisible();
-  await page.getByTestId('open-settings').click();
-  await expect(page.getByTestId('agent-id')).toHaveValue(AGENT_ID);
-  await expect(page.getByTestId('jarvis-server')).toHaveValue('');
-
-  // A bare host is kept as the origin it names, across a reload, like the rest of the settings.
-  await page.getByTestId('jarvis-server').fill('jarvis.example.test/');
-  await page.getByTestId('save-settings').click();
-  await expect(page.getByTestId('hologram')).toBeVisible();
-  await page.reload();
-  await page.getByTestId('open-settings').click();
-  await expect(page.getByTestId('jarvis-server')).toHaveValue(JARVIS_SERVER);
-});
-
-test('asks for the Jarvis server and its service token on the tour, and keeps them', async ({ page }) => {
-  const CLIENT_ID = '0123456789abcdef0123456789abcdef.access';
-  await page.goto('/');
-  await walkToCredentials(page);
-  await page.getByTestId('api-key').fill(API_KEY);
-  await page.getByTestId('agent-id').fill(AGENT_ID);
-  await page.getByTestId('jarvis-server').fill(JARVIS_SERVER);
-
-  // Half a service token is refused there and then, and the tour stays where it is.
-  await page.getByTestId('jarvis-server-client-id').fill(CLIENT_ID);
-  await page.getByTestId('save-settings').click();
-  await expect(page.getByTestId('settings-problem')).toContainText('both its Client ID and its Client Secret');
-  await expect(page.getByTestId('onboarding-credentials')).toBeVisible();
-
-  await page.getByTestId('jarvis-server-client-secret').fill('fedcba9876543210');
-  await page.getByTestId('save-settings').click();
-  await expect(page.getByTestId('hologram')).toBeVisible();
-
-  // Kept across a reload, and shown on the settings screen it is changed on afterwards.
-  await page.reload();
-  await page.getByTestId('open-settings').click();
-  await expect(page.getByTestId('jarvis-server')).toHaveValue(JARVIS_SERVER);
-  await expect(page.getByTestId('jarvis-server-client-id')).toHaveValue(CLIENT_ID);
-});
-
-test('leaves an address that could not be read alone when the rest of the settings are saved', async ({ page }) => {
-  await page.goto('/');
-  await configureElevenLabs(page);
-  await saveJarvisServer(page, JARVIS_SERVER);
-
-  // The store refusing to give the address up, as a keystore can in a window still coming up: it is
-  // there, and reading it throws. The settings screen can only start its field empty.
-  await page.addInitScript(() => {
-    const getItem = Storage.prototype.getItem;
-    Storage.prototype.getItem = function (this: Storage, key: string) {
-      if (key === 'jarvis.server-address') {
-        throw new DOMException('The address cannot be read just now', 'SecurityError');
-      }
-      return getItem.call(this, key);
-    };
-  });
-  await page.reload();
-  await page.getByTestId('open-settings').click();
-  await expect(page.getByTestId('jarvis-server')).toHaveValue('');
-
-  // Sir came to change the agent ID, and saves without touching the empty field.
-  await page.getByTestId('agent-id').fill('agent_changed');
-  await page.getByTestId('save-settings').click();
-  await expect(page.getByTestId('hologram')).toBeVisible();
-
-  // The agent ID is saved, and the address that only failed to load is still there, not erased by
-  // the empty field that stood in for it. Read by name, which does not go through `getItem`.
-  const kept = await page.evaluate(() => {
-    const readByName = (key: string): string | null => {
-      const value: unknown = window.localStorage[key];
-      return typeof value === 'string' ? value : null;
-    };
-    return {
-      settings: readByName('jarvis.elevenlabs-settings'),
-      serverAddress: readByName('jarvis.server-address'),
-    };
-  });
-  expect(JSON.parse(kept.settings ?? '{}')).toMatchObject({ agentId: 'agent_changed' });
-  expect(kept.serverAddress).toBe(JARVIS_SERVER);
-});
-
 /** Where the Jarvis server's glance is, as the server names it: a public artifact page on its own origin. */
 const GLANCE_URL = `${JARVIS_SERVER}/artifacts/0b6f3c1e-8f5d-4a58-9a77-3c4e2f1d9b10`;
 
@@ -1274,13 +1281,14 @@ interface PlayedServer {
 }
 
 /**
- * Plays sir's Jarvis server's side of the phone's live line (`/api/live`): `ready` for the hello, then
+ * Plays sir's Jarvis server's side of the paired live line (`/api/paired/live`, where a paired device
+ * opens it): `ready` for the hello, then
  * `glance` when there is one, and a `glanceActionResult` for every `glanceAction` — and serves the
  * glance's page. Registered after `blockExternalRequests`, so it wins.
  */
 async function playTheJarvisServer(page: Page, glance: ReturnType<typeof aGlance> | undefined): Promise<PlayedServer> {
   const heard: PlayedServer['heard'] = [];
-  await page.routeWebSocket(/^wss:\/\/jarvis\.example\.test\/api\/live$/, (webSocket) => {
+  await page.routeWebSocket(/^wss:\/\/jarvis\.example\.test\/api\/paired\/live$/, (webSocket) => {
     webSocket.onMessage((frame: string | Buffer) => {
       const message = JSON.parse(String(frame));
       heard.push(message);
@@ -1311,11 +1319,10 @@ function glancePage(page: Page) {
   return page.frameLocator('iframe[data-testid="glance-page"]');
 }
 
-/** A configured app that knows its Jarvis server, opened afresh from the start, as from the launcher. */
+/** A browser paired with its Jarvis server, opened afresh from the start, as from the launcher. */
 async function openWithAJarvisServer(page: Page): Promise<void> {
   await page.goto('/');
-  await configureElevenLabs(page);
-  await saveJarvisServer(page, JARVIS_SERVER);
+  await pairWithJarvis(page);
   await page.reload();
 }
 
@@ -1329,7 +1336,8 @@ test('opens on the glance the Jarvis server sent, with a way to Jarvis and back'
   await expect(frame).toHaveAttribute('src', GLANCE_URL);
   await expect(glancePage(page).getByRole('heading')).toHaveText('A parcel is coming today');
   await expect(page.getByTestId('hologram')).toHaveCount(0);
-  expect(server.heard).toContainEqual({ type: 'hello', device: 'phone' });
+  // The line says hello with the token this browser was paired with, which the server checks itself.
+  expect(server.heard).toContainEqual({ type: 'hello', device: 'phone', token: DEVICE_TOKEN });
 
   // The one way to Jarvis on it opens the conversation, as a summoning would, and back again.
   await page.getByTestId('talk-to-jarvis').click();
@@ -1390,7 +1398,7 @@ test('opens on the conversation, as before, when the Jarvis server has no glance
   await openWithAJarvisServer(page);
 
   await expect(page.getByTestId('hologram')).toBeVisible();
-  await expect.poll(() => server.heard).toContainEqual({ type: 'hello', device: 'phone' });
+  await expect.poll(() => server.heard).toContainEqual({ type: 'hello', device: 'phone', token: DEVICE_TOKEN });
   await expect(page.locator('iframe[data-testid="glance-page"]')).toHaveCount(0);
   await expect(page.getByTestId('back-to-glance')).toHaveCount(0);
 });

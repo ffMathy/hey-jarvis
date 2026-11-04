@@ -174,17 +174,6 @@
         color: var(--text);
         font: inherit;
       }
-      .secret {
-        display: flex;
-        gap: 0.5rem;
-      }
-      .secret button {
-        flex: none;
-        padding: 0 1rem;
-        border: 1px solid var(--border);
-        background: var(--background);
-        color: var(--text);
-      }
       .problem {
         color: var(--danger);
       }
@@ -195,19 +184,6 @@
         margin-top: 0.6rem;
         padding: 0.8rem 1.5rem;
         font-size: 1rem;
-      }
-      .links {
-        margin: 1.2rem 0 0;
-        padding: 0;
-        list-style: none;
-        display: flex;
-        flex-direction: column;
-        gap: 0.8rem;
-      }
-      .links span {
-        display: block;
-        color: var(--muted);
-        font-size: 0.85rem;
       }
       a {
         color: var(--accent);
@@ -239,14 +215,14 @@
         <p id="microphone-help" class="help" hidden></p>
         <button id="sample" class="secondary" type="button" disabled>Try him in your room</button>
         <p class="note">
-          No key and no microphone needed. Place a few made-up things — a kitchen light, a TV, an inbox — then press
+          No pairing and no microphone needed. Place a few made-up things — a kitchen light, a TV, an inbox — then press
           Done and he arrives: select him to see him speak, listen and think, and point at a thing (on a phone, tap it)
           to see it picked and lit as if he were working on it. The made-up things are kept apart from the real ones.
         </p>
         <button id="place" class="secondary" type="button" disabled>Place entities</button>
         <p class="note">
           Put what Jarvis works on — a light, an inbox, a calendar — where it is in your room. It lights up while he
-          works on it, and you can point at it and say “that”. No key and no microphone needed; in the room, A or X,
+          works on it, and you can point at it and say “that”. No pairing and no microphone needed; in the room, A or X,
           or the button on the back of your wrist, opens it too.
         </p>
       </section>
@@ -264,19 +240,14 @@
 
       <section id="server" class="option" aria-label="Your Jarvis server" hidden>
         <p id="server-status" class="note" role="status"></p>
-        <p id="server-sign-in" class="note" hidden>
-          If Cloudflare Zero Trust is in front of your server,
-          <a id="server-sign-in-link" href="#" target="_blank" rel="noopener">sign in to it</a> once in this browser.
-          Jarvis connects on his own within half a minute of signing in.
-        </p>
       </section>
 
       <details id="pairing">
         <summary>Your Jarvis server</summary>
         <form id="pairing-form" autocomplete="off" novalidate>
           <p class="note">
-            Pair this headset with your Jarvis server once, and the server starts his conversations: no ElevenLabs key
-            is typed here or kept in this browser. Pairing goes through your server's sign-in, if it has one; after
+            Jarvis talks to you through your own Jarvis server. Pair this headset with it once, and the server starts
+            his conversations: no ElevenLabs key is typed here or kept in this browser. Pairing goes through your server's sign-in, if it has one; after
             that the headset needs no sign-in to talk to him.
           </p>
           <label for="server-address">Server address</label>
@@ -299,62 +270,6 @@
           <p id="pairing-saved" class="saved" role="status" hidden></p>
           <button id="pair" class="primary" type="submit">Pair this headset</button>
         </form>
-      </details>
-
-      <details id="settings">
-        <summary>Or your own ElevenLabs key</summary>
-        <form id="settings-form" autocomplete="off" novalidate>
-          <p class="note">
-            Jarvis is an ElevenLabs agent. The API key is kept in this browser's local storage, which is not a
-            keystore: anything running on this site can read it. Make a key for Jarvis alone.
-          </p>
-          <label for="api-key">API key</label>
-          <div class="secret">
-            <input
-              id="api-key"
-              name="api-key"
-              type="password"
-              autocomplete="off"
-              autocapitalize="none"
-              autocorrect="off"
-              spellcheck="false"
-              placeholder="sk_…"
-            />
-            <button id="show-key" type="button" aria-controls="api-key" aria-pressed="false">Show</button>
-          </div>
-          <label for="agent-id">Agent ID</label>
-          <input
-            id="agent-id"
-            name="agent-id"
-            type="text"
-            autocomplete="off"
-            autocapitalize="none"
-            autocorrect="off"
-            spellcheck="false"
-            placeholder="agent_…"
-          />
-          <p id="settings-problem" class="problem" role="alert" hidden></p>
-          <p id="settings-saved" class="saved" role="status" hidden></p>
-          <button id="save-settings" class="primary" type="submit">Check and save</button>
-        </form>
-        <ul class="links">
-          <li>
-            <a href="https://elevenlabs.io/app/sign-up" target="_blank" rel="noopener">Create an ElevenLabs account</a>
-            <span>Free to start. The agent runs on their side, which is why this page needs to be told where to find it.</span>
-          </li>
-          <li>
-            <a href="https://elevenlabs.io/app/agents" target="_blank" rel="noopener">Build an agent</a>
-            <span>Give it a voice and a personality, and connect it to your own services with tools.</span>
-          </li>
-          <li>
-            <a href="https://elevenlabs.io/docs/agents-platform/quickstart" target="_blank" rel="noopener">Where the agent ID is</a>
-            <span>Open your agent in the dashboard. The ID is the last part of the address, and it starts with agent_.</span>
-          </li>
-          <li>
-            <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">Create an API key</a>
-            <span>Make one for this headset alone, so that losing it means revoking one key rather than all of them.</span>
-          </li>
-        </ul>
       </details>
 
       <footer>

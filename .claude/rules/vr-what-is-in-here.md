@@ -8,12 +8,12 @@ paths:
 > Part of [VR](vr.md). Paths in it are relative to `vr/` unless they say otherwise.
 
 ```
-index.html                 the 2D page: settings, the walk to the room, the models' attribution
+index.html                 the 2D page: pairing, the walk to the room, the models' attribution
 preview.html               the desktop preview (src/preview/)
 src/main.ts                chooses the parts, wires the page to the room, owns the Enter tap
 src/debug-hook.ts          window.__jarvis, what the browser tests read (see below)
 src/test-seams.ts          ?deadline=never and ?errors=held, the clocks the browser tests hold (see below)
-src/page/                  the 2D page: settings, preparations, the microphone step
+src/page/                  the 2D page: pairing, preparations, the microphone step
 src/app/                   the room's state machine, its runtime, the ports, sample mode, placement's adapter,
                            the entities controller
 src/xr/                    the XR stage and frame loop, input (selects, buttons, hands and controllers per frame),

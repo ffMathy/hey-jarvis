@@ -9,38 +9,34 @@
 import '@elevenlabs/react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useJarvisServer } from 'hologram/react/lifecycle';
-import { useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { readPhoneServerAddress, readPhoneServerServiceToken } from '../modules/jarvis-phone';
 import { ConversationScreen } from './conversation-screen';
 import { usePhoneHandover } from './phone-settings';
 import { WaitingForThePhone } from './waiting-for-the-phone';
 
 /**
- * Jarvis on a watch: him, and a conversation with the same agent the phone talks to.
+ * Jarvis on a watch: him, and a conversation with the same Jarvis the phone talks to.
  *
  * **No router and no settings screen.** There are two states and the app is in whichever one the
- * store puts it in: it has the ElevenLabs credentials, in which case it opens a conversation the
- * moment the screen does, or it has not, in which case it asks the phone for them and turns while
- * it waits. Nothing is ever typed here — see `waiting-for-the-phone.tsx` for why a watch is not a
+ * store puts it in: it has the phone's pairing with the Jarvis server, in which case it opens a
+ * conversation the moment the screen does, or it has not, in which case it asks the phone for it
+ * and turns while it waits. Nothing is ever typed here — see `waiting-for-the-phone.tsx` for why a watch is not a
  * setup surface, and `phone-settings.ts` for how the asking works.
  *
  * The sphere is not a copy. It comes from `hologram/`, the same files the phone bundles, so
  * changing how Jarvis looks is one edit in one place and both apps follow. The conversation is
- * shared the same way: one session, the phone's and the headset's too, with one token client and
- * one set of ElevenLabs failures explained once.
+ * shared the same way: one session, the phone's and the headset's too, asked of the same paired
+ * server, with one set of failures explained once.
  *
  * What a watch still does differently is only what a watch is: a round screen drawn edge to edge,
  * an assistant gesture that arrives as an intent rather than through a voice interaction session,
- * and a credential that arrives from the phone rather than from a keyboard.
+ * and a pairing that arrives from the phone rather than from a browser.
  */
 export function App() {
-  const { settings, isLoaded, isPhoneInRange } = usePhoneHandover();
-  // The phone hands the server's address over with the credentials, so it is read again whenever
-  // they arrive. The line stays open for as long as the app runs, between conversations too.
-  const serverAddress = useMemo(() => (settings ? readPhoneServerAddress() : undefined), [settings]);
-  const serverServiceToken = useMemo(() => (settings ? readPhoneServerServiceToken() : undefined), [settings]);
-  useJarvisServer(serverAddress, serverServiceToken, 'watch');
+  const { pairing, isLoaded, isPhoneInRange } = usePhoneHandover();
+  // The line to the server the watch shares the phone's pairing with, open for as long as the app
+  // runs, between conversations too, on the paired path with the phone's token in its hello.
+  useJarvisServer(pairing?.address, 'watch', pairing?.deviceToken);
 
   return (
     <>
@@ -53,8 +49,8 @@ export function App() {
           one bit of ceremony this app has.
         */}
         {isLoaded ? null : <ActivityIndicator color="#38bdf8" />}
-        {isLoaded && settings ? <ConversationScreen settings={settings} /> : null}
-        {isLoaded && !settings ? <WaitingForThePhone isPhoneInRange={isPhoneInRange} /> : null}
+        {isLoaded && pairing ? <ConversationScreen pairing={pairing} /> : null}
+        {isLoaded && !pairing ? <WaitingForThePhone isPhoneInRange={isPhoneInRange} /> : null}
       </View>
     </>
   );

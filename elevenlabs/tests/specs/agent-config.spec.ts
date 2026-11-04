@@ -39,7 +39,7 @@ describe('the committed agent config', () => {
     // A client tool is answered by the device holding the conversation, and none of them answers
     // any: the apps' SDK reports a tool it was not given as an error, and the Voice speaker ignores
     // the call, leaving the agent silent until the tool's response timeout. What a request reads or
-    // changes reaches the headset from the MCP server over `/api/live`, not through the agent, and
+    // changes reaches the headset from the MCP server over `/api/paired/live`, not through the agent, and
     // sir sends a photo with the phone's camera button, which asks nothing of the agent either.
     const clientTools = tools.filter((tool) => tool.type === 'client');
 

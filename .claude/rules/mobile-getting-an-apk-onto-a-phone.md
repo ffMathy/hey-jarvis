@@ -13,7 +13,7 @@ It runs `build:apk` straight on the runner rather than in the dev container CI u
 
 - **arm64-v8a only.** That is what phones run, and each extra ABI compiles every native module again. For an x86_64 emulator, build locally with `reactNativeArchitectures=x86_64`, or use `.scripts/verify-assistant-on-emulator.sh`, which does.
 - **Signed with the Expo template's debug keystore**, the same well-known key everywhere. CI and local builds therefore install over each other, which is what side-loading wants — but anyone can sign an update with that key, so it is not a distribution build. Anything published goes through EAS (`eas.json`'s `production` profile) with a real key.
-- **It is the release variant**: the JS bundle is embedded, no Metro and no development client, and nothing configured — the ElevenLabs API key and agent ID are typed into the settings screen on first run, as on any install.
+- **It is the release variant**: the JS bundle is embedded, no Metro and no development client, and nothing configured — the phone is paired with sir's Jarvis server on the tour's first step, as on any install.
 
 To run it on a device (needs the Android SDK, which CI does not have):
 

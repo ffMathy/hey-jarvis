@@ -13,7 +13,6 @@ import {
   NOT_CONNECTED_RESULT,
   TIMED_OUT_RESULT,
 } from './glance';
-import type { JarvisServerServiceToken } from './jarvis-server-address';
 
 /**
  * A device's line to the Jarvis server: a WebSocket each device that is Jarvis — the phone, the
@@ -34,13 +33,10 @@ import type { JarvisServerServiceToken } from './jarvis-server-address';
  * Bun all have, and that is handed in where a spec wants a fake one.
  */
 
-/** Where the server serves the socket, after its address. Spelled as the server spells it. */
-export const JARVIS_SERVER_SOCKET_PATH = '/api/live';
-
 /**
- * Where a device paired with the server opens its socket instead (`PAIRED_LIVE_SOCKET_PATH` in
- * `mcp`): a path Cloudflare Access lets through, where the server itself checks the device's token,
- * sent in the hello. So a paired device needs no Access JWT and no cookie, which expire.
+ * Where a paired device opens its socket (`PAIRED_LIVE_SOCKET_PATH` in `mcp`): a path Cloudflare
+ * Access lets through, where the server itself checks the device's token, sent in the hello. So a
+ * device needs no Access JWT and no cookie, which expire. It is the only socket the server serves.
  */
 export const JARVIS_SERVER_PAIRED_SOCKET_PATH = '/api/paired/live';
 
@@ -90,30 +86,19 @@ export interface ServerSocket {
 
 /** What a line needs from outside itself, so a spec can hand it a fake socket and a clock. */
 export interface ServerLinkPlatform {
-  /** Opens a socket to `url`, with `headers` on its upgrade request where the platform can send them. */
-  openSocket(url: string, headers: Readonly<Record<string, string>>): ServerSocket;
+  /** Opens a socket to `url`. */
+  openSocket(url: string): ServerSocket;
   /** Calls `callback` once `milliseconds` have passed, unless the function it returns is called first. */
   after(milliseconds: number, callback: () => void): () => void;
 }
 
 /**
- * React Native's `WebSocket`, which takes the upgrade request's headers as a third argument. A
- * browser's has no such argument and ignores it: a page cannot set a header on a WebSocket at all.
- * The global is assignable to this as it is, since a constructor that takes fewer arguments may
- * stand in for one that is handed more.
- */
-interface WebSocketWithHeaders {
-  new (url: string, protocols: undefined, options: { headers: Readonly<Record<string, string>> }): WebSocket;
-}
-
-/**
  * The global `WebSocket`, as a {@link ServerSocket}: its handlers are called with no more than a line
- * reads, and `headers` go on the upgrade request on a phone and a watch (React Native) and are
- * dropped by a browser.
+ * reads. No headers go with it — a browser cannot set one on a WebSocket — so whatever proves who is
+ * asking travels in the hello instead (`deviceToken`).
  */
-function openWebSocket(url: string, headers: Readonly<Record<string, string>>): ServerSocket {
-  const HeaderedWebSocket: WebSocketWithHeaders = WebSocket;
-  const webSocket = new HeaderedWebSocket(url, undefined, { headers });
+function openWebSocket(url: string): ServerSocket {
+  const webSocket = new WebSocket(url);
   const socket: ServerSocket = {
     onopen: null,
     onmessage: null,
@@ -140,33 +125,12 @@ export interface ServerLinkOptions {
   address: string | undefined;
   device: JarvisDevice;
   /**
-   * The Cloudflare Access service token the Zero Trust application in front of the server accepts,
-   * as `parseJarvisServerServiceToken` gives it, or `undefined` for a server with nothing in front
-   * of it. See {@link serverAuthorizationHeaders} for how it is sent.
-   */
-  serviceToken?: JarvisServerServiceToken;
-  /**
-   * The token this device was paired with, when it is paired — the headset, whose browser cannot
-   * send a service token's headers on a WebSocket: the line then opens on
-   * {@link JARVIS_SERVER_PAIRED_SOCKET_PATH} and says it in the hello. A server that no longer knows
-   * it closes the socket with 4401, after which the line is not tried again.
+   * The token this device was paired with (`paired-device.ts`), said in the hello on
+   * {@link JARVIS_SERVER_PAIRED_SOCKET_PATH}; `undefined` before it is paired, when there is no line,
+   * since the server lets no other socket in. A server that no longer knows it closes the socket with
+   * 4401, after which the line is not tried again.
    */
   deviceToken?: string;
-}
-
-/**
- * The headers a service token travels in on the socket's upgrade request: `CF-Access-Client-Id` and
- * `CF-Access-Client-Secret`, the two Cloudflare Access reads a service token from.
- *
- * Only a phone and a watch can send them: a browser cannot set a header on a WebSocket, so the
- * headset's page and the phone's web build connect without them.
- */
-export function serverAuthorizationHeaders(
-  serviceToken: JarvisServerServiceToken | undefined,
-): Readonly<Record<string, string>> {
-  return serviceToken === undefined
-    ? {}
-    : { 'CF-Access-Client-Id': serviceToken.clientId, 'CF-Access-Client-Secret': serviceToken.clientSecret };
 }
 
 /** A line that is open, or trying to be. */
@@ -213,12 +177,9 @@ export interface ServerLink {
   close(): void;
 }
 
-/**
- * The socket's URL for a server at `address`: `wss` for `https`, `ws` for this computer's `http`; on
- * the paired path for a paired device.
- */
-export function serverSocketUrl(address: string, paired = false): string {
-  return `${address.replace(/^http/, 'ws')}${paired ? JARVIS_SERVER_PAIRED_SOCKET_PATH : JARVIS_SERVER_SOCKET_PATH}`;
+/** The socket's URL for a server at `address`: `wss` for `https`, `ws` for this computer's `http`. */
+export function serverSocketUrl(address: string): string {
+  return `${address.replace(/^http/, 'ws')}${JARVIS_SERVER_PAIRED_SOCKET_PATH}`;
 }
 
 /** The `pointing` frame for `entity`: `null` for nothing, and for an entity without a usable id. */
@@ -328,17 +289,12 @@ export function connectToServer(
   options: ServerLinkOptions,
   platform: ServerLinkPlatform = DEFAULT_PLATFORM,
 ): ServerLink {
-  if (options.address === undefined) {
+  // The server lets no socket in but a paired device's, so an unpaired device has no line.
+  if (options.address === undefined || options.deviceToken === undefined) {
     return NO_LINE;
   }
-  const { deviceToken } = options;
-  const url = serverSocketUrl(options.address, deviceToken !== undefined);
-  const headers = serverAuthorizationHeaders(options.serviceToken);
-  const hello = JSON.stringify({
-    type: 'hello',
-    device: options.device,
-    ...(deviceToken === undefined ? {} : { token: deviceToken }),
-  });
+  const url = serverSocketUrl(options.address);
+  const hello = JSON.stringify({ type: 'hello', device: options.device, token: options.deviceToken });
   let socket: ServerSocket | undefined;
   /** The socket the server has said `ready` on, while it is still the one open. */
   let ready: ServerSocket | undefined;
@@ -408,7 +364,7 @@ export function connectToServer(
     cancelRetry = undefined;
     let opened: ServerSocket;
     try {
-      opened = platform.openSocket(url, headers);
+      opened = platform.openSocket(url);
     } catch {
       tryAgainLater();
       return;

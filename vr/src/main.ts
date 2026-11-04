@@ -9,7 +9,7 @@ import { createBrowserMicrophoneKeeper } from './page/microphone';
 import { type RoomOutcome, startPage } from './page/page';
 import { loadPairing } from './page/pairing';
 import type { PreparationTask } from './page/preparation';
-import { type KeyValueStorage, loadServerAddress } from './page/settings';
+import type { KeyValueStorage } from './page/settings';
 import { loadVoiceFromWhereHeStands } from './page/voice-setting';
 import { readTestSeams } from './test-seams';
 import type { Diagnostics } from './ui3d/debug-hud';
@@ -102,13 +102,12 @@ const browserStorage: KeyValueStorage = {
  * The page's line to sir's Jarvis server, opened as the page loads and held for as long as it is
  * open: through the 2D page, every room and every conversation in it, and between them
  * (`connectToServer` in `hologram`). Each conversation's session listens to it while it lasts — what
- * a request touched lights up in the room — and tells it what sir points at. With no address kept on
- * this origin by the phone's web build, it is no line at all.
+ * a request touched lights up in the room — and tells it what sir points at. It is opened with the
+ * headset's pairing (`page/pairing.ts`): the server lets no socket in but a paired device's, so
+ * before the headset is paired there is no line at all.
  */
-const serverAddress = loadServerAddress(browserStorage);
-/** A paired headset opens its line with its own token, which needs no Access cookie (`page/pairing.ts`). */
 const pairing = loadPairing(browserStorage);
-const serverLink = connectToServer({ address: serverAddress, device: 'vr', deviceToken: pairing?.deviceToken });
+const serverLink = connectToServer({ address: pairing?.address, device: 'vr', deviceToken: pairing?.deviceToken });
 
 /**
  * His voice from where he stands, made once for the page: it can take the greeting's element into
@@ -211,7 +210,7 @@ function sharedRoomOptions(modules: RoomModules, onInside: () => void) {
 /**
  * A room with no conversation in it: sample mode — a drawer of sample entities, then the moods
  * driving him, with the samples to point at — or placing the real things, straight into the drawer.
- * Neither needs a key or a microphone.
+ * Neither needs a pairing or a microphone.
  */
 async function openRoomWithoutAgent(
   mode: 'sample' | 'placement',
@@ -300,7 +299,7 @@ async function openConversationRoom(
 
 startPage(document, {
   storage: browserStorage,
-  server: { address: serverAddress, paired: pairing !== undefined, line: serverLink },
+  server: { paired: pairing !== undefined, line: serverLink },
   // Handed on as the plain global and only ever called as a plain function, which is how the
   // browser's fetch expects to be called.
   fetch,
@@ -313,7 +312,7 @@ startPage(document, {
     if (xr === undefined) return Promise.reject(new Error('This browser has no WebXR.'));
     if (mode !== 'conversation') return openRoomWithoutAgent(mode, requestRoomSession(xr), onInside);
     if (credentials === undefined) {
-      return Promise.reject(new Error('Pair with your Jarvis server or add an ElevenLabs key first.'));
+      return Promise.reject(new Error('Pair this headset with your Jarvis server first.'));
     }
     // All of this before anything is awaited, while the click's activation still counts: the
     // audio context his voice is analysed on, the greeting's player (an element that has played

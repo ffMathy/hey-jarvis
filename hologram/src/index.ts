@@ -8,8 +8,8 @@
  * possible: the scene and what each frame of him is (`hologram-drawing.ts`) run in a worklet on a
  * device, in a browser, on the headset and in the tests alike, and `hologram/gpu` draws him from
  * them, with the GL context handed in. The
- * ElevenLabs files and the conversation's framework-free parts keep the same rule — the token
- * request uses the global `fetch`, the SDK's events and LiveKit's room are named structurally, and
+ * conversation's framework-free parts keep the same rule — the paired server is asked for each
+ * conversation's credential with the global `fetch`, the SDK's events and LiveKit's room are named structurally, and
  * a timer or a room check is handed in rather than reached for — so the whole of this entry is
  * still testable with no device, no SDK and no credential.
  *
@@ -25,7 +25,6 @@ export * from './connection-drop';
 export * from './conversation-life';
 export * from './conversation-token';
 export * from './density-control';
-export * from './elevenlabs-settings';
 export * from './failure-text';
 export * from './frame-clock';
 export * from './frame-timing';

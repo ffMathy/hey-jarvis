@@ -17,7 +17,7 @@ import {
   scene,
   tap,
   untilListening,
-  withSavedSettings,
+  withPairing,
 } from './app-driver';
 import type { ElementVolumeProbeResult } from './element-volume-probe';
 import { bundle, expect, test } from './fixtures';
@@ -25,7 +25,7 @@ import { bundle, expect, test } from './fixtures';
 /**
  * His voice from where he stands, in the emulated Quest 3's living room.
  *
- * What can be heard offline is the greeting: ElevenLabs and LiveKit are out of reach here, so no
+ * What can be heard offline is the greeting: the Jarvis server and LiveKit are out of reach here, so no
  * summon ever connects and his live track is never played — its fan-out into the panner, the SDK's
  * element at volume 0 during a call and the echo signs are the unit tests' (`spatial-voice.spec.ts`
  * and its neighbours), and the element rule is checked on real elements by
@@ -147,7 +147,7 @@ test('he greets from where he stands: through an HRTF panner at his anchor, hear
   await lengthenTheGreeting(page);
   await countGreetings(page);
   await recordAudio(page, { platformEchoCanceller: true });
-  await withSavedSettings(page);
+  await withPairing(page);
   await enterRoom(page, appPage('deadline=never'));
   await untilListening(page);
 
@@ -215,7 +215,7 @@ test('a stopped AudioContext moves him back to the headset, and a greeting it wo
   await lengthenTheGreeting(page);
   await countGreetings(page);
   await recordAudio(page, { platformEchoCanceller: true });
-  await withSavedSettings(page);
+  await withPairing(page);
   await enterRoom(page, appPage('deadline=never'));
   await untilListening(page);
 
@@ -246,7 +246,7 @@ test('with "His voice from where he stands" off, he greets from the headset and 
   await lengthenTheGreeting(page);
   await countGreetings(page);
   await recordAudio(page, { platformEchoCanceller: true });
-  await withSavedSettings(page);
+  await withPairing(page);
   await page.goto(appPage());
   await page.evaluate(() => window.__xrHarness?.ready);
 
@@ -280,7 +280,7 @@ test('a desktop microphone, with no echo canceller of the headset’s own, keeps
 }) => {
   await answerTokens(page, 'never');
   await recordAudio(page, { platformEchoCanceller: false });
-  await withSavedSettings(page);
+  await withPairing(page);
   await enterRoom(page);
   await untilListening(page);
   const voice = await voiceReport(page);

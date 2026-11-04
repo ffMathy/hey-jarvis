@@ -33,7 +33,7 @@ import { useWatchMirror } from './use-watch-mirror';
 import { WrittenReplyLine } from './written-reply-line';
 
 interface ConversationScreenProps {
-  /** Where each conversation's token comes from: a key this phone holds, or the paired server. */
+  /** Where each conversation's token comes from: the Jarvis server this device is paired with. */
   credentials: ConversationCredentials;
   /**
    * Sir's Jarvis server, where a photo is sent, or `undefined` when he has not given this phone one —
@@ -335,8 +335,8 @@ export function ConversationScreen({
   // same question as whether one is *connected*: a session that was dialled and then dropped still
   // has a field, saying so, which is how a browser reports an ElevenLabs it could not finish
   // reaching. What has no field is a `start` that never got as far as a session at all — a phone
-  // with the microphone refused, or a key ElevenLabs rejected, which says that in one line and is
-  // done. See `start` below.
+  // with the microphone refused, or a server that would not start one, which says that in one line
+  // and is done. See `start` below.
   const [canType, setCanType] = useState(false);
   useEffect(() => {
     if (conversation.dialled) {
@@ -496,9 +496,9 @@ export function ConversationScreen({
    * not cause a render and must not reset when one happens.
    *
    * Nothing retries. A conversation that failed to open failed for a reason — no microphone, no
-   * network, a rejected key — and hammering ElevenLabs until one of those changes would be rude to
-   * them and useless to the user, who can press and hold to fix the only one of those that is
-   * fixable here.
+   * network, a pairing the server no longer knows — and hammering the server until one of those
+   * changes would be useless to the user, who can press and hold to fix the only one of those that
+   * is fixable here: pairing again.
    */
   const tried = useRef(false);
   useEffect(() => {

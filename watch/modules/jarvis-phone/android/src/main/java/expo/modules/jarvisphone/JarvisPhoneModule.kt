@@ -14,7 +14,7 @@ import expo.modules.kotlin.modules.ModuleDefinition
 /**
  * The two message paths the watch and the phone speak over, and the whole of their protocol.
  *
- * The same two strings as `SETTINGS_PATH` and `ASK_PATH` in the phone's
+ * The same two strings as `PAIRING_PATH` and `ASK_PATH` in the phone's
  * `mobile/modules/jarvis-watch/.../JarvisWatchModule.kt`, spelled again because Kotlin on two
  * devices shares no header file. Four copies in all, counting the TypeScript beside each, with no
  * compiler between any of them — so `mobile/src/watch-link.contract.spec.ts` reads all four out of
@@ -23,7 +23,7 @@ import expo.modules.kotlin.modules.ModuleDefinition
  * Nothing fails loudly when they do. Both apps build, both install, both run, and the watch waits
  * for a message the phone is sending to an address nobody is listening at.
  */
-internal const val SETTINGS_PATH = "/jarvis/elevenlabs-settings"
+internal const val PAIRING_PATH = "/jarvis/server-pairing"
 internal const val ASK_PATH = "/jarvis/ask-for-credentials"
 
 /**
@@ -42,17 +42,18 @@ internal const val ANSWER_PATH = "/jarvis/answer-on-the-phone"
 internal const val MIRROR_PATH = "/jarvis/mirror-the-phone"
 
 /**
- * What the watch knows about the phone beside it: only ever the ElevenLabs credentials.
+ * What the watch knows about the phone beside it: only ever the phone's pairing with the Jarvis
+ * server — the server's address and the token the server gave the phone.
  *
- * A watch keyboard is not where anybody should type a key that starts `sk_` and runs to fifty
- * characters, so the watch never asks for one. It asks the *phone*, over the Data Layer, which
- * Play Services will only connect for two apps sharing a package name and a signing key — and
- * `watch/app.config.ts` shares both with `mobile/` for exactly this reason.
+ * Pairing signs in to Cloudflare Access in a browser, which a watch has none of, so the watch never
+ * pairs on its own. It asks the *phone*, over the Data Layer, which Play Services will only connect
+ * for two apps sharing a package name and a signing key — and `watch/app.config.ts` shares both with
+ * `mobile/` for exactly this reason.
  *
  * The receiving half is split in two on purpose. This module hears the phone while the app is
- * running, so a screen can stop waiting the moment the key lands; `JarvisPhoneListenerService`
+ * running, so a screen can stop waiting the moment the pairing lands; `JarvisPhoneListenerService`
  * hears it when the app is not, so the phone's button works without anybody opening the watch
- * first. Both write to `PhoneSettingsStore`, which is the only place the credentials are kept.
+ * first. Both write to `PhoneSettingsStore`, which is the only place the pairing is kept.
  */
 class JarvisPhoneModule : Module() {
   override fun definition() = ModuleDefinition {
@@ -67,7 +68,7 @@ class JarvisPhoneModule : Module() {
       PhoneSettingsStore.forget(context())
     }
 
-    // Asks the phone to send them. Resolves false rather than rejecting when there is no phone in
+    // Asks the phone to send its pairing. Resolves false rather than rejecting when there is no phone in
     // range: a watch out of Bluetooth range of its phone is the ordinary state of a watch on a
     // run, not an error, and the screen says "open Jarvis on your phone" either way.
     AsyncFunction("askThePhone") { promise: Promise ->
@@ -95,12 +96,12 @@ class JarvisPhoneModule : Module() {
    * The phone answering, while this app is up.
    *
    * Stores first and tells JavaScript second, so that a screen woken by the event reads the
-   * credentials straight out of the store rather than being handed them in an event payload —
-   * which would put a live API key through the JavaScript bridge for no reason, and leave two
-   * answers to "what are the credentials" that could disagree.
+   * pairing straight out of the store rather than being handed it in an event payload — which would
+   * put a live token through the JavaScript bridge for no reason, and leave two answers to "what is
+   * the pairing" that could disagree.
    */
   private val arriving = MessageClient.OnMessageReceivedListener { event: MessageEvent ->
-    if (event.path == SETTINGS_PATH && PhoneSettingsStore.save(context(), event.data)) {
+    if (event.path == PAIRING_PATH && PhoneSettingsStore.save(context(), event.data)) {
       sendEvent(SETTINGS_ARRIVED)
     } else if (event.path == MIRROR_PATH) {
       // As unsigned bytes: a frame is a few dozen of them, a dozen times a second.
@@ -137,7 +138,7 @@ private fun askThePhone(context: Context, promise: Promise) {
       for (node in nodes) {
         client.sendMessage(node.id, ASK_PATH, ByteArray(0))
       }
-      // Asked, which is not the same as answered: the phone answers by sending the credentials
+      // Asked, which is not the same as answered: the phone answers by sending its pairing
       // back on the other path, and that arrives as an event rather than as this promise.
       promise.resolve(true)
     }

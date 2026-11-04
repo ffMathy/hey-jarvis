@@ -8,8 +8,8 @@ paths:
 > Part of [Hologram](hologram.md). Paths in it are relative to `hologram/` unless they say otherwise.
 
 ```
-hologram               the design, the voice tracking, the ElevenLabs credentials, and the
-                       conversation's framework-free parts — no framework
+hologram               the design, the voice tracking, pairing with the Jarvis server, and
+                       the conversation's framework-free parts — no framework
 hologram/gpu           all of him on the GPU: his body's passes, the picture of the rest of
                        him, and a renderer over a bare WebGL 2 context — no framework either
 hologram/react         the same sphere as a React Native view you can render

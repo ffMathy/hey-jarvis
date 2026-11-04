@@ -28,6 +28,24 @@ export const DEVICE_PAIRING_PATH = '/api/devices';
 /** One paired device, by its id: where it is unpaired. Behind Cloudflare Access. */
 export const PAIRED_DEVICE_ROUTE = '/api/devices/:deviceId';
 
+/**
+ * Where the phone app pairs: a page sir opens in his phone's browser, behind Cloudflare Access like
+ * the rest of {@link DEVICE_PAIRING_PATH}. A native app cannot hold Access's cookie, so it sends sir
+ * through the browser's sign-in instead, and the page hands the token back to the app through its
+ * own link ({@link PHONE_APP_PAIRED_URL}).
+ */
+export const PHONE_PAIRING_ROUTE = '/api/devices/pair';
+
+/**
+ * Where the pairing page sends the phone app its token: the app's own scheme (`scheme` in
+ * `mobile/app.config.ts`), and never a link the request names, so the page can hand a token to
+ * nothing but the app. The token is in the fragment, which a browser keeps out of every request.
+ */
+export const PHONE_APP_PAIRED_URL = 'heyjarvis://paired';
+
+/** What the phone is listed as among the paired devices. */
+const PHONE_DEVICE_NAME = 'Android phone';
+
 /** Where a paired device asks for things with its own token. Bypasses Cloudflare Access. */
 export const PAIRED_DEVICE_PATH = '/api/paired';
 
@@ -228,6 +246,61 @@ function bearerTokenOf(request: Request): string | undefined {
   return match?.[1];
 }
 
+/**
+ * The page that asks sir to pair his phone. A button rather than pairing on the visit itself, so
+ * that nothing is paired by a page that merely links here; and a form posting to its own origin, so
+ * that {@link isSameOriginForm} can tell the press apart from one made elsewhere.
+ */
+const PHONE_PAIRING_PAGE = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pair your phone with Jarvis</title>
+<style>
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #05070a; color: #e6f7ff;
+    font: 18px/1.5 system-ui, sans-serif; }
+  main { max-width: 22rem; padding: 1.5rem; text-align: center; }
+  button { font: inherit; padding: 0.8rem 1.6rem; border: 0; border-radius: 999px; background: #38d6ff; color: #05070a; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Pair your phone</h1>
+  <p>Your phone's Jarvis app will keep a token of this server's own, so it never has to sign in here again.</p>
+  <form method="post" action="${PHONE_PAIRING_ROUTE}"><button type="submit">Pair and open Jarvis</button></form>
+</main>
+</body>
+</html>`;
+
+/** Keeps the pairing page out of frames and caches: a button that pairs is not to be pressed blind. */
+function guardPairingPage(response: Response): void {
+  response.set({
+    'Cache-Control': 'no-store',
+    'Content-Security-Policy':
+      "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
+    'Referrer-Policy': 'no-referrer',
+    'X-Frame-Options': 'DENY',
+  });
+}
+
+/**
+ * Whether a press of the pairing page's button came from the page itself: a form on this server's
+ * own origin, which a browser says in `Origin` (and in `Sec-Fetch-Site`, where it sends that). A
+ * form on any other site posting here is refused, so it cannot pair devices sir never sees.
+ */
+function isSameOriginForm(request: Request): boolean {
+  if (request.get('Sec-Fetch-Site') !== undefined && request.get('Sec-Fetch-Site') !== 'same-origin') return false;
+  const origin = request.get('Origin');
+  const host = request.get('Host');
+  if (origin === undefined || host === undefined) return false;
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+}
+
 /** Runs an async handler, handing whatever it throws to Express's error handler. */
 function handle(
   handler: (request: Request, response: Response) => Promise<void>,
@@ -263,6 +336,24 @@ export function registerPairedDeviceApi(
       const { device, token } = await (await store()).pair(deviceNameOf(request.body));
       logger.info('[API] Device paired', { deviceId: device.id, name: device.name });
       response.status(201).json({ success: true, message: 'Device paired', data: { id: device.id, token } });
+    }),
+  );
+
+  router.get(PHONE_PAIRING_ROUTE, (_request, response) => {
+    guardPairingPage(response);
+    response.type('html').send(PHONE_PAIRING_PAGE);
+  });
+  router.post(
+    PHONE_PAIRING_ROUTE,
+    handle(async (request, response) => {
+      guardPairingPage(response);
+      if (!isSameOriginForm(request)) {
+        response.status(403).type('text').send('Pair your phone from the pairing page itself.');
+        return;
+      }
+      const { device, token } = await (await store()).pair(PHONE_DEVICE_NAME);
+      logger.info('[API] Device paired', { deviceId: device.id, name: device.name });
+      response.redirect(303, `${PHONE_APP_PAIRED_URL}#${new URLSearchParams({ token })}`);
     }),
   );
 
@@ -321,5 +412,5 @@ export function registerPairedDeviceApi(
     pairing: DEVICE_PAIRING_PATH,
     conversation: PAIRED_CONVERSATION_ROUTE,
   });
-  return [DEVICE_PAIRING_PATH, PAIRED_CONVERSATION_ROUTE];
+  return [DEVICE_PAIRING_PATH, PHONE_PAIRING_ROUTE, PAIRED_CONVERSATION_ROUTE];
 }

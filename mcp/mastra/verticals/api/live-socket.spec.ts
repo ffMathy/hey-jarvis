@@ -10,7 +10,6 @@ import {
   GLANCE_ACTION_REFUSALS,
   type GlanceRequestOutcome,
   LIVE_SOCKET_CLOSE_CODES,
-  LIVE_SOCKET_PATH,
   type LiveSocketOptions,
   type LiveSockets,
   MAX_FRAME_BYTES,
@@ -56,18 +55,26 @@ async function answerAtOnce(request: string): Promise<GlanceRequestOutcome> {
   return { ok: true, message: `Done: ${request}.` };
 }
 
+/** The token of the one device paired with the servers these specs start. */
+const DEVICE_TOKEN = 'd'.repeat(43);
+
 /** A real HTTP server with the live socket on it, with no glance unless the spec gives one. */
 async function serve(options: Partial<LiveSocketOptions> = {}): Promise<{ url: (path?: string) => string }> {
   ranRequests = [];
   server = createServer((_request, response) => response.end());
-  live = attachLiveSocket(server, { runRequest: answerAtOnce, currentGlance: async () => undefined, ...options });
+  live = attachLiveSocket(server, {
+    runRequest: answerAtOnce,
+    currentGlance: async () => undefined,
+    isPairedDevice: async (token) => token === DEVICE_TOKEN,
+    ...options,
+  });
   await new Promise<void>((resolve) => server?.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   if (!isAddressInfo(address)) {
     throw new Error('The server is not listening on a port');
   }
   const { port } = address;
-  return { url: (path = LIVE_SOCKET_PATH) => `ws://127.0.0.1:${port}${path}` };
+  return { url: (path = PAIRED_LIVE_SOCKET_PATH) => `ws://127.0.0.1:${port}${path}` };
 }
 
 /**
@@ -92,12 +99,13 @@ function nextEvent(socket: WebSocket): Promise<{ message: unknown } | { closed: 
   });
 }
 
+/** A paired device's hello. */
 function hello(device = 'phone'): string {
-  return JSON.stringify({ type: 'hello', device });
+  return JSON.stringify({ type: 'hello', device, token: DEVICE_TOKEN });
 }
 
 describe('the live socket', () => {
-  it('says ready to any hello, asking nobody, and then sends it every live event', async () => {
+  it('says ready to a paired device’s hello, and then sends it every live event', async () => {
     const { url } = await serve();
     const socket = await connect(url());
 
@@ -218,9 +226,11 @@ describe('the live socket', () => {
 
   it('serves its path in any case, as Express routes it, and nothing else', async () => {
     const { url } = await serve();
-    await connect(url(LIVE_SOCKET_PATH.toUpperCase()));
-    await connect(url(`${LIVE_SOCKET_PATH}?v=1`));
+    await connect(url(PAIRED_LIVE_SOCKET_PATH.toUpperCase()));
+    await connect(url(`${PAIRED_LIVE_SOCKET_PATH}?v=1`));
     await expect(connect(url('/api/elsewhere'))).rejects.toThrow();
+    // Every app pairs, so the socket Cloudflare Access stood in front of is not served at all.
+    await expect(connect(url('/api/live'))).rejects.toThrow();
   });
 
   it(`refuses a socket past ${MAX_LIVE_SOCKETS} at once`, async () => {
@@ -487,21 +497,5 @@ describe('the paired live socket', () => {
 
     expect(await closed).toEqual({ closed: LIVE_SOCKET_CLOSE_CODES.unpaired });
     expect(ranRequests).toEqual([]);
-  });
-
-  it('asks nothing of a hello on the open path, which Access stands in front of', async () => {
-    const asked: string[] = [];
-    const { url } = await serve({
-      isPairedDevice: async (token) => {
-        asked.push(token);
-        return false;
-      },
-    });
-    const socket = await connect(url());
-
-    const ready = nextEvent(socket);
-    socket.send(pairedHello('m'.repeat(43)));
-    expect(await ready).toEqual({ message: { type: 'ready' } });
-    expect(asked).toEqual([]);
   });
 });

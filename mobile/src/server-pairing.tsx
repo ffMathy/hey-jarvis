@@ -1,59 +1,82 @@
 import * as Linking from 'expo-linking';
-import { type Pairing, pairWithServer, serverSignInUrl } from 'hologram';
+import type { Pairing } from 'hologram';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { pairWithServer } from './pair-with-server';
 import { theme } from './theme';
-
-/** What this browser is listed as among the server's paired devices. */
-export const WEB_APP_DEVICE_NAME = 'Phone web app';
 
 interface ServerPairingProps {
   /** The server's address as it was read, to start the field from. */
   storedAddress: string | undefined;
-  /** Whether this browser is paired already. */
+  /** Whether this device is paired already. */
   paired: boolean;
-  /** Called once the server has paired this browser, with where it is and the token it gave. */
+  /** A browser was paired there and then, with where the server is and the token it gave. */
   onPaired: (pairing: Pairing) => void;
+  /**
+   * The phone app is about to open the server's pairing page in the browser for this address, which
+   * is kept now: the token comes back later, on a link that names no server.
+   */
+  onPairingAddress: (address: string) => void;
 }
 
+/** Where this device is: the words differ only by what it is called. */
+const THIS_DEVICE = Platform.OS === 'web' ? 'this browser' : 'this phone';
+
 /**
- * Pairing the web build with sir's Jarvis server: in place of an ElevenLabs key, which a browser
- * keeps in `localStorage` where anything on the page's origin can read it, and of Access's cookie
- * for the line, which runs out with Access's session. The server holds the key and starts every
- * conversation, and the line opens with the browser's own token. See `paired-device.ts` in
- * `hologram`, which the headset's page pairs with too — the two pages share an origin, so a browser
- * paired on either is paired on both.
+ * Pairing with sir's Jarvis server, which is the whole of setting Jarvis up: the server holds the
+ * ElevenLabs key and starts every conversation, the camera sends its photos there, the glance comes
+ * from it, and the line to it opens with the token it gives this device. Nothing else is typed in.
+ * See `paired-device.ts` in `hologram`.
  *
- * Only in a browser: the phone app and the watch hold a Cloudflare Access service token instead,
- * which a browser cannot send on a WebSocket.
+ * How it pairs is the platform's (`pair-with-server.ts` against `pair-with-server.web.ts`): a
+ * browser sends the request itself, through Access's cookie; the phone app opens the server's
+ * pairing page in the browser, and the token comes back on the app's own link.
+ *
+ * One form on the settings screen and on the tour's server step, so the test IDs are the same
+ * wherever it is showing.
  */
-export function ServerPairing({ storedAddress, paired, onPaired }: ServerPairingProps) {
+export function ServerPairing({ storedAddress, paired, onPaired, onPairingAddress }: ServerPairingProps) {
   const [address, setAddress] = useState(storedAddress ?? '');
   const [pairing, setPairing] = useState(false);
+  const [inTheBrowser, setInTheBrowser] = useState(false);
   const [problem, setProblem] = useState<string | undefined>(undefined);
   const [signIn, setSignIn] = useState<string | undefined>(undefined);
 
   const pair = async () => {
     setPairing(true);
+    setInTheBrowser(false);
     setProblem(undefined);
     setSignIn(undefined);
-    const result = await pairWithServer(address, WEB_APP_DEVICE_NAME, fetch);
+    const outcome = await pairWithServer(address, onPairingAddress);
     setPairing(false);
-    if ('problem' in result) {
-      setProblem(result.problem);
-      setSignIn(result.signIn === undefined ? undefined : serverSignInUrl(result.signIn));
+    if ('problem' in outcome) {
+      setProblem(outcome.problem);
+      setSignIn(outcome.signIn);
       return;
     }
-    onPaired(result.pairing);
+    if ('inTheBrowser' in outcome) {
+      setInTheBrowser(true);
+      return;
+    }
+    onPaired(outcome.paired);
   };
 
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>Pair this browser with your Jarvis server</Text>
+      <Text style={styles.label}>Your Jarvis server</Text>
       <Text style={styles.explanation}>
         {paired
-          ? 'This browser is paired: your Jarvis server starts his conversations, so it needs no ElevenLabs key. Pair it again if the server forgot it.'
-          : 'Instead of an ElevenLabs key: your Jarvis server holds the key and starts his conversations, and this browser keeps only a token of the server’s own. If Cloudflare Access is in front of the server, you sign in to it once.'}
+          ? `${capitalised(THIS_DEVICE)} is paired with your Jarvis server. Pair it again if the server forgot it; pairing with another server forgets this one.`
+          : `Jarvis lives on your own Jarvis server: it holds the ElevenLabs key and starts every conversation, so ${THIS_DEVICE} keeps only a token of the server’s own. Its address is the public https address of the server. If Cloudflare Access is in front of it, you sign in to it once.`}
+      </Text>
+      <Text style={styles.explanation}>
+        The server is also where the camera button beside him sends photos, where the page you see when you open Jarvis
+        comes from, and what this phone, your watch and your headset stay in touch with.
+      </Text>
+      <Text style={styles.explanation} testID="storage-note">
+        {Platform.OS === 'web'
+          ? 'In a browser the token is kept in local storage, which is not a keystore: anything running on this page can read it. On Android it goes in the keystore instead.'
+          : 'The token is kept in the Android keystore.'}
       </Text>
       <TextInput
         style={styles.input}
@@ -62,10 +85,11 @@ export function ServerPairing({ storedAddress, paired, onPaired }: ServerPairing
         autoCapitalize="none"
         autoCorrect={false}
         keyboardType="url"
+        // Not a secret, but not a login either, and nothing for a password manager to keep.
         autoComplete="off"
         importantForAutofill="no"
         placeholder="https://jarvis.example.com"
-        testID="pairing-server"
+        testID="jarvis-server"
         placeholderTextColor={theme.colors.mutedText}
       />
       {problem ? (
@@ -78,17 +102,29 @@ export function ServerPairing({ storedAddress, paired, onPaired }: ServerPairing
           <Text style={styles.link}>Sign in to your server, then pair again</Text>
         </Pressable>
       ) : null}
+      {inTheBrowser ? (
+        <Text style={styles.explanation} testID="pairing-in-the-browser">
+          Your browser has your server’s pairing page open. Sign in if it asks, press Pair there, and it brings you back
+          here.
+        </Text>
+      ) : null}
       <Pressable
         accessibilityRole="button"
         style={styles.button}
         onPress={() => void pair()}
         disabled={pairing}
-        testID="pair-browser"
+        testID="pair-with-server"
       >
-        <Text style={styles.buttonLabel}>{pairing ? 'Pairing…' : paired ? 'Pair again' : 'Pair this browser'}</Text>
+        <Text style={styles.buttonLabel}>
+          {pairing ? 'Pairing…' : paired ? 'Pair again' : `Pair ${THIS_DEVICE} with your server`}
+        </Text>
       </Pressable>
     </View>
   );
+}
+
+function capitalised(words: string): string {
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
 }
 
 const styles = StyleSheet.create({
@@ -120,14 +156,13 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
   button: {
-    borderColor: theme.colors.accent,
-    borderWidth: 1,
+    backgroundColor: theme.colors.accent,
     borderRadius: theme.radius.button,
     paddingVertical: theme.spacing.medium,
     alignItems: 'center',
   },
   buttonLabel: {
-    color: theme.colors.accent,
+    color: theme.colors.accentText,
     fontWeight: '700',
   },
 });

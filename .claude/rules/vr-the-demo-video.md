@@ -23,7 +23,7 @@ the sound. The README's copies are `docs/jarvis-in-a-room.{webm,webp,gif}`. It n
 libvpx-vp9 and libopus — FFMPEG_PATH, else the one on the PATH; Playwright's own is VP8-only.
 CHROMIUM_EXECUTABLE_PATH works as it does for the browser tests.
 
-**The shot** (`demo-shot.ts`, pure, pinned by `demo-shot.spec.ts`): the real room, entered with a key,
+**The shot** (`demo-shot.ts`, pure, pinned by `demo-shot.spec.ts`): the real room, entered paired,
 waiting with its hint, the head glancing so the hint is seen trailing the gaze; a cut, from the same
 pose, to sample mode — the real room cannot summon him without ElevenLabs — its drawer of samples put
 away with B in frames nobody sees, where he is placed 1.6 m

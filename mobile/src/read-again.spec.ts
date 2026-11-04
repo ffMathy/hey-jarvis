@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { READ_ATTEMPTS, readTryingAgain } from './read-again';
 
-/** Something kept in the keystore, the way `settings-storage.ts` and `jarvis-server.ts` answer. */
+/** Something kept in the keystore, the way `jarvis-server.ts` answers. */
 type Stored = { kind: 'address'; address: string } | { kind: 'nothing' } | { kind: 'unreadable' };
 
 /** A read that answers each attempt in turn, and counts them. */

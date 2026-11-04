@@ -16,7 +16,7 @@
  * `performance.now()`, the app's frame loop steps by that, and so does everything that animates
  * him. However long a frame takes to draw, the video sees 1/fps pass between frames.
  *
- * **Why two rooms.** The opening is the real room, entered with a key, waiting with its hint.
+ * **Why two rooms.** The opening is the real room, entered paired, waiting with its hint.
  * Everything after the cut is sample mode ("Try him in your room"), because a real summon needs
  * ElevenLabs and a network, and sample mode walks his moods on a select. The cut is made from the
  * same head pose, so it reads as him answering.
@@ -41,7 +41,7 @@ import type { Subprocess } from 'bun';
 import { GREETING_REPEAT_SECONDS, GREETING_SECONDS } from 'hologram';
 import config from '../playwright.config';
 import type { RoomPoint } from '../src/debug-hook';
-import { withSavedSettings } from '../tests/e2e/app-driver';
+import { withPairing } from '../tests/e2e/app-driver';
 import { emulateHeadset } from '../tests/e2e/fixtures';
 import {
   decodeMono,
@@ -374,7 +374,7 @@ async function shootFrame(render: Render, frame: number, press: boolean): Promis
   return report;
 }
 
-/** The waiting room: the real app, entered with a key, its hint up, until the cut. */
+/** The waiting room: the real app, entered paired, its hint up, until the cut. */
 async function shootWaitingRoom(render: Render, hintFrames: number) {
   const { page } = render;
   const enter = page.getByRole('button', { name: 'Enter your room' });
@@ -556,7 +556,7 @@ async function openPage(browser: Browser, options: Options, port: number): Promi
   const page = await context.newPage();
   page.on('pageerror', (error) => console.warn(`page error: ${error.message}`));
   await emulateHeadset(page);
-  await withSavedSettings(page);
+  await withPairing(page);
   await page.clock.install();
   await page.goto(`http://localhost:${port}${SITE_PREFIX}?film`);
   await page.evaluate(() => window.__xrHarness?.ready);

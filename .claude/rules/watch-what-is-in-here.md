@@ -18,9 +18,9 @@ watch/
 ├── modules/jarvis-volume/        # the call volume, brought down to 90% before he speaks
 └── src/
     ├── app.tsx                   # two states: a conversation, or waiting for the phone
-    ├── conversation-screen.tsx   # the sphere, and a live ElevenLabs session behind it
+    ├── conversation-screen.tsx   # the sphere, and a live session behind it, asked of the paired server
     ├── waiting-for-the-phone.tsx # sample mode while it waits, and one line saying what is missing
-    ├── phone-settings.ts         # the credentials, and the asking that gets them
+    ├── phone-settings.ts         # the phone's pairing, and the asking that gets it
     ├── phone-mirror.ts           # the phone's sphere, drawn here while the phone holds the conversation
     ├── microphone-permission.ts  # PermissionsAndroid
     ├── watch-density.ts          # the watch's pace, and letting the drawing find its own count (the ceiling is the phone's `PARTICLE_COUNT`, in `hologram`)

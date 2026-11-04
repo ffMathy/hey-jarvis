@@ -4,7 +4,14 @@ import { HEADSET_PARTICIPANT_NAME } from './conversation-token';
 import { DEADLINE_PROBLEM, DROPPED_PROBLEM, MICROPHONE_PROBLEM, UNREACHABLE_PROBLEM } from './failure-text';
 import { GREETING_GRACE_SECONDS, WITHOUT_FIRST_MESSAGE } from './greeting-handover';
 import { REDIAL_GIVE_UP_AFTER_MS } from './jarvis-session';
-import { createHarness, HEADSET_OFFLINE_PROBLEM, settle } from './jarvis-session.fakes';
+import {
+  createHarness,
+  HEADSET_OFFLINE_PROBLEM,
+  PAIRED_DEVICE_TOKEN,
+  PAIRED_SERVER_ADDRESS,
+  settle,
+} from './jarvis-session.fakes';
+import { NO_LONGER_PAIRED_PROBLEM, SERVER_UNREACHABLE_PROBLEM } from './paired-device';
 
 /**
  * A summoning from the wake word to its ending: the greeting and the token at once, the session
@@ -24,9 +31,10 @@ describe('summoning Jarvis', () => {
     expect(greeting.plays).toBe(1);
     expect(tokens.requests).toHaveLength(1);
     const request = tokens.requests[0];
-    expect(request?.url.searchParams.get('participant_name')).toBe(HEADSET_PARTICIPANT_NAME);
-    expect(request?.url.searchParams.get('agent_id')).toBe('agent_01jz0123456789');
-    expect(request?.headers.get('xi-api-key')).toBe('sk_a-secret-key');
+    expect(request?.url.href).toBe(`${PAIRED_SERVER_ADDRESS}/api/paired/conversation`);
+    expect(request?.method).toBe('POST');
+    expect(request?.headers.get('authorization')).toBe(`Bearer ${PAIRED_DEVICE_TOKEN}`);
+    expect(request?.body).toEqual({ transport: 'webrtc', participantName: HEADSET_PARTICIPANT_NAME });
   });
 
   it('starts one summoning at a time, and another only once the last is over', async () => {
@@ -232,22 +240,23 @@ describe('summoning Jarvis', () => {
 
 describe('when a summoning fails', () => {
   const tokenFailures = [
-    { status: 401, problem: 'ElevenLabs rejected the API key. Check it in the settings.' },
-    { status: 402, problem: 'The ElevenLabs account has run out of credits.' },
+    { status: 401, message: undefined, problem: NO_LONGER_PAIRED_PROBLEM },
     {
-      status: 404,
-      problem: 'ElevenLabs has no agent with that ID on this account. Check the agent ID in the settings.',
+      status: 502,
+      message: 'ElevenLabs is busy with too many conversations on this account. Try again shortly.',
+      problem: 'ElevenLabs is busy with too many conversations on this account. Try again shortly.',
     },
-    { status: 429, problem: 'ElevenLabs is busy with too many conversations on this account. Try again shortly.' },
+    { status: 503, message: undefined, problem: 'Your Jarvis server could not start a conversation (HTTP 503).' },
+    { status: 500, message: 'rejected sk_abcdef1234567890', problem: UNREACHABLE_PROBLEM },
   ];
 
-  for (const { status, problem } of tokenFailures) {
-    it(`says why when the token request answers ${status}, stops the greeting and dials nothing`, async () => {
+  for (const { status, message, problem } of tokenFailures) {
+    it(`says why when the paired server answers ${status}, stops the greeting and dials nothing`, async () => {
       const { session, tokens, greeting, sdk, events } = createHarness();
 
       session.summon();
       greeting.allow();
-      tokens.refuse(status);
+      tokens.refuse(status, message);
       await settle();
 
       expect(events.log).toEqual(['phase:greeting', `problem:${problem}`, 'phase:failed']);
@@ -256,14 +265,14 @@ describe('when a summoning fails', () => {
     });
   }
 
-  it('says the headset is offline rather than repeating the browser’s "Failed to fetch"', async () => {
+  it('says the server could not be reached rather than repeating the browser’s "Failed to fetch"', async () => {
     const { session, tokens, events } = createHarness();
 
     session.summon();
     tokens.goOffline();
     await settle();
 
-    expect(events.problems).toEqual([HEADSET_OFFLINE_PROBLEM]);
+    expect(events.problems).toEqual([SERVER_UNREACHABLE_PROBLEM]);
     expect(session.phase).toBe('failed');
   });
 
@@ -340,6 +349,19 @@ describe('when a summoning fails', () => {
     await sdk.latest.reject(new Error('could not establish signal connection'));
 
     expect(events.problems).toEqual(['could not establish signal connection']);
+    expect(session.phase).toBe('failed');
+  });
+
+  it('says a start that reached no ElevenLabs in the headset’s own words', async () => {
+    const { session, tokens, greeting, sdk, events } = createHarness();
+
+    session.summon();
+    greeting.refuse();
+    tokens.grant();
+    await settle();
+    await sdk.latest.reject(new TypeError('Failed to fetch'));
+
+    expect(events.problems).toEqual([HEADSET_OFFLINE_PROBLEM]);
     expect(session.phase).toBe('failed');
   });
 

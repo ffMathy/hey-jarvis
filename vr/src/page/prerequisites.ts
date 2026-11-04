@@ -1,9 +1,9 @@
 /**
  * What the page's one big button says, and does, on the way into the room.
  *
- * Entering the room is the end of a short walk: the browser has to be able to open one, there has
- * to be an ElevenLabs agent to talk to, the models that hear "Hey Jarvis" have to be loaded, and
- * the microphone has to be allowed. The button always names the first of those that is not yet
+ * Entering the room is the end of a short walk: the browser has to be able to open one, the headset
+ * has to be paired with sir's Jarvis server — the only way it gets a conversation — the models that
+ * hear "Hey Jarvis" have to be loaded, and the microphone has to be allowed. The button always names the first of those that is not yet
  * done — so it is at once the instructions and the way through them — and is only clickable when
  * clicking it is the next step.
  *
@@ -31,7 +31,7 @@ export type RoomState = 'outside' | 'entering' | 'inside';
 
 export interface PageFacts {
   xr: XrSupport;
-  hasSettings: boolean;
+  paired: boolean;
   preparation: PreparationState;
   /** Undefined when the room needs no microphone at all — a room with no wake engine in it. */
   microphone: MicrophoneState | undefined;
@@ -74,7 +74,7 @@ export function primaryButton(facts: PageFacts): PrimaryButton {
   if (facts.xr === 'unsupported') return waiting('Open this page on a Meta Quest or an AR phone');
   if (facts.room === 'entering') return waiting('Opening your room…');
   if (facts.room === 'inside') return waiting('Jarvis is in your room');
-  if (!facts.hasSettings) return waiting('Set up your Jarvis server or key first');
+  if (!facts.paired) return waiting('Pair this headset first');
   const { preparation } = facts;
   if (preparation.state === 'running') {
     const fraction = Math.max(0, Math.min(1, preparation.fraction));
@@ -87,7 +87,7 @@ export function primaryButton(facts: PageFacts): PrimaryButton {
 
 /**
  * Whether "Try him in your room" and "Place entities" can be used: sample mode and placing things
- * need no key, no models and no microphone, only a browser that can open a room and nobody already
+ * need no pairing, no models and no microphone, only a browser that can open a room and nobody already
  * in it.
  */
 export function canOpenWithoutAgent(facts: PageFacts): boolean {
