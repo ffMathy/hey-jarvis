@@ -1,5 +1,6 @@
 import type { Agent } from '@mastra/core/agent';
 import { createNotificationInboxTool } from '@mastra/core/notifications';
+import { createMemory } from '../../memory/index.js';
 import { getNotificationsStorage } from '../../storage/index.js';
 import { createAgent } from '../../utils/agent-factory.js';
 import { getOllamaModelOrFallback } from '../../utils/providers/ollama-provider.js';
@@ -14,7 +15,14 @@ import { subscriptionTools } from './subscription-tools.js';
  * (weather, shopping, calendar, etc.) and decides what actions should be taken.
  *
  * Uses working memory to track user preferences, habits, and context for making informed decisions.
- * Note: Working memory is enabled by default via createAgent factory.
+ *
+ * Semantic recall is off, for the reason saveToMemory in state-change-notifier.ts already
+ * gives: everything this agent's thread receives is machine traffic. A
+ * `<notification-summary>` arrives about once a minute, and with recall on, every one of
+ * them and every reply to it was embedded with the hosted 3072-dimension model. libSQL's
+ * vector index spends roughly 640 KB per vector, so this one thread filled 41 GB of the
+ * Pi's SD card in five weeks, and made up 98% of the vectors the other agents recall from.
+ * Recent context does not depend on it: `lastMessages` and working memory still apply.
  *
  * Uses a local Qwen3 model via Ollama for cost-efficiency in scheduled/automated workflows.
  *
@@ -28,9 +36,9 @@ import { subscriptionTools } from './subscription-tools.js';
  * - Notification Agent: For sending user notifications (when this agent decides notification is warranted)
  */
 export async function getStateChangeReactorAgent(): Promise<Agent> {
-  // createAgent factory provides memory with working memory enabled by default
   return createAgent({
     model: getOllamaModelOrFallback(),
+    memory: await createMemory({ enableSemanticRecall: false }),
     id: 'stateChangeReactor',
     name: 'StateChangeReactor',
     instructions: `You are the State Change Reactor - the central decision-maker for the Hey Jarvis smart home system.
@@ -84,7 +92,7 @@ Use your working memory to track and recall:
 
 **Your Decision Process:**
 1. Receive state change information (source, type, data) and its candidate subscriptions
-2. Recall relevant context from working memory and semantic recall
+2. Recall relevant context from working memory and the recent messages in this thread
 3. Decide which candidate subscriptions actually fire (WHEN matches, GIVEN holds)
 4. Carry out the THEN of every subscription that fires, and mark it triggered
 5. Separately, analyze the significance of this change for the user:

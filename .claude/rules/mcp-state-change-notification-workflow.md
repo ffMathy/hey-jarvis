@@ -10,20 +10,20 @@ paths:
 Reactive notification workflow using agent network for intelligent state change analysis:
 - **`stateChangeNotificationWorkflow`**: Analyzes state changes and sends notifications when warranted
 - **Agent Network**: Uses Mastra Agent Network with notification agent for intelligent decision-making
-- **Semantic Recall**: Leverages memory to understand context and determine notification necessity
+- **No Semantic Recall**: The reactor reads working memory and the thread's recent messages, never embeddings. Its thread gets a `<notification-summary>` about once a minute, and embedding those filled 41 GB of the Pi's disk in five weeks (see `synapse/agent.ts`)
 - **Subscription Matching**: Retrieves relevant Given/When/Then subscriptions via static embeddings (see below)
 - **Asynchronous Execution**: Triggered automatically by `registerStateChange` tool calls
 - **Smart Filtering**: Only notifies for significant, actionable, or time-sensitive changes
 
 **Workflow Steps:**
-1. **Save to Memory**: State change is persisted for semantic recall
+1. **Save to Memory**: State change is persisted as recent context, without an embedding
 2. **Match Subscriptions**: State change is embedded and scored against every subscription's WHEN/GIVEN
 3. **Analyze State Change**: Agent network examines state change data plus the matched subscriptions
 4. **Notification Decision**: Determines if user should be notified based on:
    - Significance: Is this change important enough?
    - Actionability: Can the user do something about it?
    - Timing: Is this time-sensitive or urgent?
-   - Context: What else is happening (from semantic recall)?
+   - Context: What else is happening (from working memory and recent messages)?
 5. **Conditional Notification**: If warranted, hands the message to the notification agent, which routes it via `sendNotification`
 
 **Technical Implementation:**
