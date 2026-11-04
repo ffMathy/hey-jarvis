@@ -139,7 +139,7 @@ describe('babyFoodAdviceAt', () => {
     expect(adviceMentioning(9, 'not mixed together')).toHaveLength(1);
   });
 
-  it('allows cow\'s milk only cooked into family dishes before 9 months, and about 1 dl a day after (p. 89)', () => {
+  it("allows cow's milk only cooked into family dishes before 9 months, and about 1 dl a day after (p. 89)", () => {
     expect(adviceMentioning(8, 'made for the whole family')).toHaveLength(1);
     expect(adviceMentioning(9, 'about 1 dl of milk a day')).toHaveLength(1);
     expect(adviceMentioning(12, "cow's milk")).toHaveLength(0);
