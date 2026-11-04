@@ -23,10 +23,13 @@ it for as long as the page is open: through the 2D page, every room and every
 conversation, and between them. `createHeadsetSession` is handed it (`server`),
 listens to it for as long as the session lasts, and returns the session with
 the line's `point`.
-- **It carries no token, and signs in with a cookie instead.** A browser cannot
-  set a header on a WebSocket, so the headset cannot send the JWT the phone and
-  the watch send to Cloudflare Zero Trust. It gets through on Access's
-  `CF_Authorization` cookie: the 2D page shows whether the line is connected
+- **A paired headset's line carries its device token.** A browser cannot set a
+  header on a WebSocket, so the token goes in the line's hello, on
+  `/api/paired/live`, which Access lets through for the server to check itself;
+  the page then offers no sign-in. Pairing is the only way the headset gets a
+  conversation, but an address the phone's web build kept without a pairing
+  still opens the unpaired line on `/api/live`, which gets through only on
+  Access's `CF_Authorization` cookie: the 2D page shows whether the line is connected
   (`page/server-status.ts`, from the line's `onConnectionChange`), and while it
   is not, links to the socket's own path (`/api/live`), where Access shows its
   login in a new tab and sets the cookie; the server has no page there, and the

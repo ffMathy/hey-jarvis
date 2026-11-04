@@ -11,7 +11,7 @@ import {
   roomReport,
   scene,
   tap,
-  withSavedSettings,
+  withPairing,
 } from './app-driver';
 import {
   controllerButton,
@@ -143,13 +143,13 @@ test('what Jarvis works on is placed in the room by hand and controller, kept, p
   test.setTimeout(1_200_000);
   const problems = collectProblems(page);
   await seedRegistry(page, SEEDED);
-  await withSavedSettings(page);
+  await withPairing(page);
   let kitchenAnchor = '';
 
   await test.step('the page’s Place entities opens the drawer, every entity on it by name', async () => {
     await page.goto('/hey-jarvis/vr/');
     await page.evaluate(() => window.__xrHarness?.ready);
-    // No key and no microphone asked for: straight into placing things.
+    // No pairing and no microphone asked for: straight into placing things.
     await page.getByRole('button', { name: 'Place entities' }).click();
     await expect.poll(() => scene(page), { timeout: 90000 }).toBe('editing');
     await expect.poll(async () => (await entities(page)).drawer.slots.length, { timeout: 60000 }).toBe(3);

@@ -4,7 +4,7 @@ import { canOpenWithoutAgent, microphoneHelp, type PageFacts, primaryButton } fr
 /** Everything done: the button enters the room. Each test takes one step away. */
 const READY: PageFacts = {
   xr: 'supported',
-  hasSettings: true,
+  paired: true,
   preparation: { state: 'done' },
   microphone: 'granted',
   room: 'outside',
@@ -24,9 +24,9 @@ describe('primaryButton', () => {
     expect(primaryButton({ ...READY, xr: 'unsupported' }).label).toBe('Open this page on a Meta Quest or an AR phone');
   });
 
-  it('asks for the ElevenLabs key before anything else', () => {
-    const button = primaryButton({ ...READY, hasSettings: false, preparation: { state: 'running', fraction: 0.2 } });
-    expect(button).toEqual({ label: 'Set up your Jarvis server or key first', enabled: false, action: 'none' });
+  it('asks for the headset to be paired before anything else', () => {
+    const button = primaryButton({ ...READY, paired: false, preparation: { state: 'running', fraction: 0.2 } });
+    expect(button).toEqual({ label: 'Pair this headset first', enabled: false, action: 'none' });
   });
 
   it('shows how far getting ready has got, in whole percent', () => {
@@ -81,7 +81,7 @@ describe('primaryButton', () => {
 
   it('walks the steps in order as each is done', () => {
     const walk: PageFacts[] = [
-      { ...READY, hasSettings: false, preparation: { state: 'running', fraction: 0 }, microphone: 'prompt' },
+      { ...READY, paired: false, preparation: { state: 'running', fraction: 0 }, microphone: 'prompt' },
       { ...READY, preparation: { state: 'running', fraction: 0.5 }, microphone: 'prompt' },
       { ...READY, microphone: 'prompt' },
       { ...READY, microphone: 'asking' },
@@ -91,7 +91,7 @@ describe('primaryButton', () => {
       READY,
     ];
     expect(walk.map((facts) => primaryButton(facts).label)).toEqual([
-      'Set up your Jarvis server or key first',
+      'Pair this headset first',
       'Getting Jarvis ready… 50%',
       'Allow the microphone',
       'Allow the microphone…',
@@ -105,9 +105,7 @@ describe('primaryButton', () => {
 
 describe('canOpenWithoutAgent', () => {
   it('needs only a browser that can open a room, and nobody in it', () => {
-    expect(canOpenWithoutAgent({ ...READY, hasSettings: false, preparation: { state: 'running', fraction: 0 } })).toBe(
-      true,
-    );
+    expect(canOpenWithoutAgent({ ...READY, paired: false, preparation: { state: 'running', fraction: 0 } })).toBe(true);
     expect(canOpenWithoutAgent({ ...READY, microphone: 'denied' })).toBe(true);
     expect(canOpenWithoutAgent({ ...READY, xr: 'unsupported' })).toBe(false);
     expect(canOpenWithoutAgent({ ...READY, xr: 'checking' })).toBe(false);

@@ -61,9 +61,13 @@ paths:
   app's first line and never near the production bundle. It stands the head at
   1.6 m at the living room's south end, looking north.
 - **Offline.** Every request to anything but `localhost` is aborted. The app specs
-  answer ElevenLabs' token endpoint themselves (`app-driver.ts`); LiveKit's socket
-  stays closed, so a summon that gets a token fails to connect, as it would on a
-  network that blocks it.
+  enter paired with a made-up server, `https://jarvis.example.com` (`withPairing`
+  in `app-driver.ts` stores it as the Pair button would), and answer its
+  `/api/paired/conversation` themselves (`answerTokens`), with the CORS headers a
+  real server sends; its line's socket and LiveKit's stay closed, so a summon that
+  gets a token fails to connect, as it would on a network that blocks it.
+  `page.spec.ts` answers `/api/devices` the same way to pair from the page, and
+  leaves it unanswered for a server that cannot be reached.
 - **The fake microphone.** Chromium's fake capture device, with the permission
   granted. `app-wake-word.spec.ts` runs in a Playwright project of its own whose
   microphone plays `src/wake/fixtures/hey-jarvis-american.wav` on a loop

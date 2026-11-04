@@ -1,31 +1,46 @@
 import type { Page, Route } from '@playwright/test';
+import { corsHeaders, DEVICE_TOKEN_KEY, PAIRING, SERVER_ADDRESS_KEY, withPairing } from './app-driver';
 import { expect, test } from './fixtures';
 
 /**
- * The 2D page, in the real build: the walk to the room, and the ElevenLabs settings.
+ * The 2D page, in the real build: the walk to the room, and pairing the headset with sir's Jarvis
+ * server, which is the only way it is set up.
  *
- * ElevenLabs is never reached — the fixture aborts every request that leaves the machine — so the
- * token endpoint is answered here, which is also how the tests see exactly what the page asked it.
+ * No server is ever reached — the fixture aborts every request that leaves the machine — so the
+ * pairing endpoint is answered here, which is also how the tests see exactly what the page asked it.
  */
 
-const TOKEN_ENDPOINT = 'https://api.elevenlabs.io/v1/convai/conversation/token**';
+/** hologram's `DEVICE_PAIRING_PATH` on the server the tests pair with. */
+const PAIRING_ENDPOINT = `${PAIRING.address}/api/devices`;
 
-/** hologram's `ELEVENLABS_SETTINGS_STORAGE_KEY`, spelled out: Playwright cannot import hologram's TypeScript. */
-const SETTINGS_KEY = 'jarvis.elevenlabs-settings';
+/** What the page is told once the server has paired it, before and after the reload. */
+const PAIRED = 'Paired with https://jarvis.example.com. Your server starts his conversations.';
 
-interface TokenAnswer {
+interface PairingAnswer {
   status: number;
   body: unknown;
 }
 
-/** Answers the token endpoint with whatever `answer` holds when asked, and records each request. */
-async function answerTokens(page: Page, answer: { current: TokenAnswer }) {
-  const requests: { url: URL; apiKey: string | undefined }[] = [];
-  await page.route(TOKEN_ENDPOINT, async (route: Route) => {
+/** One pairing request, as the server would have seen it. */
+interface PairingRequest {
+  method: string;
+  contentType: string | undefined;
+  body: string | null;
+}
+
+/** Answers the pairing endpoint with whatever `answer` holds when asked, and records each request. */
+async function answerPairing(page: Page, answer: { current: PairingAnswer }) {
+  const requests: PairingRequest[] = [];
+  await page.route(PAIRING_ENDPOINT, async (route: Route) => {
     const request = route.request();
-    requests.push({ url: new URL(request.url()), apiKey: request.headers()['xi-api-key'] });
+    requests.push({
+      method: request.method(),
+      contentType: request.headers()['content-type'],
+      body: request.postData(),
+    });
     await route.fulfill({
       status: answer.current.status,
+      headers: corsHeaders(route),
       contentType: 'application/json',
       body: JSON.stringify(answer.current.body),
     });
@@ -38,72 +53,82 @@ async function openPage(page: Page) {
   await page.evaluate(() => window.__xrHarness?.ready);
 }
 
-test('the page asks for an ElevenLabs key first, and checks it with ElevenLabs before keeping it', async ({ page }) => {
-  const answer: { current: TokenAnswer } = {
-    current: { status: 401, body: { detail: { status: 'invalid_api_key', message: 'sk_wrong' } } },
-  };
-  const requests = await answerTokens(page, answer);
+function stored(page: Page, key: string) {
+  return page.evaluate((storageKey) => window.localStorage.getItem(storageKey), key);
+}
+
+test('the page asks for the headset to be paired first, and keeps a pairing only once the server gives one', async ({
+  page,
+}) => {
+  const answer: { current: PairingAnswer } = { current: { status: 403, body: { success: false } } };
+  const requests = await answerPairing(page, answer);
   await openPage(page);
 
   const primary = page.locator('#primary');
-  await expect(primary).toHaveText('Set up your Jarvis server or key first');
+  await expect(primary).toHaveText('Pair this headset first');
   await expect(primary).toBeDisabled();
-  // Sample mode needs no key.
+  // Pairing is the only way in, and its section is open for it.
+  await expect(page.locator('#pairing')).toHaveAttribute('open');
+  await expect(page.locator('#api-key')).toHaveCount(0);
+  // Sample mode needs no pairing.
   await expect(page.getByRole('button', { name: 'Try him in your room' })).toBeEnabled();
 
-  const key = page.getByLabel('API key');
-  // Masked, and kept out of autofill, autocorrect and spellcheck, like the phone's field.
-  await expect(key).toHaveAttribute('type', 'password');
-  await expect(key).toHaveAttribute('autocomplete', 'off');
-  await expect(key).toHaveAttribute('autocapitalize', 'none');
-  await expect(key).toHaveAttribute('spellcheck', 'false');
-  await key.fill('sk_wrong');
-  await page.getByRole('button', { name: 'Show' }).click();
-  await expect(key).toHaveAttribute('type', 'text');
-  await page.getByRole('button', { name: 'Hide' }).click();
-  await expect(key).toHaveAttribute('type', 'password');
-  await page.getByLabel('Agent ID').fill('agent_01jz');
+  await page.getByLabel('Server address').fill('  https://jarvis.example.com/ ');
+  await page.getByRole('button', { name: 'Pair this headset', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText('Your Jarvis server would not pair this browser (HTTP 403).');
+  expect(await stored(page, DEVICE_TOKEN_KEY)).toBeNull();
+  await expect(primary).toHaveText('Pair this headset first');
 
-  await page.getByRole('button', { name: 'Check and save' }).click();
-  await expect(page.getByRole('alert')).toHaveText('ElevenLabs rejected the API key. Check it in the settings.');
-  expect(await page.evaluate((storageKey) => window.localStorage.getItem(storageKey), SETTINGS_KEY)).toBeNull();
-  await expect(primary).toHaveText('Set up your Jarvis server or key first');
-
-  answer.current = { status: 200, body: { token: 'token', conversation_id: 'conversation' } };
-  await key.fill('  sk_right  ');
-  await page.getByRole('button', { name: 'Check and save' }).click();
-  await expect(page.locator('#settings-saved')).toHaveText('Saved. ElevenLabs accepted the key and found the agent.');
-  await expect(page.getByRole('alert')).toBeHidden();
-  await expect(primary).toHaveText('Enter your room');
-  await expect(primary).toBeEnabled();
-
-  const stored = await page.evaluate((storageKey) => window.localStorage.getItem(storageKey), SETTINGS_KEY);
-  expect(JSON.parse(stored ?? 'null')).toEqual({ apiKey: 'sk_right', agentId: 'agent_01jz' });
-  expect(requests.map((request) => request.url.searchParams.get('participant_name'))).toEqual([
-    'jarvis-vr',
-    'jarvis-vr',
+  answer.current = { status: 201, body: { success: true, data: { id: 'device-1', token: PAIRING.deviceToken } } };
+  await page.getByRole('button', { name: 'Pair this headset', exact: true }).click();
+  // Kept, and the page loaded again, so that its line to the server opens with the token.
+  await expect(page.locator('#pairing-saved')).toHaveText(PAIRED, { timeout: 30000 });
+  await page.evaluate(() => window.__xrHarness?.ready);
+  await expect(primary).toHaveText('Enter your room', { timeout: 90000 });
+  await expect(page.locator('#pairing')).not.toHaveAttribute('open');
+  expect(await stored(page, SERVER_ADDRESS_KEY)).toBe(PAIRING.address);
+  expect(await stored(page, DEVICE_TOKEN_KEY)).toBe(PAIRING.deviceToken);
+  expect(requests).toEqual([
+    { method: 'POST', contentType: 'text/plain', body: 'Meta Quest headset' },
+    { method: 'POST', contentType: 'text/plain', body: 'Meta Quest headset' },
   ]);
-  expect(requests.map((request) => request.apiKey)).toEqual(['sk_wrong', 'sk_right']);
 });
 
-test('what cannot be a key is refused without asking anyone', async ({ page }) => {
-  const requests = await answerTokens(page, { current: { status: 200, body: {} } });
+test('a server that does not answer is said so, with a way to sign in to it', async ({ page }) => {
+  // Not answered here, so the fixture aborts it: what Cloudflare Access's login looks like to a page.
   await openPage(page);
-  await page.getByLabel('Agent ID').fill('agent_01jz');
-  await page.getByRole('button', { name: 'Check and save' }).click();
-  await expect(page.getByRole('alert')).toHaveText('Enter your ElevenLabs API key.');
+  await page.getByLabel('Server address').fill('jarvis.example.com');
+  await page.getByRole('button', { name: 'Pair this headset', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText(
+    'The server did not answer. If Cloudflare Access is in front of it, sign in to it in this browser, then pair again.',
+  );
+  await expect(page.getByRole('link', { name: 'Sign in to your server' })).toHaveAttribute(
+    'href',
+    'https://jarvis.example.com/api/live',
+  );
+  expect(await stored(page, DEVICE_TOKEN_KEY)).toBeNull();
+  await expect(page.locator('#primary')).toHaveText('Pair this headset first');
+});
+
+test('what cannot be an address is refused without asking anyone', async ({ page }) => {
+  const requests = await answerPairing(page, { current: { status: 201, body: {} } });
+  await openPage(page);
+  await page.getByRole('button', { name: 'Pair this headset', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText("Enter your Jarvis server's address.");
+  await page.getByLabel('Server address').fill('https://jarvis.example.com/pair');
+  await page.getByRole('button', { name: 'Pair this headset', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('no path after it');
+  await expect(page.locator('#pairing-sign-in')).toBeHidden();
   expect(requests).toEqual([]);
 });
 
-test('saved settings are found again, and fold the form away', async ({ page }) => {
-  await page.addInitScript((storageKey) => {
-    window.localStorage.setItem(storageKey, JSON.stringify({ apiKey: 'sk_saved', agentId: 'agent_saved' }));
-  }, SETTINGS_KEY);
+test('a kept pairing is found again, and folds the pairing away', async ({ page }) => {
+  await withPairing(page);
   await openPage(page);
-  await expect(page.locator('#primary')).toHaveText('Enter your room');
-  await expect(page.locator('#settings')).not.toHaveAttribute('open');
-  await expect(page.getByLabel('API key')).toHaveValue('sk_saved');
-  await expect(page.getByLabel('Agent ID')).toHaveValue('agent_saved');
+  await expect(page.locator('#primary')).toHaveText('Enter your room', { timeout: 90000 });
+  await expect(page.locator('#pairing')).not.toHaveAttribute('open');
+  await expect(page.locator('#pairing-saved')).toHaveText(PAIRED);
+  await expect(page.getByLabel('Server address')).toHaveValue(PAIRING.address);
 });
 
 test.describe('with the microphone refused', () => {
@@ -111,9 +136,7 @@ test.describe('with the microphone refused', () => {
   test.use({ permissions: [] });
 
   test('the page says how to allow it again, and still offers sample mode', async ({ page }) => {
-    await page.addInitScript((storageKey) => {
-      window.localStorage.setItem(storageKey, JSON.stringify({ apiKey: 'sk_saved', agentId: 'agent_saved' }));
-    }, SETTINGS_KEY);
+    await withPairing(page);
     await openPage(page);
     const primary = page.locator('#primary');
     await expect(primary).toHaveText('The microphone is blocked');
@@ -128,10 +151,6 @@ test('the page credits the wake-word models and links their licence', async ({ p
   await expect(page.getByRole('link', { name: 'their licence' })).toHaveAttribute('href', './models/LICENCE.txt');
   await expect(page.getByRole('link', { name: 'CC BY-NC-SA 4.0' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'See him on a desktop' })).toHaveAttribute('href', './preview.html');
-  await expect(page.getByRole('link', { name: 'Create an ElevenLabs account' })).toHaveAttribute(
-    'href',
-    'https://elevenlabs.io/app/sign-up',
-  );
 });
 
 test('a room he cannot be drawn in is closed again, and the page can try once more', async ({ page }) => {

@@ -62,8 +62,8 @@ export type SessionPhase = 'idle' | 'greeting' | 'connecting' | 'live' | 'ended'
 export type XrVisibility = 'visible' | 'visible-blurred' | 'hidden';
 
 /**
- * Which room the page opened: the real one with a conversation, sample mode (no key, no
- * microphone), or placing things (no key, no microphone, and straight into `editing`).
+ * Which room the page opened: the real one with a conversation, sample mode (no pairing, no
+ * microphone), or placing things (no pairing, no microphone, and straight into `editing`).
  */
 export type RoomMode = 'conversation' | 'sample' | 'placement';
 

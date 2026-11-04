@@ -211,7 +211,7 @@ function sharedRoomOptions(modules: RoomModules, onInside: () => void) {
 /**
  * A room with no conversation in it: sample mode — a drawer of sample entities, then the moods
  * driving him, with the samples to point at — or placing the real things, straight into the drawer.
- * Neither needs a key or a microphone.
+ * Neither needs a pairing or a microphone.
  */
 async function openRoomWithoutAgent(
   mode: 'sample' | 'placement',
@@ -313,7 +313,7 @@ startPage(document, {
     if (xr === undefined) return Promise.reject(new Error('This browser has no WebXR.'));
     if (mode !== 'conversation') return openRoomWithoutAgent(mode, requestRoomSession(xr), onInside);
     if (credentials === undefined) {
-      return Promise.reject(new Error('Pair with your Jarvis server or add an ElevenLabs key first.'));
+      return Promise.reject(new Error('Pair this headset with your Jarvis server first.'));
     }
     // All of this before anything is awaited, while the click's activation still counts: the
     // audio context his voice is analysed on, the greeting's player (an element that has played

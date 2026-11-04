@@ -3,9 +3,9 @@ import {
   type AffectedEntity,
   type AgentActivity,
   type AgentTrackRoom,
-  elevenLabsCredentials,
   type GreetingPlayer,
   HEADSET_PARTICIPANT_NAME,
+  pairedCredentials,
 } from 'hologram';
 import { findAgentRoom, type ListeningAudioContext } from './agent-room';
 import {
@@ -44,7 +44,7 @@ const greetingPlayer: GreetingPlayer = {
 
 function optionsWith(overrides: Partial<HeadsetSessionDependencyOptions> = {}): HeadsetSessionDependencyOptions {
   return {
-    credentials: elevenLabsCredentials({ apiKey: 'sk_a-secret-key', agentId: 'agent_01jz0123456789' }),
+    credentials: pairedCredentials({ address: 'https://jarvis.example.com', deviceToken: 'p'.repeat(43) }),
     startSession: () => Promise.reject(new Error('Nothing is dialled here.')),
     greeting: greetingPlayer,
     events: { onPhase: () => undefined, onProblem: () => undefined, onCaption: () => undefined },

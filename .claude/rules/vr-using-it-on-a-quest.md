@@ -10,29 +10,24 @@ paths:
 Open **https://ffmathy.github.io/hey-jarvis/vr/** in Quest Browser. Quest 3
 and 3S are the target; Quest 2 and Pro work, without the room scan.
 
-1. **Your Jarvis server, or an ElevenLabs key.** Either is set up once, and
-   the page offers both until one is:
-   - **Pair this headset** with your Jarvis server (`hologram`'s `paired-device.ts`,
-     kept by `page/pairing.ts`): type its
-     address, press Pair. If Cloudflare Access is in front of it and the browser
-     has not signed in yet, the page says so and links to the sign-in; sign in,
-     press Pair again. From then on the server starts every conversation
-     (`pairedCredentials`), no ElevenLabs key is typed or kept
-     here, and Access's sign-in is never needed again — not for a conversation,
-     and not for the line to the server either, which a paired headset opens on
-     `/api/paired/live` with its token (so the page offers no sign-in for it).
-     Pairing reloads the page, to open that line. The
-     address is kept where the phone's web build keeps it, and the device token
-     under `jarvis.device-token` — the keys the phone's web build keeps its
-     pairing under, on the same origin, so a browser paired on either page is
-     paired on both. A headset unpaired on the server says
-     so in the room, and is paired again from the page. See "Pairing a device" in
-     `.claude/rules/mcp-mcp-server-access.md` for the server's side, and the Access
-     bypass `/api/paired/*` needs.
-   - **Or an ElevenLabs API key and agent ID**, checked by minting a token before
-     they are kept. They are the phone's settings, stored the phone's way on the
-     same origin, so a browser that has the phone's web build set up already has
-     them. A paired server wins over a saved key.
+1. **Pair this headset with your Jarvis server** — the only way it is set up,
+   as on every app that is Jarvis; there is no ElevenLabs key to type. Until it
+   is paired the big button says **Pair this headset first** and the pairing
+   section is open. Type the server's address and press Pair (`hologram`'s
+   `paired-device.ts`, kept by `page/pairing.ts`). If Cloudflare Access is in front of it
+   and the browser has not signed in yet, the page says so and links to the
+   sign-in; sign in, press Pair again. From then on the server starts every
+   conversation (`pairedCredentials`), and Access's sign-in is never needed
+   again — not for a conversation, and not for the line to the server either,
+   which a paired headset opens on `/api/paired/live` with its token (so the
+   page offers no sign-in for it). Pairing reloads the page, to open that line.
+   The address is kept where the phone's web build keeps it, and the device
+   token under `jarvis.device-token` — the keys the phone's web build keeps its
+   pairing under, on the same origin, so a browser paired on either page is
+   paired on both. A headset unpaired on the server says so in the room, and is
+   paired again from the page. See "Pairing a device" in
+   `.claude/rules/mcp-mcp-server-access.md` for the server's side, and the
+   Access bypass `/api/paired/*` needs.
 2. **Getting ready.** The wake-word models load with a progress bar while you
    read the page.
 3. **Allow the microphone** — the first tap. Skipped when the browser says the
@@ -53,11 +48,11 @@ listening, a status line saying why and what to do about it.
 - **Typing:** while the call is live, a keyboard button under him opens the
   headset's system keyboard; a line is sent on a newline or when the keyboard is
   put away, and his reply is written under him.
-- **When something fails** — a rejected key, no network, a call that drops — the
+- **When something fails** — a server that no longer knows the headset, no network, a call that drops — the
   problem hangs at his spot for as long as it takes to read, then he leaves and
   the wake word is armed again. The 2D page shows the last problem once the room
   is closed.
-- **Try him in your room** is sample mode: no key and no microphone. It opens on
+- **Try him in your room** is sample mode: no pairing and no microphone. It opens on
   a drawer of made-up entities — a kitchen light, a TV, an inbox — since the real
   drawer only offers what Jarvis has worked on in a conversation and so starts
   empty. They are kept apart from the real ones, under
@@ -70,7 +65,7 @@ listening, a status line saying why and what to do about it.
   thinks, every placed sample lights up.
 - **Placing what he works on:** whatever Jarvis works on for you — a light, an
   inbox, a calendar — goes into a drawer, by name. **Place entities** on the 2D
-  page (no key, no microphone), or A/X or the button on the back of a raised wrist
+  page (no pairing, no microphone), or A/X or the button on the back of a raised wrist
   while he is waiting, opens it in front of you: take one with a pinch or a
   controller's grip and let go where it is in the room, or point at something out
   of reach and pinch or pull the trigger, and again where it goes. Let go on the

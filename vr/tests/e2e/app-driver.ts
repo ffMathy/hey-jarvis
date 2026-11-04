@@ -7,7 +7,7 @@ import { expect, photograph } from './fixtures';
 
 /**
  * Driving the real app in the emulated Quest 3's living room: its page, the room's state through
- * `window.__jarvis`, the emulated controllers, and ElevenLabs answered from the test.
+ * `window.__jarvis`, the emulated controllers, and the paired Jarvis server answered from the test.
  *
  * The emulator differs from a Quest in one way that matters here: it fires `select` the moment the
  * trigger goes down (before `selectstart`), where a Quest fires it on release. The room reads a
@@ -37,14 +37,18 @@ export function appPage(...seams: TestSeam[]): string {
   return seams.length === 0 ? APP_PAGE : `${APP_PAGE}?${seams.join('&')}`;
 }
 
-/** hologram's `ELEVENLABS_SETTINGS_STORAGE_KEY`, spelled out: Playwright cannot import hologram's TypeScript. */
-export const SETTINGS_KEY = 'jarvis.elevenlabs-settings';
+/**
+ * hologram's `JARVIS_SERVER_ADDRESS_STORAGE_KEY` and `JARVIS_DEVICE_TOKEN_STORAGE_KEY`, spelled out:
+ * Playwright cannot import hologram's TypeScript.
+ */
+export const SERVER_ADDRESS_KEY = 'jarvis.server-address';
+export const DEVICE_TOKEN_KEY = 'jarvis.device-token';
 
-/** The settings every room here is entered with, as the page itself would have stored them. */
-export const SAVED_SETTINGS = { apiKey: 'sk_room_test', agentId: 'agent_room_test' };
+/** The pairing every room here is entered with, as the page's own Pair button would have stored it. */
+export const PAIRING = { address: 'https://jarvis.example.com', deviceToken: 'd'.repeat(43) };
 
-/** ElevenLabs' token endpoint, which `requestConversationToken` asks with the key in a header. */
-const TOKEN_ENDPOINT = 'https://api.elevenlabs.io/v1/convai/conversation/token**';
+/** hologram's `PAIRED_CONVERSATION_PATH` on the paired server: where every conversation's token is asked for. */
+const CONVERSATION_ENDPOINT = `${PAIRING.address}/api/paired/conversation`;
 
 /** Where the right controller is held: in front of the chest, below and right of the eyes. */
 export const HAND = { x: 0.25, y: 1.3, z: 0.95 };
@@ -71,7 +75,7 @@ export async function scene(page: Page): Promise<string | undefined> {
 /**
  * Every page error and console error but Chromium's network reports, for a test to expect none of.
  *
- * A network report is the tests' doing — ElevenLabs answered with a refusal, a request leaving the
+ * A network report is the tests' doing — the paired server answered with a refusal, a request leaving the
  * machine aborted, LiveKit's socket failing — not the app's. It is told by what Playwright says
  * about it, never by its words: Chromium's own console entries carry no arguments (a `console.error`
  * from the page always has at least one), and Chromium reports each one right after the network
@@ -179,12 +183,26 @@ export async function openSampleMode(page: Page) {
   await expect.poll(() => scene(page), { timeout: 90000 }).toBe('sample:speaking');
 }
 
-/** Stores the ElevenLabs settings before the page loads, as the page's own form would have. */
-export async function withSavedSettings(page: Page) {
-  await page.addInitScript(({ key, settings }) => window.localStorage.setItem(key, JSON.stringify(settings)), {
-    key: SETTINGS_KEY,
-    settings: SAVED_SETTINGS,
-  });
+/** Stores {@link PAIRING} before the page loads, as the page's own Pair button would have. */
+export async function withPairing(page: Page) {
+  await page.addInitScript(
+    ({ addressKey, tokenKey, pairing }) => {
+      window.localStorage.setItem(addressKey, pairing.address);
+      window.localStorage.setItem(tokenKey, pairing.deviceToken);
+    },
+    { addressKey: SERVER_ADDRESS_KEY, tokenKey: DEVICE_TOKEN_KEY, pairing: PAIRING },
+  );
+}
+
+/**
+ * The headers a cross-origin answer to the page needs for the browser to hand it over: the paired
+ * server's own CORS answer, which the page's origin is allowed by.
+ */
+export function corsHeaders(route: Route): Record<string, string> {
+  const origin = route.request().headers().origin;
+  return origin === undefined
+    ? {}
+    : { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true', vary: 'Origin' };
 }
 
 /**
@@ -242,14 +260,14 @@ export async function lengthenTheGreeting(page: Page) {
   await page.route(`**/assets/${name}`, (route) => route.fulfill({ body: long, contentType: 'audio/mpeg' }));
 }
 
-/** One request to the token endpoint, as ElevenLabs would have seen it. */
+/** One request for a conversation, as the paired server would have seen it. */
 export interface TokenRequest {
-  url: URL;
-  apiKey: string | undefined;
+  authorization: string | undefined;
+  body: unknown;
 }
 
 /**
- * How the test answers the token endpoint: a status and a body, or never at all. `untilGreeting`
+ * How the test answers the paired server's conversation endpoint: a status and a body, or never at all. `untilGreeting`
  * holds the answer until he has started greeting, which needs {@link countGreetings}.
  */
 export type TokenAnswer = { status: number; body: unknown; untilGreeting?: boolean } | 'never';
@@ -271,7 +289,7 @@ async function untilGreeting(page: Page): Promise<boolean> {
 }
 
 /**
- * Answers ElevenLabs' token endpoint with `answer`, and records each request. Everything else that
+ * Answers the paired server's conversation endpoint with `answer`, and records each request. Everything else that
  * leaves the machine is still aborted by the fixture, LiveKit's socket included, so a session that
  * gets a token still fails to connect.
  *
@@ -286,13 +304,29 @@ async function untilGreeting(page: Page): Promise<boolean> {
  */
 export async function answerTokens(page: Page, answer: TokenAnswer): Promise<TokenRequest[]> {
   const requests: TokenRequest[] = [];
-  await page.route(TOKEN_ENDPOINT, async (route: Route) => {
+  await page.route(CONVERSATION_ENDPOINT, async (route: Route) => {
     const request = route.request();
-    requests.push({ url: new URL(request.url()), apiKey: request.headers()['xi-api-key'] });
+    if (request.method() === 'OPTIONS') {
+      await route.fulfill({
+        status: 204,
+        headers: {
+          ...corsHeaders(route),
+          'access-control-allow-methods': 'POST',
+          'access-control-allow-headers': 'authorization, content-type',
+        },
+      });
+      return;
+    }
+    requests.push({ authorization: request.headers().authorization, body: request.postDataJSON() });
     // Left unanswered, the request stays pending for as long as the page is open.
     if (answer === 'never') return;
     if (answer.untilGreeting && !(await untilGreeting(page))) return;
-    await route.fulfill({ status: answer.status, contentType: 'application/json', body: JSON.stringify(answer.body) });
+    await route.fulfill({
+      status: answer.status,
+      headers: corsHeaders(route),
+      contentType: 'application/json',
+      body: JSON.stringify(answer.body),
+    });
   });
   return requests;
 }

@@ -1,6 +1,5 @@
 import {
   type ConversationCredentials,
-  elevenLabsCredentials,
   pairedCredentials,
   pairWithServer,
   type ServerLink,
@@ -12,7 +11,7 @@ import { HEADSET_DEVICE_NAME, loadPairing, savePairing } from './pairing';
 import { type PreparationTask, runPreparation } from './preparation';
 import { canOpenWithoutAgent, microphoneHelp, type PageFacts, primaryButton } from './prerequisites';
 import { showServerStatus } from './server-status';
-import { checkSettings, type KeyValueStorage, loadServerAddress, loadSettings, saveSettings } from './settings';
+import { type KeyValueStorage, loadServerAddress } from './settings';
 import { loadVoiceFromWhereHeStands, saveVoiceFromWhereHeStands } from './voice-setting';
 
 /**
@@ -21,12 +20,13 @@ import { loadVoiceFromWhereHeStands, saveVoiceFromWhereHeStands } from './voice-
  *
  * Plain DOM over the markup in `index.html`. What the big button says comes from
  * `prerequisites.ts`; this file keeps the facts it is worked out from current and draws the result:
- * whether this browser can open a room, whether there are settings, how far getting ready has got,
- * the microphone permission, and whether the user is in the room. It also owns the settings form,
- * the "His voice from where he stands" switch (`voice-setting.ts`, read again on every Enter), and
- * the status line, which after a room closes says what went wrong in it, if anything did. Beside the
- * way into the real room are two that need no key and no microphone: sample mode, and placing the
- * things Jarvis works on in the room.
+ * whether this browser can open a room, whether the headset is paired, how far getting ready has got,
+ * the microphone permission, and whether the user is in the room. It also owns the pairing form —
+ * pairing with sir's Jarvis server is the only way the headset gets a conversation — the "His voice
+ * from where he stands" switch (`voice-setting.ts`, read again on every Enter), and the status line,
+ * which after a room closes says what went wrong in it, if anything did. Beside the way into the
+ * real room are two that need no pairing and no microphone: sample mode, and placing the things
+ * Jarvis works on in the room.
  */
 
 /**
@@ -70,15 +70,13 @@ export interface PageDependencies {
 }
 
 /**
- * Where the room's conversations get their tokens: the Jarvis server this headset is paired with,
- * when it is — the server holds the key, and nothing secret but its own token is kept here — else an
- * ElevenLabs key saved on this page, else nothing yet.
+ * Where the room's conversations get their tokens: the Jarvis server this headset is paired with —
+ * the server holds the key, and nothing secret but its own token is kept here — or nothing, before
+ * the headset is paired.
  */
 export function conversationCredentials(storage: KeyValueStorage): ConversationCredentials | undefined {
   const pairing = loadPairing(storage);
-  if (pairing !== undefined) return pairedCredentials(pairing);
-  const settings = loadSettings(storage);
-  return settings === undefined ? undefined : elevenLabsCredentials(settings);
+  return pairing === undefined ? undefined : pairedCredentials(pairing);
 }
 
 function required<Found extends Element>(root: ParentNode, selector: string, kind: new () => Found): Found {
@@ -100,14 +98,6 @@ export function startPage(document: Document, dependencies: PageDependencies): v
   const help = required(document, '#microphone-help', HTMLElement);
   const sample = required(document, '#sample', HTMLButtonElement);
   const place = required(document, '#place', HTMLButtonElement);
-  const settingsSection = required(document, '#settings', HTMLDetailsElement);
-  const form = required(document, '#settings-form', HTMLFormElement);
-  const apiKeyField = required(document, '#api-key', HTMLInputElement);
-  const showKey = required(document, '#show-key', HTMLButtonElement);
-  const agentIdField = required(document, '#agent-id', HTMLInputElement);
-  const settingsProblem = required(document, '#settings-problem', HTMLElement);
-  const settingsSaved = required(document, '#settings-saved', HTMLElement);
-  const saveButton = required(document, '#save-settings', HTMLButtonElement);
   const spatialVoice = required(document, '#spatial-voice', HTMLInputElement);
   const pairingSection = required(document, '#pairing', HTMLDetailsElement);
   const pairingForm = required(document, '#pairing-form', HTMLFormElement);
@@ -129,10 +119,10 @@ export function startPage(document: Document, dependencies: PageDependencies): v
     dependencies.server.line,
   );
 
-  const stored = loadSettings(storage);
+  const pairing = loadPairing(storage);
   const facts: PageFacts = {
     xr: 'checking',
-    hasSettings: conversationCredentials(storage) !== undefined,
+    paired: pairing !== undefined,
     preparation: { state: 'running', fraction: 0 },
     microphone: dependencies.microphone === undefined ? undefined : 'unknown',
     room: 'outside',
@@ -140,17 +130,14 @@ export function startPage(document: Document, dependencies: PageDependencies): v
   const completedPreparations = new Set<PreparationTask>();
 
   spatialVoice.checked = loadVoiceFromWhereHeStands(storage);
-  apiKeyField.value = stored?.apiKey ?? '';
-  agentIdField.value = stored?.agentId ?? '';
   serverAddressField.value = loadServerAddress(storage) ?? '';
-  const pairing = loadPairing(storage);
   if (pairing !== undefined) {
     pairingSaved.textContent = `Paired with ${pairing.address}. Your server starts his conversations.`;
     pairingSaved.hidden = false;
   }
-  // Open when there is something to fill in; folded away once there is not, so the button is the page.
-  settingsSection.open = !facts.hasSettings;
-  pairingSection.open = !facts.hasSettings;
+  // Open until the headset is paired, since pairing is the first step; folded away once it is, so the
+  // button is the page.
+  pairingSection.open = !facts.paired;
 
   function say(message: string) {
     status.textContent = message;
@@ -253,38 +240,6 @@ export function startPage(document: Document, dependencies: PageDependencies): v
     const problem = saveVoiceFromWhereHeStands(storage, spatialVoice.checked);
     if (problem !== undefined) say(problem);
   });
-
-  showKey.addEventListener('click', () => {
-    const showing = apiKeyField.type === 'text';
-    apiKeyField.type = showing ? 'password' : 'text';
-    showKey.textContent = showing ? 'Show' : 'Hide';
-    showKey.setAttribute('aria-pressed', String(!showing));
-  });
-
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    void saveFromForm();
-  });
-
-  async function saveFromForm() {
-    settingsProblem.hidden = true;
-    settingsSaved.hidden = true;
-    saveButton.disabled = true;
-    saveButton.textContent = 'Checking with ElevenLabs…';
-    const result = await checkSettings(apiKeyField.value, agentIdField.value, dependencies.fetch);
-    saveButton.disabled = false;
-    saveButton.textContent = 'Check and save';
-    const problem = 'problem' in result ? result.problem : saveSettings(storage, result.settings);
-    if (problem !== undefined) {
-      settingsProblem.textContent = problem;
-      settingsProblem.hidden = false;
-      return;
-    }
-    settingsSaved.textContent = 'Saved. ElevenLabs accepted the key and found the agent.';
-    settingsSaved.hidden = false;
-    facts.hasSettings = true;
-    render();
-  }
 
   pairingForm.addEventListener('submit', (event) => {
     event.preventDefault();

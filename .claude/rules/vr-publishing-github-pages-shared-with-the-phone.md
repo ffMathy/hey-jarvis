@@ -28,6 +28,6 @@ preview. `.scripts/publish-pages.sh` rewrites only its own part of the branch â€
 the root around `pr/`, or one `pr/<n>/` â€” keeps the branch at a single commit so
 the wasm and models in every preview do not pile up in its history, and retries
 when another run pushed first. A preview shares the release's origin and so its
-`localStorage`: the ElevenLabs settings saved in one are there in all of them.
+`localStorage`: a pairing made in one is there in all of them.
 A manual run of **Mobile Web** republishes the root from whichever branch it is
 started on.

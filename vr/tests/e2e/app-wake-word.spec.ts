@@ -8,13 +8,13 @@ import {
   enterRoom,
   greetingPlays,
   insideLivingRoom,
+  PAIRING,
   photographError,
   roomReport,
-  SAVED_SETTINGS,
   scene,
   tap,
   untilListening,
-  withSavedSettings,
+  withPairing,
 } from './app-driver';
 import { expect, test } from './fixtures';
 
@@ -44,10 +44,10 @@ test('"Hey Jarvis" summons him into the room, and after a failed call it is list
   const problems = collectProblems(page);
   const requests = await answerTokens(page, {
     status: 200,
-    body: { token: 'conversation-token-from-the-test', conversation_id: 'conversation-from-the-test' },
+    body: { success: true, data: { token: 'conversation-token-from-the-test' } },
   });
   await countGreetings(page);
-  await withSavedSettings(page);
+  await withPairing(page);
   await enterRoom(page, appPage('deadline=never', 'errors=held'));
   await untilListening(page);
 
@@ -69,9 +69,8 @@ test('"Hey Jarvis" summons him into the room, and after a failed call it is list
 
   await expect.poll(() => greetingPlays(page), { timeout: 30000 }).toBe(1);
   expect(requests).toHaveLength(1);
-  expect(requests[0]?.url.searchParams.get('participant_name')).toBe('jarvis-vr');
-  expect(requests[0]?.url.searchParams.get('agent_id')).toBe(SAVED_SETTINGS.agentId);
-  expect(requests[0]?.apiKey).toBe(SAVED_SETTINGS.apiKey);
+  expect(requests[0]?.body).toEqual({ transport: 'webrtc', participantName: 'jarvis-vr' });
+  expect(requests[0]?.authorization).toBe(`Bearer ${PAIRING.deviceToken}`);
 
   // Dialled after the greeting, into a socket that is closed on it.
   await expect.poll(() => scene(page), { timeout: 60000 }).toBe('failed');

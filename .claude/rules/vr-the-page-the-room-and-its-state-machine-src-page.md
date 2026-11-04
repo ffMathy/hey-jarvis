@@ -11,7 +11,7 @@ paths:
 phone's colours (`ui3d/ui-colours.ts` names the same values), large enough to read
 on Quest Browser's panel and to point at with a ray. The big button always names
 the first step not yet done, so it is both the instructions and the way through
-them: the key, getting ready, **Allow the microphone**, **Enter your room**.
+them: **Pair this headset first**, getting ready, **Allow the microphone**, **Enter your room**.
 `prerequisites.ts` decides this and `prerequisites.spec.ts` pins it.
 
 - **The microphone is its own tap,** because Quest Browser cannot show its
@@ -23,16 +23,17 @@ them: the key, getting ready, **Allow the microphone**, **Enter your room**.
   wake engine's `prepare`, since he is drawn with shaders that come with the
   room's code — with one progress bar weighted by what each fetches.
   A failure offers to try again, retrying only what failed.
-- **A paired server comes first.** `conversationCredentials` in `page/page.ts`
-  hands the room the paired server's credentials (`page/pairing.ts`, and
-  `hologram`'s `paired-device.ts`) when there is a pairing, and otherwise
-  the saved key's. Pairing with a server at an address the page did not load with
-  reloads the page, since its line to the server was opened at load.
-- **Settings are the phone's,** under hologram's `ELEVENLABS_SETTINGS_STORAGE_KEY`,
-  in `localStorage`. **Check and save** mints one token as `jarvis-vr` before
-  keeping anything, so a mistyped key shows next to the field, not as an error
-  panel in the room.
-- **Two rooms need no key and no microphone:** **Try him in your room** (sample
+- **Pairing is the only way in.** The page has no ElevenLabs key or agent ID to
+  type: its one form (`#pairing`, open until the headset is paired) pairs it with
+  sir's Jarvis server, and `conversationCredentials` in `page/page.ts` hands the
+  room the paired server's credentials (`page/pairing.ts`, and `hologram`'s
+  `paired-device.ts`), or nothing before it is paired. Pairing reloads the page,
+  since its line to the server was opened at load. The pairing is kept in
+  `localStorage` under hologram's `JARVIS_SERVER_ADDRESS_STORAGE_KEY` and
+  `JARVIS_DEVICE_TOKEN_STORAGE_KEY`, where the phone's web build keeps its own;
+  `page/settings.ts` is only the storage seam (`KeyValueStorage`) and the
+  address as the phone keeps it (`loadServerAddress`).
+- **Two rooms need no pairing and no microphone:** **Try him in your room** (sample
   mode, which opens on the drawer of sample entities and brings him in when it is
   put away) and **Place entities**, which opens straight into the drawer and back to
   the page when it is done (`RoomMode` `'placement'`).
