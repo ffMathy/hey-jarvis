@@ -1,10 +1,11 @@
 /**
- * The gate in front of the State Change Reactor: when a change is escalated, when it is held
- * back, and every way it falls back to being filed exactly as before.
+ * The gate in front of the State Change Reactor: a change wakes it only when something can come
+ * of it, and the classifier can add to what wakes it but never decide on its own that a change
+ * the policy would not file is filed.
  *
- * Holding a change back is the one decision here that can lose something the user wanted, so
- * most of what is pinned is the ways it declines to: a rule, a caller that said high, an unsure
- * attention level, or any subscription that might fire.
+ * The reactor costs money every time it is woken, so a change with no priority, rule or
+ * subscription behind it is held back however unsure the classifier is; and a rule, a caller
+ * that said high, or a subscription that might fire always gets through.
  */
 
 import { describe, expect, it } from 'bun:test';
@@ -103,13 +104,25 @@ describe('assessmentFrom', () => {
 
 describe('triageStateChange', () => {
   const base = { matches: [match('sunset')], ruleCount: 0, requestedPriority: 'low' as const };
+  const nothingBehindIt = { ...base, matches: [] };
+  const filedLow = { file: true, priority: 'low', escalated: false };
 
-  it('files as requested when there is no assessment', () => {
-    expect(triageStateChange({ ...base, assessment: undefined })).toEqual({
-      file: true,
-      priority: 'low',
-      escalated: false,
-    });
+  it('holds back a change with nothing behind it, when there is no classifier', () => {
+    // What a phone's wattage or the bedroom's air quality looks like: low, no rule, no
+    // subscription. Without a classifier this is the whole policy, and it must not wake the reactor.
+    expect(triageStateChange({ ...nothingBehindIt, assessment: undefined }).file).toBe(false);
+  });
+
+  it('holds back a change with nothing behind it, when the classifier is unsure of it', () => {
+    expect(triageStateChange({ ...nothingBehindIt, assessment: assessment(undefined) }).file).toBe(false);
+  });
+
+  it('holds back a change with nothing behind it that is only worth knowing about', () => {
+    expect(triageStateChange({ ...nothingBehindIt, assessment: assessment('fyi') }).file).toBe(false);
+  });
+
+  it('files a change the classifier is sure should reach someone soon', () => {
+    expect(triageStateChange({ ...nothingBehindIt, assessment: assessment('soon') })).toEqual(filedLow);
   });
 
   it('escalates a change it is sure needs attention now', () => {
@@ -126,48 +139,38 @@ describe('triageStateChange', () => {
     ).toEqual({ file: true, priority: 'high', escalated: false });
   });
 
-  it('holds back a change it is sure deserves nothing, when no subscription fires', () => {
-    const triage = triageStateChange({ ...base, assessment: assessment('ignore', { sunset: 0.03 }) });
-
-    expect(triage.file).toBe(false);
-  });
-
-  it('holds back a change with no candidates at all, when it is sure it deserves nothing', () => {
-    expect(triageStateChange({ ...base, matches: [], assessment: assessment('ignore') }).file).toBe(false);
-  });
-
-  it('files a change a subscription might fire for, however little attention it deserves', () => {
-    expect(triageStateChange({ ...base, assessment: assessment('ignore', { sunset: 0.4 }) }).file).toBe(true);
-  });
-
-  it('files a change when a subscription went unanswered', () => {
-    expect(triageStateChange({ ...base, assessment: assessment('ignore') }).file).toBe(true);
-  });
-
-  it('never holds back a change a rule applies to', () => {
-    expect(triageStateChange({ ...base, ruleCount: 1, assessment: assessment('ignore', { sunset: 0 }) })).toEqual({
-      file: true,
-      priority: 'low',
-      escalated: false,
-    });
-  });
-
-  it('never holds back a change the caller marked high', () => {
+  it('never holds back a change the caller marked high, even with nothing else behind it', () => {
     const triage = triageStateChange({
-      ...base,
+      ...nothingBehindIt,
       requestedPriority: 'high',
-      assessment: assessment('ignore', { sunset: 0 }),
+      assessment: assessment('ignore'),
     });
 
     expect(triage).toEqual({ file: true, priority: 'high', escalated: false });
   });
 
-  it('files as before when it is unsure of the attention level', () => {
-    expect(triageStateChange({ ...base, assessment: assessment(undefined, { sunset: 0 }) })).toEqual({
-      file: true,
-      priority: 'low',
-      escalated: false,
-    });
+  it('never holds back a change a rule applies to', () => {
+    expect(triageStateChange({ ...base, ruleCount: 1, assessment: assessment('ignore', { sunset: 0 }) })).toEqual(
+      filedLow,
+    );
+  });
+
+  it('files a change a subscription might fire for, however little attention it deserves', () => {
+    expect(triageStateChange({ ...base, assessment: assessment('ignore', { sunset: 0.4 }) })).toEqual(filedLow);
+  });
+
+  it('files a change a candidate subscription was shortlisted for, when there is no classifier', () => {
+    expect(triageStateChange({ ...base, assessment: undefined })).toEqual(filedLow);
+  });
+
+  it('files a change when a subscription went unanswered', () => {
+    expect(triageStateChange({ ...base, assessment: assessment('ignore') })).toEqual(filedLow);
+  });
+
+  it('holds back a change when it is sure no candidate subscription fires', () => {
+    const triage = triageStateChange({ ...base, assessment: assessment(undefined, { sunset: 0.03 }) });
+
+    expect(triage.file).toBe(false);
   });
 });
 

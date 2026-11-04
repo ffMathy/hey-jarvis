@@ -1,8 +1,9 @@
-import { beforeAll, describe, expect, it } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { Mastra } from '@mastra/core';
 import { getSqlStorageProvider } from '../../storage/index.js';
 import { executeTool } from '../../utils/tool-factory.js';
 import { getStateChangeReactorAgent } from './agent.js';
+import { describeStateChangeFacets } from './state-change.js';
 import { synapseTools } from './tools.js';
 
 /**
@@ -31,12 +32,50 @@ beforeAll(async () => {
 
 describe('Synapse Tools Integration Tests', () => {
   describe('registerStateChange', () => {
+    /**
+     * A change is only filed when something can come of it, and the one way a low change from
+     * a test can qualify without a classifier or a rule file is a subscription that might fire
+     * for it. So the filing cases share a state type, with a subscription whose WHEN is exactly
+     * how that state type reads -- the same thing that files a real change.
+     */
+    const stateType = `test_state_change_${runId}`;
+    let subscriptionId: string;
+
+    beforeAll(async () => {
+      const [, heading] = describeStateChangeFacets({ source: 'test', stateType, stateData: { key: 'value' } });
+      const subscribed = await executeTool(synapseTools.registerSubscription, {
+        whenEvent: heading,
+        thenAction: 'note it',
+        source: 'synapse-tools-spec',
+        oneShot: false,
+        expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+      });
+      subscriptionId = subscribed.subscription.id;
+    });
+
+    afterAll(async () => {
+      await executeTool(synapseTools.removeSubscription, { subscriptionId });
+    });
+
+    it('holds back a change nothing could come of', async () => {
+      // No priority, no rule, no subscription: what a phone's wattage looks like. It is saved
+      // to memory, but filing it would wake a paid model to dismiss it.
+      const result = await executeTool(
+        synapseTools.registerStateChange,
+        { source: 'weather', stateType: 'barometer_reading', stateData: { pressureHectopascal: 1013 } },
+        { mastra },
+      );
+
+      expect(result.registered).toBe(false);
+      expect(result.message).toContain('held back');
+    }, 10000);
+
     it('should register a state change successfully', async () => {
       const result = await executeTool(
         synapseTools.registerStateChange,
         {
           source: 'test',
-          stateType: `test_state_change_${runId}`,
+          stateType,
           stateData: {
             testKey: 'testValue',
             timestamp: new Date().toISOString(),
@@ -62,7 +101,7 @@ describe('Synapse Tools Integration Tests', () => {
       // re-reported the same reading put it in front of the model again every time.
       const stateChange = {
         source: 'test',
-        stateType: `test_duplicate_state_change_${runId}`,
+        stateType,
         stateData: { entityId: 'light.kitchen', state: 'on' },
       };
 
@@ -76,7 +115,7 @@ describe('Synapse Tools Integration Tests', () => {
     }, 10000);
 
     it('treats a different reading from the same source as its own change', async () => {
-      const base = { source: 'test', stateType: `test_distinct_state_change_${runId}` };
+      const base = { source: 'test', stateType };
 
       const on = await executeTool(
         synapseTools.registerStateChange,

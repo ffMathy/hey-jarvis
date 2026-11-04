@@ -22,7 +22,6 @@ export { getModel, google, LOW_THINKING_PROVIDER_OPTIONS } from './providers/goo
 export {
   getOllamaApiUrl,
   getOllamaBaseUrl,
-  getOllamaModelOrFallback,
   isModelAvailable,
   isOllamaAvailable,
   listModels,

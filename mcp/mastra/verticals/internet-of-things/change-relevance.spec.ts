@@ -2,8 +2,8 @@
  * Sorting Home Assistant reports by what kind of thing they are about.
  *
  * Dropping a report is the decision that can lose something, so what is pinned is mostly that a
- * report is filed as before unless the classifier is sure it is diagnostics and no subscription
- * could want it -- and that each entity is only asked about once.
+ * report is filed as before unless the classifier is sure it is diagnostics or energy telemetry
+ * and no subscription could want it -- and that each entity is only asked about once.
  */
 
 import { describe, expect, it } from 'bun:test';
@@ -28,6 +28,10 @@ const leakReport: PlannedReport = {
 const linkQualityReport: PlannedReport = {
   stateType: 'device_state_change',
   stateData: { entityId: 'sensor.router_linkquality', deviceName: 'Router', newState: '80' },
+};
+const phonePowerReport: PlannedReport = {
+  stateType: 'device_state_change',
+  stateData: { entityId: 'sensor.phone_battery_power', deviceName: 'Phone', newState: '-14.85' },
 };
 const buttonEvent: PlannedReport = {
   stateType: 'home_assistant_event',
@@ -112,8 +116,18 @@ describe('reportFilingFrom', () => {
     expect(reportFilingFrom('diagnostics', true)).toEqual({ file: true, priority: 'low' });
   });
 
+  it('drops energy telemetry nobody subscribed to', () => {
+    // A phone's charging wattage and the bedroom's air quality were most of what the house
+    // reported, hundreds of times a day, and none of it was news to anybody.
+    expect(reportFilingFrom('energy_telemetry', false)).toEqual({ file: false });
+  });
+
+  it('files energy telemetry a subscription could want', () => {
+    expect(reportFilingFrom('energy_telemetry', true)).toEqual({ file: true, priority: 'low' });
+  });
+
   it('files everything else, and anything unknown, as before', () => {
-    for (const relevance of ['presence', 'comfort_control', 'energy_telemetry', undefined] as const) {
+    for (const relevance of ['presence', 'comfort_control', undefined] as const) {
       expect(reportFilingFrom(relevance, false)).toEqual({ file: true, priority: 'low' });
     }
   });
@@ -138,11 +152,20 @@ describe('triageReports', () => {
         { report: leakReport, priority: 'high' },
         { report: buttonEvent, priority: 'low' },
       ],
-      droppedAsDiagnostics: [linkQualityReport],
+      dropped: [{ report: linkQualityReport, relevance: 'diagnostics' }],
     });
   });
 
-  it('only looks for subscriptions for diagnostics, and keeps the ones that match', async () => {
+  it('drops telemetry with the kind that dropped it', async () => {
+    const result = await triageReports([phonePowerReport], ENTITY_DETAILS, {
+      relevanceOf: async () => 'energy_telemetry',
+      hasMatchingSubscription: async () => false,
+    });
+
+    expect(result).toEqual({ filed: [], dropped: [{ report: phonePowerReport, relevance: 'energy_telemetry' }] });
+  });
+
+  it('only looks for subscriptions for diagnostics and telemetry, and keeps the ones that match', async () => {
     const lookedUp: PlannedReport[] = [];
 
     const result = await triageReports([leakReport, linkQualityReport], ENTITY_DETAILS, {
@@ -154,7 +177,7 @@ describe('triageReports', () => {
     });
 
     expect(lookedUp).toEqual([linkQualityReport]);
-    expect(result.droppedAsDiagnostics).toEqual([]);
+    expect(result.dropped).toEqual([]);
   });
 
   it('keeps diagnostics when the subscription lookup fails', async () => {

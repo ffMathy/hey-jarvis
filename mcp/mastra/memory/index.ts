@@ -28,10 +28,23 @@ export interface CreateMemoryOptions {
    * put the cost straight back.
    */
   enableSemanticRecall?: boolean;
+  /**
+   * Whether the thread's last messages are replayed into every run.
+   * Default: true
+   *
+   * Turn it off for an agent whose thread is a feed rather than a conversation. The State
+   * Change Reactor's thread is nothing but notification summaries and its replies to them,
+   * so replaying ten of them only put stale rollups in front of the model on every run:
+   * what is still waiting is in its notification inbox, which it reads anyway.
+   */
+  enableRecentMessages?: boolean;
 }
 
+/** How many of a thread's messages are replayed into a run, unless a caller turns it off. */
+const RECENT_MESSAGE_COUNT = 10;
+
 export async function createMemory(options: CreateMemoryOptions = {}) {
-  const { enableWorkingMemory = true, enableSemanticRecall = true } = options;
+  const { enableWorkingMemory = true, enableSemanticRecall = true, enableRecentMessages = true } = options;
 
   const sqlStorageProvider = await getSqlStorageProvider();
   const vectorStorageProvider = await getVectorStorageProvider();
@@ -41,7 +54,7 @@ export async function createMemory(options: CreateMemoryOptions = {}) {
     vector: vectorStorageProvider,
     embedder: google.embeddingModel('gemini-embedding-001'),
     options: {
-      lastMessages: 10,
+      lastMessages: enableRecentMessages ? RECENT_MESSAGE_COUNT : false,
       workingMemory: enableWorkingMemory
         ? {
             enabled: true,

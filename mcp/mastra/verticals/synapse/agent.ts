@@ -3,10 +3,23 @@ import { createNotificationInboxTool } from '@mastra/core/notifications';
 import { createMemory } from '../../memory/index.js';
 import { getNotificationsStorage } from '../../storage/index.js';
 import { createAgent } from '../../utils/agent-factory.js';
-import { getOllamaModelOrFallback } from '../../utils/providers/ollama-provider.js';
+import { getModel } from '../../utils/providers/google-provider.js';
 import { getNotificationAgent } from '../notification/agent.js';
 import { importantChangeTools } from './important-changes.js';
 import { subscriptionTools } from './subscription-tools.js';
+
+/**
+ * The model the reactor runs on.
+ *
+ * It used to run on the Pi's own `qwen2.5-instruct:1.5b` through hailo-ollama, and that never
+ * worked: its instructions, tool definitions and replayed thread filled the model's context on
+ * every run ("Conversation context is full" in the hailo-ollama journal), most runs ended in a
+ * generation timeout that surfaced as "The socket connection was closed unexpectedly", and the
+ * rest echoed the notification markup back. In its last month it called no tool at all, so not
+ * one rollup was ever read or acted on. Flash-Lite is the cheapest model that runs the tool loop,
+ * and what keeps it cheap is how rarely the reactor is woken: see `state-change-classifier.ts`.
+ */
+const REACTOR_MODEL = 'gemini-flash-lite-latest';
 
 /**
  * State Change Reactor Agent
@@ -22,9 +35,10 @@ import { subscriptionTools } from './subscription-tools.js';
  * them and every reply to it was embedded with the hosted 3072-dimension model. libSQL's
  * vector index spends roughly 640 KB per vector, so this one thread filled 41 GB of the
  * Pi's SD card in five weeks, and made up 98% of the vectors the other agents recall from.
- * Recent context does not depend on it: `lastMessages` and working memory still apply.
  *
- * Uses a local Qwen3 model via Ollama for cost-efficiency in scheduled/automated workflows.
+ * Its thread is not replayed into a run either. It is a feed of rollups and the replies to
+ * them, so the last ten messages were stale summaries of work the inbox already holds. Working
+ * memory is what carries over from one run to the next.
  *
  * Decision responsibilities:
  * - Analyze incoming state changes against user preferences and context
@@ -37,8 +51,8 @@ import { subscriptionTools } from './subscription-tools.js';
  */
 export async function getStateChangeReactorAgent(): Promise<Agent> {
   return createAgent({
-    model: getOllamaModelOrFallback(),
-    memory: await createMemory({ enableSemanticRecall: false }),
+    model: getModel(REACTOR_MODEL),
+    memory: await createMemory({ enableSemanticRecall: false, enableRecentMessages: false }),
     id: 'stateChangeReactor',
     name: 'StateChangeReactor',
     instructions: `You are the State Change Reactor - the central decision-maker for the Hey Jarvis smart home system.
@@ -92,7 +106,7 @@ Use your working memory to track and recall:
 
 **Your Decision Process:**
 1. Receive state change information (source, type, data) and its candidate subscriptions
-2. Recall relevant context from working memory and the recent messages in this thread
+2. Recall relevant context from working memory
 3. Decide which candidate subscriptions actually fire (WHEN matches, GIVEN holds)
 4. Carry out the THEN of every subscription that fires, and mark it triggered
 5. Separately, analyze the significance of this change for the user:

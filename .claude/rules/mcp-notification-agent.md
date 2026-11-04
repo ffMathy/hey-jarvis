@@ -9,7 +9,7 @@ paths:
 
 Delivers a message to a person over whichever channel actually reaches them, based on where they are:
 - **5 notification tools**: `sendNotification`, `notifyDevice`, `sendPushNotification`, `setPhoneAlarm`, `getPrimaryUserPresence`
-- **Local Qwen3 model** via Ollama, with a fallback provider — the agent only classifies target and urgency, so a small model is enough
+- **Gemini Flash-Lite** — the agent only classifies target and urgency, so a small model is enough. Not the Pi's hailo-ollama: Hailo has no function calling, so the Ollama provider strips every tool from the request, and the agent could never call `sendNotification` there
 - **Deterministic routing**: the channel is decided in code (`routing.ts`), not by the model
 - **Presence-aware**: reads the car, the house and the phone's ringer out of Home Assistant before deciding
 - **Contact resolution**: also carries `lookupContact`, so a `contact` target named without a number can be resolved to the E.164 number the call and SMS channels require, instead of being reported unreachable
