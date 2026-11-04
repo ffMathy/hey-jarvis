@@ -16,6 +16,7 @@ import {
   assessmentFrom,
   assessStateChange,
   type StateChangeAssessment,
+  type StateChangeTriage,
   stateChangeQuestions,
   triageStateChange,
 } from './state-change-classifier.js';
@@ -105,7 +106,7 @@ describe('assessmentFrom', () => {
 describe('triageStateChange', () => {
   const base = { matches: [match('sunset')], ruleCount: 0, requestedPriority: 'low' as const };
   const nothingBehindIt = { ...base, matches: [] };
-  const filedLow = { file: true, priority: 'low', escalated: false };
+  const filedLow: StateChangeTriage = { file: true, priority: 'low', escalated: false };
 
   it('holds back a change with nothing behind it, when there is no classifier', () => {
     // What a phone's wattage or the bedroom's air quality looks like: low, no rule, no
