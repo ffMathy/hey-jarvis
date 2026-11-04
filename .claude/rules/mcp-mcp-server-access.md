@@ -19,6 +19,14 @@ the one the apps keep open is `/api/paired/live`, and the server checks its toke
 must be on for the zone (Network → WebSockets). The server holds at most 32 sockets at once. See
 [The WebSocket API](#the-websocket-api).
 
+**A bypass is a policy whose Action is Bypass.** An **Allow** policy with *Include: Everyone* still
+asks for a signed-in identity, so a request without one is sent to Access's login (a `302` to
+`<team>.cloudflareaccess.com`, or a `403` for a preflight) and never reaches the server. Each
+bypassed path below needs its own self-hosted application with a policy of **Action: Bypass**,
+*Include: Everyone*. To see which application answers a path, `POST` to it without signing in: the
+`kid` in the login link it redirects to names the application, and a bypassed path answers from the
+server itself.
+
 **`/api/photos/*` must bypass Access**, as `/artifacts/*` must for the visualize vertical's pages
 (see [Visualize Vertical](mcp-visualize-vertical-shortcuts.md#visualize-vertical-shortcuts)). The phone asks for a photo slot there
 (`POST /api/photos/slots`) and sends the photo there (`PUT /api/photos/<token>`), and it cannot
