@@ -21,8 +21,8 @@ function fakeFetch(answer: (url: string | URL | Request, init?: RequestInit) => 
 }
 
 describe('signing in to the server', () => {
-  it('goes through the line’s own path, which Access covers', () => {
-    expect(serverSignInUrl('https://jarvis.example.com')).toBe('https://jarvis.example.com/api/live');
+  it('goes through the pairing path, which Access covers', () => {
+    expect(serverSignInUrl('https://jarvis.example.com')).toBe('https://jarvis.example.com/api/devices');
   });
 });
 

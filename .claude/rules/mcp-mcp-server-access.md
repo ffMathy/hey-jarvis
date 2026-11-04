@@ -12,35 +12,12 @@ Cloudflare tunnel and its **Cloudflare Access** application: ElevenLabs and the 
 present a service token (`CF-Access-Client-Id` / `CF-Access-Client-Secret`), and a browser signs in
 with an identity policy.
 
-**`/api/live` is unauthenticated on the server.** It is the WebSocket API
-(`verticals/api/live-socket.ts`) the phone, the watch and the headset keep open for as long as their
-apps run; the server checks no credential and sends every live event to any socket that says
-hello. Who may reach it is Cloudflare Zero Trust's to decide, in front of the
-tunnel. The phone and the watch can carry a **Cloudflare Access service token** for that (their
-setting of that name, on the tour's credentials step and the settings screen), sent on the upgrade
-request as `CF-Access-Client-Id` and `CF-Access-Client-Secret`. Make it under Zero Trust → Access →
-Service Auth, and allow it with a **Service Auth** policy on the application covering `/api/live`.
-**Never give `/api/live` a Bypass policy:** the server runs a glance's actions — unlocking a door —
-for any socket that names them, so Access is the only lock on them. The headset runs
-in a browser, which cannot set a header on a WebSocket, so it either is paired and uses
-`/api/paired/live` (see **Pairing a device** below), or gets through on Access's own
-`CF_Authorization` cookie instead:
-
-1. **Sign in once in Quest Browser.** The headset's page links to `/api/live` on the server
-   whenever its line is not connected. Access shows its own login there and sets `CF_Authorization`
-   on the server's hostname for the application that covers the socket's path; the server has no
-   page at that path, so the tab is done with once the login is.
-2. **Let the cookie travel cross-site.** The headset's page is served from GitHub Pages, so its
-   socket to the server is a cross-site request, and a cookie goes with it only when it is
-   `SameSite=None`. In the Access application's **Settings → Cookie settings**, set **SameSite
-   attribute** to **None** (HTTP Only may stay on), and leave **Enable Binding Cookie** off — that
-   cookie is `SameSite=Strict`, and with it on Access would refuse the cross-site socket.
-3. **Keep the session long enough.** The cookie lasts the application's **session duration**; when
-   it runs out, the page offers signing in again.
-
-Quest Browser has to accept a third-party cookie for this, which is not something this repository
-can check; if the line never connects after signing in, that is the first thing to look at. **WebSockets** must be on for the zone (Network → WebSockets). The server holds at most 32
-sockets at once. See [The WebSocket API](#the-websocket-api).
+**Every app is paired, and that is the only way in** (see the pairing section below). No app holds
+an ElevenLabs key or an Access service token: the server holds the key and starts every
+conversation, and each device keeps a token of the server's own. There is no unpaired WebSocket;
+the one the apps keep open is `/api/paired/live`, and the server checks its token itself. **WebSockets**
+must be on for the zone (Network → WebSockets). The server holds at most 32 sockets at once. See
+[The WebSocket API](#the-websocket-api).
 
 **`/api/photos/*` must bypass Access**, as `/artifacts/*` must for the visualize vertical's pages
 (see [Visualize Vertical](mcp-visualize-vertical-shortcuts.md#visualize-vertical-shortcuts)). The phone asks for a photo slot there
@@ -55,42 +32,54 @@ sends a CORS preflight (`OPTIONS`) before each.
 conversation that ElevenLabs, asked with this server's own API key, reports as in progress on
 Jarvis's agent; sending the photo needs the slot's token, 128 random bits handed straight to the
 phone, good for five minutes and one photo, and claimed before a byte of the body is read (see
-[Vision Vertical](mcp-vision-vertical.md#vision-vertical)). Nothing else under `/api` is reachable without Access, but `/api/live` and `/api/paired/*`.
+[Vision Vertical](mcp-vision-vertical.md#vision-vertical)). Nothing else under `/api` is reachable without Access, but `/api/paired/*`.
 
 **Pairing a device** (`verticals/api/paired-devices.ts`, table `paired_devices` in
-`storage/paired-devices.ts`). A browser — the Quest headset's page, or the phone app's web build —
-can be paired with this server instead of holding an ElevenLabs key: the server keeps the key and
-mints each conversation's credential for it, and the browser keeps a token of the server's own
-(`hologram`'s `paired-device.ts` is the client side of all of it). Both pages are on GitHub Pages,
-one of `WEB_APP_ORIGINS`.
+`storage/paired-devices.ts`; `hologram`'s `paired-device.ts` is the client side). Every app pairs:
+the Quest headset's page and the phone app's web build in the browser, the Android phone through
+its browser, and the watch through the phone, whose pairing it is handed and shares — unpairing the
+phone unpairs the watch. The server keeps the ElevenLabs key and mints each conversation's credential
+for a paired device; the device keeps a token of the server's own.
 
-- **`POST /api/devices` stays behind Access.** The headset's page sends it as a simple request —
-  plain text (the device's name), no headers of its own, `credentials: 'include'` — so it has no
-  preflight, which would carry no cookie, and Access's `CF_Authorization` cookie goes with it (the
-  same cookie, and the same `SameSite=None` setting, as `/api/live` above). It is refused `403` unless
-  its `Origin` is one of `WEB_APP_ORIGINS` (GitHub Pages, and the headset's dev server), because a
-  browser sends that cookie with a simple cross-site request from any page. It answers `201` with
-  `{ id, token }`: 256 random bits, handed over once; only its SHA-256 is stored.
+- **Pairing goes through Access, once.** It is the one request that has to prove who is asking, so
+  `/api/devices` stays behind the Access application, and sir signs in there with its identity
+  policy. A page that finds the server does not answer offers that sign-in (`serverSignInUrl`, which
+  opens `/api/devices` itself), then pairs again.
+- **`POST /api/devices`**, from a browser (the headset's page, the phone's web build): a simple
+  request — plain text (the device's name), no headers of its own, `credentials: 'include'` — so it
+  has no preflight, which would carry no cookie, and Access's `CF_Authorization` cookie goes with it.
+  The page is on GitHub Pages, so that is a cross-site request, and the cookie goes only when the
+  Access application's **Settings → Cookie settings → SameSite attribute** is **None** (leave
+  **Enable Binding Cookie** off: that cookie is `SameSite=Strict`). The browser has to accept a
+  third-party cookie for it. It is refused `403` unless its `Origin` is one of `WEB_APP_ORIGINS`
+  (GitHub Pages, and the headset's dev server), because a browser sends that cookie with a simple
+  cross-site request from any page. It answers `201` with `{ id, token }`: 256 random bits, handed
+  over once; only its SHA-256 is stored.
+- **`GET /api/devices/pair`**, for the Android phone, which holds no Access cookie
+  (`PHONE_PAIRING_ROUTE`): the phone opens it in its browser, Access signs sir in, and its button
+  `POST`s to the same path. That is refused `403` unless `Origin` names this server's own `Host`
+  (and `Sec-Fetch-Site`, where sent, is `same-origin`), so a form elsewhere cannot pair a device;
+  then the phone is paired and the browser is sent, `303`, to `heyjarvis://paired#token=…` — always
+  the app's own scheme, never a link the request names. The page is served `no-store`,
+  `X-Frame-Options: DENY` and a CSP that allows no frame. The check reads `Host`, so the tunnel must
+  pass the public hostname through (cloudflared's default; leave its `httpHostHeader` unset).
 - **`GET /api/devices`** lists them (never with a token) and **`DELETE /api/devices/<id>`** unpairs
-  one, so a lost headset is one device revoked rather than the ElevenLabs key.
+  one, so a lost device is one device revoked rather than the ElevenLabs key.
 - **`/api/paired/*` must bypass Access.** `POST /api/paired/conversation` takes
   `Authorization: Bearer <token>` and `{ "transport": "webrtc" | "websocket", "participantName":
   "jarvis-…" }`, and answers `{ token }` or a `wss://` `{ signedUrl }` minted with
   `HEY_JARVIS_ELEVENLABS_API_KEY` on `HEY_JARVIS_ELEVENLABS_AGENT_ID` (never the test agent): `401`
   for a token no paired device has, `400` for a malformed request, `502` when ElevenLabs could not
-  start a conversation — with a message for the device to show. The token is the credential, so the
-  headset never has to sign in to Access again once it is paired. In Zero Trust → Access →
+  start a conversation — with a message for the device to show. In Zero Trust → Access →
   Applications, add a self-hosted application for `<your MCP hostname>/api/paired/*` with a single
   **Bypass** policy (include: Everyone); it covers the preflight its `Authorization` header needs,
-  and the paired socket below.
-- **`/api/paired/live` is the WebSocket API for paired devices** (`PAIRED_LIVE_SOCKET_PATH` in
-  `live-socket.ts`): the same frames as `/api/live`, but its hello has to carry the device's token
-  (`{"type":"hello","device":"vr","token":"…"}`), which the server checks itself, and a socket
-  whose hello does not is closed `4401` — never tried again by the device. Frames sent before the
-  check answers are ignored, glance actions included: here the device token is the lock on them
-  that Access is on `/api/live`. A paired headset therefore needs no Access cookie for its line,
-  which runs out with Access's session. The phone and the watch need no pairing: their service
-  token lasts until it is revoked.
+  and the WebSocket below.
+- **`/api/paired/live` is the WebSocket API** (`PAIRED_LIVE_SOCKET_PATH` in `live-socket.ts`): its
+  hello has to carry the device's token, which the server checks itself, and a socket whose hello
+  does not is closed `4401` — never tried again by the device. Frames sent before the check answers
+  are ignored, glance actions included: the device token is the lock on them, since the server runs a
+  glance's actions — unlocking a door — for any socket that names them. A device needs no Access
+  cookie or JWT for its line, both of which run out with Access's session.
 
 **`/webhooks/*` must bypass Access too.** Every webhook is served under it — today only ElevenLabs'
 post-call webhook, `/webhooks/elevenlabs/post-call` — so one self-hosted application for
@@ -129,24 +118,22 @@ spelling alike.
    longer publishes.
 3. In the ElevenLabs dashboard, leave nothing on the MCP server's tool approval policy but the two
    tools it publishes, `routePromptWorkflow` and `getNextInstructionsWorkflow`.
-4. On the phone, enter this server's `https://` address under **Jarvis server** in the settings.
-   Until it has one, the phone offers no camera button.
+4. Pair the phone with this server (its settings, or the tour). Until it is paired, the phone
+   offers no camera button.
 5. If a 1Password item was created in the `Jarvis` vault for the earlier build's upload key, delete
    it: nothing reads it any more.
 
 ## The WebSocket API
 
-Beside the REST routes, the MCP server serves one WebSocket, on the same port, at **`/api/live`**
-(`verticals/api/live-socket.ts`). REST is for being asked; this is for what the server has to say
-first, and what a device keeps it told of. Each device that is Jarvis — the phone, the watch and the
-headset — keeps one open for as long as its app runs, across conversations and between them, through
-`connectToServer` in `hologram/src/jarvis-server-link.ts`, and only when it knows the server's
-address (the phone's **Jarvis server** setting, handed to the watch with the
-credentials, and read by the headset from the storage it shares with the phone's web build).
+Beside the REST routes, the MCP server serves one WebSocket, on the same port, at
+**`/api/paired/live`** (`verticals/api/live-socket.ts`). REST is for being asked; this is for what the
+server has to say first, and what a device keeps it told of. Each device that is Jarvis — the phone,
+the watch and the headset — keeps one open for as long as its app runs, across conversations and
+between them, through `connectToServer` in `hologram/src/jarvis-server-link.ts`, once it is paired.
 
 | Direction | Frame | Meaning |
 | --- | --- | --- |
-| device → server | `{"type":"hello","device":"phone"\|"watch"\|"vr"}` | The first frame, within 10 seconds |
+| device → server | `{"type":"hello","device":"phone"\|"watch"\|"vr","token":"…"}` | The first frame, within 10 seconds, with the device's token |
 | server → device | `{"type":"ready"}` | This socket is now sent every live event |
 | server → device | `{"type":"affectedEntities","entities":[{"id":"…","name":"…"}]}` | A request's tool just read or changed these |
 | server → device | `{"type":"agentActivity","delegationId":"…","agentId":"…","state":"…"}` | Where one of a request's agents has got to |
@@ -155,9 +142,10 @@ credentials, and read by the headset from the storage it shares with the phone's
 | device → server | `{"type":"glanceAction","requestId":"…","glanceId":"…","actionId":"…"}` | Sir pressed a button on the glance; `requestId` at most 64 characters |
 | server → device | `{"type":"glanceActionResult","requestId":"…","ok":true\|false,"message":"…"}` | How that went, to that socket only: Jarvis's answer, or why it was refused |
 
-**No authentication**: the hello names the device, for the log, and is not a credential. A refusal is
-a close: `4400` a first frame that is not a hello, `4408` no hello in time; an upgrade past 32
-open sockets is answered `503`. A device tries again with a growing delay after anything but `4400`. Frames over a kilobyte close their socket (`1009`), and every socket is pinged
+**The token is the credential**: the device's name in the hello is only for the log. A refusal is a
+close: `4400` a first frame that is not a hello, `4401` a token no paired device has, `4408` no
+hello in time; an upgrade past 32 open sockets is answered `503`, and one to any other path `404`. A
+device tries again with a growing delay after anything but `4400` and `4401`. Frames over a kilobyte close their socket (`1009`), and every socket is pinged
 every 30 seconds, which also keeps Cloudflare from closing a quiet one after 100.
 
 After `ready`, a socket is sent every event published on `utils/live-events.ts` — today `affectedEntities` and `agentActivity`, see

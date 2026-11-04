@@ -13,6 +13,7 @@ import {
 } from './jarvis-server-link';
 
 const ADDRESS = 'https://jarvis.example.com';
+const TOKEN = 'p'.repeat(43);
 
 /** A socket that records what it is sent, and is opened, answered and closed by hand. */
 class FakeSocket implements ServerSocket {
@@ -86,8 +87,8 @@ function fakePlatform() {
 
 describe('the socket address', () => {
   it('is wss for an https server, and ws for this computer', () => {
-    expect(serverSocketUrl('https://jarvis.example.com')).toBe('wss://jarvis.example.com/api/live');
-    expect(serverSocketUrl('http://localhost:4112')).toBe('ws://localhost:4112/api/live');
+    expect(serverSocketUrl('https://jarvis.example.com')).toBe('wss://jarvis.example.com/api/paired/live');
+    expect(serverSocketUrl('http://localhost:4112')).toBe('ws://localhost:4112/api/paired/live');
   });
 });
 
@@ -95,12 +96,14 @@ describe('a line to the server', () => {
   it('says hello with the device, and passes on what the server sends', () => {
     const { platform, latest } = fakePlatform();
     const received: JarvisServerMessage[] = [];
-    connectToServer({ address: ADDRESS, device: 'vr' }, platform).subscribe((message) => received.push(message));
+    connectToServer({ address: ADDRESS, device: 'vr', deviceToken: TOKEN }, platform).subscribe((message) =>
+      received.push(message),
+    );
 
     const socket = latest();
-    expect(socket.url).toBe('wss://jarvis.example.com/api/live');
+    expect(socket.url).toBe('wss://jarvis.example.com/api/paired/live');
     socket.open();
-    expect(socket.sent.map((frame) => JSON.parse(frame))).toEqual([{ type: 'hello', device: 'vr' }]);
+    expect(socket.sent.map((frame) => JSON.parse(frame))).toEqual([{ type: 'hello', device: 'vr', token: TOKEN }]);
 
     socket.receive('{"type":"ready"}');
     socket.receive('{"type":"something-newer"}');
@@ -112,7 +115,9 @@ describe('a line to the server', () => {
   it('passes on the entities a request touched, as the server names them', () => {
     const { platform, latest } = fakePlatform();
     const received: JarvisServerMessage[] = [];
-    connectToServer({ address: ADDRESS, device: 'vr' }, platform).subscribe((message) => received.push(message));
+    connectToServer({ address: ADDRESS, device: 'vr', deviceToken: TOKEN }, platform).subscribe((message) =>
+      received.push(message),
+    );
     latest().open();
 
     latest().receive(
@@ -133,7 +138,9 @@ describe('a line to the server', () => {
   it('passes on where each agent of a request has got to, and drops what is not usable', () => {
     const { platform, latest } = fakePlatform();
     const received: JarvisServerMessage[] = [];
-    connectToServer({ address: ADDRESS, device: 'vr' }, platform).subscribe((message) => received.push(message));
+    connectToServer({ address: ADDRESS, device: 'vr', deviceToken: TOKEN }, platform).subscribe((message) =>
+      received.push(message),
+    );
     latest().open();
 
     latest().receive(
@@ -156,7 +163,9 @@ describe('a line to the server', () => {
   it('passes on the glyph an agent is drawn with, and drops one that is not a plain path', () => {
     const { platform, latest } = fakePlatform();
     const received: JarvisServerMessage[] = [];
-    connectToServer({ address: ADDRESS, device: 'vr' }, platform).subscribe((message) => received.push(message));
+    connectToServer({ address: ADDRESS, device: 'vr', deviceToken: TOKEN }, platform).subscribe((message) =>
+      received.push(message),
+    );
     latest().open();
     const activity = { type: 'agentActivity', delegationId: 'plan-1', agentId: 'weather', state: 'working' } as const;
 
@@ -187,7 +196,9 @@ describe('a line to the server', () => {
   it('keeps only the usable entities of a frame, and drops a frame with none', () => {
     const { platform, latest } = fakePlatform();
     const received: JarvisServerMessage[] = [];
-    connectToServer({ address: ADDRESS, device: 'vr' }, platform).subscribe((message) => received.push(message));
+    connectToServer({ address: ADDRESS, device: 'vr', deviceToken: TOKEN }, platform).subscribe((message) =>
+      received.push(message),
+    );
     latest().open();
 
     latest().receive(
@@ -203,7 +214,7 @@ describe('a line to the server', () => {
 
   it('tries again after a drop, waiting twice as long each time up to a limit, and from the start once ready', () => {
     const { platform, sockets, advance, latest } = fakePlatform();
-    connectToServer({ address: ADDRESS, device: 'phone' }, platform);
+    connectToServer({ address: ADDRESS, device: 'phone', deviceToken: TOKEN }, platform);
 
     const waits: number[] = [];
     for (let attempt = 0; attempt < 7; attempt++) {
@@ -227,19 +238,17 @@ describe('a line to the server', () => {
 
   it('opens on the paired path with the device token in its hello', () => {
     const { platform, latest } = fakePlatform();
-    connectToServer({ address: ADDRESS, device: 'phone', deviceToken: 'p'.repeat(43) }, platform);
+    connectToServer({ address: ADDRESS, device: 'phone', deviceToken: TOKEN }, platform);
 
     const socket = latest();
     expect(socket.url).toBe('wss://jarvis.example.com/api/paired/live');
     socket.open();
-    expect(socket.sent.map((frame) => JSON.parse(frame))).toEqual([
-      { type: 'hello', device: 'phone', token: 'p'.repeat(43) },
-    ]);
+    expect(socket.sent.map((frame) => JSON.parse(frame))).toEqual([{ type: 'hello', device: 'phone', token: TOKEN }]);
   });
 
   it('never tries again once the server says the device is not paired', () => {
     const { platform, sockets, advance, latest } = fakePlatform();
-    connectToServer({ address: ADDRESS, device: 'phone', deviceToken: 'p'.repeat(43) }, platform);
+    connectToServer({ address: ADDRESS, device: 'phone', deviceToken: TOKEN }, platform);
     latest().drop(4401);
     advance(LONGEST_RETRY_MS * 10);
     expect(sockets).toHaveLength(1);
@@ -247,7 +256,7 @@ describe('a line to the server', () => {
 
   it('never tries again after the server could not read its hello', () => {
     const { platform, sockets, advance, latest } = fakePlatform();
-    connectToServer({ address: ADDRESS, device: 'watch' }, platform);
+    connectToServer({ address: ADDRESS, device: 'watch', deviceToken: TOKEN }, platform);
     latest().drop(4400);
     advance(LONGEST_RETRY_MS * 10);
     expect(sockets).toHaveLength(1);
@@ -255,7 +264,7 @@ describe('a line to the server', () => {
 
   it('tries again after the server gave up waiting for a hello, or went away', () => {
     const { platform, sockets, advance, latest } = fakePlatform();
-    connectToServer({ address: ADDRESS, device: 'phone' }, platform);
+    connectToServer({ address: ADDRESS, device: 'phone', deviceToken: TOKEN }, platform);
     latest().drop(4408);
     advance(FIRST_RETRY_MS);
     latest().drop(1001);
@@ -265,13 +274,13 @@ describe('a line to the server', () => {
 
   it('stops for good when closed, a retry it was waiting on included', () => {
     const { platform, sockets, advance, latest } = fakePlatform();
-    const link = connectToServer({ address: ADDRESS, device: 'phone' }, platform);
+    const link = connectToServer({ address: ADDRESS, device: 'phone', deviceToken: TOKEN }, platform);
     latest().drop(1006);
     link.close();
     advance(LONGEST_RETRY_MS);
     expect(sockets).toHaveLength(1);
 
-    const second = connectToServer({ address: ADDRESS, device: 'phone' }, platform);
+    const second = connectToServer({ address: ADDRESS, device: 'phone', deviceToken: TOKEN }, platform);
     const open = latest();
     second.close();
     expect(open.closedByDevice).toBe(true);
@@ -290,7 +299,7 @@ describe('telling the server what sir points at', () => {
 
   it('sends nothing before the server is ready, and the latest once it is', () => {
     const { platform, latest } = fakePlatform();
-    const link = connectToServer({ address: ADDRESS, device: 'vr' }, platform);
+    const link = connectToServer({ address: ADDRESS, device: 'vr', deviceToken: TOKEN }, platform);
 
     link.point({ id: 'light.hall' });
     latest().open();
@@ -303,7 +312,7 @@ describe('telling the server what sir points at', () => {
 
   it('sends at once once ready, and null when sir points at nothing', () => {
     const { platform, latest } = fakePlatform();
-    const link = connectToServer({ address: ADDRESS, device: 'vr' }, platform);
+    const link = connectToServer({ address: ADDRESS, device: 'vr', deviceToken: TOKEN }, platform);
     latest().open();
     latest().receive('{"type":"ready"}');
     expect(pointingSent(latest())).toEqual([]);
@@ -319,7 +328,7 @@ describe('telling the server what sir points at', () => {
 
   it('sends the latest again after a reconnect, once the new socket is ready', () => {
     const { platform, advance, latest } = fakePlatform();
-    const link = connectToServer({ address: ADDRESS, device: 'vr' }, platform);
+    const link = connectToServer({ address: ADDRESS, device: 'vr', deviceToken: TOKEN }, platform);
     latest().open();
     latest().receive('{"type":"ready"}');
     link.point(KITCHEN);
@@ -336,7 +345,7 @@ describe('telling the server what sir points at', () => {
 
   it('holds an entity to the limits of what a request touches', () => {
     const { platform, latest } = fakePlatform();
-    const link = connectToServer({ address: ADDRESS, device: 'vr' }, platform);
+    const link = connectToServer({ address: ADDRESS, device: 'vr', deviceToken: TOKEN }, platform);
     latest().open();
     latest().receive('{"type":"ready"}');
 
@@ -351,7 +360,7 @@ describe('telling the server what sir points at', () => {
 
   it('tells the server nothing about pointing when nothing has been said', () => {
     const { platform, latest } = fakePlatform();
-    connectToServer({ address: ADDRESS, device: 'vr' }, platform);
+    connectToServer({ address: ADDRESS, device: 'vr', deviceToken: TOKEN }, platform);
     latest().open();
     latest().receive('{"type":"ready"}');
 
@@ -362,7 +371,7 @@ describe('telling the server what sir points at', () => {
 describe('listening to the line', () => {
   it('hands each message to every listener until it stops listening', () => {
     const { platform, latest } = fakePlatform();
-    const link = connectToServer({ address: ADDRESS, device: 'vr' }, platform);
+    const link = connectToServer({ address: ADDRESS, device: 'vr', deviceToken: TOKEN }, platform);
     const first: JarvisServerMessage[] = [];
     const second: JarvisServerMessage[] = [];
     const stopFirst = link.subscribe((message) => first.push(message));
@@ -381,7 +390,7 @@ describe('listening to the line', () => {
 describe('whether the line is connected', () => {
   it('says so at once, once the server is ready, again when it drops, and not after it stops listening', () => {
     const { platform, advance, latest } = fakePlatform();
-    const link = connectToServer({ address: ADDRESS, device: 'vr' }, platform);
+    const link = connectToServer({ address: ADDRESS, device: 'vr', deviceToken: TOKEN }, platform);
     const told: boolean[] = [];
     const stop = link.onConnectionChange((connected) => told.push(connected));
 
@@ -406,6 +415,12 @@ describe('a device with no server address', () => {
     expect(told).toEqual([false]);
   });
 
+  it('opens none for an address it has no pairing with either, since the server lets no other socket in', () => {
+    const { platform, sockets } = fakePlatform();
+    connectToServer({ address: ADDRESS, device: 'vr', deviceToken: undefined }, platform);
+    expect(sockets).toHaveLength(0);
+  });
+
   it('opens no line, and points at nothing', () => {
     const { platform, sockets } = fakePlatform();
     const link = connectToServer({ address: undefined, device: 'watch' }, platform);
@@ -428,7 +443,7 @@ describe('the glance the server sends', () => {
 
   it('is passed on, and kept for whoever listens after it came, across a reconnect', () => {
     const { platform, advance, latest } = fakePlatform();
-    const link = connectToServer({ address: ADDRESS, device: 'phone' }, platform);
+    const link = connectToServer({ address: ADDRESS, device: 'phone', deviceToken: TOKEN }, platform);
     const received: JarvisServerMessage[] = [];
     link.subscribe((message) => received.push(message));
     const early: unknown[] = [];
@@ -450,7 +465,7 @@ describe('the glance the server sends', () => {
 
   it('is dropped when it is not usable, and the glance before it kept', () => {
     const { platform, latest } = fakePlatform();
-    const link = connectToServer({ address: ADDRESS, device: 'phone' }, platform);
+    const link = connectToServer({ address: ADDRESS, device: 'phone', deviceToken: TOKEN }, platform);
     const told: unknown[] = [];
     link.onGlance((glance) => told.push(glance));
     latest().open();
@@ -472,7 +487,7 @@ describe('asking the server to run a glance’s action', () => {
 
   function readyLine() {
     const fake = fakePlatform();
-    const link = connectToServer({ address: ADDRESS, device: 'phone' }, fake.platform);
+    const link = connectToServer({ address: ADDRESS, device: 'phone', deviceToken: TOKEN }, fake.platform);
     fake.latest().open();
     fake.latest().receive('{"type":"ready"}');
     return { ...fake, link };
@@ -508,7 +523,7 @@ describe('asking the server to run a glance’s action', () => {
 
   it('fails at once, sending nothing, while the line is not connected', async () => {
     const { platform, latest } = fakePlatform();
-    const link = connectToServer({ address: ADDRESS, device: 'phone' }, platform);
+    const link = connectToServer({ address: ADDRESS, device: 'phone', deviceToken: TOKEN }, platform);
     latest().open();
 
     expect(await link.requestGlanceAction('glance-1', 'unlock-front-door')).toEqual(NOT_CONNECTED_RESULT);

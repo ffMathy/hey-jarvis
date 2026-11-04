@@ -60,10 +60,10 @@ export interface PageDependencies {
     onInside: () => void,
   ): Promise<RoomOutcome>;
   /**
-   * The page's line to sir's Jarvis server and its address, for the page to say whether it is
-   * connected and offer signing in to it when it is not (`server-status.ts`).
+   * The page's line to sir's Jarvis server, and whether the headset is paired and so has one, for the
+   * page to say whether it is connected (`server-status.ts`).
    */
-  server: { address: string | undefined; paired: boolean; line: Pick<ServerLink, 'onConnectionChange'> };
+  server: { paired: boolean; line: Pick<ServerLink, 'onConnectionChange'> };
   /** Loads the page again, so a newly paired server's address opens the page's line to it. */
   reload(): void;
   debug: JarvisDebugState;
@@ -112,10 +112,8 @@ export function startPage(document: Document, dependencies: PageDependencies): v
     {
       section: required(document, '#server', HTMLElement),
       status: required(document, '#server-status', HTMLElement),
-      signIn: required(document, '#server-sign-in', HTMLElement),
-      signInLink: required(document, '#server-sign-in-link', HTMLAnchorElement),
     },
-    dependencies.server,
+    dependencies.server.paired,
     dependencies.server.line,
   );
 

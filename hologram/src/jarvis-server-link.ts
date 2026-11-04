@@ -33,13 +33,10 @@ import {
  * Bun all have, and that is handed in where a spec wants a fake one.
  */
 
-/** Where the server serves the socket, after its address. Spelled as the server spells it. */
-export const JARVIS_SERVER_SOCKET_PATH = '/api/live';
-
 /**
- * Where a device paired with the server opens its socket instead (`PAIRED_LIVE_SOCKET_PATH` in
- * `mcp`): a path Cloudflare Access lets through, where the server itself checks the device's token,
- * sent in the hello. So a paired device needs no Access JWT and no cookie, which expire.
+ * Where a paired device opens its socket (`PAIRED_LIVE_SOCKET_PATH` in `mcp`): a path Cloudflare
+ * Access lets through, where the server itself checks the device's token, sent in the hello. So a
+ * device needs no Access JWT and no cookie, which expire. It is the only socket the server serves.
  */
 export const JARVIS_SERVER_PAIRED_SOCKET_PATH = '/api/paired/live';
 
@@ -128,9 +125,10 @@ export interface ServerLinkOptions {
   address: string | undefined;
   device: JarvisDevice;
   /**
-   * The token this device was paired with (`paired-device.ts`), when it is paired: the line then
-   * opens on {@link JARVIS_SERVER_PAIRED_SOCKET_PATH} and says it in the hello. A server that no
-   * longer knows it closes the socket with 4401, after which the line is not tried again.
+   * The token this device was paired with (`paired-device.ts`), said in the hello on
+   * {@link JARVIS_SERVER_PAIRED_SOCKET_PATH}; `undefined` before it is paired, when there is no line,
+   * since the server lets no other socket in. A server that no longer knows it closes the socket with
+   * 4401, after which the line is not tried again.
    */
   deviceToken?: string;
 }
@@ -179,12 +177,9 @@ export interface ServerLink {
   close(): void;
 }
 
-/**
- * The socket's URL for a server at `address`: `wss` for `https`, `ws` for this computer's `http`; on
- * the paired path for a paired device.
- */
-export function serverSocketUrl(address: string, paired = false): string {
-  return `${address.replace(/^http/, 'ws')}${paired ? JARVIS_SERVER_PAIRED_SOCKET_PATH : JARVIS_SERVER_SOCKET_PATH}`;
+/** The socket's URL for a server at `address`: `wss` for `https`, `ws` for this computer's `http`. */
+export function serverSocketUrl(address: string): string {
+  return `${address.replace(/^http/, 'ws')}${JARVIS_SERVER_PAIRED_SOCKET_PATH}`;
 }
 
 /** The `pointing` frame for `entity`: `null` for nothing, and for an entity without a usable id. */
@@ -294,16 +289,12 @@ export function connectToServer(
   options: ServerLinkOptions,
   platform: ServerLinkPlatform = DEFAULT_PLATFORM,
 ): ServerLink {
-  if (options.address === undefined) {
+  // The server lets no socket in but a paired device's, so an unpaired device has no line.
+  if (options.address === undefined || options.deviceToken === undefined) {
     return NO_LINE;
   }
-  const { deviceToken } = options;
-  const url = serverSocketUrl(options.address, deviceToken !== undefined);
-  const hello = JSON.stringify({
-    type: 'hello',
-    device: options.device,
-    ...(deviceToken === undefined ? {} : { token: deviceToken }),
-  });
+  const url = serverSocketUrl(options.address);
+  const hello = JSON.stringify({ type: 'hello', device: options.device, token: options.deviceToken });
   let socket: ServerSocket | undefined;
   /** The socket the server has said `ready` on, while it is still the one open. */
   let ready: ServerSocket | undefined;

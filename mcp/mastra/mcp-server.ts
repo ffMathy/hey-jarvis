@@ -10,7 +10,7 @@ import { getMissingClaudeCodeHostVariables, isClaudeCodeHostConfigured } from '.
 import {
   attachLiveSocket,
   getPublicAgents,
-  LIVE_SOCKET_PATH,
+  PAIRED_LIVE_SOCKET_PATH,
   registerApiRoutes,
   registerArtifactRoutes,
   registerShoppingTriggers,
@@ -185,7 +185,7 @@ export async function startMcpServer() {
     const server = app.listen(port, host, () => {
       console.log(`Server running on http://${host}:${port}`);
       console.log(`MCP HTTP endpoint: http://${host}:${port}${MCP_PATH}`);
-      console.log(`WebSocket API available: ws://${host}:${port}${LIVE_SOCKET_PATH}`);
+      console.log(`WebSocket API available: ws://${host}:${port}${PAIRED_LIVE_SOCKET_PATH}`);
       resolve();
     });
     // A glance's button runs its prompt as a request routed like the same words spoken, in a routing

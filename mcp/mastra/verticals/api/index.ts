@@ -9,7 +9,6 @@ export {
 export {
   attachLiveSocket,
   LIVE_SOCKET_CLOSE_CODES,
-  LIVE_SOCKET_PATH,
   type LiveServerMessage,
   type LiveSockets,
   PAIRED_LIVE_SOCKET_PATH,

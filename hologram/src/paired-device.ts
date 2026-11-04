@@ -1,7 +1,6 @@
 import type { ConversationCredentials } from './conversation-token';
 import { HEADSET_PARTICIPANT_NAME } from './conversation-token';
 import { parseJarvisServerAddress } from './jarvis-server-address';
-import { JARVIS_SERVER_SOCKET_PATH } from './jarvis-server-link';
 
 /**
  * Pairing a device with sir's Jarvis server, which is the only way any device gets a conversation:
@@ -48,12 +47,12 @@ export function parseStoredDeviceToken(stored: string | null | undefined): strin
 }
 
 /**
- * Where a browser signs in to the server's Access application: the line's own path, so Access sets
- * its cookie for the application that covers pairing too. The server has no page there; the tab is
- * done with once the login is.
+ * Where a browser signs in to the server's Access application: the pairing path itself, so Access
+ * sets its cookie for the application that pairing goes through. The server answers there with the
+ * list of paired devices; the tab is done with once the login is.
  */
 export function serverSignInUrl(address: string): string {
-  return `${address}${JARVIS_SERVER_SOCKET_PATH}`;
+  return `${address}${DEVICE_PAIRING_PATH}`;
 }
 
 /** What a pairing that reached no server is told, beside the way to sign in it is offered. */
@@ -109,9 +108,9 @@ export async function pairWithServer(
 export const SERVER_UNREACHABLE_PROBLEM =
   'Your Jarvis server could not be reached. Check that this device is online and the server is up.';
 
-/** The server no longer knows this browser: it was unpaired, or the server lost its pairings. */
+/** The server no longer knows this device: it was unpaired, or the server lost its pairings. */
 export const NO_LONGER_PAIRED_PROBLEM =
-  'This browser is no longer paired with your Jarvis server. Pair it again in the settings.';
+  'This device is no longer paired with your Jarvis server. Pair it again in the settings.';
 
 /** The message a refusal carries, when it carries one as the server writes them. */
 async function refusalMessage(response: Response): Promise<string | undefined> {

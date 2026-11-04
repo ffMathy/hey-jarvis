@@ -104,7 +104,7 @@ test('a server that does not answer is said so, with a way to sign in to it', as
   );
   await expect(page.getByRole('link', { name: 'Sign in to your server' })).toHaveAttribute(
     'href',
-    'https://jarvis.example.com/api/live',
+    'https://jarvis.example.com/api/devices',
   );
   expect(await stored(page, DEVICE_TOKEN_KEY)).toBeNull();
   await expect(page.locator('#primary')).toHaveText('Pair this headset first');

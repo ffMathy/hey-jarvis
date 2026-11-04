@@ -41,7 +41,7 @@ import { expect, photograph, test } from './fixtures';
  */
 
 /** hologram's `NO_LONGER_PAIRED_PROBLEM`: what a 401 from the paired server means. */
-const NO_LONGER_PAIRED = 'This browser is no longer paired with your Jarvis server. Pair it again in the settings.';
+const NO_LONGER_PAIRED = 'This device is no longer paired with your Jarvis server. Pair it again in the settings.';
 
 test('a page opened to be filmed shows sample mode without its frame-rate readout', async ({ page }) => {
   const problems = collectProblems(page);
