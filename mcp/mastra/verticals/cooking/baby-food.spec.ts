@@ -39,7 +39,8 @@ describe('readBabyBirthDate', () => {
   });
 
   it("reads the date as midnight on the household's clock", () => {
-    expect(exampleBirthDate().toISOString()).toBe('2025-03-14T23:00:00.000Z');
+    // Midnight in Copenhagen in March is 23:00 UTC the day before.
+    expect(exampleBirthDate().getTime()).toBe(Date.parse('2025-03-14T23:00:00Z'));
   });
 
   it('refuses anything but a past date written YYYY-MM-DD, without repeating it', () => {
