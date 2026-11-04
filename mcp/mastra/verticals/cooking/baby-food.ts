@@ -470,7 +470,8 @@ export function babyAgeInMonths(birthDate: TZDate, now: Date): number {
 /** The advice that holds for a baby of `ageInMonths`, in the book's order. */
 export function babyFoodAdviceAt(ageInMonths: number): BabyFoodAdvice[] {
   return BABY_FOOD_ADVICE.filter(
-    (advice) => ageInMonths >= advice.fromMonths && (advice.untilMonths === undefined || ageInMonths < advice.untilMonths),
+    (advice) =>
+      ageInMonths >= advice.fromMonths && (advice.untilMonths === undefined || ageInMonths < advice.untilMonths),
   );
 }
 
