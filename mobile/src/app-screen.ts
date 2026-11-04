@@ -6,9 +6,10 @@ export type Screen = 'loading' | 'sample' | 'onboarding' | 'settings' | 'glance'
 /** Everything that has a say in which screen shows. */
 export interface ScreenState {
   isLoaded: boolean;
-  /** Whether the glance kept from before has been read (`glance-storage.ts`), as the settings have. */
+  /** Whether the glance kept from before has been read (`glance-storage.ts`), as the pairing has. */
   isGlanceRead: boolean;
-  hasSettings: boolean;
+  /** Whether this device is paired with the Jarvis server, which is what being set up is. */
+  isPaired: boolean;
   isEditingSettings: boolean;
   isSampling: boolean;
   isTouring: boolean;
@@ -28,7 +29,7 @@ export interface ScreenState {
  * The order is the argument. Sample mode comes first because it is a side trip taken *from*
  * somewhere and returned to — including from the tour, where it is offered on every step. The tour
  * comes next because a first run has nothing else worth showing. The bare settings screen is what
- * is left for an install that has been through the tour and has no credentials any more, which is
+ * is left for an install that has been through the tour and is not paired any more, which is
  * where this app opened before there was a tour at all.
  *
  * **Opened rather than summoned, it is the glance**, when the server has sent one: the page it made
@@ -41,7 +42,7 @@ export function chooseScreen(state: ScreenState): Screen {
   if (!state.isLoaded || !state.isGlanceRead) return 'loading';
   if (state.isSampling) return 'sample';
   if (state.isTouring) return 'onboarding';
-  if (!state.hasSettings || state.isEditingSettings) return 'settings';
+  if (!state.isPaired || state.isEditingSettings) return 'settings';
   if (state.wasSummoned || state.glance === undefined || state.wantsToTalk || state.conversationUnderWay) {
     return 'conversation';
   }

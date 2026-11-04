@@ -8,8 +8,8 @@ paths:
 > Part of [Mobile App](mobile.md). Paths in it are relative to `mobile/` unless they say otherwise.
 
 Jarvis can be sent a photo — a receipt, a label, a letter — and asked about it. Only sir opens the
-camera: the faint button beside Jarvis is the only way in, and it is there only once the phone knows
-where sir's own Jarvis server is (the optional **Jarvis server** setting, see Configuration). Both ways
+camera: the faint button beside Jarvis is the only way in. It goes to sir's own Jarvis server, the
+one this phone is paired with (see Configuration). Both ways
 of using it work:
 
 - **Tell him first, then send it.** "I'll send you a receipt — what's the total?" He tells sir to go
@@ -21,7 +21,7 @@ The photo goes to the Jarvis server (the MCP server), is kept there in memory fo
 model that can see answers from it (`.claude/rules/mcp-vision-vertical.md`, "Vision").
 
 ```
-connected, server set  phone ─ contextual update ──▶ agent   "…it has a camera button beside you…"
+connected              phone ─ contextual update ──▶ agent   "…it has a camera button beside you…"
 sir taps the button    phone  opens the camera app, or the browser's picker, inside the tap
                        phone ─ POST <server>/api/photos/slots {"conversationId": "conv_…"} ──▶ Jarvis server (not awaited)
                        phone ─ contextual update ──▶ agent   "Sir has opened the camera…" — it waits
@@ -111,7 +111,7 @@ has). The session dials with no client tools at all. The live line to the server
 
 **The button.** A small outline of a camera at the sphere's lower right, half strength, drawn from
 views (no icon library is installed). It is there only while
-a server is set and he is connected, past the greeting and settled, not held in writing on a phone,
+he is connected, past the greeting and settled, not held in writing on a phone,
 and neither thinking nor speaking — a photo arrives as sir's turn, and a turn in the middle of one
 cancels a request or cuts off an answer — and not while its camera is open or its photo on the way.
 The camera opens on the tap itself, before anything is awaited, because a browser only opens its
@@ -147,25 +147,21 @@ the way it brings up earlier work still waiting on him (`.claude/rules/mcp-visio
 the phone never does is tell a later conversation about it: each conversation is numbered as it ends,
 and a photo in flight speaks only into the one it was taken in.
 
-**Only the phone offers it, and only with a server.** Once connected, a phone with a server address
-tells the agent once that there is a camera button here (`CAMERA_BUTTON_HERE`, a contextual update);
+**Only the phone offers it.** Once connected, the phone tells the agent once that there is a camera button here (`CAMERA_BUTTON_HERE`, a contextual update);
 the prompt counts photos as possible only where it has heard that, and otherwise tells sir to send it
 from his phone. The watch, the headset and the voice firmware say nothing of the sort, and have no way
 to send one.
 
-**An address changed on the settings screen reaches the next conversation.** The session is the
+**A pairing changed on the settings screen reaches the next conversation.** The session is the
 conversation screen's and ends with it, so holding the screen to reach the settings ends the
 conversation, and the screen it returns to opens a new one — told of a camera button, or not, to
-match. The address is also read again on every summoning after the first (`app.tsx`), because the
-assistant's window is kept between summonings and the address is as often set in the app's own window.
+match. The pairing is also read again on every summoning after the first (`use-pairing.ts`), because the
+assistant's window is kept between summonings and the pairing is as often made in the app's own window.
 
-**An address that cannot be read is tried again, and never erased.** It is read beside the ElevenLabs
-settings, from the same keystore at the same moment, so it fails when they do — in a window the
-system has only just made. `loadJarvisServerAddress` says `unreadable` rather than "none", and it is
-retried as the settings are (`read-again.ts`); only an address that still cannot be read is no
-address, and the camera stays off. The settings screen then starts the field empty, so it writes the
-address only if sir changed the field: saving an untouched one would erase an address that had only
-failed to load.
+**A pairing that cannot be read is tried again.** It is read from the keystore in a window the system
+has only just made, so `loadJarvisServerAddress` and `loadJarvisDeviceToken` say `unreadable` rather
+than "none", and it is retried (`read-again.ts`); only a pairing that still cannot be read is none, and
+then there is no conversation and no camera at all.
 
 **The words and the paths are held to the other packages that read them.** `photo-messages.ts` is the
 whole of what the phone says, and `photo-messages.contract.spec.ts` holds it to the prompt that quotes

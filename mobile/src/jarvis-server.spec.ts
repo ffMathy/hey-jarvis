@@ -21,8 +21,14 @@ mock.module('./key-value-store', () => ({
   },
 }));
 
-const { loadJarvisServerAddress, loadJarvisServerServiceToken, saveJarvisServerAddress, saveJarvisServerServiceToken } =
-  await import('./jarvis-server');
+const {
+  loadJarvisDeviceToken,
+  loadJarvisServerAddress,
+  pairedTokenFromLink,
+  phonePairingUrl,
+  saveJarvisDeviceToken,
+  saveJarvisServerAddress,
+} = await import('./jarvis-server');
 
 const ADDRESS = 'https://jarvis.example.com';
 
@@ -64,47 +70,60 @@ describe('keeping the address', () => {
     expect(await loadJarvisServerAddress()).toEqual({ kind: 'nothing' });
   });
 
-  it('is kept apart from the ElevenLabs settings, which are what the watch is sent', async () => {
+  it('is kept apart from the token, so either can be forgotten without the other', async () => {
     await saveJarvisServerAddress(ADDRESS);
 
     expect([...stored.keys()]).toEqual(['jarvis.server-address']);
   });
 });
 
-describe('keeping the service token', () => {
-  const SERVICE_TOKEN = { clientId: '0123456789abcdef.access', clientSecret: 'fedcba9876543210' };
+describe('pairing the phone', () => {
+  const TOKEN = 'p'.repeat(43);
 
   beforeEach(() => {
     stored.clear();
     storeWorks = true;
   });
 
-  it('reads back the pair that was saved', async () => {
-    await saveJarvisServerServiceToken(SERVICE_TOKEN);
-
-    expect(await loadJarvisServerServiceToken()).toEqual({ kind: 'serviceToken', serviceToken: SERVICE_TOKEN });
+  it('opens the server’s own pairing page', () => {
+    expect(phonePairingUrl(ADDRESS)).toBe('https://jarvis.example.com/api/devices/pair');
   });
 
-  it('forgets it when saved as none, and has none on a phone never given one', async () => {
-    expect(await loadJarvisServerServiceToken()).toEqual({ kind: 'nothing' });
-
-    await saveJarvisServerServiceToken(SERVICE_TOKEN);
-    await saveJarvisServerServiceToken(undefined);
-
-    expect(await loadJarvisServerServiceToken()).toEqual({ kind: 'nothing' });
+  it('reads the token out of the link the pairing page opens the app with', () => {
+    expect(pairedTokenFromLink(`heyjarvis://paired#token=${TOKEN}`)).toBe(TOKEN);
+    expect(pairedTokenFromLink(`heyjarvis://paired#other=1&token=${TOKEN}`)).toBe(TOKEN);
   });
 
-  it('tells a store that cannot be read apart from one with no service token', async () => {
+  it('reads no token out of any other link, or one that is not a token', () => {
+    expect(pairedTokenFromLink(undefined)).toBeUndefined();
+    expect(pairedTokenFromLink(null)).toBeUndefined();
+    expect(pairedTokenFromLink('heyjarvis://assist')).toBeUndefined();
+    expect(pairedTokenFromLink(`heyjarvis://paired?token=${TOKEN}`)).toBeUndefined();
+    expect(pairedTokenFromLink(`https://evil.example/paired#token=${TOKEN}`)).toBeUndefined();
+    expect(pairedTokenFromLink('heyjarvis://paired#token=<script>')).toBeUndefined();
+    expect(pairedTokenFromLink('heyjarvis://paired#token')).toBeUndefined();
+  });
+
+  it('keeps the token, and forgets it', async () => {
+    await saveJarvisDeviceToken(TOKEN);
+    expect(await loadJarvisDeviceToken()).toEqual({ kind: 'token', token: TOKEN });
+
+    await saveJarvisDeviceToken(undefined);
+    expect(await loadJarvisDeviceToken()).toEqual({ kind: 'nothing' });
+  });
+
+  it('has no token on a phone never paired, and none for a stored value that is not one', async () => {
+    expect(await loadJarvisDeviceToken()).toEqual({ kind: 'nothing' });
+
+    stored.set('jarvis.device-token', 'not a token');
+    expect(await loadJarvisDeviceToken()).toEqual({ kind: 'nothing' });
+  });
+
+  it('tells a store that cannot be read apart from a phone never paired, so the read can be tried again', async () => {
+    // Folded into "never paired", one throw in a window still coming up would open sample mode.
+    await saveJarvisDeviceToken(TOKEN);
     storeWorks = false;
 
-    expect(await loadJarvisServerServiceToken()).toEqual({ kind: 'unreadable' });
-  });
-
-  it('never hands back a stored value that could not have been saved', async () => {
-    stored.set('jarvis.server-service-token', 'not json');
-    expect(await loadJarvisServerServiceToken()).toEqual({ kind: 'nothing' });
-
-    stored.set('jarvis.server-service-token', JSON.stringify({ clientId: 'no-suffix', clientSecret: 'x' }));
-    expect(await loadJarvisServerServiceToken()).toEqual({ kind: 'nothing' });
+    expect(await loadJarvisDeviceToken()).toEqual({ kind: 'unreadable' });
   });
 });

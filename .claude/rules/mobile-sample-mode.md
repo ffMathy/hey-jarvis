@@ -7,7 +7,7 @@ paths:
 
 > Part of [Mobile App](mobile.md). Paths in it are relative to `mobile/` unless they say otherwise.
 
-Before the app is set up there is nothing for the hologram to follow, so the settings screen offers **"No key yet? Try the hologram"**. It opens `sample-screen.tsx`: the same hologram, in a sheet, walking through what Jarvis does. While he is thinking, three pretend agents circle him as satellites, taking turns to call a tool, as a real request's would (`useAgentSatellites(undefined, true)`).
+Before the app is set up there is nothing for the hologram to follow, so the tour and the settings screen offer it (**"Not paired yet? Try the hologram on its own"** on the settings screen). It opens `sample-screen.tsx`: the same hologram, in a sheet, walking through what Jarvis does. While he is thinking, three pretend agents circle him as satellites, taking turns to call a tool, as a real request's would (`useAgentSatellites(undefined, true)`).
 
 The moods, their order and names, the simulated voice, the mood toast and the frame-rate readout are not this app's: they are `hologram`'s (`sample-mode.ts` and `sample-drive.ts` in the main entry, and `hologram/react/sample`), because the watch's waiting screen is a sample mode too. Only where they sit on the screen is decided here.
 

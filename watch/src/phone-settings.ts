@@ -1,14 +1,14 @@
-import type { ElevenLabsSettings } from 'hologram';
+import type { Pairing } from 'hologram';
 import { useEffect, useState } from 'react';
-import { askThePhoneForSettings, readPhoneSettings, whenSettingsArrive } from '../modules/jarvis-phone';
+import { askThePhoneForPairing, readPhonePairing, whenSettingsArrive } from '../modules/jarvis-phone';
 
 /** How often the watch asks again while it is sitting on the waiting screen. */
 const ASK_AGAIN_MS = 5000;
 
-/** What the watch knows about its credentials, and whether there is a phone answering. */
+/** What the watch knows about its pairing, and whether there is a phone answering. */
 export interface PhoneHandover {
-  /** The credentials, once there are any. */
-  settings: ElevenLabsSettings | undefined;
+  /** The phone's pairing with the Jarvis server, once it has handed it over. */
+  pairing: Pairing | undefined;
   /** False until the store has been read, so nothing is drawn on a guess. */
   isLoaded: boolean;
   /** Whether the last ask found a phone at all. The waiting screen says different things either way. */
@@ -16,19 +16,19 @@ export interface PhoneHandover {
 }
 
 /**
- * The credentials, and the asking that gets them.
+ * The phone's pairing with the Jarvis server, and the asking that gets it.
  *
- * **This is the watch's entire setup.** There is no form, no keyboard and no tour: an ElevenLabs
- * API key is fifty characters that begin `sk_`, and a watch is not where anybody should type one.
- * The phone already has it, the Data Layer exists to carry exactly this, and the two apps share
- * the package name and signing key that Play Services requires before it will — see
- * `.claude/rules/watch.md`.
+ * **This is the watch's entire setup.** There is no form, no keyboard and no tour: pairing signs
+ * in to Cloudflare Access in a browser, and a watch has none. The phone is paired already, the Data
+ * Layer exists to carry exactly this, and the two apps share the package name and signing key that
+ * Play Services requires before it will — see `.claude/rules/watch.md`. The watch shares the phone's
+ * pairing, so unpairing the phone on the server unpairs the watch too.
  *
  * Three things can happen, and the screen looks different for each:
  *
- * - **They are already here.** The store survives restarts, so a watch that has been given the key
+ * - **It is already here.** The store survives restarts, so a watch that has been given the pairing
  *   once never asks again; it opens straight into a conversation, phone or no phone.
- * - **The phone is open and answers.** The ask goes out, the phone sends them back, and
+ * - **The phone is open and answers.** The ask goes out, the phone sends it back, and
  *   `onSettingsArrived` lands while this is still on screen.
  * - **The phone is asleep, or Jarvis is not open on it.** Nothing comes back. The watch keeps
  *   asking every few seconds — a request with no payload, over a link that is already up — and the
@@ -39,34 +39,34 @@ export interface PhoneHandover {
  * the watch either of those things had happened.
  */
 export function usePhoneHandover(): PhoneHandover {
-  const [settings, setSettings] = useState<ElevenLabsSettings | undefined>(undefined);
+  const [pairing, setPairing] = useState<Pairing | undefined>(undefined);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isPhoneInRange, setIsPhoneInRange] = useState(false);
 
   // Read once, before anything is drawn. Synchronous on the native side, so this is only an effect
   // in order to keep it out of the render.
   useEffect(() => {
-    setSettings(readPhoneSettings());
+    setPairing(readPhonePairing());
     setIsLoaded(true);
   }, []);
 
-  // Then listen, for as long as there is nothing stored. A watch that already has the credentials
-  // is not waiting for anything, and a listener on a conversation screen would only be there to
-  // overwrite them mid-sentence.
+  // Then listen, for as long as there is nothing stored. A watch that already has the pairing is not
+  // waiting for anything; a new one the phone sends later lands in the store, and is read the next
+  // time the app starts.
   useEffect(() => {
-    if (settings) {
+    if (pairing) {
       return;
     }
-    return whenSettingsArrive(() => setSettings(readPhoneSettings()));
-  }, [settings]);
+    return whenSettingsArrive(() => setPairing(readPhonePairing()));
+  }, [pairing]);
 
   useEffect(() => {
-    if (!isLoaded || settings) {
+    if (!isLoaded || pairing) {
       return;
     }
     let wanted = true;
     const ask = () => {
-      void askThePhoneForSettings().then((asked) => {
+      void askThePhoneForPairing().then((asked) => {
         if (wanted) {
           setIsPhoneInRange(asked);
         }
@@ -78,7 +78,7 @@ export function usePhoneHandover(): PhoneHandover {
       wanted = false;
       clearInterval(again);
     };
-  }, [isLoaded, settings]);
+  }, [isLoaded, pairing]);
 
-  return { settings, isLoaded, isPhoneInRange };
+  return { pairing, isLoaded, isPhoneInRange };
 }

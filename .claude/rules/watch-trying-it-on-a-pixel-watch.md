@@ -13,9 +13,9 @@ paths:
 4. `adb install jarvis-watch-<commit>.apk`
 5. On the watch: **Settings → Apps → Default apps → Digital assistant app → Default digital assistant app → Jarvis**, and confirm.
 6. Hold the side button. Jarvis should come up and turn. With nothing handed over yet he is in sample mode — tap him to walk his moods — over the line **Open Jarvis on your phone**.
-7. Open Jarvis on the phone — with the phone app installed and set up. The watch asks for the credentials every few seconds while it is waiting, and the phone answers as soon as it hears one, so this should be all it takes. If it is not, the phone's watch card has a **Send the key to <watch>** button; hold the phone's conversation screen to reach the settings it is on.
+7. Open Jarvis on the phone — with the phone app installed and paired with your Jarvis server. The watch asks for the pairing every few seconds while it is waiting, and the phone answers as soon as it hears one — and sends it by itself whenever its own pairing is new — so this should be all it takes. If it is not, the phone's watch card has a **Send the pairing to <watch>** button; hold the phone's conversation screen to reach the settings it is on.
 8. The watch should stop waiting and open a conversation by itself. Talk to him.
 
-Once handed over, the credentials stay on the watch: step 7 is a one-off, and the watch works from then on with the phone out of range or switched off.
+Once handed over, the pairing stays on the watch: step 7 is a one-off, and the watch works from then on with the phone out of range or switched off.
 
 To put things back, choose Gemini again in the same place, and uninstall with `adb uninstall com.ffmathy.heyjarvis` — which, since the package name is shared, is also what removes the phone app if it is the phone that is connected, so check which device `adb devices` lists.

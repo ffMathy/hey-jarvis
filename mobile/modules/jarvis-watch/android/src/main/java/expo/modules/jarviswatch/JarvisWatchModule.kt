@@ -29,48 +29,29 @@ private const val JARVIS_ON_THE_WATCH = "jarvis_on_the_watch"
 /**
  * The two message paths the phone and the watch speak over, and the whole of their protocol.
  *
- * `SETTINGS_PATH` carries the credentials one way, phone to watch, as a JSON object with an
- * `apiKey` and an `agentId` in it, and a `serverAddress`, `serverClientId` and `serverClientSecret`
- * when the phone has them — where the watch opens its line to the Jarvis server, and the Cloudflare
- * Access service token it sends there. `ASK_PATH` carries nothing at all in the other direction: it is
- * the watch saying it has none and would like some.
+ * `PAIRING_PATH` carries the phone's pairing with the Jarvis server one way, phone to watch, as a
+ * JSON object with the server's `serverAddress` and the `deviceToken` the server gave the phone.
+ * The watch shares that pairing rather than having one of its own — it has no browser to sign in to
+ * Cloudflare Access with — so unpairing the phone on the server unpairs the watch too. `ASK_PATH`
+ * carries nothing at all in the other direction: it is the watch saying it has none and would like
+ * some.
  *
  * **A message and not a data item, and that is a security decision rather than a convenience
  * one.** `DataClient` would be easier — a `DataItem` replicates on its own and arrives whenever
  * the watch next comes into range, with no need for this app to be open — but it replicates *by
- * being stored*, in Play Services' own store on both devices, which is a live API key at rest in a
+ * being stored*, in Play Services' own store on both devices, which is a live token at rest in a
  * place neither app controls. A message is handed straight to the receiving app and kept nowhere.
  *
  * All four spellings — here, in TypeScript beside it, and the same pair on the watch — have to
  * agree, with no compiler between them. `watch-link.contract.spec.ts` reads all four and fails if
  * they drift.
  */
-private const val SETTINGS_PATH = "/jarvis/elevenlabs-settings"
+private const val PAIRING_PATH = "/jarvis/server-pairing"
 private const val ASK_PATH = "/jarvis/ask-for-credentials"
 
-/**
- * What the watch is sent. Read back by `PhoneSettingsStore` on the other side. An empty
- * `serverAddress`, or service token half, is none, and is left out rather than sent empty.
- */
-private fun settingsMessage(
-  apiKey: String,
-  agentId: String,
-  serverAddress: String,
-  serverClientId: String,
-  serverClientSecret: String,
-): ByteArray {
-  val message = JSONObject().put("apiKey", apiKey).put("agentId", agentId)
-  if (serverAddress.isNotEmpty()) {
-    message.put("serverAddress", serverAddress)
-  }
-  if (serverClientId.isNotEmpty()) {
-    message.put("serverClientId", serverClientId)
-  }
-  if (serverClientSecret.isNotEmpty()) {
-    message.put("serverClientSecret", serverClientSecret)
-  }
-  return message.toString().toByteArray()
-}
+/** What the watch is sent. Read back by `PhoneSettingsStore` on the other side. */
+private fun pairingMessage(serverAddress: String, deviceToken: String): ByteArray =
+  JSONObject().put("serverAddress", serverAddress).put("deviceToken", deviceToken).toString().toByteArray()
 
 /**
  * What the phone can learn about, and do to, the watch beside it.
@@ -98,21 +79,15 @@ class JarvisWatchModule : Module() {
       openJarvisOnTheWatch(context(), promise)
     }
 
-    AsyncFunction("sendSettingsToTheWatch") {
-        apiKey: String,
-        agentId: String,
-        serverAddress: String,
-        serverClientId: String,
-        serverClientSecret: String,
-        promise: Promise ->
-      sendSettingsToTheWatch(context(), apiKey, agentId, serverAddress, serverClientId, serverClientSecret, promise)
+    AsyncFunction("sendPairingToTheWatch") { serverAddress: String, deviceToken: String, promise: Promise ->
+      sendPairingToTheWatch(context(), serverAddress, deviceToken, promise)
     }
 
     Events(WATCH_ASKED)
 
     // Listening only while the JavaScript side is, which is the whole of the phone's half of the
     // handover: the watch can ask at any time, but only an app that is running can answer, because
-    // the credentials are behind the keystore in JavaScript's hands and not in this module's.
+    // the pairing is behind the keystore in JavaScript's hands and not in this module's.
     OnStartObserving {
       listenForAsking(context())
     }
@@ -122,7 +97,7 @@ class JarvisWatchModule : Module() {
     }
   }
 
-  /** Forwards the watch's request up to JavaScript, which has the credentials this module does not. */
+  /** Forwards the watch's request up to JavaScript, which has the pairing this module does not. */
   private val asking = MessageClient.OnMessageReceivedListener { event: MessageEvent ->
     if (event.path == ASK_PATH) {
       sendEvent(WATCH_ASKED)
@@ -146,22 +121,14 @@ class JarvisWatchModule : Module() {
 }
 
 /**
- * Hands the credentials to the watch, if there is a watch with Jarvis on it to hand them to.
+ * Hands the pairing to the watch, if there is a watch with Jarvis on it to hand it to.
  *
  * The **capability** rather than the connected nodes, unlike `findWatch`'s first question: a watch
  * without the app installed has nothing listening on the path, and a message sent into that is
  * accepted by Play Services and then dropped, which would look to the user exactly like a
  * successful handover.
  */
-private fun sendSettingsToTheWatch(
-  context: Context,
-  apiKey: String,
-  agentId: String,
-  serverAddress: String,
-  serverClientId: String,
-  serverClientSecret: String,
-  promise: Promise,
-) {
+private fun sendPairingToTheWatch(context: Context, serverAddress: String, deviceToken: String, promise: Promise) {
   Wearable.getCapabilityClient(context)
     .getCapability(JARVIS_ON_THE_WATCH, CapabilityClient.FILTER_REACHABLE)
     .addOnSuccessListener { capability ->
@@ -171,10 +138,10 @@ private fun sendSettingsToTheWatch(
         return@addOnSuccessListener
       }
       Wearable.getMessageClient(context)
-        .sendMessage(watch.id, SETTINGS_PATH, settingsMessage(apiKey, agentId, serverAddress, serverClientId, serverClientSecret))
+        .sendMessage(watch.id, PAIRING_PATH, pairingMessage(serverAddress, deviceToken))
         .addOnSuccessListener { promise.resolve(true) }
         .addOnFailureListener { error ->
-          promise.reject("COULD_NOT_SEND", error.message ?: "The watch would not take the credentials.", error)
+          promise.reject("COULD_NOT_SEND", error.message ?: "The watch would not take the pairing.", error)
         }
     }
     .addOnFailureListener { error ->

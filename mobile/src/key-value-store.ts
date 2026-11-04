@@ -4,11 +4,11 @@ import type { ReadStoredValue, WriteStoredValue } from './platform-contracts';
 /**
  * Storage on a phone: the Android keystore, by way of `expo-secure-store`.
  *
- * What is kept here is an ElevenLabs API key — an account credential, not a
- * session — so it belongs behind the keystore rather than in ordinary app
- * storage. `elevenlabs-settings.ts` says why it should also be a key made for this
- * app alone, and .claude/rules/mobile.md what the keystore does and does not protect it
- * from.
+ * What is kept here is the device token the Jarvis server paired this phone
+ * with — a credential that lasts until the phone is unpaired, not a session — so
+ * it belongs behind the keystore rather than in ordinary app storage.
+ * .claude/rules/mobile-configuration.md says what the keystore does and does not
+ * protect it from.
  *
  * The web build takes `key-value-store.web.ts` instead, which is a real
  * difference in kind and not just in API. See the note there.

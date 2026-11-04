@@ -7,20 +7,57 @@ paths:
 
 > Part of [Mobile App](mobile.md). Paths in it are relative to `mobile/` unless they say otherwise.
 
-The app ships with no credential. It talks to ElevenLabs directly, and both ElevenLabs settings are typed into the tour's credentials step on first run — or into the settings screen afterwards — and kept in the Android keystore, or on web in `localStorage`. The Jarvis server's address and its service token are optional, asked for below them on the tour's credentials step and on the settings screen, and kept the same way:
+The app ships with no credential, and is told only one thing: **which Jarvis server is sir's, and
+it is paired with it.** Pairing is the only way to set Jarvis up, on every app. The server holds the
+ElevenLabs key and the agent, starts every conversation on the device's behalf, and gives the device
+a token of its own; no app holds an ElevenLabs API key, an agent ID or a Cloudflare Access service
+token any more. It is asked for on the tour's server step on first run — or on the settings screen
+afterwards — and kept in the Android keystore, or on web in `localStorage`:
 
 | Setting | What it is |
 | --- | --- |
-| API key | An ElevenLabs API key, sent as `xi-api-key` to ElevenLabs and nowhere else |
-| Agent ID | The Jarvis agent — the value of `HEY_JARVIS_ELEVENLABS_AGENT_ID` |
-| Jarvis server | Optional, and no secret. The public `https` address of sir's own Jarvis server — the MCP server's tunnel hostname — as an origin, with no path. The phone sends it the current conversation's id, to open a slot, and photos, and holds its WebSocket line open (`/api/live`). Empty hides the camera button and opens no line |
-| Cloudflare Access service token | Optional, and a credential. The Client ID and Client Secret of a service token (Zero Trust → Access → Service Auth) that a Service Auth policy on the server's Access application allows (`parseJarvisServerServiceToken` in `hologram`: both or neither, no whitespace, a Client ID ending in `.access`). Kept as one JSON value under `jarvis.server-service-token`. Sent on the line's upgrade request as `CF-Access-Client-Id` and `CF-Access-Client-Secret`. A service token rather than a sign-in's JWT, which the phone took until it was found to last only the Access session (a day by default): a service token lasts until revoked. Only on a device: a browser cannot set a header on a WebSocket, so the web build connects without it |
+| Jarvis server | No secret. The public `https` address of sir's own Jarvis server — the MCP server's tunnel hostname — as an origin, with no path. Kept under `hologram`'s `jarvis.server-address` |
+| Device token | A credential, and never typed: what the server answers a pairing with — 256 random bits in base64url, read by `parseStoredDeviceToken` in `hologram`. Kept under `hologram`'s `jarvis.device-token`. Sent as `Authorization: Bearer …` with every conversation request, and in the hello of the line, which opens on `/api/paired/live` |
 
-The two ElevenLabs values are also what the **watch** needs, and it is given them from here rather than asked for them: see [Handing the credentials to the watch](mobile-handing-the-credentials-to-the-watch.md#handing-the-credentials-to-the-watch). `conversation-token.ts` and `elevenlabs-settings.ts` live in `hologram/` for the same reason — both devices use them, so neither owns them. The Jarvis server's address and token are kept apart from `ElevenLabsSettings` (`jarvis-server.ts`, each under its own storage key), and handed to the watch beside them, so it holds the same line.
+**How each app pairs.** The server's side is "Pairing a device" in
+`.claude/rules/mcp-mcp-server-access.md`. Pairing is the one request that has to prove who is
+asking, through Cloudflare Access, and how it does differs by platform (`pair-with-server.ts` against
+`pair-with-server.web.ts`, behind `PairWithServer` in `platform-contracts.ts`):
 
-For each conversation the app asks `GET https://api.elevenlabs.io/v1/convai/conversation/token` for a WebRTC token for that agent, and the session runs on the token; the key itself is used for nothing else.
+- **The phone app opens the server's pairing page in the browser.** A native app holds no Access
+  cookie, so **Pair this phone with your server** (`server-pairing.tsx`) keeps the typed address
+  first and then opens `<server>/api/devices/pair` (`phonePairingUrl` in `jarvis-server.ts`) with
+  `Linking.openURL`. Access signs sir in there as it does any page; the page's button pairs the phone
+  as "Android phone" and sends the browser on to `heyjarvis://paired#token=…`, the app's own scheme.
+  The app reads the token out of that link (`pairedTokenFromLink`, by hand, since React Native's
+  `URL` and `URLSearchParams` cannot read one) in `use-pairing.ts` and keeps it beside the address
+  it opened the page for — which is why the address is kept before the page is opened: the link names
+  no server, and the app may be stopped while the browser is up. `server-pairing.contract.spec.ts`
+  holds the page's path, the link and the scheme to the server's `PHONE_PAIRING_ROUTE` and
+  `PHONE_APP_PAIRED_URL` and to `app.config.ts`.
+- **The web build pairs itself** — see [Web](mobile-web.md).
 
-**Except for a text-only conversation, which asks `GET /v1/convai/conversation/get-signed-url` instead and runs on a WebSocket.** That is the one case where the transport cannot be WebRTC: a text-only session publishes no audio, ElevenLabs' room waits for the client to publish some before it finishes coming up, and a conversation token can only be spent on a room. Dialled over WebRTC it therefore never connected *and never failed* — the screen sat on "Connecting…" indefinitely, which is what a browser with the microphone switched off used to show. Only a browser ever takes this branch: a phone with no microphone says so and stops, and `@elevenlabs/react-native` refuses a signed URL on a device outright.
+**A pairing is with one server.** Pairing with another address forgets the token there was, and
+**Forget this server** on the settings screen forgets both — and the app is then not set up, so it
+opens on the settings screen with sample mode on offer. **The watch shares the phone's pairing** (see
+[Handing the credentials to the watch](mobile-handing-the-credentials-to-the-watch.md#handing-the-credentials-to-the-watch)),
+so unpairing the phone on the server unpairs the watch too.
+
+**No pairing, no conversation.** `conversation-credentials.ts` asks the paired server for every
+conversation (`pairedCredentials` in `hologram`), and without both an address and a token there is
+nothing to ask: the app is not set up, exactly as it was without ElevenLabs settings before. For each
+conversation the server is sent `POST <server>/api/paired/conversation` with
+`{"transport": "webrtc", "participantName": "jarvis-android"}`, asks ElevenLabs for a WebRTC token
+for Jarvis's agent with its own key, and hands it back; the session runs on the token. The line, the
+glance and the camera use the same server, and are there only once the app is paired.
+
+**A read of the pairing that fails is tried again**, rather than taken for none (`read-again.ts`):
+a summoned Jarvis whose keystore throws once in a window still coming up would otherwise open sample
+mode with the pairing in the keystore the whole time. Both halves are read again on every summoning
+after the first (`use-pairing.ts`), since the assistant's window keeps its own copy of what it read
+and the pairing is as often made in the app's own window — the one the pairing link opens.
+
+**Except for a text-only conversation, which asks the server for a signed URL instead (`"transport": "websocket"`, which it asks of ElevenLabs' `get-signed-url`) and runs on a WebSocket.** That is the one case where the transport cannot be WebRTC: a text-only session publishes no audio, ElevenLabs' room waits for the client to publish some before it finishes coming up, and a conversation token can only be spent on a room. Dialled over WebRTC it therefore never connected *and never failed* — the screen sat on "Connecting…" indefinitely, which is what a browser with the microphone switched off used to show. Only a browser ever takes this branch: a phone with no microphone says so and stops, and `@elevenlabs/react-native` refuses a signed URL on a device outright.
 
 **That branch was write-only until it learned to show his answer.** A text-only session returns the reply as an `agent_response` over the socket and never as audio, and nothing in the app rendered it — no transcript, no `onMessage`, nothing. So a browser with the microphone refused could send a line, get an answer, and display absolutely nothing: a silent sphere and an empty screen, indistinguishable from a conversation that had failed. `hologram/src/written-reply.ts` keeps the last thing he said — the last, not a transcript, and cleared the moment you send again so a stale answer never sits under a fresh question — and `written-reply-line.tsx` puts it above the field. It is the only screen in the app with something to read on it, because it is the only one with nothing to listen to.
 
@@ -32,19 +69,23 @@ Only ever here. `readingAloud` is set from `onMessage`, which is wired on the te
 
 **It also needs the agent's permission.** A typed conversation is asked for by sending the `text_only` override, and overrides are an allow-list: send one the agent does not permit and the server closes the conversation rather than ignoring it. So the session connects, drops immediately, and — because the SDK reports a server-side close through `onDisconnect` and *not* through `onError` — used to say nothing at all: Jarvis faded out because a conversation really had ended, and no line explained why. The screen listens for the ending now, and `platformSettings.overrides.conversationConfigOverride.conversation.textOnly` is on in `elevenlabs/src/assets/agent-config.json`, which reaches the agent only once that project is deployed.
 
-`conversation-token.ts` turns each failure into what to fix — a rejected key, a key without permission to start conversations (which ElevenLabs can also answer with 401), an agent ID the account does not have or a malformed one (400), an account out of credits (402), rate limiting (429) — by reading only ElevenLabs' fixed `detail.status` / `detail.code` identifiers. It never repeats anything else from a response, since a message can echo the request that carried the key.
+**What a failure says is the server's.** Its refusals are written for sir (`refusalMessage` in
+`hologram`'s `paired-device.ts`): a `401` is that this device is no longer paired, and to pair it
+again; a server with no ElevenLabs key, or one ElevenLabs refused, says so in its own words; a
+server that could not be reached says that. ElevenLabs' own answers never reach the phone — the
+server reads only the credential out of them — so nothing a response says can echo a key.
 
-This used to go through the MCP server, which held the key and handed the phone tokens behind a shared secret. It was changed so the app needs nothing but ElevenLabs to talk to Jarvis: no server address and no tunnel to reach. That is still so. Photos add one optional address, typed in by sir and used for nothing but photos (see "Showing him something"); without it, the app is exactly what it was.
+This used to be the other way round: the phone talked to ElevenLabs directly with a key typed into
+it, and the Jarvis server was an optional address for photos, with a Cloudflare Access service
+token pasted beside it for the line. Both are gone. A key on the phone was a live account credential
+on every device, and a service token was one more thing to paste; a pairing is one sign-in, and a
+token the server can revoke for one device.
 
-**Photos bring back one server address, and no secret.** The Jarvis server's address is the one thing on the phone that is sir's server's rather than ElevenLabs': optional, so a phone without it talks to Jarvis exactly as before and simply has no camera; kept apart from the ElevenLabs settings and never handed to the watch; and only ever sent a conversation's id, to open a slot, and a photo — never an ElevenLabs credential. It asks the phone for no secret, because the server opens a slot only for a conversation ElevenLabs confirms is live on Jarvis's agent, and the slot's unguessable token, which comes straight back to the phone, is all the upload needs. Parsed by `parseJarvisServerAddress` in `jarvis-server.ts`, with a regular expression since React Native's `URL` cannot read one: an origin only — `https://host` or `https://host:port`, a bare host taken to mean `https`, a trailing slash forgiven — and no path, query, fragment or user name, because the phone puts the server's own paths after it and uses no other. `http` only for `localhost` and `127.0.0.1`: the app allows no cleartext traffic on a phone, and a browser build tried against a server running beside it is the one place it is needed. The web build is served from GitHub Pages, on another origin from the server, so the server's photo routes answer any origin, with `Content-Type` as the only header a preflight has to allow.
-
-The ElevenLabs API key is a real credential on the phone, so give the app **its own key**, restricted to what a conversation needs where the account allows it — then a lost phone is one revoked key, not every integration on the account.
-
-What the keystore does and does not do for that key:
+The device token is a real credential on the phone. What the keystore does and does not do for it:
 
 - **It keeps it from other apps.** `expo-secure-store` encrypts the entry with a key held in the Android Keystore, which only this app's user ID can use.
-- **It keeps it out of backups.** The `expo-secure-store` config plugin in `app.config.ts` adds backup and data-extraction rules that leave its storage out of Google's cloud backup and device-to-device transfer. (After a restore the entry would not decrypt anyway, since the keystore key never leaves the phone; the app then simply opens on the settings screen.)
-- **It does not protect it from an update of this app — and the side-loaded APK makes that easy.** Anything installed as an update of `com.ffmathy.heyjarvis` runs as the same app and can read the key. Android only accepts an update signed with the same key, but the APK the Mobile APK workflow builds is signed with the Expo template's public debug key (see "Getting an APK onto a phone"), so *any* APK signed with that key qualifies — including the workflow's own builds of pull requests. Never install a pull request's APK over an install that holds your real key. Closing this properly means signing with a private release key kept in a CI secret that pull request builds cannot reach.
-- **It is not autofill's.** Every settings field opts out of autofill and password managers, so saving them does not copy the key into a synced vault.
+- **It keeps it out of backups.** The `expo-secure-store` config plugin in `app.config.ts` adds backup and data-extraction rules that leave its storage out of Google's cloud backup and device-to-device transfer. (After a restore the entry would not decrypt anyway, since the keystore key never leaves the phone; the app then simply opens on the settings screen, to be paired again.)
+- **It does not protect it from an update of this app — and the side-loaded APK makes that easy.** Anything installed as an update of `com.ffmathy.heyjarvis` runs as the same app and can read the token. Android only accepts an update signed with the same key, but the APK the Mobile APK workflow builds is signed with the Expo template's public debug key (see "Getting an APK onto a phone"), so *any* APK signed with that key qualifies — including the workflow's own builds of pull requests. Never install a pull request's APK over an install paired with your real server; if you did, unpair the phone on the server. Closing this properly means signing with a private release key kept in a CI secret that pull request builds cannot reach.
+- **It is not autofill's.** The server field opts out of autofill and password managers.
 
-Reading the key can also fail outright — a keystore key invalidated by an OS update, say — and that reads as "nothing stored": the app opens on the settings screen rather than hanging on its loading spinner.
+Reading it can also fail outright — a keystore key invalidated by an OS update, say — and once the retries are spent that reads as "not paired": the app opens on the settings screen rather than hanging on its loading spinner.

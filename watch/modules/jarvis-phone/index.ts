@@ -1,17 +1,10 @@
 import { requireOptionalNativeModule } from 'expo';
-import type { ElevenLabsSettings, JarvisServerServiceToken } from 'hologram';
-import { parseElevenLabsSettings, parseJarvisServerAddress, parseJarvisServerServiceToken } from 'hologram';
+import { type Pairing, parseJarvisServerAddress, parseStoredDeviceToken } from 'hologram';
 
 /** What the native side stores, which is the JSON the phone sent with nothing added. */
 interface StoredSettings {
-  apiKey: string;
-  agentId: string;
-  /** Only when the phone had one. */
-  serverAddress?: string;
-  /** Only when the phone had a service token. */
-  serverClientId?: string;
-  /** Only when the phone had a service token. */
-  serverClientSecret?: string;
+  serverAddress: string;
+  deviceToken: string;
 }
 
 interface JarvisPhoneNativeModule {
@@ -31,41 +24,24 @@ interface JarvisPhoneNativeModule {
 const nativeModule = requireOptionalNativeModule<JarvisPhoneNativeModule>('JarvisPhone');
 
 /**
- * The credentials the phone has handed over, if it has.
+ * The phone's pairing with the Jarvis server, if it has handed it over: where the server is, and
+ * the token the server gave the phone, which the watch asks for its conversations and opens its
+ * line with.
  *
- * Validated on the way out rather than trusted, with the same rules the phone's own settings
- * screen applies — `parseElevenLabsSettings` is the one place those live. The values have crossed
- * a device boundary since they were typed, and a watch that reads back a key with a newline in it
- * should fail here, where the screen can say so, rather than at ElevenLabs.
+ * Validated on the way out rather than trusted, with the rules the phone checked them with —
+ * `parseJarvisServerAddress` and `parseStoredDeviceToken` in `hologram`. The values have crossed a
+ * device boundary since the phone was paired, and a watch that reads back something that is not an
+ * address or a token should wait for the phone again here, rather than fail at the server.
  */
-export function readPhoneSettings(): ElevenLabsSettings | undefined {
+export function readPhonePairing(): Pairing | undefined {
   const stored = readStoredSettings();
   if (!stored) {
     return undefined;
   }
-  const parsed = parseElevenLabsSettings(stored.apiKey, stored.agentId);
-  return 'problem' in parsed ? undefined : parsed.settings;
-}
-
-/**
- * The Jarvis server's address the phone handed over with the credentials, if it had one: where the
- * watch opens its line to the server during a conversation. Checked by the rules the phone checked
- * it with, for the same reason the credentials are.
- */
-export function readPhoneServerAddress(): string | undefined {
-  const parsed = parseJarvisServerAddress(readStoredSettings()?.serverAddress ?? '');
-  return 'address' in parsed ? parsed.address : undefined;
-}
-
-/**
- * The service token the phone handed over beside the server's address, if it had one: the
- * Cloudflare Access Client ID and Client Secret the Zero Trust application in front of the server
- * accepts. Checked by the rules the phone checked it with.
- */
-export function readPhoneServerServiceToken(): JarvisServerServiceToken | undefined {
-  const stored = readStoredSettings();
-  const parsed = parseJarvisServerServiceToken(stored?.serverClientId ?? '', stored?.serverClientSecret ?? '');
-  return 'serviceToken' in parsed ? parsed.serviceToken : undefined;
+  const parsed = parseJarvisServerAddress(stored.serverAddress);
+  const address = 'address' in parsed ? parsed.address : undefined;
+  const deviceToken = parseStoredDeviceToken(stored.deviceToken);
+  return address === undefined || deviceToken === undefined ? undefined : { address, deviceToken };
 }
 
 /** What the native side has stored, or `null` for nothing at all. */
@@ -81,14 +57,14 @@ function readStoredSettings(): StoredSettings | null {
 }
 
 /**
- * Asks the phone to send them, and says whether there was a phone to ask.
+ * Asks the phone to send its pairing, and says whether there was a phone to ask.
  *
  * False means no phone in range, which on a watch is an ordinary state rather than a failure. True
  * means the request left — not that it was answered: the answer arrives on the other path and
  * shows up through {@link whenSettingsArrive}, if this app is still running, or in the store the
  * next time it opens if it is not.
  */
-export async function askThePhoneForSettings(): Promise<boolean> {
+export async function askThePhoneForPairing(): Promise<boolean> {
   if (!nativeModule) {
     return false;
   }
@@ -118,7 +94,7 @@ export async function askThePhoneToAnswer(timeoutMs: number): Promise<boolean> {
   }
 }
 
-/** Calls back when credentials land, so a waiting screen can stop waiting. */
+/** Calls back when the pairing lands, so a waiting screen can stop waiting. */
 export function whenSettingsArrive(arrived: () => void): () => void {
   const subscription = nativeModule?.addListener('onSettingsArrived', arrived);
   return () => subscription?.remove();
@@ -133,12 +109,12 @@ export function whenThePhoneMirrors(received: (frame: number[]) => void): () => 
   return () => subscription?.remove();
 }
 
-/** Forgets them. For a watch being handed on, and for the only way out of a rejected key. */
+/** Forgets the pairing. For a watch being handed on. */
 export function forgetPhoneSettings(): void {
   try {
     nativeModule?.forgetSettings();
   } catch {
-    // Nothing to be done and nothing worth interrupting anybody for: credentials that cannot be
-    // cleared are credentials that also cannot be read, which is the same as having none.
+    // Nothing to be done and nothing worth interrupting anybody for: a pairing that cannot be
+    // cleared is one that also cannot be read, which is the same as having none.
   }
 }
