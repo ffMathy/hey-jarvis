@@ -1,11 +1,17 @@
-import { type ConversationCredentials, elevenLabsCredentials, type ServerLink } from 'hologram';
-import { pairedCredentials } from '../conversation/paired-credentials';
+import {
+  type ConversationCredentials,
+  elevenLabsCredentials,
+  pairedCredentials,
+  pairWithServer,
+  type ServerLink,
+  serverSignInUrl,
+} from 'hologram';
 import type { JarvisDebugState } from '../debug-hook';
 import type { MicrophoneGate } from './microphone';
-import { loadPairing, pairWithServer, savePairing } from './pairing';
+import { HEADSET_DEVICE_NAME, loadPairing, savePairing } from './pairing';
 import { type PreparationTask, runPreparation } from './preparation';
 import { canOpenWithoutAgent, microphoneHelp, type PageFacts, primaryButton } from './prerequisites';
-import { serverSignInUrl, showServerStatus } from './server-status';
+import { showServerStatus } from './server-status';
 import { checkSettings, type KeyValueStorage, loadServerAddress, loadSettings, saveSettings } from './settings';
 import { loadVoiceFromWhereHeStands, saveVoiceFromWhereHeStands } from './voice-setting';
 
@@ -290,7 +296,7 @@ export function startPage(document: Document, dependencies: PageDependencies): v
     pairingSignIn.hidden = true;
     pairButton.disabled = true;
     pairButton.textContent = 'Pairing with your server…';
-    const result = await pairWithServer(serverAddressField.value, dependencies.fetch);
+    const result = await pairWithServer(serverAddressField.value, HEADSET_DEVICE_NAME, dependencies.fetch);
     pairButton.disabled = false;
     pairButton.textContent = 'Pair this headset';
     if ('problem' in result) {

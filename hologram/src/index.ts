@@ -40,6 +40,7 @@ export * from './jarvis-server-link';
 export * from './jarvis-session';
 export * from './microphone-presence';
 export * from './mirrored-sphere';
+export * from './paired-device';
 export * from './played-voice';
 export * from './queued-audio';
 export * from './sample-drive';

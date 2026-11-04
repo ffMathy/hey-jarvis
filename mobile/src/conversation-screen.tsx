@@ -1,7 +1,7 @@
 import * as Linking from 'expo-linking';
 import {
   afterStatus,
-  type ElevenLabsSettings,
+  type ConversationCredentials,
   isLive,
   MICROPHONE_PROBLEM,
   NOT_YET_OPEN,
@@ -33,7 +33,8 @@ import { useWatchMirror } from './use-watch-mirror';
 import { WrittenReplyLine } from './written-reply-line';
 
 interface ConversationScreenProps {
-  settings: ElevenLabsSettings;
+  /** Where each conversation's token comes from: a key this phone holds, or the paired server. */
+  credentials: ConversationCredentials;
   /**
    * Sir's Jarvis server, where a photo is sent, or `undefined` when he has not given this phone one —
    * in which case there is no camera here at all. See `jarvis-server.ts`.
@@ -247,7 +248,7 @@ function useLeaving(ended: boolean, inSheet: boolean) {
  * screen is the assistant, with nothing on it but him.
  */
 export function ConversationScreen({
-  settings,
+  credentials,
   serverAddress,
   onEditSettings,
   inSheet = false,
@@ -303,7 +304,7 @@ export function ConversationScreen({
    * camera is not among them: it only speaks into the conversation, below.
    */
   const conversation = useJarvisSession({
-    settings,
+    credentials,
     participantName: PHONE_PARTICIPANT_NAME,
     findRoom: roomOfConversation,
     followAgentVoice: followJarvisVoice,

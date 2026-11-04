@@ -17,6 +17,8 @@ export function useJarvisServer(
   address: string | undefined,
   serviceToken: JarvisServerServiceToken | undefined,
   device: JarvisDevice,
+  /** The token the browser was paired with, when it is (`paired-device.ts`): the line then needs no Access. */
+  deviceToken?: string,
 ): ServerLink | undefined {
   const [line, setLine] = useState<ServerLink | undefined>(undefined);
   const clientId = serviceToken?.clientId;
@@ -26,12 +28,13 @@ export function useJarvisServer(
       address,
       serviceToken: clientId !== undefined && clientSecret !== undefined ? { clientId, clientSecret } : undefined,
       device,
+      deviceToken,
     });
     setLine(link);
     return () => {
       setLine(undefined);
       link.close();
     };
-  }, [address, clientId, clientSecret, device]);
+  }, [address, clientId, clientSecret, device, deviceToken]);
   return line;
 }

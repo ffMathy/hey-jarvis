@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { type ServerStatusElements, serverSignInUrl, serverStatusText, showServerStatus } from './server-status';
+import { serverSignInUrl } from 'hologram';
+import { type ServerStatusElements, serverStatusText, showServerStatus } from './server-status';
 
 /** Stand-ins for the page's elements: only the properties the status writes. */
 function fakeElements(): ServerStatusElements {

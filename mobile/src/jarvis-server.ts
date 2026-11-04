@@ -1,9 +1,11 @@
 import {
+  JARVIS_DEVICE_TOKEN_STORAGE_KEY,
   JARVIS_SERVER_ADDRESS_STORAGE_KEY,
   JARVIS_SERVER_SERVICE_TOKEN_STORAGE_KEY,
   type JarvisServerServiceToken,
   parseJarvisServerAddress,
   parseJarvisServerServiceToken,
+  parseStoredDeviceToken,
 } from 'hologram';
 import { readStoredValue, writeStoredValue } from './key-value-store';
 
@@ -132,4 +134,22 @@ export async function saveJarvisServerServiceToken(serviceToken: JarvisServerSer
     JARVIS_SERVER_SERVICE_TOKEN_STORAGE_KEY,
     serviceToken === undefined ? '' : JSON.stringify(serviceToken),
   );
+}
+
+/**
+ * Reads the token this browser was paired with (`paired-device.ts` in `hologram`), if it was: kept
+ * under `hologram`'s key, so a browser paired on the headset's page, on the same origin, is paired
+ * here too. Only the web build pairs; on a device nothing is ever kept under it.
+ */
+export async function loadJarvisDeviceToken(): Promise<string | undefined> {
+  try {
+    return parseStoredDeviceToken(await readStoredValue(JARVIS_DEVICE_TOKEN_STORAGE_KEY));
+  } catch {
+    return undefined;
+  }
+}
+
+/** Keeps the token, or forgets it — when the server it was paired with is changed or cleared. */
+export async function saveJarvisDeviceToken(token: string | undefined): Promise<void> {
+  await writeStoredValue(JARVIS_DEVICE_TOKEN_STORAGE_KEY, token ?? '');
 }

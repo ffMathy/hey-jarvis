@@ -24,8 +24,8 @@ them: the key, getting ready, **Allow the microphone**, **Enter your room**.
   room's code — with one progress bar weighted by what each fetches.
   A failure offers to try again, retrying only what failed.
 - **A paired server comes first.** `conversationCredentials` in `page/page.ts`
-  hands the room the paired server's credentials (`page/pairing.ts`,
-  `conversation/paired-credentials.ts`) when there is a pairing, and otherwise
+  hands the room the paired server's credentials (`page/pairing.ts`, and
+  `hologram`'s `paired-device.ts`) when there is a pairing, and otherwise
   the saved key's. Pairing with a server at an address the page did not load with
   reloads the page, since its line to the server was opened at load.
 - **Settings are the phone's,** under hologram's `ELEVENLABS_SETTINGS_STORAGE_KEY`,

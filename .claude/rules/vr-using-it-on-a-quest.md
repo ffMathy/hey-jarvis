@@ -12,17 +12,20 @@ and 3S are the target; Quest 2 and Pro work, without the room scan.
 
 1. **Your Jarvis server, or an ElevenLabs key.** Either is set up once, and
    the page offers both until one is:
-   - **Pair this headset** with your Jarvis server (`page/pairing.ts`): type its
+   - **Pair this headset** with your Jarvis server (`hologram`'s `paired-device.ts`,
+     kept by `page/pairing.ts`): type its
      address, press Pair. If Cloudflare Access is in front of it and the browser
      has not signed in yet, the page says so and links to the sign-in; sign in,
      press Pair again. From then on the server starts every conversation
-     (`conversation/paired-credentials.ts`), no ElevenLabs key is typed or kept
+     (`pairedCredentials`), no ElevenLabs key is typed or kept
      here, and Access's sign-in is never needed again — not for a conversation,
      and not for the line to the server either, which a paired headset opens on
      `/api/paired/live` with its token (so the page offers no sign-in for it).
      Pairing reloads the page, to open that line. The
      address is kept where the phone's web build keeps it, and the device token
-     under `jarvis.headset-device-token`. A headset unpaired on the server says
+     under `jarvis.device-token` — the keys the phone's web build keeps its
+     pairing under, on the same origin, so a browser paired on either page is
+     paired on both. A headset unpaired on the server says
      so in the room, and is paired again from the page. See "Pairing a device" in
      `.claude/rules/mcp-mcp-server-access.md` for the server's side, and the Access
      bypass `/api/paired/*` needs.

@@ -1,8 +1,8 @@
-import { type ElevenLabsSettings, isLive, WATCH_PARTICIPANT_NAME } from 'hologram';
+import { type ElevenLabsSettings, elevenLabsCredentials, isLive, WATCH_PARTICIPANT_NAME } from 'hologram';
 import { useJarvisSession } from 'hologram/conversation';
 import { JarvisHologram } from 'hologram/react';
 import { useIsForeground } from 'hologram/react/lifecycle';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BackHandler, StyleSheet, Text, View } from 'react-native';
 import { type FastNetwork, holdFastNetwork, releaseFastNetwork } from '../modules/jarvis-network';
 import { askThePhoneToAnswer } from '../modules/jarvis-phone';
@@ -95,6 +95,7 @@ const NO_ANSWER_PROBLEM = 'Jarvis did not answer. ElevenLabs may be unreachable.
  * until one of those reasons changes would be rude to them and useless to whoever is looking.
  */
 export function ConversationScreen({ settings }: ConversationScreenProps) {
+  const credentials = useMemo(() => elevenLabsCredentials(settings), [settings]);
   const isForeground = useIsForeground();
   const [problem, setProblem] = useState<string | undefined>(undefined);
   /** Whether the phone took this summoning, in its earbuds, so the watch holds no conversation. */
@@ -104,7 +105,7 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
   const network = useRef<FastNetwork>('none');
 
   const conversation = useJarvisSession({
-    settings,
+    credentials,
     participantName: WATCH_PARTICIPANT_NAME,
     // Every problem is the line over him: there is no toast on a watch, and no window to outlive.
     onProblem: (message: string) => setProblem(message),

@@ -58,9 +58,11 @@ phone, good for five minutes and one photo, and claimed before a byte of the bod
 [Vision Vertical](mcp-vision-vertical.md#vision-vertical)). Nothing else under `/api` is reachable without Access, but `/api/live` and `/api/paired/*`.
 
 **Pairing a device** (`verticals/api/paired-devices.ts`, table `paired_devices` in
-`storage/paired-devices.ts`). The Quest headset can be paired with this server instead of holding an
-ElevenLabs key: the server keeps the key and mints each conversation's credential for it, and the
-headset keeps a token of the server's own.
+`storage/paired-devices.ts`). A browser — the Quest headset's page, or the phone app's web build —
+can be paired with this server instead of holding an ElevenLabs key: the server keeps the key and
+mints each conversation's credential for it, and the browser keeps a token of the server's own
+(`hologram`'s `paired-device.ts` is the client side of all of it). Both pages are on GitHub Pages,
+one of `WEB_APP_ORIGINS`.
 
 - **`POST /api/devices` stays behind Access.** The headset's page sends it as a simple request —
   plain text (the device's name), no headers of its own, `credentials: 'include'` — so it has no
