@@ -10,7 +10,8 @@
  * `summoning-screenshot.ts` against `summoning-screenshot.web.ts`, and a glance's
  * page — `glance-view.tsx`, a WebView, against `glance-view.web.tsx`, an `<iframe>`
  * — with the question asked before one of its actions runs,
- * `confirm-glance-action.ts` against `confirm-glance-action.web.ts`.
+ * `confirm-glance-action.ts` against `confirm-glance-action.web.ts` — and pairing with the Jarvis
+ * server, `pair-with-server.ts` against `pair-with-server.web.ts`.
  *
  * The contracts live here rather than in either implementation so that neither
  * half can drift: nothing else in the app would notice if the web one grew an
@@ -22,7 +23,7 @@
  * it and the sphere is shared with the watch. Re-exported here so the rest of the app carries on
  * asking this file what a voice looks like.
  */
-import type { FollowAgentVoice, JarvisVoice } from 'hologram';
+import type { FollowAgentVoice, JarvisVoice, Pairing } from 'hologram';
 import type { Ref } from 'react';
 
 export type { JarvisVoice };
@@ -143,3 +144,24 @@ export interface GlanceViewProps {
   onAction: (actionId: string) => void;
   ref?: Ref<GlanceViewHandle>;
 }
+
+/**
+ * Where pairing with the Jarvis server got to, told three ways because each is shown differently:
+ *
+ * - `paired`: the server paired this device there and then, and here is its token — a browser,
+ *   which sends the request itself with Access's cookie.
+ * - `inTheBrowser`: the server's pairing page is open in the phone's browser, and the token will
+ *   arrive later on the link the page opens the app with — the phone app, which holds no cookie.
+ * - `problem`: it could not start, and why; with the server to sign in to, when it did not answer.
+ */
+export type PairingOutcome = { paired: Pairing } | { inTheBrowser: true } | { problem: string; signIn?: string };
+
+/**
+ * Pairs this device with the Jarvis server at what was typed ({@link PairingOutcome}).
+ * `rememberAddress` is told the address before the browser is opened, since the token comes back
+ * on a link that names no server.
+ */
+export type PairWithServer = (
+  typedAddress: string,
+  rememberAddress: (address: string) => void,
+) => Promise<PairingOutcome>;

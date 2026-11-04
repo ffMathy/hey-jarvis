@@ -13,7 +13,7 @@ const glance = glanceOf({
 const OPENED: ScreenState = {
   isLoaded: true,
   isGlanceRead: true,
-  hasSettings: true,
+  isPaired: true,
   isEditingSettings: false,
   isSampling: false,
   isTouring: false,
@@ -49,7 +49,7 @@ describe('which screen', () => {
     expect(chooseScreen({ ...OPENED, isGlanceRead: false })).toBe('loading');
     expect(chooseScreen({ ...OPENED, isSampling: true })).toBe('sample');
     expect(chooseScreen({ ...OPENED, isTouring: true })).toBe('onboarding');
-    expect(chooseScreen({ ...OPENED, hasSettings: false })).toBe('settings');
+    expect(chooseScreen({ ...OPENED, isPaired: false })).toBe('settings');
     expect(chooseScreen({ ...OPENED, isEditingSettings: true })).toBe('settings');
   });
 });

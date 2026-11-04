@@ -9,9 +9,9 @@ import { join } from 'node:path';
  * Three agreements, all of the same shape. **The capability**, which is how the phone knows Jarvis
  * is on the watch at all: it cannot ask a watch what it has installed, so it asks the Data Layer
  * which devices advertise a name, and the watch advertises one from a resource its config plugin
- * writes. **The settings path**, which carries the ElevenLabs credentials from the phone to the
- * watch so they are only ever typed on a keyboard worth typing them on. **The asking path**, which
- * carries the watch's request for them back the other way. **The answering path**, which carries the
+ * writes. **The pairing path**, which carries the phone's pairing with the Jarvis server — its
+ * address and the token the server gave the phone — to the watch, which shares it rather than pairing
+ * itself. **The asking path**, which carries the watch's request for it back the other way. **The answering path**, which carries the
  * watch asking the phone to hold a conversation in its earbuds, and the phone's reply. **The mirror
  * path**, which carries the phone's sphere back to the watch while it holds that conversation.
  *
@@ -35,6 +35,7 @@ const PHONE_TYPESCRIPT = 'mobile/modules/jarvis-watch/index.ts';
 const WATCH_MODULE = 'watch/modules/jarvis-phone/android/src/main/java/expo/modules/jarvisphone/JarvisPhoneModule.kt';
 const WATCH_TYPESCRIPT = 'watch/modules/jarvis-phone/index.ts';
 const WATCH_MANIFEST = 'watch/modules/jarvis-phone/android/src/main/AndroidManifest.xml';
+const WATCH_STORE = 'watch/modules/jarvis-phone/android/src/main/java/expo/modules/jarvisphone/PhoneSettingsStore.kt';
 const PHONE_SUMMON_SERVICE =
   'mobile/modules/jarvis-assistant/android/src/main/java/expo/modules/jarvisassistant/JarvisWatchSummonService.kt';
 const PHONE_ASSISTANT_MANIFEST = 'mobile/modules/jarvis-assistant/android/src/main/AndroidManifest.xml';
@@ -90,15 +91,15 @@ describe('the capability the phone finds the watch app by', () => {
   });
 });
 
-describe('the paths the ElevenLabs credentials travel between the two apps', () => {
-  it('spells the settings path the same on the phone and on the watch', () => {
-    // What the phone sends the credentials on, and what the watch listens for. A mismatch is a
-    // watch that waits for ever while the phone reports a successful send, because Play Services
-    // accepts a message for a path nothing is listening on and then drops it.
-    const wanted = readKotlinConstant(PHONE_MODULE, 'SETTINGS_PATH');
+describe('the paths the pairing travels between the two apps', () => {
+  it('spells the pairing path the same on the phone and on the watch', () => {
+    // What the phone sends the pairing on, and what the watch listens for. A mismatch is a watch
+    // that waits for ever while the phone reports a successful send, because Play Services accepts
+    // a message for a path nothing is listening on and then drops it.
+    const wanted = readKotlinConstant(PHONE_MODULE, 'PAIRING_PATH');
 
     expect(wanted).toMatch(/^\/jarvis\//);
-    expect(readKotlinConstant(WATCH_MODULE, 'SETTINGS_PATH')).toBe(wanted);
+    expect(readKotlinConstant(WATCH_MODULE, 'PAIRING_PATH')).toBe(wanted);
   });
 
   it('spells the asking path the same in both directions', () => {
@@ -108,12 +109,12 @@ describe('the paths the ElevenLabs credentials travel between the two apps', () 
     expect(readKotlinConstant(WATCH_MODULE, 'ASK_PATH')).toBe(wanted);
   });
 
-  it('claims the settings path in the manifest that wakes the watch for it', () => {
+  it('claims the pairing path in the manifest that wakes the watch for it', () => {
     // The one copy that is neither Kotlin nor TypeScript. Play Services only starts the listener
     // service for paths the manifest claims, so a path that drifts from here means the handover
     // works while the watch app happens to be open and silently does not when it is not — which
     // is the case the button on the phone exists for.
-    expect(readSource(WATCH_MANIFEST)).toContain(readKotlinConstant(WATCH_MODULE, 'SETTINGS_PATH'));
+    expect(readSource(WATCH_MANIFEST)).toContain(readKotlinConstant(WATCH_MODULE, 'PAIRING_PATH'));
     expect(readSource(WATCH_MANIFEST)).toContain('com.google.android.gms.wearable.MESSAGE_RECEIVED');
   });
 
@@ -132,13 +133,21 @@ describe('the paths the ElevenLabs credentials travel between the two apps', () 
     expect(readSource(WATCH_TYPESCRIPT)).toContain(readKotlinConstant(WATCH_MODULE, 'SETTINGS_ARRIVED'));
   });
 
-  it('sends the two credentials under the names the watch reads back', () => {
-    // The payload is JSON built in one Kotlin file and parsed in another, on the other device.
-    for (const field of ['apiKey', 'agentId']) {
+  it('sends the pairing under the names the watch reads back, and the watch hands them to JavaScript', () => {
+    // The payload is JSON built in one Kotlin file and parsed in another, on the other device, and
+    // read back out of the store by name in TypeScript.
+    for (const field of ['serverAddress', 'deviceToken']) {
       expect(readSource(PHONE_MODULE)).toContain(`"${field}"`);
-      expect(
-        readSource('watch/modules/jarvis-phone/android/src/main/java/expo/modules/jarvisphone/PhoneSettingsStore.kt'),
-      ).toContain(`"${field}"`);
+      expect(readSource(WATCH_STORE)).toContain(`"${field}"`);
+      expect(readSource(WATCH_TYPESCRIPT)).toContain(`${field}: string`);
+    }
+  });
+
+  it('sends nothing but the pairing: no app holds an ElevenLabs key or an Access service token', () => {
+    for (const field of ['apiKey', 'agentId', 'serverClientId', 'serverClientSecret']) {
+      expect(readSource(PHONE_MODULE)).not.toContain(`"${field}"`);
+      expect(readSource(PHONE_TYPESCRIPT)).not.toContain(field);
+      expect(readSource(WATCH_TYPESCRIPT)).not.toContain(field);
     }
   });
 });

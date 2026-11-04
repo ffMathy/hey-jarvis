@@ -3,13 +3,13 @@ import { readStoredValue, writeStoredValue } from './key-value-store';
 /**
  * Whether the tour has been walked, which is the whole of what makes it a *first-run* tour.
  *
- * It cannot be inferred from the credentials being there. The last step of the tour is the one
- * that recommends making Jarvis the phone's assistant, and it comes *after* the credentials are
- * saved — so "there are credentials" and "the tour is over" are different facts, and the app would
+ * It cannot be inferred from the pairing being there. The last step of the tour is the one that
+ * recommends making Jarvis the phone's assistant, and it comes *after* the phone is paired — so
+ * "it is paired" and "the tour is over" are different facts, and the app would
  * either cut the tour short or start it again on somebody who had already declined the
  * recommendation.
  *
- * It lives beside the credentials rather than in ordinary storage only because that is the one
+ * It lives beside the pairing rather than in ordinary storage only because that is the one
  * key-value store this app has. There is nothing secret in it: the value is the word `yes`.
  */
 const STORAGE_KEY = 'jarvis.onboarding-walked';
@@ -22,10 +22,10 @@ const WALKED = 'yes';
  *
  * **A read that fails answers "skip it".** The read can throw — the keystore key protecting this
  * store is invalidated by some OS updates and restores, and a surface the system has only just
- * created can fail to reach the native module at all (see `settings-storage.ts`, where the same
- * throw hid a real bug). Of the two ways to be wrong, showing a tour to somebody who has already
- * walked it is the worse one: they have a working Jarvis and are being asked to sign up for
- * ElevenLabs. Somebody who genuinely has not been through it still lands on the settings screen,
+ * created can fail to reach the native module at all (see `jarvis-server.ts`, where the same
+ * throw once hid a real bug). Of the two ways to be wrong, showing a tour to somebody who has already
+ * walked it is the worse one: they have a working Jarvis and are being asked to set him up
+ * again. Somebody who genuinely has not been through it still lands on the settings screen,
  * which is where the app opened before there was a tour at all.
  */
 export async function hasWalkedOnboarding(): Promise<boolean> {

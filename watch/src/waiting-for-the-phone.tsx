@@ -14,9 +14,10 @@ interface WaitingForThePhoneProps {
 /**
  * The watch's whole setup screen: Jarvis in sample mode, and one line saying what is missing.
  *
- * **There is no form here and there should never be one.** An ElevenLabs API key is fifty
- * characters beginning `sk_`, and the phone already has it; the Data Layer exists to carry exactly
- * that, and `watch/app.config.ts` shares the phone's package name and signing key so that it can.
+ * **There is no form here and there should never be one.** Pairing with the Jarvis server signs in
+ * to Cloudflare Access in a browser, which a watch has none of, and the phone is paired already; the
+ * Data Layer exists to carry its pairing across, and `watch/app.config.ts` shares the phone's package
+ * name and signing key so that it can.
  * See `phone-settings.ts` for the asking. A watch keyboard is not a setup surface.
  *
  * So what this screen says is only ever waiting, or waiting and knowing why. The sphere turns

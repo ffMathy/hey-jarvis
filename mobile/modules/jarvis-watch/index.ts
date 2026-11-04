@@ -1,5 +1,5 @@
 import { requireOptionalNativeModule } from 'expo';
-import type { ElevenLabsSettings, JarvisServerServiceToken } from 'hologram';
+import type { Pairing } from 'hologram';
 
 /** What the phone can see of the watch beside it. */
 export interface PairedWatch {
@@ -14,14 +14,7 @@ export interface PairedWatch {
 interface JarvisWatchNativeModule {
   findWatch(): Promise<PairedWatch>;
   openJarvisOnTheWatch(): Promise<boolean>;
-  /** An empty `serverAddress`, or an empty `serverClientId` and `serverClientSecret`, is none. */
-  sendSettingsToTheWatch(
-    apiKey: string,
-    agentId: string,
-    serverAddress: string,
-    serverClientId: string,
-    serverClientSecret: string,
-  ): Promise<boolean>;
+  sendPairingToTheWatch(serverAddress: string, deviceToken: string): Promise<boolean>;
   addListener(event: 'onWatchAskedForCredentials', listener: () => void): { remove: () => void };
 }
 
@@ -76,48 +69,41 @@ export async function openJarvisOnTheWatch(): Promise<boolean> {
 export const JARVIS_ON_THE_WATCH = 'jarvis_on_the_watch';
 
 /**
- * Hands the ElevenLabs credentials to the watch, so they are typed once and on the right keyboard.
+ * Hands this phone's pairing with the Jarvis server to the watch — the server's address and the
+ * token the server gave the phone — so the watch talks to the same server with no setup of its own.
  *
- * This is the whole answer to "does the watch need its own setup?". It does not: the two apps
+ * This is the whole answer to "does the watch need its own setup?". It does not, and could not do
+ * one: pairing signs in to Cloudflare Access in a browser, which a watch has none of. The two apps
  * share a package name and a signing key on purpose — see `.claude/rules/watch.md` — which is exactly
  * what Play Services requires before the Data Layer will connect them, and this is what that
- * connection is for. A long API key is not something anybody should enter on a watch.
+ * connection is for. The watch shares the phone's pairing rather than having one of its own, so
+ * unpairing the phone on the server unpairs the watch too.
  *
  * Sent as a **message**, which is handed to the receiving app and stored nowhere in between. The
- * easier route, a replicated `DataItem`, would leave a live API key sitting in Play Services' own
- * store on both devices; see `JarvisWatchModule.kt`.
+ * easier route, a replicated `DataItem`, would leave a live token sitting in Play Services' own store
+ * on both devices; see `JarvisWatchModule.kt`.
  *
  * Returns false rather than throwing when there is no watch in range, no Jarvis on it, or no Data
  * Layer at all — the caller shows that as a line of text, because "your watch is not here right
  * now" is not an error anybody needs a stack trace for.
  */
-export async function sendSettingsToTheWatch(
-  settings: ElevenLabsSettings,
-  serverAddress: string | undefined,
-  serverServiceToken: JarvisServerServiceToken | undefined,
-): Promise<boolean> {
+export async function sendPairingToTheWatch({ address, deviceToken }: Pairing): Promise<boolean> {
   if (!nativeModule) {
     return false;
   }
   try {
-    return await nativeModule.sendSettingsToTheWatch(
-      settings.apiKey,
-      settings.agentId,
-      serverAddress ?? '',
-      serverServiceToken?.clientId ?? '',
-      serverServiceToken?.clientSecret ?? '',
-    );
+    return await nativeModule.sendPairingToTheWatch(address, deviceToken);
   } catch {
     return false;
   }
 }
 
 /**
- * Calls back whenever the watch asks to be given the credentials, for as long as the return value
- * is not called.
+ * Calls back whenever the watch asks to be given the pairing, for as long as the return value is
+ * not called.
  *
  * The watch asks when it starts with none, and only an app that is *running* can answer, because
- * the credentials are in the keystore behind JavaScript rather than anywhere this module can read.
+ * the pairing is in the keystore behind JavaScript rather than anywhere this module can read.
  * That is the one asymmetry in the handover, and it is why the watch's own screen says to open
  * Jarvis on the phone rather than waiting silently.
  *

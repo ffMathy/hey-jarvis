@@ -1,4 +1,4 @@
-import { type ElevenLabsSettings, elevenLabsCredentials, isLive, WATCH_PARTICIPANT_NAME } from 'hologram';
+import { isLive, type Pairing, pairedCredentials, WATCH_PARTICIPANT_NAME } from 'hologram';
 import { useJarvisSession } from 'hologram/conversation';
 import { JarvisHologram } from 'hologram/react';
 import { useIsForeground } from 'hologram/react/lifecycle';
@@ -13,8 +13,11 @@ import { useWatchDensity } from './watch-density';
 import { useWatchHologramSize, WATCH_DRAWN_RESOLUTION } from './watch-screen';
 
 interface ConversationScreenProps {
-  /** The credentials the phone handed over. There is no conversation without them. */
-  settings: ElevenLabsSettings;
+  /**
+   * The phone's pairing with the Jarvis server, which it handed over and the watch shares: every
+   * conversation is asked of that server, with the phone's token. There is none without it.
+   */
+  pairing: Pairing;
 }
 
 /**
@@ -94,8 +97,8 @@ const NO_ANSWER_PROBLEM = 'Jarvis did not answer. ElevenLabs may be unreachable.
  * needs, since a conversation that failed to open failed for a reason, and hammering ElevenLabs
  * until one of those reasons changes would be rude to them and useless to whoever is looking.
  */
-export function ConversationScreen({ settings }: ConversationScreenProps) {
-  const credentials = useMemo(() => elevenLabsCredentials(settings), [settings]);
+export function ConversationScreen({ pairing }: ConversationScreenProps) {
+  const credentials = useMemo(() => pairedCredentials(pairing), [pairing]);
   const isForeground = useIsForeground();
   const [problem, setProblem] = useState<string | undefined>(undefined);
   /** Whether the phone took this summoning, in its earbuds, so the watch holds no conversation. */
