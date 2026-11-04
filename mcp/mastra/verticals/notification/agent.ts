@@ -1,6 +1,6 @@
 import type { Agent } from '@mastra/core/agent';
 import { createAgent } from '../../utils/agent-factory.js';
-import { getOllamaModelOrFallback } from '../../utils/providers/ollama-provider.js';
+import { getModel } from '../../utils/providers/google-provider.js';
 import { lookupContact } from '../phone/contacts.js';
 import { ROUTINE_MESSAGES, URGENT_MESSAGES } from './classifier.js';
 import { notificationShortcuts } from './shortcuts.js';
@@ -19,7 +19,12 @@ let notificationAgent: Awaited<ReturnType<typeof createAgent>> | null = null;
  * a push notification, an SMS or an email — is worked out deterministically by `sendNotification`
  * from where the user is and whether his phone is silenced. Keeping that out of the prompt is
  * deliberate: routing that depends on the state of the house should not vary with the model's
- * mood, and a local Qwen3 model is used here for cost, which makes it less reliable still.
+ * mood.
+ *
+ * It runs on Flash-Lite, not the Pi's hailo-ollama: Hailo has no function calling, so the
+ * Ollama provider strips every tool from the request, and an agent whose whole job is to call
+ * sendNotification could never send anything there. It is only reached when the State Change
+ * Reactor decides somebody should be told, which is rare enough that the cost is negligible.
  */
 export async function getNotificationAgent(): Promise<Agent> {
   if (notificationAgent) {
@@ -29,7 +34,7 @@ export async function getNotificationAgent(): Promise<Agent> {
   const primaryUserName = getPrimaryUserName();
 
   notificationAgent = await createAgent({
-    model: getOllamaModelOrFallback(),
+    model: getModel('gemini-flash-lite-latest'),
     id: 'notification',
     name: 'Notification',
     description:

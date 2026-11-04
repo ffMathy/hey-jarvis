@@ -19,8 +19,11 @@ import type { PlannedReport } from './change-reports.js';
  * `utils/providers/typesafe-provider.ts`) picks one of a fixed list of kinds in one short call,
  * from the entity's id, name, domain and device class. With a sure answer:
  *
- * - diagnostics are not reported, unless a synapse subscription could want them -- a user who
- *   asked to hear when the router drops is asking about diagnostics;
+ * - diagnostics and energy telemetry are not reported, unless a synapse subscription could want
+ *   them -- a user who asked to hear when the router drops is asking about diagnostics, and one
+ *   who asked to hear when the freezer warms up is asking about telemetry. Telemetry was most of
+ *   what the house reported: a phone's charging wattage, a smart plug's current, the bedroom's
+ *   air quality and the grid's CO2 intensity, hundreds of times a day, none of it news;
  * - safety and security are filed at high priority, so the reactor is woken at once;
  * - everything else is filed exactly as before.
  *
@@ -33,7 +36,7 @@ export const CHANGE_RELEVANCE_CLASSIFIER_ID = 'changeRelevanceClassifier';
 /**
  * How sure the classifier must be of a kind before a report is dropped or escalated.
  *
- * High because the answer is kept: a wrong "diagnostics" silences an entity until the cache
+ * High because the answer is kept: a wrong "diagnostics" or "telemetry" silences an entity until the cache
  * lets it go, while an unsure one only costs the reactor records it read before anyway.
  */
 export const CHANGE_RELEVANCE_CONFIDENCE = 0.85;
@@ -116,6 +119,13 @@ export function relevanceSubjectOf(
 /** What to do with one report. */
 export type ReportFiling = { file: false } | { file: true; priority: 'low' | 'high' };
 
+/** The kinds that are only reported when a subscription could want them. */
+const UNREPORTED_UNLESS_SUBSCRIBED: ReadonlySet<ChangeRelevance> = new Set(['diagnostics', 'energy_telemetry']);
+
+function isUnreportedUnlessSubscribed(relevance: ChangeRelevance | undefined): boolean {
+  return relevance !== undefined && UNREPORTED_UNLESS_SUBSCRIBED.has(relevance);
+}
+
 /**
  * Reads a report's kind into what to do with it.
  *
@@ -130,7 +140,7 @@ export function reportFilingFrom(
     return { file: true, priority: 'high' };
   }
 
-  if (relevance === 'diagnostics' && !hasMatchingSubscription) {
+  if (isUnreportedUnlessSubscribed(relevance) && !hasMatchingSubscription) {
     return { file: false };
   }
 
@@ -151,35 +161,44 @@ export interface ReportTriageDependencies {
   hasMatchingSubscription(report: PlannedReport): Promise<boolean>;
 }
 
+/** A report nobody asked for, and the kind that kept it from being filed. */
+export interface DroppedReport {
+  report: PlannedReport;
+  relevance: ChangeRelevance;
+}
+
 /**
- * Sorts reports into the ones to file, at their priority, and the diagnostics nobody asked for.
+ * Sorts reports into the ones to file, at their priority, and the diagnostics and telemetry
+ * nobody asked for.
  *
- * Subscriptions are only looked up for a sure diagnostics report, the one case they can change
- * the answer, and a lookup that fails counts as a match: dropping a report takes certainty.
+ * Subscriptions are only looked up for a sure diagnostics or telemetry report, the one case they
+ * can change the answer, and a lookup that fails counts as a match: dropping a report takes
+ * certainty.
  */
 export async function triageReports(
   reports: PlannedReport[],
   entityDetails: ReadonlyMap<string, EntityDetails>,
   dependencies: ReportTriageDependencies,
-): Promise<{ filed: TriagedReport[]; droppedAsDiagnostics: PlannedReport[] }> {
+): Promise<{ filed: TriagedReport[]; dropped: DroppedReport[] }> {
   const filed: TriagedReport[] = [];
-  const droppedAsDiagnostics: PlannedReport[] = [];
+  const dropped: DroppedReport[] = [];
 
   for (const report of reports) {
     const subject = relevanceSubjectOf(report, entityDetails);
     const relevance = subject ? await dependencies.relevanceOf(subject) : undefined;
-    const hasMatchingSubscription =
-      relevance === 'diagnostics' ? await dependencies.hasMatchingSubscription(report).catch(() => true) : false;
+    const hasMatchingSubscription = isUnreportedUnlessSubscribed(relevance)
+      ? await dependencies.hasMatchingSubscription(report).catch(() => true)
+      : false;
     const filing = reportFilingFrom(relevance, hasMatchingSubscription);
 
     if (filing.file) {
       filed.push({ report, priority: filing.priority });
-    } else {
-      droppedAsDiagnostics.push(report);
+    } else if (relevance) {
+      dropped.push({ report, relevance });
     }
   }
 
-  return { filed, droppedAsDiagnostics };
+  return { filed, dropped };
 }
 
 /** Asks the classifier what kind of thing a subject is, and keeps the answer only when it is sure. */

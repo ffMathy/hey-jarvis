@@ -20,6 +20,7 @@ import { findSubscriptionsForStateChange } from '../synapse/subscription-matcher
 import { registerStateChange } from '../synapse/tools.js';
 import { type BulkingPolicy, ChangeBulker, DEFAULT_BULKING_POLICY } from './change-bulker.js';
 import {
+  type ChangeRelevance,
   createRelevanceLookup,
   type EntityDetails,
   getChangeRelevanceClassifier,
@@ -375,16 +376,17 @@ export async function startHomeAssistantEventMonitor(
       }
     }
 
-    const { filed, droppedAsDiagnostics } = await triageReports(
+    const { filed, dropped } = await triageReports(
       [...statePlan.reports, ...eventPlan.reports],
       entityDetails,
       triageDependencies,
     );
     await fileReports(filed);
 
-    if (droppedAsDiagnostics.length > 0) {
-      logger.info('Diagnostic Home Assistant changes not reported', {
-        subjects: droppedAsDiagnostics.map((report) => report.stateData.entityId ?? report.stateData.eventType),
+    const droppedAs = (relevance: ChangeRelevance) => dropped.filter((entry) => entry.relevance === relevance);
+    if (dropped.length > 0) {
+      logger.info('Diagnostic and telemetry Home Assistant changes not reported', {
+        subjects: dropped.map(({ report }) => report.stateData.entityId ?? report.stateData.eventType),
       });
     }
 
@@ -396,7 +398,8 @@ export async function startHomeAssistantEventMonitor(
       reportedAsHighPriority: filed.filter((report) => report.priority === 'high').length,
       filteredAsNoise: statePlan.filteredAsNoise,
       filteredAsSensitive: statePlan.filteredAsSensitive + eventPlan.filteredAsSensitive,
-      filteredAsDiagnostics: droppedAsDiagnostics.length,
+      filteredAsDiagnostics: droppedAs('diagnostics').length,
+      filteredAsTelemetry: droppedAs('energy_telemetry').length,
     });
   };
 

@@ -93,9 +93,9 @@ function buildDedupeKey(change: StateChange): string {
  *
  * Matching stays on the send side rather than becoming a tool the reactor calls. It is
  * vector-only, runs in-process against a local static embedder, and costs nothing per
- * change worth deferring — and the reactor runs on a local Qwen3, which is exactly the
- * kind of model that does better with the shortlist already in front of it than with one
- * more tool it has to remember to call.
+ * change worth deferring. It also has to run before the reactor is involved at all: a
+ * candidate subscription is one of the few things that wakes the reactor (see
+ * `state-change-classifier.ts`), so it decides whether a model is paid for in the first place.
  */
 async function matchSubscriptions(change: StateChange): Promise<SubscriptionMatch[]> {
   const storage = await getSubscriptionStorage();
@@ -209,7 +209,7 @@ export type RegisteredStateChange =
       action: string;
     }
   | {
-      /** The classifier was sure nothing would come of it, so the reactor was never woken. */
+      /** Nothing called for the reactor -- no priority, rule or subscription -- so it was never woken. */
       filed: false;
       reason: string;
     };
@@ -217,10 +217,12 @@ export type RegisteredStateChange =
 /**
  * Files a state change as a notification for the State Change Reactor.
  *
- * Returns as soon as the record is stored. Whether the reactor is woken now or the change
- * is rolled into the next summary is the delivery policy's decision, not this function's --
- * except that the state change classifier may raise its priority, or hold back a change it
- * is sure the reactor would dismiss (see `state-change-classifier.ts`).
+ * Returns as soon as the record is stored. Only a change something can come of is filed at
+ * all: one marked high, one a rule applies to, one a candidate subscription might fire for, or
+ * one the classifier is sure needs attention soon or now. Everything else is saved to memory
+ * and held back, so the reactor is not woken for it (see `state-change-classifier.ts`). Whether
+ * a filed change wakes the reactor now or is rolled into the next summary is the delivery
+ * policy's decision.
  *
  * @param requestedPriority - What the caller already knows about the change. `high` is for
  *   something that cannot wait for the next rollup; it is never held back, and the classifier
@@ -245,7 +247,7 @@ export async function registerStateChangeNotification(
   const triage = triageStateChange({ assessment, matches, ruleCount: rules.length, requestedPriority });
 
   if (!triage.file) {
-    logger.info('State change held back from the reactor by the classifier', {
+    logger.info('State change held back from the reactor', {
       stateType: change.stateType,
       source: change.source,
       reason: triage.reason,

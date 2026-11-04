@@ -10,8 +10,8 @@ import { logger } from '../../utils/logger.js';
  *
  * Ten is generous for the work this agent actually does: confirm a handful of candidate
  * subscriptions, carry out the THEN of the ones that fire, and possibly delegate a single
- * notification. It is also low enough to stop a local Qwen3 that has started talking to
- * itself, which is the failure this cap is really for.
+ * notification. It is also low enough to stop a model that has started talking to itself,
+ * which is the failure this cap is really for.
  */
 const REACTOR_MAX_STEPS = 10;
 

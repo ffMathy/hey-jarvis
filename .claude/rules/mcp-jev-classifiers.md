@@ -59,16 +59,26 @@ things the agent's tool calls would have reported, and routing reports them just
 [What a request touches](mcp-routing-affected-entities.md#affected-entities)): a command the entities it was carried out on, a question about
 the house the entities it was about, and a lookup whatever the tools it called through `callTool` report.
 
-**Synapse state change gate.** Before a state change is filed for the State Change Reactor,
-`synapse/state-change-classifier.ts` asks Jev in one call how much attention the change deserves
-(ignore / fyi / soon / now), and, for each subscription vector recall shortlisted, whether the change
-really fires it. A confident "now" is filed at high priority. A confident "ignore" that no candidate
-subscription can plausibly fire (below 0.15) and no rule covers is held back from the reactor and
-logged; it is still saved to memory. Everything else is filed as before, with each candidate's fire
-probability written under it. `registerStateChange` takes an optional `priority: 'high'` for callers
-that already know a change cannot wait; it is a floor, and such a change is never held back. With
-Mastra's default delivery policy, `high` is delivered at once when the reactor is idle, and as a
-summary followed by the record when it is busy.
+**Synapse state change gate.** The State Change Reactor runs on Gemini Flash-Lite, so every time it
+is woken costs money, and it is only woken for a change something can come of
+(`triageStateChange` in `synapse/state-change-classifier.ts`):
+
+- one the caller filed `high`, or Jev is sure needs attention `now` (filed high);
+- one a rule applies to;
+- one a subscription that vector recall shortlisted might fire for — at least 0.15, with an
+  unanswered candidate counting as one that might;
+- one Jev is sure should reach someone `soon`.
+
+Everything else is saved to memory and held back, and the reason is logged. Before this the reactor
+was woken for every change, rolled up about once a minute, which on Flash-Lite was estimated at
+$110–$200 a month. The classifier can only add to what is filed or take a candidate subscription off
+it, so no key, a failed call or an unsure answer never wakes the reactor for something the policy
+alone would not. That matters, because Jev is rarely sure of an attention level: in one day of 3,100
+changes, five got one. Each filed change carries every candidate's fire probability under it.
+`registerStateChange` takes an optional `priority: 'high'` for callers that already know a change
+cannot wait; it is a floor, and such a change is never held back. With Mastra's default delivery
+policy, `high` is delivered at once when the reactor is idle, and as a summary followed by the
+record when it is busy.
 
 **Weather monitoring.** The hourly update is compared with the last one filed, kept in memory, by a
 Jev score: routine / notable_change / warning. Confident routine is not filed, a warning is filed at
@@ -78,8 +88,10 @@ notifier's dedupe key.
 
 **Home Assistant report relevance.** The event monitor classifies each entity (id, friendly name,
 domain, device class) or event type once and keeps the answer for a day: safety_security / presence /
-comfort_control / energy_telemetry / diagnostics. Confident diagnostics are not reported unless a
-synapse subscription matches them, and confident safety_security is filed at high priority.
+comfort_control / energy_telemetry / diagnostics. Confident diagnostics and energy telemetry are not
+reported unless a synapse subscription matches them, and confident safety_security is filed at high
+priority. Telemetry was most of what the house reported: a phone's charging wattage, smart plugs'
+power and current, the bedroom's air quality and the grid's CO2 intensity.
 
 **Email triage.** Before new emails are filed for the reactor, each is classified in parallel by kind
 and urgency from its sender, subject and preview. Confident newsletters and promotions, and emails

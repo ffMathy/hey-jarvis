@@ -29,6 +29,16 @@ describe('createMemory', () => {
     expect(semanticRecallOf(await createMemory({ enableSemanticRecall: false }))).toBe(false);
   });
 
+  it('replays the last ten messages by default, and none when recent messages are turned off', async () => {
+    // The State Change Reactor's thread is a feed of rollups, and replaying it put ten stale
+    // ones in front of the model on every run; conversational agents keep their history.
+    const lastMessagesOf = (memory: Awaited<ReturnType<typeof createMemory>>) =>
+      (memory as unknown as { threadConfig?: { lastMessages?: unknown } }).threadConfig?.lastMessages;
+
+    expect(lastMessagesOf(await createMemory())).toBe(10);
+    expect(lastMessagesOf(await createMemory({ enableRecentMessages: false }))).toBe(false);
+  });
+
   it('keeps the two switches independent', async () => {
     // Working memory and semantic recall are unrelated concerns, and a caller that
     // disables one must not silently lose the other.

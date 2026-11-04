@@ -7,26 +7,31 @@ import type { SubscriptionMatch } from './subscription-matcher.js';
 /**
  * The gate in front of the State Change Reactor.
  *
- * Every state change in the house -- a door, a weather update, a phone notification -- is filed
- * for the reactor, which runs on a local Qwen3 as a supervisor loop of up to ten steps. Most of
- * what it is woken for, it decides to do nothing about: the shortlist of subscriptions it is
- * handed is vector recall, generous on purpose, so it is mostly subscriptions on the same topic
- * whose WHEN did not actually happen. And changes that cannot wait are filed at the same low
- * priority as everything else, so a smoke alarm waits for the next rollup like a light switch.
+ * The reactor is a hosted model running a supervisor loop of up to ten steps, so every time it
+ * is woken costs money. It used to be woken for every state change in the house -- about 3,000
+ * a day from Home Assistant alone, phone wattage and air quality and who is nearest the parking
+ * space -- rolled up into a summary about once a minute. On Flash-Lite that was estimated at
+ * well over a hundred dollars a month, for a reactor whose only standing work is subscriptions
+ * and rules.
  *
- * Both decisions are questions with their answers known in advance, which is what an evaluation
- * model (Jev, see `utils/providers/typesafe-provider.ts`) answers in one short call. So one call
- * per change asks, for every shortlisted subscription, whether this change really fires it, and
- * how much attention the change deserves. With those answers:
+ * So a change is filed only when something can come of it:
  *
- * - A change it is sure needs attention now is filed at high priority, which the delivery policy
- *   delivers at once instead of rolling it up.
- * - A change it is sure deserves none, which no subscription could plausibly fire and no rule
- *   applies to, is not filed at all. The reactor would have read it and dismissed it.
- * - Everything else is filed exactly as before, with the classifier's per-subscription answers
- *   written next to the candidates so the reactor has them as a second opinion.
+ * - the caller marked it high, or the classifier is sure it needs attention now (filed high,
+ *   which the delivery policy delivers at once instead of rolling it up);
+ * - a rule applies to it, since a rule is a deliberate instruction about exactly that change;
+ * - a subscription the vector recall shortlisted might fire for it;
+ * - the classifier is sure it should reach someone soon.
  *
- * No key, an error, or an answer it is not sure of all mean the path that existed before this.
+ * Everything else is saved to memory, where the other agents recall it, and never reaches the
+ * reactor. That is the whole policy without a classifier too: the classifier can only add to
+ * what is filed (an escalation, a "soon") or take away a candidate subscription it is sure will
+ * not fire. So no key, an error, or an answer it is not sure of only ever cost it those, and
+ * never wake the reactor for something the policy alone would not. That matters, because Jev is
+ * rarely sure of an attention level: of one day's 3,100 changes, five got one.
+ *
+ * One call per change asks how much attention it deserves and, for every shortlisted
+ * subscription, whether this change really fires it; the answers are written next to the
+ * candidates so the reactor has them as a second opinion.
  */
 
 /** Registered on the Mastra instance under this key, so Studio shows its evaluations. */
@@ -35,18 +40,17 @@ export const STATE_CHANGE_CLASSIFIER_ID = 'stateChangeClassifier';
 /**
  * How sure the classifier must be of an attention level before it is acted on.
  *
- * High for the same reason as the routing fast path's: below it, the change is filed exactly as
- * it always was, so the only cost of a high bar is a change the reactor reads for nothing, while
- * the cost of a low one is a change the user wanted and never heard about.
+ * High because acting on one wakes the reactor, or wakes it at once: below it, the change is
+ * decided by its priority, rules and subscriptions alone.
  */
 export const STATE_CHANGE_CONFIDENCE = 0.85;
 
 /**
- * How likely a subscription may be to fire before the change has to reach the reactor anyway.
+ * How likely a candidate subscription has to be to fire before it wakes the reactor.
  *
- * Deliberately low, which makes it the hard part to pass: a change is only held back when every
- * candidate is this unlikely to fire. A subscription is something the user asked for in so many
- * words, so a maybe is worth the reactor's time.
+ * Deliberately low: a subscription is something the user asked for in so many words, so a
+ * maybe is worth the reactor's time. A candidate the classifier did not answer for counts as
+ * one that might fire.
  */
 export const SUBSCRIPTION_FIRE_FLOOR = 0.15;
 
@@ -141,9 +145,9 @@ export type StateChangeTriage =
 /**
  * Decides whether a change reaches the reactor, and how urgently.
  *
- * Pure, so every way of keeping today's behaviour is pinned by a test. The caller's own priority
- * is a floor the classifier can raise but never lower, and a change the caller marked high is
- * never held back: whoever filed it already knew it mattered.
+ * Pure, so the whole policy is pinned by a test. The caller's own priority is a floor the
+ * classifier can raise but never lower, and a change the caller marked high is never held back:
+ * whoever filed it already knew it mattered.
  */
 export function triageStateChange(input: {
   assessment: StateChangeAssessment | undefined;
@@ -152,35 +156,28 @@ export function triageStateChange(input: {
   requestedPriority: StateChangePriority;
 }): StateChangeTriage {
   const { assessment, matches, ruleCount, requestedPriority } = input;
-  const asRequested: StateChangeTriage = { file: true, priority: requestedPriority, escalated: false };
 
-  if (!assessment) {
-    return asRequested;
+  if (requestedPriority === 'high') {
+    return { file: true, priority: 'high', escalated: false };
   }
 
-  if (assessment.attention === 'now') {
-    return { file: true, priority: 'high', escalated: requestedPriority !== 'high' };
+  if (assessment?.attention === 'now') {
+    return { file: true, priority: 'high', escalated: true };
   }
 
-  // A rule was matched deliberately, so it applies whatever the classifier thinks of the change.
-  if (ruleCount > 0 || requestedPriority === 'high' || assessment.attention !== 'ignore') {
-    return asRequested;
-  }
-
-  // An unanswered subscription counts as one that might fire.
-  const everySubscriptionUnlikely = matches.every(
-    ({ subscription }) => (assessment.fireProbabilities.get(subscription.id) ?? 1) < SUBSCRIPTION_FIRE_FLOOR,
+  const subscriptionMightFire = matches.some(
+    ({ subscription }) => (assessment?.fireProbabilities.get(subscription.id) ?? 1) >= SUBSCRIPTION_FIRE_FLOOR,
   );
-  if (!everySubscriptionUnlikely) {
-    return asRequested;
+  if (ruleCount > 0 || subscriptionMightFire || assessment?.attention === 'soon') {
+    return { file: true, priority: 'low', escalated: false };
   }
 
   return {
     file: false,
     reason:
       matches.length === 0
-        ? 'nothing it needs attention for, and no subscription or rule to check'
-        : `nothing it needs attention for, and none of ${matches.length} candidate subscriptions fires`,
+        ? 'no rule or subscription wants it, and nothing says it needs attention soon'
+        : `none of ${matches.length} candidate subscriptions fires, no rule wants it, and nothing says it needs attention soon`,
   };
 }
 
