@@ -126,7 +126,31 @@ function isExpired(subscription: Subscription, timestamp: string): boolean {
 }
 
 export class SubscriptionStore {
+  /** The update of each subscription still running, which the next update of it waits for. */
+  private readonly updatesInProgress = new Map<string, Promise<unknown>>();
+
   constructor(private readonly knowledge: Knowledge) {}
+
+  /**
+   * Runs one read-modify-write of a subscription at a time, each on the record the last one left.
+   *
+   * A firing reads the record, counts one more and writes it back; two at once — two matching
+   * changes in one rollup — would both read the same count and one firing would be lost, letting a
+   * subscription go on past its budget. A page write is last-writer-wins, so this process takes
+   * them in turn instead.
+   */
+  private updateInTurn<Result>(id: string, update: () => Promise<Result>): Promise<Result> {
+    const previous = this.updatesInProgress.get(id) ?? Promise.resolve();
+    const next = previous.then(update, update);
+    this.updatesInProgress.set(id, next);
+    const forget = () => {
+      if (this.updatesInProgress.get(id) === next) {
+        this.updatesInProgress.delete(id);
+      }
+    };
+    next.then(forget, forget);
+    return next;
+  }
 
   /**
    * Store a new subscription.
@@ -207,7 +231,11 @@ export class SubscriptionStore {
    *
    * @returns The updated subscription, or null when the id is unknown
    */
-  async markTriggered(id: string): Promise<Subscription | null> {
+  markTriggered(id: string): Promise<Subscription | null> {
+    return this.updateInTurn(id, () => this.recordFiring(id));
+  }
+
+  private async recordFiring(id: string): Promise<Subscription | null> {
     const existing = await this.get(id);
     if (!existing) {
       return null;
@@ -288,14 +316,16 @@ export class SubscriptionStore {
    *
    * @returns True when a subscription was updated
    */
-  async setEnabled(id: string, enabled: boolean): Promise<boolean> {
-    const existing = await this.get(id);
-    if (!existing) {
-      return false;
-    }
+  setEnabled(id: string, enabled: boolean): Promise<boolean> {
+    return this.updateInTurn(id, async () => {
+      const existing = await this.get(id);
+      if (!existing) {
+        return false;
+      }
 
-    await this.write({ ...existing, enabled });
-    return true;
+      await this.write({ ...existing, enabled });
+      return true;
+    });
   }
 
   /**

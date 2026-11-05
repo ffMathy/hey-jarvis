@@ -285,6 +285,23 @@ describe('SubscriptionStore when two callers meet', () => {
     expect(fired?.enabled).toBe(false);
   });
 
+  it('counts two firings recorded at the same time as two', async () => {
+    // Two matching changes in one rollup can have the reactor mark the same subscription twice.
+    const stored = await store.add({
+      source: 'user',
+      whenEvent: 'the doorbell rings',
+      thenAction: 'tell me',
+      maxTriggerCount: 3,
+    });
+
+    await Promise.all([store.markTriggered(stored.id), store.markTriggered(stored.id)]);
+    expect((await store.get(stored.id))?.triggerCount).toBe(2);
+
+    const [, spent] = await Promise.all([store.markTriggered(stored.id), store.markTriggered(stored.id)]);
+    expect(spent?.triggerCount).toBe(4);
+    expect((await store.get(stored.id))?.enabled).toBe(false);
+  });
+
   it('reports a subscription another caller already removed as not removed', async () => {
     const stored = await store.add({ source: 'user', whenEvent: 'the sun goes down', thenAction: 'close the blinds' });
 
