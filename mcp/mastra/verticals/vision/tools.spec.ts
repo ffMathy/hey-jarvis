@@ -127,24 +127,28 @@ describe('looking at a photo', () => {
    * were that signal dropped, since the scripted readers never look at it.
    */
   it('hands the reader the signal the request that asked is stopped with', async () => {
-    const handedSignals: (AbortSignal | undefined)[] = [];
+    const request = new AbortController();
+    const stoppedWhileLooking: boolean[] = [];
     const { mastra } = await readerPlaying(({ options }) => {
-      handedSignals.push(options.abortSignal);
+      // Sir talks over the request while the reader is still looking at the photo. Mastra hands
+      // the model a signal of its own for the run, tied to the caller's while the run lasts, so
+      // the moment that matters is mid-look, not after the reader has answered.
+      const before = options.abortSignal?.aborted ?? false;
+      request.abort();
+      stoppedWhileLooking.push(!before && (options.abortSignal?.aborted ?? false));
       return { text: 'The total is 243.50 DKK.' };
     });
     keepPhoto(Buffer.from([0xff, 0xd8]), 'image/jpeg');
-    const request = new AbortController();
 
-    await executeTool(
-      lookAtPhoto,
-      { photoId: 'photo1', question: 'What is the total?' },
-      { mastra, abortSignal: request.signal },
-    );
+    await expect(
+      executeTool(
+        lookAtPhoto,
+        { photoId: 'photo1', question: 'What is the total?' },
+        { mastra, abortSignal: request.signal },
+      ),
+    ).rejects.toThrow();
 
-    expect(handedSignals).toHaveLength(1);
-    expect(handedSignals[0]?.aborted).toBe(false);
-    request.abort();
-    expect(handedSignals[0]?.aborted).toBe(true);
+    expect(stoppedWhileLooking).toEqual([true]);
   });
 
   /**
