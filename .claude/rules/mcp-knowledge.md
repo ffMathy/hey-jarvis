@@ -75,6 +75,9 @@ comes back to the model as an `error-text` tool result, not as a thrown error, s
 - **The household's shopping aliases and preferences** — `conventions:home#shopping`, read into the shopping list
   agent's instructions on every run; a lasting preference sir states is a note on it. See
   [Shopping List Agent](mcp-shopping-list-agent.md#the-households-aliases-and-preferences).
+- **The household's dinner conventions** — `conventions:home#cooking`, read into the cooking agent's and the meal
+  plan's recipe selector's instructions on every run; a lasting dinner convention sir states is a note on it. See
+  [The Household's Dinner Conventions](mcp-cooking-dinner-conventions.md).
 
 ## What stays out
 

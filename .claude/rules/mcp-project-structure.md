@@ -26,6 +26,7 @@ mcp/
 │   │   ├── cooking/     # Cooking vertical
 │   │   │   ├── agents.ts         # Cooking agent: recipe search and meal planning
 │   │   │   ├── baby-food.ts      # The baby's age, and what it can have from the dinner
+│   │   │   ├── conventions.ts    # The household's dinner conventions, kept in Knowledge
 │   │   │   ├── recipe-catalog.ts # Shortlisting the catalogue for a meal plan
 │   │   │   ├── tools.ts
 │   │   │   ├── workflows.ts      # Meal plan, and the weekly plan with feedback by email
