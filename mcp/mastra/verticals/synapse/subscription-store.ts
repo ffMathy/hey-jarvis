@@ -262,8 +262,9 @@ export class SubscriptionStore {
    *
    * A firing that spends a subscription can lose its page before the note is added: every state
    * change prunes spent subscriptions on its way past, and one may do so between the record's write
-   * and this note. The firing is already recorded then, and the page is gone with every note it
-   * had, so there is nothing left to note it on.
+   * and this note. The firing is already recorded then, and Knowledge no longer finds the page by
+   * its path, so there is nothing left to note it on. (A removed page is only marked deleted: its
+   * row and its notes stay in the store, out of search and path lookups.)
    */
   private async noteFiring(subscription: Subscription, triggeredAt: Date): Promise<void> {
     try {

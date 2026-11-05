@@ -26,6 +26,18 @@ the household's conventions, which several verticals keep there, are read and wr
   hosted embedder Memory uses, on a database that has filled the Pi's disk with embeddings once already.
 - **No retention.** Knowledge keeps every page version's activity row forever, so nothing written often belongs in it:
   a state change, a device's state, a cache. See [What stays out](#what-stays-out).
+  - A changed `upsertPage` overwrites the body in place and adds one activity row (about 300 B on disk, in three write
+    transactions); an unchanged one writes nothing. A note is about 800 B.
+  - `removePage` and `removeNote` only mark a row deleted, and add an activity row. The page's body and its notes stay
+    in the store, out of search and path lookups, so removing pages, or keeping a page per day, reclaims nothing.
+  - Mastra's `prune()` has no `knowledge` domain, and the only public deletes, `dangerouslyClearAll()` and
+    `dangerouslyReset()`, empty every Knowledge table at once: Synapse's subscriptions and the conventions with it.
+    Pruning selectively would be raw SQL on the adapter's private, experimental schema, which
+    [`no-hacks`](no-hacks.md) rules out; the nightly `storageRetentionWorkflow` touches Mastra's tables only through
+    `prune()`.
+  - Knowledge itself calls no model and no network service: only an embedder would, and Jarvis configures none. An agent
+    holding it pays about 3,300 tokens of tool definitions and usage instructions on every model call, and one more
+    model step for each Knowledge tool it calls.
 - Both processes (`mastra dev` and `mcp-server`) open the same instance on the same file. A write in one is seen by the
   other on its next read; Studio's live stream only carries writes made in its own process, and polls for the rest.
 
