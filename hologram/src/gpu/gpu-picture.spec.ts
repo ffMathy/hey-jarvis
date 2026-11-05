@@ -1,10 +1,28 @@
 import { describe, expect, it } from 'bun:test';
 import { PLAIN_RING_GLYPH, SAMPLE_AGENTS, type SatelliteOrbit } from '../agent-work';
+import {
+  anythingLit,
+  buildCageNet,
+  CASCADE_BOX_NUMBERS,
+  CASCADE_BOX_SLOTS,
+  CASCADE_BOXES_AT,
+  CASCADE_EDGE_NUMBERS,
+  CASCADE_EDGE_SLOTS,
+  CASCADE_EDGES,
+  CASCADE_NUMBERS,
+  cascadeScratchSize,
+  writeCageCascade,
+} from '../cage-cascade';
 import { SCENE_SEED } from '../frame-timing';
 import { analyseFrame, createHologramScene, type HologramFrame, pictureSceneOf } from '../hologram-drawing';
 import { VOICE_BAND_COUNT } from '../voice-levels';
+import { createFlatCamera, placeFlatCamera } from './flat-camera';
+import { FRONT_VIEW } from './fragment-3d';
 import { BLEND, DEPTH_TEST, EQUAL, LESS, NOTEQUAL, STENCIL_TEST } from './gl-objects';
+import { createGpuBody } from './gpu-body';
+import { drawGpuFrame } from './gpu-frame';
 import { createGpuPicture, drawGpuPicture, drawGpuPictureCascade, writeGpuPictureCascade } from './gpu-picture';
+import { CASCADE_VECTORS } from './picture-layers';
 import { BrowserLocation, type Call, ExpoObject, expoObjects, recordingGl, uncopyable } from './recording-gl.fakes';
 
 /**
@@ -71,7 +89,7 @@ describe('the picture on the GPU', () => {
     // cascades, the embers, the fray and the chips. It was fifteen until the Vision footage replaced
     // the Age of Ultron layers (the whorl, the comets, the truss, the crescent and the rest) with the
     // cage and the embers.
-    expect(sources.length).toBeGreaterThanOrEqual(16);
+    expect(sources).toHaveLength(18);
     for (const source of sources) expect(source.startsWith('#version 300 es\n')).toBe(true);
     expect(uncopyable(picture, 'picture')).toEqual([]);
     expect(named(made, 'createVertexArray')[0]).toBeDefined();
@@ -223,9 +241,9 @@ describe('the picture on the GPU', () => {
 
 describe("the cage's cascades on the GPU", () => {
   /** A frame at `time`, its cascade worked out, and the calls of the picture and of the cascades over it. */
-  function drawnAt(time: number) {
+  function drawnAt(time: number, overrides: Partial<HologramFrame> = {}) {
     const made = madePicture();
-    const state = analyseFrame(frameAt({ time }), 1);
+    const state = analyseFrame(frameAt({ time, ...overrides }), 1);
     writeGpuPictureCascade(made.picture, state);
     made.calls.length = 0;
     drawGpuPicture(made.gl, made.picture, { state, pixels: 512, satellites: [] });
@@ -234,16 +252,27 @@ describe("the cage's cascades on the GPU", () => {
     const cascades = made.calls.splice(0);
     const usesCascade = (calls: Call[]) =>
       named(calls, 'useProgram').some(([, program]) => program === made.picture.cascade.program.program);
-    return { picture, cascades, usesCascade };
+    return { made, state, picture, cascades, usesCascade };
   }
 
-  it('draws a lit cascade only over the frame, never as part of the picture the headset draws', () => {
-    // a cascade fires at 12.01 s and has spread across the cage by 13.1 s
-    const { picture, cascades, usesCascade } = drawnAt(13.1);
+  /** The cascade at `time` as the planner works it out on a scratch of its own, from the same frame. */
+  function plannedAt(time: number) {
+    const net = buildCageNet(scene.cage);
+    const out = new Float32Array(CASCADE_NUMBERS);
+    writeCageCascade(net, analyseFrame(frameAt({ time }), 1), new Array(cascadeScratchSize(net)).fill(0), out);
+    return out;
+  }
 
+  // a cascade fires at 12.01 s and has spread across the cage by 13.1 s, and has gone out by 14.9 s
+  const LIT = 13.1;
+  const BETWEEN = 14.9;
+
+  it('draws a lit cascade only over the frame, never as part of the picture the headset draws', () => {
+    const { made, picture, cascades, usesCascade } = drawnAt(LIT);
+
+    expect(anythingLit(made.picture.cascadeEdges)).toBe(true);
     expect(usesCascade(picture)).toBe(false);
     expect(usesCascade(cascades)).toBe(true);
-    expect(named(cascades, 'uniform4fv')).not.toHaveLength(0);
     // Screened over him as the picture is, with its own stencil and depth for each of its strokes
     expect(named(cascades, 'blendFuncSeparate')[0]?.slice(1)).toEqual(
       named(picture, 'blendFuncSeparate')[0]?.slice(1) ?? [],
@@ -251,11 +280,87 @@ describe("the cage's cascades on the GPU", () => {
     expect(named(cascades, 'disable').map(([, capability]) => capability)).toEqual([STENCIL_TEST, DEPTH_TEST, BLEND]);
   });
 
+  it('hands the shader its numbers once a frame, as many vec4s as it declares, and the shared uniforms once', () => {
+    const { made, cascades } = drawnAt(LIT);
+    const uploads = named(cascades, 'uniform4fv');
+    const source = named(made.made, 'shaderSource')
+      .map(([, , text]) => String(text))
+      .find((text) => text.includes('uniform vec4 cascade['));
+
+    expect(uploads).toHaveLength(1);
+    const [, , data] = uploads[0] ?? [];
+    expect(data).toBe(made.picture.cascadeEdges);
+    expect(data).toBeInstanceOf(Float32Array);
+    expect(made.picture.cascadeEdges).toHaveLength(CASCADE_VECTORS * 4);
+    expect(source).toContain(`uniform vec4 cascade[${CASCADE_VECTORS}];`);
+    expect(made.picture.cascadeEdges).toEqual(plannedAt(LIT));
+    // the cage's turn and the clock once, for the eight strokes that follow
+    expect(named(cascades, 'useProgram')).toHaveLength(1);
+    expect(named(cascades, 'uniform2f')).toHaveLength(1);
+    expect(named(cascades, 'drawElements')).toHaveLength(16);
+  });
+
   it('draws nothing between cascades', () => {
-    // the cascade fired at 12.01 s has gone out by 14.8 s, and the next chance is not until 15 s
-    const { cascades, usesCascade } = drawnAt(14.9);
+    const { cascades, usesCascade } = drawnAt(BETWEEN);
 
     expect(usesCascade(cascades)).toBe(false);
     expect(named(cascades, 'drawElements')).toHaveLength(0);
+  });
+
+  it('draws nothing of a lit cascade while the cage is dark, as he forms or leaves', () => {
+    for (const overrides of [{ appearance: 0.3 }, { presence: 0.3 }, { appearance: 0.92, presence: 0 }]) {
+      const { state, cascades, usesCascade } = drawnAt(LIT, overrides);
+
+      expect(state.cageAlpha).toBeLessThan(1);
+      expect(usesCascade(cascades)).toBe(false);
+      expect(named(cascades, 'drawElements')).toHaveLength(0);
+    }
+  });
+
+  it('draws a box that is still flaring after every edge of its cascade has gone out', () => {
+    // find a frame with a box flaring, then put out every edge, as a plan whose last edges went first
+    const made = madePicture();
+    let time = 12;
+    let state = analyseFrame(frameAt({ time }), 1);
+    for (; time < 15; time += 1 / 60) {
+      state = analyseFrame(frameAt({ time }), 1);
+      writeGpuPictureCascade(made.picture, state);
+      const box = CASCADE_BOXES_AT + CASCADE_BOX_SLOTS.light;
+      if ((made.picture.cascadeEdges[box] ?? 0) > 0 || (made.picture.cascadeEdges[box + CASCADE_BOX_NUMBERS] ?? 0) > 0)
+        break;
+    }
+    for (let edge = 0; edge < CASCADE_EDGES; edge++)
+      made.picture.cascadeEdges[edge * CASCADE_EDGE_NUMBERS + CASCADE_EDGE_SLOTS.light] = 0;
+    made.calls.length = 0;
+    drawGpuPictureCascade(made.gl, made.picture, { state, pixels: 512, satellites: [] });
+
+    expect(time).toBeLessThan(15);
+    expect(named(made.calls, 'drawElements').length).toBeGreaterThan(0);
+  });
+
+  it("works out a frame's cascade before anything of the frame is drawn, and draws it over his body", () => {
+    const calls: Call[] = [];
+    const gl = recordingGl(calls);
+    const body = createGpuBody(gl, createHologramScene(SCENE_SEED));
+    const picture = createGpuPicture(gl, scene);
+    calls.length = 0;
+    const state = analyseFrame(frameAt({ time: LIT }), 1);
+    const camera = placeFlatCamera(
+      createFlatCamera(),
+      { width: 600, height: 900, squareX: 300, squareY: 400, squareSide: 540 },
+      state.radius,
+      FRONT_VIEW,
+      Number.POSITIVE_INFINITY,
+    );
+    drawGpuFrame(gl, body, picture, { state, density: 1, fade: 1, alphaFromLight: 1, camera }, []);
+    const programs = named(calls, 'useProgram').map(([, program]) => program);
+    const lastOfHisBody = programs.lastIndexOf(body.strokes.program);
+    const cascade = programs.indexOf(picture.cascade.program.program);
+
+    // a picture made fresh holds no cascade, so one is drawn only if this frame's was worked out first
+    expect(picture.cascadeEdges).toEqual(plannedAt(LIT));
+    expect(cascade).toBeGreaterThan(lastOfHisBody);
+    expect(lastOfHisBody).toBeGreaterThan(programs.indexOf(picture.cage.program.program));
+    expect(programs.at(-1)).toBe(picture.cascade.program.program);
   });
 });

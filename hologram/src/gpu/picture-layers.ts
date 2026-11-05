@@ -1,7 +1,18 @@
-import { CASCADE_BOX_FLARE_SECONDS } from '../cage-cascade';
+import {
+  CASCADE_BOX_FLARE_SECONDS,
+  CASCADE_BOX_SLOTS,
+  CASCADE_BOXES_AT,
+  CASCADE_EDGE_NUMBERS,
+  CASCADE_EDGE_SLOTS,
+  CASCADE_EDGES,
+  CASCADE_FADE_SECONDS,
+  CASCADE_HOP_SECONDS,
+  CASCADE_NUMBERS,
+} from '../cage-cascade';
 import {
   CAGE_EDGE_STRIDE,
   CAGE_SWAY,
+  CAGE_SWAY_WAVES,
   CORE_X,
   CORE_Y,
   EMBER_RISE,
@@ -251,21 +262,30 @@ uniform vec3 disc;
 const CAGE_CORE_CLEARANCE = 0.42;
 const CAGE_CORE_FADE = 0.15;
 
+/** A node's coordinates as GLSL names them, in the order `CAGE_SWAY_WAVES` goes round them. */
+const NODE_AXES = ['x', 'y', 'z'];
+
+/** One coordinate's sway wave as GLSL, from `CAGE_SWAY_WAVES`: see `cageSwayOf`. */
+function swayWaveGlsl(axis: number): string {
+  const [radiansPerSecond, firstAxis, secondAxis] = CAGE_SWAY_WAVES[axis];
+  const first = NODE_AXES[(axis + 1) % 3];
+  const second = NODE_AXES[(axis + 2) % 3];
+  return `sin(time * ${glslFloat(radiansPerSecond)} + node.${first} * ${glslFloat(firstAxis)} + node.${second} * ${glslFloat(secondAxis)})`;
+}
+
 /**
  * A cage node where his body's turn has taken it, swaying a little about its place by an amount
- * that depends only on where it is, so the edges that share a node sway together and stay joined.
- * Shared by the cage and its cascades, which light its edges where they are drawn; `cage-cascade.ts`
- * places the nodes by the same arithmetic.
+ * that depends only on where it is, so the edges that share a node sway together and stay joined
+ * (`CAGE_SWAY_WAVES`). Shared by the cage and its cascades, which light its edges where they are
+ * drawn; `cage-cascade.ts` places the nodes from the same table (`cageSwayOf`) and by the same turn.
  */
-const TURNED_NODE_GLSL = `
+export const TURNED_NODE_GLSL = `
 uniform vec2 bodyTurn;
 uniform float time;
 
 vec3 turnedNode(vec3 node) {
   vec3 sway = vec3(
-    sin(time * 0.37 + node.y * 5.3 + node.z * 2.1),
-    sin(time * 0.29 + node.z * 4.9 + node.x * 3.3),
-    sin(time * 0.33 + node.x * 4.1 + node.y * 2.7)
+    ${NODE_AXES.map((_, axis) => swayWaveGlsl(axis)).join(',\n    ')}
   ) * ${glslFloat(CAGE_SWAY)};
   vec3 at = node + sway;
   return vec3(at.x * bodyTurn.x + at.z * bodyTurn.y, at.y, at.z * bodyTurn.x - at.x * bodyTurn.y);
@@ -342,11 +362,11 @@ float nearestToTheCore(vec2 from, vec2 to) {
 /**
  * Which of a cascade's parts a draw of {@link cascadeLayer} strokes (its `cascadePart` uniform): the
  * lit wire behind each spark; the spark's comet; its head, a short bright stroke at the front; the
- * flash of the node it lands on, a soft round
- * burst there that goes out as the next hop's sparks leave it; and the flare of the truss's box the
- * pulse fired from or the return landed on, its square's own four sides lit up and let go.
+ * flash of the node it lands on, a soft round burst there the moment it lands, the moment the next
+ * hop's sparks leave it, which goes out over {@link CASCADE_NODE_FLASH} after; and the flare of the truss's box the pulse fired from or the return landed on, its
+ * square's own four sides lit up and let go.
  */
-export const CASCADE_PARTS = { wire: 0, spark: 1, head: 2, flash: 3, box: 5 } as const;
+export const CASCADE_PARTS = { wire: 0, spark: 1, head: 2, flash: 3, box: 4 } as const;
 /**
  * How lit a cascade's wire is where its spark has passed, as a share of the spark's light: just
  * behind the spark all of it, settling to {@link CASCADE_WIRE_SETTLED} over
@@ -384,7 +404,28 @@ const CASCADE_OVER_HIM_EDGE = 0.12;
  */
 const CASCADE_BOX_RAIL_PIECES = 4;
 const CASCADE_BOX_RISE = 0.1;
-export const CASCADE_BOX_SHAPES = 2 + 2 * CASCADE_BOX_RAIL_PIECES;
+const CASCADE_BOX_SHAPES = 2 + 2 * CASCADE_BOX_RAIL_PIECES;
+
+/** The uniform the cascades' numbers are handed in: how many vec4s, and where each edge's and the boxes' start. */
+export const CASCADE_VECTORS = CASCADE_NUMBERS / 4;
+const CASCADE_EDGE_VECTORS = CASCADE_EDGE_NUMBERS / 4;
+const CASCADE_BOXES_VECTOR = CASCADE_BOXES_AT / 4;
+
+/**
+ * The GLSL that reads `count` of the cascades' numbers from `slot` on, of the vec4s from the one at
+ * `vector` (a GLSL expression): `cascade[vector + n].xyz` for three from a vec4's first. A slot's
+ * numbers never straddle two vec4s (`CASCADE_EDGE_SLOTS`, `CASCADE_BOX_SLOTS`), so one swizzle reads them.
+ */
+function cascadeNumbers(vector: string, slot: number, count = 1): string {
+  const within = slot % 4;
+  if (within + count > 4) throw new Error(`The cascades' numbers ${slot} to ${slot + count - 1} straddle two vec4s.`);
+  return `cascade[${vector} + ${Math.floor(slot / 4)}].${'xyzw'.slice(within, within + count)}`;
+}
+
+/** Where a box's numbers are, of the box `box` (a GLSL expression): see `CASCADE_BOX_SLOTS`. */
+function boxNumber(box: string, slot: number) {
+  return cascadeNumbers(`${CASCADE_BOXES_VECTOR} + ${box}`, slot);
+}
 
 /**
  * The cage's cascades (`cage-cascade.ts`): the edges a pulse lights, each a line along the cage's
@@ -393,9 +434,13 @@ export const CASCADE_BOX_SHAPES = 2 + 2 * CASCADE_BOX_RAIL_PIECES;
  * closes up on the node it lands on and flashes there; and the two boxes of the truss it leaves and
  * lands on, each its square's rails and rungs where the truss has rolled them (`rimRoll`). A shape an
  * edge, then {@link CASCADE_BOX_SHAPES} a box; the uniform `cascade` holds what `writeCageCascade`
- * worked out for each, `cascadePart` which of their parts this draw strokes.
+ * worked out for each, read by its named slots (`CASCADE_EDGE_SLOTS`, `CASCADE_BOX_SLOTS`), and
+ * `cascadePart` which of their parts this draw strokes ({@link CASCADE_PARTS}).
  */
-export function cascadeLayer(edges: number): PictureLayerSource {
+export function cascadeLayer(): PictureLayerSource {
+  const edgeSlots = CASCADE_EDGE_SLOTS;
+  const boxSlots = CASCADE_BOX_SLOTS;
+  const flareRise = CASCADE_BOX_FLARE_SECONDS * CASCADE_BOX_RISE;
   return {
     vertexShader: shader(
       `
@@ -403,7 +448,7 @@ in float cascadeEdge;
 uniform float halfWidth;
 uniform float cascadePart;
 uniform float rimRoll;
-uniform vec4 cascade[${edges * 3 + 2}];
+uniform vec4 cascade[${CASCADE_VECTORS}];
 ${TURNED_NODE_GLSL}
 // How much of its light a stroke keeps seen \`reach\` out: less over his bright edge and the truss,
 // where it Screens over his specks.
@@ -421,75 +466,77 @@ vec2 onTheTruss(float clock, float reach) {
 void emitBox(int shape) {
   int box = shape / ${CASCADE_BOX_SHAPES};
   int piece = shape - box * ${CASCADE_BOX_SHAPES};
-  vec4 numbers = cascade[${edges * 3} + box];
-  float age = time - numbers.z;
-  float flare = smooth01(age / ${glslFloat(CASCADE_BOX_FLARE_SECONDS * CASCADE_BOX_RISE)})
-    * (1.0 - smooth01((age - ${glslFloat(CASCADE_BOX_FLARE_SECONDS * CASCADE_BOX_RISE)}) / ${glslFloat(CASCADE_BOX_FLARE_SECONDS * (1 - CASCADE_BOX_RISE))}));
-  if (numbers.w <= 0.0 || numbers.y <= 0.0 || flare <= 0.0) {
+  float first = ${boxNumber('box', boxSlots.first)};
+  float sweep = ${boxNumber('box', boxSlots.sweep)};
+  float light = ${boxNumber('box', boxSlots.light)};
+  float age = time - ${boxNumber('box', boxSlots.flares)};
+  float flare = smooth01(age / ${glslFloat(flareRise)})
+    * (1.0 - smooth01((age - ${glslFloat(flareRise)}) / ${glslFloat(CASCADE_BOX_FLARE_SECONDS * (1 - CASCADE_BOX_RISE))}));
+  if (light <= 0.0 || sweep <= 0.0 || flare <= 0.0) {
     hide();
     return;
   }
   if (piece < 2) {
-    float clock = numbers.x + numbers.y * float(piece);
+    float clock = first + sweep * float(piece);
     emitSegment(onTheTruss(clock, ${glslFloat(TRUSS_INNER_RAIL)}), onTheTruss(clock, ${glslFloat(TRUSS_OUTER_RAIL)}), halfWidth, 1.0, 1.0);
   } else {
     int railPiece = piece - 2;
     int rail = railPiece / ${CASCADE_BOX_RAIL_PIECES};
     float along = float(railPiece - rail * ${CASCADE_BOX_RAIL_PIECES});
     float reach = rail == 0 ? ${glslFloat(TRUSS_OUTER_RAIL)} : ${glslFloat(TRUSS_INNER_RAIL)};
-    float step = numbers.y / ${glslFloat(CASCADE_BOX_RAIL_PIECES)};
-    emitSegment(onTheTruss(numbers.x + step * along, reach), onTheTruss(numbers.x + step * (along + 1.0), reach), halfWidth, 1.0, 1.0);
+    float step = sweep / ${glslFloat(CASCADE_BOX_RAIL_PIECES)};
+    emitSegment(onTheTruss(first + step * along, reach), onTheTruss(first + step * (along + 1.0), reach), halfWidth, 1.0, 1.0);
   }
-  shapeLight = numbers.w * flare;
+  shapeLight = light * flare;
 }
 `,
       `
   int shape = int(cascadeEdge + 0.5);
-  bool boxShape = shape >= ${edges};
-  if (boxShape != (cascadePart > 4.5)) {
+  int part = int(cascadePart + 0.5);
+  bool boxShape = shape >= ${CASCADE_EDGES};
+  if (boxShape != (part == ${CASCADE_PARTS.box})) {
     hide();
     return;
   }
   if (boxShape) {
-    emitBox(shape - ${edges});
+    emitBox(shape - ${CASCADE_EDGES});
     return;
   }
-  int at = shape * 3;
-  // cascade: from node at rest and when its spark leaves; to node and how long it takes over the
-  // edge; when the edge starts to fade, how long it takes to, how lit it is, and which pulse it is.
-  vec4 leaving = cascade[at];
-  vec4 landing = cascade[at + 1];
-  vec4 fading = cascade[at + 2];
-  float age = time - leaving.w;
-  float along = age / landing.w;
-  float fade = 1.0 - smooth01((time - fading.x) / fading.y);
-  if (fading.z <= 0.0 || along <= 0.0 || fade <= 0.0) {
+  int at = shape * ${CASCADE_EDGE_VECTORS};
+  float leaves = ${cascadeNumbers('at', edgeSlots.leaves)};
+  float fades = ${cascadeNumbers('at', edgeSlots.fades)};
+  float light = ${cascadeNumbers('at', edgeSlots.light)};
+  float hop = ${glslFloat(CASCADE_HOP_SECONDS)};
+  float age = time - leaves;
+  float along = age / hop;
+  float fade = 1.0 - smooth01((time - fades) / ${glslFloat(CASCADE_FADE_SECONDS)});
+  if (light <= 0.0 || along <= 0.0 || fade <= 0.0) {
     hide();
     return;
   }
-  vec2 from = turnedNode(leaving.xyz).xy;
-  vec2 to = turnedNode(landing.xyz).xy;
+  vec2 from = turnedNode(${cascadeNumbers('at', edgeSlots.from, 3)}).xy;
+  vec2 to = turnedNode(${cascadeNumbers('at', edgeSlots.to, 3)}).xy;
   vec2 run = to - from;
   float runLength = max(length(run), 1e-3);
   float head = min(along, 1.0);
   vec2 headAt = from + run * head;
   // the wire is lit up to the comet's tail, and the comet over the rest, so the two never stack
   vec2 cometTailAt = from + run * clamp(along - ${glslFloat(CASCADE_SPARK_LENGTH)} / runLength, 0.0, 1.0);
-  if (cascadePart < 0.5) {
+  if (part == ${CASCADE_PARTS.wire}) {
     if (along * runLength < ${glslFloat(CASCADE_SPARK_LENGTH * 0.25)}) {
       hide();
       return;
     }
     emitSegment(from, cometTailAt, halfWidth, 1.0, 1.0);
-    float settled = smooth01((along - 1.0) * landing.w / ${glslFloat(CASCADE_WIRE_SETTLING)});
+    float settled = smooth01((along - 1.0) * hop / ${glslFloat(CASCADE_WIRE_SETTLING)});
     float tip = mix(1.0, ${glslFloat(CASCADE_WIRE_SETTLED)}, settled);
     float root = mix(${glslFloat(CASCADE_WIRE_ROOT)}, ${glslFloat(CASCADE_WIRE_SETTLED)}, settled);
     vec2 cornerAt = corner.x < 0.0 ? from : cometTailAt;
-    shapeLight = fading.z * fade * (corner.x < 0.0 ? root : tip) * overHim(length(cornerAt));
+    shapeLight = light * fade * (corner.x < 0.0 ? root : tip) * overHim(length(cornerAt));
     return;
   }
-  bool nodeFlash = cascadePart > 2.5 && cascadePart < 3.5;
-  float flash = 1.0 - smooth01((age - landing.w) / (nodeFlash ? ${glslFloat(CASCADE_NODE_FLASH)} : ${glslFloat(CASCADE_SPARK_GOING)}));
+  bool nodeFlash = part == ${CASCADE_PARTS.flash};
+  float flash = 1.0 - smooth01((age - hop) / (nodeFlash ? ${glslFloat(CASCADE_NODE_FLASH)} : ${glslFloat(CASCADE_SPARK_GOING)}));
   if (flash <= 0.0) {
     hide();
     return;
@@ -501,16 +548,16 @@ void emitBox(int shape) {
       return;
     }
     emitSegment(to, to, halfWidth, 1.0, 1.0);
-    shapeLight = fading.z * flash * overHim(length(to));
+    shapeLight = light * flash * overHim(length(to));
     return;
   }
   // the comet (spark) runs back from the head over its length; the head over a short one
-  bool comet = cascadePart < 1.5;
+  bool comet = part == ${CASCADE_PARTS.spark};
   vec2 tailAt = comet ? cometTailAt : from + run * clamp(along - ${glslFloat(CASCADE_HEAD_LENGTH)} / runLength, 0.0, 1.0);
   emitSegment(tailAt, headAt, halfWidth, 1.0, 1.0);
   vec2 cornerAt = corner.x < 0.0 ? tailAt : headAt;
   float trailing = comet && corner.x < 0.0 ? ${glslFloat(CASCADE_SPARK_TAIL)} : 1.0;
-  shapeLight = fading.z * flash * trailing * overHim(length(cornerAt));
+  shapeLight = light * flash * trailing * overHim(length(cornerAt));
 `,
     ),
     uniforms: ['bodyTurn', 'time', 'halfWidth', 'cascadePart', 'rimRoll', 'cascade'],
@@ -518,10 +565,10 @@ void emitBox(int shape) {
       attribute(
         'cascadeEdge',
         1,
-        Array.from({ length: edges + 2 * CASCADE_BOX_SHAPES }, (_, shape) => [shape]),
+        Array.from({ length: CASCADE_EDGES + 2 * CASCADE_BOX_SHAPES }, (_, shape) => [shape]),
       ),
     ],
-    shapes: edges + 2 * CASCADE_BOX_SHAPES,
+    shapes: CASCADE_EDGES + 2 * CASCADE_BOX_SHAPES,
   };
 }
 

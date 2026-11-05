@@ -1536,6 +1536,30 @@ export const CAGE_WOVEN_REACH = 1.25;
  * hairline.
  */
 export const CAGE_SWAY = 0.006;
+/** One wave of a cage node's sway: how fast it runs, and how much it moves with each of two of the node's coordinates. */
+type CageSwayWave = readonly [radiansPerSecond: number, firstAxis: number, secondAxis: number];
+/**
+ * How each of a cage node's coordinates sways about its place, {@link CAGE_SWAY} times the sine of a
+ * wave of its own: x by `CAGE_SWAY_WAVES[0]`, along y then z; y by the second, along z then x; z by
+ * the third, along x then y (each coordinate along the two after it, round x, y, z). It depends only
+ * on where the node is and the time, so the edges that share a node sway together and stay joined.
+ * The picture's shader is written from it (`TURNED_NODE_GLSL` in `gpu/picture-layers.ts`), and the
+ * cascades place their nodes by it ({@link cageSwayOf}), so the two never drift apart.
+ */
+export const CAGE_SWAY_WAVES: readonly CageSwayWave[] = [
+  [0.37, 5.3, 2.1],
+  [0.29, 4.9, 3.3],
+  [0.33, 4.1, 2.7],
+];
+
+/** How far a cage node at rest at `x`, `y`, `z` has swayed along `axis` (0 x, 1 y, 2 z) at `time`, in R: see {@link CAGE_SWAY_WAVES}. */
+export function cageSwayOf(axis: number, x: number, y: number, z: number, time: number) {
+  'worklet';
+  const wave = CAGE_SWAY_WAVES[axis];
+  const first = axis === 0 ? y : axis === 1 ? z : x;
+  const second = axis === 0 ? z : axis === 1 ? x : y;
+  return CAGE_SWAY * Math.sin(time * wave[0] + first * wave[1] + second * wave[2]);
+}
 /** The longest edge between two of the shell's nodes, in R: the film's are short and jagged. */
 const CAGE_LONGEST_MESH_EDGE = 0.42;
 /** The longest edge from a woven node back down to the shell's, and between two woven nodes. */

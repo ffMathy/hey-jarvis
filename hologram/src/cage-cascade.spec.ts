@@ -1,125 +1,306 @@
 import { describe, expect, it } from 'bun:test';
 import {
   buildCageNet,
+  CASCADE_BOX_FLARE_SECONDS,
   CASCADE_BOX_NUMBERS,
+  CASCADE_BOX_SLOTS,
   CASCADE_BOXES_AT,
+  CASCADE_DEEPEST,
   CASCADE_EDGE_NUMBERS,
+  CASCADE_EDGE_SLOTS,
   CASCADE_EDGES,
   CASCADE_FADE_SECONDS,
+  CASCADE_FEWEST_RETURN_EDGES,
+  CASCADE_FOOT_INNER,
+  CASCADE_FOOT_OUTER,
   CASCADE_HOP_SECONDS,
+  CASCADE_LATEST_FIRE,
+  CASCADE_LIMB,
+  CASCADE_LONGEST_SECONDS,
   CASCADE_NUMBERS,
   CASCADE_PERIOD,
+  CASCADE_SPOKE,
+  CASCADE_SPOKE_REACH,
   type CageNet,
   type CascadeFrame,
   cascadeScratchSize,
   writeCageCascade,
 } from './cage-cascade';
 import { SCENE_SEED } from './frame-timing';
-import { bodyTurnRadians, CAGE_EDGE_STRIDE, createHologramScene, TRUSS_ARCS } from './hologram-drawing';
+import {
+  analyseFrame,
+  BODY_RADIANS_PER_SECOND,
+  bodyTurnRadians,
+  CAGE_EDGE_STRIDE,
+  cageSwayOf,
+  createHologramScene,
+  type HologramFrame,
+  RIM_ROLL_DEGREES_PER_SECOND,
+  TRUSS_ARCS,
+} from './hologram-drawing';
+import { VOICE_BAND_COUNT } from './voice-levels';
+
+/**
+ * The cage's cascades, worked out from frames of him as `analyseFrame` makes them, and judged frame
+ * by frame where the picture draws them: each lit edge's nodes turned with his body and swayed as
+ * the picture's shader turns and sways them (`turnedNode`, from `CAGE_SWAY_WAVES` by `cageSwayOf`).
+ */
 
 const scene = createHologramScene(SCENE_SEED);
 const net = buildCageNet(scene.cage);
+const SLOTS = CASCADE_EDGE_SLOTS;
+const FRAME = 1 / 60;
 
-/** The few fields of a frame the cascades read. */
-function stateAt(time: number, busy = 0, swirl = 1): CascadeFrame {
-  return { time, talk: busy, thinking: 0, swirl };
+/** A frame of him at `time`: here, formed, and quiet unless told otherwise. */
+function frameAt(time: number, overrides: Partial<HologramFrame> = {}): HologramFrame {
+  return {
+    time,
+    level: 0,
+    bands: new Array(VOICE_BAND_COUNT).fill(0),
+    speaking: false,
+    agitation: 0,
+    talk: 0,
+    burstAge: 10,
+    burstStrength: 0,
+    burstCount: 0,
+    appearance: 1,
+    presence: 1,
+    thinking: 0,
+    ...overrides,
+  };
+}
+
+const BUSY: Partial<HologramFrame> = { talk: 1, agitation: 1, speaking: true, level: 0.5 };
+
+function stateAt(time: number, overrides: Partial<HologramFrame> = {}): CascadeFrame {
+  return analyseFrame(frameAt(time, overrides), 1);
 }
 
 function freshScratch(cage: CageNet) {
   return new Array(cascadeScratchSize(cage)).fill(0);
 }
 
+function freshOut() {
+  return new Float32Array(CASCADE_NUMBERS);
+}
+
 /** The lit edges of a frame: each as its numbers. */
-function litEdges(out: number[]) {
+function litEdges(out: Float32Array) {
   const edges: number[][] = [];
   for (let edge = 0; edge < CASCADE_EDGES; edge++) {
-    const numbers = out.slice(edge * CASCADE_EDGE_NUMBERS, (edge + 1) * CASCADE_EDGE_NUMBERS);
-    if ((numbers[10] ?? 0) > 0) edges.push(numbers);
+    const numbers = Array.from(out.slice(edge * CASCADE_EDGE_NUMBERS, (edge + 1) * CASCADE_EDGE_NUMBERS));
+    if ((numbers[SLOTS.light] ?? 0) > 0) edges.push(numbers);
   }
   return edges;
 }
 
-/** Every chance's lit edges over `seconds`, a frame in the middle of each. */
-function chances(seconds: number, busy: number) {
-  const scratch = freshScratch(net);
-  const out = new Array(CASCADE_NUMBERS).fill(0);
-  const found: { chance: number; edges: number[][] }[] = [];
-  for (let chance = 2; chance < seconds / CASCADE_PERIOD; chance++) {
-    writeCageCascade(net, stateAt(chance * CASCADE_PERIOD + 1, busy), scratch, out);
-    found.push({ chance, edges: litEdges(out) });
-  }
-  return found;
+/** A lit box of a frame (0 the one fired from, 1 the one landed on), as its numbers, or undefined. */
+function litBox(out: Float32Array, box: number) {
+  const numbers = Array.from(
+    out.slice(CASCADE_BOXES_AT + box * CASCADE_BOX_NUMBERS, CASCADE_BOXES_AT + (box + 1) * CASCADE_BOX_NUMBERS),
+  );
+  return (numbers[CASCADE_BOX_SLOTS.light] ?? 0) > 0 ? numbers : undefined;
 }
 
-/**
- * Every edge chance `chance` lights at any moment of its period, as its numbers when first lit, and
- * its boxes' numbers: the plan whole, frame by frame, as the picture is handed it.
- */
-function wholeChance(chance: number, busy: number) {
-  const scratch = freshScratch(net);
-  const out = new Array(CASCADE_NUMBERS).fill(0);
-  const edges = new Map<string, number[]>();
-  let boxes: number[] = [];
-  for (let time = chance * CASCADE_PERIOD; time < (chance + 1) * CASCADE_PERIOD; time += 0.02) {
-    writeCageCascade(net, stateAt(time, busy), scratch, out);
-    for (const edge of litEdges(out)) {
-      const key = `${edge.slice(0, 3).join(',')}|${edge.slice(4, 7).join(',')}`;
-      if (!edges.has(key)) edges.set(key, edge);
-    }
-    if ((out[CASCADE_BOXES_AT + 3] ?? 0) > 0)
-      boxes = out.slice(CASCADE_BOXES_AT, CASCADE_BOXES_AT + 2 * CASCADE_BOX_NUMBERS);
-  }
-  return { edges: [...edges.values()], boxes };
-}
-
-/** Where a node at rest is seen at `time`, without its sway: x and y (down), in R. */
-function seenAt(x: number, z: number, time: number) {
-  const yaw = bodyTurnRadians(time);
-  return x * Math.cos(yaw) + z * Math.sin(yaw);
-}
-
-/** A lit edge's from node (0) or to node (1) at rest, as a key. */
+/** A lit edge's from node (0) or to node (1) at rest. */
 function endOf(edge: number[], end: number) {
-  return edge.slice(end * 4, end * 4 + 3).join(',');
+  const at = end === 0 ? SLOTS.from : SLOTS.to;
+  return edge.slice(at, at + 3);
 }
 
-/**
- * The outer node of a lit edge, as a key, when it is a clear spoke at `fires` — running within 25° of
- * straight out from his middle with an end past 1.12R, well past the thresholds the plan uses so the
- * sway cannot tip one either way — and undefined otherwise.
- */
-function outerEndOfSpoke(edge: number[], fires: number) {
-  const fromX = seenAt(edge[0] ?? 0, edge[2] ?? 0, fires);
-  const fromY = edge[1] ?? 0;
-  const toX = seenAt(edge[4] ?? 0, edge[6] ?? 0, fires);
-  const toY = edge[5] ?? 0;
-  const middleX = (fromX + toX) / 2;
-  const middleY = (fromY + toY) / 2;
-  const run = Math.hypot(toX - fromX, toY - fromY) * Math.hypot(middleX, middleY);
-  const outward = Math.abs((toX - fromX) * middleX + (toY - fromY) * middleY) / run;
-  const toReach = Math.hypot(toX, toY);
-  const fromReach = Math.hypot(fromX, fromY);
-  if (outward < 0.9 || Math.max(toReach, fromReach) < 1.12) return undefined;
-  return endOf(edge, toReach > fromReach ? 1 : 0);
+function keyOf(node: number[]) {
+  return node.join(',');
 }
 
-/** For each clear spoke among a chance's lit edges ({@link outerEndOfSpoke}), how many of them reach its outer node, itself among them. */
-function spokesOf(edges: number[][]) {
-  if (edges.length === 0) return [];
-  const fires = Math.min(...edges.map((edge) => edge[3] ?? 0));
-  const ends = new Map<string, number>();
-  for (const edge of edges) for (const end of [endOf(edge, 0), endOf(edge, 1)]) ends.set(end, (ends.get(end) ?? 0) + 1);
-  return edges.flatMap((edge) => {
-    const outer = outerEndOfSpoke(edge, fires);
-    return outer === undefined ? [] : [ends.get(outer) ?? 0];
+/** Where a node at rest is seen at `time`: swayed, then turned with his body, as the picture's shader does. */
+function seenAt(node: number[], time: number) {
+  const [x = 0, y = 0, z = 0] = node;
+  const swayed = [0, 1, 2].map((axis) => (node[axis] ?? 0) + cageSwayOf(axis, x, y, z, time));
+  const [swayedX = 0, swayedY = 0, swayedZ = 0] = swayed;
+  const yaw = bodyTurnRadians(time);
+  return {
+    x: swayedX * Math.cos(yaw) + swayedZ * Math.sin(yaw),
+    y: swayedY,
+    z: swayedZ * Math.cos(yaw) - swayedX * Math.sin(yaw),
+  };
+}
+
+/** Whether an edge seen from one point to another is a spoke, by the plan's own thresholds. */
+function isSpoke(from: { x: number; y: number }, to: { x: number; y: number }) {
+  const runX = to.x - from.x;
+  const runY = to.y - from.y;
+  const middleX = (from.x + to.x) / 2;
+  const middleY = (from.y + to.y) / 2;
+  const outward = Math.abs(runX * middleX + runY * middleY) / (Math.hypot(runX, runY) * Math.hypot(middleX, middleY));
+  return outward > CASCADE_SPOKE && Math.max(Math.hypot(from.x, from.y), Math.hypot(to.x, to.y)) > CASCADE_SPOKE_REACH;
+}
+
+/** Whether a node seen at `seen` is over the truss's box `first`, `sweep` wide, at `time`, by the plan's own feet. */
+function overBox(seen: { x: number; y: number; z: number }, first: number, sweep: number, time: number) {
+  const reach = Math.hypot(seen.x, seen.y);
+  const clock =
+    ((((Math.atan2(seen.x, -seen.y) * 180) / Math.PI - time * RIM_ROLL_DEGREES_PER_SECOND) % 360) + 360) % 360;
+  return (
+    reach >= CASCADE_FOOT_INNER &&
+    reach <= CASCADE_FOOT_OUTER &&
+    seen.z >= CASCADE_DEEPEST &&
+    clock >= first - 1e-6 &&
+    clock <= first + sweep + 1e-6
+  );
+}
+
+/** A box of the truss: the first degree of one of its stretches' boxes, and that box's width. */
+function isBox(first: number, sweep: number) {
+  return TRUSS_ARCS.some(([from, stretch, count]) => {
+    const step = stretch / count;
+    const place = (first - from) / step;
+    return (
+      Math.abs(sweep - step) < 1e-4 && place > -1e-4 && place < count && Math.abs(place - Math.round(place)) < 1e-4
+    );
   });
 }
 
+/** One chance, frame by frame over its period: what each frame lit, its time among them. */
+interface ChanceFrames {
+  chance: number;
+  frames: { time: number; edges: number[][]; boxes: (number[] | undefined)[] }[];
+  /** Every edge it lit at any frame, as its numbers, once each. */
+  edges: number[][];
+}
+
+function chanceFrames(chance: number, overrides: Partial<HologramFrame>, scratch = freshScratch(net)): ChanceFrames {
+  const out = freshOut();
+  const frames: ChanceFrames['frames'] = [];
+  const edges = new Map<string, number[]>();
+  for (let step = 0; step * FRAME < CASCADE_PERIOD; step++) {
+    const time = chance * CASCADE_PERIOD + step * FRAME;
+    writeCageCascade(net, stateAt(time, overrides), scratch, out);
+    const lit = litEdges(out);
+    frames.push({ time, edges: lit, boxes: [litBox(out, 0), litBox(out, 1)] });
+    for (const edge of lit) edges.set(`${keyOf(endOf(edge, 0))}|${keyOf(endOf(edge, 1))}`, edge);
+  }
+  return { chance, frames, edges: [...edges.values()] };
+}
+
+/** Every chance from the third to the one `seconds` in, frame by frame. */
+function everyChance(seconds: number, overrides: Partial<HologramFrame>) {
+  const scratch = freshScratch(net);
+  const found: ChanceFrames[] = [];
+  for (let chance = 2; chance < seconds / CASCADE_PERIOD; chance++)
+    found.push(chanceFrames(chance, overrides, scratch));
+  return found;
+}
+
+/** Whether each chance from the third lights anything, a frame in every twentieth of a second. */
+function firedChances(seconds: number, overrides: Partial<HologramFrame>) {
+  const scratch = freshScratch(net);
+  const out = freshOut();
+  const fired: boolean[] = [];
+  for (let chance = 2; chance < seconds / CASCADE_PERIOD; chance++) {
+    let lit = false;
+    for (let time = chance * CASCADE_PERIOD; time < (chance + 1) * CASCADE_PERIOD && !lit; time += 0.05) {
+      writeCageCascade(net, stateAt(time, overrides), scratch, out);
+      lit = litEdges(out).length > 0;
+    }
+    fired.push(lit);
+  }
+  return fired;
+}
+
+/**
+ * Every spoke a chance lights, at every frame it is one, by the plan's own thresholds: whether its
+ * outer node then is reached by no other edge of the chance's whole plan.
+ */
+function spokesOf({ frames, edges }: ChanceFrames) {
+  const ends = new Map<string, number>();
+  for (const edge of edges)
+    for (const end of [0, 1]) ends.set(keyOf(endOf(edge, end)), (ends.get(keyOf(endOf(edge, end))) ?? 0) + 1);
+  return frames.flatMap(({ time, edges: lit }) =>
+    lit.flatMap((edge) => {
+      const from = seenAt(endOf(edge, 0), time);
+      const to = seenAt(endOf(edge, 1), time);
+      if (!isSpoke(from, to)) return [];
+      const outer = Math.hypot(to.x, to.y) > Math.hypot(from.x, from.y) ? 1 : 0;
+      return [{ time, alone: (ends.get(keyOf(endOf(edge, outer))) ?? 0) <= 1 }];
+    }),
+  );
+}
+
+/** The first frame's numbers of one of a chance's boxes (0 fired from, 1 landed on), lit. */
+function boxOf({ frames }: ChanceFrames, box: number) {
+  return frames.flatMap(({ boxes }) => (boxes[box] ? [boxes[box]] : []))[0] ?? [];
+}
+
+/**
+ * That a chance's pulse fires from the box that flares as it fires, from a node over that box then,
+ * and lights nothing before it; the box's numbers.
+ */
+function expectFlaredUnderTheSource(chance: ChanceFrames) {
+  const out = chance.edges.filter((edge) => edge[SLOTS.kind] === 0);
+  const source = boxOf(chance, 0);
+  const first = source[CASCADE_BOX_SLOTS.first] ?? 0;
+  const sweep = source[CASCADE_BOX_SLOTS.sweep] ?? 0;
+  const fires = source[CASCADE_BOX_SLOTS.flares] ?? 0;
+  const fromSource = out.filter((edge) => edge[SLOTS.leaves] === fires);
+
+  expect(isBox(first, sweep)).toBe(true);
+  expect(fromSource.length).toBeGreaterThan(0);
+  for (const edge of out) expect(edge[SLOTS.leaves] ?? 0).toBeGreaterThanOrEqual(fires);
+  for (const edge of fromSource) expect(overBox(seenAt(endOf(edge, 0), fires), first, sweep, fires)).toBe(true);
+  return source;
+}
+
+/**
+ * That a chance's return lights enough edges and lands on a box of its own, which flares as it
+ * lands, the node it lands on over that box then, where the truss has rolled it.
+ */
+function expectFlaredUnderTheTarget(chance: ChanceFrames, source: number[]) {
+  const back = chance.edges.filter((edge) => edge[SLOTS.kind] === 1);
+  const target = boxOf(chance, 1);
+  const first = target[CASCADE_BOX_SLOTS.first] ?? 0;
+  const sweep = target[CASCADE_BOX_SLOTS.sweep] ?? 0;
+  const lands = target[CASCADE_BOX_SLOTS.flares] ?? 0;
+  const landsAt = (edge: number[]) => (edge[SLOTS.leaves] ?? 0) + CASCADE_HOP_SECONDS;
+  const landing = back.filter((edge) => Math.abs(landsAt(edge) - lands) < 1e-4);
+
+  expect(back.length).toBeGreaterThanOrEqual(CASCADE_FEWEST_RETURN_EDGES);
+  expect(isBox(first, sweep)).toBe(true);
+  expect(first).not.toBe(source[CASCADE_BOX_SLOTS.first]);
+  expect(Math.max(...back.map(landsAt))).toBeCloseTo(lands, 4);
+  expect(landing.length).toBeGreaterThan(0);
+  for (const edge of landing) expect(overBox(seenAt(endOf(edge, 1), lands), first, sweep, lands)).toBe(true);
+}
+
+/** From when to when everything a chance lights at any of its frames is lit: each edge and each box's flare. */
+function litSpans({ chance, frames }: ChanceFrames) {
+  return frames.flatMap(({ edges, boxes }) => [
+    ...edges.map((edge) => ({
+      chance,
+      what: 'edge',
+      from: edge[SLOTS.leaves] ?? 0,
+      until: (edge[SLOTS.fades] ?? 0) + CASCADE_FADE_SECONDS,
+    })),
+    ...boxes.flatMap((box) =>
+      box
+        ? [
+            {
+              chance,
+              what: 'box',
+              from: box[CASCADE_BOX_SLOTS.flares] ?? 0,
+              until: (box[CASCADE_BOX_SLOTS.flares] ?? 0) + CASCADE_BOX_FLARE_SECONDS,
+            },
+          ]
+        : [],
+    ),
+  ]);
+}
+
+const busyChances = everyChance(360, BUSY);
+
 describe('the cage net the cascades run over', () => {
   it('joins only nodes of the cage both ways, along its own evenly lit edges out past the specks', () => {
-    const count = net.firstLink.length - 1;
-    expect(count).toBeGreaterThan(50);
-    expect(net.nodes).toHaveLength(count * 3);
+    expect(net.count).toBeGreaterThan(50);
+    expect(net.nodes).toHaveLength(net.count * 3);
     const edges = new Set<string>();
     for (let offset = 0; offset < scene.cage.length; offset += CAGE_EDGE_STRIDE) {
       const from = scene.cage.slice(offset, offset + 3).join(',');
@@ -127,7 +308,7 @@ describe('the cage net the cascades run over', () => {
       edges.add(`${from}|${to}`);
       edges.add(`${to}|${from}`);
     }
-    for (let node = 0; node < count; node++) {
+    for (let node = 0; node < net.count; node++) {
       const at = net.nodes.slice(node * 3, node * 3 + 3);
       expect(Math.hypot(at[0] ?? 0, at[1] ?? 0, at[2] ?? 0)).toBeGreaterThanOrEqual(0.95);
       for (let link = net.firstLink[node] ?? 0; link < (net.firstLink[node + 1] ?? 0); link++) {
@@ -141,137 +322,161 @@ describe('the cage net the cascades run over', () => {
 });
 
 describe('the cage cascades', () => {
-  it('fire now and then: about one every five seconds in silence, and more often while he is busy', () => {
+  it('last, at their latest and longest, no longer than a chance, and turn him less than half a turn meanwhile', () => {
+    expect(CASCADE_LATEST_FIRE + CASCADE_LONGEST_SECONDS).toBeLessThanOrEqual(CASCADE_PERIOD + 1e-9);
+    // which is what lets the plan judge where a node is over a stretch from where it is at its ends
+    expect(BODY_RADIANS_PER_SECOND * CASCADE_LONGEST_SECONDS).toBeLessThan(Math.PI);
+  });
+
+  it('fire now and then: about one every five seconds in silence, more often while he talks, and as often while he thinks', () => {
     const seconds = 600;
-    const inSilence = chances(seconds, 0).filter(({ edges }) => edges.length > 0).length;
-    const whileBusy = chances(seconds, 1).filter(({ edges }) => edges.length > 0).length;
+    const inSilence = firedChances(seconds, {}).filter(Boolean).length;
+    const whileTalking = firedChances(seconds, BUSY).filter(Boolean).length;
+    const whileThinking = firedChances(seconds, { thinking: 1 });
 
     expect(seconds / inSilence).toBeGreaterThan(4);
     expect(seconds / inSilence).toBeLessThan(7);
-    expect(whileBusy).toBeGreaterThan(inSilence * 1.5);
+    expect(whileTalking).toBeGreaterThan(inSilence * 1.4);
+    expect(whileThinking).toEqual(firedChances(seconds, BUSY));
   });
 
-  it('never leave him dark for long: in silence no two are more than two chances apart', () => {
-    const lit = chances(1200, 0).filter(({ edges }) => edges.length > 0);
-    const fired = lit.map(({ edges }) => Math.min(...edges.map((edge) => edge[3] ?? 0)));
-    const gaps = fired.slice(1).map((fires, place) => fires - (fired[place] ?? 0));
+  it('never leave him dark for two chances in silence while either could have fired', () => {
+    // A chance that finds no node to fire from cannot fire at all, busy or not; any other between two
+    // that always fire fires in silence beside it, so two in a row go dark only where neither can.
+    const seconds = 1200;
+    const inSilence = firedChances(seconds, {});
+    const whileBusy = firedChances(seconds, BUSY);
 
-    expect(Math.max(...gaps)).toBeLessThan(2 * CASCADE_PERIOD + 0.5);
+    for (let place = 1; place < inSilence.length; place++) {
+      if (inSilence[place] || inSilence[place - 1]) continue;
+      expect({ chance: place + 2, couldFire: whileBusy[place] || whileBusy[place - 1] }).toEqual({
+        chance: place + 2,
+        couldFire: false,
+      });
+    }
+    expect(whileBusy.filter((fired) => !fired).length).toBeLessThan(whileBusy.length * 0.15);
   });
 
-  it('never light a spoke standing out into the dark on its own, only one leading on to more lit edges', () => {
-    let spokes = 0;
-    for (let chance = 2; chance < 120; chance++) {
-      for (const touching of spokesOf(wholeChance(chance, 1).edges)) {
-        spokes++;
-        expect(touching).toBeGreaterThan(1);
+  it('light edges only where both their nodes stay out past his limb and not far behind him, every frame they are lit', () => {
+    let judged = 0;
+    for (const { frames } of busyChances) {
+      for (const { time, edges } of frames) {
+        for (const edge of edges) {
+          for (const end of [0, 1]) {
+            const seen = seenAt(endOf(edge, end), time);
+            expect(Math.hypot(seen.x, seen.y)).toBeGreaterThanOrEqual(CASCADE_LIMB);
+            expect(seen.z).toBeGreaterThanOrEqual(CASCADE_DEEPEST);
+            judged++;
+          }
+        }
       }
     }
-    expect(spokes).toBeGreaterThan(0);
+    expect(judged).toBeGreaterThan(10000);
   });
 
-  it('flare the box the pulse fires from as it fires, and the box the return lands on as it lands', () => {
-    let returns = 0;
-    for (let chance = 2; chance < 120; chance++) {
-      const { edges, boxes } = wholeChance(chance, 1);
-      if (edges.length === 0) continue;
-      const out = edges.filter((edge) => edge[11] === 0);
-      const back = edges.filter((edge) => edge[11] === 1);
-      const [sourceFirst = 0, sourceSweep = 0, sourceFlares = 0] = boxes;
-      const [targetFirst = 0, targetSweep = 0, targetFlares = 0, targetLight = 0] = boxes.slice(CASCADE_BOX_NUMBERS);
-      // a box of the truss: the first degree of one of its stretches' boxes, and that box's width
-      const isBox = (first: number, sweep: number) =>
-        TRUSS_ARCS.some(([from, stretch, count]) => {
-          const step = stretch / count;
-          const place = (first - from) / step;
-          return (
-            Math.abs(sweep - step) < 1e-9 &&
-            place > -1e-9 &&
-            place < count &&
-            Math.abs(place - Math.round(place)) < 1e-9
-          );
-        });
+  it('never light a spoke standing out into the dark on its own, at any frame it is lit', () => {
+    const spokes = busyChances.flatMap(spokesOf);
 
-      expect(isBox(sourceFirst, sourceSweep)).toBe(true);
-      expect(sourceFlares).toBeCloseTo(Math.min(...out.map((edge) => edge[3] ?? 0)), 9);
-      if (back.length === 0) continue;
-      returns++;
-      expect(targetLight).toBeGreaterThan(0);
-      expect(isBox(targetFirst, targetSweep)).toBe(true);
-      expect(targetFirst).not.toBe(sourceFirst);
-      expect(targetFlares).toBeCloseTo(Math.max(...back.map((edge) => (edge[3] ?? 0) + (edge[7] ?? 0))), 9);
+    // another edge of the plan reaches each one's outer node, so it leads on to the lit net
+    expect(spokes.filter(({ alone }) => alone)).toEqual([]);
+    expect(spokes.length).toBeGreaterThan(0);
+  });
+
+  it('flare the box the pulse fires from as it fires, under its node, and the box the return lands on as it lands, under the node it lands on', () => {
+    let returns = 0;
+    for (const chance of busyChances) {
+      if (chance.edges.length === 0) continue;
+      const source = expectFlaredUnderTheSource(chance);
+      if (chance.edges.some((edge) => edge[SLOTS.kind] === 1)) {
+        expectFlaredUnderTheTarget(chance, source);
+        returns++;
+      } else {
+        expect(chance.frames.some(({ boxes }) => boxes[1] !== undefined)).toBe(false);
+      }
     }
     expect(returns).toBeGreaterThan(30);
   });
 
   it('spread out hop by hop from one node, and gather back onto another', () => {
-    for (const { edges } of chances(300, 1)) {
+    for (const { edges } of busyChances) {
       if (edges.length === 0) continue;
-      const out = edges.filter((edge) => edge[11] === 0);
-      const back = edges.filter((edge) => edge[11] === 1);
-      const fires = Math.min(...out.map((edge) => edge[3] ?? 0));
+      const out = edges.filter((edge) => edge[SLOTS.kind] === 0);
+      const back = edges.filter((edge) => edge[SLOTS.kind] === 1);
+      const fires = Math.min(...out.map((edge) => edge[SLOTS.leaves] ?? 0));
       // every spark leaves a whole number of hops after the pulse fired, from a node an earlier spark lit
-      const lit = new Set([
-        out
-          .find((edge) => edge[3] === fires)
-          ?.slice(0, 3)
-          .join(','),
-      ]);
-      for (const edge of [...out].sort((first, second) => (first[3] ?? 0) - (second[3] ?? 0))) {
-        const hops = ((edge[3] ?? 0) - fires) / CASCADE_HOP_SECONDS;
-        expect(Math.abs(hops - Math.round(hops))).toBeLessThan(1e-9);
-        expect(lit.has(edge.slice(0, 3).join(','))).toBe(true);
-        lit.add(edge.slice(4, 7).join(','));
+      const lit = new Set(out.filter((edge) => edge[SLOTS.leaves] === fires).map((edge) => keyOf(endOf(edge, 0))));
+      expect(lit.size).toBe(1);
+      for (const edge of [...out].sort((first, second) => (first[SLOTS.leaves] ?? 0) - (second[SLOTS.leaves] ?? 0))) {
+        const hops = ((edge[SLOTS.leaves] ?? 0) - fires) / CASCADE_HOP_SECONDS;
+        expect(Math.abs(hops - Math.round(hops))).toBeLessThan(1e-3);
+        expect(lit.has(keyOf(endOf(edge, 0)))).toBe(true);
+        lit.add(keyOf(endOf(edge, 1)));
       }
-      expect(out.length).toBeGreaterThanOrEqual(5);
+      expect(out.length).toBeGreaterThanOrEqual(4);
       if (back.length === 0) continue;
       // the return's sparks all converge on one node, landing together, after the pulse out spread
-      const lands = back.map((edge) => (edge[3] ?? 0) + (edge[7] ?? 0));
-      const target = back.find((edge) => (edge[3] ?? 0) + (edge[7] ?? 0) === Math.max(...lands));
-      expect(Math.min(...back.map((edge) => edge[3] ?? 0))).toBeGreaterThan(fires);
-      expect(lit.has(target?.slice(4, 7).join(','))).toBe(false);
+      const lands = Math.max(...back.map((edge) => (edge[SLOTS.leaves] ?? 0) + CASCADE_HOP_SECONDS));
+      const targets = new Set(
+        back
+          .filter((edge) => Math.abs((edge[SLOTS.leaves] ?? 0) + CASCADE_HOP_SECONDS - lands) < 1e-4)
+          .map((edge) => keyOf(endOf(edge, 1))),
+      );
+      expect(targets.size).toBe(1);
+      expect(Math.min(...back.map((edge) => edge[SLOTS.leaves] ?? 0))).toBeGreaterThan(fires);
+      expect(lit.has([...targets][0] ?? '')).toBe(false);
     }
   });
 
-  it('are over before the next chance, so two never overlap and none is cut off', () => {
-    for (const { chance, edges } of chances(600, 1)) {
-      for (const edge of edges) {
-        expect((edge[8] ?? 0) + CASCADE_FADE_SECONDS).toBeLessThanOrEqual((chance + 1) * CASCADE_PERIOD + 1e-9);
-        expect(edge[3] ?? 0).toBeGreaterThanOrEqual(chance * CASCADE_PERIOD);
-      }
-    }
-  });
+  it('are over before the next chance at every frame, returns and both flares too, so two never overlap and none is cut off', () => {
+    const lit = busyChances.flatMap(litSpans);
+    const outside = lit.filter(
+      ({ chance, from, until }) =>
+        from < chance * CASCADE_PERIOD - 1e-3 || until > (chance + 1) * CASCADE_PERIOD + 1e-3,
+    );
 
-  it('light edges out past his limb, where the cage stands against the dark, not across his face', () => {
-    for (const { edges } of chances(300, 1)) {
-      if (edges.length === 0) continue;
-      // where the cage was when the pulse fired, which is when it was planned: the cage turns on
-      const fires = Math.min(...edges.map((edge) => edge[3] ?? 0));
-      for (const edge of edges) {
-        for (const [x, y, z] of [edge.slice(0, 3), edge.slice(4, 7)]) {
-          // past the limb (0.9R) and the truss's feet (0.91R), give or take a node's sway
-          expect(Math.hypot(seenAt(x ?? 0, z ?? 0, fires), y ?? 0)).toBeGreaterThan(0.88);
-        }
-      }
-    }
+    expect(outside).toEqual([]);
+    expect(lit.filter(({ what }) => what === 'box').length).toBeGreaterThan(0);
   });
 
   it('are the same frame at a time from a fresh scratch as from one kept frame to frame', () => {
     const kept = freshScratch(net);
-    const keptOut = new Array(CASCADE_NUMBERS).fill(0);
-    for (let time = 20; time < 40; time += 1 / 30) {
-      writeCageCascade(net, stateAt(time, 1), kept, keptOut);
-      const freshOut = new Array(CASCADE_NUMBERS).fill(0);
-      writeCageCascade(net, stateAt(time, 1), freshScratch(net), freshOut);
-      expect(litEdges(freshOut)).toEqual(litEdges(keptOut));
+    const keptOut = freshOut();
+    for (let time = 20; time < 80; time += 1 / 30) {
+      const state = stateAt(time, BUSY);
+      writeCageCascade(net, state, kept, keptOut);
+      const freshlyOut = freshOut();
+      writeCageCascade(net, state, freshScratch(net), freshlyOut);
+      expect(litEdges(freshlyOut)).toEqual(litEdges(keptOut));
+      expect([litBox(freshlyOut, 0), litBox(freshlyOut, 1)]).toEqual([litBox(keptOut, 0), litBox(keptOut, 1)]);
     }
   });
 
-  it('light nothing before he has formed', () => {
-    const out = new Array(CASCADE_NUMBERS).fill(0);
-    for (let chance = 2; chance < 60; chance++) {
-      writeCageCascade(net, stateAt(chance * CASCADE_PERIOD + 1, 1, 0.5), freshScratch(net), out);
-      expect(litEdges(out)).toHaveLength(0);
+  it('light nothing, and flare no box, before he has formed, and only partly while he forms', () => {
+    const forming = everyChance(120, { ...BUSY, appearance: 0.5 });
+    for (const { frames } of forming) {
+      for (const { edges, boxes } of frames) {
+        expect(edges).toHaveLength(0);
+        expect(boxes).toEqual([undefined, undefined]);
+      }
+    }
+    const lights = everyChance(120, { ...BUSY, appearance: 0.95 }).flatMap(({ frames }) =>
+      frames.flatMap(({ edges }) => edges.map((edge) => edge[SLOTS.light] ?? 0)),
+    );
+    expect(lights.length).toBeGreaterThan(0);
+    for (const light of lights) {
+      expect(light).toBeGreaterThan(0);
+      expect(light).toBeLessThan(1);
+    }
+  });
+
+  it('go out as he leaves: dimmer as his vortex runs back, and dark once it is under way', () => {
+    // the frame at presence p is the frame at appearance p, so leaving is forming run backwards
+    for (const presence of [0.95, 0.5, 0]) {
+      const lights = everyChance(60, { ...BUSY, presence }).flatMap(({ frames }) =>
+        frames.flatMap(({ edges }) => edges.map((edge) => edge[SLOTS.light] ?? 0)),
+      );
+      if (presence < 0.9) expect(lights).toHaveLength(0);
+      else for (const light of lights) expect(light).toBeLessThan(1);
     }
   });
 });

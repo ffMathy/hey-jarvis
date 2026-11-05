@@ -1,8 +1,7 @@
 import { PLAIN_RING_GLYPH, type SatelliteOrbit } from '../agent-work';
 import {
+  anythingLit,
   buildCageNet,
-  CASCADE_EDGE_NUMBERS,
-  CASCADE_EDGES,
   CASCADE_NUMBERS,
   type CageNet,
   cascadeScratchSize,
@@ -168,7 +167,7 @@ export interface GpuPicture {
    */
   cascadeNet: CageNet;
   cascadeScratch: number[];
-  cascadeEdges: number[];
+  cascadeEdges: Float32Array;
   /** Scratch for a frame: the transform's matrix, and the stencil value of the path being drawn. */
   matrix: Float32Array;
   stencil: number[];
@@ -286,7 +285,7 @@ export function createGpuPicture(gl: HologramGl, scene: HologramPictureScene): G
     arc: layerOf(gl, arcLayer()),
     disc: layerOf(gl, discLayer()),
     cage: layerOf(gl, cageLayer(scene)),
-    cascade: layerOf(gl, cascadeLayer(CASCADE_EDGES)),
+    cascade: layerOf(gl, cascadeLayer()),
     embers: layerOf(gl, embersLayer(scene)),
     fray: layerOf(gl, frayLayer(scene)),
     chips: layerOf(gl, chips.layer),
@@ -300,7 +299,7 @@ export function createGpuPicture(gl: HologramGl, scene: HologramPictureScene): G
     glyphRuns: new Array(GLYPH_SLOTS).fill(0),
     cascadeNet,
     cascadeScratch: new Array(cascadeScratchSize(cascadeNet)).fill(0),
-    cascadeEdges: new Array(CASCADE_NUMBERS).fill(0),
+    cascadeEdges: new Float32Array(CASCADE_NUMBERS),
     matrix: new Float32Array(9),
     stencil: [0],
   };
@@ -574,26 +573,34 @@ function drawCore(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
 
 // ---- round him: the cage and the embers -------------------------------------------------------
 
-/** The cage's hairlines, in one paint and width, turned with his body. */
-function strokeCage(
-  gl: HologramGl,
-  picture: GpuPicture,
-  frame: GpuPictureFrame,
-  halfWidth: number,
-  kind: number,
-  colour: number,
-  alpha: number,
-) {
+/**
+ * Sets a layer of the cage's own edges up for this frame's draws (the cage's, and its cascades'):
+ * round the shell, with its nodes turned with his body and swayed on the frame's clock, as
+ * `TURNED_NODE_GLSL` places them.
+ */
+function useLayerOnTheCage(gl: HologramGl, picture: GpuPicture, layer: PictureLayer, frame: GpuPictureFrame) {
   'worklet';
-  const layer = picture.cage;
   const state = frame.state;
-  beginPath(gl, picture);
   useLayerRoundTheShell(gl, picture, layer, frame);
-  setPaint(gl, layer, kind, colour, alpha);
   const turn = layer.program.uniforms.bodyTurn;
   if (turn) gl.uniform2f(turn, state.bodyCos, state.bodySin);
   setUniform1(layer, gl, 'time', state.time);
-  setUniform1(layer, gl, 'halfWidth', halfWidth / state.shellReach);
+}
+
+/**
+ * One path of every shape of a layer {@link useLayerOnTheCage} set up, in the paint set last,
+ * `halfWidth` either side whatever the vortex's reach, as the cage's lines keep their width.
+ */
+function strokeOnTheCage(
+  gl: HologramGl,
+  picture: GpuPicture,
+  layer: PictureLayer,
+  frame: GpuPictureFrame,
+  halfWidth: number,
+) {
+  'worklet';
+  beginPath(gl, picture);
+  setUniform1(layer, gl, 'halfWidth', halfWidth / frame.state.shellReach);
   drawShapes(gl, picture, layer, 0, layer.shapes);
 }
 
@@ -608,13 +615,17 @@ function drawCage(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
   const alpha = frame.state.cageAlpha;
   if (alpha <= 0) return;
-  strokeCage(gl, picture, frame, 0.034 / 2, PICTURE_PAINTS.solid, GLOW, 0.15 * alpha);
-  strokeCage(gl, picture, frame, 0.011 / 2, PICTURE_PAINTS.sparkle, PALE_ORANGE, clamp01(0.9 * alpha));
+  const layer = picture.cage;
+  useLayerOnTheCage(gl, picture, layer, frame);
+  setPaint(gl, layer, PICTURE_PAINTS.solid, GLOW, 0.15 * alpha);
+  strokeOnTheCage(gl, picture, layer, frame, 0.034 / 2);
+  setPaint(gl, layer, PICTURE_PAINTS.sparkle, PALE_ORANGE, clamp01(0.9 * alpha));
+  strokeOnTheCage(gl, picture, layer, frame, 0.011 / 2);
 }
 
 /**
  * Where the cage's cascades are this frame (`writeCageCascade`), into the picture's own numbers, for
- * a frame that draws them ({@link GpuPictureFrame}'s `cascades`).
+ * {@link drawGpuPictureCascade} to draw: `drawGpuFrame` writes them before it draws anything.
  */
 export function writeGpuPictureCascade(picture: GpuPicture, state: HologramFrameState) {
   'worklet';
@@ -641,7 +652,7 @@ const CASCADE_FLASH_HALF_WIDTH = 0.02;
 const CASCADE_BOX_HALF_WIDTH = 0.006;
 const CASCADE_BOX_GLOW_HALF_WIDTH = 0.014;
 
-/** One of the cascades' parts (`CASCADE_PARTS`), in one paint and width, on the cage as it is turned now. */
+/** One of the cascades' parts ({@link CASCADE_PARTS}), in one paint and width, over the cascade {@link drawCascade} set up. */
 function strokeCascade(
   gl: HologramGl,
   picture: GpuPicture,
@@ -653,18 +664,9 @@ function strokeCascade(
 ) {
   'worklet';
   const layer = picture.cascade;
-  const state = frame.state;
-  beginPath(gl, picture);
-  useLayerRoundTheShell(gl, picture, layer, frame);
   setSolid(gl, layer, colour, alpha);
-  const uniforms = layer.program.uniforms;
-  if (uniforms.bodyTurn) gl.uniform2f(uniforms.bodyTurn, state.bodyCos, state.bodySin);
-  if (uniforms.cascade) gl.uniform4fv(uniforms.cascade, picture.cascadeEdges);
-  setUniform1(layer, gl, 'time', state.time);
-  setUniform1(layer, gl, 'rimRoll', state.rimRoll);
   setUniform1(layer, gl, 'cascadePart', part);
-  setUniform1(layer, gl, 'halfWidth', halfWidth / state.shellReach);
-  drawShapes(gl, picture, layer, 0, layer.shapes);
+  strokeOnTheCage(gl, picture, layer, frame, halfWidth);
 }
 
 /**
@@ -673,16 +675,19 @@ function strokeCascade(
  * (`cage-cascade.ts`). Each edge it reaches lights as a glowing orange line on the cage's own
  * hairline, a red-orange glow under an orange core, much brighter than the hairline; along it races
  * its spark, an orange comet with a bright head, which closes up on the node it lands on, where a
- * soft deep orange burst flashes and goes out. Nothing when no cascade is lit, or before he has formed (the cage's own light).
+ * soft deep orange burst flashes and goes out. Nothing when nothing of a cascade is lit — no edge and
+ * no box's flare — or before he has formed (the cage's own light). What every stroke shares, the
+ * cage's turn, the clock, the truss's roll and the cascade's numbers, is set once for all of them.
  */
 function drawCascade(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
   const alpha = frame.state.cageAlpha;
-  if (alpha <= 0) return;
-  let lit = false;
-  for (let edge = 0; edge < CASCADE_EDGES && !lit; edge++)
-    lit = picture.cascadeEdges[edge * CASCADE_EDGE_NUMBERS + 10] > 0;
-  if (!lit) return;
+  if (alpha <= 0 || !anythingLit(picture.cascadeEdges)) return;
+  const layer = picture.cascade;
+  const uniforms = layer.program.uniforms;
+  useLayerOnTheCage(gl, picture, layer, frame);
+  if (uniforms.cascade) gl.uniform4fv(uniforms.cascade, picture.cascadeEdges);
+  setUniform1(layer, gl, 'rimRoll', frame.state.rimRoll);
   strokeCascade(gl, picture, frame, CASCADE_PARTS.box, CASCADE_BOX_GLOW_HALF_WIDTH, GLOW, 0.6 * alpha);
   strokeCascade(gl, picture, frame, CASCADE_PARTS.box, CASCADE_BOX_HALF_WIDTH, ORANGE, 0.8 * alpha);
   strokeCascade(gl, picture, frame, CASCADE_PARTS.wire, CASCADE_WIRE_GLOW_HALF_WIDTH, GLOW, 0.9 * alpha);
@@ -932,6 +937,31 @@ function drawSatellites(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFr
 }
 
 /**
+ * Starts a pass of the picture over whatever the bound framebuffer holds: every paint Screened over
+ * it, each path painting only where none before it in the pass has ({@link beginPath}), and where its
+ * own shapes overlap only the one that covers a pixel most ({@link drawShapes}).
+ */
+function beginPicturePass(gl: HologramGl, picture: GpuPicture) {
+  'worklet';
+  gl.enable(BLEND);
+  gl.blendEquation(FUNC_ADD);
+  gl.blendFuncSeparate(ONE, ONE_MINUS_SRC_COLOR, ONE, ONE_MINUS_SRC_ALPHA);
+  gl.enable(STENCIL_TEST);
+  gl.stencilMask(0xff);
+  gl.enable(DEPTH_TEST);
+  picture.stencil[0] = 0;
+}
+
+/** Ends a pass of the picture: the depth and stencil tests off and depth writes back on, for whatever draws next. */
+function endPicturePass(gl: HologramGl) {
+  'worklet';
+  gl.disable(STENCIL_TEST);
+  gl.disable(DEPTH_TEST);
+  gl.depthMask(true);
+  gl.bindVertexArray(null);
+}
+
+/**
  * Draws the cage's cascades, as {@link writeGpuPictureCascade} last wrote them, over a frame of him
  * already drawn into the bound framebuffer — over his body as well as the picture, so a pulse is
  * seen where the cage crosses his bright edge and the truss, between the two, and not only out in
@@ -941,21 +971,12 @@ function drawSatellites(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFr
  */
 export function drawGpuPictureCascade(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
-  gl.enable(BLEND);
-  gl.blendEquation(FUNC_ADD);
-  gl.blendFuncSeparate(ONE, ONE_MINUS_SRC_COLOR, ONE, ONE_MINUS_SRC_ALPHA);
-  gl.enable(STENCIL_TEST);
-  gl.stencilMask(0xff);
-  gl.enable(DEPTH_TEST);
+  beginPicturePass(gl, picture);
   gl.depthMask(true);
   gl.clear(STENCIL_BUFFER_BIT | DEPTH_BUFFER_BIT);
-  picture.stencil[0] = 0;
   drawCascade(gl, picture, frame);
-  gl.disable(STENCIL_TEST);
-  gl.disable(DEPTH_TEST);
+  endPicturePass(gl);
   gl.disable(BLEND);
-  gl.depthMask(true);
-  gl.bindVertexArray(null);
 }
 
 /**
@@ -965,13 +986,7 @@ export function drawGpuPictureCascade(gl: HologramGl, picture: GpuPicture, frame
  */
 export function drawGpuPicture(gl: HologramGl, picture: GpuPicture, frame: GpuPictureFrame) {
   'worklet';
-  gl.enable(BLEND);
-  gl.blendEquation(FUNC_ADD);
-  gl.blendFuncSeparate(ONE, ONE_MINUS_SRC_COLOR, ONE, ONE_MINUS_SRC_ALPHA);
-  gl.enable(STENCIL_TEST);
-  gl.stencilMask(0xff);
-  gl.enable(DEPTH_TEST);
-  picture.stencil[0] = 0;
+  beginPicturePass(gl, picture);
   gl.activeTexture(TEXTURE0);
   gl.bindTexture(TEXTURE_2D, picture.sparkle);
   gl.activeTexture(TEXTURE0 + 1);
@@ -984,8 +999,5 @@ export function drawGpuPicture(gl: HologramGl, picture: GpuPicture, frame: GpuPi
   drawFray(gl, picture, frame);
   drawChips(gl, picture, frame);
   drawSatellites(gl, picture, frame);
-  gl.disable(STENCIL_TEST);
-  gl.disable(DEPTH_TEST);
-  gl.depthMask(true);
-  gl.bindVertexArray(null);
+  endPicturePass(gl);
 }
