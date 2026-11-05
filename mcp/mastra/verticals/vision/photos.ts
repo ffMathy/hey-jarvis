@@ -269,7 +269,7 @@ export function keepPhoto(
   };
   keptPhotos.set(photo.photoId, photo);
 
-  // Unref'd: a photo waiting out its half hour is no reason for the process to keep running.
+  // Unref'd: a photo waiting out its day is no reason for the process to keep running.
   const releaseTimer = setTimeout(letGoOfPhotoOnTime, KEEP_PHOTO_MS, photo.photoId);
   releaseTimer.unref();
   releaseTimers.set(photo.photoId, releaseTimer);

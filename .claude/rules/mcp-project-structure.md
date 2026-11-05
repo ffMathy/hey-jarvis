@@ -20,6 +20,7 @@ mcp/
 │   │   │   └── index.ts
 │   │   ├── shopping/    # Shopping vertical
 │   │   │   ├── agents.ts
+│   │   │   ├── conventions.ts    # The household's shopping aliases and preferences, kept in Knowledge
 │   │   │   ├── tools.ts
 │   │   │   ├── workflows.ts
 │   │   │   └── index.ts

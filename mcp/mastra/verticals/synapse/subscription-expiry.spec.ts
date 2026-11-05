@@ -4,8 +4,8 @@
  * Registration refuses one that does not, which is the part worth testing directly:
  * the check runs before storage is touched, so these need no database and no model.
  * The behaviour that follows from the fields — spending a budget, hiding a lapsed
- * subscription, deleting it — is covered against a real database in
- * `storage/subscriptions.spec.ts`.
+ * subscription, deleting it — is covered against Jarvis's Knowledge, on an in-memory store, in
+ * `subscription-store.spec.ts`.
  */
 
 import { describe, expect, it } from 'bun:test';

@@ -164,10 +164,10 @@ the phone ever sees it, and there is no key.
 
 **The photo store** (`vision/photos.ts`) is **in memory, in the MCP server's process, and nowhere
 else**: `/data` goes into every Home Assistant backup, and a photo of a letter does not belong there.
-Everything is bounded for the Pi — at most 20 open slots and 5 photos of at most 3 MB, oldest let go
-first, a photo kept for 30 minutes. Slots are pruned whenever the store is touched, but a photo's
-half hour is kept on an unref'd timer (`letGoOfPhotoOnTime`), because the privacy policy promises
-it: pruned only when touched, a photo shown late in the evening would stay in memory until someone
+Everything is bounded for the Pi — at most 20 open slots, 5 photos and 10 screenshots of at most 3 MB,
+oldest let go first, each kept for a day (`KEEP_PHOTO_MS`). Slots are pruned whenever the store is
+touched, but a photo's day is kept on an unref'd timer (`letGoOfPhotoOnTime`), because the privacy
+policy promises it: pruned only when touched, a photo shown late in the evening would stay in memory until someone
 next spoke to Jarvis. The timer carries the photo's id and nothing else, so a photo let go of early
 to make room is not held by it. An id is matched however a model wrote it ("Photo 3" is `photo3`),
 and a question that names no photo means the latest only if it is under three minutes old. Studio's process (`mastra dev`, 4111) has a store of its own that nothing fills, so photos can

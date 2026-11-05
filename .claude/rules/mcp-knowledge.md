@@ -10,7 +10,8 @@ paths:
 [Mastra Knowledge](https://mastra.ai/docs/knowledge/overview) (alpha, `@mastra/core` 1.82.0) is a shared store of
 markdown **pages** and short dated **notes**, grouped into **scopes**, that agents search, read and write with tools,
 and that Studio browses on its **Knowledge** page. Memory holds a conversation; Knowledge holds what is true of the
-household across every conversation, agent and process. All of it is in `mastra/knowledge/index.ts`.
+household across every conversation, agent and process. The instance and its scopes are in `mastra/knowledge/index.ts`;
+the household's conventions, which several verticals keep there, are read and written by `mastra/knowledge/conventions.ts`.
 
 ## One instance, on the shared store
 
@@ -35,6 +36,7 @@ household across every conversation, agent and process. All of it is in `mastra/
 | `household:$householdId` (`household:home`) | every agent given `householdKnowledgeOptions` | editor | the household's shared facts |
 | `resource:$resourceId`, `thread:$threadId` | a run with Memory, by its resource and thread | owner | Memory's own scopes, placed under the household |
 | `synapse:$householdId` (`synapse:home`) | nobody; household holders read it | viewer | the State Change Reactor's subscriptions, written only by code |
+| `conventions:$householdId` (`conventions:home`) | nobody; household holders add notes | contributor | how the household likes things done, one page per vertical: the body from code, the notes from agents |
 
 Every scope a run holds must match a declaration, or every Knowledge tool call fails, which is why Memory's
 `resource:`/`thread:` declarations are there even though nothing is written to them on purpose.
@@ -51,6 +53,15 @@ can then find and read its pages, and `knowledge_page` refuses to change them ("
 page always holds what the code wrote. The code writes with the host methods (`upsertPage`, `addNote`, `removePage`),
 which check no access, and reads through `knowledge.getStorage()` (`getScopesByAddress`, `getPageByPath`,
 `listChildPages`). A structured record on a page is kept as a fenced JSON block, never read out of its prose.
+
+**A scope that code writes and agents add to** is declared with the household as `contributor`, as `conventions:` is.
+Agents can then find, read and add a note to its pages, and `knowledge_page` still refuses to change them, so the body
+is always what the code wrote. `readConventions(knowledge, conventions)` writes a vertical's body to its page once per
+process (`upsertPage`), then returns the body followed by every note, oldest first and dated, for the agent's
+instructions; `conventionsNoteInstructions` tells the agent how to add one. Removing a note is host-only in Knowledge
+(`removeNote`), so an agent cannot take one back: a convention that replaces an earlier one is a new note, and the
+instructions say the later of two that disagree wins. A note that is plainly wrong is removed by hand, with
+`knowledge.removeNote`. Every note on a page goes into every run of the agents that read it, so a page is only for what is lasting.
 
 ## Studio
 
@@ -92,3 +103,6 @@ Each of these was weighed and left where it is; the reason is what to check befo
 | Photos | text only, and a photo is deliberately never written to disk (see [Vision Vertical](mcp-vision-vertical.md)) |
 | The baby's food advice and birth date | reviewed data pinned by `baby-food.spec.ts`, and a CPR prefix kept in 1Password |
 | Credentials, paired devices, token usage | secrets and accounting; the Knowledge routes read every page unchecked |
+| Recently used recipes | nothing keeps them today: a meal plan is emailed, and no later plan or agent reads an earlier one, so remembering them would be a new feature, not a move |
+| Reminders | Google Tasks is their source of truth, read and changed through the to-do list vertical; a copy here would drift from it |
+| Context (working memory) | Memory's own per-resource scratchpad (`memory/index.ts`), rewritten by the agent as a run goes and written only on runs with a thread — the State Change Reactor's and Studio chats; routed requests run with none. Lasting preferences an agent reads on every run are what the conventions pages are for |

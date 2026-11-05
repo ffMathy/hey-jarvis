@@ -61,7 +61,7 @@ function jarvisKnowledgeScopes(): KnowledgeScopeDeclarations {
     [HOUSEHOLD_SCOPE_PATTERN]: {
       ...memoryScopes[HOUSEHOLD_SCOPE_PATTERN],
       displayLabel: 'Household',
-      description: "The household Jarvis runs: facts, conventions and state every one of Jarvis's agents shares.",
+      description: "The household Jarvis runs: what every one of Jarvis's agents knows about it and shares.",
     },
     [CONVENTIONS_SCOPE_PATTERN]: {
       displayLabel: 'Conventions',
