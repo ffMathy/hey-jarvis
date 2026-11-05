@@ -237,25 +237,66 @@ function firedChances(seconds: number, overrides: Partial<HologramFrame>) {
   return fired;
 }
 
+function edgeKeyOf(edge: number[]) {
+  return `${keyOf(endOf(edge, 0))}|${keyOf(endOf(edge, 1))}`;
+}
+
 /**
- * Every spoke a chance lights, at every frame it is one, by the plan's own thresholds: whether its
- * outer node then is reached by no other edge of the chance's whole plan. The whole plan's, not that
- * frame's: as its spark first leaves, or as it fades after the edge beyond it, a spoke can be the only
- * lit edge at its outer node for up to a hop (`CASCADE_SPOKE` in `cage-cascade.ts`).
+ * The angle, in degrees, seen from `tip`, between the way back in to `inner` and the way out to
+ * `other`: 0 for an edge running back exactly along the one in, 180 for one carrying straight on.
+ */
+function openingAt(tip: { x: number; y: number }, inner: { x: number; y: number }, other: { x: number; y: number }) {
+  const backX = inner.x - tip.x;
+  const backY = inner.y - tip.y;
+  const awayX = other.x - tip.x;
+  const awayY = other.y - tip.y;
+  const cosine = (backX * awayX + backY * awayY) / (Math.hypot(backX, backY) * Math.hypot(awayX, awayY));
+  return (Math.acos(Math.max(-1, Math.min(1, cosine))) * 180) / Math.PI;
+}
+
+/**
+ * Below this many degrees from a spoke's own line back in, an edge at its outer node is a sliver
+ * running back nearly along it, not company: at 1x the two read as one stick growing out of him, as
+ * a spoke alone did (`CASCADE_SPOKE_OPENING` in `cage-cascade.ts`, which the plan holds to at its
+ * looks, is a little wider, so a spoke turned between two looks still clears this at every frame).
+ */
+const SLIVER_DEGREES = 20;
+
+/**
+ * Every spoke a chance lights, at every frame it is one, by the plan's own thresholds: the widest any
+ * other edge of the chance's whole plan leaves its outer node then, from the spoke's own line back in
+ * ({@link openingAt}), 0 where none reaches it. The whole plan's, not that frame's: as its spark first
+ * leaves, or as it fades after the edge beyond it, a spoke can be the only lit edge at its outer node
+ * for up to a hop (`CASCADE_SPOKE` in `cage-cascade.ts`).
  */
 function spokesOf({ frames, edges }: ChanceFrames) {
-  const ends = new Map<string, number>();
+  // each node of the plan's edges, and every edge at it: as that edge, and its node at the other end
+  const atNode = new Map<string, { edge: string; far: number[] }[]>();
   for (const edge of edges)
-    for (const end of [0, 1]) ends.set(keyOf(endOf(edge, end)), (ends.get(keyOf(endOf(edge, end))) ?? 0) + 1);
+    for (const end of [0, 1]) {
+      const node = keyOf(endOf(edge, end));
+      atNode.set(node, [...(atNode.get(node) ?? []), { edge: edgeKeyOf(edge), far: endOf(edge, 1 - end) }]);
+    }
+  /** The widest any other edge at a spoke's tip opens from its way back in, seen at `time`. */
+  const widestAt = (edge: number[], outer: number, inner: { x: number; y: number }, time: number) => {
+    const tip = seenAt(endOf(edge, outer), time);
+    const others = (atNode.get(keyOf(endOf(edge, outer))) ?? []).filter((other) => other.edge !== edgeKeyOf(edge));
+    return Math.max(0, ...others.map((other) => openingAt(tip, inner, seenAt(other.far, time))));
+  };
   return frames.flatMap(({ time, edges: lit }) =>
     lit.flatMap((edge) => {
       const from = seenAt(endOf(edge, 0), time);
       const to = seenAt(endOf(edge, 1), time);
       if (!isSpoke(from, to)) return [];
       const outer = Math.hypot(to.x, to.y) > Math.hypot(from.x, from.y) ? 1 : 0;
-      return [{ time, alone: (ends.get(keyOf(endOf(edge, outer))) ?? 0) <= 1 }];
+      return [{ time, widest: widestAt(edge, outer, outer === 1 ? from : to, time) }];
     }),
   );
+}
+
+/** The frames a chance lights a spoke with nothing at its tip but slivers, or nothing at all ({@link SLIVER_DEGREES}). */
+function loneSpokesOf(chance: ChanceFrames) {
+  return spokesOf(chance).filter(({ widest }) => widest < SLIVER_DEGREES);
 }
 
 /**
@@ -457,8 +498,10 @@ describe('the cage cascades', () => {
   it('never light a spoke standing out into the dark on its own, at any frame it is lit', () => {
     const spokes = busyChances.flatMap(spokesOf);
 
-    // another edge of the plan reaches each one's outer node, so it leads on to the lit net
-    expect(spokes.filter(({ alone }) => alone)).toEqual([]);
+    // another edge of the plan leaves each one's outer node at an angle to it, so it leads on to the
+    // lit net: never none, and never only a sliver running back nearly along it, which at 1x reads as
+    // the same stick (one cascade in two had one for over a second once they were made bigger)
+    expect(busyChances.flatMap(loneSpokesOf)).toEqual([]);
     expect(spokes.length).toBeGreaterThan(0);
   });
 
@@ -478,7 +521,7 @@ describe('the cage cascades', () => {
         expectFlaredUnderTheTarget(frames, source);
         returns++;
       }
-      expect({ chance, alone: spokesOf(frames).filter(({ alone }) => alone) }).toEqual({ chance, alone: [] });
+      expect({ chance, alone: loneSpokesOf(frames) }).toEqual({ chance, alone: [] });
     }
     expect(fired).toBeGreaterThan(1500);
     expect(returns).toBeGreaterThan(fired / 2);

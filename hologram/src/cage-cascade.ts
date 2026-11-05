@@ -97,13 +97,22 @@ const CASCADE_ROUND_HIM = 0.35;
  * to the way out) with an end past {@link CASCADE_SPOKE_REACH} ({@link isSpokeBetween}). Lit on its
  * own, with nothing lit beyond it, one stood out into the dark past the truss for a second and read
  * as a stick growing out of him, so a plan never keeps one whose outer node no other edge of it
- * reaches ({@link dropLoneSpokes}); one that leads on to a lit triangle reads as part of it. Which
- * is judged over the whole plan, not frame by frame: steadily lit, every spoke has a lit edge beyond
- * it, but while its own spark is still on its first hop, or as it fades after the edge beyond it has
- * gone out, it can stand alone for up to a hop ({@link CASCADE_HOP_SECONDS}).
+ * leaves at {@link CASCADE_SPOKE_OPENING} or more from the spoke's own line back in
+ * ({@link dropLoneSpokes}); one that leads on to a lit triangle reads as part of it. Which is judged
+ * over the whole plan, not frame by frame: steadily lit, every spoke has a lit edge beyond it, but
+ * while its own spark is still on its first hop, or as it fades after the edge beyond it has gone
+ * out, it can stand alone for up to a hop ({@link CASCADE_HOP_SECONDS}).
  */
 export const CASCADE_SPOKE = 0.8;
 export const CASCADE_SPOKE_REACH = 1.08;
+/**
+ * How wide, in degrees, an edge at a spoke's outer node must open from the spoke's line back in to
+ * count as company there, seen at every look ({@link CASCADE_SPOKE_LOOKS}). Narrower, it is a sliver
+ * of a triangle running back nearly along the spoke, and at 1x the two read as the one stick a spoke
+ * alone did: counted as company, half the cascades kept one for over a second once they were made
+ * bigger, most of them under 10°.
+ */
+const CASCADE_SPOKE_OPENING = 25;
 /**
  * How often, in seconds, a planned edge is looked at over the time it is lit to see whether it is a
  * spoke anywhere along it. That is longer than a frame, so an edge that is a spoke only between two
@@ -249,6 +258,8 @@ export const CASCADE_BOXES_AT = CASCADE_EDGES * CASCADE_EDGE_NUMBERS;
 export const CASCADE_NUMBERS = CASCADE_BOXES_AT + 2 * CASCADE_BOX_NUMBERS;
 
 const DEGREES = Math.PI / 180;
+/** The cosine of {@link CASCADE_SPOKE_OPENING}: an edge opening wider from a spoke's line back in has a smaller one. */
+const SPOKE_OPENING_COSINE = Math.cos(CASCADE_SPOKE_OPENING * DEGREES);
 
 /** The two pulses of a cascade, as which of them a planned edge is ({@link EDGE_KIND}) and which numbers of a node a spread uses. */
 const OUT_PULSE = 0;
@@ -264,7 +275,8 @@ const RETURN_PULSE = 1;
  * the latest spread reached and how many hops deep; two nodes seen at some moment; the cosines and
  * sines of how far round a node is at the two ends of a stretch ({@link clearBetween}); and for each
  * pulse a count every judgement of where its nodes are clear of him takes the next of, and how far
- * his body had turned at that pulse's start ({@link judgeClearance}). Then, for the chance before,
+ * his body had turned at that pulse's start ({@link judgeClearance}); and a third node seen at some
+ * moment, an edge's at a spoke's outer node ({@link opensFromSpoke}). Then, for the chance before,
  * the chance and the chance after it, which chance (plus one), when it fires and from which node (-1
  * none). Then each edge's from node, to node, when its spark leaves, when it
  * starts to fade, which pulse it is, which of its ends are ever its outer one while it is a spoke
@@ -289,7 +301,8 @@ const SEEN_SECOND = 17;
 const TURNS = 20;
 const JUDGEMENT = 24;
 const JUDGED_TURN = 26;
-const SOURCES = 28;
+const SEEN_THIRD = 28;
+const SOURCES = 31;
 const SOURCE_NUMBERS = 3;
 const SOURCES_KEPT = 3;
 const EDGES = SOURCES + SOURCES_KEPT * SOURCE_NUMBERS;
@@ -1047,24 +1060,154 @@ function compactEdges(scratch: number[]) {
 }
 
 /**
- * Takes out of the plan every edge that is ever a spoke ({@link markSpokeEnds}) whose outer node then
- * no other planned edge reaches: a lit stick standing out into the dark on its own, which read as
- * something growing out of him. Over and over, until a pass takes out none, as taking one out can
- * leave another alone.
+ * Whether any planned edge but `spoke`, dropped ones aside, leaves `tip` — the spoke's outer node,
+ * seen at `tipAt` in the scratch — at {@link CASCADE_SPOKE_OPENING} or more from the way back in to
+ * its inner node, seen at `innerAt`, with every node seen at `time` (his body's turn then `cos`,
+ * `sin`): company that leads the spoke on into a lit triangle, not a sliver running back along it.
  */
-function dropLoneSpokes(scratch: number[]) {
+function opensFromSpoke(
+  net: CageNet,
+  scratch: number[],
+  spoke: number,
+  tip: number,
+  tipAt: number,
+  innerAt: number,
+  time: number,
+  cos: number,
+  sin: number,
+) {
+  'worklet';
+  const backX = scratch[innerAt] - scratch[tipAt];
+  const backY = scratch[innerAt + 1] - scratch[tipAt + 1];
+  const back = Math.hypot(backX, backY);
+  for (let edge = 0; edge < scratch[EDGE_COUNT]; edge++) {
+    const at = EDGES + edge * EDGE_SLOT;
+    if (edge === spoke || scratch[at + EDGE_DROPPED] > 0) continue;
+    const from = scratch[at + EDGE_FROM];
+    const to = scratch[at + EDGE_TO];
+    if (from !== tip && to !== tip) continue;
+    seeNode(net, from === tip ? to : from, time, cos, sin, scratch, SEEN_THIRD);
+    const awayX = scratch[SEEN_THIRD] - scratch[tipAt];
+    const awayY = scratch[SEEN_THIRD + 1] - scratch[tipAt + 1];
+    const away = Math.hypot(awayX, awayY);
+    if (back > 0 && away > 0 && backX * awayX + backY * awayY <= SPOKE_OPENING_COSINE * back * away) return true;
+  }
+  return false;
+}
+
+/**
+ * The outer node of planned edge `edge` at the first look over the time it is lit
+ * ({@link CASCADE_SPOKE_LOOKS}) that finds it a spoke with nothing there that opens from it
+ * ({@link opensFromSpoke}) — a lit stick standing out into the dark, alone or beside only slivers —
+ * or -1 when no look does.
+ */
+function loneTip(net: CageNet, scratch: number[], edge: number) {
+  'worklet';
+  const at = EDGES + edge * EDGE_SLOT;
+  const from = scratch[at + EDGE_FROM];
+  const to = scratch[at + EDGE_TO];
+  const leaves = scratch[at + EDGE_LEAVES];
+  const lit = scratch[at + EDGE_FADES] + CASCADE_FADE_SECONDS - leaves;
+  const looks = Math.ceil(lit / CASCADE_SPOKE_LOOKS);
+  for (let look = 0; look <= looks; look++) {
+    const time = leaves + (lit * look) / looks;
+    const yaw = bodyTurnRadians(time);
+    const cos = Math.cos(yaw);
+    const sin = Math.sin(yaw);
+    seeNode(net, from, time, cos, sin, scratch, SEEN_FIRST);
+    seeNode(net, to, time, cos, sin, scratch, SEEN_SECOND);
+    if (!isSpokeBetween(scratch[SEEN_FIRST], scratch[SEEN_FIRST + 1], scratch[SEEN_SECOND], scratch[SEEN_SECOND + 1]))
+      continue;
+    const toIsOuter =
+      Math.hypot(scratch[SEEN_SECOND], scratch[SEEN_SECOND + 1]) >
+      Math.hypot(scratch[SEEN_FIRST], scratch[SEEN_FIRST + 1]);
+    const tip = toIsOuter ? to : from;
+    const tipAt = toIsOuter ? SEEN_SECOND : SEEN_FIRST;
+    const innerAt = toIsOuter ? SEEN_FIRST : SEEN_SECOND;
+    if (!opensFromSpoke(net, scratch, edge, tip, tipAt, innerAt, time, cos, sin)) return tip;
+  }
+  return -1;
+}
+
+/**
+ * Whether planned edge `edge` is still reached by its pulse, dropped edges aside: an edge of the pulse
+ * out leaves `source`, or a node a spark of it lands on by the time it leaves; an edge of the return
+ * lands on its target, or on a node a spark of it leaves once it has landed. A spoke dropped from the
+ * middle of a pulse ({@link loneTip}) cuts off whatever its spark led to, which would light from
+ * nowhere, or run in and stop short of the box it gathers on.
+ */
+function stillReached(scratch: number[], edge: number, source: number) {
+  'worklet';
+  const at = EDGES + edge * EDGE_SLOT;
+  const out = scratch[at + EDGE_KIND] === OUT_PULSE;
+  const node = out ? scratch[at + EDGE_FROM] : scratch[at + EDGE_TO];
+  if (node === (out ? source : scratch[TARGET])) return true;
+  const leaves = scratch[at + EDGE_LEAVES];
+  for (let other = 0; other < scratch[EDGE_COUNT]; other++) {
+    const otherAt = EDGES + other * EDGE_SLOT;
+    if (scratch[otherAt + EDGE_DROPPED] > 0 || scratch[otherAt + EDGE_KIND] !== scratch[at + EDGE_KIND]) continue;
+    const otherLeaves = scratch[otherAt + EDGE_LEAVES];
+    if (out && scratch[otherAt + EDGE_TO] === node && otherLeaves + CASCADE_HOP_SECONDS <= leaves + 1e-6) return true;
+    if (!out && scratch[otherAt + EDGE_FROM] === node && leaves + CASCADE_HOP_SECONDS <= otherLeaves + 1e-6)
+      return true;
+  }
+  return false;
+}
+
+/** Marks every planned edge at `node` dropped. */
+function dropEdgesAt(scratch: number[], node: number) {
+  'worklet';
+  for (let edge = 0; edge < scratch[EDGE_COUNT]; edge++) {
+    const at = EDGES + edge * EDGE_SLOT;
+    if (scratch[at + EDGE_FROM] === node || scratch[at + EDGE_TO] === node) scratch[at + EDGE_DROPPED] = 1;
+  }
+}
+
+/**
+ * Marks dropped every planned edge that is ever a spoke ({@link markSpokeEnds}) and then has nothing
+ * at its outer node that opens from it ({@link loneTip}): a lit stick standing out into the dark,
+ * which read as something growing out of him. With it go the slivers at that node, which run back
+ * nearly along it and are the same stick: left behind, one stood out on its own just short of a
+ * spoke. Whether it marked any.
+ */
+function dropSticks(net: CageNet, scratch: number[]) {
+  'worklet';
+  let dropped = false;
+  for (let edge = 0; edge < scratch[EDGE_COUNT]; edge++) {
+    const at = EDGES + edge * EDGE_SLOT;
+    if (scratch[at + EDGE_DROPPED] > 0 || scratch[at + EDGE_OUTER_ENDS] === 0) continue;
+    const tip = loneTip(net, scratch, edge);
+    if (tip < 0) continue;
+    dropEdgesAt(scratch, tip);
+    dropped = true;
+  }
+  return dropped;
+}
+
+/** Marks dropped every planned edge cut off from the pulse out of `source` or the return's target ({@link stillReached}); whether it marked any. */
+function dropCutOff(scratch: number[], source: number) {
+  'worklet';
+  let dropped = false;
+  for (let edge = 0; edge < scratch[EDGE_COUNT]; edge++) {
+    const at = EDGES + edge * EDGE_SLOT;
+    if (scratch[at + EDGE_DROPPED] > 0 || stillReached(scratch, edge, source)) continue;
+    scratch[at + EDGE_DROPPED] = 1;
+    dropped = true;
+  }
+  return dropped;
+}
+
+/**
+ * Takes out of the plan every lone spoke and the slivers beside it ({@link dropSticks}), and what
+ * that cuts off ({@link dropCutOff}), over and over until a pass takes out none, as taking one out
+ * can leave another alone.
+ */
+function dropLoneSpokes(net: CageNet, scratch: number[], source: number) {
   'worklet';
   for (let dropping = true; dropping; ) {
-    dropping = false;
-    for (let edge = 0; edge < scratch[EDGE_COUNT]; edge++) {
-      const at = EDGES + edge * EDGE_SLOT;
-      const outerEnds = scratch[at + EDGE_OUTER_ENDS];
-      const loneFrom = (outerEnds & 1) !== 0 && edgesAt(scratch, scratch[at + EDGE_FROM]) <= 1;
-      const loneTo = (outerEnds & 2) !== 0 && edgesAt(scratch, scratch[at + EDGE_TO]) <= 1;
-      if (!loneFrom && !loneTo) continue;
-      scratch[at + EDGE_DROPPED] = 1;
-      dropping = true;
-    }
+    const sticks = dropSticks(net, scratch);
+    const cutOff = dropCutOff(scratch, source);
+    dropping = sticks || cutOff;
     compactEdges(scratch);
   }
 }
@@ -1104,8 +1247,7 @@ function sourceOf(chance: number) {
 /**
  * Whether the pulse out from `source` at `fires` still leaves it once its plan is cut back
  * ({@link dropLoneSpokes}): the source can be the outer node of a spoke out of it that nothing else
- * reaches, and with that spoke dropped its box would flare with nothing leaving it, the pulse
- * starting a hop away. The return never touches a node the pulse out reached, so the pulse out alone
+ * opens from, and with that spoke dropped its box would flare with nothing leaving it. The return never touches a node the pulse out reached, so the pulse out alone
  * says. It plans into the scratch's plan, which {@link planChance} plans afresh after.
  */
 function leavesItsSource(net: CageNet, scratch: number[], source: number, fires: number, seed: number) {
@@ -1114,7 +1256,7 @@ function leavesItsSource(net: CageNet, scratch: number[], source: number, fires:
   scratch[EDGE_COUNT] = 0;
   planOut(net, scratch, fires);
   markSpokeEnds(net, scratch);
-  dropLoneSpokes(scratch);
+  dropLoneSpokes(net, scratch, source);
   return edgesAt(scratch, source) > 0;
 }
 
@@ -1189,7 +1331,7 @@ function planChance(net: CageNet, scratch: number[], chance: number) {
   judgeClearance(scratch, RETURN_PULSE, gathers);
   planBestReturn(net, scratch, source, gathers, seed);
   markSpokeEnds(net, scratch);
-  dropLoneSpokes(scratch);
+  dropLoneSpokes(net, scratch, source);
   dropThinReturn(scratch);
 }
 

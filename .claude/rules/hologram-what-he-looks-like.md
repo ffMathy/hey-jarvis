@@ -79,7 +79,7 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
   spreads (`CASCADE_LATEST_FIRE` + `CASCADE_LONGEST_SECONDS` is the period, to the frame): every
   other chance fires, `CASCADE_IN_SILENCE` (0.6) of the rest and any beside a chance that finds
   nothing, and all of them while he talks or thinks — over 1200 s one every 3.9 s in silence and one
-  every 3.0 s while busy, about 28 edges each (21 out, 7 back), some 5.2R of lit cage. The user asked
+  every 3.0 s while busy, about 26 edges each (19 out, 6 back), some 4.7R of lit cage. The user asked
   for them "a bit bigger and more frequent" when they were one every 5.1 s and 3.3 s, 17 edges
   (12.6 out, 4.6 back) and 3.1R: over 600 s something of one is now lit 67% of the time in silence
   and 84% while busy, where it was 48% and 74%, and none is dark for 5 s, where 9.5 s was. In
@@ -92,8 +92,14 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
   at the least, where they are drawn dimmer, never in over his body — and no further back than
   `CASCADE_DEEPEST` for every moment the edge is lit (`clearOver`, `judgeNode`), however his body
   turns and the cage sways meanwhile, and never a spoke out into the dark whose outer node no other
-  edge of the same cascade reaches (`markSpokeEnds`, `dropLoneSpokes`), so nothing stands out past
-  where the cage already reaches. That is judged over the whole cascade, not frame by frame: while
+  edge of the same cascade leaves at 25° or more from the spoke's own line back in
+  (`CASCADE_SPOKE_OPENING`, `markSpokeEnds`, `dropLoneSpokes`), so nothing stands out past where the
+  cage already reaches. A sliver of a triangle running back nearly along a spoke is not company: at
+  1x the two read as the one stick a spoke alone did, and once the cascades were made bigger half of
+  them kept one for over a second (118 chances in 200 while busy), so the spoke goes and its slivers
+  with it, and whatever that cuts off from the pulse (`stillReached`). That costs a cascade about two
+  and a half edges (28 to 26) and leaves it as large as the one the user chose by eye (d8cbf42, 26
+  edges and 4.7R). That is judged over the whole cascade, not frame by frame: while
   steadily lit every spoke leads on to a lit edge, but as its spark first leaves, or as it fades after
   the edge beyond it has gone out, one can be the only lit edge at its outer node for up to a hop
   (`CASCADE_HOP_SECONDS`). A pulse never fires from a node it would not leave (`leavesItsSource`),
@@ -103,7 +109,7 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
   it; held to the whole of their lives they were a third smaller, and one chance in ten found
   nowhere to fire, until reaching in from his limb at 0.9R to 0.82R, quicker hops (0.24 s to 0.2)
   that fit six out and four back where five and three did, and three branches a node rather than
-  two won it back — larger than the cascades the user chose by eye, which lit 26 edges. They are drawn over his body as
+  two won it back. They are drawn over his body as
   well as the picture (`drawGpuPictureCascade`, from `drawGpuFrame` only, so the headset draws
   none: `.claude/rules/vr-the-honest-limits.md`), at `CASCADE_OVER_HIM` of their light over his
   edge and the truss, so the lit net shows where the cage crosses the rim and the headset's picture
@@ -169,7 +175,8 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
   `CASCADE_PERIOD` at most, each over before the next. Then "Make the cascades a bit bigger and more
   frequent": about one every four seconds in silence (it was five; a first pass at four and a half
   showed no difference by eye over twelve seconds of idle), never five seconds dark, and half as big
-  again (28 edges where 17 were). Do not shrink them back to buy a guarantee:
+  again (26 edges where 17 were, with no spoke left standing beside only a sliver). Do not shrink
+  them back to buy a guarantee:
   each edge stays judged over its whole lit life.
 - **The squares near his edge stay** ("I'd also like to still have the weird squares near the edge
   of the hologram"): the truss is always there, between `TRUSS_INNER_RAIL` and `TRUSS_OUTER_RAIL`, so
