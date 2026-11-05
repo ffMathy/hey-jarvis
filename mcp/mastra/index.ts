@@ -4,9 +4,11 @@ import type { Classifier } from '@mastra/core/classifier';
 import { SpanType } from '@mastra/core/observability';
 import { MastraServer } from '@mastra/hono';
 import { CloudExporter, DefaultExporter, Observability, SamplingStrategyType } from '@mastra/observability';
+import { KNOWLEDGE_ROUTES } from '@mastra/server/server-adapter';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { getCorsOptions } from './cors.js';
+import { getJarvisKnowledge, JARVIS_KNOWLEDGE_KEY } from './knowledge/index.js';
 import { ownsSchedules } from './schedule-reconciler.js';
 import { getMastraStorageProvider, getTokenUsageStorage } from './storage/index.js';
 import { stripTransferEncodingHeader } from './streaming-headers.js';
@@ -202,6 +204,9 @@ export async function getMastra(): Promise<Mastra> {
       ...weatherTools,
       ...webResearchShortcuts,
     },
+    // What Jarvis's agents know about the household, kept in the same SQLite file as everything else
+    // and browsed on Studio's Knowledge page. See knowledge/index.ts.
+    knowledge: { [JARVIS_KNOWLEDGE_KEY]: getJarvisKnowledge() },
     bundler: {
       // @yarflam/potion-base-8m resolves its embedding table relative to its own
       // module URL, so it has to stay unbundled or the model files go missing.
@@ -213,6 +218,12 @@ export async function getMastra(): Promise<Mastra> {
       // Applies to the server `mastra dev` builds around this instance — the one that
       // actually serves 4111 in the Docker image. See streaming-headers.ts.
       middleware: [stripTransferEncodingHeader],
+      // The routes behind Studio's Knowledge page, mounted at /api/knowledge. Spread as they are: the
+      // server adapters prefix a route with /api only while it is the very object in Mastra's opt-in
+      // list, so a copy would be served at /knowledge, where Studio never looks. They read every page
+      // with no access check, which here is the same trust Studio's own /api/memory routes already
+      // get: 4111 is reachable only through the tunnel behind Cloudflare Access.
+      apiRoutes: [...KNOWLEDGE_ROUTES],
     },
   });
 }
