@@ -115,13 +115,34 @@ function keyOf(node: number[]) {
   return node.join(',');
 }
 
-/** Where a node at rest is seen at `time`: swayed, then turned with his body, as the picture's shader does. */
-function seenAt(node: number[], time: number) {
+/** Each lit edge's numbers' end keys ({@link endKeyOf}), made once for each array a frame hands over. */
+const endKeys = new WeakMap<number[], readonly [string, string]>();
+
+/** A lit edge's from node's (0) or to node's (1) key at rest. */
+function endKeyOf(edge: number[], end: number) {
+  let keys = endKeys.get(edge);
+  if (!keys) {
+    keys = [keyOf(endOf(edge, 0)), keyOf(endOf(edge, 1))];
+    endKeys.set(edge, keys);
+  }
+  return keys[end] ?? '';
+}
+
+/** How far round his body has turned at `time`, as the cosine and sine the picture's shader turns a node by. */
+function bodyTurnAt(time: number) {
+  const turn = bodyTurnRadians(time);
+  return { cos: Math.cos(turn), sin: Math.sin(turn) };
+}
+
+/**
+ * Where a node at rest is seen at `time`: swayed, then turned with his body, as the picture's shader
+ * does; `turn` is his body's then ({@link bodyTurnAt}), for a frame that sees many nodes to work out once.
+ */
+function seenAt(node: number[], time: number, { cos, sin } = bodyTurnAt(time)) {
   const [x = 0, y = 0, z = 0] = node;
-  const swayed = [0, 1, 2].map((axis) => (node[axis] ?? 0) + cageSwayOf(axis, x, y, z, time));
-  const [swayedX = 0, swayedY = 0, swayedZ = 0] = swayed;
-  const cos = Math.cos(bodyTurnRadians(time));
-  const sin = Math.sin(bodyTurnRadians(time));
+  const swayedX = x + cageSwayOf(0, x, y, z, time);
+  const swayedY = y + cageSwayOf(1, x, y, z, time);
+  const swayedZ = z + cageSwayOf(2, x, y, z, time);
   return { x: bodyTurnedX(swayedX, swayedZ, cos, sin), y: swayedY, z: bodyTurnedZ(swayedX, swayedZ, cos, sin) };
 }
 
@@ -177,12 +198,12 @@ interface ChanceFrames {
  */
 function pulsesOf(edges: number[][]) {
   const fires = Math.min(...edges.map((edge) => edge[SLOTS.leaves] ?? 0));
-  const reached = new Set(edges.filter((edge) => edge[SLOTS.leaves] === fires).map((edge) => keyOf(endOf(edge, 0))));
+  const reached = new Set(edges.filter((edge) => edge[SLOTS.leaves] === fires).map((edge) => endKeyOf(edge, 0)));
   const out = new Set<number[]>();
   for (let grew = true; grew; ) {
     grew = false;
     for (const edge of edges) {
-      const ends = [keyOf(endOf(edge, 0)), keyOf(endOf(edge, 1))];
+      const ends = [endKeyOf(edge, 0), endKeyOf(edge, 1)];
       if (out.has(edge) || !ends.some((end) => reached.has(end))) continue;
       out.add(edge);
       for (const end of ends) reached.add(end);
@@ -190,6 +211,20 @@ function pulsesOf(edges: number[][]) {
     }
   }
   return { out: edges.filter((edge) => out.has(edge)), back: edges.filter((edge) => !out.has(edge)) };
+}
+
+/**
+ * `out`'s `count` numbers from `at`, as `kept` itself when it holds them already: a chance's edges and
+ * boxes are handed over frame after frame in the same numbers, so a chance read at every frame makes
+ * an array for each only when they change, and an edge's arrays tell it apart without a key.
+ */
+function numbersAt(out: Float32Array, at: number, count: number, kept: number[] | undefined) {
+  if (kept?.length === count) {
+    let same = true;
+    for (let place = 0; place < count && same; place++) same = kept[place] === out[at + place];
+    if (same) return kept;
+  }
+  return Array.from(out.subarray(at, at + count));
 }
 
 function chanceFrames(
@@ -200,14 +235,33 @@ function chanceFrames(
 ): ChanceFrames {
   const out = freshOut();
   const frames: ChanceFrames['frames'] = [];
-  const edges = new Map<string, number[]>();
+  // the latest numbers each of out's edge slots and boxes was lit with, and every edge's arrays in the order they first appear
+  const keptEdges: (number[] | undefined)[] = [];
+  const keptBoxes: (number[] | undefined)[] = [];
+  const appeared = new Set<number[]>();
   for (let step = 0; step * frame < CASCADE_PERIOD; step++) {
     const time = chance * CASCADE_PERIOD + step * frame;
     writeCageCascade(net, stateAt(time, overrides), scratch, out);
-    const lit = litEdges(out);
-    frames.push({ time, edges: lit, boxes: [litBox(out, 0), litBox(out, 1)] });
-    for (const edge of lit) edges.set(`${keyOf(endOf(edge, 0))}|${keyOf(endOf(edge, 1))}`, edge);
+    const lit: number[][] = [];
+    for (let edge = 0; edge < CASCADE_EDGES; edge++) {
+      const at = edge * CASCADE_EDGE_NUMBERS;
+      if (!((out[at + SLOTS.light] ?? 0) > 0)) continue;
+      const numbers = numbersAt(out, at, CASCADE_EDGE_NUMBERS, keptEdges[edge]);
+      keptEdges[edge] = numbers;
+      appeared.add(numbers);
+      lit.push(numbers);
+    }
+    const boxes = [0, 1].map((box) => {
+      const at = CASCADE_BOXES_AT + box * CASCADE_BOX_NUMBERS;
+      if (!((out[at + CASCADE_BOX_SLOTS.light] ?? 0) > 0)) return undefined;
+      keptBoxes[box] = numbersAt(out, at, CASCADE_BOX_NUMBERS, keptBoxes[box]);
+      return keptBoxes[box];
+    });
+    frames.push({ time, edges: lit, boxes });
   }
+  // each edge once, by its nodes, as the last numbers it was lit with
+  const edges = new Map<string, number[]>();
+  for (const edge of appeared) edges.set(edgeKeyOf(edge), edge);
   const everyEdge = [...edges.values()];
   return { chance, frames, edges: everyEdge, ...pulsesOf(everyEdge) };
 }
@@ -238,7 +292,7 @@ function firedChances(seconds: number, overrides: Partial<HologramFrame>) {
 }
 
 function edgeKeyOf(edge: number[]) {
-  return `${keyOf(endOf(edge, 0))}|${keyOf(endOf(edge, 1))}`;
+  return `${endKeyOf(edge, 0)}|${endKeyOf(edge, 1)}`;
 }
 
 /**
@@ -263,6 +317,40 @@ function openingAt(tip: { x: number; y: number }, inner: { x: number; y: number 
 const SLIVER_DEGREES = 20;
 
 /**
+ * A chance's whole plan as a graph, from every edge it lit at any frame: its nodes at rest, each
+ * once, every edge at each (as that edge's place in the plan, and its node at the other end), and
+ * where in the plan a lit edge's numbers, as a frame hands them over, are: worked out once for each
+ * array, not by key at every frame.
+ */
+function planGraphOf(edges: number[][]) {
+  const nodes = new Map<string, number>();
+  const restOf: number[][] = [];
+  const nodeOf = (edge: number[], end: number) => {
+    const key = endKeyOf(edge, end);
+    const known = nodes.get(key);
+    if (known !== undefined) return known;
+    nodes.set(key, restOf.length);
+    restOf.push(endOf(edge, end));
+    return restOf.length - 1;
+  };
+  const planned = edges.map((edge, place) => ({ place, from: nodeOf(edge, 0), to: nodeOf(edge, 1) }));
+  const places = new Map(edges.map((edge, place) => [edgeKeyOf(edge), place]));
+  const atNode = restOf.map(() => [] as { place: number; far: number }[]);
+  for (const { place, from, to } of planned) {
+    atNode[from]?.push({ place, far: to });
+    atNode[to]?.push({ place, far: from });
+  }
+  const placed = new Map<number[], (typeof planned)[number]>();
+  const placeOf = (edge: number[]) => {
+    const known = placed.get(edge) ?? planned[places.get(edgeKeyOf(edge)) ?? -1];
+    if (!known) throw new Error(`a lit edge ${edgeKeyOf(edge)} missing from its chance's plan`);
+    placed.set(edge, known);
+    return known;
+  };
+  return { restOf, atNode, placeOf };
+}
+
+/**
  * Every spoke a chance lights, at every frame it is one, by the plan's own thresholds: the widest any
  * other edge of the chance's whole plan leaves its outer node then, from the spoke's own line back in
  * ({@link openingAt}), 0 where none reaches it. The whole plan's, not that frame's: as its spark first
@@ -270,28 +358,38 @@ const SLIVER_DEGREES = 20;
  * for up to a hop (`CASCADE_SPOKE` in `cage-cascade.ts`).
  */
 function spokesOf({ frames, edges }: ChanceFrames) {
-  // each node of the plan's edges, and every edge at it: as that edge, and its node at the other end
-  const atNode = new Map<string, { edge: string; far: number[] }[]>();
-  for (const edge of edges)
-    for (const end of [0, 1]) {
-      const node = keyOf(endOf(edge, end));
-      atNode.set(node, [...(atNode.get(node) ?? []), { edge: edgeKeyOf(edge), far: endOf(edge, 1 - end) }]);
+  const { restOf, atNode, placeOf } = planGraphOf(edges);
+  // where each node is seen, and at which frame: worked out the first time a frame asks
+  const seen = restOf.map((rest) => ({ rest, frame: -1, at: { x: 0, y: 0, z: 0 } }));
+  const spokes: { time: number; widest: number }[] = [];
+  for (const [frame, { time, edges: lit }] of frames.entries()) {
+    const turn = bodyTurnAt(time);
+    const seenNode = (node: number) => {
+      const known = seen[node];
+      if (!known) throw new Error(`no node ${node} in the plan`);
+      if (known.frame !== frame) {
+        known.frame = frame;
+        known.at = seenAt(known.rest, time, turn);
+      }
+      return known.at;
+    };
+    /** The widest any other edge at a spoke's tip opens from its way back in. */
+    const widestAt = (place: number, tip: number, inner: { x: number; y: number }) => {
+      let widest = 0;
+      for (const other of atNode[tip] ?? [])
+        if (other.place !== place) widest = Math.max(widest, openingAt(seenNode(tip), inner, seenNode(other.far)));
+      return widest;
+    };
+    for (const edge of lit) {
+      const { place, from: fromNode, to: toNode } = placeOf(edge);
+      const from = seenNode(fromNode);
+      const to = seenNode(toNode);
+      if (!isSpoke(from, to)) continue;
+      const outer = Math.hypot(to.x, to.y) > Math.hypot(from.x, from.y);
+      spokes.push({ time, widest: widestAt(place, outer ? toNode : fromNode, outer ? from : to) });
     }
-  /** The widest any other edge at a spoke's tip opens from its way back in, seen at `time`. */
-  const widestAt = (edge: number[], outer: number, inner: { x: number; y: number }, time: number) => {
-    const tip = seenAt(endOf(edge, outer), time);
-    const others = (atNode.get(keyOf(endOf(edge, outer))) ?? []).filter((other) => other.edge !== edgeKeyOf(edge));
-    return Math.max(0, ...others.map((other) => openingAt(tip, inner, seenAt(other.far, time))));
-  };
-  return frames.flatMap(({ time, edges: lit }) =>
-    lit.flatMap((edge) => {
-      const from = seenAt(endOf(edge, 0), time);
-      const to = seenAt(endOf(edge, 1), time);
-      if (!isSpoke(from, to)) return [];
-      const outer = Math.hypot(to.x, to.y) > Math.hypot(from.x, from.y) ? 1 : 0;
-      return [{ time, widest: widestAt(edge, outer, outer === 1 ? from : to, time) }];
-    }),
-  );
+  }
+  return spokes;
 }
 
 /** The frames a chance lights a spoke with nothing at its tip but slivers, or nothing at all ({@link SLIVER_DEGREES}). */
@@ -547,13 +645,13 @@ describe('the cage cascades', () => {
       if (edges.length === 0) continue;
       const fires = Math.min(...out.map((edge) => edge[SLOTS.leaves] ?? 0));
       // every spark leaves a whole number of hops after the pulse fired, from a node an earlier spark lit
-      const lit = new Set(out.filter((edge) => edge[SLOTS.leaves] === fires).map((edge) => keyOf(endOf(edge, 0))));
+      const lit = new Set(out.filter((edge) => edge[SLOTS.leaves] === fires).map((edge) => endKeyOf(edge, 0)));
       expect(lit.size).toBe(1);
       for (const edge of [...out].sort((first, second) => (first[SLOTS.leaves] ?? 0) - (second[SLOTS.leaves] ?? 0))) {
         const hops = ((edge[SLOTS.leaves] ?? 0) - fires) / CASCADE_HOP_SECONDS;
         expect(Math.abs(hops - Math.round(hops))).toBeLessThan(1e-3);
-        expect(lit.has(keyOf(endOf(edge, 0)))).toBe(true);
-        lit.add(keyOf(endOf(edge, 1)));
+        expect(lit.has(endKeyOf(edge, 0))).toBe(true);
+        lit.add(endKeyOf(edge, 1));
       }
       expect(out.length).toBeGreaterThanOrEqual(4);
       if (back.length === 0) continue;
@@ -562,7 +660,7 @@ describe('the cage cascades', () => {
       const targets = new Set(
         back
           .filter((edge) => Math.abs((edge[SLOTS.leaves] ?? 0) + CASCADE_HOP_SECONDS - lands) < 1e-4)
-          .map((edge) => keyOf(endOf(edge, 1))),
+          .map((edge) => endKeyOf(edge, 1)),
       );
       expect(targets.size).toBe(1);
       expect(Math.min(...back.map((edge) => edge[SLOTS.leaves] ?? 0))).toBeGreaterThan(fires);
