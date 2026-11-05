@@ -31,8 +31,9 @@ import {
  * Now and then: one chance a {@link CASCADE_PERIOD}. Every other one fires whatever he is doing, a
  * share ({@link CASCADE_IN_SILENCE}) of the ones between as well, and so does one beside a chance
  * that finds nothing to fire from, and while he talks or thinks all of them — all but those where the
- * cage, as it is turned then, offers no node to fire from at all, about one in ten. So in silence two
- * chances in a row go dark only where neither could have fired however busy he was
+ * cage, as it is turned then, offers no node to fire from at all, under one in a hundred now that an
+ * edge may reach in to {@link CASCADE_LIMB}. So in silence two chances in a row go dark only where
+ * neither could have fired however busy he was, and they have not been seen to
  * (`.claude/rules/hologram-what-he-looks-like.md` has the figures). Each is over before the next chance
  * comes ({@link CASCADE_LONGEST_SECONDS}), so two never overlap. Which chance fires, when, from which
  * node and down which edges all come from the clock by a hash, so a frame at a time is always the
@@ -53,23 +54,33 @@ const CASCADE_JITTER = 0.08;
  * rarely lost to where the cage happened to be.
  */
 const CASCADE_RETRY_SECONDS = 0.1;
-const CASCADE_RETRIES = 2;
+// one: with edges reaching in to CASCADE_LIMB, a second found a node for three chances in 400 more, and
+// would no longer fit a cascade six hops out and four back in its period
+const CASCADE_RETRIES = 1;
 /** The latest a chance's pulse fires after its period starts, in seconds: its jitter and every retry. */
 export const CASCADE_LATEST_FIRE = CASCADE_JITTER + CASCADE_RETRIES * CASCADE_RETRY_SECONDS;
-/** The share of the chances between the ones that always fire that fire in silence too. */
-const CASCADE_IN_SILENCE = 0.15;
-/** How long a pulse takes over one edge of the cage, in seconds: slow enough to follow its spark. */
-export const CASCADE_HOP_SECONDS = 0.24;
-/** How many hops out from the box that fired the pulse spreads, and how many the return gathers over. */
-const CASCADE_OUT_HOPS = 5;
-const CASCADE_RETURN_HOPS = 3;
 /**
- * How many edges each node lights onward, at most: the first node up to three, every later one up to
- * two, so the patch branches like a tree rather than flooding the mesh. And how many edges a pulse
- * lights at most, out and back.
+ * The share of the chances between the ones that always fire that fire in silence too: a little over
+ * a third, so in silence one fires about every four and a half seconds (it was one every five, at
+ * 0.15, until the user asked for them "a bit bigger and more frequent").
  */
-const CASCADE_FIRST_BRANCHES = 3;
-const CASCADE_BRANCHES = 2;
+const CASCADE_IN_SILENCE = 0.35;
+/**
+ * How long a pulse takes over one edge of the cage, in seconds: slow enough to follow its spark, and
+ * quick enough for six hops out and four back to fit a {@link CASCADE_PERIOD} (at 0.24 a hop, five and
+ * three did). And how many hops out from the box that fired the pulse spreads, and how many the return
+ * gathers over.
+ */
+export const CASCADE_HOP_SECONDS = 0.2;
+const CASCADE_OUT_HOPS = 6;
+const CASCADE_RETURN_HOPS = 4;
+/**
+ * How many edges each node lights onward, at most, so the patch branches like a tree rather than
+ * flooding the mesh: three, where two (and three from the first node only) left it thin once every
+ * edge had to stay clear of him for as long as it is lit. And how many edges a pulse lights at most,
+ * out and back.
+ */
+const CASCADE_BRANCHES = 3;
 /** How much the hash may add to an edge's score, when a spread picks which to light next ({@link nextAlongHisEdge}). */
 const CASCADE_CHOICE_JITTER = 0.3;
 /**
@@ -102,10 +113,10 @@ export const CASCADE_SPOKE_REACH = 1.08;
 const CASCADE_SPOKE_LOOKS = 1 / 20;
 /** The fewest edges a return must light to be planned: fewer read as a stray flicker, not an answer. */
 export const CASCADE_FEWEST_RETURN_EDGES = 3;
-const CASCADE_OUT_EDGES = 18;
+const CASCADE_OUT_EDGES = 26;
 /** And how many more edges the pulse out may light closing the triangles of its patch ({@link planClosingEdges}). */
-const CASCADE_CLOSING_EDGES = 8;
-const CASCADE_RETURN_EDGES = 10;
+const CASCADE_CLOSING_EDGES = 12;
+const CASCADE_RETURN_EDGES = 14;
 export const CASCADE_EDGES = CASCADE_OUT_EDGES + CASCADE_CLOSING_EDGES + CASCADE_RETURN_EDGES;
 /** The fewest edges a pulse out must light, and the fewest hops it must reach, to be fired at all. */
 const CASCADE_FEWEST_EDGES = 5;
@@ -115,8 +126,8 @@ const CASCADE_FEWEST_HOPS = 3;
  * out starts to fade than the one before it — so it fades from where it started outward — and how
  * long each takes to go out, in seconds.
  */
-const CASCADE_HOLD_SECONDS = 0.3;
-const CASCADE_FADE_STEP = 0.1;
+const CASCADE_HOLD_SECONDS = 0.25;
+const CASCADE_FADE_STEP = 0.08;
 export const CASCADE_FADE_SECONDS = 0.3;
 /**
  * How long a box of the truss flares when a pulse leaves it or a return lands on it, in seconds:
@@ -148,12 +159,15 @@ export const CASCADE_LONGEST_SECONDS = Math.max(
   CASCADE_BOX_FLARE_SECONDS,
 );
 /**
- * How far out, in R, both nodes of an edge must be seen for as long as it is lit — out past his
- * limb, where the cage is against the dark — and how far behind him they may be, as a share of R
- * towards his back ({@link clearOver}). And how far out both ends of a cage edge must lie at rest for
+ * How far out, in R, both nodes of an edge must be seen for as long as it is lit — over his bright
+ * edge and the truss at the least, where the picture dims what it draws (`CASCADE_OVER_HIM` in
+ * `gpu/picture-layers.ts`), never in over his body — and how far behind him they may be, as a share
+ * of R towards his back ({@link clearOver}). At 0.9R, his limb, held to the whole of an edge's life,
+ * one chance in ten found nothing to fire from and a cascade lit 17 edges; at 0.82R, all else alike,
+ * under one in a hundred, and 22. And how far out both ends of a cage edge must lie at rest for
  * it to be walked at all: on the cage's shell and weave, not an anchor down into the specks.
  */
-export const CASCADE_LIMB = 0.9;
+export const CASCADE_LIMB = 0.82;
 export const CASCADE_DEEPEST = -0.45;
 const CASCADE_NODE_REACH = 0.95;
 /** How far out, in R, a node a pulse leaves from or lands on must be seen: over the truss, from just inside its inner rail to just past its outer one. */
@@ -691,7 +705,7 @@ function nextAlongHisEdge(net: CageNet, scratch: number[], node: number, hop: nu
 /**
  * A breadth-first spread of `pulse` over the net from `start`, as many hops deep and over as many
  * edges as that pulse goes, each node reached lighting up to {@link CASCADE_BRANCHES} of its
- * neighbours onward ({@link CASCADE_FIRST_BRANCHES} from the start), those running most nearly round
+ * neighbours onward, those running most nearly round
  * his edge first ({@link nextAlongHisEdge}). How many hops each node was reached in, which node it
  * was reached from and the order they were reached in go into the scratch, and how many it reached,
  * the start among them, and how deep.
@@ -718,8 +732,7 @@ function spread(net: CageNet, scratch: number[], start: number, seed: number, pu
     const node = scratch[queue + next];
     const hop = scratch[hops + node];
     if (hop >= depth) continue;
-    const branches = hop === 0 ? CASCADE_FIRST_BRANCHES : CASCADE_BRANCHES;
-    for (let lit = 0; lit < branches && reached <= most; lit++) {
+    for (let lit = 0; lit < CASCADE_BRANCHES && reached <= most; lit++) {
       const neighbour = nextAlongHisEdge(net, scratch, node, hop, seed, pulse);
       if (neighbour < 0) break;
       scratch[hops + neighbour] = hop + 1;

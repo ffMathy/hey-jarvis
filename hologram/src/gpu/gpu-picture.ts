@@ -634,8 +634,9 @@ export function writeGpuPictureCascade(picture: GpuPicture, state: HologramFrame
 
 /**
  * How far the cascades' strokes reach either side of their lines, in R. The lit wire: a solid orange
- * core about two pixels across on a phone, well over the cage's grey hairline beside it, in a tight
- * red-orange glow, like a neon tube. The spark: an orange comet in a red-orange glow, with a short
+ * core about two and a half pixels across on a phone, well over the cage's grey hairline beside it,
+ * in a tight red-orange glow, like a neon tube — a fifth wider than it was, with the cascades made
+ * bigger, and still orange where it Screens over him. The spark: an orange comet in a red-orange glow, with a short
  * head of about three pixels at its front, and the wire lit only up to the comet's tail so the two
  * never stack. Each extra orange Screened over the same pixel pales it, so the head is one more
  * stroke and no more: with a white-hot heart and a pale comet over the wire it came out a cream blob,
@@ -643,8 +644,8 @@ export function writeGpuPictureCascade(picture: GpuPicture, state: HologramFrame
  * and rungs, an orange line over them in a red-orange glow; a glow wide enough to fill the box drew a
  * flat slab over it.
  */
-const CASCADE_WIRE_HALF_WIDTH = 0.008;
-const CASCADE_WIRE_GLOW_HALF_WIDTH = 0.018;
+const CASCADE_WIRE_HALF_WIDTH = 0.0095;
+const CASCADE_WIRE_GLOW_HALF_WIDTH = 0.021;
 const CASCADE_SPARK_HALF_WIDTH = 0.0075;
 const CASCADE_SPARK_GLOW_HALF_WIDTH = 0.016;
 const CASCADE_HEAD_HALF_WIDTH = 0.012;

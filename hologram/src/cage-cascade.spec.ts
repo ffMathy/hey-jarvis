@@ -91,8 +91,8 @@ function freshOut() {
 function litEdges(out: Float32Array) {
   const edges: number[][] = [];
   for (let edge = 0; edge < CASCADE_EDGES; edge++) {
-    const numbers = Array.from(out.slice(edge * CASCADE_EDGE_NUMBERS, (edge + 1) * CASCADE_EDGE_NUMBERS));
-    if ((numbers[SLOTS.light] ?? 0) > 0) edges.push(numbers);
+    const at = edge * CASCADE_EDGE_NUMBERS;
+    if ((out[at + SLOTS.light] ?? 0) > 0) edges.push(Array.from(out.slice(at, at + CASCADE_EDGE_NUMBERS)));
   }
   return edges;
 }
@@ -368,16 +368,52 @@ describe('the cage cascades', () => {
     expect(BODY_RADIANS_PER_SECOND * CASCADE_LONGEST_SECONDS).toBeLessThan(Math.PI);
   });
 
-  it('fire now and then: about one every five seconds in silence, more often while he talks, and as often while he thinks', () => {
+  it('fire now and then: about one every four and a half seconds in silence, more often while he talks, and as often while he thinks', () => {
+    // one every five seconds in silence until the user asked for them "a bit bigger and more frequent"
     const seconds = 600;
     const inSilence = firedChances(seconds, {}).filter(Boolean).length;
     const whileTalking = firedChances(seconds, BUSY).filter(Boolean).length;
     const whileThinking = firedChances(seconds, { thinking: 1 });
 
     expect(seconds / inSilence).toBeGreaterThan(4);
-    expect(seconds / inSilence).toBeLessThan(7);
+    expect(seconds / inSilence).toBeLessThan(5);
     expect(whileTalking).toBeGreaterThan(inSilence * 1.4);
     expect(whileThinking).toEqual(firedChances(seconds, BUSY));
+  });
+
+  it('are lit half the time in silence and three quarters of it while he talks, never dark for five seconds', () => {
+    for (const [overrides, share] of [
+      [{}, 0.5],
+      [BUSY, 0.75],
+    ] as const) {
+      const scratch = freshScratch(net);
+      const out = freshOut();
+      const step = 1 / 20;
+      let lit = 0;
+      let frames = 0;
+      let dark = 0;
+      let longestDark = 0;
+      for (let time = 2 * CASCADE_PERIOD; time < 600; time += step) {
+        writeCageCascade(net, stateAt(time, overrides), scratch, out);
+        frames++;
+        if (litEdges(out).length > 0 || litBox(out, 0) || litBox(out, 1)) {
+          lit++;
+          dark = 0;
+        } else {
+          dark += step;
+          longestDark = Math.max(longestDark, dark);
+        }
+      }
+      expect(lit / frames).toBeGreaterThan(share);
+      expect(longestDark).toBeLessThan(5);
+    }
+  });
+
+  it('light about one and a half times the cage they did: some 24 edges or more a cascade, on average', () => {
+    // 17 edges a cascade before the user asked for them "a bit bigger"
+    const fired = busyChances.filter(({ edges }) => edges.length > 0);
+    const edges = fired.reduce((sum, { edges }) => sum + edges.length, 0);
+    expect(edges / fired.length).toBeGreaterThan(24);
   });
 
   it('never leave him dark for two chances in silence while either could have fired', () => {
@@ -394,7 +430,10 @@ describe('the cage cascades', () => {
         couldFire: false,
       });
     }
-    expect(whileBusy.filter((fired) => !fired).length).toBeLessThan(whileBusy.length * 0.15);
+    // and with edges reaching in to CASCADE_LIMB that is hardly ever: under one chance in fifty, and in
+    // silence no two in a row (it was one in ten, and runs of three)
+    expect(whileBusy.filter((fired) => !fired).length).toBeLessThan(whileBusy.length * 0.02);
+    expect(inSilence.some((fired, place) => !fired && place > 0 && !inSilence[place - 1])).toBe(false);
   });
 
   it('light edges only where both their nodes stay out past his limb and not far behind him, every frame they are lit', () => {
