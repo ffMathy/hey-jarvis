@@ -296,6 +296,28 @@ describe('pairing the phone through its browser', () => {
     expect(await storage.authenticate(token)).toMatchObject({ name: 'Android phone' });
   });
 
+  it('pairs the phone for the press a browser really sends from the page, behind the tunnel', async () => {
+    // What Chrome on Android sent: a form posted under a no-referrer page carries `Origin: null`
+    // (the Fetch standard serialises the origin as null for that policy), and cloudflared hands the
+    // server a Host of its own service rather than the public hostname. Sec-Fetch-Site still says
+    // the press came from the page itself, and a page cannot forge it.
+    const originHidden = await pressPair({ Origin: 'null', 'Sec-Fetch-Site': 'same-origin' });
+    const hostRewritten = await pressPair({
+      Origin: 'https://jarvis.example.com',
+      Host: 'localhost:4112',
+      'Sec-Fetch-Site': 'same-origin',
+    });
+
+    expect([originHidden.status, hostRewritten.status]).toEqual([303, 303]);
+    expect(await storage.list()).toHaveLength(2);
+  });
+
+  it('shows the pairing page with a referrer policy that keeps the press’s origin', async () => {
+    const response = await fetch(`${baseUrl}${PHONE_PAIRING_ROUTE}`);
+
+    expect(response.headers.get('Referrer-Policy')).toBe('same-origin');
+  });
+
   it('pairs nothing for a press from another site', async () => {
     const host = new URL(baseUrl).host;
     const fromElsewhere = await pressPair({ Origin: STRANGER_PAGE, 'Sec-Fetch-Site': 'cross-site' });

@@ -279,18 +279,26 @@ function guardPairingPage(response: Response): void {
     'Cache-Control': 'no-store',
     'Content-Security-Policy':
       "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
-    'Referrer-Policy': 'no-referrer',
+    // Not `no-referrer`: under it a browser sends a form's `Origin` as `null`, so a browser without
+    // `Sec-Fetch-Site` could never pair. `same-origin` still sends no referrer to any other site.
+    'Referrer-Policy': 'same-origin',
     'X-Frame-Options': 'DENY',
   });
 }
 
 /**
- * Whether a press of the pairing page's button came from the page itself: a form on this server's
- * own origin, which a browser says in `Origin` (and in `Sec-Fetch-Site`, where it sends that). A
- * form on any other site posting here is refused, so it cannot pair devices sir never sees.
+ * Whether a press of the pairing page's button came from the page itself, so that a form on any
+ * other site posting here cannot pair devices sir never sees.
+ *
+ * **`Sec-Fetch-Site` decides, where a browser sends it**, as every current one does: the browser
+ * sets it and no page can, and it says `same-origin` for the page's own button however the request
+ * reaches the server. `Origin` cannot be the test there: a press under the old `no-referrer` page
+ * arrived as `Origin: null` from Chrome on Android, and was refused. Only a browser without it falls
+ * back to `Origin` naming this server's own `Host`.
  */
 function isSameOriginForm(request: Request): boolean {
-  if (request.get('Sec-Fetch-Site') !== undefined && request.get('Sec-Fetch-Site') !== 'same-origin') return false;
+  const fetchSite = request.get('Sec-Fetch-Site');
+  if (fetchSite !== undefined) return fetchSite === 'same-origin';
   const origin = request.get('Origin');
   const host = request.get('Host');
   if (origin === undefined || host === undefined) return false;

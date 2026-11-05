@@ -65,12 +65,14 @@ for a paired device; the device keeps a token of the server's own.
   over once; only its SHA-256 is stored.
 - **`GET /api/devices/pair`**, for the Android phone, which holds no Access cookie
   (`PHONE_PAIRING_ROUTE`): the phone opens it in its browser, Access signs sir in, and its button
-  `POST`s to the same path. That is refused `403` unless `Origin` names this server's own `Host`
-  (and `Sec-Fetch-Site`, where sent, is `same-origin`), so a form elsewhere cannot pair a device;
-  then the phone is paired and the browser is sent, `303`, to `heyjarvis://paired#token=…` — always
-  the app's own scheme, never a link the request names. The page is served `no-store`,
-  `X-Frame-Options: DENY` and a CSP that allows no frame. The check reads `Host`, so the tunnel must
-  pass the public hostname through (cloudflared's default; leave its `httpHostHeader` unset).
+  `POST`s to the same path. That is refused `403` unless `Sec-Fetch-Site` is `same-origin` — set by
+  the browser, never by a page — or, from a browser that sends none, unless `Origin` names this
+  server's own `Host`; so a form elsewhere cannot pair a device. Then the phone is paired and the
+  browser is sent, `303`, to `heyjarvis://paired#token=…` — always the app's own scheme, never a
+  link the request names. The page is served `no-store`, `X-Frame-Options: DENY`, a CSP that allows
+  no frame, and `Referrer-Policy: same-origin`. Not `no-referrer`: under that a browser sends the
+  form's `Origin` as `null`, and when the check read `Origin` first, every press from Chrome on
+  Android was refused with "Pair your phone from the pairing page itself."
 - **`GET /api/devices`** lists them (never with a token) and **`DELETE /api/devices/<id>`** unpairs
   one, so a lost device is one device revoked rather than the ElevenLabs key.
 - **`/api/paired/*` must bypass Access.** `POST /api/paired/conversation` takes
