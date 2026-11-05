@@ -168,12 +168,17 @@ interface ChanceFrames {
   edges: number[][];
 }
 
-function chanceFrames(chance: number, overrides: Partial<HologramFrame>, scratch = freshScratch(net)): ChanceFrames {
+function chanceFrames(
+  chance: number,
+  overrides: Partial<HologramFrame>,
+  scratch = freshScratch(net),
+  frame = FRAME,
+): ChanceFrames {
   const out = freshOut();
   const frames: ChanceFrames['frames'] = [];
   const edges = new Map<string, number[]>();
-  for (let step = 0; step * FRAME < CASCADE_PERIOD; step++) {
-    const time = chance * CASCADE_PERIOD + step * FRAME;
+  for (let step = 0; step * frame < CASCADE_PERIOD; step++) {
+    const time = chance * CASCADE_PERIOD + step * frame;
     writeCageCascade(net, stateAt(time, overrides), scratch, out);
     const lit = litEdges(out);
     frames.push({ time, edges: lit, boxes: [litBox(out, 0), litBox(out, 1)] });
@@ -226,6 +231,14 @@ function spokesOf({ frames, edges }: ChanceFrames) {
   );
 }
 
+/**
+ * Whether two moments a frame hands the picture are the same: its numbers are 32-bit floats, which
+ * past the first few minutes hold a moment to a few hundredths of a millisecond at best.
+ */
+function sameMoment(first: number, second: number) {
+  return Math.abs(first - second) <= 1e-4 + Math.abs(second) * 2 ** -22;
+}
+
 /** The first frame's numbers of one of a chance's boxes (0 fired from, 1 landed on), lit. */
 function boxOf({ frames }: ChanceFrames, box: number) {
   return frames.flatMap(({ boxes }) => (boxes[box] ? [boxes[box]] : []))[0] ?? [];
@@ -261,12 +274,12 @@ function expectFlaredUnderTheTarget(chance: ChanceFrames, source: number[]) {
   const sweep = target[CASCADE_BOX_SLOTS.sweep] ?? 0;
   const lands = target[CASCADE_BOX_SLOTS.flares] ?? 0;
   const landsAt = (edge: number[]) => (edge[SLOTS.leaves] ?? 0) + CASCADE_HOP_SECONDS;
-  const landing = back.filter((edge) => Math.abs(landsAt(edge) - lands) < 1e-4);
+  const landing = back.filter((edge) => sameMoment(landsAt(edge), lands));
 
   expect(back.length).toBeGreaterThanOrEqual(CASCADE_FEWEST_RETURN_EDGES);
   expect(isBox(first, sweep)).toBe(true);
   expect(first).not.toBe(source[CASCADE_BOX_SLOTS.first]);
-  expect(Math.max(...back.map(landsAt))).toBeCloseTo(lands, 4);
+  expect(sameMoment(Math.max(...back.map(landsAt)), lands)).toBe(true);
   expect(landing.length).toBeGreaterThan(0);
   for (const edge of landing) expect(overBox(seenAt(endOf(edge, 1), lands), first, sweep, lands)).toBe(true);
 }
@@ -380,6 +393,28 @@ describe('the cage cascades', () => {
     // another edge of the plan reaches each one's outer node, so it leads on to the lit net
     expect(spokes.filter(({ alone }) => alone)).toEqual([]);
     expect(spokes.length).toBeGreaterThan(0);
+  });
+
+  it('hold to it over thousands of chances: every pulse leaves its flaring box, every return lands on its own, and no spoke stands alone', () => {
+    // A plan is cut back after it is spread (lone spokes dropped until none is left, then a return
+    // too thin to answer), which only a few chances in a thousand need; the minute or so above
+    // reaches none of them, so this plans chances enough to, a frame every twentieth of a second.
+    const scratch = freshScratch(net);
+    let fired = 0;
+    let returns = 0;
+    for (let chance = 2; chance < 2002; chance++) {
+      const frames = chanceFrames(chance, BUSY, scratch, 1 / 20);
+      if (frames.edges.length === 0) continue;
+      fired++;
+      const source = expectFlaredUnderTheSource(frames);
+      if (frames.edges.some((edge) => edge[SLOTS.kind] === 1)) {
+        expectFlaredUnderTheTarget(frames, source);
+        returns++;
+      }
+      expect({ chance, alone: spokesOf(frames).filter(({ alone }) => alone) }).toEqual({ chance, alone: [] });
+    }
+    expect(fired).toBeGreaterThan(1500);
+    expect(returns).toBeGreaterThan(fired / 2);
   });
 
   it('flare the box the pulse fires from as it fires, under its node, and the box the return lands on as it lands, under the node it lands on', () => {

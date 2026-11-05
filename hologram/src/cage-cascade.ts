@@ -900,38 +900,6 @@ function bestSource(net: CageNet, scratch: number[], fires: number, seed: number
   return best;
 }
 
-/** Where the scratch keeps when chance `chance` fires and from which node ({@link findSource}). */
-function sourceOf(chance: number) {
-  'worklet';
-  return SOURCES + (((chance % SOURCES_KEPT) + SOURCES_KEPT) % SOURCES_KEPT) * SOURCE_NUMBERS;
-}
-
-/**
- * Works out when chance `chance` fires and from which node into the scratch ({@link sourceOf}),
- * unless it is already there: the best at its first try ({@link bestSource}), or, where no node
- * would do, at a try {@link CASCADE_RETRY_SECONDS} later as the cage turns, up to
- * {@link CASCADE_RETRIES} times; -1 for both when none would. A chance between two that always fire
- * asks it of both of them, and they of it in turn, so each chance's is kept for the next to read.
- */
-function findSource(net: CageNet, scratch: number[], chance: number) {
-  'worklet';
-  const at = sourceOf(chance);
-  if (scratch[at] === chance + 1) return;
-  const seed = chanceSeed(chance);
-  const firstTry = chance * CASCADE_PERIOD + cascadeHash(seed + SALT_FIRES) * CASCADE_JITTER;
-  scratch[at] = chance + 1;
-  scratch[at + 1] = -1;
-  scratch[at + 2] = -1;
-  for (let attempt = 0; attempt <= CASCADE_RETRIES; attempt++) {
-    const fires = firstTry + attempt * CASCADE_RETRY_SECONDS;
-    const source = bestSource(net, scratch, fires, seed);
-    if (source < 0) continue;
-    scratch[at + 1] = fires;
-    scratch[at + 2] = source;
-    return;
-  }
-}
-
 /** The box of the truss, other than `sourceBox`, that `target` is over at `lands` (see {@link boxAt}), or -1. */
 function landingBox(net: CageNet, scratch: number[], target: number, lands: number, sourceBox: number) {
   'worklet';
@@ -1103,6 +1071,56 @@ function dropThinReturn(scratch: number[]) {
   scratch[LANDS] = -1;
 }
 
+/** Where the scratch keeps when chance `chance` fires and from which node ({@link findSource}). */
+function sourceOf(chance: number) {
+  'worklet';
+  return SOURCES + (((chance % SOURCES_KEPT) + SOURCES_KEPT) % SOURCES_KEPT) * SOURCE_NUMBERS;
+}
+
+/**
+ * Whether the pulse out from `source` at `fires` still leaves it once its plan is cut back
+ * ({@link dropLoneSpokes}): the source can be the outer node of a spoke out of it that nothing else
+ * reaches, and with that spoke dropped its box would flare with nothing leaving it, the pulse
+ * starting a hop away. The return never touches a node the pulse out reached, so the pulse out alone
+ * says. It plans into the scratch's plan, which {@link planChance} plans afresh after.
+ */
+function leavesItsSource(net: CageNet, scratch: number[], source: number, fires: number, seed: number) {
+  'worklet';
+  spread(net, scratch, source, seed, OUT_PULSE);
+  scratch[EDGE_COUNT] = 0;
+  planOut(net, scratch, fires);
+  markSpokeEnds(net, scratch);
+  dropLoneSpokes(scratch);
+  return edgesAt(scratch, source) > 0;
+}
+
+/**
+ * Works out when chance `chance` fires and from which node into the scratch ({@link sourceOf}),
+ * unless it is already there: the best at its first try ({@link bestSource}), or, where no node
+ * would do or the pulse out of it would not leave it ({@link leavesItsSource}), at a try
+ * {@link CASCADE_RETRY_SECONDS} later as the cage turns, up to {@link CASCADE_RETRIES} times; -1 for
+ * both when none would. A chance between two that always fire asks it of both of them, and they of
+ * it in turn, so each chance's is kept for the next to read.
+ */
+function findSource(net: CageNet, scratch: number[], chance: number) {
+  'worklet';
+  const at = sourceOf(chance);
+  if (scratch[at] === chance + 1) return;
+  const seed = chanceSeed(chance);
+  const firstTry = chance * CASCADE_PERIOD + cascadeHash(seed + SALT_FIRES) * CASCADE_JITTER;
+  scratch[at] = chance + 1;
+  scratch[at + 1] = -1;
+  scratch[at + 2] = -1;
+  for (let attempt = 0; attempt <= CASCADE_RETRIES; attempt++) {
+    const fires = firstTry + attempt * CASCADE_RETRY_SECONDS;
+    const source = bestSource(net, scratch, fires, seed);
+    if (source < 0 || !leavesItsSource(net, scratch, source, fires, seed)) continue;
+    scratch[at + 1] = fires;
+    scratch[at + 2] = source;
+    return;
+  }
+}
+
 /** Whether chance `chance` finds a node to fire from: what {@link findSource} keeps, worked out first if it is not kept yet. */
 function chanceFinds(net: CageNet, scratch: number[], chance: number) {
   'worklet';
@@ -1123,6 +1141,8 @@ function planChance(net: CageNet, scratch: number[], chance: number) {
   const seed = chanceSeed(chance);
   const chosen = chance % 2 === 0 || cascadeHash(seed + SALT_IN_SILENCE) < CASCADE_IN_SILENCE;
   const neighbourLost = !chosen && (!chanceFinds(net, scratch, chance - 1) || !chanceFinds(net, scratch, chance + 1));
+  // found before the plan is cleared, as finding a source plans into it (leavesItsSource)
+  const finds = chanceFinds(net, scratch, chance);
   scratch[PLANNED] = chance + 1;
   scratch[ONLY_WHILE_BUSY] = chosen || neighbourLost ? 0 : 1;
   scratch[EDGE_COUNT] = 0;
@@ -1130,7 +1150,7 @@ function planChance(net: CageNet, scratch: number[], chance: number) {
   scratch[TARGET_BOX] = -1;
   scratch[TARGET] = -1;
   scratch[LANDS] = -1;
-  if (!chanceFinds(net, scratch, chance)) return;
+  if (!finds) return;
   const fires = scratch[sourceOf(chance) + 1];
   const source = scratch[sourceOf(chance) + 2];
   scratch[FIRES] = fires;
