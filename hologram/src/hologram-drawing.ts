@@ -1527,6 +1527,15 @@ export const CAGE_SHELL_OUTER = 1.16;
  * the trails — so that nothing round him can read as an arm.
  */
 export const CAGE_WOVEN_REACH = 1.25;
+/**
+ * How far a cage node sways about its place, in R: the film's wireframe shifts a little, and holds
+ * its shape. Under a pixel at a phone's size. Twice this suited the cage's wide glowing lines, but
+ * it moved the hairlines that replaced them clean off their own pixels, so the cage no longer
+ * looked like itself from one moment to the next. The picture sways its nodes by it
+ * (`gpu/picture-layers.ts`), and the cascades theirs (`cage-cascade.ts`), so a pulse stays on its
+ * hairline.
+ */
+export const CAGE_SWAY = 0.006;
 /** The longest edge between two of the shell's nodes, in R: the film's are short and jagged. */
 const CAGE_LONGEST_MESH_EDGE = 0.42;
 /** The longest edge from a woven node back down to the shell's, and between two woven nodes. */

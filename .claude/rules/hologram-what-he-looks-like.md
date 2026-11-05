@@ -61,6 +61,33 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
   Its specks twinkle and slide along their lines like every speck, but the limb never cuts them,
   the listening lattice never snaps them, thinking never scatters them and the thinking plane does
   not put them out (they recede by `TRUSS_THINKING_DIM`), so the squares stay squares.
+- **The cascades:** now and then a box of the truss fires and a pulse spreads through the cage from
+  the node over it like a firing neuron (`cage-cascade.ts`): the box's own square flares (its rails
+  and rungs lit over, `CASCADE_BOX_FLARE_SECONDS`), then the pulse runs hop by hop over the cage's
+  own edges (`CASCADE_HOP_SECONDS` a hop, `CASCADE_OUT_HOPS` deep), each node lighting the
+  neighbours that show most out in the dark and run round his edge (`nextAlongHisEdge`), then the
+  edges closing the patch's triangles. Each lit edge is a solid orange line about two pixels across
+  in a tight red-orange glow on the very hairline, lit up to the tail of an orange comet with a
+  short bright head racing along it, and a soft deep-orange flash on the node it lands on; the
+  patch holds, then fades from where it started outward. As it reaches its tips the return gathers
+  from its own tips onto the node over another box nearby (`planBestReturn`), every branch landing
+  together, and that box flares as it lands. Picked from the clock by a hash, one chance every
+  `CASCADE_PERIOD` (3 s), each over before the next: every other chance fires, `CASCADE_IN_SILENCE`
+  of the rest and any beside a chance that finds nothing, and all of them while he talks or thinks —
+  over 1200 s one every 5.3 s in silence, never more than 6.1 s apart, and one every 3.05 s while
+  busy. It fires from the node over the truss whose pulse would show most (`seenLength`), as a
+  pulse over the bright truss and edge alone could not be seen. They light only existing edges of
+  the painted cage, between nodes past 0.9R when they fire (`CASCADE_LIMB`), and never a spoke out
+  into the dark whose outer node nothing else lit reaches (`dropLoneSpokes`), so nothing stands out
+  past where the cage already reaches; and they are drawn over his body as well as the picture
+  (`drawGpuPictureCascade`, from `drawGpuFrame` only), at `CASCADE_OVER_HIM` of their light over his
+  edge and the truss, so the lit net shows where the cage crosses the rim and the headset's picture
+  is drawn to the byte as before. What tried and failed: a tree of single edges under the body, lost
+  on the truss's rail; nodes past 1.0R only, too few to fire one every twenty seconds; a glow four
+  times the hairline, which made every lit spoke out there a stick with a knob on its end; spreading
+  only round his edge and never along a spoke, which kept the pulse on the bright band where it
+  showed least; and a white-hot heart in a pale comet over the lit wire, and a glow wide enough to
+  fill a box, which Screened into a cream blob and a flat slab.
 - **The embers:** orange flecks drifting out from the shell's edge, more of them while he talks
   (`buildEmbers`, `drawEmbers`).
 - **The aura:** the film's bloom, a soft warm band round him, see-through in the middle

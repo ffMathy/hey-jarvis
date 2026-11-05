@@ -4,7 +4,7 @@ import { SCENE_SEED } from '../frame-timing';
 import { analyseFrame, createHologramScene, type HologramFrame, pictureSceneOf } from '../hologram-drawing';
 import { VOICE_BAND_COUNT } from '../voice-levels';
 import { BLEND, DEPTH_TEST, EQUAL, LESS, NOTEQUAL, STENCIL_TEST } from './gl-objects';
-import { createGpuPicture, drawGpuPicture } from './gpu-picture';
+import { createGpuPicture, drawGpuPicture, drawGpuPictureCascade, writeGpuPictureCascade } from './gpu-picture';
 import { BrowserLocation, type Call, ExpoObject, expoObjects, recordingGl, uncopyable } from './recording-gl.fakes';
 
 /**
@@ -67,10 +67,10 @@ describe('the picture on the GPU', () => {
     const { picture, made } = madePicture();
     const sources = named(made, 'shaderSource').map(([, , source]) => String(source));
 
-    // Eight programs, two sources each: the static runs, the glyphs, the arc, the disc, the cage, the
-    // embers, the fray and the chips. It was fifteen until the Vision footage replaced the Age of
-    // Ultron layers (the whorl, the comets, the truss, the crescent and the rest) with the cage and
-    // the embers.
+    // Nine programs, two sources each: the static runs, the glyphs, the arc, the disc, the cage, its
+    // cascades, the embers, the fray and the chips. It was fifteen until the Vision footage replaced
+    // the Age of Ultron layers (the whorl, the comets, the truss, the crescent and the rest) with the
+    // cage and the embers.
     expect(sources.length).toBeGreaterThanOrEqual(16);
     for (const source of sources) expect(source.startsWith('#version 300 es\n')).toBe(true);
     expect(uncopyable(picture, 'picture')).toEqual([]);
@@ -218,5 +218,44 @@ describe('the picture on the GPU', () => {
 
     expect(named(draw(made, {}, [orbit()]), 'drawElements').length).toBeGreaterThan(without);
     expect(named(draw(made, {}, [orbit({ level: 0 })]), 'drawElements')).toHaveLength(without);
+  });
+});
+
+describe("the cage's cascades on the GPU", () => {
+  /** A frame at `time`, its cascade worked out, and the calls of the picture and of the cascades over it. */
+  function drawnAt(time: number) {
+    const made = madePicture();
+    const state = analyseFrame(frameAt({ time }), 1);
+    writeGpuPictureCascade(made.picture, state);
+    made.calls.length = 0;
+    drawGpuPicture(made.gl, made.picture, { state, pixels: 512, satellites: [] });
+    const picture = made.calls.splice(0);
+    drawGpuPictureCascade(made.gl, made.picture, { state, pixels: 512, satellites: [] });
+    const cascades = made.calls.splice(0);
+    const usesCascade = (calls: Call[]) =>
+      named(calls, 'useProgram').some(([, program]) => program === made.picture.cascade.program.program);
+    return { picture, cascades, usesCascade };
+  }
+
+  it('draws a lit cascade only over the frame, never as part of the picture the headset draws', () => {
+    // a cascade fires at 12.01 s and has spread across the cage by 13.1 s
+    const { picture, cascades, usesCascade } = drawnAt(13.1);
+
+    expect(usesCascade(picture)).toBe(false);
+    expect(usesCascade(cascades)).toBe(true);
+    expect(named(cascades, 'uniform4fv')).not.toHaveLength(0);
+    // Screened over him as the picture is, with its own stencil and depth for each of its strokes
+    expect(named(cascades, 'blendFuncSeparate')[0]?.slice(1)).toEqual(
+      named(picture, 'blendFuncSeparate')[0]?.slice(1) ?? [],
+    );
+    expect(named(cascades, 'disable').map(([, capability]) => capability)).toEqual([STENCIL_TEST, DEPTH_TEST, BLEND]);
+  });
+
+  it('draws nothing between cascades', () => {
+    // the cascade fired at 12.01 s has gone out by 14.8 s, and the next chance is not until 15 s
+    const { cascades, usesCascade } = drawnAt(14.9);
+
+    expect(usesCascade(cascades)).toBe(false);
+    expect(named(cascades, 'drawElements')).toHaveLength(0);
   });
 });
