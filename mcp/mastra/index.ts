@@ -206,7 +206,7 @@ export async function getMastra(): Promise<Mastra> {
     },
     // What Jarvis's agents know about the household, kept in the same SQLite file as everything else
     // and browsed on Studio's Knowledge page. See knowledge/index.ts.
-    knowledge: { [JARVIS_KNOWLEDGE_KEY]: getJarvisKnowledge() },
+    knowledge: { [JARVIS_KNOWLEDGE_KEY]: await getJarvisKnowledge() },
     bundler: {
       // @yarflam/potion-base-8m resolves its embedding table relative to its own
       // module URL, so it has to stay unbundled or the model files go missing.

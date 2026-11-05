@@ -11,7 +11,6 @@
 import { describe, expect, it } from 'bun:test';
 import type { ClassifierAnswers, ClassifierQuestions } from '@mastra/core/classifier';
 import { Classifier } from '@mastra/core/classifier';
-import type { Subscription } from '../../storage/subscriptions.js';
 import {
   assessmentFrom,
   assessStateChange,
@@ -21,6 +20,7 @@ import {
   triageStateChange,
 } from './state-change-classifier.js';
 import { formatSubscriptionMatches, type SubscriptionMatch } from './subscription-matcher.js';
+import type { Subscription } from './subscription-store.js';
 
 function match(id: string, overrides: Partial<Subscription> = {}): SubscriptionMatch {
   const subscription: Subscription = {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
-import type { EmbeddedSubscription } from '../../storage/subscriptions.js';
 import { embedText } from '../../utils/static-embedder.js';
 import { describeStateChange } from './state-change.js';
+import type { EmbeddedSubscription } from './subscription-matcher.js';
 import { DEFAULT_MINIMUM_SCORE, formatSubscriptionMatches, rankSubscriptions } from './subscription-matcher.js';
 
 interface SubscriptionDraft {

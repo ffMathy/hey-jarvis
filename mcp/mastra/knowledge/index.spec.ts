@@ -10,21 +10,26 @@ import { createScriptedModel } from '../../tests/utils/scripted-model.js';
 import { createAgent } from '../utils/agent-factory.js';
 import { createJarvisKnowledge, HOUSEHOLD_SCOPE, householdKnowledgeOptions, JARVIS_KNOWLEDGE_KEY } from './index.js';
 
+/** Jarvis's Knowledge on a store of its own in memory, standing in for the shared SQLite file. */
+function inMemoryJarvisKnowledge() {
+  const storage = new InMemoryStore();
+  return { storage, knowledge: createJarvisKnowledge(storage) };
+}
+
 /**
- * Jarvis's Knowledge, registered the way `mastra/index.ts` registers it, and served through a real
- * `MastraServer` the way Studio reaches it. The store is in memory, and the Knowledge takes it from
- * Mastra, as in production, where it takes the shared SQLite store.
+ * Jarvis's Knowledge, registered the way `mastra/index.ts` registers it, on the same store as the
+ * Mastra instance, and served through a real `MastraServer` the way Studio reaches it.
  */
-async function servedKnowledge(knowledge = createJarvisKnowledge(), agents: Record<string, Agent> = {}) {
+async function servedKnowledge(jarvis = inMemoryJarvisKnowledge(), agents: Record<string, Agent> = {}) {
   const mastra = new Mastra({
-    storage: new InMemoryStore(),
+    storage: jarvis.storage,
     agents,
-    knowledge: { [JARVIS_KNOWLEDGE_KEY]: knowledge },
+    knowledge: { [JARVIS_KNOWLEDGE_KEY]: jarvis.knowledge },
     server: { apiRoutes: [...KNOWLEDGE_ROUTES] },
   });
   const app = new Hono();
   await new MastraServer({ app, mastra }).init();
-  return { app, knowledge, mastra };
+  return { app, knowledge: jarvis.knowledge, mastra };
 }
 
 const instancesResponseSchema = z.object({ instances: z.array(z.object({ key: z.string(), id: z.string() })) });
@@ -88,7 +93,7 @@ describe('householdKnowledgeOptions', () => {
       }
       return { text: 'Noted, sir.' };
     });
-    const knowledge = createJarvisKnowledge();
+    const jarvis = inMemoryJarvisKnowledge();
     // Memory is left out, as the routing specs leave it out: the shared one wants real credentials.
     // A run then holds only the household, which is what this is about.
     const agent = await createAgent({
@@ -97,9 +102,9 @@ describe('householdKnowledgeOptions', () => {
       instructions: 'You keep notes about the household.',
       model,
       memory: undefined,
-      ...householdKnowledgeOptions(knowledge),
+      ...householdKnowledgeOptions(jarvis.knowledge),
     });
-    const { app } = await servedKnowledge(knowledge, { householdWriter: agent });
+    const { app } = await servedKnowledge(jarvis, { householdWriter: agent });
 
     await agent.generate('Remember that we have fish on Fridays.');
 

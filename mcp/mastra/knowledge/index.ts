@@ -1,5 +1,6 @@
 import { Knowledge, type KnowledgeScopeDeclarations, knowledgeMemoryScopes } from '@mastra/core/knowledge';
 import type { MastraCompositeStore } from '@mastra/core/storage';
+import { getMastraStorageProvider } from '../storage/index.js';
 
 /**
  * The key Jarvis's Knowledge is registered under on Mastra. Studio's Knowledge page and its
@@ -18,57 +19,89 @@ const HOUSEHOLD_SCOPE_PATTERN = 'household:$householdId';
  */
 export const HOUSEHOLD_SCOPE = 'household:home';
 
+/** The State Change Reactor's scope type, one per household. */
+const SYNAPSE_SCOPE_PATTERN = 'synapse:$householdId';
+
 /**
- * The scopes Jarvis's Knowledge knows: Memory's `thread:` and `resource:` scopes, under the household.
+ * What the State Change Reactor watches the household for.
+ *
+ * Its pages are written by the synapse vertical's own code and nothing else: every agent holding the
+ * household can read them, as a viewer, and none can edit them with its Knowledge tools. The
+ * subscription tools change them, so a page always holds the record they wrote. See
+ * `verticals/synapse/subscription-store.ts`.
+ */
+export const SYNAPSE_SCOPE = 'synapse:home';
+
+/** The page under {@link SYNAPSE_SCOPE} each subscription is a child page of. */
+export const SUBSCRIPTIONS_PAGE_KEY = 'subscriptions';
+
+/**
+ * The scopes Jarvis's Knowledge knows.
  *
  * Every scope an attached agent's run holds must match one of these, or the run is refused. Those
- * runs hold the household, and, through Memory, the `resource:` and `thread:` of the conversation.
+ * runs hold the household, and, through Memory, the `resource:` and `thread:` of the conversation,
+ * so Memory's own declarations are here, under the household.
  */
 function jarvisKnowledgeScopes(): KnowledgeScopeDeclarations {
-  const scopes = knowledgeMemoryScopes({ org: HOUSEHOLD_SCOPE_PATTERN });
+  const memoryScopes = knowledgeMemoryScopes({ org: HOUSEHOLD_SCOPE_PATTERN });
   return {
-    ...scopes,
+    ...memoryScopes,
     [HOUSEHOLD_SCOPE_PATTERN]: {
-      ...scopes[HOUSEHOLD_SCOPE_PATTERN],
+      ...memoryScopes[HOUSEHOLD_SCOPE_PATTERN],
       displayLabel: 'Household',
       description: "The household Jarvis runs: facts, conventions and state every one of Jarvis's agents shares.",
+    },
+    [SYNAPSE_SCOPE_PATTERN]: {
+      displayLabel: 'Synapse',
+      description:
+        'What Jarvis watches the house for: every subscription the State Change Reactor matches state changes against, and when each one fired. Read it here; change it only with the subscription tools.',
+      belongsTo: HOUSEHOLD_SCOPE_PATTERN,
+      access: [{ principal: HOUSEHOLD_SCOPE_PATTERN, role: 'viewer' }],
+      pages: [
+        {
+          key: SUBSCRIPTIONS_PAGE_KEY,
+          name: 'Subscriptions',
+          description: 'Given/When/Then points of interest the household asked Jarvis to watch for, one page each.',
+        },
+      ],
     },
   };
 }
 
 /**
- * Builds Jarvis's Knowledge.
+ * Builds Jarvis's Knowledge on `storage`: in production the Mastra instance's own store, the shared
+ * SQLite file everything else lives in, whose LibSQL default implements Knowledge's storage domain; in
+ * a test, an `InMemoryStore`.
  *
- * Without `storage` it takes the Mastra instance's store when it is registered, which is the shared
- * SQLite file everything else lives in; LibSQL implements Knowledge's storage domain. A test passes
- * its own, such as an `InMemoryStore`.
+ * It is given the store rather than left to take it from Mastra on registration, so code that writes
+ * to it never depends on whether `getMastra()` has run yet.
  *
  * Search is keyword-only: no vector store or embedder. Semantic search would embed every page and
  * note written, with the hosted embedder Memory uses, and this database has filled its disk with
  * embeddings once already (see `.claude/rules/mcp-state-change-notification-workflow.md`).
  */
-export function createJarvisKnowledge(options: { storage?: MastraCompositeStore } = {}): Knowledge {
+export function createJarvisKnowledge(storage: MastraCompositeStore): Knowledge {
   return new Knowledge({
     id: JARVIS_KNOWLEDGE_KEY,
     name: 'Jarvis',
     description: "What Jarvis knows about the household he runs, shared by all of Jarvis's agents.",
     scopes: jarvisKnowledgeScopes(),
-    storage: options.storage,
+    storage,
     tools: true,
   });
 }
 
-let jarvisKnowledgeInstance: Knowledge | null = null;
+let jarvisKnowledgeInstance: Promise<Knowledge> | null = null;
 
 /**
  * Jarvis's Knowledge, one per process.
  *
  * One instance, not one per vertical: Mastra refuses two Knowledge instances on one storage backend
  * (`MASTRA_ADD_KNOWLEDGE_SHARED_STORAGE`), and every table here lives in the same SQLite file. A
- * vertical gets pages in this instance instead.
+ * vertical gets a scope or pages in this instance instead.
  */
-export function getJarvisKnowledge(): Knowledge {
-  jarvisKnowledgeInstance ??= createJarvisKnowledge();
+export function getJarvisKnowledge(): Promise<Knowledge> {
+  jarvisKnowledgeInstance ??= getMastraStorageProvider().then(createJarvisKnowledge);
   return jarvisKnowledgeInstance;
 }
 
@@ -80,6 +113,6 @@ export function getJarvisKnowledge(): Knowledge {
  * taken from once Mastra has a server registered: it refuses scopes passed on a call or through the
  * request context, so a request body can never claim one.
  */
-export function householdKnowledgeOptions(knowledge: Knowledge = getJarvisKnowledge()) {
+export function householdKnowledgeOptions(knowledge: Knowledge) {
   return { knowledge, scopes: [HOUSEHOLD_SCOPE] };
 }

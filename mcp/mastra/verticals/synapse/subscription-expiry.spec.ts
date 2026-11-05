@@ -9,9 +9,9 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import type { Subscription } from '../../storage/subscriptions.js';
 import { executeTool } from '../../utils/tool-factory.js';
 import { formatSubscriptionMatches, type SubscriptionMatch } from './subscription-matcher.js';
+import type { Subscription } from './subscription-store.js';
 import { registerSubscription, removeSubscription } from './subscription-tools.js';
 
 const BASE = {
