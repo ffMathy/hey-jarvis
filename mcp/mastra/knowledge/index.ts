@@ -35,6 +35,18 @@ export const SYNAPSE_SCOPE = 'synapse:home';
 /** The page under {@link SYNAPSE_SCOPE} each subscription is a child page of. */
 export const SUBSCRIPTIONS_PAGE_KEY = 'subscriptions';
 
+/** The household's conventions' scope type, one per household. */
+const CONVENTIONS_SCOPE_PATTERN = 'conventions:$householdId';
+
+/**
+ * How the household likes things done, one page per vertical (see `knowledge/conventions.ts`).
+ *
+ * A page's body is the vertical's own conventions, kept in code and written to the page each time a
+ * process starts. Agents holding the household are contributors here: they can add a note to a
+ * page — a lasting convention the household has stated since — and cannot rewrite one.
+ */
+export const CONVENTIONS_SCOPE = 'conventions:home';
+
 /**
  * The scopes Jarvis's Knowledge knows.
  *
@@ -50,6 +62,13 @@ function jarvisKnowledgeScopes(): KnowledgeScopeDeclarations {
       ...memoryScopes[HOUSEHOLD_SCOPE_PATTERN],
       displayLabel: 'Household',
       description: "The household Jarvis runs: facts, conventions and state every one of Jarvis's agents shares.",
+    },
+    [CONVENTIONS_SCOPE_PATTERN]: {
+      displayLabel: 'Conventions',
+      description:
+        'How the household likes things done, one page per part of the house Jarvis runs. A page is the conventions Jarvis was built with; the notes on it are what the household has said since, newest last. Add a lasting convention as a note on its page; a page itself is never rewritten.',
+      belongsTo: HOUSEHOLD_SCOPE_PATTERN,
+      access: [{ principal: HOUSEHOLD_SCOPE_PATTERN, role: 'contributor' }],
     },
     [SYNAPSE_SCOPE_PATTERN]: {
       displayLabel: 'Synapse',
