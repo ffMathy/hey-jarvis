@@ -376,6 +376,20 @@ export function bodyTurnRadians(time: number) {
   return time * BODY_RADIANS_PER_SECOND;
 }
 /**
+ * Where his body's turn about the vertical takes a point at `x`, `z` (y is left as it is), given the
+ * turn's cosine and sine: its x, and its z towards the eye. The cage's nodes are turned by it, by the
+ * picture's shader (`TURNED_NODE_GLSL` in `gpu/picture-layers.ts`, held to these by its spec) and by
+ * the cascades as they plan where their edges will be (`cage-cascade.ts`), so the two never part.
+ */
+export function bodyTurnedX(x: number, z: number, cos: number, sin: number) {
+  'worklet';
+  return x * cos + z * sin;
+}
+export function bodyTurnedZ(x: number, z: number, cos: number, sin: number) {
+  'worklet';
+  return z * cos - x * sin;
+}
+/**
  * How much brighter the whole drawing gets while Jarvis speaks. **A tenth, at the user's asking.**
  *
  * Back to the film, after a long way round. The Age of Ultron footage's sphere holds its brightness

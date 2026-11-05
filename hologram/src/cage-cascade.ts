@@ -1,5 +1,7 @@
 import {
   BODY_RADIANS_PER_SECOND,
+  bodyTurnedX,
+  bodyTurnedZ,
   bodyTurnRadians,
   CAGE_EDGE_STRIDE,
   CAGE_SWAY,
@@ -434,7 +436,8 @@ function hopOf(net: CageNet, scratch: number[], pulse: number, node: number) {
 /**
  * Where a node of the net is seen at `time`, into the scratch at `at`, given his body's turn then
  * (`cos`, `sin`): as the picture turns the cage's nodes (`turnedNode` in `gpu/picture-layers.ts`),
- * swayed about its place ({@link cageSwayOf}), then turned with his body.
+ * swayed about its place ({@link cageSwayOf}), then turned with his body ({@link bodyTurnedX},
+ * {@link bodyTurnedZ}).
  */
 function seeNode(net: CageNet, node: number, time: number, cos: number, sin: number, scratch: number[], at: number) {
   'worklet';
@@ -445,9 +448,9 @@ function seeNode(net: CageNet, node: number, time: number, cos: number, sin: num
   const swayedX = x + cageSwayOf(0, x, y, z, time);
   const swayedY = y + cageSwayOf(1, x, y, z, time);
   const swayedZ = z + cageSwayOf(2, x, y, z, time);
-  scratch[at] = swayedX * cos + swayedZ * sin;
+  scratch[at] = bodyTurnedX(swayedX, swayedZ, cos, sin);
   scratch[at + 1] = swayedY;
-  scratch[at + 2] = swayedZ * cos - swayedX * sin;
+  scratch[at + 2] = bodyTurnedZ(swayedX, swayedZ, cos, sin);
 }
 
 /** How much of a lit edge shows `reach` out, 0 to 1: none over his bright body, all of it past the truss. */

@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'bun:test';
 import { CASCADE_NUMBERS } from '../cage-cascade';
-import { CAGE_SWAY, CAGE_SWAY_WAVES, cageSwayOf, staticPathsOf } from '../hologram-drawing';
+import {
+  analyseFrame,
+  bodyTurnedX,
+  bodyTurnedZ,
+  bodyTurnRadians,
+  CAGE_SWAY,
+  CAGE_SWAY_WAVES,
+  cageSwayOf,
+  staticPathsOf,
+} from '../hologram-drawing';
+import { VOICE_BAND_COUNT } from '../voice-levels';
 import { glslFloat } from './glsl';
 import {
   CASCADE_VECTORS,
@@ -62,6 +72,41 @@ describe("the cage's nodes, where the picture and the cascades place them", () =
       }
     });
     expect(TURNED_NODE_GLSL).toContain(`* ${glslFloat(CAGE_SWAY)};`);
+  });
+
+  it("turn by his body's one turn: the shader as the cascades turn them, by the turn the frame hands it", () => {
+    // the shader's turn, written out, and the cascades' (bodyTurnedX, bodyTurnedZ) are the same sum
+    expect(TURNED_NODE_GLSL).toContain(
+      'return vec3(at.x * bodyTurn.x + at.z * bodyTurn.y, at.y, at.z * bodyTurn.x - at.x * bodyTurn.y);',
+    );
+    for (const time of [0, 7.25, 1234.5]) {
+      const state = analyseFrame(
+        {
+          time,
+          level: 0,
+          bands: new Array(VOICE_BAND_COUNT).fill(0),
+          speaking: false,
+          agitation: 0,
+          talk: 0,
+          burstAge: 10,
+          burstStrength: 0,
+          burstCount: 0,
+          appearance: time === 0 ? 0.3 : 1,
+          presence: 1,
+          thinking: 0,
+        },
+        1,
+      );
+      // the picture's bodyTurn is the frame's (gpu-picture.spec.ts), and the cascades plan by bodyTurnRadians
+      expect([state.bodyCos, state.bodySin]).toEqual([
+        Math.cos(bodyTurnRadians(time)),
+        Math.sin(bodyTurnRadians(time)),
+      ]);
+      const [x, z] = [0.31, 0.47];
+      const [cos, sin] = [state.bodyCos, state.bodySin];
+      expect(bodyTurnedX(x, z, cos, sin)).toBe(x * cos + z * sin);
+      expect(bodyTurnedZ(x, z, cos, sin)).toBe(z * cos - x * sin);
+    }
   });
 });
 

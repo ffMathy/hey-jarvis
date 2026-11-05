@@ -30,6 +30,8 @@ import { SCENE_SEED } from './frame-timing';
 import {
   analyseFrame,
   BODY_RADIANS_PER_SECOND,
+  bodyTurnedX,
+  bodyTurnedZ,
   bodyTurnRadians,
   CAGE_EDGE_STRIDE,
   cageSwayOf,
@@ -43,7 +45,8 @@ import { VOICE_BAND_COUNT } from './voice-levels';
 /**
  * The cage's cascades, worked out from frames of him as `analyseFrame` makes them, and judged frame
  * by frame where the picture draws them: each lit edge's nodes turned with his body and swayed as
- * the picture's shader turns and sways them (`turnedNode`, from `CAGE_SWAY_WAVES` by `cageSwayOf`).
+ * the picture's shader turns and sways them (`turnedNode`, from `CAGE_SWAY_WAVES` by `cageSwayOf`,
+ * and by his body's turn, `bodyTurnedX` and `bodyTurnedZ`).
  */
 
 const scene = createHologramScene(SCENE_SEED);
@@ -117,12 +120,9 @@ function seenAt(node: number[], time: number) {
   const [x = 0, y = 0, z = 0] = node;
   const swayed = [0, 1, 2].map((axis) => (node[axis] ?? 0) + cageSwayOf(axis, x, y, z, time));
   const [swayedX = 0, swayedY = 0, swayedZ = 0] = swayed;
-  const yaw = bodyTurnRadians(time);
-  return {
-    x: swayedX * Math.cos(yaw) + swayedZ * Math.sin(yaw),
-    y: swayedY,
-    z: swayedZ * Math.cos(yaw) - swayedX * Math.sin(yaw),
-  };
+  const cos = Math.cos(bodyTurnRadians(time));
+  const sin = Math.sin(bodyTurnRadians(time));
+  return { x: bodyTurnedX(swayedX, swayedZ, cos, sin), y: swayedY, z: bodyTurnedZ(swayedX, swayedZ, cos, sin) };
 }
 
 /** Whether an edge seen from one point to another is a spoke, by the plan's own thresholds. */

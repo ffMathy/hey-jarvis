@@ -277,7 +277,8 @@ function swayWaveGlsl(axis: number): string {
  * A cage node where his body's turn has taken it, swaying a little about its place by an amount
  * that depends only on where it is, so the edges that share a node sway together and stay joined
  * (`CAGE_SWAY_WAVES`). Shared by the cage and its cascades, which light its edges where they are
- * drawn; `cage-cascade.ts` places the nodes from the same table (`cageSwayOf`) and by the same turn.
+ * drawn; `cage-cascade.ts` places the nodes from the same table (`cageSwayOf`) and by the same turn
+ * (`bodyTurnedX`, `bodyTurnedZ`), which the spec holds this one to.
  */
 export const TURNED_NODE_GLSL = `
 uniform vec2 bodyTurn;
