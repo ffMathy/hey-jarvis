@@ -70,6 +70,7 @@ mcp/
 │   ├── processors/      # Output processors for post-processing
 │   │   ├── error-reporting.ts
 │   │   └── index.ts
+│   ├── knowledge/       # Jarvis's Knowledge: the instance, its scopes, and what agents are given
 │   ├── memory/          # Shared memory management
 │   ├── storage/         # Shared storage configuration
 │   └── index.ts         # Main Mastra configuration
