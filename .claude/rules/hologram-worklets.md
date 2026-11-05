@@ -21,7 +21,8 @@ declared further down throws "Cannot access … before initialization" as its
 module loads. `worklets.contract.spec.ts` parses every module of the package with
 TypeScript's compiler and fails on any module-level worklet that reads a function,
 worklet or constant declared below it, and on a module-level value made by calling
-a worklet declared below it. A file of worklets therefore reads bottom-up: the
+a worklet declared below it, directly or inside a callback its initialiser runs
+(`LIT_TURNS` in `cage-cascade.ts` is built in `flatMap` and `Array.from` callbacks). A file of worklets therefore reads bottom-up: the
 smallest helpers first, the entry point at its foot (`cage-cascade.ts`). Until that
 spec existed the rule was prose alone, and the cage's cascades shipped with four
 worklets calling ones declared after them.

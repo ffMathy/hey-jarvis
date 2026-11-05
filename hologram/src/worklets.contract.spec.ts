@@ -18,8 +18,9 @@ import ts from 'typescript';
  * So the order is checked rather than remembered. Every module of the package that is not a test
  * is parsed with TypeScript's own compiler, and every name each module-level worklet reads is
  * resolved to what it names; one declared at the module's top level below the worklet that reads
- * it fails. A module-level value made by calling a worklet — `const table = worklet()` — counts too:
- * that call runs before a worklet declared below it exists.
+ * it fails. A module-level value made by calling a worklet — `const table = worklet()`, or inside a
+ * callback its initialiser runs, `[...].map(() => worklet())` — counts too: that call runs before a
+ * worklet declared below it exists.
  */
 
 const PACKAGE_SOURCES = import.meta.dir;
@@ -84,11 +85,15 @@ function inAType(node: ts.Node): boolean {
   return false;
 }
 
-/** The identifiers `node` reads when it runs, outside the functions inside it unless `intoFunctions`. */
-function readsOf(node: ts.Node, intoFunctions: boolean): ts.Identifier[] {
+/**
+ * The identifiers `node` reads when it runs, and those of every function inside it: a worklet's
+ * inner functions read what it captured, and a callback in a value's initialiser
+ * (`[...].map(() => worklet())`, `Array.from({ length }, () => worklet())`) runs as the value is
+ * made. A function stored in the value to be called later is read too, which only ever over-reports.
+ */
+function readsOf(node: ts.Node): ts.Identifier[] {
   const found: ts.Identifier[] = [];
   const visit = (child: ts.Node) => {
-    if (!intoFunctions && ts.isFunctionLike(child)) return;
     if (ts.isIdentifier(child) && !inAType(child)) found.push(child);
     ts.forEachChild(child, visit);
   };
@@ -148,7 +153,7 @@ function readsBeforeDeclared(sources: Record<string, string>): string[] {
     const declaredAt = topLevelDeclarations(file, tops);
     return tops.flatMap((reader) => {
       if (!reader.runs) return [];
-      return readsOf(reader.runs, reader.worklet).flatMap((identifier) => {
+      return readsOf(reader.runs).flatMap((identifier) => {
         const declaration = declarationNamed(checker, identifier);
         const named = declaration && declaredAt.get(declaration);
         if (!named || named === reader || named.start < reader.start) return [];
@@ -193,6 +198,15 @@ describe("the package's worklets", () => {
       ],
       [
         "const table = made();\nfunction made() { 'worklet'; return 1; }",
+        ['example.ts: table reads made, declared after it'],
+      ],
+      // a callback the value's initialiser runs straight away calls it before it exists too
+      [
+        "const table = [1].map(() => made());\nfunction made() { 'worklet'; return 1; }",
+        ['example.ts: table reads made, declared after it'],
+      ],
+      [
+        "const table = Array.from({ length: 2 }, (_, at) => made(at));\nfunction made(at: number) { 'worklet'; return at; }",
         ['example.ts: table reads made, declared after it'],
       ],
       // a plain function is still hoisted, but one a worklet calls cannot run on the UI thread either,
