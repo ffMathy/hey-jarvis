@@ -53,7 +53,10 @@ function choiceAnswer(choice: ChangeRelevance, confidence: number) {
   };
 }
 
-function fakeClassifier(respond: (state: unknown) => ChangeRelevance | Error, confidence = 0.95) {
+/** How a decision model answers a question it declines. */
+const REFUSAL = { type: 'refusal' } as const;
+
+function fakeClassifier(respond: (state: unknown) => ChangeRelevance | typeof REFUSAL | Error, confidence = 0.95) {
   const evaluatedStates: unknown[] = [];
   const classifier = new Classifier({
     id: 'changeRelevanceClassifier',
@@ -68,7 +71,8 @@ function fakeClassifier(respond: (state: unknown) => ChangeRelevance | Error, co
         if (response instanceof Error) {
           throw response;
         }
-        return { answers: { relevance: choiceAnswer(response, confidence) }, warnings: [] };
+        const relevance = typeof response === 'string' ? choiceAnswer(response, confidence) : response;
+        return { answers: { relevance }, warnings: [] };
       },
     },
   });
@@ -198,13 +202,21 @@ describe('classifyRelevance', () => {
     const subject = { key: 'entity:lock.front', description: 'Entity: lock.front' };
 
     expect(await classifyRelevance(classifier, subject)).toBe('safety_security');
-    expect(evaluatedStates).toEqual(['Entity: lock.front']);
+    expect(evaluatedStates).toEqual([[{ type: 'text', text: 'Entity: lock.front' }]]);
   });
 
   it('discards an unsure answer', async () => {
     const { classifier } = fakeClassifier(() => 'diagnostics', 0.6);
 
     expect(await classifyRelevance(classifier, { key: 'entity:sensor.x', description: 'x' })).toBeUndefined();
+  });
+
+  it('knows nothing of a subject Jev refused to place, which is then reported as before', async () => {
+    const { classifier } = fakeClassifier(() => REFUSAL);
+    const relevance = await classifyRelevance(classifier, { key: 'entity:sensor.x', description: 'x' });
+
+    expect(relevance).toBeUndefined();
+    expect(reportFilingFrom(relevance, false)).toEqual({ file: true, priority: 'low' });
   });
 });
 

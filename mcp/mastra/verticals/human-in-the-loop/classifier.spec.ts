@@ -36,8 +36,11 @@ function answers(answersTheQuestion: number, approved: number): EmailReplyAnswer
   };
 }
 
-/** A classifier on a fake Jev that answers every question with the probability staged for it. */
-function fakeClassifier(probabilities: Record<string, number>) {
+/** How a decision model answers a question it declines. */
+const REFUSAL = { type: 'refusal' } as const;
+
+/** A classifier on a fake Jev that answers every question with the probability staged for it, or refuses it. */
+function fakeClassifier(probabilities: Record<string, number | typeof REFUSAL>) {
   const evaluated: { state: unknown; questions: Record<string, unknown> }[] = [];
   const classifier = new Classifier({
     id: 'emailReplyClassifier',
@@ -50,10 +53,10 @@ function fakeClassifier(probabilities: Record<string, number>) {
         evaluated.push({ state, questions });
         return {
           answers: Object.fromEntries(
-            Object.keys(questions).map((id) => [
-              id,
-              { type: 'boolean' as const, probability: probabilities[id] ?? 0.5 },
-            ]),
+            Object.keys(questions).map((id) => {
+              const probability = probabilities[id] ?? 0.5;
+              return [id, typeof probability === 'number' ? { type: 'boolean' as const, probability } : probability];
+            }),
           ),
           warnings: [],
         };
@@ -150,6 +153,15 @@ describe('classifiedEmailReplyFrom', () => {
     ).toBeUndefined();
   });
 
+  it('leaves the reply to the model when Jev refused any of its questions', () => {
+    expect(
+      classifiedEmailReplyFrom({ ...answers(0.97, 0.95), answersTheQuestion: REFUSAL }, APPROVAL_SHAPE, 'Yes'),
+    ).toBeUndefined();
+    expect(
+      classifiedEmailReplyFrom({ ...answers(0.97, 0.95), field_approved: REFUSAL }, APPROVAL_SHAPE, 'Yes'),
+    ).toBeUndefined();
+  });
+
   it('leaves the text fields out when nothing of the person was left to fill them with', () => {
     expect(classifiedEmailReplyFrom(answers(0.97, 0.95), APPROVAL_SHAPE, '')).toEqual({
       kind: 'answer',
@@ -170,8 +182,21 @@ describe('classifyEmailReply', () => {
 
     expect(classified).toEqual({ kind: 'answer', response: { approved: true, comments: 'Yeah fine, go ahead' } });
     expect(evaluated).toHaveLength(1);
-    expect(evaluated[0].state).toBe('Yeah fine, go ahead');
+    expect(evaluated[0].state).toEqual([{ type: 'text', text: 'Yeah fine, go ahead' }]);
     expect(Object.keys(evaluated[0].questions)).toEqual(['answersTheQuestion', 'field_approved']);
+  });
+
+  it('leaves a reply to the model when Jev refuses to judge one of its fields', async () => {
+    const { classifier, evaluated } = fakeClassifier({ answersTheQuestion: 0.98, field_approved: REFUSAL });
+
+    const classified = await classifyEmailReply(classifier, {
+      question: QUESTION,
+      replyText: 'Yeah fine, go ahead',
+      responseSchema: approvalSchema,
+    });
+
+    expect(classified).toBeUndefined();
+    expect(evaluated).toHaveLength(1);
   });
 
   it('asks nothing of an answer the model has to read, or of a reply with nothing in it', async () => {

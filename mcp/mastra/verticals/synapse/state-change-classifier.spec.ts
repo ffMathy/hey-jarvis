@@ -101,6 +101,20 @@ describe('assessmentFrom', () => {
 
     expect(assessmentFrom(answers, matches).fireProbabilities).toEqual(new Map([['sunset', 0.02]]));
   });
+
+  it('knows neither the attention level nor whether a subscription fires when Jev refused to say', () => {
+    const answers: ClassifierAnswers<ClassifierQuestions> = {
+      attention: { type: 'refusal' },
+      'fires:sunset': { type: 'refusal' },
+      'fires:doorbell': { type: 'boolean', probability: 0.97 },
+    };
+
+    const refused = assessmentFrom(answers, matches);
+
+    expect(refused).toEqual(assessment(undefined, { doorbell: 0.97 }));
+    // A subscription it would not judge is one that might fire, so the change still reaches the reactor.
+    expect(triageStateChange({ matches, ruleCount: 0, requestedPriority: 'low', assessment: refused }).file).toBe(true);
+  });
 });
 
 describe('triageStateChange', () => {
@@ -219,7 +233,7 @@ describe('assessStateChange', () => {
     expect(result).toEqual(assessment('ignore', { sunset: 0.04 }));
     expect(evaluated).toEqual([
       {
-        state: 'device_state_change from internet-of-things: {"entityId":"sensor.power"}',
+        state: [{ type: 'text', text: 'device_state_change from internet-of-things: {"entityId":"sensor.power"}' }],
         questionIds: ['attention', 'fires:sunset'],
       },
     ]);
