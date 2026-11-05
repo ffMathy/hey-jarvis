@@ -13,7 +13,13 @@ view plane. Every device's body is composed from the per-fragment helpers. Both
 halves are `hologram/gpu`: the headset wraps the body's shader sources in three.js
 materials and draws the picture with `drawGpuPicture` into a render target on
 three.js's own context (`vr/src/hologram3d/picture-target.ts`), and a phone or a
-watch draws both with `drawGpuFrame`. So the main entry exports what that needs:
+watch draws both with `drawGpuFrame`. That frame draws one thing more, which the
+headset does not: the cage's network cascades (`cage-cascade.ts`), drawn over his
+body after it (`drawGpuPictureCascade`) and left out of `drawGpuPicture`, so the
+headset's picture and vr's goldens of it are as they were. In the room his cage
+never lights up (`.claude/rules/vr-the-honest-limits.md`).
+
+The main entry exports what the headset needs for that:
 `analyseFrame` and its `HologramFrameState`, the per-fragment helpers
 (`readFragment`, `fragmentStrength`, `placeFragment`, `swirlFragment`,
 `latticeFragment`, `scanned`, `densityKey` and the rest), the body's and the

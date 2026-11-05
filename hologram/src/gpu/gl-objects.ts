@@ -53,6 +53,7 @@ export type HologramGl = Pick<
   | 'uniform2f'
   | 'uniform3f'
   | 'uniform4f'
+  | 'uniform4fv'
   | 'uniformMatrix4fv'
   | 'blendEquation'
   | 'bufferSubData'

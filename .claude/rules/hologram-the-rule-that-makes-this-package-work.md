@@ -69,9 +69,12 @@ and `gpu-picture.spec.ts` hold them to that with a context that makes them the w
 expo-gl does (`recording-gl.fakes.ts`). Nothing deletes
 what it made: it goes with the context, and a GL call from the JS thread while
 the UI thread draws could race it. The renderer leaves GL state as it set it, so
-it needs a context of its own. It draws what the headset draws, pass for pass and in
+it needs a context of its own. Its body draws what the headset's draws, pass for pass and in
 three's order — the halo union into its own target, then the strokes, then the
-halos' light, Screened and faded as one layer — and whether the pixels agree is
+halos' light, Screened and faded as one layer — and its picture what the headset's picture
+draws; a phone's and a watch's whole frame (`drawGpuFrame`) then draws the cage's
+cascades over both, which the headset does not draw at all
+(`.claude/rules/vr-the-honest-limits.md`). Whether the pixels agree is
 a browser's to say: vr's `hologram-gpu-body.spec.ts` draws the same moments both
 ways in Chromium, from the matrices three drew with, and fails on one byte
 apart. The picture's pixels are a browser's to judge as well: vr's

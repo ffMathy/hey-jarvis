@@ -376,6 +376,20 @@ export function bodyTurnRadians(time: number) {
   return time * BODY_RADIANS_PER_SECOND;
 }
 /**
+ * Where his body's turn about the vertical takes a point at `x`, `z` (y is left as it is), given the
+ * turn's cosine and sine: its x, and its z towards the eye. The cage's nodes are turned by it, by the
+ * picture's shader (`TURNED_NODE_GLSL` in `gpu/picture-layers.ts`, held to these by its spec) and by
+ * the cascades as they plan where their edges will be (`cage-cascade.ts`), so the two never part.
+ */
+export function bodyTurnedX(x: number, z: number, cos: number, sin: number) {
+  'worklet';
+  return x * cos + z * sin;
+}
+export function bodyTurnedZ(x: number, z: number, cos: number, sin: number) {
+  'worklet';
+  return z * cos - x * sin;
+}
+/**
  * How much brighter the whole drawing gets while Jarvis speaks. **A tenth, at the user's asking.**
  *
  * Back to the film, after a long way round. The Age of Ultron footage's sphere holds its brightness
@@ -1527,6 +1541,39 @@ export const CAGE_SHELL_OUTER = 1.16;
  * the trails — so that nothing round him can read as an arm.
  */
 export const CAGE_WOVEN_REACH = 1.25;
+/**
+ * How far a cage node sways about its place, in R: the film's wireframe shifts a little, and holds
+ * its shape. Under a pixel at a phone's size. Twice this suited the cage's wide glowing lines, but
+ * it moved the hairlines that replaced them clean off their own pixels, so the cage no longer
+ * looked like itself from one moment to the next. The picture sways its nodes by it
+ * (`gpu/picture-layers.ts`), and the cascades theirs (`cage-cascade.ts`), so a pulse stays on its
+ * hairline.
+ */
+export const CAGE_SWAY = 0.006;
+/** One wave of a cage node's sway: how fast it runs, and how much it moves with each of two of the node's coordinates. */
+type CageSwayWave = readonly [radiansPerSecond: number, firstAxis: number, secondAxis: number];
+/**
+ * How each of a cage node's coordinates sways about its place, {@link CAGE_SWAY} times the sine of a
+ * wave of its own: x by `CAGE_SWAY_WAVES[0]`, along y then z; y by the second, along z then x; z by
+ * the third, along x then y (each coordinate along the two after it, round x, y, z). It depends only
+ * on where the node is and the time, so the edges that share a node sway together and stay joined.
+ * The picture's shader is written from it (`TURNED_NODE_GLSL` in `gpu/picture-layers.ts`), and the
+ * cascades place their nodes by it ({@link cageSwayOf}), so the two never drift apart.
+ */
+export const CAGE_SWAY_WAVES: readonly CageSwayWave[] = [
+  [0.37, 5.3, 2.1],
+  [0.29, 4.9, 3.3],
+  [0.33, 4.1, 2.7],
+];
+
+/** How far a cage node at rest at `x`, `y`, `z` has swayed along `axis` (0 x, 1 y, 2 z) at `time`, in R: see {@link CAGE_SWAY_WAVES}. */
+export function cageSwayOf(axis: number, x: number, y: number, z: number, time: number) {
+  'worklet';
+  const wave = CAGE_SWAY_WAVES[axis];
+  const first = axis === 0 ? y : axis === 1 ? z : x;
+  const second = axis === 0 ? z : axis === 1 ? x : y;
+  return CAGE_SWAY * Math.sin(time * wave[0] + first * wave[1] + second * wave[2]);
+}
 /** The longest edge between two of the shell's nodes, in R: the film's are short and jagged. */
 const CAGE_LONGEST_MESH_EDGE = 0.42;
 /** The longest edge from a woven node back down to the shell's, and between two woven nodes. */
