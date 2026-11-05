@@ -204,13 +204,12 @@ export type CascadeFrame = Pick<HologramFrameState, 'time' | 'talk' | 'thinking'
 
 /**
  * The numbers handed to the picture for each lit edge, as three vec4s: its spark's from node at rest
- * (x, y, z) and when it leaves; its to node at rest and when the edge starts to fade; how lit it is
- * (0 for an edge not lit this frame) and whether it is the pulse out (0) or the return (1), which
- * the picture does not read; and two numbers unused, to make up the vec4. A spark takes
+ * (x, y, z) and when it leaves; its to node at rest and when the edge starts to fade; and how lit it
+ * is (0 for an edge not lit this frame), with three numbers unused to make up the vec4. A spark takes
  * {@link CASCADE_HOP_SECONDS} over its edge, and an edge {@link CASCADE_FADE_SECONDS} to go out, which
  * the picture's shader is written with.
  */
-export const CASCADE_EDGE_SLOTS = { from: 0, leaves: 3, to: 4, fades: 7, light: 8, kind: 9 } as const;
+export const CASCADE_EDGE_SLOTS = { from: 0, leaves: 3, to: 4, fades: 7, light: 8 } as const;
 export const CASCADE_EDGE_NUMBERS = 12;
 /**
  * And for each of the two boxes, the box the pulse fired from and the box the return lands on, as a
@@ -226,7 +225,7 @@ export const CASCADE_NUMBERS = CASCADE_BOXES_AT + 2 * CASCADE_BOX_NUMBERS;
 
 const DEGREES = Math.PI / 180;
 
-/** The two pulses of a cascade, as which of them an edge is (its `kind`) and which numbers of a node a spread uses. */
+/** The two pulses of a cascade, as which of them a planned edge is ({@link EDGE_KIND}) and which numbers of a node a spread uses. */
 const OUT_PULSE = 0;
 const RETURN_PULSE = 1;
 
@@ -1246,7 +1245,6 @@ export function writeCageCascade(net: CageNet, state: CascadeFrame, scratch: num
     out[at + slots.to + 2] = net.nodes[to + 2];
     out[at + slots.fades] = scratch[planned + EDGE_FADES];
     out[at + slots.light] = light;
-    out[at + slots.kind] = scratch[planned + EDGE_KIND];
   }
   writeBox(out, 0, scratch[SOURCE_BOX], count > 0 ? scratch[FIRES] : -1, light, time);
   writeBox(out, 1, scratch[TARGET_BOX], scratch[LANDS], light, time);

@@ -166,6 +166,30 @@ interface ChanceFrames {
   frames: { time: number; edges: number[][]; boxes: (number[] | undefined)[] }[];
   /** Every edge it lit at any frame, as its numbers, once each. */
   edges: number[][];
+  /** Those edges split into the pulse out and the return ({@link pulsesOf}). */
+  out: number[][];
+  back: number[][];
+}
+
+/**
+ * A chance's edges split into its pulse out — the first to leave, and every edge joined to it through
+ * the nodes they share — and its return, which never touches a node the pulse out reached.
+ */
+function pulsesOf(edges: number[][]) {
+  const fires = Math.min(...edges.map((edge) => edge[SLOTS.leaves] ?? 0));
+  const reached = new Set(edges.filter((edge) => edge[SLOTS.leaves] === fires).map((edge) => keyOf(endOf(edge, 0))));
+  const out = new Set<number[]>();
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const edge of edges) {
+      const ends = [keyOf(endOf(edge, 0)), keyOf(endOf(edge, 1))];
+      if (out.has(edge) || !ends.some((end) => reached.has(end))) continue;
+      out.add(edge);
+      for (const end of ends) reached.add(end);
+      grew = true;
+    }
+  }
+  return { out: edges.filter((edge) => out.has(edge)), back: edges.filter((edge) => !out.has(edge)) };
 }
 
 function chanceFrames(
@@ -184,7 +208,8 @@ function chanceFrames(
     frames.push({ time, edges: lit, boxes: [litBox(out, 0), litBox(out, 1)] });
     for (const edge of lit) edges.set(`${keyOf(endOf(edge, 0))}|${keyOf(endOf(edge, 1))}`, edge);
   }
-  return { chance, frames, edges: [...edges.values()] };
+  const everyEdge = [...edges.values()];
+  return { chance, frames, edges: everyEdge, ...pulsesOf(everyEdge) };
 }
 
 /** Every chance from the third to the one `seconds` in, frame by frame. */
@@ -249,7 +274,7 @@ function boxOf({ frames }: ChanceFrames, box: number) {
  * and lights nothing before it; the box's numbers.
  */
 function expectFlaredUnderTheSource(chance: ChanceFrames) {
-  const out = chance.edges.filter((edge) => edge[SLOTS.kind] === 0);
+  const out = chance.out;
   const source = boxOf(chance, 0);
   const first = source[CASCADE_BOX_SLOTS.first] ?? 0;
   const sweep = source[CASCADE_BOX_SLOTS.sweep] ?? 0;
@@ -268,7 +293,7 @@ function expectFlaredUnderTheSource(chance: ChanceFrames) {
  * lands, the node it lands on over that box then, where the truss has rolled it.
  */
 function expectFlaredUnderTheTarget(chance: ChanceFrames, source: number[]) {
-  const back = chance.edges.filter((edge) => edge[SLOTS.kind] === 1);
+  const back = chance.back;
   const target = boxOf(chance, 1);
   const first = target[CASCADE_BOX_SLOTS.first] ?? 0;
   const sweep = target[CASCADE_BOX_SLOTS.sweep] ?? 0;
@@ -407,7 +432,7 @@ describe('the cage cascades', () => {
       if (frames.edges.length === 0) continue;
       fired++;
       const source = expectFlaredUnderTheSource(frames);
-      if (frames.edges.some((edge) => edge[SLOTS.kind] === 1)) {
+      if (frames.back.length > 0) {
         expectFlaredUnderTheTarget(frames, source);
         returns++;
       }
@@ -422,7 +447,7 @@ describe('the cage cascades', () => {
     for (const chance of busyChances) {
       if (chance.edges.length === 0) continue;
       const source = expectFlaredUnderTheSource(chance);
-      if (chance.edges.some((edge) => edge[SLOTS.kind] === 1)) {
+      if (chance.back.length > 0) {
         expectFlaredUnderTheTarget(chance, source);
         returns++;
       } else {
@@ -433,10 +458,8 @@ describe('the cage cascades', () => {
   });
 
   it('spread out hop by hop from one node, and gather back onto another', () => {
-    for (const { edges } of busyChances) {
+    for (const { edges, out, back } of busyChances) {
       if (edges.length === 0) continue;
-      const out = edges.filter((edge) => edge[SLOTS.kind] === 0);
-      const back = edges.filter((edge) => edge[SLOTS.kind] === 1);
       const fires = Math.min(...out.map((edge) => edge[SLOTS.leaves] ?? 0));
       // every spark leaves a whole number of hops after the pulse fired, from a node an earlier spark lit
       const lit = new Set(out.filter((edge) => edge[SLOTS.leaves] === fires).map((edge) => keyOf(endOf(edge, 0))));
