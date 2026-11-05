@@ -240,8 +240,8 @@ async function retrieveWithSingleVector(change: StateChange, minimumScore = DEFA
   const embedding = await embedText(describeStateChange(change));
   const withoutRewrites = subscriptions.map((subscription) => ({
     ...subscription,
-    whenAltEmbedding: null,
-    givenAltEmbedding: null,
+    whenAlternateEmbedding: null,
+    givenAlternateEmbedding: null,
   }));
 
   return rankSubscriptions(embedding, withoutRewrites, { minimumScore, maximumMatches: 5 });

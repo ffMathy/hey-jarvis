@@ -255,6 +255,45 @@ describe('SubscriptionStore expiry', () => {
   });
 });
 
+describe('SubscriptionStore when two callers meet', () => {
+  it('removes a lapsed subscription once when two prunes run at the same time, and fails neither', async () => {
+    const stored = await store.add({
+      source: 'user',
+      whenEvent: 'the doorbell rings',
+      thenAction: 'tell me',
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+
+    // Every state change prunes on its way past, and two can arrive together.
+    const [first, second] = await Promise.all([store.pruneExpired(), store.pruneExpired()]);
+
+    expect([...first, ...second].map((subscription) => subscription.id)).toEqual([stored.id]);
+    expect(await store.get(stored.id)).toBeNull();
+  });
+
+  it('records a firing that spends a subscription even when a prune removes it meanwhile', async () => {
+    const stored = await store.add({
+      source: 'user',
+      whenEvent: 'I get home',
+      thenAction: 'turn on the lights',
+      oneShot: true,
+    });
+
+    const [fired] = await Promise.all([store.markTriggered(stored.id), store.pruneExpired()]);
+
+    expect(fired?.triggerCount).toBe(1);
+    expect(fired?.enabled).toBe(false);
+  });
+
+  it('reports a subscription another caller already removed as not removed', async () => {
+    const stored = await store.add({ source: 'user', whenEvent: 'the sun goes down', thenAction: 'close the blinds' });
+
+    const removals = await Promise.all([store.remove(stored.id), store.remove(stored.id)]);
+
+    expect(removals.filter((removed) => removed)).toEqual([true]);
+  });
+});
+
 describe("a subscription's page in Knowledge", () => {
   it('shows the rule in words, under the synapse scope', async () => {
     const stored = await store.add({

@@ -20,7 +20,7 @@
  */
 
 import type { Knowledge, KnowledgePage, KnowledgeUpsertPageResult } from '@mastra/core/knowledge';
-import { MAX_KNOWLEDGE_PAGE_LIST_LIMIT } from '@mastra/core/knowledge';
+import { KnowledgeNotFoundError, MAX_KNOWLEDGE_PAGE_LIST_LIMIT } from '@mastra/core/knowledge';
 import { z } from 'zod';
 import { getJarvisKnowledge, SUBSCRIPTIONS_PAGE_KEY, SYNAPSE_SCOPE } from '../../knowledge/index.js';
 import { getLegacySubscriptionTable, type LegacySubscriptionTable } from '../../storage/index.js';
@@ -224,15 +224,33 @@ export class SubscriptionStore {
     const updated = { ...triggered, enabled: !(existing.oneShot || isSpent(triggered)) };
 
     await this.write(updated);
-    await this.knowledge.addNote({
-      scope: SYNAPSE_SCOPE,
-      path: this.pathOf(id),
-      text: `Fired, for the ${ordinal(updated.triggerCount)} time${updated.enabled ? '' : ', and is now spent'}.`,
-      when: triggeredAt,
-      author: AUTHOR,
-    });
+    await this.noteFiring(updated, triggeredAt);
 
     return updated;
+  }
+
+  /**
+   * Notes a firing on the subscription's page.
+   *
+   * A firing that spends a subscription can lose its page before the note is added: every state
+   * change prunes spent subscriptions on its way past, and one may do so between the record's write
+   * and this note. The firing is already recorded then, and the page is gone with every note it
+   * had, so there is nothing left to note it on.
+   */
+  private async noteFiring(subscription: Subscription, triggeredAt: Date): Promise<void> {
+    try {
+      await this.knowledge.addNote({
+        scope: SYNAPSE_SCOPE,
+        path: this.pathOf(subscription.id),
+        text: `Fired, for the ${ordinal(subscription.triggerCount)} time${subscription.enabled ? '' : ', and is now spent'}.`,
+        when: triggeredAt,
+        author: AUTHOR,
+      });
+    } catch (error) {
+      if (!(error instanceof KnowledgeNotFoundError && !subscription.enabled)) {
+        throw error;
+      }
+    }
   }
 
   /**
@@ -254,11 +272,15 @@ export class SubscriptionStore {
       (subscription) => isExpired(subscription, timestamp) || isSpent(subscription),
     );
 
+    // Only what this call removed: another prune running at the same moment removes the rest.
+    const removed: Subscription[] = [];
     for (const subscription of doomed) {
-      await this.remove(subscription.id);
+      if (await this.remove(subscription.id)) {
+        removed.push(subscription);
+      }
     }
 
-    return doomed;
+    return removed;
   }
 
   /**
@@ -279,10 +301,24 @@ export class SubscriptionStore {
   /**
    * Permanently delete a subscription.
    *
-   * @returns True when a subscription was deleted
+   * Knowledge throws when the page goes between reading and deleting it, as it does when another
+   * caller removes the same subscription at the same moment — two state changes pruning together.
+   * The subscription is gone either way, which is what both asked for, so this call reports that
+   * it removed nothing.
+   *
+   * @returns True when this call deleted the subscription
    */
   async remove(id: string): Promise<boolean> {
-    return (await this.knowledge.removePage({ scope: SYNAPSE_SCOPE, path: this.pathOf(id), author: AUTHOR })) !== null;
+    try {
+      return (
+        (await this.knowledge.removePage({ scope: SYNAPSE_SCOPE, path: this.pathOf(id), author: AUTHOR })) !== null
+      );
+    } catch (error) {
+      if (error instanceof KnowledgeNotFoundError) {
+        return false;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -363,10 +399,22 @@ export class SubscriptionStore {
   }
 }
 
-/** "first", "second", … for the counts a firing note gives. */
+/** The English ordinal suffix of each plural category: 1st, 2nd, 3rd, 4th, 11th, 21st, 22nd, … */
+const ORDINAL_SUFFIXES: Record<Intl.LDMLPluralRule, string> = {
+  zero: 'th',
+  one: 'st',
+  two: 'nd',
+  few: 'rd',
+  many: 'th',
+  other: 'th',
+};
+
+const ENGLISH_ORDINALS = new Intl.PluralRules('en', { type: 'ordinal' });
+
+/** "first" … "tenth", then "11th", "21st", "22nd", … for the counts a firing note gives. */
 function ordinal(count: number): string {
   const words = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'];
-  return words[count - 1] ?? `${count}th`;
+  return words[count - 1] ?? `${count}${ORDINAL_SUFFIXES[ENGLISH_ORDINALS.select(count)]}`;
 }
 
 /**

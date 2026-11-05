@@ -31,9 +31,9 @@ export interface EmbeddedSubscription extends Subscription {
    * subscription is reachable both from how the user said it and from how a device
    * reports it. Null when the clause contained no first-person pronouns.
    */
-  whenAltEmbedding: Float32Array | null;
+  whenAlternateEmbedding: Float32Array | null;
   /** The same, for `givenCondition`. */
-  givenAltEmbedding: Float32Array | null;
+  givenAlternateEmbedding: Float32Array | null;
 }
 
 /**
@@ -45,15 +45,6 @@ export interface EmbeddedSubscription extends Subscription {
  */
 const phrasingEmbeddings = new Map<string, Float32Array>();
 
-/** The embedding of a phrasing {@link embedSubscriptions} has just made sure of. */
-function embeddingOf(phrasing: string): Float32Array {
-  const embedding = phrasingEmbeddings.get(phrasing);
-  if (!embedding) {
-    throw new Error(`The static embedder returned no embedding for "${phrasing}"`);
-  }
-  return embedding;
-}
-
 /**
  * Embeds what subscriptions are matched on: their `whenEvent` and `givenCondition`, each also in the
  * third person when it was phrased in the first.
@@ -62,6 +53,11 @@ function embeddingOf(phrasing: string): Float32Array {
  * and the static embedder cannot connect the two on its own. Matching takes the better of the two
  * phrasings, so the rewrite can only add reach. The `thenAction` is not embedded: nothing is matched
  * against it, and its text is what the reactor needs.
+ *
+ * Two state changes can be matched at once, against different sets (one including disabled
+ * subscriptions, say), and each drops the other's phrasings from {@link phrasingEmbeddings}. So a
+ * call takes what it needs from the store before it waits on the embedder, and answers from its own
+ * map, never from the store after the wait.
  */
 export async function embedSubscriptions(subscriptions: Subscription[]): Promise<EmbeddedSubscription[]> {
   const phrased = subscriptions.map((subscription) => ({
@@ -77,27 +73,46 @@ export async function embedSubscriptions(subscriptions: Subscription[]): Promise
       [when, whenAlternate, given, givenAlternate].filter((phrasing) => phrasing !== null),
     ),
   );
+
+  const embedded = new Map<string, Float32Array>();
+  const unembedded: string[] = [];
+  for (const phrasing of phrasings) {
+    const kept = phrasingEmbeddings.get(phrasing);
+    if (kept) {
+      embedded.set(phrasing, kept);
+    } else {
+      unembedded.push(phrasing);
+    }
+  }
   for (const phrasing of phrasingEmbeddings.keys()) {
     if (!phrasings.has(phrasing)) {
       phrasingEmbeddings.delete(phrasing);
     }
   }
 
-  const unembedded = [...phrasings].filter((phrasing) => !phrasingEmbeddings.has(phrasing));
   const embeddings = await embedTexts(unembedded);
   unembedded.forEach((phrasing, index) => {
     const embedding = embeddings[index];
     if (embedding) {
+      embedded.set(phrasing, embedding);
       phrasingEmbeddings.set(phrasing, embedding);
     }
   });
+
+  const embeddingOf = (phrasing: string): Float32Array => {
+    const embedding = embedded.get(phrasing);
+    if (!embedding) {
+      throw new Error(`The static embedder returned no embedding for "${phrasing}"`);
+    }
+    return embedding;
+  };
 
   return phrased.map(({ subscription, when, whenAlternate, given, givenAlternate }) => ({
     ...subscription,
     whenEmbedding: embeddingOf(when),
     givenEmbedding: given === null ? null : embeddingOf(given),
-    whenAltEmbedding: whenAlternate === null ? null : embeddingOf(whenAlternate),
-    givenAltEmbedding: givenAlternate === null ? null : embeddingOf(givenAlternate),
+    whenAlternateEmbedding: whenAlternate === null ? null : embeddingOf(whenAlternate),
+    givenAlternateEmbedding: givenAlternate === null ? null : embeddingOf(givenAlternate),
   }));
 }
 
@@ -223,9 +238,9 @@ export function rankSubscriptions(
   const facets = Array.isArray(descriptionEmbedding) ? descriptionEmbedding : [descriptionEmbedding];
 
   return subscriptions
-    .map(({ whenEmbedding, givenEmbedding, whenAltEmbedding, givenAltEmbedding, ...subscription }) => {
-      const whenScore = bestSimilarity(facets, [whenEmbedding, whenAltEmbedding]);
-      const givenScore = givenEmbedding ? bestSimilarity(facets, [givenEmbedding, givenAltEmbedding]) : null;
+    .map(({ whenEmbedding, givenEmbedding, whenAlternateEmbedding, givenAlternateEmbedding, ...subscription }) => {
+      const whenScore = bestSimilarity(facets, [whenEmbedding, whenAlternateEmbedding]);
+      const givenScore = givenEmbedding ? bestSimilarity(facets, [givenEmbedding, givenAlternateEmbedding]) : null;
 
       return {
         subscription,
