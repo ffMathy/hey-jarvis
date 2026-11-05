@@ -119,10 +119,7 @@ describe('applicableProductChoices', () => {
  * `confidence` over whatever options it was offered, declines when that is a refusal, or throws
  * when that is an error.
  */
-function fakeProductClassifier(
-  choiceFor: (state: unknown) => string | typeof REFUSAL | Error,
-  confidence = 0.95,
-) {
+function fakeProductClassifier(choiceFor: (state: unknown) => string | typeof REFUSAL | Error, confidence = 0.95) {
   const evaluated: { state: unknown; options: string[] }[] = [];
   const classifier = new Classifier({
     id: 'productChoiceClassifier',
