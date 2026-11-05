@@ -1,21 +1,30 @@
 import type { Agent } from '@mastra/core/agent';
+import type { Knowledge } from '@mastra/core/knowledge';
+import { conventionsNoteInstructions, readConventions } from '../../knowledge/conventions.js';
+import { getJarvisKnowledge, householdKnowledgeOptions } from '../../knowledge/index.js';
 import { createAgent, LOW_THINKING_PROVIDER_OPTIONS } from '../../utils/index.js';
+import { shoppingConventions } from './conventions.js';
 import { shoppingTools } from './tools.js';
 import { shoppingListWorkflow } from './workflows.js';
 
-// Main shopping list agent for managing Bilka shopping cart
-export async function getShoppingListAgent(): Promise<Agent> {
-  return createAgent({
-    id: 'shoppingList',
-    name: 'ShoppingList',
-    instructions: `# Role & Scope
+/**
+ * The shopping list agent's instructions, with the household's shopping conventions read into them
+ * from Knowledge.
+ *
+ * Read on every run rather than once at boot, so a preference sir stated a minute ago — a note on
+ * the page — is followed on his next request, the routed ones included.
+ */
+export async function shoppingListAgentInstructions(knowledge: Knowledge): Promise<string> {
+  const conventions = await readConventions(knowledge, shoppingConventions);
+
+  return `# Role & Scope
 You are a shopping-list agent. For every user request, you will either add or remove items on the list.
 
 Make best-guess assumptions when information is missing.
 
 # Core Behaviours
 ## Adding Items
-- If several product variants exist, add only the single most relevant (see §3 priorities).
+- If several product variants exist, add only the single most relevant (see the Priority Hierarchy).
 - If quantity is missing, choose a sensible minimum (e.g., one egg).
 
 ## Removing Items
@@ -33,8 +42,8 @@ Higher rules override lower ones.
 
 # Search Strategy
 1. Start with a concise query: the base ingredient name only.
-2. When no results appear, simplify or use synonyms (§6 aliases) and retry.
-3. After fetching results, apply the priority hierarchy (§3).
+2. When no results appear, simplify or use synonyms (see Aliases, Variants & Synonyms) and retry.
+3. After fetching results, apply the Priority Hierarchy.
 4. If no product with an \`objectID\` appears after retries, treat the search as failed.
 
 # Special Rules for Herbs
@@ -48,14 +57,13 @@ Higher rules override lower ones.
 # Aliases, Variants & Synonyms
 The products might be written in Danish.
 
-- **Soja** → Sojasauce
-- **Rødkål** → Rød spidskål
-- **Kyllingefillet** → Kyllingebrystfillet
-- **Soltørrede tomater i olie** → Soltørrede tomater
-- **Juice:** Avoid juice from concentrate.
 - **Organic markers:** ØKO, Økologisk, Organic, Bio
-- **Milk:** Always use "skummetmælk" if available
-- **Cheese:** If asked to just buy cheese, buy solid cheese, but in slices.
+
+The household's own aliases and preferences:
+
+${conventions}
+
+${conventionsNoteInstructions(shoppingConventions, 'which product a name on the shopping list means, or which product to prefer')}
 
 # Quantity Guidelines
 - Default to the **smallest pack / piece** that roughly satisfies the requested amount.
@@ -78,11 +86,23 @@ Every tool call is a round trip the user waits through, so make as few as the re
 1. In your first step, call getCurrentCartContents and findProductInCatalog together, searching for every product to add in that one findProductInCatalog call. The cart tells you what is already in the basket, and gives you the objectID of anything to remove, which needs no search.
 2. Apply the priority hierarchy to each product's results. Retry only the searches that found nothing, all together in one more findProductInCatalog call with simplified terms or synonyms.
 3. Make every basket change in one setProductBasketQuantity call. The quantity you set replaces the one in the basket, so for a product already there, set the new total. To remove an item, set its quantity to 0.
-4. Provide a short summary of what was added/removed and any items that couldn't be found`,
+4. Provide a short summary of what was added/removed and any items that couldn't be found`;
+}
 
+// Main shopping list agent for managing Bilka shopping cart
+export async function getShoppingListAgent(): Promise<Agent> {
+  const knowledge = await getJarvisKnowledge();
+
+  return createAgent({
+    id: 'shoppingList',
+    name: 'ShoppingList',
+    instructions: () => shoppingListAgentInstructions(knowledge),
     description:
       'Specialized agent for managing shopping lists in Bilka online store. Can add/remove items, search products, and manage cart contents.',
     tools: shoppingTools,
+    // The household's conventions are a page in Knowledge, and the agent notes the new ones sir
+    // states there, so it needs the Knowledge tools and the household scope that reaches the page.
+    ...householdKnowledgeOptions(knowledge),
     // Picking a product from a handful of search results needs little reasoning, and every step
     // of the tool loop pays for whatever thinking the model does before the basket changes.
     defaultOptions: { providerOptions: LOW_THINKING_PROVIDER_OPTIONS },

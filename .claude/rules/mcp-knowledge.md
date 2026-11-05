@@ -72,6 +72,9 @@ comes back to the model as an `error-text` tool result, not as a thrown error, s
 
 - **Synapse subscriptions** — one page each under `synapse:home#subscriptions`, every firing a dated note. See
   [Synapse Subscriptions](mcp-synapse-subscriptions-points-of-interest.md).
+- **The household's shopping aliases and preferences** — `conventions:home#shopping`, read into the shopping list
+  agent's instructions on every run; a lasting preference sir states is a note on it. See
+  [Shopping List Agent](mcp-shopping-list-agent.md#the-households-aliases-and-preferences).
 
 ## What stays out
 
