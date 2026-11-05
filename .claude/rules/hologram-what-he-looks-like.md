@@ -77,15 +77,15 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
   has rolled it by then (`landingBox`). Picked from the clock by a hash, one chance every
   `CASCADE_PERIOD` (3 s), each over before the next however late it fires and however far it
   spreads (`CASCADE_LATEST_FIRE` + `CASCADE_LONGEST_SECONDS` is the period, to the frame): every
-  other chance fires, `CASCADE_IN_SILENCE` (0.35) of the rest and any beside a chance that finds
-  nothing, and all of them while he talks or thinks — over 1200 s one every 4.5 s in silence and one
+  other chance fires, `CASCADE_IN_SILENCE` (0.6) of the rest and any beside a chance that finds
+  nothing, and all of them while he talks or thinks — over 1200 s one every 3.9 s in silence and one
   every 3.0 s while busy, about 28 edges each (21 out, 7 back), some 5.2R of lit cage. The user asked
   for them "a bit bigger and more frequent" when they were one every 5.1 s and 3.3 s, 17 edges
-  (12.6 out, 4.6 back) and 3.1R: over 600 s something of one is now lit 57% of the time in silence
+  (12.6 out, 4.6 back) and 3.1R: over 600 s something of one is now lit 67% of the time in silence
   and 84% while busy, where it was 48% and 74%, and none is dark for 5 s, where 9.5 s was. In
   silence two chances in a row go dark only where the cage, as it is turned then, offers neither of
-  them a node to fire from at all, and over 1200 s that never happened: three chances in 400 find no
-  node, where one in ten did, with a stretch of three dark chances (12 s).
+  them a node to fire from at all, and over 1200 s that never happened: three chances in 400 now find
+  no node, where one in ten did before, when a stretch of three dark chances (12 s) happened.
   It fires from the node over the truss whose pulse would show most (`seenLength`), as a pulse over
   the bright truss and edge alone could not be seen. They light only existing edges of the painted
   cage, both of whose nodes stay past 0.82R (`CASCADE_LIMB`) — over his bright edge and the truss
@@ -167,8 +167,9 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
   "No protrusions" by lighting only edges the cage already has, never a spoke standing out on its
   own, both ends past 0.82R for as long as an edge is lit; and with "Calm" by being one chance a
   `CASCADE_PERIOD` at most, each over before the next. Then "Make the cascades a bit bigger and more
-  frequent": about one every four and a half seconds in silence (it was five), never five seconds
-  dark, and half as big again (28 edges where 17 were). Do not shrink them back to buy a guarantee:
+  frequent": about one every four seconds in silence (it was five; a first pass at four and a half
+  showed no difference by eye over twelve seconds of idle), never five seconds dark, and half as big
+  again (28 edges where 17 were). Do not shrink them back to buy a guarantee:
   each edge stays judged over its whole lit life.
 - **The squares near his edge stay** ("I'd also like to still have the weird squares near the edge
   of the hologram"): the truss is always there, between `TRUSS_INNER_RAIL` and `TRUSS_OUTER_RAIL`, so

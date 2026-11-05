@@ -60,11 +60,12 @@ const CASCADE_RETRIES = 1;
 /** The latest a chance's pulse fires after its period starts, in seconds: its jitter and every retry. */
 export const CASCADE_LATEST_FIRE = CASCADE_JITTER + CASCADE_RETRIES * CASCADE_RETRY_SECONDS;
 /**
- * The share of the chances between the ones that always fire that fire in silence too: a little over
- * a third, so in silence one fires about every four and a half seconds (it was one every five, at
- * 0.15, until the user asked for them "a bit bigger and more frequent").
+ * The share of the chances between the ones that always fire that fire in silence too: three in five,
+ * so in silence one fires about every 3.8 seconds (it was one every five, at 0.15, until the user
+ * asked for them "a bit bigger and more frequent"), still fewer than the one every three while he
+ * talks or thinks.
  */
-const CASCADE_IN_SILENCE = 0.35;
+const CASCADE_IN_SILENCE = 0.6;
 /**
  * How long a pulse takes over one edge of the cage, in seconds: slow enough to follow its spark, and
  * quick enough for six hops out and four back to fit a {@link CASCADE_PERIOD} (at 0.24 a hop, five and

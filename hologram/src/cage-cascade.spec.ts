@@ -368,22 +368,23 @@ describe('the cage cascades', () => {
     expect(BODY_RADIANS_PER_SECOND * CASCADE_LONGEST_SECONDS).toBeLessThan(Math.PI);
   });
 
-  it('fire now and then: about one every four and a half seconds in silence, more often while he talks, and as often while he thinks', () => {
+  it('fire now and then: about one every four seconds in silence, more often while he talks, and as often while he thinks', () => {
     // one every five seconds in silence until the user asked for them "a bit bigger and more frequent"
     const seconds = 600;
     const inSilence = firedChances(seconds, {}).filter(Boolean).length;
     const whileTalking = firedChances(seconds, BUSY).filter(Boolean).length;
     const whileThinking = firedChances(seconds, { thinking: 1 });
 
-    expect(seconds / inSilence).toBeGreaterThan(4);
-    expect(seconds / inSilence).toBeLessThan(5);
-    expect(whileTalking).toBeGreaterThan(inSilence * 1.4);
+    expect(seconds / inSilence).toBeGreaterThan(3.5);
+    expect(seconds / inSilence).toBeLessThan(4.2);
+    expect(whileTalking).toBeGreaterThan(inSilence * 1.2);
     expect(whileThinking).toEqual(firedChances(seconds, BUSY));
   });
 
-  it('are lit half the time in silence and three quarters of it while he talks, never dark for five seconds', () => {
+  it('are lit three fifths of the time in silence and three quarters of it while he talks, never dark for five seconds', () => {
+    // under half the time in silence, and up to 9.5 s dark, before the user asked for them "more frequent"
     for (const [overrides, share] of [
-      [{}, 0.5],
+      [{}, 0.6],
       [BUSY, 0.75],
     ] as const) {
       const scratch = freshScratch(net);
