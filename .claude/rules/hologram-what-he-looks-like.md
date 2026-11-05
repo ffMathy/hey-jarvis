@@ -84,9 +84,13 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
   the bright truss and edge alone could not be seen. They light only existing edges of the painted
   cage, both of whose nodes stay past 0.9R (`CASCADE_LIMB`) and no further back than
   `CASCADE_DEEPEST` for every moment the edge is lit (`clearOver`, `judgeNode`), however his body
-  turns and the cage sways meanwhile, and never a spoke out into the dark whose outer node nothing
-  else lit reaches at any moment it is lit (`markSpokeEnds`, `dropLoneSpokes`), so nothing stands
-  out past where the cage already reaches. Judged where the cage stood as they fired, as they first
+  turns and the cage sways meanwhile, and never a spoke out into the dark whose outer node no other
+  edge of the same cascade reaches (`markSpokeEnds`, `dropLoneSpokes`), so nothing stands out past
+  where the cage already reaches. That is judged over the whole cascade, not frame by frame: while
+  steadily lit every spoke leads on to a lit edge, but as its spark first leaves, or as it fades after
+  the edge beyond it has gone out, one can be the only lit edge at its outer node for up to a hop
+  (`CASCADE_HOP_SECONDS`). A pulse never fires from a node it would not leave (`leavesItsSource`),
+  whose box would flare with nothing leaving it once a lone spoke out of it was dropped. Judged where the cage stood as they fired, as they first
   were, two edges in five were drawn over his bright body or behind him before they went out, a
   third of every lit edge's frames, and nearly every return landed beside the box that flared for
   it; held to the whole of their lives they are a third smaller. They are drawn over his body as

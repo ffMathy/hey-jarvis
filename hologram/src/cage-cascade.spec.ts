@@ -239,7 +239,9 @@ function firedChances(seconds: number, overrides: Partial<HologramFrame>) {
 
 /**
  * Every spoke a chance lights, at every frame it is one, by the plan's own thresholds: whether its
- * outer node then is reached by no other edge of the chance's whole plan.
+ * outer node then is reached by no other edge of the chance's whole plan. The whole plan's, not that
+ * frame's: as its spark first leaves, or as it fades after the edge beyond it, a spoke can be the only
+ * lit edge at its outer node for up to a hop (`CASCADE_SPOKE` in `cage-cascade.ts`).
  */
 function spokesOf({ frames, edges }: ChanceFrames) {
   const ends = new Map<string, number>();

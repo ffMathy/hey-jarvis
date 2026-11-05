@@ -29,8 +29,11 @@ import {
  * what {@link writeCageCascade} hands it each frame.
  *
  * Now and then: one chance a {@link CASCADE_PERIOD}. Every other one fires whatever he is doing, a
- * share ({@link CASCADE_IN_SILENCE}) of the ones between as well, and while he talks or thinks all of
- * them; so in silence no two are more than two periods apart. Each is over before the next chance
+ * share ({@link CASCADE_IN_SILENCE}) of the ones between as well, and so does one beside a chance
+ * that finds nothing to fire from, and while he talks or thinks all of them — all but those where the
+ * cage, as it is turned then, offers no node to fire from at all, about one in ten. So in silence two
+ * chances in a row go dark only where neither could have fired however busy he was
+ * (`.claude/rules/hologram-what-he-looks-like.md` has the figures). Each is over before the next chance
  * comes ({@link CASCADE_LONGEST_SECONDS}), so two never overlap. Which chance fires, when, from which
  * node and down which edges all come from the clock by a hash, so a frame at a time is always the
  * same frame whatever was drawn before it; the frame's scratch only keeps the current chance's plan,
@@ -82,14 +85,19 @@ const CASCADE_ROUND_HIM = 0.35;
  * to the way out) with an end past {@link CASCADE_SPOKE_REACH} ({@link isSpokeBetween}). Lit on its
  * own, with nothing lit beyond it, one stood out into the dark past the truss for a second and read
  * as a stick growing out of him, so a plan never keeps one whose outer node no other edge of it
- * reaches ({@link dropLoneSpokes}); one that leads on to a lit triangle reads as part of it.
+ * reaches ({@link dropLoneSpokes}); one that leads on to a lit triangle reads as part of it. Which
+ * is judged over the whole plan, not frame by frame: steadily lit, every spoke has a lit edge beyond
+ * it, but while its own spark is still on its first hop, or as it fades after the edge beyond it has
+ * gone out, it can stand alone for up to a hop ({@link CASCADE_HOP_SECONDS}).
  */
 export const CASCADE_SPOKE = 0.8;
 export const CASCADE_SPOKE_REACH = 1.08;
 /**
  * How often, in seconds, a planned edge is looked at over the time it is lit to see whether it is a
- * spoke anywhere along it: well inside a frame at 30 a second, so an edge turning into a spoke
- * between two looks is one on for less than a frame.
+ * spoke anywhere along it. That is longer than a frame, so an edge that is a spoke only between two
+ * looks could be one for up to a frame and a half at 30 a second, three at 60; but the spec, judging
+ * every frame at 60 a second, finds no lit spoke whose outer node no other edge of the plan reaches
+ * (`cage-cascade.spec.ts`).
  */
 const CASCADE_SPOKE_LOOKS = 1 / 20;
 /** The fewest edges a return must light to be planned: fewer read as a stray flicker, not an answer. */
@@ -1135,8 +1143,8 @@ function chanceFinds(net: CageNet, scratch: number[], chance: number) {
  * so, from which node over the truss and down which edges, then onto which other box the return
  * gathers. Every other chance fires whatever he is doing; of the ones between, the hash's
  * {@link CASCADE_IN_SILENCE} share does too, and so does one beside a chance that finds nothing to
- * fire from ({@link findSource}), and the rest only while he is busy. So in silence no two are
- * further apart than two chances.
+ * fire from ({@link findSource}), and the rest only while he is busy. A chance that finds nothing
+ * fires at no time, busy or not, so in silence two in a row go dark only where neither could fire.
  */
 function planChance(net: CageNet, scratch: number[], chance: number) {
   'worklet';
