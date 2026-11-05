@@ -90,8 +90,10 @@ Every tool call is a round trip the user waits through, so make as few as the re
 }
 
 // Main shopping list agent for managing Bilka shopping cart
-export async function getShoppingListAgent(): Promise<Agent> {
-  const knowledge = await getJarvisKnowledge();
+export async function getShoppingListAgent(
+  getKnowledge: () => Promise<Knowledge> = getJarvisKnowledge,
+): Promise<Agent> {
+  const knowledge = await getKnowledge();
 
   return createAgent({
     id: 'shoppingList',

@@ -35,8 +35,9 @@ rather than lines in the agent's instructions:
   `knowledge_note`. It can add notes and cannot rewrite the body.
 - **Both reach the agent on every run.** `shoppingListAgentInstructions(knowledge)` reads the page with
   `readConventions` and puts it, notes dated and oldest first, in the "Aliases, Variants & Synonyms" section, where the
-  aliases always were. `getShoppingListAgent` hands it the process's Knowledge; `agents.spec.ts` hands it one on an
-  `InMemoryStore`.
+  aliases always were. `getShoppingListAgent(getKnowledge = getJarvisKnowledge)` opens the process's Knowledge and
+  gives it to the agent; `agents.spec.ts` hands it one on an `InMemoryStore`, and checks that the agent holds
+  `household:home` on it and reads a note added there on its next run.
 
 **What stays in the instructions**, because it is true of shopping at Bilka rather than of this household, or because
 code enforces it too: that products are named in Danish, the organic markers (ØKO, Økologisk, Organic, Bio), the
