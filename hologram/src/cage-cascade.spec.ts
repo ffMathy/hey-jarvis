@@ -603,27 +603,37 @@ describe('the cage cascades', () => {
     expect(spokes.length).toBeGreaterThan(0);
   });
 
-  it('hold to it over thousands of chances: every pulse leaves its flaring box, every return lands on its own, and no spoke stands alone', () => {
-    // A plan is cut back after it is spread (lone spokes dropped until none is left, then a return
-    // too thin to answer), which only a few chances in a thousand need; the minute or so above
-    // reaches none of them, so this plans chances enough to, a frame every twentieth of a second.
-    const scratch = freshScratch(net);
-    let fired = 0;
-    let returns = 0;
-    for (let chance = 2; chance < 2002; chance++) {
-      const frames = chanceFrames(chance, BUSY, scratch, 1 / 20);
-      if (frames.edges.length === 0) continue;
-      fired++;
-      const source = expectFlaredUnderTheSource(frames);
-      if (frames.back.length > 0) {
-        expectFlaredUnderTheTarget(frames, source);
-        returns++;
+  // A plan is cut back after it is spread (lone spokes dropped until none is left, then a return too
+  // thin to answer), which only a few chances in a thousand need; the minute or so above reaches none
+  // of them, so these plan chances enough to, a frame every twentieth of a second: two thousand, in
+  // parts of a test each, since a frame at a time is the same from a fresh scratch as from a kept one
+  // (above), and the whole of them in one test took over half of bun's five seconds with the
+  // workspace's tests running at once.
+  const THOUSANDS_FROM = 2;
+  const THOUSANDS = 2000;
+  const THOUSANDS_PARTS = 8;
+  const THOUSANDS_A_PART = THOUSANDS / THOUSANDS_PARTS;
+  for (let part = 0; part < THOUSANDS_PARTS; part++) {
+    const from = THOUSANDS_FROM + part * THOUSANDS_A_PART;
+    it(`hold to it over thousands of chances (${from} to ${from + THOUSANDS_A_PART - 1}): every pulse leaves its flaring box, every return lands on its own, and no spoke stands alone`, () => {
+      const scratch = freshScratch(net);
+      let fired = 0;
+      let returns = 0;
+      for (let chance = from; chance < from + THOUSANDS_A_PART; chance++) {
+        const frames = chanceFrames(chance, BUSY, scratch, 1 / 20);
+        if (frames.edges.length === 0) continue;
+        fired++;
+        const source = expectFlaredUnderTheSource(frames);
+        if (frames.back.length > 0) {
+          expectFlaredUnderTheTarget(frames, source);
+          returns++;
+        }
+        expect({ chance, alone: loneSpokesOf(frames) }).toEqual({ chance, alone: [] });
       }
-      expect({ chance, alone: loneSpokesOf(frames) }).toEqual({ chance, alone: [] });
-    }
-    expect(fired).toBeGreaterThan(1500);
-    expect(returns).toBeGreaterThan(fired / 2);
-  });
+      expect(fired).toBeGreaterThan((1500 / THOUSANDS) * THOUSANDS_A_PART);
+      expect(returns).toBeGreaterThan(fired / 2);
+    });
+  }
 
   it('flare the box the pulse fires from as it fires, under its node, and the box the return lands on as it lands, under the node it lands on', () => {
     let returns = 0;
