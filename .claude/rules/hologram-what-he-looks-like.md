@@ -71,16 +71,27 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
   short bright head racing along it, and a soft deep-orange flash on the node it lands on; the
   patch holds, then fades from where it started outward. As it reaches its tips the return gathers
   from its own tips onto the node over another box nearby (`planBestReturn`), every branch landing
-  together, and that box flares as it lands. Picked from the clock by a hash, one chance every
-  `CASCADE_PERIOD` (3 s), each over before the next: every other chance fires, `CASCADE_IN_SILENCE`
-  of the rest and any beside a chance that finds nothing, and all of them while he talks or thinks —
-  over 1200 s one every 5.3 s in silence, never more than 6.1 s apart, and one every 3.05 s while
-  busy. It fires from the node over the truss whose pulse would show most (`seenLength`), as a
-  pulse over the bright truss and edge alone could not be seen. They light only existing edges of
-  the painted cage, between nodes past 0.9R when they fire (`CASCADE_LIMB`), and never a spoke out
-  into the dark whose outer node nothing else lit reaches (`dropLoneSpokes`), so nothing stands out
-  past where the cage already reaches; and they are drawn over his body as well as the picture
-  (`drawGpuPictureCascade`, from `drawGpuFrame` only), at `CASCADE_OVER_HIM` of their light over his
+  together, and that box flares as it lands — the box under that node as it lands, where the truss
+  has rolled it by then (`landingBox`). Picked from the clock by a hash, one chance every
+  `CASCADE_PERIOD` (3 s), each over before the next however late it fires and however far it
+  spreads (`CASCADE_LATEST_FIRE` + `CASCADE_LONGEST_SECONDS` is the period, to the frame): every
+  other chance fires, `CASCADE_IN_SILENCE` of the rest and any beside a chance that finds nothing,
+  and all of them while he talks or thinks — over 1200 s one every 5.1 s in silence and one every
+  3.3 s while busy, about 17 edges each (12.6 out, 4.6 back). In silence no two are more than two
+  chances apart but where the cage, as it is turned then, offers no node to fire from at all: about
+  one chance in ten, and over 1200 s one stretch of three such chances (12 s dark) and one of two.
+  It fires from the node over the truss whose pulse would show most (`seenLength`), as a pulse over
+  the bright truss and edge alone could not be seen. They light only existing edges of the painted
+  cage, both of whose nodes stay past 0.9R (`CASCADE_LIMB`) and no further back than
+  `CASCADE_DEEPEST` for every moment the edge is lit (`clearOver`, `judgeNode`), however his body
+  turns and the cage sways meanwhile, and never a spoke out into the dark whose outer node nothing
+  else lit reaches at any moment it is lit (`markSpokeEnds`, `dropLoneSpokes`), so nothing stands
+  out past where the cage already reaches. Judged where the cage stood as they fired, as they first
+  were, two edges in five were drawn over his bright body or behind him before they went out, a
+  third of every lit edge's frames, and nearly every return landed beside the box that flared for
+  it; held to the whole of their lives they are a third smaller. They are drawn over his body as
+  well as the picture (`drawGpuPictureCascade`, from `drawGpuFrame` only, so the headset draws
+  none: `.claude/rules/vr-the-honest-limits.md`), at `CASCADE_OVER_HIM` of their light over his
   edge and the truss, so the lit net shows where the cage crosses the rim and the headset's picture
   is drawn to the byte as before. What tried and failed: a tree of single edges under the body, lost
   on the truss's rail; nodes past 1.0R only, too few to fire one every twenty seconds; a glow four
@@ -135,6 +146,13 @@ top of `src/hologram-drawing.ts`, with every layer and what each frame field doe
   the core's existing glow and fill nothing.
 - **No protrusions.** Nothing grows out of him and dissolves in a repeating pattern; the cage is
   always there, and calm.
+- **Signal flowing through his cage, cooler and clearer** (the user asked for particles or signal
+  flowing between the cage's triangles and the rim, "cooler and clearer", and chose the network
+  cascade among the looks tried, by eye): now and then a box of the truss fires a pulse through the
+  cage's own triangles and a return lands on another box (the cascades, above). It squares with
+  "No protrusions" by lighting only edges the cage already has, never a spoke standing out on its
+  own, both ends past his limb for as long as an edge is lit; and with "Calm" by being one chance a
+  `CASCADE_PERIOD` at most, each over before the next, about one every five seconds in silence.
 - **The squares near his edge stay** ("I'd also like to still have the weird squares near the edge
   of the hologram"): the truss is always there, between `TRUSS_INNER_RAIL` and `TRUSS_OUTER_RAIL`, so
   it never stands off him. The script that chose between it, a crescent and a thin ring is gone.

@@ -24,6 +24,13 @@ paths:
   `https://ffmathy.github.io/.well-known/assetlinks.json`, which a project Pages
   site cannot publish — it needs the user-site repository, a custom domain or
   another host.
+- **No cascades through his cage.** The phone and the watch draw the network
+  cascades that now and then fire through his cage (`hologram/src/cage-cascade.ts`),
+  over his body as the last pass of their frame (`drawGpuFrame`); the headset draws
+  his picture with `drawGpuPicture` alone, which leaves them out, so in the room his
+  cage never lights up. Drawing them would need a pass of their own over his body
+  in the room, and redrawn picture goldens (see "What he looks like" in
+  `.claude/rules/hologram-what-he-looks-like.md`).
 - **The wake-word models are CC BY-NC-SA 4.0** (above).
 - **Pages shows the last release** at the root, not the latest push; each pull
   request has its own preview under `pr/<n>/` (see "Publishing" below).
