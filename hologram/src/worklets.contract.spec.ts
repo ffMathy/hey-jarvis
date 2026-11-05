@@ -166,16 +166,23 @@ function readsBeforeDeclared(sources: Record<string, string>): string[] {
 }
 
 describe("the package's worklets", () => {
-  it('are each declared after every worklet, function and constant of its module they read', () => {
-    const modules = packageModules();
-    const sources = Object.fromEntries(
-      modules.map((path) => [relative(PACKAGE_SOURCES, path), readFileSync(path, 'utf8')]),
-    );
+  const modules = packageModules().map((path) => relative(PACKAGE_SOURCES, path));
 
-    expect(Object.keys(sources)).toContain('cage-cascade.ts');
-    expect(Object.keys(sources)).toContain(join('gpu', 'gpu-picture.ts'));
-    expect(readsBeforeDeclared(sources)).toEqual([]);
+  it('are checked in every module of the package, the cascades and the picture among them', () => {
+    expect(modules).toContain('cage-cascade.ts');
+    expect(modules).toContain(join('gpu', 'gpu-picture.ts'));
   });
+
+  // One test a module: a name read is resolved within its own module (`noResolve`), so each is
+  // checked alone, and no single test holds a type checker over the whole package, which under a
+  // whole workspace's tests at once took over half of bun's five seconds.
+  for (const module of modules) {
+    it(`are each declared after every worklet, function and constant they read, in ${module}`, () => {
+      const source = readFileSync(join(PACKAGE_SOURCES, module), 'utf8');
+
+      expect(readsBeforeDeclared({ [module]: source })).toEqual([]);
+    });
+  }
 
   it('tells a worklet reading what is declared above it from one reading what is declared below it', () => {
     const examples: Array<[source: string, found: string[]]> = [
