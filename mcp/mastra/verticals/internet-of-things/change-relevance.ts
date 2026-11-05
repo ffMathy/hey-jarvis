@@ -15,7 +15,7 @@ import type { PlannedReport } from './change-reports.js';
  * like a lamp, filed low and rolled up with everything else.
  *
  * Which kind an entity is does not change from one report to the next, so it is asked once per
- * entity (or per event type) and kept: an evaluation model (Jev, see
+ * entity (or per event type) and kept: a decision model (Jev, see
  * `utils/providers/typesafe-provider.ts`) picks one of a fixed list of kinds in one short call,
  * from the entity's id, name, domain and device class. With a sure answer:
  *
@@ -27,7 +27,7 @@ import type { PlannedReport } from './change-reports.js';
  * - safety and security are filed at high priority, so the reactor is woken at once;
  * - everything else is filed exactly as before.
  *
- * No key, an error, or an unsure answer all mean today's behaviour for that report.
+ * No key, an error, or an unsure or declined answer all mean today's behaviour for that report.
  */
 
 /** Registered on the Mastra instance under this key, so Studio shows its evaluations. */
@@ -206,7 +206,7 @@ export async function classifyRelevance(
   classifier: Classifier,
   subject: RelevanceSubject,
 ): Promise<ChangeRelevance | undefined> {
-  const { answers } = await classifier.evaluate({
+  const { answers } = await classifier.decide({
     state: subject.description,
     questions: changeRelevanceQuestions(),
   });

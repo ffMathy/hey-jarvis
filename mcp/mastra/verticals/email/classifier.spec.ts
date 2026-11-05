@@ -135,7 +135,7 @@ function fakeClassifier(answersFor: (state: unknown) => EmailTriageAnswers | Err
       provider: 'fake',
       modelId: 'jev-fake',
       supportedQuestionTypes: ['choice', 'score'],
-      doEvaluate: async ({ state }) => {
+      doDecide: async ({ state }) => {
         evaluatedStates.push(state);
         const result = answersFor(state);
         if (result instanceof Error) {

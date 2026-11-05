@@ -202,7 +202,7 @@ function fakeClassifier(probabilities: Record<string, number> | Error) {
       provider: 'fake',
       modelId: 'jev-fake',
       supportedQuestionTypes: ['boolean'],
-      doEvaluate: async ({ state, questions }) => {
+      doDecide: async ({ state, questions }) => {
         evaluatedStates.push(state);
         if (probabilities instanceof Error) {
           throw probabilities;

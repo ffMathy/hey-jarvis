@@ -1,13 +1,13 @@
 import type { BooleanQuestion, Classifier, ClassifierAnswers } from '@mastra/core/classifier';
 import { z } from 'zod';
-import { createLazyClassifier } from '../../utils/index.js';
+import { confidentBoolean, createLazyClassifier } from '../../utils/index.js';
 
 /**
  * The fast path in front of the email parsing agent.
  *
  * Most of the questions this vertical emails are yes-or-no: approve the budget, confirm the order.
  * Reading "yeah fine, go ahead" into `{ approved: true }` is not something a language model has to
- * write -- it is a yes/no question about the reply, which is exactly what an evaluation model (Jev,
+ * write -- it is a yes/no question about the reply, which is exactly what a decision model (Jev,
  * see `utils/providers/typesafe-provider.ts`) answers, in one short call that returns a probability
  * instead of a generation.
  *
@@ -16,7 +16,8 @@ import { createLazyClassifier } from '../../utils/index.js';
  * about something else. A reply the classifier is sure of in every respect becomes the answer
  * without the model; a reply it is sure does not decide anything is refused the same way the
  * model's unusable answers are, so the request stays open. Anything else -- an answer that needs a
- * vendor's name or a free-text justification, or a classifier that is not sure -- goes to the
+ * vendor's name or a free-text justification, or a classifier that is not sure or declines a
+ * question -- goes to the
  * model, exactly as before. Being wrong here records a decision nobody made, and being unsure
  * costs one model call, so the bar is set high.
  */
@@ -112,20 +113,6 @@ export function emailReplyQuestions(question: string, shape: BooleanReplyShape):
 
 export type EmailReplyAnswers = ClassifierAnswers<Record<string, BooleanQuestion>>;
 
-/** Reads a probability the classifier is sure of into yes or no, or into nothing when it is not. */
-function sureAnswer(probability: number | undefined): boolean | undefined {
-  if (probability === undefined) {
-    return undefined;
-  }
-  if (probability >= EMAIL_REPLY_CONFIDENCE) {
-    return true;
-  }
-  if (probability <= 1 - EMAIL_REPLY_CONFIDENCE) {
-    return false;
-  }
-  return undefined;
-}
-
 /**
  * Reads the classifier's answers into the reply's answer, a refusal, or nothing when the model
  * should read the reply instead.
@@ -139,7 +126,7 @@ export function classifiedEmailReplyFrom(
   shape: BooleanReplyShape,
   ownReplyText: string,
 ): ClassifiedEmailReply | undefined {
-  const decides = sureAnswer(answers[ANSWERS_THE_QUESTION]?.probability);
+  const decides = confidentBoolean(answers[ANSWERS_THE_QUESTION], EMAIL_REPLY_CONFIDENCE);
   if (decides === false) {
     return { kind: 'notAnAnswer', reason: 'the reply does not give a decision' };
   }
@@ -149,7 +136,7 @@ export function classifiedEmailReplyFrom(
 
   const response: Record<string, boolean | string> = {};
   for (const field of shape.booleanFields) {
-    const value = sureAnswer(answers[`${FIELD_QUESTION_PREFIX}${field.name}`]?.probability);
+    const value = confidentBoolean(answers[`${FIELD_QUESTION_PREFIX}${field.name}`], EMAIL_REPLY_CONFIDENCE);
     if (value === undefined) {
       return undefined;
     }
@@ -191,7 +178,7 @@ export async function classifyEmailReply(
     return undefined;
   }
 
-  const { answers } = await classifier.evaluate({
+  const { answers } = await classifier.decide({
     state: replyText,
     questions: emailReplyQuestions(question, shape),
   });

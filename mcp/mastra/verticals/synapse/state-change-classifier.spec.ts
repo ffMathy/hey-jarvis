@@ -197,7 +197,7 @@ describe('assessStateChange', () => {
         provider: 'fake',
         modelId: 'jev-fake',
         supportedQuestionTypes: ['score', 'boolean'],
-        doEvaluate: async ({ state, questions }) => {
+        doDecide: async ({ state, questions }) => {
           evaluated.push({ state, questionIds: Object.keys(questions) });
           return {
             answers: {

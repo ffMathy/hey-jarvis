@@ -1,5 +1,5 @@
 import type { Classifier, ClassifierAnswers } from '@mastra/core/classifier';
-import { createLazyClassifier } from '../../utils/index.js';
+import { createLazyClassifier, probabilityOfYes } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
 import { readProseQuestion } from './session-questions.js';
 
@@ -12,10 +12,11 @@ import { readProseQuestion } from './session-questions.js';
  * its half-done work is published, and the question never reaches anybody.
  *
  * Whether a message ends by waiting on a decision is a yes-or-no question about it, which is what
- * an evaluation model (Jev, see `utils/providers/typesafe-provider.ts`) answers in one short call.
+ * a decision model (Jev, see `utils/providers/typesafe-provider.ts`) answers in one short call.
  * So a turn that ends without the block is put to it, and one it is sure is waiting on the user is
- * asked the way a fenced question is. Anything it is not sure of is treated as finished, exactly as
- * before -- which costs no more than a question asked in the wrong format always did.
+ * asked the way a fenced question is. Anything it is not sure of, or declines to answer, is treated
+ * as finished, exactly as before -- which costs no more than a question asked in the wrong format
+ * always did.
  */
 
 /** Registered on the Mastra instance under this key, so Studio shows its evaluations. */
@@ -45,10 +46,11 @@ export type SessionQuestionAnswers = ClassifierAnswers<ReturnType<typeof session
 /**
  * Reads the classifier's answer into whether the message waits on the user.
  *
- * Pure, so the bar can be tested without a model.
+ * Pure, so the bar can be tested without a model. A question the model declined reads as finished,
+ * like one it is unsure of.
  */
 export function endsOnProseQuestion(answers: SessionQuestionAnswers): boolean {
-  return answers.asksForDecision.probability > PROSE_QUESTION_CONFIDENCE;
+  return (probabilityOfYes(answers.asksForDecision) ?? 0) > PROSE_QUESTION_CONFIDENCE;
 }
 
 /**
@@ -69,7 +71,7 @@ export async function classifyProseQuestion(classifier: Classifier, finalMessage
     return undefined;
   }
 
-  const { answers } = await classifier.evaluate({ state: finalMessage, questions: sessionQuestionQuestions() });
+  const { answers } = await classifier.decide({ state: finalMessage, questions: sessionQuestionQuestions() });
 
   return endsOnProseQuestion(answers) ? question : undefined;
 }

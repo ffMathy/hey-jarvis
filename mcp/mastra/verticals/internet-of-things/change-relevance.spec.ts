@@ -62,7 +62,7 @@ function fakeClassifier(respond: (state: unknown) => ChangeRelevance | Error, co
       provider: 'fake',
       modelId: 'jev-fake',
       supportedQuestionTypes: ['choice'],
-      doEvaluate: async ({ state }) => {
+      doDecide: async ({ state }) => {
         evaluatedStates.push(state);
         const response = respond(state);
         if (response instanceof Error) {

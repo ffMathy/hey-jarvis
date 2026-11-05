@@ -357,7 +357,7 @@ describe('runHomeCommand', () => {
         provider: 'fake',
         modelId: 'jev-fake',
         supportedQuestionTypes: ['choice', 'boolean'],
-        doEvaluate: async ({ questions }) => {
+        doDecide: async ({ questions }) => {
           const entityKeys = Object.keys(questions).filter((key) => questions[key]?.type === 'boolean');
           return {
             answers: Object.fromEntries(

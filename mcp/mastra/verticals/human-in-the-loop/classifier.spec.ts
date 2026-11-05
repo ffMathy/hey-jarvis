@@ -46,7 +46,7 @@ function fakeClassifier(probabilities: Record<string, number>) {
       provider: 'fake',
       modelId: 'jev-fake',
       supportedQuestionTypes: ['boolean'],
-      doEvaluate: async ({ state, questions }) => {
+      doDecide: async ({ state, questions }) => {
         evaluated.push({ state, questions });
         return {
           answers: Object.fromEntries(

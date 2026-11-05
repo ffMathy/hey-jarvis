@@ -340,7 +340,7 @@ export async function runHomeCommand(
     return undefined;
   }
 
-  const { answers } = await classifier.evaluate({
+  const { answers } = await classifier.decide({
     state: command,
     questions: {
       ...homeServiceQuestion(offered),
@@ -570,7 +570,7 @@ export async function answerHomeQuestion(
     return undefined;
   }
 
-  const { answers } = await classifier.evaluate({
+  const { answers } = await classifier.decide({
     state: question,
     questions: entityQuestions(`The question "${question}" is about the house. Is it about`, entities),
     maxRetries: 0,

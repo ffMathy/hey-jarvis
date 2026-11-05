@@ -27,6 +27,9 @@ const CUCUMBER = { objectID: '101', name: 'Agurk', brand: 'Øko', size: '1 stk' 
 const MINI_CUCUMBERS = { objectID: '102', name: 'Snackagurker', brand: 'Salling', size: '250 g' };
 const MILK_IN_BASKET = { objectID: '201', name: 'Letmælk', brand: 'Arla', size: '1 l', basketQuantity: 1 };
 
+/** How a decision model answers a question it declines. */
+const REFUSAL = { type: 'refusal' } as const;
+
 function requested(overrides: Partial<RequestedProduct> = {}): RequestedProduct {
   return { operationType: 'set', name: 'agurk', quantity: 2, unitType: 'stk', ...overrides };
 }
@@ -93,6 +96,10 @@ describe('productChoiceFrom', () => {
   it('never picks a product that was not a candidate', () => {
     expect(productChoiceFrom(productAnswer('102', 0.95), new Set(['101']))).toBeUndefined();
   });
+
+  it('leaves the item to the agent when Jev refuses to choose', () => {
+    expect(productChoiceFrom({ product: REFUSAL }, CANDIDATE_IDS)).toBeUndefined();
+  });
 });
 
 describe('applicableProductChoices', () => {
@@ -108,10 +115,14 @@ describe('applicableProductChoices', () => {
 });
 
 /**
- * A product choice classifier on a fake evaluation model. It picks `choiceFor(state)` at
- * `confidence` over whatever options it was offered, or throws when that is an error.
+ * A product choice classifier on a fake decision model. It picks `choiceFor(state)` at
+ * `confidence` over whatever options it was offered, declines when that is a refusal, or throws
+ * when that is an error.
  */
-function fakeProductClassifier(choiceFor: (state: unknown) => string | Error, confidence = 0.95) {
+function fakeProductClassifier(
+  choiceFor: (state: unknown) => string | typeof REFUSAL | Error,
+  confidence = 0.95,
+) {
   const evaluated: { state: unknown; options: string[] }[] = [];
   const classifier = new Classifier({
     id: 'productChoiceClassifier',
@@ -120,7 +131,7 @@ function fakeProductClassifier(choiceFor: (state: unknown) => string | Error, co
       provider: 'fake',
       modelId: 'jev-fake',
       supportedQuestionTypes: ['choice'],
-      doEvaluate: async ({ state, questions }) => {
+      doDecide: async ({ state, questions }) => {
         const question = questions.product;
         const options = question?.type === 'choice' ? Object.keys(question.criteria) : [];
         evaluated.push({ state, options });
@@ -129,10 +140,11 @@ function fakeProductClassifier(choiceFor: (state: unknown) => string | Error, co
         if (choice instanceof Error) {
           throw choice;
         }
-        return {
-          answers: { product: { type: 'choice', choice, probabilities: distribution(options, choice, confidence) } },
-          warnings: [],
-        };
+        const product =
+          typeof choice === 'string'
+            ? { type: 'choice' as const, choice, probabilities: distribution(options, choice, confidence) }
+            : choice;
+        return { answers: { product }, warnings: [] };
       },
     },
   });
@@ -156,7 +168,13 @@ describe('chooseProducts', () => {
     expect(choices).toEqual([{ product: cucumbers, candidate: CUCUMBER }]);
     expect(evaluated).toEqual([
       {
-        state: { requestedProduct: { name: 'agurk', quantity: 2, unit: 'stk' }, userRequest: 'to agurker tak' },
+        // The model is handed the state as one JSON part, which is how the classifier passes on an object.
+        state: [
+          {
+            type: 'json',
+            value: { requestedProduct: { name: 'agurk', quantity: 2, unit: 'stk' }, userRequest: 'to agurker tak' },
+          },
+        ],
         // Object ids are integer-like keys, which JavaScript orders numerically whatever the insertion order.
         options: ['101', '102', '201', 'none'],
       },
@@ -171,12 +189,15 @@ describe('chooseProducts', () => {
     expect(choices.map(({ candidate }) => candidate)).toEqual([MILK_IN_BASKET]);
   });
 
-  it('leaves an item to the agent when it is unsure or answers none', async () => {
+  it('leaves an item to the agent when it is unsure, answers none, or refuses to choose', async () => {
     const unsure = fakeProductClassifier(() => '101', PRODUCT_CHOICE_CONFIDENCE - 0.05);
     const none = fakeProductClassifier(() => 'none');
+    const refused = fakeProductClassifier(() => REFUSAL);
 
     expect(await chooseProducts([requested()], 'agurk', [], searchCatalogue, unsure.classifier)).toEqual([]);
     expect(await chooseProducts([requested()], 'agurk', [], searchCatalogue, none.classifier)).toEqual([]);
+    expect(await chooseProducts([requested()], 'agurk', [], searchCatalogue, refused.classifier)).toEqual([]);
+    expect(refused.evaluated).toHaveLength(1);
   });
 
   it('leaves an item to the agent when its search finds nothing or fails, without asking', async () => {
@@ -208,8 +229,8 @@ describe('chooseProducts', () => {
   });
 });
 
-/** An order change classifier on a fake evaluation model, answering yes with `probability`. */
-function fakeOrderChangeClassifier(probability: number) {
+/** An order change classifier on a fake decision model, answering yes with `probability`, or refusing. */
+function fakeOrderChangeClassifier(probability: number | typeof REFUSAL) {
   const evaluatedStates: unknown[] = [];
   const classifier = new Classifier({
     id: 'orderChangeClassifier',
@@ -218,9 +239,11 @@ function fakeOrderChangeClassifier(probability: number) {
       provider: 'fake',
       modelId: 'jev-fake',
       supportedQuestionTypes: ['boolean'],
-      doEvaluate: async ({ state }) => {
+      doDecide: async ({ state }) => {
         evaluatedStates.push(state);
-        return { answers: { reportsOrderChange: { type: 'boolean', probability } }, warnings: [] };
+        const reportsOrderChange =
+          typeof probability === 'number' ? { type: 'boolean' as const, probability } : probability;
+        return { answers: { reportsOrderChange }, warnings: [] };
       },
     },
   });
@@ -233,6 +256,7 @@ describe('orderChangeFrom', () => {
     expect(
       orderChangeFrom({ reportsOrderChange: { type: 'boolean', probability: ORDER_CHANGE_CONFIDENCE - 0.01 } }),
     ).toBe(false);
+    expect(orderChangeFrom({ reportsOrderChange: REFUSAL })).toBe(false);
   });
 });
 
@@ -243,11 +267,12 @@ describe('reportsOrderChange', () => {
     const { classifier, evaluatedStates } = fakeOrderChangeClassifier(0.94);
 
     expect(await reportsOrderChange(EMAIL, classifier)).toBe(true);
-    expect(evaluatedStates).toEqual([EMAIL]);
+    expect(evaluatedStates).toEqual([[{ type: 'json', value: EMAIL }]]);
   });
 
-  it('says no when it is not sure', async () => {
+  it('says no when it is not sure, or refuses to say', async () => {
     expect(await reportsOrderChange(EMAIL, fakeOrderChangeClassifier(0.5).classifier)).toBe(false);
+    expect(await reportsOrderChange(EMAIL, fakeOrderChangeClassifier(REFUSAL).classifier)).toBe(false);
   });
 
   it('says no without a classifier, as a missed subject always did', async () => {
