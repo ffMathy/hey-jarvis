@@ -16,6 +16,7 @@ Each topic is a rule of its own, under the same paths:
 - [Current Agents](mcp-current-agents.md)
 - [Available Workflows](mcp-available-workflows.md)
 - [Jev Classifiers](mcp-jev-classifiers.md)
+- [Knowledge](mcp-knowledge.md)
 - [Processors](mcp-processors.md)
 - [Agent-as-Step and Tool-as-Step Patterns](mcp-agent-as-step-and-tool-as-step-patterns.md)
 - [Development](mcp-development.md)

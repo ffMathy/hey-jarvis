@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'bun:test';
-import type { EmbeddedSubscription } from '../../storage/subscriptions.js';
 import { embedText } from '../../utils/static-embedder.js';
 import { describeStateChange } from './state-change.js';
-import { DEFAULT_MINIMUM_SCORE, formatSubscriptionMatches, rankSubscriptions } from './subscription-matcher.js';
+import type { EmbeddedSubscription } from './subscription-matcher.js';
+import {
+  DEFAULT_MINIMUM_SCORE,
+  embedSubscriptions,
+  formatSubscriptionMatches,
+  rankSubscriptions,
+} from './subscription-matcher.js';
+import type { Subscription } from './subscription-store.js';
 
 interface SubscriptionDraft {
   whenEvent: string;
@@ -29,8 +35,8 @@ async function embedSubscription(draft: SubscriptionDraft, index: number): Promi
     whenEmbedding: await embedText(draft.whenEvent),
     givenEmbedding: draft.givenCondition ? await embedText(draft.givenCondition) : null,
     // These fixtures score the literal phrasing only, so no alternate is supplied.
-    whenAltEmbedding: null,
-    givenAltEmbedding: null,
+    whenAlternateEmbedding: null,
+    givenAlternateEmbedding: null,
   };
 }
 
@@ -131,6 +137,55 @@ describe('rankSubscriptions', () => {
     expect(sunset.map((match) => match.subscription.id)).toEqual(['subscription-0']);
     expect(home.map((match) => match.subscription.id)).toEqual(['subscription-1']);
     expect(DEFAULT_MINIMUM_SCORE).toBeGreaterThan(0);
+  });
+});
+
+describe('embedSubscriptions', () => {
+  /** A subscription as the store hands it back, to be embedded. */
+  function stored(id: string, whenEvent: string, givenCondition?: string): Subscription {
+    return {
+      id,
+      source: 'user',
+      whenEvent,
+      givenCondition,
+      thenAction: 'tell me',
+      oneShot: false,
+      enabled: true,
+      createdAt: new Date().toISOString(),
+      lastTriggeredAt: null,
+      triggerCount: 0,
+      maxTriggerCount: null,
+      expiresAt: null,
+    };
+  }
+
+  it('embeds each phrasing as the static embedder does, and the first-person one in the third person too', async () => {
+    const [embedded] = await embedSubscriptions([stored('home', 'I get home', 'the lights are on')]);
+
+    expect(Array.from(embedded?.whenEmbedding ?? [])).toEqual(Array.from(await embedText('I get home')));
+    expect(Array.from(embedded?.whenAlternateEmbedding ?? [])).toEqual(
+      Array.from(await embedText('a person get home')),
+    );
+    expect(Array.from(embedded?.givenEmbedding ?? [])).toEqual(Array.from(await embedText('the lights are on')));
+    expect(embedded?.givenAlternateEmbedding).toBeNull();
+  });
+
+  it('embeds two different sets at the same time, as two state changes matched together do', async () => {
+    // Each call keeps only its own phrasings in the shared store of embeddings, so one can drop a
+    // phrasing the other is in the middle of using.
+    const sunset = [stored('sunset', 'the sun goes down')];
+    const doorbell = [stored('doorbell', 'the doorbell rings', 'nobody is home')];
+    // Embedded once already, so a call finds the sunset's phrasings kept and only waits on the
+    // embedder while the other call drops them.
+    await embedSubscriptions(sunset);
+
+    const embedded = await Promise.all(
+      Array.from({ length: 20 }, (_, index) => embedSubscriptions(index % 2 === 0 ? sunset : doorbell)),
+    );
+
+    expect(embedded.map((subscriptions) => subscriptions.map((subscription) => subscription.id))).toEqual(
+      Array.from({ length: 20 }, (_, index) => [index % 2 === 0 ? 'sunset' : 'doorbell']),
+    );
   });
 });
 

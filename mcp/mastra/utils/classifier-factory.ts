@@ -1,5 +1,5 @@
 import { Classifier } from '@mastra/core/classifier';
-import { getEvaluationModel, isEvaluationModelConfigured } from './providers/typesafe-provider.js';
+import { getDecisionModel, isDecisionModelConfigured } from './providers/typesafe-provider.js';
 
 /**
  * Builds a classifier on Jev, or nothing when there is no key to run one with.
@@ -11,11 +11,11 @@ import { getEvaluationModel, isEvaluationModelConfigured } from './providers/typ
  * still waiting on the user.
  */
 export function createClassifier(id: string): Classifier | undefined {
-  if (!isEvaluationModelConfigured()) {
+  if (!isDecisionModelConfigured()) {
     return undefined;
   }
 
-  return new Classifier({ id, model: getEvaluationModel() });
+  return new Classifier({ id, model: getDecisionModel() });
 }
 
 /**

@@ -26,10 +26,12 @@ Provides cooking, recipe search and meal planning capabilities:
 - **General purpose**: Handles recipe search, information retrieval, and general cooking questions
 - **Meal planning**: Hands meal plans to `generateMealPlanWorkflow`, whose specialized agents pick, schedule and format the week's dinners
 - **The baby**: Suggests and plans dinners the household's baby can share at its age, following the Danish Health Authority's "Mad til små" (see [The Baby's Share of the Dinner](mcp-cooking-baby-food.md))
+- **The household's dinner conventions**: Read from Knowledge (`conventions:home#cooking`) on every request, by it and by the meal plan's recipe selector; a lasting dinner convention sir states becomes a note there (see [The Household's Dinner Conventions](mcp-cooking-dinner-conventions.md))
 
 ## Split into its own rules
 
 - [The Baby's Share of the Dinner](mcp-cooking-baby-food.md)
+- [The Household's Dinner Conventions](mcp-cooking-dinner-conventions.md)
 - [Shopping List Agent](mcp-shopping-list-agent.md)
 - [Notification Agent](mcp-notification-agent.md)
 - [Presence Vertical (Shortcuts Only)](mcp-presence-vertical-shortcuts-only.md)

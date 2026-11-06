@@ -1,19 +1,24 @@
 /**
  * The meal plan, run for real on a Mastra instance, with only the outside world faked: Valdemarsro
- * at `fetch`, and the model as a script that records what each agent is told.
+ * at `fetch`, the model as a script that records what each agent is told, and Jarvis's Knowledge on
+ * a store of its own.
  *
  * What it pins is that the baby reaches the agents as old as it is on the day the plan is made,
- * not as old as it was when the server started — the server stays up for days — and that a
- * household without a baby gets a plan with no baby in it.
+ * not as old as it was when the server started — the server stays up for days — that a household
+ * without a baby gets a plan with no baby in it, and that the recipe selector keeps to the
+ * household's dinner conventions, including one the household added after the server started.
  *
  * The birth date here is made up. The household's own is kept in 1Password, never in the repository.
  */
 
 import { afterEach, beforeEach, describe, expect, it, setSystemTime } from 'bun:test';
 import { Mastra } from '@mastra/core';
+import { InMemoryStore } from '@mastra/core/storage';
 import { fakeValdemarsro, valdemarsroRecipe } from '../../../tests/utils/fake-valdemarsro.js';
 import { createScriptedModel } from '../../../tests/utils/scripted-model.js';
+import { CONVENTIONS_SCOPE, createJarvisKnowledge } from '../../knowledge/index.js';
 import { BABY_BIRTH_DATE_VARIABLE } from './baby-food.js';
+import { cookingConventions } from './conventions.js';
 import { resetCookingCachesForTest } from './tools.js';
 import { buildGenerateMealPlanWorkflow } from './workflows.js';
 
@@ -49,7 +54,9 @@ function mealPlanHarness() {
       ? { text: JSON.stringify({ selectedRecipeIds: [1, 2] }) }
       : { text: JSON.stringify(scheduledPlan) },
   );
-  const mastra = new Mastra({ workflows: { generateMealPlanWorkflow: buildGenerateMealPlanWorkflow(scripted.model) } });
+  const knowledge = createJarvisKnowledge(new InMemoryStore());
+  const workflow = buildGenerateMealPlanWorkflow(scripted.model, async () => knowledge);
+  const mastra = new Mastra({ workflows: { generateMealPlanWorkflow: workflow } });
 
   /** Makes the meal plan as if it were `instant`, and returns what each agent was told. */
   async function planAt(instant: string) {
@@ -66,7 +73,7 @@ function mealPlanHarness() {
     return { result, selector: toldTo(SELECTOR_INSTRUCTIONS), scheduler: toldTo(SCHEDULER_INSTRUCTIONS) };
   }
 
-  return { planAt };
+  return { planAt, knowledge };
 }
 
 describe('generateMealPlanWorkflow', () => {
@@ -141,6 +148,28 @@ describe('generateMealPlanWorkflow', () => {
       expect(toldTo).not.toContain('# The baby');
       expect(toldTo).not.toContain('Til baby');
     }
+  });
+
+  it("tells the selector the household's dinner conventions, and a convention the household added since", async () => {
+    delete process.env[BABY_BIRTH_DATE_VARIABLE];
+    const { planAt, knowledge } = mealPlanHarness();
+
+    const before = await planAt('2026-11-01T06:00:00Z');
+    // What the cooking agent's knowledge_note writes when sir states a lasting dinner convention.
+    await knowledge.addNote({
+      scope: CONVENTIONS_SCOPE,
+      path: cookingConventions.key,
+      text: 'Leave mushrooms out of the dinners.',
+      when: new Date('2026-11-03T18:00:00.000Z'),
+    });
+    const after = await planAt('2026-11-08T06:00:00Z');
+
+    expect(before.result.status).toBe('success');
+    expect(before.selector).toContain('Avoid weird soups, such as "burgersuppe", "tacosuppe" and "lasagnesuppe".');
+    expect(before.selector).not.toContain('mushrooms');
+    expect(after.result.status).toBe('success');
+    expect(after.selector).toContain(cookingConventions.body);
+    expect(after.selector).toContain('- 2026-11-03: Leave mushrooms out of the dinners.');
   });
 
   it('fails rather than plan for adults when the birth date cannot be read', async () => {

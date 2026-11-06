@@ -187,7 +187,7 @@ export async function assessStateChange(
   change: StateChange,
   matches: SubscriptionMatch[],
 ): Promise<StateChangeAssessment> {
-  const { answers } = await classifier.evaluate({
+  const { answers } = await classifier.decide({
     state: `${change.stateType} from ${change.source}: ${JSON.stringify(change.stateData)}`,
     questions: stateChangeQuestions(matches),
   });

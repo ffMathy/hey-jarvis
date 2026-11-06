@@ -47,7 +47,7 @@ The common shapes — a location before a weather lookup, a recipe before a remi
 and pay nothing for it.
 
 **Most requests skip the planner.** A Jev classifier (`routing/classifier.ts`, on TypeSafe AI's
-evaluation model through Mastra's `Classifier`) is asked first, before any language model: which
+decision model through Mastra's `Classifier`) is asked first, before any language model: which
 single agent can carry out the whole request as it was said — or `several`, or `none` — and how
 the answer should sound. When it is at least `FAST_PATH_CONFIDENCE` sure of one agent, the planner
 is never called and that agent gets the user's own words as its prompt. Only when Jev gives up is

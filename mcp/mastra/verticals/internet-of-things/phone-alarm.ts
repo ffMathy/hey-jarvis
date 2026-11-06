@@ -1,6 +1,6 @@
 import type { ClassifierAnswers } from '@mastra/core/classifier';
 import { createDirectCommand, type DirectCommandContext } from '../../utils/direct-lookup-factory.js';
-import { confidentChoice } from '../../utils/index.js';
+import { confidentBoolean, confidentChoice } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
 import { setPhoneAlarm } from '../notification/tools.js';
 import { getHomeCommandClassifier } from './home-commands.js';
@@ -105,12 +105,15 @@ export interface AlarmTime {
 /**
  * Reads the classifier's answers into when the alarm rings, or into nothing when the agent should
  * set it. Pure, so every way of declining can be tested without a model or a phone.
+ *
+ * It takes a sure yes that the time was said as a time of day, and a sure no that the alarm was
+ * named; anything else, a question Jev declined included, leaves the alarm to the agent.
  */
 export function alarmTimeFrom(answers: PhoneAlarmTimeAnswers, minimumConfidence: number): AlarmTime | undefined {
-  if (answers.alarmGivenAsTimeOfDay.probability < minimumConfidence) {
+  if (confidentBoolean(answers.alarmGivenAsTimeOfDay, minimumConfidence) !== true) {
     return undefined;
   }
-  if (answers.alarmHasLabel.probability > 1 - minimumConfidence) {
+  if (confidentBoolean(answers.alarmHasLabel, minimumConfidence) !== false) {
     return undefined;
   }
 
@@ -141,7 +144,7 @@ export async function setPhoneAlarmDirectly(
     return undefined;
   }
 
-  const { answers } = await classifier.evaluate({
+  const { answers } = await classifier.decide({
     state: request,
     questions: phoneAlarmTimeQuestions(),
     // A failed call hands the request to the agent, so retrying would only delay that.

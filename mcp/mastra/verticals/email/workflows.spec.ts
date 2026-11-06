@@ -485,14 +485,8 @@ describe('processFormReplies', () => {
     expect(finished?.result).toEqual({ approved: true });
   });
 
-  it('resumes a question asked by a scheduled run, whose subject names a nested run', async () => {
-    // The scheduler starts runs on Mastra's evented engine, which gives every nested
-    // workflow a run id of its own. The send-and-wait step writes that child id into the
-    // subject, and no registered workflow owns it, so the reply used to be dropped with
-    // "No workflow run with id ... was found" -- every weekly meal plan reply, every week.
+  it('resumes a question asked by a scheduled run', async () => {
     const scheduledRunId = await startScheduledLoop();
-
-    expect(parseFormRequestSubject(sentEmails[0].subject)?.runId).not.toBe(scheduledRunId);
 
     stagedAnswer = { approved: false, comments: 'swap the fish' };
     const firstSummary = await processReplies([
@@ -511,6 +505,36 @@ describe('processFormReplies', () => {
     const finished = await mastra.getWorkflow('loopUntilApprovedWorkflow').getWorkflowRunById(scheduledRunId);
     expect(finished?.status).toBe('success');
     expect(finished?.result).toEqual({ approved: true });
+  });
+
+  it('finds the run by its request when the subject names a run nobody owns', async () => {
+    // Before @mastra/core 1.82 the scheduler's evented engine gave every nested workflow a run
+    // id of its own, so the send-and-wait step inside the weekly meal plan wrote a child run's
+    // id into the subject, and no registered workflow owns that one. Such a reply used to be
+    // dropped with "No workflow run with id ... was found" -- every weekly meal plan reply,
+    // every week. Emails sent then still carry one, so the run is found by the request instead.
+    const scheduledRunId = await startScheduledLoop();
+    const asked = parseFormRequestSubject(sentEmails[0]?.subject ?? '');
+    if (!asked) {
+      throw new Error('The request email carries no run and request token.');
+    }
+
+    stagedAnswer = { approved: true };
+    const summary = await processReplies([
+      inboundReply({
+        subject: `Re: ${buildFormRequestSubject({
+          runId: 'a-nested-run-no-workflow-owns',
+          requestId: asked.requestId,
+          question: 'Approve the budget?',
+        })}`,
+        from: 'boss@example.com',
+        content: 'OK',
+      }),
+    ]);
+
+    expect(summary).toMatchObject({ workflowsResumed: 1, repliesRejected: 0, errors: [] });
+    const finished = await mastra.getWorkflow('loopUntilApprovedWorkflow').getWorkflowRunById(scheduledRunId);
+    expect(finished?.status).toBe('success');
   });
 
   it('still refuses a reply from the wrong sender when the run is found by its request', async () => {

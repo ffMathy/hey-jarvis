@@ -1,5 +1,4 @@
 import { createMemory } from '../../memory/index.js';
-import { getSubscriptionStorage } from '../../storage/index.js';
 import { logger } from '../../utils/logger.js';
 import { embedTexts } from '../../utils/static-embedder.js';
 import type { ToolMastra } from '../../utils/tool-factory.js';
@@ -12,7 +11,13 @@ import {
   type StateChangePriority,
   triageStateChange,
 } from './state-change-classifier.js';
-import { formatSubscriptionMatches, rankSubscriptions, type SubscriptionMatch } from './subscription-matcher.js';
+import {
+  formatSubscriptionMatches,
+  loadEmbeddedSubscriptions,
+  rankSubscriptions,
+  type SubscriptionMatch,
+} from './subscription-matcher.js';
+import { getSubscriptionStore } from './subscription-store.js';
 
 export type { StateChange } from './state-change.js';
 
@@ -98,12 +103,12 @@ function buildDedupeKey(change: StateChange): string {
  * `state-change-classifier.ts`), so it decides whether a model is paid for in the first place.
  */
 async function matchSubscriptions(change: StateChange): Promise<SubscriptionMatch[]> {
-  const storage = await getSubscriptionStorage();
+  const store = await getSubscriptionStore();
 
   // Housekeeping on the way past. Lapsed subscriptions are already filtered out of
-  // matching, so this only reclaims rows -- but it is a single DELETE against a table
-  // with tens of rows, and this is the moment it is cheapest to do.
-  const pruned = await storage.pruneExpired();
+  // matching, so this only reclaims their pages -- tens of them at most, read anyway
+  // to match against, and this is the moment it is cheapest to do.
+  const pruned = await store.pruneExpired();
   if (pruned.length > 0) {
     logger.info('Pruned lapsed subscriptions', {
       count: pruned.length,
@@ -111,7 +116,7 @@ async function matchSubscriptions(change: StateChange): Promise<SubscriptionMatc
     });
   }
 
-  const subscriptions = await storage.getAllEmbedded();
+  const subscriptions = await loadEmbeddedSubscriptions();
   if (subscriptions.length === 0) {
     return [];
   }

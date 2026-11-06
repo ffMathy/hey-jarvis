@@ -73,4 +73,13 @@ describe('homeDirectAnswers', () => {
     expect(choose({ homeDomain: sure('lock'), homeQuestionIsAboutNow: probably(0.2) }, QUESTION)).toBeUndefined();
     expect(choose({ homeDomain: sure('lock', 0.6), homeQuestionIsAboutNow: probably(0.97) }, QUESTION)).toBeUndefined();
   });
+
+  it('leaves a command or a question to the agent when Jev refused any of its questions', () => {
+    const refusal = { type: 'refusal' } as const;
+
+    expect(choose({ homeDomain: refusal, homeCommandGivesSetting: probably(0.02) }, COMMAND)).toBeUndefined();
+    expect(choose({ homeDomain: sure('light'), homeCommandGivesSetting: refusal }, COMMAND)).toBeUndefined();
+    expect(choose({ homeDomain: refusal, homeQuestionIsAboutNow: probably(0.97) }, QUESTION)).toBeUndefined();
+    expect(choose({ homeDomain: sure('lock'), homeQuestionIsAboutNow: refusal }, QUESTION)).toBeUndefined();
+  });
 });

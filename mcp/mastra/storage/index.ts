@@ -7,11 +7,11 @@ import { DeviceStateStorage } from './device-state.js';
 import { EmailStateStorage } from './email-state.js';
 import { EntityNoiseBaselineStorage } from './entity-noise-baseline.js';
 import { ImportantChangeStorage } from './important-changes.js';
+import { LegacySubscriptionTable } from './legacy-subscriptions.js';
 import { withFallbacks } from './observability.js';
 import { ObservabilityLogStorage } from './observability-logs.js';
 import { PairedDeviceStorage } from './paired-devices.js';
 import { SQLITE_BUSY_TIMEOUT_MS } from './sqlite-client.js';
-import { SubscriptionStorage } from './subscriptions.js';
 import { TokenUsageStorage } from './token-usage.js';
 
 // Use HEY_JARVIS_STORAGE_PATH environment variable if set, otherwise use local mcp/ directory
@@ -206,14 +206,15 @@ export async function getTokenUsageStorage(): Promise<TokenUsageStorage> {
   return tokenUsageStorageInstance;
 }
 
-let subscriptionStorageInstance: SubscriptionStorage | null = null;
+let legacySubscriptionTableInstance: LegacySubscriptionTable | null = null;
 
-export async function getSubscriptionStorage(): Promise<SubscriptionStorage> {
-  if (!subscriptionStorageInstance) {
+/** The table synapse subscriptions were kept in before Knowledge; see `legacy-subscriptions.ts`. */
+export async function getLegacySubscriptionTable(): Promise<LegacySubscriptionTable> {
+  if (!legacySubscriptionTableInstance) {
     await ensureDatabaseDirectory();
-    subscriptionStorageInstance = new SubscriptionStorage(getSqlDatabasePath());
+    legacySubscriptionTableInstance = new LegacySubscriptionTable(getSqlDatabasePath());
   }
-  return subscriptionStorageInstance;
+  return legacySubscriptionTableInstance;
 }
 
 let entityNoiseBaselineStorageInstance: EntityNoiseBaselineStorage | null = null;
@@ -255,16 +256,9 @@ export {
   type NoiseAnalysisResult,
 } from './entity-noise-baseline.js';
 export { type ImportantChange, ImportantChangeStorage } from './important-changes.js';
+export { type LegacySubscription, LegacySubscriptionTable } from './legacy-subscriptions.js';
 export { ObservabilityLogStorage } from './observability-logs.js';
 export { type PairedDevice, PairedDeviceStorage } from './paired-devices.js';
-export {
-  type EmbeddedSubscription,
-  type NewSubscription,
-  type Subscription,
-  type SubscriptionComponents,
-  type SubscriptionEmbeddings,
-  SubscriptionStorage,
-} from './subscriptions.js';
 export {
   type QuotaInfo,
   type TokenUsageRecord,
