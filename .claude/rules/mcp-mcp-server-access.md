@@ -75,6 +75,13 @@ for a paired device; the device keeps a token of the server's own.
   alone Chrome blocked the 303 to `heyjarvis://` and the phone stayed on the page. Not `no-referrer`: under that a browser sends the
   form's `Origin` as `null`, and when the check read `Origin` first, every press from Chrome on
   Android was refused with "Pair your phone from the pairing page itself."
+- **A refused device is told why, for whoever cannot read the log.** The `401` carries the same
+  `details` as the log line below (`server`, `reason`, and `token` for an unknown one), and the apps
+  show them after `NO_LONGER_PAIRED_PROBLEM`: *"… (Server 1a2b3c4d: unknown token 9f3e12ab.)"*.
+  `GET /api/devices` carries the `server` that answered it and each device's `tokenFingerprint`. A
+  refusal under another server than the list's, or the list's server changing as it is reloaded, is
+  a second server; a refused fingerprint the list does not have is a token the device was not given
+  here; one it has, refused by the list's server, is the server losing what it stored.
 - **The log says which server paired a device and why one was refused.** `[API] Device paired` and
   `[API] Refused a device its conversation` both carry `server`, a short id drawn once per process,
   and `token`, the first 8 hex characters of the token's SHA-256 — never the token. A refusal's

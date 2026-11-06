@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'fs/promises';
 import type { Server } from 'http';
 import { tmpdir } from 'os';
 import path from 'path';
-import { PairedDeviceStorage } from '../../storage/paired-devices.js';
+import { PairedDeviceStorage, tokenFingerprint } from '../../storage/paired-devices.js';
 import { logger } from '../../utils/logger.js';
 import {
   type ConversationCredentialRequest,
@@ -16,7 +16,6 @@ import {
   PHONE_APP_PAIRED_URL,
   PHONE_PAIRING_ROUTE,
   registerPairedDeviceApi,
-  tokenFingerprint,
 } from './paired-devices.js';
 
 /** A fake of `fetch`: Bun's carries `preconnect` beside its call signature, so a bare function is not one. */
@@ -105,7 +104,16 @@ describe('pairing a device', () => {
     expect(data.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
 
     const listed = await (await fetch(`${baseUrl}${DEVICE_PAIRING_PATH}`)).json();
-    expect(listed.data).toEqual([{ id: data.id, name: 'Quest 3', pairedAt: expect.any(String), lastUsedAt: null }]);
+    expect(listed.data).toEqual([
+      {
+        id: data.id,
+        name: 'Quest 3',
+        pairedAt: expect.any(String),
+        lastUsedAt: null,
+        tokenFingerprint: tokenFingerprint(data.token),
+      },
+    ]);
+    expect(listed.server).toMatch(/^[0-9a-f]{8}$/);
     expect(JSON.stringify(listed)).not.toContain(data.token);
   });
 
@@ -184,6 +192,22 @@ describe('a paired device asking for a conversation', () => {
       paired.mockRestore();
       refused.mockRestore();
     }
+  });
+
+  it('tells a refused device why, and which server refused it, to set beside the device list', async () => {
+    const token = await pairedToken();
+    const madeUp = 'c'.repeat(43);
+
+    const refused = await askForConversation(madeUp, { transport: 'webrtc', participantName: 'jarvis-vr' });
+    const body = await refused.json();
+    const listed = await (await fetch(`${baseUrl}${DEVICE_PAIRING_PATH}`)).json();
+
+    expect(refused.status).toBe(401);
+    expect(body.details).toEqual({ reason: 'unknown token', token: tokenFingerprint(madeUp), server: listed.server });
+    expect(listed.data.map((device: { tokenFingerprint: string }) => device.tokenFingerprint)).toEqual([
+      tokenFingerprint(token),
+    ]);
+    expect(JSON.stringify(body)).not.toContain(madeUp);
   });
 
   it('is refused once it has been unpaired', async () => {

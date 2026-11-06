@@ -22,6 +22,8 @@ export interface PairedDevice {
   pairedAt: string;
   /** When the device last asked for a conversation, or null when it has not yet. */
   lastUsedAt: string | null;
+  /** The start of its token's hash ({@link tokenFingerprint}), to tell which token a device holds. */
+  tokenFingerprint: string;
 }
 
 /** How many random bytes a device token is made of: 256 bits. */
@@ -30,6 +32,28 @@ const TOKEN_BYTES = 32;
 /** The hash a token is looked up by. */
 function hashOf(token: string): string {
   return createHash('sha256').update(token).digest('hex');
+}
+
+/** How many hex characters of a token's hash name it: enough to tell tokens apart, never to present one. */
+const FINGERPRINT_LENGTH = 8;
+
+/**
+ * What a token is called wherever it has to be named — the device list, a refusal, the log: the start
+ * of its SHA-256, which says whether two tokens are the same and nothing that would let anyone use one.
+ */
+export function tokenFingerprint(token: string): string {
+  return hashOf(token).slice(0, FINGERPRINT_LENGTH);
+}
+
+/** A row of `paired_devices`, as the device it stands for. */
+function deviceOf(row: Record<string, unknown>): PairedDevice {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    pairedAt: String(row.paired_at),
+    lastUsedAt: row.last_used_at === null ? null : String(row.last_used_at),
+    tokenFingerprint: String(row.token_hash).slice(0, FINGERPRINT_LENGTH),
+  };
 }
 
 export class PairedDeviceStorage {
@@ -61,7 +85,13 @@ export class PairedDeviceStorage {
     await this.initialize();
 
     const token = randomBytes(TOKEN_BYTES).toString('base64url');
-    const device: PairedDevice = { id: randomUUID(), name, pairedAt: now.toISOString(), lastUsedAt: null };
+    const device: PairedDevice = {
+      id: randomUUID(),
+      name,
+      pairedAt: now.toISOString(),
+      lastUsedAt: null,
+      tokenFingerprint: tokenFingerprint(token),
+    };
     await this.client.execute({
       sql: 'INSERT INTO paired_devices (id, name, token_hash, paired_at, last_used_at) VALUES (?, ?, ?, ?, NULL)',
       args: [device.id, device.name, hashOf(token), device.pairedAt],
@@ -78,18 +108,13 @@ export class PairedDeviceStorage {
     await this.initialize();
 
     const result = await this.client.execute({
-      sql: 'UPDATE paired_devices SET last_used_at = ? WHERE token_hash = ? RETURNING id, name, paired_at, last_used_at',
+      sql: 'UPDATE paired_devices SET last_used_at = ? WHERE token_hash = ? RETURNING id, name, paired_at, last_used_at, token_hash',
       args: [now.toISOString(), hashOf(token)],
     });
     const [row] = result.rows;
     if (!row) return undefined;
 
-    return {
-      id: String(row.id),
-      name: String(row.name),
-      pairedAt: String(row.paired_at),
-      lastUsedAt: row.last_used_at === null ? null : String(row.last_used_at),
-    };
+    return deviceOf(row);
   }
 
   /** Every paired device, the most recently paired first. */
@@ -97,14 +122,9 @@ export class PairedDeviceStorage {
     await this.initialize();
 
     const result = await this.client.execute(
-      'SELECT id, name, paired_at, last_used_at FROM paired_devices ORDER BY paired_at DESC, rowid DESC',
+      'SELECT id, name, paired_at, last_used_at, token_hash FROM paired_devices ORDER BY paired_at DESC, rowid DESC',
     );
-    return result.rows.map((row) => ({
-      id: String(row.id),
-      name: String(row.name),
-      pairedAt: String(row.paired_at),
-      lastUsedAt: row.last_used_at === null ? null : String(row.last_used_at),
-    }));
+    return result.rows.map(deviceOf);
   }
 
   /** Unpairs a device, so that its token is refused from now on. Says whether there was one. */

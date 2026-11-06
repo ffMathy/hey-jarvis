@@ -161,6 +161,33 @@ describe('a paired browser’s conversation credentials', () => {
     ).rejects.toThrow(NO_LONGER_PAIRED_PROBLEM);
   });
 
+  it('shows why the server did not know it, and which server that was, beside the device list', async () => {
+    // The body `registerPairedDeviceApi` in `mcp` answers a token it does not know with.
+    const refusal = {
+      success: false,
+      message: 'This device is not paired with your Jarvis server.',
+      details: { reason: 'unknown token', token: '9f3e12ab', server: '1a2b3c4d' },
+    };
+
+    await expect(
+      pairedCredentials(PAIRING).token(
+        HEADSET_PARTICIPANT_NAME,
+        fakeFetch(async () => Response.json(refusal, { status: 401 })),
+      ),
+    ).rejects.toThrow(`${NO_LONGER_PAIRED_PROBLEM} (Server 1a2b3c4d: unknown token 9f3e12ab.)`);
+  });
+
+  it('shows nothing of a refusal’s details it cannot trust to be short and plain', async () => {
+    const refusal = { details: { reason: 'unknown token <script>', token: 'x'.repeat(200), server: '1a2b3c4d' } };
+
+    const failure = pairedCredentials(PAIRING).token(
+      HEADSET_PARTICIPANT_NAME,
+      fakeFetch(async () => Response.json(refusal, { status: 401 })),
+    );
+
+    await expect(failure).rejects.toThrow(`${NO_LONGER_PAIRED_PROBLEM} (Server 1a2b3c4d.)`);
+  });
+
   it('passes on the server’s own words for why there is no conversation', async () => {
     await expect(
       pairedCredentials(PAIRING).token(

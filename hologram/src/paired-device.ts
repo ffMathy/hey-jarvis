@@ -125,6 +125,38 @@ async function refusalMessage(response: Response): Promise<string | undefined> {
   return undefined;
 }
 
+/** A server process's id or a token's fingerprint, as the server writes them: 8 hex characters. */
+const SHORT_HEX = /^[0-9a-f]{8}$/;
+
+/** A refusal's reason, as the server writes them: a few plain words. */
+const PLAIN_REASON = /^[A-Za-z ]{1,40}$/;
+
+/** A field of the refusal's details, if it is a string that matches what it should be. */
+function detailOf(details: object, field: string, shape: RegExp): string | undefined {
+  const value: unknown = Reflect.get(details, field);
+  return typeof value === 'string' && shape.test(value) ? value : undefined;
+}
+
+/**
+ * What the server said about a token it did not know (`details` in `mcp`'s paired-device routes), in
+ * words to show beside the problem: which server refused it, why, and the refused token's fingerprint.
+ * Set beside the server's device list, they tell a token it never gave from a second server answering
+ * on the same hostname, for whoever cannot read the server's log. Only fields of the shapes the
+ * server writes are shown.
+ */
+async function refusalDetails(response: Response): Promise<string | undefined> {
+  const body: unknown = await response.json().catch(() => undefined);
+  if (typeof body !== 'object' || body === null || !('details' in body)) return undefined;
+  const { details } = body;
+  if (typeof details !== 'object' || details === null) return undefined;
+  const server = detailOf(details, 'server', SHORT_HEX);
+  if (server === undefined) return undefined;
+  const reason = detailOf(details, 'reason', PLAIN_REASON);
+  const token = detailOf(details, 'token', SHORT_HEX);
+  if (reason === undefined) return `Server ${server}.`;
+  return token === undefined ? `Server ${server}: ${reason}.` : `Server ${server}: ${reason} ${token}.`;
+}
+
 /** Narrows the server's answer to the one field asked for. */
 function credentialIn(body: unknown, field: 'token' | 'signedUrl'): string | undefined {
   if (typeof body !== 'object' || body === null || !('data' in body)) return undefined;
@@ -150,7 +182,10 @@ async function askServer(
   } catch (error) {
     throw new Error(SERVER_UNREACHABLE_PROBLEM, { cause: error });
   }
-  if (response.status === 401) throw new Error(NO_LONGER_PAIRED_PROBLEM);
+  if (response.status === 401) {
+    const details = await refusalDetails(response);
+    throw new Error(details === undefined ? NO_LONGER_PAIRED_PROBLEM : `${NO_LONGER_PAIRED_PROBLEM} (${details})`);
+  }
   if (!response.ok) {
     throw new Error(
       (await refusalMessage(response)) ??
