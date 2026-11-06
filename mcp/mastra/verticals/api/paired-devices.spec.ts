@@ -312,6 +312,20 @@ describe('pairing the phone through its browser', () => {
     expect(await storage.list()).toHaveLength(2);
   });
 
+  it('lets the page’s form be sent on to the app, which a browser holds to the form-action policy', async () => {
+    // A browser applies `form-action` to every redirect a form's submission follows, not only to
+    // its action: with `'self'` alone, Chrome dropped the 303 to the app's scheme without a word.
+    const page = await fetch(`${baseUrl}${PHONE_PAIRING_ROUTE}`);
+    const formAction = (page.headers.get('Content-Security-Policy') ?? '')
+      .split(';')
+      .map((directive) => directive.trim().split(/\s+/))
+      .find(([name]) => name === 'form-action');
+    const appScheme = new URL(PHONE_APP_PAIRED_URL).protocol;
+
+    expect(formAction).toContain("'self'");
+    expect(formAction).toContain(appScheme);
+  });
+
   it('shows the pairing page with a referrer policy that keeps the press’s origin', async () => {
     const response = await fetch(`${baseUrl}${PHONE_PAIRING_ROUTE}`);
 

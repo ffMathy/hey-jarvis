@@ -273,12 +273,18 @@ const PHONE_PAIRING_PAGE = `<!doctype html>
 </body>
 </html>`;
 
+/**
+ * Where the pairing page's form may go: here, and on to the app the press is redirected to. A browser
+ * holds every redirect a form follows to `form-action`, so with `'self'` alone Chrome dropped the 303
+ * to the app without a word, and the phone stayed on the page.
+ */
+const PAIRING_FORM_ACTION = `form-action 'self' ${new URL(PHONE_APP_PAIRED_URL).protocol}`;
+
 /** Keeps the pairing page out of frames and caches: a button that pairs is not to be pressed blind. */
 function guardPairingPage(response: Response): void {
   response.set({
     'Cache-Control': 'no-store',
-    'Content-Security-Policy':
-      "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
+    'Content-Security-Policy': `default-src 'none'; style-src 'unsafe-inline'; ${PAIRING_FORM_ACTION}; frame-ancestors 'none'`,
     // Not `no-referrer`: under it a browser sends a form's `Origin` as `null`, so a browser without
     // `Sec-Fetch-Site` could never pair. `same-origin` still sends no referrer to any other site.
     'Referrer-Policy': 'same-origin',

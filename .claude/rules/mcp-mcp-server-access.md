@@ -70,7 +70,9 @@ for a paired device; the device keeps a token of the server's own.
   server's own `Host`; so a form elsewhere cannot pair a device. Then the phone is paired and the
   browser is sent, `303`, to `heyjarvis://paired#token=…` — always the app's own scheme, never a
   link the request names. The page is served `no-store`, `X-Frame-Options: DENY`, a CSP that allows
-  no frame, and `Referrer-Policy: same-origin`. Not `no-referrer`: under that a browser sends the
+  no frame, and `Referrer-Policy: same-origin`. Its CSP's `form-action` names the app's scheme
+  beside `'self'`: a browser holds every redirect a form follows to that directive, and with `'self'`
+  alone Chrome blocked the 303 to `heyjarvis://` and the phone stayed on the page. Not `no-referrer`: under that a browser sends the
   form's `Origin` as `null`, and when the check read `Origin` first, every press from Chrome on
   Android was refused with "Pair your phone from the pairing page itself."
 - **`GET /api/devices`** lists them (never with a token) and **`DELETE /api/devices/<id>`** unpairs
