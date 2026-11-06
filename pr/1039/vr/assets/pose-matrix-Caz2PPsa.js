@@ -1,0 +1,1 @@
+function e(e,t,n,r){return{x:e[0]*t+e[4]*n+e[8]*r+e[12],y:e[1]*t+e[5]*n+e[9]*r+e[13],z:e[2]*t+e[6]*n+e[10]*r+e[14]}}function t(e,t){let n=t.x-e[12],r=t.y-e[13],i=t.z-e[14];return{x:e[0]*n+e[1]*r+e[2]*i,y:e[4]*n+e[5]*r+e[6]*i,z:e[8]*n+e[9]*r+e[10]*i}}function n(e,t){let n=t*4;return{x:e[n],y:e[n+1],z:e[n+2]}}export{t as n,e as r,n as t};
