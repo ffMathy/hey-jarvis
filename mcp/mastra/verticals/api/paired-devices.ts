@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from 'crypto';
 import express, { type NextFunction, type Request, type Response, type Router } from 'express';
 import { z } from 'zod';
 import { getPairedDeviceStorage, type PairedDeviceStorage } from '../../storage/index.js';
@@ -247,6 +248,33 @@ function bearerTokenOf(request: Request): string | undefined {
 }
 
 /**
+ * This server process, as the log names it: a short id drawn once as it starts. A pairing and a
+ * refusal logged under two different ids were answered by two servers — two tunnel connectors, each
+ * with its own database — which is otherwise invisible, since both answer on the same hostname.
+ */
+const SERVER_PROCESS = randomUUID().slice(0, 8);
+
+/**
+ * What the log calls a token: the start of its SHA-256, which says whether the token a device sent is
+ * the one it was paired with, and nothing that would let anyone present it.
+ */
+export function tokenFingerprint(token: string): string {
+  return createHash('sha256').update(token).digest('hex').slice(0, 8);
+}
+
+/**
+ * Why a device's request was refused, for the log: no token at all, a header that is not a token
+ * (with its length, never its value), or a token no paired device has.
+ */
+function refusalOf(request: Request, token: string | undefined) {
+  if (token !== undefined) return { reason: 'unknown token', token: tokenFingerprint(token) };
+  const header = request.get('Authorization');
+  return header === undefined
+    ? { reason: 'no Authorization header' }
+    : { reason: 'not a bearer token', headerLength: header.length };
+}
+
+/**
  * The page that asks sir to pair his phone. A button rather than pairing on the visit itself, so
  * that nothing is paired by a page that merely links here; and a form posting to its own origin, so
  * that {@link isSameOriginForm} can tell the press apart from one made elsewhere.
@@ -348,7 +376,12 @@ export function registerPairedDeviceApi(
         return;
       }
       const { device, token } = await (await store()).pair(deviceNameOf(request.body));
-      logger.info('[API] Device paired', { deviceId: device.id, name: device.name });
+      logger.info('[API] Device paired', {
+        deviceId: device.id,
+        name: device.name,
+        token: tokenFingerprint(token),
+        server: SERVER_PROCESS,
+      });
       response.status(201).json({ success: true, message: 'Device paired', data: { id: device.id, token } });
     }),
   );
@@ -366,7 +399,12 @@ export function registerPairedDeviceApi(
         return;
       }
       const { device, token } = await (await store()).pair(PHONE_DEVICE_NAME);
-      logger.info('[API] Device paired', { deviceId: device.id, name: device.name });
+      logger.info('[API] Device paired', {
+        deviceId: device.id,
+        name: device.name,
+        token: tokenFingerprint(token),
+        server: SERVER_PROCESS,
+      });
       response.redirect(303, `${PHONE_APP_PAIRED_URL}#${new URLSearchParams({ token })}`);
     }),
   );
@@ -399,6 +437,10 @@ export function registerPairedDeviceApi(
       const token = bearerTokenOf(request);
       const device = token === undefined ? undefined : await (await store()).authenticate(token);
       if (device === undefined) {
+        logger.warn('[API] Refused a device its conversation', {
+          ...refusalOf(request, token),
+          server: SERVER_PROCESS,
+        });
         response.status(401).json({ success: false, message: 'This device is not paired with your Jarvis server.' });
         return;
       }

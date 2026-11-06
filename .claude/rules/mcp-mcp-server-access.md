@@ -75,6 +75,13 @@ for a paired device; the device keeps a token of the server's own.
   alone Chrome blocked the 303 to `heyjarvis://` and the phone stayed on the page. Not `no-referrer`: under that a browser sends the
   form's `Origin` as `null`, and when the check read `Origin` first, every press from Chrome on
   Android was refused with "Pair your phone from the pairing page itself."
+- **The log says which server paired a device and why one was refused.** `[API] Device paired` and
+  `[API] Refused a device its conversation` both carry `server`, a short id drawn once per process,
+  and `token`, the first 8 hex characters of the token's SHA-256 — never the token. A refusal's
+  `reason` is `no Authorization header`, `not a bearer token` (with the header's length) or
+  `unknown token`. A device refused under another `server` than the one that paired it reached a
+  second server with its own database, such as a second tunnel connector; one refused with another
+  `token` sent a token it was not given here.
 - **`GET /api/devices`** lists them (never with a token) and **`DELETE /api/devices/<id>`** unpairs
   one, so a lost device is one device revoked rather than the ElevenLabs key.
 - **`/api/paired/*` must bypass Access.** `POST /api/paired/conversation` takes

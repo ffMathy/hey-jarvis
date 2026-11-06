@@ -1,10 +1,11 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import express from 'express';
 import { mkdtemp, rm } from 'fs/promises';
 import type { Server } from 'http';
 import { tmpdir } from 'os';
 import path from 'path';
 import { PairedDeviceStorage } from '../../storage/paired-devices.js';
+import { logger } from '../../utils/logger.js';
 import {
   type ConversationCredentialRequest,
   ConversationUnavailableError,
@@ -15,6 +16,7 @@ import {
   PHONE_APP_PAIRED_URL,
   PHONE_PAIRING_ROUTE,
   registerPairedDeviceApi,
+  tokenFingerprint,
 } from './paired-devices.js';
 
 /** A fake of `fetch`: Bun's carries `preconnect` beside its call signature, so a bare function is not one. */
@@ -153,6 +155,35 @@ describe('a paired device asking for a conversation', () => {
 
     expect([withNone.status, withMadeUp.status]).toEqual([401, 401]);
     expect(minted).toEqual([]);
+  });
+
+  it('logs why a device was refused, and which server paired and refused it, never the token', async () => {
+    const paired = spyOn(logger, 'info');
+    const refused = spyOn(logger, 'warn');
+    try {
+      const token = await pairedToken();
+      const madeUp = 'b'.repeat(43);
+      await askForConversation(madeUp, { transport: 'webrtc', participantName: 'jarvis-vr' });
+      await askForConversation(undefined, { transport: 'webrtc', participantName: 'jarvis-vr' });
+
+      const pairing = paired.mock.calls.find(([message]) => message === '[API] Device paired')?.[1];
+      const refusals = refused.mock.calls
+        .filter(([message]) => message === '[API] Refused a device its conversation')
+        .map(([, details]) => details);
+
+      expect(pairing).toMatchObject({ token: tokenFingerprint(token) });
+      expect(refusals).toEqual([
+        { reason: 'unknown token', token: tokenFingerprint(madeUp), server: expect.any(String) },
+        { reason: 'no Authorization header', server: expect.any(String) },
+      ]);
+      expect(new Set([pairing?.server, ...refusals.map((details) => details?.server)]).size).toBe(1);
+      const logged = JSON.stringify([...paired.mock.calls, ...refused.mock.calls]);
+      expect(logged).not.toContain(token);
+      expect(logged).not.toContain(madeUp);
+    } finally {
+      paired.mockRestore();
+      refused.mockRestore();
+    }
   });
 
   it('is refused once it has been unpaired', async () => {
