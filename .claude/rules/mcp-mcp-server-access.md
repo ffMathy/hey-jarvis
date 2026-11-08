@@ -85,21 +85,23 @@ for a paired device; the device keeps a token of the server's own.
 - **The log says which server paired a device and why one was refused.** `[API] Device paired` and
   `[API] Refused a device its conversation` both carry `server`, a short id drawn once per process,
   and `token`, the first 8 hex characters of the token's SHA-256 — never the token. A refusal's
-  `reason` is `no Authorization header`, `not a bearer token` (with the header's length) or
+  `reason` is `no device token`, `not a device token` (with what was sent's length) or
   `unknown token`. A device refused under another `server` than the one that paired it reached a
   second server with its own database, such as a second tunnel connector; one refused with another
   `token` sent a token it was not given here.
 - **`GET /api/devices`** lists them (never with a token) and **`DELETE /api/devices/<id>`** unpairs
   one, so a lost device is one device revoked rather than the ElevenLabs key.
 - **`/api/paired/*` must bypass Access.** `POST /api/paired/conversation` takes
-  `Authorization: Bearer <token>` and `{ "transport": "webrtc" | "websocket", "participantName":
-  "jarvis-…" }`, and answers `{ token }` or a `wss://` `{ signedUrl }` minted with
+  `{ "deviceToken": "…", "transport": "webrtc" | "websocket", "participantName": "jarvis-…" }`,
+  the token in the JSON body and never a header: sent as `Authorization: Bearer`, it reached the live
+  server without the header, the body intact, so every paired device was refused with
+  `no Authorization header` (`deviceTokenIn`). It answers `{ token }` or a `wss://` `{ signedUrl }` minted with
   `HEY_JARVIS_ELEVENLABS_API_KEY` on `HEY_JARVIS_ELEVENLABS_AGENT_ID` (never the test agent): `401`
   for a token no paired device has, `400` for a malformed request, `502` when ElevenLabs could not
   start a conversation — with a message for the device to show. In Zero Trust → Access →
   Applications, add a self-hosted application for `<your MCP hostname>/api/paired/*` with a single
-  **Bypass** policy (include: Everyone); it covers the preflight its `Authorization` header needs,
-  and the WebSocket below.
+  **Bypass** policy (include: Everyone); it covers the preflight its JSON body needs, and the
+  WebSocket below.
 - **`/api/paired/live` is the WebSocket API** (`PAIRED_LIVE_SOCKET_PATH` in `live-socket.ts`): its
   hello has to carry the device's token, which the server checks itself, and a socket whose hello
   does not is closed `4401` — never tried again by the device. Frames sent before the check answers

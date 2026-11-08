@@ -312,7 +312,7 @@ export async function answerTokens(page: Page, answer: TokenAnswer): Promise<Tok
         headers: {
           ...corsHeaders(route),
           'access-control-allow-methods': 'POST',
-          'access-control-allow-headers': 'authorization, content-type',
+          'access-control-allow-headers': 'content-type',
         },
       });
       return;

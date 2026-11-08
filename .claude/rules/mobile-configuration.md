@@ -17,7 +17,7 @@ afterwards — and kept in the Android keystore, or on web in `localStorage`:
 | Setting | What it is |
 | --- | --- |
 | Jarvis server | No secret. The public `https` address of sir's own Jarvis server — the MCP server's tunnel hostname — as an origin, with no path. Kept under `hologram`'s `jarvis.server-address` |
-| Device token | A credential, and never typed: what the server answers a pairing with — 256 random bits in base64url, read by `parseStoredDeviceToken` in `hologram`. Kept under `hologram`'s `jarvis.device-token`. Sent as `Authorization: Bearer …` with every conversation request, and in the hello of the line, which opens on `/api/paired/live` |
+| Device token | A credential, and never typed: what the server answers a pairing with — 256 random bits in base64url, read by `parseStoredDeviceToken` in `hologram`. Kept under `hologram`'s `jarvis.device-token`. Sent in the body of every conversation request (`deviceToken`, never an `Authorization` header, which the live server was handed without), and in the hello of the line, which opens on `/api/paired/live` |
 
 **How each app pairs.** The server's side is "Pairing a device" in
 `.claude/rules/mcp-mcp-server-access.md`. Pairing is the one request that has to prove who is

@@ -26,8 +26,8 @@ describe('where a conversation’s token comes from', () => {
     expect(asked).toEqual([
       {
         url: `${ADDRESS}/api/paired/conversation`,
-        authorization: `Bearer ${TOKEN}`,
-        body: { transport: 'webrtc', participantName: PHONE_PARTICIPANT_NAME },
+        authorization: null,
+        body: { deviceToken: TOKEN, transport: 'webrtc', participantName: PHONE_PARTICIPANT_NAME },
       },
     ]);
   });

@@ -174,10 +174,12 @@ async function askServer(
 ): Promise<string> {
   let response: Response;
   try {
+    // The token goes in the body, not an `Authorization` header: on the live server the request
+    // arrived without that header, body and all (see `deviceTokenIn` in `mcp`).
     response = await fetchImplementation(`${address}${PAIRED_CONVERSATION_PATH}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${deviceToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(request),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceToken, ...request }),
     });
   } catch (error) {
     throw new Error(SERVER_UNREACHABLE_PROBLEM, { cause: error });

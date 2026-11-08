@@ -33,8 +33,12 @@ describe('summoning Jarvis', () => {
     const request = tokens.requests[0];
     expect(request?.url.href).toBe(`${PAIRED_SERVER_ADDRESS}/api/paired/conversation`);
     expect(request?.method).toBe('POST');
-    expect(request?.headers.get('authorization')).toBe(`Bearer ${PAIRED_DEVICE_TOKEN}`);
-    expect(request?.body).toEqual({ transport: 'webrtc', participantName: HEADSET_PARTICIPANT_NAME });
+    expect(request?.headers.get('authorization')).toBeNull();
+    expect(request?.body).toEqual({
+      deviceToken: PAIRED_DEVICE_TOKEN,
+      transport: 'webrtc',
+      participantName: HEADSET_PARTICIPANT_NAME,
+    });
   });
 
   it('starts one summoning at a time, and another only once the last is over', async () => {

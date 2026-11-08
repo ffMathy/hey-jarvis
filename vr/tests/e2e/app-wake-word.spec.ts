@@ -69,8 +69,12 @@ test('"Hey Jarvis" summons him into the room, and after a failed call it is list
 
   await expect.poll(() => greetingPlays(page), { timeout: 30000 }).toBe(1);
   expect(requests).toHaveLength(1);
-  expect(requests[0]?.body).toEqual({ transport: 'webrtc', participantName: 'jarvis-vr' });
-  expect(requests[0]?.authorization).toBe(`Bearer ${PAIRING.deviceToken}`);
+  expect(requests[0]?.body).toEqual({
+    deviceToken: PAIRING.deviceToken,
+    transport: 'webrtc',
+    participantName: 'jarvis-vr',
+  });
+  expect(requests[0]?.authorization).toBeUndefined();
 
   // Dialled after the greeting, into a socket that is closed on it.
   await expect.poll(() => scene(page), { timeout: 60000 }).toBe('failed');

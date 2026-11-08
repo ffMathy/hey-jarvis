@@ -217,7 +217,7 @@ function allowWebAppsWithToken(request: Request, response: Response, next: NextF
     response.set({
       'Access-Control-Allow-Origin': origin,
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+      'Access-Control-Allow-Headers': 'Content-Type',
       'Access-Control-Max-Age': '600',
     });
   }
@@ -242,10 +242,20 @@ function deviceNameOf(body: unknown): string {
   return name ? name.slice(0, MAX_DEVICE_NAME_LENGTH) : UNNAMED_DEVICE;
 }
 
-/** The bearer token a request carries, or `undefined`. */
-function bearerTokenOf(request: Request): string | undefined {
-  const match = /^Bearer\s+([A-Za-z0-9_-]{20,128})$/.exec(request.get('Authorization')?.trim() ?? '');
-  return match?.[1];
+/** What a device token looks like: 256 random bits in base64url, or near enough to look up. */
+const DEVICE_TOKEN = /^[A-Za-z0-9_-]{20,128}$/;
+
+/**
+ * The token a device sent, read from its request's JSON body (`deviceToken`), never a header.
+ *
+ * **Not `Authorization`.** It went as `Authorization: Bearer <token>` at first, and every paired phone
+ * and browser was refused on its first conversation: the server was handed the request, body and all,
+ * without the header, by whatever stood between them (seen from the phone, as the refusal's
+ * `no Authorization header`). A proxy or a redirect may drop that one header on the way; it carries the
+ * body as it is. The line to the server sends its token in its hello for the same reason.
+ */
+function deviceTokenIn(body: unknown): unknown {
+  return typeof body === 'object' && body !== null && 'deviceToken' in body ? body.deviceToken : undefined;
 }
 
 /**
@@ -256,15 +266,15 @@ function bearerTokenOf(request: Request): string | undefined {
 const SERVER_PROCESS = randomUUID().slice(0, 8);
 
 /**
- * Why a device's request was refused, for the log and for the device to show: no token at all, a header that is not a token
- * (with its length, never its value), or a token no paired device has.
+ * Why a device's request was refused, for the log and for the device to show: no token at all,
+ * something that is not a token (with its length, never its value), or a token no paired device has.
  */
-function refusalOf(request: Request, token: string | undefined) {
-  if (token !== undefined) return { reason: 'unknown token', token: tokenFingerprint(token) };
-  const header = request.get('Authorization');
-  return header === undefined
-    ? { reason: 'no Authorization header' }
-    : { reason: 'not a bearer token', headerLength: header.length };
+function refusalOf(sent: unknown) {
+  if (sent === undefined) return { reason: 'no device token' };
+  if (typeof sent !== 'string' || !DEVICE_TOKEN.test(sent)) {
+    return { reason: 'not a device token', length: typeof sent === 'string' ? sent.length : 0 };
+  }
+  return { reason: 'unknown token', token: tokenFingerprint(sent) };
 }
 
 /**
@@ -432,12 +442,13 @@ export function registerPairedDeviceApi(
     PAIRED_CONVERSATION_ROUTE,
     allowWebAppsWithToken,
     handle(async (request, response) => {
-      const token = bearerTokenOf(request);
-      const device = token === undefined ? undefined : await (await store()).authenticate(token);
+      const sent = deviceTokenIn(request.body);
+      const device =
+        typeof sent === 'string' && DEVICE_TOKEN.test(sent) ? await (await store()).authenticate(sent) : undefined;
       if (device === undefined) {
         // The device shows these, so whoever cannot read this server's log can still tell a token it
         // was never given from a second server answering on the same hostname (see the device list).
-        const details = { ...refusalOf(request, token), server: SERVER_PROCESS };
+        const details = { ...refusalOf(sent), server: SERVER_PROCESS };
         logger.warn('[API] Refused a device its conversation', details);
         response
           .status(401)
@@ -449,7 +460,7 @@ export function registerPairedDeviceApi(
       if (!conversationRequest.success) {
         response.status(400).json({
           success: false,
-          message: 'Ask for {"transport": "webrtc" | "websocket", "participantName": "jarvis-…"}.',
+          message: 'Ask for {"deviceToken": "…", "transport": "webrtc" | "websocket", "participantName": "jarvis-…"}.',
         });
         return;
       }

@@ -3,7 +3,13 @@ import { GIVE_UP_CONNECTING_AFTER_MS } from './conversation-life';
 import { PHONE_PARTICIPANT_NAME, WATCH_PARTICIPANT_NAME } from './conversation-token';
 import { DEADLINE_PROBLEM, DROPPED_PROBLEM, OFFLINE_PROBLEM } from './failure-text';
 import { REDIAL_GIVE_UP_AFTER_MS, RELEASE_HELD_VOICE_AFTER_MS } from './jarvis-session';
-import { createFakeCallAudio, createFakeHeldVoice, createHarness, settle } from './jarvis-session.fakes';
+import {
+  createFakeCallAudio,
+  createFakeHeldVoice,
+  createHarness,
+  PAIRED_DEVICE_TOKEN,
+  settle,
+} from './jarvis-session.fakes';
 import { NO_LONGER_PAIRED_PROBLEM, SERVER_UNREACHABLE_PROBLEM } from './paired-device';
 import type { JarvisSessionDependencies } from './session-contract';
 
@@ -83,7 +89,11 @@ describe('greeting inside the call’s audio, on a phone and a watch', () => {
     expect(phone.greeting.log).toEqual([]);
     // The token is asked for beside him, as on every device that needs no network brought up.
     expect(phone.tokens.requests).toHaveLength(1);
-    expect(phone.tokens.requests[0]?.body).toEqual({ transport: 'webrtc', participantName: PHONE_PARTICIPANT_NAME });
+    expect(phone.tokens.requests[0]?.body).toEqual({
+      deviceToken: PAIRED_DEVICE_TOKEN,
+      transport: 'webrtc',
+      participantName: PHONE_PARTICIPANT_NAME,
+    });
 
     await settle();
     expect(phone.greeting.log).toEqual(['wait-for-route']);
@@ -694,7 +704,11 @@ describe('on a watch, which has to get off its phone’s Bluetooth first', () =>
     watch.online();
     await settle();
     expect(watch.tokens.requests).toHaveLength(1);
-    expect(watch.tokens.requests[0]?.body).toEqual({ transport: 'webrtc', participantName: WATCH_PARTICIPANT_NAME });
+    expect(watch.tokens.requests[0]?.body).toEqual({
+      deviceToken: PAIRED_DEVICE_TOKEN,
+      transport: 'webrtc',
+      participantName: WATCH_PARTICIPANT_NAME,
+    });
   });
 
   it('starts its deadline only once the network is up, and says what the watch says, then', async () => {

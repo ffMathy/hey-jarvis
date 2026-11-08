@@ -109,6 +109,7 @@ export const PAIRED_DEVICE_TOKEN = 'd'.repeat(43);
 
 /** What a device asks the paired server for, read back out of the request's JSON body. */
 export interface PairedConversationRequest {
+  deviceToken?: unknown;
   transport?: unknown;
   participantName?: unknown;
 }
@@ -118,6 +119,7 @@ function pairedRequestOf(body: RequestInit['body']): PairedConversationRequest {
   const parsed: unknown = JSON.parse(body);
   if (typeof parsed !== 'object' || parsed === null) return {};
   return {
+    deviceToken: 'deviceToken' in parsed ? parsed.deviceToken : undefined,
     transport: 'transport' in parsed ? parsed.transport : undefined,
     participantName: 'participantName' in parsed ? parsed.participantName : undefined,
   };

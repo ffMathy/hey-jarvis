@@ -132,8 +132,13 @@ describe('a paired browser’s conversation credentials', () => {
         url: `https://jarvis.example.com${PAIRED_CONVERSATION_PATH}`,
         init: {
           method: 'POST',
-          headers: { Authorization: `Bearer ${PAIRING.deviceToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ transport: 'webrtc', participantName: HEADSET_PARTICIPANT_NAME }),
+          // In the body, never an Authorization header, which the live server was handed without.
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            deviceToken: PAIRING.deviceToken,
+            transport: 'webrtc',
+            participantName: HEADSET_PARTICIPANT_NAME,
+          }),
         },
       },
     ]);

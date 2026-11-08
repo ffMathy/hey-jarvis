@@ -81,15 +81,11 @@ async function pairedToken(name = 'Quest 3'): Promise<string> {
   return data.token;
 }
 
-function askForConversation(token: string | undefined, body: unknown) {
+function askForConversation(token: string | undefined, body: object) {
   return fetch(`${baseUrl}${PAIRED_CONVERSATION_ROUTE}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Origin: HEADSET_PAGE,
-      ...(token === undefined ? {} : { Authorization: `Bearer ${token}` }),
-    },
-    body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json', Origin: HEADSET_PAGE },
+    body: JSON.stringify(token === undefined ? body : { ...body, deviceToken: token }),
   });
 }
 
@@ -182,7 +178,7 @@ describe('a paired device asking for a conversation', () => {
       expect(pairing).toMatchObject({ token: tokenFingerprint(token) });
       expect(refusals).toEqual([
         { reason: 'unknown token', token: tokenFingerprint(madeUp), server: expect.any(String) },
-        { reason: 'no Authorization header', server: expect.any(String) },
+        { reason: 'no device token', server: expect.any(String) },
       ]);
       expect(new Set([pairing?.server, ...refusals.map((details) => details?.server)]).size).toBe(1);
       const logged = JSON.stringify([...paired.mock.calls, ...refused.mock.calls]);
@@ -245,14 +241,39 @@ describe('a paired device asking for a conversation', () => {
     expect(minted).toEqual([]);
   });
 
-  it('answers the preflight its Authorization header needs', async () => {
+  it('answers the preflight its JSON body needs', async () => {
     const preflight = await fetch(`${baseUrl}${PAIRED_CONVERSATION_ROUTE}`, {
       method: 'OPTIONS',
-      headers: { Origin: HEADSET_PAGE, 'Access-Control-Request-Headers': 'authorization,content-type' },
+      headers: { Origin: HEADSET_PAGE, 'Access-Control-Request-Headers': 'content-type' },
     });
 
     expect(preflight.status).toBe(204);
-    expect(preflight.headers.get('Access-Control-Allow-Headers')).toContain('Authorization');
+    expect(preflight.headers.get('Access-Control-Allow-Headers')).toContain('Content-Type');
+  });
+
+  it('is given its conversation with the token in the body, as whatever stands in front hands it over', async () => {
+    // What the phone's refusal showed on the live server: the request arrived, body and all, with no
+    // Authorization header. The token goes in the body, which arrives as it was sent.
+    const token = await pairedToken();
+
+    const response = await fetch(`${baseUrl}${PAIRED_CONVERSATION_ROUTE}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceToken: token, transport: 'webrtc', participantName: 'jarvis-android' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(minted).toEqual([{ transport: 'webrtc', participantName: 'jarvis-android' }]);
+  });
+
+  it('says what it was sent in place of a token, by its length and never its value', async () => {
+    const refused = await askForConversation('not a token!', { transport: 'webrtc', participantName: 'jarvis-vr' });
+
+    expect((await refused.json()).details).toEqual({
+      reason: 'not a device token',
+      length: 'not a token!'.length,
+      server: expect.any(String),
+    });
   });
 });
 
