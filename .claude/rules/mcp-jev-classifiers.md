@@ -8,12 +8,19 @@ paths:
 > Part of [Jarvis Mastra AI Agents](mcp.md). Paths in it are relative to `mcp/` unless they say otherwise.
 
 Decisions that are a choice from a list, a place on a scale, or a yes/no are answered by Jev, TypeSafe
-AI's evaluation model, through Mastra's `Classifier` instead of a language model (see
+AI's decision model, through Mastra's `Classifier` (`classifier.decide`) instead of a language model (see
 `.claude/rules/jev-classifiers.md`). Every classifier is built with `createLazyClassifier` in
 `utils/classifier-factory.ts`, registered on the Mastra instance so Studio traces it, and read through
 a pure policy function that acts only above a confidence bar (`confidentChoice` / `confidentScoreLevel`
-in `utils/classifier-answers.ts`). Without `HEY_JARVIS_TYPESAFE_AI_API_KEY`, on a failed call, or on an
-unsure answer, each decision is made exactly as it was before there was a classifier.
+/ `confidentBoolean` in `utils/classifier-answers.ts`). Without `HEY_JARVIS_TYPESAFE_AI_API_KEY`, on a
+failed call, or on an unsure answer, each decision is made exactly as it was before there was a classifier.
+
+**A refusal is an unsure answer.** Jev may decline any question (`{ type: 'refusal' }`, no choice, score
+or probability). The helpers in `utils/classifier-answers.ts` read one as nothing — `confidentBoolean` as
+neither yes nor no — so no call site checks for a refusal itself. The one answer read without a bar,
+routing's response style, has no guess to take on a refusal: the classifier then settles nothing about
+the request but its relation to a running one (a sure `cancels` still stops it), and the planner decides
+the rest.
 
 | Classifier | Where | Decides |
 | --- | --- | --- |

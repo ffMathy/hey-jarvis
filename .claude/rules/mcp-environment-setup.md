@@ -14,7 +14,7 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **Weather**: `HEY_JARVIS_OPENWEATHERMAP_API_KEY` for weather data
 - **Google Maps**: `HEY_JARVIS_GOOGLE_MAPS_API_KEY` for navigation, travel time estimation and place search
 - **Google Gemini**: `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` for language models and embeddings. Deliberately separate from the Maps key -- they are restricted to different APIs and are not interchangeable.
-- **TypeSafe AI (optional)**: `HEY_JARVIS_TYPESAFE_AI_API_KEY` for Jev, the evaluation model behind the routing classifier. Resolved from `op://Jarvis/TypeSafe AI/API key` through `mcp/op.optional.env`; without it routing plans every request with the planner.
+- **TypeSafe AI (optional)**: `HEY_JARVIS_TYPESAFE_AI_API_KEY` for Jev, the decision model behind the routing classifier. Resolved from `op://Jarvis/TypeSafe AI/API key` through `mcp/op.optional.env`; without it routing plans every request with the planner.
 - **Google OAuth2 (Calendar, Tasks & Contacts)**: `HEY_JARVIS_GOOGLE_CLIENT_ID`, `HEY_JARVIS_GOOGLE_CLIENT_SECRET`, `HEY_JARVIS_GOOGLE_REFRESH_TOKEN` for accessing the Google Calendar, Tasks and People APIs (see [Google OAuth2 Setup](mcp-google-oauth2-setup.md#google-oauth2-setup) below)
 - **Shopping (Bilka)**: `HEY_JARVIS_BILKA_EMAIL`, `HEY_JARVIS_BILKA_PASSWORD`, `HEY_JARVIS_BILKA_API_KEY` for authentication
 - **Shopping (Search)**: `HEY_JARVIS_ALGOLIA_API_KEY`, `HEY_JARVIS_ALGOLIA_APPLICATION_ID`, `HEY_JARVIS_BILKA_USER_TOKEN` for product search

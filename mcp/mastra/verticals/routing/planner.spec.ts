@@ -582,7 +582,17 @@ describe('a photo, with the routing classifier sure of a fast route', () => {
     return { type: 'choice' as const, choice, probabilities: sureDistribution(choice, options) };
   }
 
-  async function classifierSureOf(route: string) {
+  /** A sure "command", which is how every request here is to be answered unless a test says otherwise. */
+  const SURE_COMMAND_STYLE = {
+    type: 'choice' as const,
+    choice: 'command',
+    probabilities: sureDistribution('command', RESPONSE_STYLES),
+  };
+
+  async function classifierSureOf(
+    route: string,
+    responseStyle: typeof SURE_COMMAND_STYLE | { type: 'refusal' } = SURE_COMMAND_STYLE,
+  ) {
     const agents = [...(await getRoutableAgentIds())].map((id) => ({ id, description: '' }));
     const routes = Object.keys(
       routingQuestions({ agents, openQuestions: [], lookups: [], commands: [] }).route.criteria,
@@ -595,7 +605,7 @@ describe('a photo, with the routing classifier sure of a fast route', () => {
         provider: 'fake',
         modelId: 'jev-fake',
         supportedQuestionTypes: ['choice', 'boolean'],
-        doEvaluate: async ({ questions }) => {
+        doDecide: async ({ questions }) => {
           evaluations += 1;
           return {
             answers: {
@@ -603,11 +613,7 @@ describe('a photo, with the routing classifier sure of a fast route', () => {
               // so only the route and the style decide anything here.
               ...Object.fromEntries(Object.entries(questions).map(([key, question]) => [key, wayOutOf(question)])),
               route: { type: 'choice', choice: route, probabilities: sureDistribution(route, routes) },
-              responseStyle: {
-                type: 'choice',
-                choice: 'command',
-                probabilities: sureDistribution('command', RESPONSE_STYLES),
-              },
+              responseStyle,
             },
             warnings: [],
           };
@@ -723,6 +729,17 @@ describe('a photo, with the routing classifier sure of a fast route', () => {
     expect(decision.responseStyle).toBe('briefing');
   });
 
+  it('asks the planner when the classifier, sure of the agent, declines to say how to answer', async () => {
+    const { classifier, evaluations } = await classifierSureOf('weather', { type: 'refusal' });
+    const { planner, calls } = await plannerHearing({ ...NOTHING_PLANNED, responseStyle: 'lookup' });
+
+    const decision = await planDelegations(planner, 'What is the weather like?', [], [], undefined, classifier);
+
+    expect(evaluations()).toBe(1);
+    expect(calls).toHaveLength(1);
+    expect(decision.responseStyle).toBe('lookup');
+  });
+
   it('asks the planner when the classifier fails', async () => {
     const classifier = new Classifier({
       id: 'routingClassifier',
@@ -731,7 +748,7 @@ describe('a photo, with the routing classifier sure of a fast route', () => {
         provider: 'fake',
         modelId: 'jev-fake',
         supportedQuestionTypes: ['choice', 'boolean'],
-        doEvaluate: async () => {
+        doDecide: async () => {
           throw new Error('Jev is down');
         },
       },
@@ -771,5 +788,19 @@ describe('decisionFromClassification', () => {
     expect(
       await decisionFromClassification({ responseStyle: 'briefing', relationToRunningRequest: 'adds' }, 'and the news'),
     ).toBeUndefined();
+  });
+
+  it('still stops the running request when Jev declined to say how the answer should sound', async () => {
+    expect(await decisionFromClassification({ relationToRunningRequest: 'cancels' }, 'never mind')).toEqual({
+      chains: [],
+      answers: [],
+      responseStyle: 'command',
+      relationToRunningRequest: 'cancels',
+    });
+  });
+
+  it('leaves anything else to the planner when Jev declined to say how the answer should sound', async () => {
+    expect(await decisionFromClassification({}, 'what is the weather')).toBeUndefined();
+    expect(await decisionFromClassification({ relationToRunningRequest: 'adds' }, 'and the news')).toBeUndefined();
   });
 });

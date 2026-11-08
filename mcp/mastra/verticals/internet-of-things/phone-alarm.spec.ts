@@ -68,16 +68,34 @@ describe('alarmTimeFrom', () => {
       expect(alarmTimeFrom(answers, SURE)).toBeUndefined();
     }
   });
+
+  it('declines when Jev refused any one of its questions, as when it is unsure of it', () => {
+    const refusal = { type: 'refusal' } as const;
+    const declined = [
+      halfPastSix({ alarmHour: refusal }),
+      halfPastSix({ alarmMinute: refusal }),
+      halfPastSix({ alarmGivenAsTimeOfDay: refusal }),
+      halfPastSix({ alarmHasLabel: refusal }),
+    ];
+
+    for (const answers of declined) {
+      expect(alarmTimeFrom(answers, SURE)).toBeUndefined();
+    }
+  });
 });
 
 describe('setPhoneAlarmDirectly', () => {
   /**
    * Spreads what a choice's probabilities leave over the options they leave out, since a real
-   * evaluation model returns the whole distribution and the classifier refuses anything less.
+   * decision model returns the whole distribution and the classifier refuses anything less. A
+   * refusal carries no distribution at all, so it is left as it is.
    */
   function withCompleteDistributions(answers: PhoneAlarmTimeAnswers): PhoneAlarmTimeAnswers {
     const questions = phoneAlarmTimeQuestions();
     function complete(answer: PhoneAlarmTimeAnswers['alarmHour'], options: string[]) {
+      if (answer.type !== 'choice') {
+        return answer;
+      }
       const given = answer.probabilities ?? {};
       const missing = options.filter((option) => !(option in given));
       const left = 1 - Object.values(given).reduce((sum, probability) => sum + probability, 0);
@@ -101,7 +119,7 @@ describe('setPhoneAlarmDirectly', () => {
         provider: 'fake',
         modelId: 'jev-fake',
         supportedQuestionTypes: ['choice', 'boolean'],
-        doEvaluate: async () => ({ answers: withCompleteDistributions(answers), warnings: [] }),
+        doDecide: async () => ({ answers: withCompleteDistributions(answers), warnings: [] }),
       },
     });
   }
@@ -175,6 +193,21 @@ describe('setPhoneAlarmDirectly', () => {
     );
 
     expect(text).toBeUndefined();
+    expect(phoneCommands).toEqual([]);
+  });
+
+  it('sends the phone nothing when Jev declines to say whether a time of day or a name was given', async () => {
+    for (const refused of [
+      halfPastSix({ alarmGivenAsTimeOfDay: { type: 'refusal' } }),
+      halfPastSix({ alarmHasLabel: { type: 'refusal' } }),
+    ]) {
+      const text = await setPhoneAlarmDirectly(
+        { request: 'wake me in twenty minutes for the train', minimumConfidence: SURE, callTool },
+        classifierAnswering(refused),
+      );
+
+      expect(text).toBeUndefined();
+    }
     expect(phoneCommands).toEqual([]);
   });
 });

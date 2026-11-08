@@ -1,4 +1,7 @@
+import type { Knowledge } from '@mastra/core/knowledge';
 import { z } from 'zod';
+import { readConventions } from '../../knowledge/conventions.js';
+import { getJarvisKnowledge } from '../../knowledge/index.js';
 import {
   type createAgent,
   createAgentStep,
@@ -12,6 +15,7 @@ import { executeTool } from '../../utils/tool-factory.js';
 import { getSendEmailAndAwaitResponseWorkflow } from '../human-in-the-loop/workflows.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
 import { currentBabyMealGuidance } from './baby-food.js';
+import { cookingConventions, dinnerConventionsSection } from './conventions.js';
 import {
   MAX_RECIPE_CANDIDATES,
   RECIPES_PER_MEAL_PLAN,
@@ -33,16 +37,17 @@ function numbered(rules: string[]): string {
 }
 
 /**
- * What the recipe selector is told. With a baby to feed, it also picks dinners the baby can share,
+ * What the recipe selector is told: `conventions` are the household's dinner conventions as
+ * {@link readConventions} reads them. With a baby to feed, it also picks dinners the baby can share,
  * from the advice for the baby's age (`./baby-food.ts`).
  */
-export function mealPlanRecipeSelectorInstructions(babyGuidance: string | undefined): string {
+export function mealPlanRecipeSelectorInstructions(babyGuidance: string | undefined, conventions: string): string {
   const rules = [
     'Only pick recipes from the candidates you are given, by their id',
     'Prefer dinner dishes ("aftensmad")',
     'Pick recipes that differ from each other in main ingredient and style',
     "Honour the user's preferences when they are given",
-    'Avoid weird soups such as "burgersuppe", "tacosuppe" and "lasagnesuppe"',
+    "Keep to the household's dinner conventions below",
     ...(babyGuidance
       ? [
           'Pick dinners the baby can share: follow its advice below on choosing dinners, and skip a dish built around something it must not have yet',
@@ -54,6 +59,7 @@ export function mealPlanRecipeSelectorInstructions(babyGuidance: string | undefi
     'You are a recipe selection specialist.',
     `Your ONLY job is to pick exactly ${RECIPES_PER_MEAL_PLAN} recipes for a weekly dinner plan.`,
     `Selection rules:\n${numbered(rules)}`,
+    dinnerConventionsSection(conventions),
     ...(babyGuidance ? [babyGuidance] : []),
     'Return only the ids. Do NOT invent ids, and do NOT write the meal plan.',
   ].join('\n\n');
@@ -128,13 +134,16 @@ const generateMealPlanStateSchema = z
   .partial();
 
 /**
- * The meal plan, with its agents running on `model`. The household's runs on Gemini Flash; a spec
- * hands in a scripted model to see what each agent is told.
+ * The meal plan, with its agents running on `model` and the recipe selector reading the household's
+ * dinner conventions from `getKnowledge`'s Knowledge. The household's runs on Gemini Flash and
+ * Jarvis's own Knowledge, opened on the first plan rather than when this module is loaded; a spec
+ * hands in a scripted model to see what each agent is told, and a Knowledge of its own.
  *
  * The agents' instructions are resolved on every run rather than when the workflow is built: the
- * server stays up for days, and what the baby may eat changes as it grows.
+ * server stays up for days, what the baby may eat changes as it grows, and the household adds
+ * conventions as it goes.
  */
-export function buildGenerateMealPlanWorkflow(model: MealPlanModel) {
+export function buildGenerateMealPlanWorkflow(model: MealPlanModel, getKnowledge: () => Promise<Knowledge>) {
   return createWorkflow({
     id: 'generateMealPlanWorkflow',
     inputSchema: z.object({
@@ -212,7 +221,11 @@ export function buildGenerateMealPlanWorkflow(model: MealPlanModel) {
           model,
           id: 'mealPlanRecipeSelector',
           name: 'MealPlanRecipeSelector',
-          instructions: async () => mealPlanRecipeSelectorInstructions(currentBabyMealGuidance()),
+          instructions: async () =>
+            mealPlanRecipeSelectorInstructions(
+              currentBabyMealGuidance(),
+              await readConventions(await getKnowledge(), cookingConventions),
+            ),
           description: 'Specialized agent for picking the recipes behind a weekly meal plan',
           // Picking two varied dinners from a shortlist is a light choice. The scheduling step after
           // it, which scales every ingredient, keeps the default thinking.
@@ -302,7 +315,7 @@ Use every recipe given, and only those recipes. Generate the complete meal plan 
     .commit();
 }
 
-export const generateMealPlanWorkflow = buildGenerateMealPlanWorkflow(cookingModel);
+export const generateMealPlanWorkflow = buildGenerateMealPlanWorkflow(cookingModel, getJarvisKnowledge);
 
 // Uses Gemini Flash for cooking workflow - better quality for recipe processing
 const generateMealPlanEmail = createAgentStep({

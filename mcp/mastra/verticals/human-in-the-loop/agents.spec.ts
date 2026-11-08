@@ -192,8 +192,14 @@ describe('parseEmailReply', () => {
   });
 });
 
-/** A classifier on a fake Jev that answers every question with the probability staged for it, or fails. */
-function fakeClassifier(probabilities: Record<string, number> | Error) {
+/** How a decision model answers a question it declines. */
+const REFUSAL = { type: 'refusal' } as const;
+
+/**
+ * A classifier on a fake Jev that answers every question with the probability staged for it, or
+ * refuses it, or fails.
+ */
+function fakeClassifier(probabilities: Record<string, number | typeof REFUSAL> | Error) {
   const evaluatedStates: unknown[] = [];
   const classifier = new Classifier({
     id: 'emailReplyClassifier',
@@ -202,17 +208,17 @@ function fakeClassifier(probabilities: Record<string, number> | Error) {
       provider: 'fake',
       modelId: 'jev-fake',
       supportedQuestionTypes: ['boolean'],
-      doEvaluate: async ({ state, questions }) => {
+      doDecide: async ({ state, questions }) => {
         evaluatedStates.push(state);
         if (probabilities instanceof Error) {
           throw probabilities;
         }
         return {
           answers: Object.fromEntries(
-            Object.keys(questions).map((id) => [
-              id,
-              { type: 'boolean' as const, probability: probabilities[id] ?? 0.5 },
-            ]),
+            Object.keys(questions).map((id) => {
+              const probability = probabilities[id] ?? 0.5;
+              return [id, typeof probability === 'number' ? { type: 'boolean' as const, probability } : probability];
+            }),
           ),
           warnings: [],
         };
@@ -240,7 +246,7 @@ describe('parseEmailReply with the email reply classifier', () => {
       approved: true,
       comments: 'Yeah fine, go ahead',
     });
-    expect(evaluatedStates).toEqual(['Yeah fine, go ahead']);
+    expect(evaluatedStates).toEqual([[{ type: 'text', text: 'Yeah fine, go ahead' }]]);
     expect(generateCalls).toHaveLength(0);
   });
 
@@ -260,6 +266,17 @@ describe('parseEmailReply with the email reply classifier', () => {
 
     expect(await parseEmailReply({ question, replyBody, responseSchema: approvalSchema, classifier })).toEqual({
       approved: true,
+      comments: 'from the model',
+    });
+    expect(generateCalls).toHaveLength(1);
+  });
+
+  it('asks the model when the classifier refuses to say whether the reply decides anything', async () => {
+    const { classifier } = fakeClassifier({ answersTheQuestion: REFUSAL, field_approved: 0.96 });
+    stagedGeneration = { object: { approved: false, comments: 'from the model' } };
+
+    expect(await parseEmailReply({ question, replyBody, responseSchema: approvalSchema, classifier })).toEqual({
+      approved: false,
       comments: 'from the model',
     });
     expect(generateCalls).toHaveLength(1);

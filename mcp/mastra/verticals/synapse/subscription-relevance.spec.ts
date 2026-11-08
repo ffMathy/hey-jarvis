@@ -18,11 +18,10 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import type { EmbeddedSubscription } from '../../storage/subscriptions.js';
 import { cosineSimilarity, embedText, embedTexts } from '../../utils/static-embedder.js';
-import { thirdPersonVariant } from './paraphrase.js';
 import { describeStateChange, describeStateChangeFacets, type StateChange } from './state-change.js';
-import { DEFAULT_MINIMUM_SCORE, rankSubscriptions } from './subscription-matcher.js';
+import { DEFAULT_MINIMUM_SCORE, embedSubscriptions, rankSubscriptions } from './subscription-matcher.js';
+import type { Subscription } from './subscription-store.js';
 
 interface Draft {
   id: string;
@@ -211,11 +210,8 @@ const PROBES: Array<{ name: string; change: StateChange; expected: string }> = [
   },
 ];
 
-/** Embeds a subscription the way registerSubscription does, rewrites included. */
-async function embedDraft(draft: Draft): Promise<EmbeddedSubscription> {
-  const whenAlternate = thirdPersonVariant(draft.whenEvent);
-  const givenAlternate = draft.givenCondition ? thirdPersonVariant(draft.givenCondition) : null;
-
+/** A draft as the store would hand it back. */
+function asSubscription(draft: Draft): Subscription {
   return {
     ...draft,
     source: 'user',
@@ -227,14 +223,11 @@ async function embedDraft(draft: Draft): Promise<EmbeddedSubscription> {
     // Retrieval never looks at how a subscription ends, so these fixtures leave it open.
     maxTriggerCount: null,
     expiresAt: null,
-    whenEmbedding: await embedText(draft.whenEvent),
-    givenEmbedding: draft.givenCondition ? await embedText(draft.givenCondition) : null,
-    whenAltEmbedding: whenAlternate ? await embedText(whenAlternate) : null,
-    givenAltEmbedding: givenAlternate ? await embedText(givenAlternate) : null,
   };
 }
 
-const subscriptions = await Promise.all(DRAFTS.map(embedDraft));
+/** The drafts, embedded the way matching embeds them, rewrites included. */
+const subscriptions = await embedSubscriptions(DRAFTS.map(asSubscription));
 
 /** Retrieval exactly as the batcher performs it: facets in, ranked matches out. */
 async function retrieve(change: StateChange, minimumScore = DEFAULT_MINIMUM_SCORE) {
@@ -247,8 +240,8 @@ async function retrieveWithSingleVector(change: StateChange, minimumScore = DEFA
   const embedding = await embedText(describeStateChange(change));
   const withoutRewrites = subscriptions.map((subscription) => ({
     ...subscription,
-    whenAltEmbedding: null,
-    givenAltEmbedding: null,
+    whenAlternateEmbedding: null,
+    givenAlternateEmbedding: null,
   }));
 
   return rankSubscriptions(embedding, withoutRewrites, { minimumScore, maximumMatches: 5 });
@@ -471,9 +464,9 @@ describe('matching cost', () => {
     // lookup. Charging that once-per-process cost to the first match would mislead.
     await embedText('warm up');
 
-    const many = await Promise.all(
+    const many = await embedSubscriptions(
       Array.from({ length: 100 }, (_, index) =>
-        embedDraft({ id: `filler-${index}`, whenEvent: `filler event number ${index}`, thenAction: 'do nothing' }),
+        asSubscription({ id: `filler-${index}`, whenEvent: `filler event number ${index}`, thenAction: 'do nothing' }),
       ),
     );
 

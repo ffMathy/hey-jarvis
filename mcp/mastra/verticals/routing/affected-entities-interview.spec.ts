@@ -432,7 +432,7 @@ describe('a request answered without its agent, with the headset watching', () =
         provider: 'fake',
         modelId: 'jev-fake',
         supportedQuestionTypes: ['choice', 'boolean'],
-        doEvaluate: async ({ questions }) => ({
+        doDecide: async ({ questions }) => ({
           answers: Object.fromEntries(
             Object.entries(questions).map(([questionId, question]) => {
               if (question.type !== 'choice') {

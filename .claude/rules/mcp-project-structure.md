@@ -20,12 +20,14 @@ mcp/
 │   │   │   └── index.ts
 │   │   ├── shopping/    # Shopping vertical
 │   │   │   ├── agents.ts
+│   │   │   ├── conventions.ts    # The household's shopping aliases and preferences, kept in Knowledge
 │   │   │   ├── tools.ts
 │   │   │   ├── workflows.ts
 │   │   │   └── index.ts
 │   │   ├── cooking/     # Cooking vertical
 │   │   │   ├── agents.ts         # Cooking agent: recipe search and meal planning
 │   │   │   ├── baby-food.ts      # The baby's age, and what it can have from the dinner
+│   │   │   ├── conventions.ts    # The household's dinner conventions, kept in Knowledge
 │   │   │   ├── recipe-catalog.ts # Shortlisting the catalogue for a meal plan
 │   │   │   ├── tools.ts
 │   │   │   ├── workflows.ts      # Meal plan, and the weekly plan with feedback by email
@@ -70,6 +72,7 @@ mcp/
 │   ├── processors/      # Output processors for post-processing
 │   │   ├── error-reporting.ts
 │   │   └── index.ts
+│   ├── knowledge/       # Jarvis's Knowledge: the instance, its scopes, and what agents are given
 │   ├── memory/          # Shared memory management
 │   ├── storage/         # Shared storage configuration
 │   └── index.ts         # Main Mastra configuration

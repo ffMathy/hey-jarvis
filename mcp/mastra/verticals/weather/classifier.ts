@@ -10,14 +10,15 @@ import { logger } from '../../utils/logger.js';
  * hour it is the same weather as the hour before, a degree either way. Each one is still a record
  * the State Change Reactor has to read and dismiss. What separates the few worth its time -- rain
  * starting, a front coming through, a storm -- is an ordered scale with its levels known in
- * advance, which an evaluation model (Jev, see `utils/providers/typesafe-provider.ts`) places a
+ * advance, which a decision model (Jev, see `utils/providers/typesafe-provider.ts`) places a
  * change on in one short call.
  *
  * So each update is compared with the last one filed:
  *
  * - routine, when the classifier is sure of it, is not filed;
  * - a warning is filed at high priority, so it is delivered at once instead of rolled up;
- * - anything else -- a notable change, an unsure answer, no key, an error -- is filed as before.
+ * - anything else -- a notable change, an unsure or declined answer, no key, an error -- is filed
+ *   as before.
  */
 
 /** Registered on the Mastra instance under this key, so Studio shows its evaluations. */
@@ -98,7 +99,7 @@ export async function classifyWeatherUpdate(
   previous: string | undefined,
   current: string,
 ): Promise<WeatherNotabilityAnswers> {
-  const { answers } = await classifier.evaluate({
+  const { answers } = await classifier.decide({
     state: describeWeatherComparison(previous, current),
     questions: weatherNotabilityQuestions(),
   });
