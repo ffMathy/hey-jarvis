@@ -107,7 +107,7 @@ interface ConversationRequest {
   url: string;
   method: string;
   headers: Record<string, string>;
-  body: { transport?: string; participantName?: string };
+  body: { deviceToken?: string; transport?: string; participantName?: string };
 }
 
 /** What the server answers a conversation request with: a credential for its transport. */
@@ -530,14 +530,14 @@ test('asks the paired server for each conversation, with this browser’s token 
   const [request] = asked;
   expect(request?.method).toBe('POST');
   expect(request?.url).toBe(CONVERSATION_URL);
-  expect(request?.headers.authorization).toBe(`Bearer ${DEVICE_TOKEN}`);
   expect(request?.headers['content-type']).toBe('application/json');
-  // A spoken conversation, under the name the phone goes by in the history.
-  expect(request?.body).toEqual({ transport: 'webrtc', participantName: 'jarvis-android' });
-  // The token travels in its header and nowhere else, and no ElevenLabs key goes anywhere at all.
+  // A spoken conversation, under the name the phone goes by in the history, with the token in the
+  // body: the live server was handed the request without an Authorization header.
+  expect(request?.body).toEqual({ deviceToken: DEVICE_TOKEN, transport: 'webrtc', participantName: 'jarvis-android' });
+  // The token travels in the body and nowhere else, and no ElevenLabs key goes anywhere at all.
   expect(request?.url).not.toContain(DEVICE_TOKEN);
   const chosenHeaders = Object.keys(request?.headers ?? {}).filter((name) => !isBrowserHeader(name));
-  expect(chosenHeaders.toSorted()).toEqual(['authorization', 'content-type']);
+  expect(chosenHeaders.toSorted()).toEqual(['content-type']);
 });
 
 test('greets you from the recording while the conversation is still being dialled', async ({ page }) => {
@@ -666,9 +666,7 @@ test('lets the browser be paired again from the settings, and uses the new token
 
   // Two requests: the first opened the conversation the tour landed on, the second the one the new
   // pairing opened, with the token it brought.
-  await expect
-    .poll(() => asked.map((request) => request.headers.authorization))
-    .toEqual([`Bearer ${DEVICE_TOKEN}`, `Bearer ${NEW_TOKEN}`]);
+  await expect.poll(() => asked.map((request) => request.body.deviceToken)).toEqual([DEVICE_TOKEN, NEW_TOKEN]);
   expect(await storedValue(page, 'jarvis.device-token')).toBe(NEW_TOKEN);
 });
 

@@ -135,8 +135,10 @@ test('a select summons him; a server that no longer knows the headset is said on
   expect(failed.view.hologram).toBe('shown');
   expect(failed.view.wakeArmed).toBe(false);
   expect(failed.recentEffects).toEqual(expect.arrayContaining(['arrive', 'summon', 'remember-problem']));
-  expect(requests.map((request) => request.body)).toEqual([{ transport: 'webrtc', participantName: 'jarvis-vr' }]);
-  expect(requests.map((request) => request.authorization)).toEqual([`Bearer ${PAIRING.deviceToken}`]);
+  expect(requests.map((request) => request.body)).toEqual([
+    { deviceToken: PAIRING.deviceToken, transport: 'webrtc', participantName: 'jarvis-vr' },
+  ]);
+  expect(requests.map((request) => request.authorization)).toEqual([undefined]);
   // One summon, one greeting.
   expect(requests).toHaveLength(1);
   expect(await greetingPlays(page)).toBe(1);
