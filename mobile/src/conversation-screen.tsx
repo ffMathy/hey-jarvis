@@ -562,6 +562,7 @@ export function ConversationScreen({
     onUnderWayChange,
     onGone,
     onBackToGlance,
+    hangUp: hangUpAfterWork,
   });
 
   /**
