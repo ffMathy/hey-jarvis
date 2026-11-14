@@ -26,7 +26,7 @@ paths:
 │   ├── hologram-view.tsx         # Reanimated clocks, reading the voice every frame
 │   ├── gpu-layer.tsx             # the one GL canvas all of him is drawn into, and waiting for the GPU
 │   ├── glance.ts                 # useGlance: the line's latest glance (`hologram/react/lifecycle`)
-│   └── is-foreground.ts          # stops the clock and the microphone when nobody is looking
+│   └── is-foreground.ts          # stops the hologram's clock when nobody is looking
 └── conversation/                 # `hologram/conversation`, the half that needs the ElevenLabs SDK
     ├── session.ts                # useJarvisSession: the session, the SDK, the greeting's player, the call's audio
     ├── greeting-player.ts        # "Hello sir, how can I help?" as call audio, by hologram's native module …
@@ -55,6 +55,7 @@ mobile/
     ├── confirm-glance-action.ts      # Alert.alert …
     ├── confirm-glance-action.web.ts  # … window.confirm
     ├── back-to-glance.tsx        # what the conversation tells the app, and the way back to the glance
+    ├── back-press.ts             # what back does there: the glance, or hanging up and leaving
     ├── onboarding-screen.tsx     # the first-run tour: the Jarvis server and pairing, the assistant role
     ├── onboarding.ts             # its steps, and which of them this device has
     ├── onboarding-storage.ts     # whether the tour has been walked

@@ -1,6 +1,7 @@
 import type { SessionPhase } from 'hologram';
 import { useEffect } from 'react';
 import { BackHandler, Platform, Pressable, StyleSheet, Text } from 'react-native';
+import { backOnTheConversation } from './back-press';
 import { theme } from './theme';
 
 /**
@@ -17,8 +18,8 @@ export function isUnderWay(phase: SessionPhase): boolean {
  * The app shows a glance when it is opened rather than summoned (`app-screen.ts`), and never in the
  * middle of a conversation: so this screen reports whether one is under way — from the moment it
  * starts asking for the microphone until he has gone — and when he has gone, which is when the app
- * goes back to the glance. Back, across the whole screen, goes back at once when there is one; in the
- * sheet back is the sheet's, and hangs up.
+ * goes back to the glance. Back, across the whole screen, goes back at once when there is one, and
+ * hangs up when there is not; in the sheet back is the sheet's, and hangs up. See `back-press.ts`.
  */
 export function useBackToGlance({
   starting,
@@ -30,6 +31,7 @@ export function useBackToGlance({
   onUnderWayChange,
   onGone,
   onBackToGlance,
+  hangUp,
 }: {
   starting: boolean;
   phase: SessionPhase;
@@ -40,6 +42,8 @@ export function useBackToGlance({
   onUnderWayChange: ((underWay: boolean) => void) | undefined;
   onGone: (() => void) | undefined;
   onBackToGlance: (() => void) | undefined;
+  /** Ends the conversation, once any tool call in flight is done: `hangUpAfterWork`. */
+  hangUp: () => void;
 }) {
   const underWay = starting || isUnderWay(phase) || hangingUp || (ended && !gone);
   useEffect(() => {
@@ -53,13 +57,11 @@ export function useBackToGlance({
   }, [gone, onGone]);
 
   useEffect(() => {
-    if (inSheet || onBackToGlance === undefined) return;
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      onBackToGlance();
-      return true;
-    });
+    const onBack = backOnTheConversation({ inSheet, onBackToGlance, hangUp });
+    if (onBack === undefined) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBack);
     return () => subscription.remove();
-  }, [inSheet, onBackToGlance]);
+  }, [inSheet, onBackToGlance, hangUp]);
 }
 
 /** The browser's way back to the glance, at the top of the screen; a phone uses back. */

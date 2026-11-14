@@ -17,6 +17,14 @@ assistant's window is retracted once it is off the screen. He used to fade first
 followed once he had, which was most of a second of a finished assistant still on screen; the user
 asked for the sheet simply to go. Tapping beside it or pressing back starts it down at once too.
 
+**Opened from the launcher, back hangs up as well.** With a glance to go back to, back shows it and
+the conversation ends with the screen. With none, back is the system's — and Android does not finish
+an app's last activity on back, it puts it behind the launcher, so the screen and its session stayed
+alive and he went on listening and answering with nothing on screen. Back there now hangs up
+(`hangUpAfterWork`, so a tool call in flight still finishes) and then leaves the app as before
+(`backOnTheConversation` in `src/back-press.ts`). Only back: home or switching apps leaves him
+talking, since the camera app takes the screen in the middle of a conversation too.
+
 **Quiet after a finished request ends it too, from the agent's side.** Its `turnTimeout` of three
 seconds and its `end_call` tool hang up once a request is done and nobody answers, so to the screen it
 is simply the agent hanging up: the app registers no client tool for it. **A finished command waits
