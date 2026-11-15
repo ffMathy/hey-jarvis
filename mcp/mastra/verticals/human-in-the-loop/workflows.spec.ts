@@ -94,6 +94,7 @@ const {
   getSendEmailAndAwaitResponseWorkflow,
   humanInTheLoopDemoWorkflow,
   parseFormRequestSubject,
+  parseRecipientList,
 } = await import('./workflows.js');
 
 /** Narrows a workflow result so the status-specific fields are reachable. */
@@ -116,7 +117,7 @@ const awaitBudgetApprovalWorkflow = getSendEmailAndAwaitResponseWorkflow(
 
 const sendAndWaitMastra = new Mastra({ workflows: { awaitBudgetApprovalWorkflow } });
 
-async function startFormRequest(inputData: { recipientEmail: string; question: string }) {
+async function startFormRequest(inputData: { recipientEmails: string[]; question: string }) {
   const run = await sendAndWaitMastra.getWorkflow('awaitBudgetApprovalWorkflow').createRun();
   const started = await run.start({ inputData });
   return { run, started };
@@ -169,7 +170,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
 
   describe('sending the form request', () => {
     it('sends a single email to the recipient with the run id in the subject', async () => {
-      const { run } = await startFormRequest({ recipientEmail: 'boss@example.com', question: 'Approve the budget?' });
+      const { run } = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve the budget?' });
 
       expect(sentEmails).toHaveLength(1);
       expect(sentEmails[0].toRecipients).toEqual(['boss@example.com']);
@@ -196,15 +197,15 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
     });
 
     it('gives two runs of the same workflow different subject tokens', async () => {
-      const first = await startFormRequest({ recipientEmail: 'boss@example.com', question: 'Approve?' });
-      const second = await startFormRequest({ recipientEmail: 'boss@example.com', question: 'Approve?' });
+      const first = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve?' });
+      const second = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve?' });
 
       expect(first.run.runId).not.toBe(second.run.runId);
       expect(sentEmails[0].subject).not.toBe(sentEmails[1].subject);
     });
 
     it('builds an HTML body carrying the question, the run id and the reply instructions', async () => {
-      const { run } = await startFormRequest({ recipientEmail: 'boss@example.com', question: 'Approve the budget?' });
+      const { run } = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve the budget?' });
 
       const { bodyContent } = sentEmails[0];
       expect(bodyContent.startsWith('<html>')).toBe(true);
@@ -215,7 +216,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
     });
 
     it('promises no expiry, because nothing expires the request', async () => {
-      await startFormRequest({ recipientEmail: 'boss@example.com', question: 'Approve the budget?' });
+      await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve the budget?' });
 
       // The body used to render a date 14 days out and call it an expiry, while the graph
       // was only send -> await: no step, sweeper or timer ever ended a suspension.
@@ -225,8 +226,27 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
     it('rejects a recipient that is not an email address', async () => {
       const run = await sendAndWaitMastra.getWorkflow('awaitBudgetApprovalWorkflow').createRun();
 
-      await expect(run.start({ inputData: { recipientEmail: 'boss', question: 'Approve?' } })).rejects.toThrow(
-        /recipientEmail: Invalid email address/,
+      await expect(run.start({ inputData: { recipientEmails: ['boss'], question: 'Approve?' } })).rejects.toThrow(
+        /recipientEmails\.0: Invalid email address/,
+      );
+      expect(sentEmails).toHaveLength(0);
+    });
+
+    it('sends one email to every recipient', async () => {
+      await startFormRequest({
+        recipientEmails: ['jaga@example.dk', 'mathias@example.com'],
+        question: 'Approve the meal plan?',
+      });
+
+      expect(sentEmails).toHaveLength(1);
+      expect(sentEmails[0].toRecipients).toEqual(['jaga@example.dk', 'mathias@example.com']);
+    });
+
+    it('rejects a request with nobody to send it to', async () => {
+      const run = await sendAndWaitMastra.getWorkflow('awaitBudgetApprovalWorkflow').createRun();
+
+      await expect(run.start({ inputData: { recipientEmails: [], question: 'Approve?' } })).rejects.toThrow(
+        /recipientEmails/,
       );
       expect(sentEmails).toHaveLength(0);
     });
@@ -234,7 +254,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
     it('fails the run without suspending when the email cannot be sent', async () => {
       sendEmailFailure = new Error('Failed to send email: 401 Unauthorized');
 
-      const { started } = await startFormRequest({ recipientEmail: 'boss@example.com', question: 'Approve?' });
+      const { started } = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve?' });
 
       assertStatus(started, 'failed');
       expect(started.error.message).toContain('Failed to send email');
@@ -243,7 +263,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
 
   describe('suspending', () => {
     it('describes the pending request in the suspend payload', async () => {
-      const { started } = await startFormRequest({ recipientEmail: 'boss@example.com', question: 'Approve?' });
+      const { started } = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve?' });
 
       assertStatus(started, 'suspended');
       expect(started.suspended).toEqual([['await-email-response']]);
@@ -252,7 +272,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
       // what was asked, or which shape the answer must have.
       expect(started.suspendPayload).toEqual({
         'await-email-response': {
-          recipientEmail: 'boss@example.com',
+          recipientEmails: ['boss@example.com'],
           question: 'Approve?',
           // The id a reply has to quote, rather than the message id: Graph reports no
           // message id for a sent mail, so that field could only ever say 'sent'.
@@ -271,7 +291,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
 
   describe('resuming', () => {
     it('returns the sender and the typed response when the reply comes from the recipient', async () => {
-      const { run } = await startFormRequest({ recipientEmail: 'boss@example.com', question: 'Approve?' });
+      const { run } = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve?' });
 
       const resumed = await run.resume({
         step: ['await-email-response'],
@@ -293,7 +313,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
 
     it('reads a free-text reply through the email parsing agent', async () => {
       stagedAnswer = { approved: true, comments: 'go for it' };
-      const { run } = await startFormRequest({ recipientEmail: 'boss@example.com', question: 'Approve?' });
+      const { run } = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve?' });
 
       const resumed = await run.resume({
         step: ['await-email-response'],
@@ -307,7 +327,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
     });
 
     it('compares the sender against the recipient case-insensitively', async () => {
-      const { run } = await startFormRequest({ recipientEmail: 'Boss@Example.com', question: 'Approve?' });
+      const { run } = await startFormRequest({ recipientEmails: ['Boss@Example.com'], question: 'Approve?' });
 
       const resumed = await run.resume({
         step: ['await-email-response'],
@@ -319,7 +339,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
     });
 
     it('drops fields the response schema does not declare', async () => {
-      const { run } = await startFormRequest({ recipientEmail: 'boss@example.com', question: 'Approve?' });
+      const { run } = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve?' });
 
       const resumed = await run.resume({
         step: ['await-email-response'],
@@ -334,8 +354,40 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
       expect(resumed.result.response).toEqual({ approved: true });
     });
 
+    it('accepts a reply from any of the recipients', async () => {
+      const { run } = await startFormRequest({
+        recipientEmails: ['jaga@example.dk', 'Mathias@Example.com'],
+        question: 'Approve the meal plan?',
+      });
+
+      const resumed = await run.resume({
+        step: ['await-email-response'],
+        resumeData: { requestId: requestIdOf(0), senderEmail: 'mathias@example.com', response: { approved: true } },
+      });
+
+      assertStatus(resumed, 'success');
+      expect(resumed.result).toEqual({ senderEmail: 'mathias@example.com', response: { approved: true } });
+    });
+
+    it('names every recipient when it refuses a reply from somebody else', async () => {
+      const { run } = await startFormRequest({
+        recipientEmails: ['jaga@example.dk', 'mathias@example.com'],
+        question: 'Approve the meal plan?',
+      });
+
+      const resumed = await run.resume({
+        step: ['await-email-response'],
+        resumeData: { requestId: requestIdOf(0), senderEmail: 'attacker@example.com', response: { approved: true } },
+      });
+
+      assertStatus(resumed, 'suspended');
+      expect(resumed.suspendPayload['await-email-response'].rejectedReply?.reason).toBe(
+        'the reply came from attacker@example.com, and the request was sent to jaga@example.dk, mathias@example.com',
+      );
+    });
+
     it('refuses a reply from somebody else without accepting it', async () => {
-      const { run } = await startFormRequest({ recipientEmail: 'boss@example.com', question: 'Approve?' });
+      const { run } = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve?' });
 
       const resumed = await run.resume({
         step: ['await-email-response'],
@@ -350,7 +402,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
     });
 
     it('keeps the pending request alive when a reply from the wrong sender arrives first', async () => {
-      const { run } = await startFormRequest({ recipientEmail: 'boss@example.com', question: 'Approve?' });
+      const { run } = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve?' });
       await run.resume({
         step: ['await-email-response'],
         resumeData: { requestId: requestIdOf(0), senderEmail: 'attacker@example.com', response: { approved: true } },
@@ -368,7 +420,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
     });
 
     it('refuses an empty sender rather than skipping the security check', async () => {
-      const { run } = await startFormRequest({ recipientEmail: 'boss@example.com', question: 'Approve?' });
+      const { run } = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve?' });
 
       const resumed = await run.resume({
         step: ['await-email-response'],
@@ -386,7 +438,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
     });
 
     it('refuses a reply that answers a request other than the one still open', async () => {
-      const { run } = await startFormRequest({ recipientEmail: 'boss@example.com', question: 'Approve?' });
+      const { run } = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve?' });
 
       const refused = await run.resume({
         step: ['await-email-response'],
@@ -415,7 +467,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
     });
 
     it('refuses a reply whose body is blank rather than asking the model to read it', async () => {
-      const { run } = await startFormRequest({ recipientEmail: 'boss@example.com', question: 'Approve?' });
+      const { run } = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve?' });
 
       const resumed = await run.resume({
         step: ['await-email-response'],
@@ -433,7 +485,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
 
     it('refuses a reply the parsing agent cannot read as an answer', async () => {
       parseFailure = new Error('The email parsing agent returned no structured response');
-      const { run } = await startFormRequest({ recipientEmail: 'boss@example.com', question: 'Approve?' });
+      const { run } = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve?' });
 
       const refused = await run.resume({
         step: ['await-email-response'],
@@ -459,7 +511,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
     });
 
     it('refuses a resume that carries neither a structured response nor a reply body', async () => {
-      const { run } = await startFormRequest({ recipientEmail: 'boss@example.com', question: 'Approve?' });
+      const { run } = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve?' });
 
       const resumed = await run.resume({
         step: ['await-email-response'],
@@ -473,7 +525,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
     });
 
     it('rejects a response that does not match the schema', async () => {
-      const { run } = await startFormRequest({ recipientEmail: 'boss@example.com', question: 'Approve?' });
+      const { run } = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve?' });
 
       await expect(
         run.resume({
@@ -495,7 +547,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
     });
 
     it('rejects a resume that carries no data at all', async () => {
-      const { run } = await startFormRequest({ recipientEmail: 'boss@example.com', question: 'Approve?' });
+      const { run } = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve?' });
 
       await expect(run.resume({ step: ['await-email-response'] })).rejects.toThrow(/Invalid resume data/);
     });
@@ -514,7 +566,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
 
     it('validates the reply against the schema the workflow was built with', async () => {
       const run = await vendorMastra.getWorkflow('awaitVendorSelectionWorkflow').createRun();
-      await run.start({ inputData: { recipientEmail: 'boss@example.com', question: 'Which vendor?' } });
+      await run.start({ inputData: { recipientEmails: ['boss@example.com'], question: 'Which vendor?' } });
 
       const resumed = await run.resume({
         step: ['await-email-response'],
@@ -531,7 +583,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
 
     it('advertises its own response shape in the suspend payload', async () => {
       const run = await vendorMastra.getWorkflow('awaitVendorSelectionWorkflow').createRun();
-      const started = await run.start({ inputData: { recipientEmail: 'boss@example.com', question: 'Which vendor?' } });
+      const started = await run.start({ inputData: { recipientEmails: ['boss@example.com'], question: 'Which vendor?' } });
 
       assertStatus(started, 'suspended');
       expect(started.suspendPayload['await-email-response'].responseSchema).toMatchObject({
@@ -542,7 +594,7 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
 
     it('refuses a reply shaped for a different slug', async () => {
       const run = await vendorMastra.getWorkflow('awaitVendorSelectionWorkflow').createRun();
-      await run.start({ inputData: { recipientEmail: 'boss@example.com', question: 'Which vendor?' } });
+      await run.start({ inputData: { recipientEmails: ['boss@example.com'], question: 'Which vendor?' } });
 
       await expect(
         run.resume({
@@ -551,6 +603,21 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
         }),
       ).rejects.toThrow(/vendorName/);
     });
+  });
+});
+
+describe('parseRecipientList', () => {
+  it('splits addresses on semicolons and commas, the separators mail clients use', () => {
+    expect(parseRecipientList('jaga@example.dk;mathias@example.com')).toEqual(['jaga@example.dk', 'mathias@example.com']);
+    expect(parseRecipientList('jaga@example.dk, mathias@example.com')).toEqual(['jaga@example.dk', 'mathias@example.com']);
+  });
+
+  it('ignores blanks and empty entries', () => {
+    expect(parseRecipientList(' jaga@example.dk ; ;mathias@example.com; ')).toEqual([
+      'jaga@example.dk',
+      'mathias@example.com',
+    ]);
+    expect(parseRecipientList('')).toEqual([]);
   });
 });
 

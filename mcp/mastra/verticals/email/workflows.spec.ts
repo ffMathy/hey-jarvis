@@ -128,7 +128,7 @@ const awaitSomethingElseWorkflow = createWorkflow({
  */
 const askTwoAtOnceWorkflow = createWorkflow({
   id: 'askTwoAtOnceWorkflow',
-  inputSchema: z.object({ recipientEmail: z.string(), question: z.string() }),
+  inputSchema: z.object({ recipientEmails: z.array(z.string()), question: z.string() }),
   outputSchema: z.object({}).loose(),
 })
   .parallel([
@@ -147,7 +147,7 @@ const RESUME_FAILURE_MESSAGE = 'the ledger refused the approval';
  */
 const failsAfterReplyWorkflow = createWorkflow({
   id: 'failsAfterReplyWorkflow',
-  inputSchema: z.object({ recipientEmail: z.string(), question: z.string() }),
+  inputSchema: z.object({ recipientEmails: z.array(z.string()), question: z.string() }),
   outputSchema: z.object({}),
 })
   .then(getSendEmailAndAwaitResponseWorkflow('failingUnderTest', approvalResponseSchema))
@@ -170,14 +170,14 @@ const failsAfterReplyWorkflow = createWorkflow({
  */
 const loopUntilApprovedWorkflow = createWorkflow({
   id: 'loopUntilApprovedWorkflow',
-  inputSchema: z.object({ recipientEmail: z.string(), question: z.string() }),
+  inputSchema: z.object({ recipientEmails: z.array(z.string()), question: z.string() }),
   outputSchema: z.object({ approved: z.boolean() }),
 })
   .dowhile(
     createWorkflow({
       id: 'loopUntilApprovedIteration',
-      inputSchema: z.object({ recipientEmail: z.string(), question: z.string() }),
-      outputSchema: z.object({ recipientEmail: z.string(), question: z.string(), approved: z.boolean() }),
+      inputSchema: z.object({ recipientEmails: z.array(z.string()), question: z.string() }),
+      outputSchema: z.object({ recipientEmails: z.array(z.string()), question: z.string(), approved: z.boolean() }),
     })
       .then(getSendEmailAndAwaitResponseWorkflow('loopUntilApproved', approvalResponseSchema))
       .then(
@@ -185,9 +185,9 @@ const loopUntilApprovedWorkflow = createWorkflow({
           id: 'carry-the-question-round',
           description: 'Hands the question back so the next iteration can ask it again',
           inputSchema: z.object({ senderEmail: z.string(), response: approvalResponseSchema }),
-          outputSchema: z.object({ recipientEmail: z.string(), question: z.string(), approved: z.boolean() }),
+          outputSchema: z.object({ recipientEmails: z.array(z.string()), question: z.string(), approved: z.boolean() }),
           execute: async ({ inputData }) => ({
-            recipientEmail: inputData.senderEmail,
+            recipientEmails: [inputData.senderEmail],
             question: 'Approve the budget?',
             approved: inputData.response.approved,
           }),
@@ -200,7 +200,7 @@ const loopUntilApprovedWorkflow = createWorkflow({
     createStep({
       id: 'report-approval',
       description: 'Reports the approval the loop ended on',
-      inputSchema: z.object({ recipientEmail: z.string(), question: z.string(), approved: z.boolean() }),
+      inputSchema: z.object({ recipientEmails: z.array(z.string()), question: z.string(), approved: z.boolean() }),
       outputSchema: z.object({ approved: z.boolean() }),
       execute: async ({ inputData }) => ({ approved: inputData.approved }),
     }),
@@ -283,9 +283,9 @@ async function processReplies(emails: ReturnType<typeof inboundReply>[]) {
   return result.result;
 }
 
-async function startPendingApproval(recipientEmail: string) {
+async function startPendingApproval(...recipientEmails: string[]) {
   const run = await mastra.getWorkflow('awaitApprovalWorkflow').createRun();
-  const started = await run.start({ inputData: { recipientEmail, question: 'Approve the budget?' } });
+  const started = await run.start({ inputData: { recipientEmails, question: 'Approve the budget?' } });
   assertStatus(started, 'suspended');
   return run;
 }
@@ -317,7 +317,7 @@ async function startScheduledLoop() {
   const schedule = await mastra.schedules.create({
     workflowId: 'loopUntilApprovedWorkflow',
     cron: '0 0 1 1 *',
-    inputData: { recipientEmail: 'boss@example.com', question: 'Approve the budget?' },
+    inputData: { recipientEmails: ['boss@example.com'], question: 'Approve the budget?' },
   });
   const { claimId: scheduledRunId } = await mastra.schedules.run(schedule.id);
 
@@ -398,6 +398,23 @@ describe('processFormReplies', () => {
     });
   });
 
+  it('resumes a run asked of several people with the reply of whichever one answers', async () => {
+    // The weekly meal plan goes to the whole household, and either of them can approve it.
+    const run = await startPendingApproval('cook@example.com', 'shopper@example.com');
+    stagedAnswer = { approved: true };
+
+    const summary = await processReplies([
+      inboundReply({ subject: replySubjectFor(0), from: 'shopper@example.com', content: 'Godkendt' }),
+    ]);
+
+    expect(sentEmails[0].toRecipients).toEqual(['cook@example.com', 'shopper@example.com']);
+    expect(summary).toMatchObject({ formRepliesFound: 1, workflowsResumed: 1, repliesRejected: 0, errors: [] });
+
+    const finished = await mastra.getWorkflow('awaitApprovalWorkflow').getWorkflowRunById(run.runId);
+    expect(finished?.status).toBe('success');
+    expect(finished?.result).toEqual({ senderEmail: 'shopper@example.com', response: { approved: true } });
+  });
+
   it('ignores the request email itself when it lands back in the shared inbox', async () => {
     // Jarvis and the household share one mailbox, so the request arrives in the inbox the
     // replies are read from: same subject token, and from the very address it was sent to.
@@ -457,7 +474,7 @@ describe('processFormReplies', () => {
   it('resumes a question asked inside a dowhile loop, as the weekly meal plan does', async () => {
     const loopRun = await mastra.getWorkflow('loopUntilApprovedWorkflow').createRun();
     const started = await loopRun.start({
-      inputData: { recipientEmail: 'boss@example.com', question: 'Approve the budget?' },
+      inputData: { recipientEmails: ['boss@example.com'], question: 'Approve the budget?' },
     });
     assertStatus(started, 'suspended');
     expect(sentEmails).toHaveLength(1);
@@ -701,7 +718,7 @@ describe('processFormReplies', () => {
   it('reports why a resume failed, reading the message out of the error Mastra serialised', async () => {
     const run = await mastra.getWorkflow('failsAfterReplyWorkflow').createRun();
     assertStatus(
-      await run.start({ inputData: { recipientEmail: 'boss@example.com', question: 'Approve?' } }),
+      await run.start({ inputData: { recipientEmails: ['boss@example.com'], question: 'Approve?' } }),
       'suspended',
     );
     stagedAnswer = { approved: true };
@@ -762,7 +779,7 @@ describe('a run waiting on two questions at once', () => {
   async function askTwoQuestions() {
     const run = await mastra.getWorkflow('askTwoAtOnceWorkflow').createRun();
     const started = await run.start({
-      inputData: { recipientEmail: 'boss@example.com', question: 'Approve?' },
+      inputData: { recipientEmails: ['boss@example.com'], question: 'Approve?' },
     });
 
     assertStatus(started, 'suspended');

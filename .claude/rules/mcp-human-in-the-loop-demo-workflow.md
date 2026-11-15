@@ -13,7 +13,7 @@ Demonstrates email-based workflow suspension and resumption with a 3-step approv
 - **Step 2 - Vendor Selection**: Requests vendor selection (Vendor name + justification)
 - **Step 3 - Final Confirmation**: Requests final action confirmation (Confirm/Cancel + notes)
 - **Email integration**: Sends form request emails carrying the id of the suspended run
-- **Security validation**: Only a reply from the address that was asked is accepted
+- **Security validation**: Only a reply from an address that was asked is accepted
 - **LLM parsing**: `parseEmailReply()` turns the free text of the reply into the typed response
 - **No timeout**: A suspended request waits until it is answered — nothing expires it, and the
   email does not claim otherwise
@@ -41,7 +41,7 @@ Demonstrates email-based workflow suspension and resumption with a 3-step approv
 - Request id alongside it: `[.../REQ-{requestId}]`, minted per question. Every stage of one run
   suspends under the same run id, so the request id is what says *which* question a reply
   answers; a reply is only accepted for the request the run is still waiting on
-- Sender validated against the address the request was sent to; an empty sender is refused
+- Sender validated against the addresses the request was sent to; an empty sender is refused
   rather than skipped
 - A reply that fails validation is refused and the request stays open, so a wrong-sender,
   duplicate or late reply cannot destroy a pending approval or answer the wrong question
@@ -66,5 +66,8 @@ const result = await run.start({
 
 **Helper Functions:**
 - `getSendEmailAndAwaitResponseWorkflow(slug, responseSchema)`: Reusable send-and-wait workflow,
-  embeddable in any parent workflow with `.then(...)`
+  embeddable in any parent workflow with `.then(...)`. Its input is `{ recipientEmails, question }`:
+  one email goes to every address, and the first reply from any of them answers it. The weekly meal
+  plan uses that to ask the whole household; the demo asks one address
+- `parseRecipientList(addresses)`: Reads a configured list of addresses separated by `,` or `;`
 - `parseEmailReply()`: Uses the email parsing agent to extract the typed answer from a reply
