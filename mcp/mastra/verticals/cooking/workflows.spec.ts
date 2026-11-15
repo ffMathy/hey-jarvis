@@ -15,7 +15,7 @@ import { fakeValdemarsro, valdemarsroRecipe } from '../../../tests/utils/fake-va
 import { createScriptedModel } from '../../../tests/utils/scripted-model.js';
 import { BABY_BIRTH_DATE_VARIABLE } from './baby-food.js';
 import { resetCookingCachesForTest } from './tools.js';
-import { buildGenerateMealPlanWorkflow } from './workflows.js';
+import { buildGenerateMealPlanWorkflow, readMealPlanRecipients } from './workflows.js';
 
 const API_KEY_VARIABLE = 'HEY_JARVIS_VALDEMARSRO_API_KEY';
 const EXAMPLE_BIRTH_DATE = '2025-03-15';
@@ -151,5 +151,38 @@ describe('generateMealPlanWorkflow', () => {
 
     expect(plan.result.status).toBe('failed');
     expect(plan.selector).toBe('');
+  });
+});
+
+describe('readMealPlanRecipients', () => {
+  it('asks everyone in a semicolon-separated list', () => {
+    // This is how the variable was set when the weekly plan failed with
+    // "recipientEmail: Invalid email address": only a comma used to separate addresses.
+    expect(readMealPlanRecipients('jaga@example.dk;mathias@example.com')).toEqual([
+      'jaga@example.dk',
+      'mathias@example.com',
+    ]);
+  });
+
+  it('asks everyone in a comma-separated list, and one address on its own', () => {
+    expect(readMealPlanRecipients('jaga@example.dk, mathias@example.com')).toEqual([
+      'jaga@example.dk',
+      'mathias@example.com',
+    ]);
+    expect(readMealPlanRecipients('mathias@example.com')).toEqual(['mathias@example.com']);
+  });
+
+  it('names the variable when nobody is configured', () => {
+    expect(() => readMealPlanRecipients(undefined)).toThrow(/HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL .*not set/);
+    expect(() => readMealPlanRecipients(' ; ')).toThrow(/HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL .*not set/);
+  });
+
+  it('names the variable, but never its value, when an entry is not an address', () => {
+    const attempt = () => readMealPlanRecipients('jaga@example.dk mathias@example.com');
+
+    expect(attempt).toThrow(
+      /HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL holds 1 of 1 entries that are not email addresses/,
+    );
+    expect(attempt).not.toThrow(/jaga@example\.dk/);
   });
 });

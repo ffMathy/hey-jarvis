@@ -17,9 +17,15 @@ import { parseEmailReply } from './agents.js';
 // No state schema for the send-and-wait workflow - it operates independently
 // All data flows through input/output, not state
 
-// Input schema
+// Input schema.
+//
+// A list, because a question can be for a household rather than a person: the weekly meal
+// plan goes to everyone who shops and cooks, and whichever of them answers first decides.
 const sendAndWaitInputSchema = z.object({
-  recipientEmail: z.string().email().describe('Email address to send request to'),
+  recipientEmails: z
+    .array(z.string().email())
+    .min(1)
+    .describe('Email addresses to send the request to; a reply from any of them is accepted'),
   question: z.string().describe('Question to ask in the email'),
 });
 
@@ -34,7 +40,7 @@ const emailSentSchema = z.object({
   subject: z.string(),
   success: z.boolean(),
   message: z.string(),
-  recipientEmail: z.string(),
+  recipientEmails: z.array(z.string()),
   question: z.string(),
 });
 
@@ -100,7 +106,7 @@ const sendFormRequestEmail = createStep({
   inputSchema: sendAndWaitInputSchema,
   outputSchema: emailSentSchema,
   execute: async (params) => {
-    const { recipientEmail, question } = params.inputData;
+    const { recipientEmails, question } = params.inputData;
 
     // A fresh id per request, minted here rather than derived from the run: every
     // send-and-wait stage of a parent workflow shares the parent's run id, so this is
@@ -127,7 +133,7 @@ const sendFormRequestEmail = createStep({
     const emailResult = await executeTool(sendEmail, {
       subject,
       bodyContent,
-      toRecipients: [recipientEmail],
+      toRecipients: recipientEmails,
     });
 
     return {
@@ -135,7 +141,7 @@ const sendFormRequestEmail = createStep({
       subject: emailResult.subject,
       success: emailResult.success,
       message: emailResult.message,
-      recipientEmail,
+      recipientEmails,
       question,
     };
   },
@@ -151,7 +157,7 @@ const sendFormRequestEmail = createStep({
  * context, and the shape the answer has to take.
  */
 const pendingEmailRequestSchema = z.object({
-  recipientEmail: z.string().describe('The only address whose reply will be accepted'),
+  recipientEmails: z.array(z.string()).describe('The only addresses whose reply will be accepted'),
   question: z.string().describe('The question that was asked'),
   requestId: z.string().describe('Id of this request; only a reply quoting it will be accepted'),
   responseSchema: z.record(z.string(), z.unknown()).describe('JSON Schema of the answer this step accepts'),
@@ -172,20 +178,37 @@ const pendingEmailRequestSchema = z.object({
  * approval was accepted from nobody), and a request that records no recipient can verify
  * nothing, so it refuses too.
  */
-function describeSenderProblem(senderEmail: string, recipientEmail: string): string | undefined {
-  if (!recipientEmail) {
+function describeSenderProblem(senderEmail: string, recipientEmails: string[]): string | undefined {
+  if (recipientEmails.length === 0) {
     return 'the request records no expected recipient, so no reply can be verified against it';
   }
 
+  const askedAddresses = recipientEmails.join(', ');
+
   if (!senderEmail) {
-    return `the reply carried no sender address, and the request was sent to ${recipientEmail}`;
+    return `the reply carried no sender address, and the request was sent to ${askedAddresses}`;
   }
 
-  if (senderEmail.toLowerCase() !== recipientEmail.toLowerCase()) {
-    return `the reply came from ${senderEmail}, and the request was sent to ${recipientEmail}`;
+  const wasAsked = recipientEmails.some((recipientEmail) => recipientEmail.toLowerCase() === senderEmail.toLowerCase());
+  if (!wasAsked) {
+    return `the reply came from ${senderEmail}, and the request was sent to ${askedAddresses}`;
   }
 
   return undefined;
+}
+
+/**
+ * Reads a configured list of recipients: addresses separated by commas or semicolons, the
+ * two separators mail clients use, with blanks around them and empty entries ignored.
+ *
+ * Only the first comma-separated address used to be kept, so `a@example.com;b@example.com`
+ * reached the email step as one address and failed its validation.
+ */
+export function parseRecipientList(addresses: string): string[] {
+  return addresses
+    .split(/[,;]/)
+    .map((address) => address.trim())
+    .filter((address) => address.length > 0);
 }
 
 /**
@@ -243,9 +266,9 @@ function createAwaitEmailResponseStep<TResponseSchema extends z.ZodObject<z.ZodR
     resumeSchema,
     suspendSchema: pendingEmailRequestSchema,
     execute: async ({ inputData, resumeData, suspend }) => {
-      const { recipientEmail, question, requestId } = inputData;
+      const { recipientEmails, question, requestId } = inputData;
       const pendingRequest = {
-        recipientEmail,
+        recipientEmails,
         question,
         requestId,
         responseSchema: responseJsonSchema,
@@ -263,7 +286,7 @@ function createAwaitEmailResponseStep<TResponseSchema extends z.ZodObject<z.ZodR
         return await suspend({ ...pendingRequest, rejectedReply: { senderEmail, reason: staleReplyProblem } });
       }
 
-      const senderProblem = describeSenderProblem(senderEmail, recipientEmail);
+      const senderProblem = describeSenderProblem(senderEmail, recipientEmails);
       if (senderProblem) {
         console.warn(`🚫 Refusing a reply to "${question}": ${senderProblem}`);
         return await suspend({ ...pendingRequest, rejectedReply: { senderEmail, reason: senderProblem } });
@@ -350,7 +373,7 @@ export function getSendEmailAndAwaitResponseWorkflow<TResponseSchema extends z.Z
  * Each step uses the reusable sendEmailAndAwaitResponseWorkflow:
  * - Sends an email with a form request
  * - Suspends the workflow waiting for reply
- * - Validates the reply came from the address that was asked
+ * - Validates the reply came from an address that was asked
  * - Parses the reply with the email parsing agent
  * - Resumes with the parsed answer
  *
@@ -425,7 +448,7 @@ const prepareBudgetApprovalQuestion = createStep({
     budgetAmount: z.number(),
   }),
   outputSchema: z.object({
-    recipientEmail: z.string(),
+    recipientEmails: z.array(z.string()),
     question: z.string(),
     projectName: z.string(),
     budgetAmount: z.number(),
@@ -433,7 +456,7 @@ const prepareBudgetApprovalQuestion = createStep({
   execute: async (params) => {
     const { recipientEmail, projectName, budgetAmount } = params.inputData;
     return {
-      recipientEmail,
+      recipientEmails: [recipientEmail],
       question: `Please approve the budget for project "${projectName}". Amount: $${budgetAmount.toLocaleString()}. Reply with "Yes" or "No" and optional comments.`,
       projectName,
       budgetAmount,
@@ -529,7 +552,7 @@ const prepareVendorSelectionQuestion = createStep({
   description: 'Prepare vendor selection question',
   inputSchema: budgetApprovalContextSchema,
   outputSchema: z.object({
-    recipientEmail: z.string(),
+    recipientEmails: z.array(z.string()),
     question: z.string(),
     projectName: z.string(),
   }),
@@ -537,7 +560,7 @@ const prepareVendorSelectionQuestion = createStep({
     const { recipientEmail, projectName } = params.inputData;
 
     return {
-      recipientEmail,
+      recipientEmails: [recipientEmail],
       question: `Please select a vendor for project "${projectName}". Reply with the vendor name and justification.`,
       projectName,
     };
@@ -603,7 +626,7 @@ const prepareFinalConfirmationQuestion = createStep({
     projectName: z.string(),
   }),
   outputSchema: z.object({
-    recipientEmail: z.string(),
+    recipientEmails: z.array(z.string()),
     question: z.string(),
     vendorName: z.string(),
   }),
@@ -611,7 +634,7 @@ const prepareFinalConfirmationQuestion = createStep({
     const { recipientEmail, projectName, vendorName } = params.inputData;
 
     return {
-      recipientEmail,
+      recipientEmails: [recipientEmail],
       question: `Final confirmation for project "${projectName}" with vendor "${vendorName}". Reply with "Confirm" or "Cancel" and optional notes.`,
       vendorName,
     };

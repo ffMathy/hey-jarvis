@@ -9,7 +9,7 @@ import {
   LOW_THINKING_PROVIDER_OPTIONS,
 } from '../../utils/index.js';
 import { executeTool } from '../../utils/tool-factory.js';
-import { getSendEmailAndAwaitResponseWorkflow } from '../human-in-the-loop/workflows.js';
+import { getSendEmailAndAwaitResponseWorkflow, parseRecipientList } from '../human-in-the-loop/workflows.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
 import { currentBabyMealGuidance } from './baby-food.js';
 import {
@@ -362,6 +362,35 @@ const weeklyMealPlanningStateSchema = z
   })
   .partial();
 
+const MEAL_PLAN_RECIPIENTS_VARIABLE = 'HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL';
+
+/**
+ * Who the weekly meal plan is sent to for approval: every address in
+ * `HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL`, separated by commas or semicolons. Any one of
+ * them can approve it or ask for changes.
+ *
+ * A misconfigured variable is reported by name, never by value.
+ */
+export function readMealPlanRecipients(configuredRecipients: string | undefined): string[] {
+  const recipients = parseRecipientList(configuredRecipients ?? '');
+  if (recipients.length === 0) {
+    throw new Error(
+      `${MEAL_PLAN_RECIPIENTS_VARIABLE} environment variable is not set. ` +
+        `Please set the ${MEAL_PLAN_RECIPIENTS_VARIABLE} environment variable.`,
+    );
+  }
+
+  const invalidCount = recipients.filter((recipient) => !z.string().email().safeParse(recipient).success).length;
+  if (invalidCount > 0) {
+    throw new Error(
+      `${MEAL_PLAN_RECIPIENTS_VARIABLE} holds ${invalidCount} of ${recipients.length} entries that are not email addresses. ` +
+        'Separate several addresses with "," or ";".',
+    );
+  }
+
+  return recipients;
+}
+
 // Step: Prepare email question for human feedback
 const prepareMealPlanFeedbackQuestion = createStep({
   id: 'prepare-meal-plan-feedback-question',
@@ -373,20 +402,12 @@ const prepareMealPlanFeedbackQuestion = createStep({
   }),
   stateSchema: weeklyMealPlanningStateSchema,
   outputSchema: z.object({
-    recipientEmail: z.string(),
+    recipientEmails: z.array(z.string()),
     question: z.string(),
   }),
   execute: async ({ inputData, setState, state }) => {
-    const recipientEmails = process.env.HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL;
-    if (!recipientEmails) {
-      throw new Error(
-        'HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL environment variable is not set. ' +
-          'Please set the HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL environment variable.',
-      );
-    }
-
-    // Get the first email for the feedback request
-    const recipientEmail = recipientEmails.split(',')[0].trim();
+    // Everyone is asked, and whoever answers first decides.
+    const recipientEmails = readMealPlanRecipients(process.env[MEAL_PLAN_RECIPIENTS_VARIABLE]);
 
     // Store the current meal plan in state for later steps to access
     setState({
@@ -409,7 +430,7 @@ Svar venligst med:
     `.trim();
 
     return {
-      recipientEmail,
+      recipientEmails,
       question,
     };
   },
@@ -615,7 +636,7 @@ const mealPlanFeedbackIterationWorkflow = createWorkflow({
   .then(prepareMealPlanFeedbackQuestion) // Prepare feedback question
   // Map to sendEmailAndAwaitResponseWorkflow input schema
   .map(async ({ inputData }) => ({
-    recipientEmail: inputData.recipientEmail,
+    recipientEmails: inputData.recipientEmails,
     question: inputData.question,
   }))
   .then(getSendEmailAndAwaitResponseWorkflow('mealPlanFeedback', mealPlanFeedbackResponseSchema)) // Send email and wait for human response

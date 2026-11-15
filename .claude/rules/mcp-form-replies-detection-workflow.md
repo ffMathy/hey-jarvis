@@ -36,8 +36,7 @@ scheduler.schedule({
 
 **When a reply is refused:**
 A refused reply leaves the run suspended exactly where it was, so the person who was asked can
-still answer. Replies are refused when they come from an address other than the one the request
-was sent to, when they answer a request the run has already moved past, when the body is blank,
+still answer. Replies are refused when they come from an address the request was not sent to, when they answer a request the run has already moved past, when the body is blank,
 and when the parsing agent cannot read an answer out of them. Each is counted in
 `repliesRejected` rather than reported as an error, because nothing has gone wrong with the
 system. Only a token naming a run that does not exist is reported as an error.
