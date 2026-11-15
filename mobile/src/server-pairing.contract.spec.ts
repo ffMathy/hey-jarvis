@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PAIRED_LINK, PHONE_PAIRING_PATH, pairedTokenFromLink } from './jarvis-server';
+import { PAIRED_LINK, PHONE_PAIRING_PATH, pairedTokenFromLink } from './pairing-link';
 
 /**
  * The phone's pairing, held to the server's pairing page and to this app's own scheme.

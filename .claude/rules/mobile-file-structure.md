@@ -88,7 +88,8 @@ mobile/
     ├── photo-sending.ts          # one tap, from the camera opening to Jarvis hearing how it went
     ├── photo-messages.ts         # every word the phone puts into the conversation about the camera
     ├── photo-upload.ts           # asking the Jarvis server for a slot, sending the photo to it, reading back its id
-    ├── jarvis-server.ts          # where the pairing is kept, and the phone's pairing page and link
+    ├── jarvis-server.ts          # where the pairing is kept
+    ├── pairing-link.ts           # the phone's pairing page and the link it opens the app with
     ├── camera-button.tsx         # the camera beside him
     ├── take-photo.ts             # the phone's own camera app, through modules/jarvis-assistant …
     ├── take-photo.web.ts         # … and a file picker in a browser

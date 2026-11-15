@@ -3,10 +3,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   loadJarvisDeviceToken,
   loadJarvisServerAddress,
-  pairedTokenFromLink,
   saveJarvisDeviceToken,
   saveJarvisServerAddress,
 } from './jarvis-server';
+import { pairedTokenFromLink } from './pairing-link';
 import { readTryingAgain } from './read-again';
 
 /**

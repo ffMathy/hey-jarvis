@@ -94,7 +94,7 @@ ceiling for a slow SD card, not something to lean on.
 - `EVERY_15_MINUTES`: `*/15 * * * *`
 - `EVERY_3_HOURS`: `0 */3 * * *`
 - `DAILY_AT_MIDNIGHT`: `0 0 * * *`
-- `WEEKLY_SUNDAY_8AM`: `0 8 * * 0`
+- `WEEKLY_THURSDAY_5PM`: `0 17 * * 4`
 - `WEEKLY_MONDAY_7AM`: `0 7 * * 1`
 
 Mastra validates the expression when the row is created, so a new cadence can be added verbatim
@@ -105,7 +105,7 @@ in standard 5-field form; croner nicknames (`@hourly`, `@daily`) work too.
    - Workflow: `weatherMonitoringWorkflow`
    - Purpose: Updates weather information and notifies other agents of changes
 
-2. **Weekly Meal Planning** - Runs every Sunday at 8:00 AM
+2. **Weekly Meal Planning** - Runs every Thursday at 5:00 PM
    - Workflow: `weeklyMealPlanningWorkflow`
    - Purpose: Generates weekly meal plan with Danish recipes
 

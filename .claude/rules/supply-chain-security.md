@@ -14,6 +14,17 @@ outside `bun.lock`'s pins and ignores `bunfig.toml`. Use `bun` and `bunx`; a
 committed `package-lock.json`, `yarn.lock` or `pnpm-lock.yaml` fails CI and the
 pre-commit hook.
 
+Bun's own version is pinned wherever something installs it: `packageManager` and
+`engines.bun` in the root `package.json`, the `bun` feature's `version` in
+`.devcontainer/devcontainer.json` (which is what CI runs in), and `eas.json` (see
+[Mobile dependencies](mobile-dependencies.md)). Bump them together. The dev container
+used to leave the feature unpinned, so CI ran whatever Bun its cached image held:
+1.3.9, older than the 1.3.14 the repository asks for. From 6 November 2026 every CI
+run timed out in the `mobile` tests: a spec loaded React Native's Flow source (see
+[Mobile testing](mobile-testing.md)), and Bun 1.3.9 hung on it where 1.3.14 reports
+the error. Pinning the feature's version also changes the image, so CI builds it
+again instead of reusing the cached one.
+
 ## Install policy (`bunfig.toml`)
 
 | Setting                        | Effect                                                              |
