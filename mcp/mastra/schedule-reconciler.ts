@@ -88,10 +88,10 @@ export const SCHEDULED_WORKFLOWS: ScheduledWorkflowDeclaration[] = [
     workflowId: weatherMonitoringWorkflow.id,
     cron: CronPatterns.EVERY_3_HOURS,
   },
-  // Weekly meal planning - every Sunday at 8am
+  // Weekly meal planning - every Thursday at 5pm
   {
     workflowId: weeklyMealPlanningWorkflow.id,
-    cron: CronPatterns.WEEKLY_SUNDAY_8AM,
+    cron: CronPatterns.WEEKLY_THURSDAY_5PM,
   },
   // Weekly news digest - every Monday at 7am
   // The past week's news and daily.dev's most upvoted posts, visualized and pushed to the phone
