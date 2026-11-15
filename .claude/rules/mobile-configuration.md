@@ -26,7 +26,7 @@ asking, through Cloudflare Access, and how it does differs by platform (`pair-wi
 
 - **The phone app opens the server's pairing page in the browser.** A native app holds no Access
   cookie, so **Pair this phone with your server** (`server-pairing.tsx`) keeps the typed address
-  first and then opens `<server>/api/devices/pair` (`phonePairingUrl` in `jarvis-server.ts`) with
+  first and then opens `<server>/api/devices/pair` (`phonePairingUrl` in `pairing-link.ts`) with
   `Linking.openURL`. Access signs sir in there as it does any page; the page's button pairs the phone
   as "Android phone" and sends the browser on to `heyjarvis://paired#token=…`, the app's own scheme.
   The app reads the token out of that link (`pairedTokenFromLink`, by hand, since React Native's

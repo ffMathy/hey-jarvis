@@ -1,6 +1,6 @@
 import * as Linking from 'expo-linking';
 import { parseJarvisServerAddress } from 'hologram';
-import { phonePairingUrl } from './jarvis-server';
+import { phonePairingUrl } from './pairing-link';
 import type { PairWithServer } from './platform-contracts';
 
 /**
