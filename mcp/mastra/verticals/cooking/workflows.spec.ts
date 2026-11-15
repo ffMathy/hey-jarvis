@@ -180,7 +180,9 @@ describe('readMealPlanRecipients', () => {
   it('names the variable, but never its value, when an entry is not an address', () => {
     const attempt = () => readMealPlanRecipients('jaga@example.dk mathias@example.com');
 
-    expect(attempt).toThrow(/HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL holds 1 of 1 entries that are not email addresses/);
+    expect(attempt).toThrow(
+      /HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL holds 1 of 1 entries that are not email addresses/,
+    );
     expect(attempt).not.toThrow(/jaga@example\.dk/);
   });
 });

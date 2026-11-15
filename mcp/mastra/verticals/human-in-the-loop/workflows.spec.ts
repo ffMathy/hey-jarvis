@@ -170,7 +170,10 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
 
   describe('sending the form request', () => {
     it('sends a single email to the recipient with the run id in the subject', async () => {
-      const { run } = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve the budget?' });
+      const { run } = await startFormRequest({
+        recipientEmails: ['boss@example.com'],
+        question: 'Approve the budget?',
+      });
 
       expect(sentEmails).toHaveLength(1);
       expect(sentEmails[0].toRecipients).toEqual(['boss@example.com']);
@@ -205,7 +208,10 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
     });
 
     it('builds an HTML body carrying the question, the run id and the reply instructions', async () => {
-      const { run } = await startFormRequest({ recipientEmails: ['boss@example.com'], question: 'Approve the budget?' });
+      const { run } = await startFormRequest({
+        recipientEmails: ['boss@example.com'],
+        question: 'Approve the budget?',
+      });
 
       const { bodyContent } = sentEmails[0];
       expect(bodyContent.startsWith('<html>')).toBe(true);
@@ -583,7 +589,9 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
 
     it('advertises its own response shape in the suspend payload', async () => {
       const run = await vendorMastra.getWorkflow('awaitVendorSelectionWorkflow').createRun();
-      const started = await run.start({ inputData: { recipientEmails: ['boss@example.com'], question: 'Which vendor?' } });
+      const started = await run.start({
+        inputData: { recipientEmails: ['boss@example.com'], question: 'Which vendor?' },
+      });
 
       assertStatus(started, 'suspended');
       expect(started.suspendPayload['await-email-response'].responseSchema).toMatchObject({
@@ -608,8 +616,14 @@ describe('getSendEmailAndAwaitResponseWorkflow', () => {
 
 describe('parseRecipientList', () => {
   it('splits addresses on semicolons and commas, the separators mail clients use', () => {
-    expect(parseRecipientList('jaga@example.dk;mathias@example.com')).toEqual(['jaga@example.dk', 'mathias@example.com']);
-    expect(parseRecipientList('jaga@example.dk, mathias@example.com')).toEqual(['jaga@example.dk', 'mathias@example.com']);
+    expect(parseRecipientList('jaga@example.dk;mathias@example.com')).toEqual([
+      'jaga@example.dk',
+      'mathias@example.com',
+    ]);
+    expect(parseRecipientList('jaga@example.dk, mathias@example.com')).toEqual([
+      'jaga@example.dk',
+      'mathias@example.com',
+    ]);
   });
 
   it('ignores blanks and empty entries', () => {
