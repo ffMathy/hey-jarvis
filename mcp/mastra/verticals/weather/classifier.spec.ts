@@ -26,6 +26,9 @@ const torn: WeatherNotabilityAnswers = {
   weatherNotability: { type: 'score', score: 0.5, probabilities: { '0': 0.5, '1': 0.5, '2': 0 } },
 };
 
+/** How a decision model answers a question it declines. */
+const refused: WeatherNotabilityAnswers = { weatherNotability: { type: 'refusal' } };
+
 function fakeClassifier(answers: WeatherNotabilityAnswers | Error, evaluatedStates: unknown[] = []) {
   return new Classifier({
     id: 'weatherNotabilityClassifier',
@@ -34,7 +37,7 @@ function fakeClassifier(answers: WeatherNotabilityAnswers | Error, evaluatedStat
       provider: 'fake',
       modelId: 'jev-fake',
       supportedQuestionTypes: ['score'],
-      doEvaluate: async ({ state }) => {
+      doDecide: async ({ state }) => {
         evaluatedStates.push(state);
         if (answers instanceof Error) {
           throw answers;
@@ -87,6 +90,10 @@ describe('weatherFilingFrom', () => {
     expect(weatherFilingFrom(undefined, true)).toEqual({ file: true, priority: 'low' });
   });
 
+  it('files as before when Jev refused to place the update', () => {
+    expect(weatherFilingFrom(refused, true)).toEqual({ file: true, priority: 'low' });
+  });
+
   it('never drops the first update, which has nothing to be routine against', () => {
     expect(weatherFilingFrom(sure(0), false)).toEqual({ file: true, priority: 'low' });
   });
@@ -99,7 +106,7 @@ describe('judgeWeatherUpdate', () => {
     const filing = await judgeWeatherUpdate(fakeClassifier(sure(0), evaluatedStates), 'Aarhus: 12°C', 'Aarhus: 12°C');
 
     expect(filing).toEqual({ file: false });
-    expect(evaluatedStates).toEqual(['Previous: Aarhus: 12°C\nNow: Aarhus: 12°C']);
+    expect(evaluatedStates).toEqual([[{ type: 'text', text: 'Previous: Aarhus: 12°C\nNow: Aarhus: 12°C' }]]);
   });
 
   it('files as before without a classifier', async () => {
@@ -107,6 +114,12 @@ describe('judgeWeatherUpdate', () => {
       file: true,
       priority: 'low',
     });
+  });
+
+  it('files as before when the classifier refuses to place the update', async () => {
+    const filing = await judgeWeatherUpdate(fakeClassifier(refused), 'Aarhus: 12°C', 'Aarhus: 12°C');
+
+    expect(filing).toEqual({ file: true, priority: 'low' });
   });
 
   it('files as before when the classifier fails', async () => {

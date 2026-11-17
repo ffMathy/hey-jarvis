@@ -1,4 +1,5 @@
 import { Agent, type AgentConfig } from '@mastra/core/agent';
+import type { WidenModelId } from '@mastra/core/llm';
 import type { OutputProcessor } from '@mastra/core/processors';
 import { createMemory } from '../memory/index.js';
 import { householdTime } from './household.js';
@@ -50,6 +51,16 @@ function withSharedGuidelines(instructions: string): string {
   return `${instructions}\n\n# Additional context and guidelines\n${guidelines.join('\n')}`;
 }
 
+/**
+ * An agent's model with Mastra's model-id literals widened to `string`.
+ *
+ * `AgentConfig['model']` includes a literal for every model id Mastra's router knows, and choosing
+ * between two of them (`??`) makes TypeScript reduce that union, which fails as "too complex to
+ * represent" (TS2590). Mastra's own advice is to widen before merging; `string` is still assignable
+ * back to the config field.
+ */
+type AgentModel = WidenModelId<AgentConfig['model']>;
+
 export async function createAgent(
   config: Omit<AgentConfig, 'model' | 'memory' | 'scorers' | 'instructions'> & {
     /**
@@ -59,18 +70,16 @@ export async function createAgent(
      * request time -- the Home Assistant areas the IoT agent can target, say.
      */
     instructions: string | (() => Promise<string>);
-    model?: AgentConfig['model'];
+    model?: AgentModel;
     memory?: AgentConfig['memory'];
     scorers?: AgentConfig['scorers'];
   },
 ): Promise<Agent> {
-  const { instructions, ...agentConfig } = config;
+  const { instructions, model, ...agentConfig } = config;
 
   const DEFAULT_AGENT_CONFIG: Partial<AgentConfig> = {
     // Use shared memory instance by default
     memory: await createMemory(),
-    // Google Gemini across all environments
-    model: getModel('gemini-flash-latest'),
     // Use default scorers for comprehensive evaluation
     scorers: getDefaultScorers(),
     // Use temperature 0 for deterministic outputs across all agents, and give the tool loop
@@ -94,8 +103,6 @@ export async function createAgent(
   const defaultProcessors = (DEFAULT_AGENT_CONFIG.outputProcessors || []) as OutputProcessor[];
   const customProcessors = (config.outputProcessors || []) as OutputProcessor[];
 
-  const resolvedModel = config.model ?? DEFAULT_AGENT_CONFIG.model;
-
   const mergedConfig: AgentConfig = {
     ...DEFAULT_AGENT_CONFIG,
     ...agentConfig,
@@ -105,7 +112,7 @@ export async function createAgent(
       typeof instructions === 'string'
         ? () => withSharedGuidelines(instructions)
         : async () => withSharedGuidelines(await instructions()),
-    model: resolvedModel,
+    model: model ?? getModel('gemini-flash-latest'),
     // Merge output processors instead of replacing
     outputProcessors: [...defaultProcessors, ...customProcessors],
     // Use name as id if id not provided

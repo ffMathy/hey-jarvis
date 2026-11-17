@@ -6,7 +6,7 @@ export {
 } from './affected-entities.js';
 // Utils exports - Core factories
 export { createAgent } from './agent-factory.js';
-export { confidentChoice, confidentScoreLevel } from './classifier-answers.js';
+export { confidentBoolean, confidentChoice, confidentScoreLevel, probabilityOfYes } from './classifier-answers.js';
 export { createClassifier, createLazyClassifier } from './classifier-factory.js';
 export {
   asFacts,

@@ -411,12 +411,13 @@ type RunLookup =
  * A run that is found but cannot take the reply does not end the search, because a run id
  * is only unique per workflow; the reason is reported only if no workflow is waiting.
  *
- * The run id in the subject is not always a top-level run, though. A run started by the
- * scheduler executes on Mastra's evented engine, which gives every nested workflow a run
- * of its own, so the send-and-wait step inside the weekly meal plan sees -- and writes into
- * the subject -- the id of a child run that no registered workflow owns. When no run
- * answers to the id, the run is found by the request id instead: it is minted fresh for
- * every email, and the suspended top-level step carries it in its payload.
+ * The run id in the subject is not always a top-level run, though. Before @mastra/core 1.82
+ * a run started by the scheduler executed on an engine that gave every nested workflow a run
+ * of its own, so the send-and-wait step inside the weekly meal plan saw -- and wrote into
+ * the subject -- the id of a child run that no registered workflow owns. Emails sent then
+ * are still answered. When no run answers to the id, the run is found by the request id
+ * instead: it is minted fresh for every email, and the suspended top-level step carries it
+ * in its payload.
  */
 async function findRunAwaitingEmailReply(mastra: Mastra, runId: string, requestId: string): Promise<RunLookup> {
   let firstRunThatCannotTakeIt: string | undefined;

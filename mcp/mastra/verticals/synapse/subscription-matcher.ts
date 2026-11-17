@@ -3,20 +3,126 @@
  *
  * Turns an incoming state change into a shortlist of subscriptions worth showing
  * to the LLM. Matching is purely vector-based — every subscription's `whenEvent` and
- * `givenCondition` components were embedded at registration time with Model2Vec (potion),
- * so scoring the whole subscription set against a state change costs a single
- * embedding plus a handful of dot products.
+ * `givenCondition` components are embedded with Model2Vec (potion), so scoring the whole
+ * subscription set against a state change costs a single embedding plus a handful of dot
+ * products. The components' embeddings are derived from their text here rather than
+ * stored, and kept while the subscription is (see {@link embedSubscriptions}).
  *
  * This is deliberately a *recall* step, not a decision step: it is tuned to be
  * generous, and the reactor agent makes the final call on whether the `thenAction`
  * should actually run.
  */
 
-import { getSubscriptionStorage } from '../../storage/index.js';
-import type { EmbeddedSubscription, Subscription } from '../../storage/subscriptions.js';
 import { logger } from '../../utils/logger.js';
 import { cosineSimilarity, embedTexts } from '../../utils/static-embedder.js';
+import { thirdPersonVariant } from './paraphrase.js';
 import { describeStateChangeFacets, type StateChange } from './state-change.js';
+import { getSubscriptionStore, type Subscription } from './subscription-store.js';
+
+/**
+ * A subscription plus the embeddings of its components, as used by the matcher.
+ */
+export interface EmbeddedSubscription extends Subscription {
+  whenEmbedding: Float32Array;
+  givenEmbedding: Float32Array | null;
+  /**
+   * Embedding of a third-person rewrite of `whenEvent`, when it was phrased in the
+   * first person. Matching takes the better of this and {@link whenEmbedding}, so a
+   * subscription is reachable both from how the user said it and from how a device
+   * reports it. Null when the clause contained no first-person pronouns.
+   */
+  whenAlternateEmbedding: Float32Array | null;
+  /** The same, for `givenCondition`. */
+  givenAlternateEmbedding: Float32Array | null;
+}
+
+/**
+ * Every phrasing a live subscription is matched on, embedded, by its text.
+ *
+ * Matching runs on every state change and the subscriptions hardly ever change, so each phrasing
+ * is embedded once rather than on every match. Only the phrasings of the subscriptions last
+ * embedded are kept, so it is no bigger than the set being matched against.
+ */
+const phrasingEmbeddings = new Map<string, Float32Array>();
+
+/**
+ * Embeds what subscriptions are matched on: their `whenEvent` and `givenCondition`, each also in the
+ * third person when it was phrased in the first.
+ *
+ * Users say "when I get home from work"; devices report "person is Mathias, state is arrived home",
+ * and the static embedder cannot connect the two on its own. Matching takes the better of the two
+ * phrasings, so the rewrite can only add reach. The `thenAction` is not embedded: nothing is matched
+ * against it, and its text is what the reactor needs.
+ *
+ * Two state changes can be matched at once, against different sets (one including disabled
+ * subscriptions, say), and each drops the other's phrasings from {@link phrasingEmbeddings}. So a
+ * call takes what it needs from the store before it waits on the embedder, and answers from its own
+ * map, never from the store after the wait.
+ */
+export async function embedSubscriptions(subscriptions: Subscription[]): Promise<EmbeddedSubscription[]> {
+  const phrased = subscriptions.map((subscription) => ({
+    subscription,
+    when: subscription.whenEvent,
+    whenAlternate: thirdPersonVariant(subscription.whenEvent),
+    given: subscription.givenCondition ?? null,
+    givenAlternate: subscription.givenCondition ? thirdPersonVariant(subscription.givenCondition) : null,
+  }));
+
+  const phrasings = new Set(
+    phrased.flatMap(({ when, whenAlternate, given, givenAlternate }) =>
+      [when, whenAlternate, given, givenAlternate].filter((phrasing) => phrasing !== null),
+    ),
+  );
+
+  const embedded = new Map<string, Float32Array>();
+  const unembedded: string[] = [];
+  for (const phrasing of phrasings) {
+    const kept = phrasingEmbeddings.get(phrasing);
+    if (kept) {
+      embedded.set(phrasing, kept);
+    } else {
+      unembedded.push(phrasing);
+    }
+  }
+  for (const phrasing of phrasingEmbeddings.keys()) {
+    if (!phrasings.has(phrasing)) {
+      phrasingEmbeddings.delete(phrasing);
+    }
+  }
+
+  const embeddings = await embedTexts(unembedded);
+  unembedded.forEach((phrasing, index) => {
+    const embedding = embeddings[index];
+    if (embedding) {
+      embedded.set(phrasing, embedding);
+      phrasingEmbeddings.set(phrasing, embedding);
+    }
+  });
+
+  const embeddingOf = (phrasing: string): Float32Array => {
+    const embedding = embedded.get(phrasing);
+    if (!embedding) {
+      throw new Error(`The static embedder returned no embedding for "${phrasing}"`);
+    }
+    return embedding;
+  };
+
+  return phrased.map(({ subscription, when, whenAlternate, given, givenAlternate }) => ({
+    ...subscription,
+    whenEmbedding: embeddingOf(when),
+    givenEmbedding: given === null ? null : embeddingOf(given),
+    whenAlternateEmbedding: whenAlternate === null ? null : embeddingOf(whenAlternate),
+    givenAlternateEmbedding: givenAlternate === null ? null : embeddingOf(givenAlternate),
+  }));
+}
+
+/** The stored subscriptions, embedded for matching. */
+export async function loadEmbeddedSubscriptions(
+  options: { includeDisabled?: boolean } = {},
+): Promise<EmbeddedSubscription[]> {
+  const store = await getSubscriptionStore();
+  return embedSubscriptions(await store.list({ includeDisabled: options.includeDisabled ?? false }));
+}
 
 /**
  * Minimum similarity for a subscription to be considered relevant.
@@ -92,8 +198,7 @@ export async function findRelevantSubscriptions(
   description: string,
   options: SubscriptionMatchOptions = {},
 ): Promise<SubscriptionMatch[]> {
-  const storage = await getSubscriptionStorage();
-  const subscriptions = await storage.getAllEmbedded({ includeDisabled: options.includeDisabled ?? false });
+  const subscriptions = await loadEmbeddedSubscriptions(options);
 
   if (subscriptions.length === 0) {
     return [];
@@ -133,9 +238,9 @@ export function rankSubscriptions(
   const facets = Array.isArray(descriptionEmbedding) ? descriptionEmbedding : [descriptionEmbedding];
 
   return subscriptions
-    .map(({ whenEmbedding, givenEmbedding, whenAltEmbedding, givenAltEmbedding, ...subscription }) => {
-      const whenScore = bestSimilarity(facets, [whenEmbedding, whenAltEmbedding]);
-      const givenScore = givenEmbedding ? bestSimilarity(facets, [givenEmbedding, givenAltEmbedding]) : null;
+    .map(({ whenEmbedding, givenEmbedding, whenAlternateEmbedding, givenAlternateEmbedding, ...subscription }) => {
+      const whenScore = bestSimilarity(facets, [whenEmbedding, whenAlternateEmbedding]);
+      const givenScore = givenEmbedding ? bestSimilarity(facets, [givenEmbedding, givenAlternateEmbedding]) : null;
 
       return {
         subscription,
@@ -160,8 +265,7 @@ export async function findSubscriptionsForStateChange(
   change: StateChange,
   options: SubscriptionMatchOptions = {},
 ): Promise<SubscriptionMatch[]> {
-  const storage = await getSubscriptionStorage();
-  const subscriptions = await storage.getAllEmbedded({ includeDisabled: options.includeDisabled ?? false });
+  const subscriptions = await loadEmbeddedSubscriptions(options);
 
   if (subscriptions.length === 0) {
     return [];

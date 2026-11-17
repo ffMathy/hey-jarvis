@@ -6,7 +6,7 @@ import {
   type DirectCommand,
   type DirectLookup,
 } from '../../utils/direct-lookup-factory.js';
-import { confidentChoice, createLazyClassifier } from '../../utils/index.js';
+import { confidentBoolean, confidentChoice, createLazyClassifier } from '../../utils/index.js';
 import type { OpenQuestion } from './questions.js';
 import { RESPONSE_STYLE_DESCRIPTIONS, type ResponseStyle } from './response-styles.js';
 
@@ -16,7 +16,7 @@ import { RESPONSE_STYLE_DESCRIPTIONS, type ResponseStyle } from './response-styl
  * The planner is a language model writing a plan, and every request waits on it before any work
  * starts. Most requests do not need a plan written, though: "turn off the lights" goes to one agent,
  * as it was said, and the only decision in it is which agent. That is a choice from a list, which is
- * exactly what an evaluation model (Jev, see `utils/providers/typesafe-provider.ts`) answers -- in
+ * exactly what a decision model (Jev, see `utils/providers/typesafe-provider.ts`) answers -- in
  * one short call that returns a probability per agent instead of a generated plan.
  *
  * So the classifier is asked first. When it is sure that a single agent can carry the whole request
@@ -197,7 +197,10 @@ export interface FastRoute {
  * Everything routing took from the classifier about one request. Any field left out is one the
  * classifier was not sure of, and routing decides it the way it did before there was a classifier.
  */
-export interface RequestClassification {
+export type RequestClassification = StyledClassification | UnstyledClassification;
+
+/** A classification that says how the answer should sound, and so can settle the request itself. */
+interface StyledClassification {
   /** One agent takes the whole request. */
   fastRoute?: FastRoute;
   /** The request is only the answer to this waiting question, in the user's own words. */
@@ -210,6 +213,18 @@ export interface RequestClassification {
   responseStyle: ResponseStyle;
 }
 
+/**
+ * A classification where Jev declined to say how the answer should sound. Only the planner can say
+ * it then, so nothing about the request itself is settled -- only how it relates to the running one.
+ */
+interface UnstyledClassification {
+  relationToRunningRequest?: RelationToRunningRequest;
+  responseStyle?: undefined;
+  fastRoute?: undefined;
+  answeredQuestionId?: undefined;
+  endsCall?: undefined;
+}
+
 function isRelationToRunningRequest(value: string): value is RelationToRunningRequest {
   return (RELATIONS_TO_RUNNING_REQUEST as readonly string[]).includes(value);
 }
@@ -220,18 +235,25 @@ function isRelationToRunningRequest(value: string): value is RelationToRunningRe
  * Pure, so every way of declining can be tested without a model. A request that answers a waiting
  * question is never also given a fast route: only the answer path or the planner can carry an
  * answer back to the work that asked, so a request that might be one does not go to a single agent.
+ *
+ * The response style is Jev's best guess, sure or not, since it only shapes how an answer that is
+ * settled anyway is spoken. A style it declined to give leaves no guess to take, and then the
+ * planner, which says how to speak, settles everything but the relation to the running request.
  */
 export function readClassification(
   answers: RoutingAnswers,
   { agents, openQuestions, lookups, commands, sources }: Omit<RoutingContext, 'runningRequest'>,
 ): RequestClassification {
-  const responseStyle = answers.responseStyle.choice;
   const relation =
     answers.relationToRunningRequest && confidentChoice(answers.relationToRunningRequest, FAST_PATH_CONFIDENCE);
-  const classification: RequestClassification = {
-    responseStyle,
-    ...(relation && isRelationToRunningRequest(relation) && { relationToRunningRequest: relation }),
-  };
+  const relationToRunningRequest =
+    relation && isRelationToRunningRequest(relation) ? { relationToRunningRequest: relation } : {};
+
+  const responseStyle = answers.responseStyle.choice;
+  if (responseStyle === undefined) {
+    return relationToRunningRequest;
+  }
+  const classification: StyledClassification = { responseStyle, ...relationToRunningRequest };
 
   const route = confidentChoice(answers.route, FAST_PATH_CONFIDENCE);
   if (route === END_CALL) {
@@ -239,7 +261,7 @@ export function readClassification(
   }
 
   const answered = answers.answeredQuestion && confidentChoice(answers.answeredQuestion, FAST_PATH_CONFIDENCE);
-  const onlyAnAnswer = (answers.onlyAnAnswer?.probability ?? 0) >= FAST_PATH_CONFIDENCE;
+  const onlyAnAnswer = confidentBoolean(answers.onlyAnAnswer, FAST_PATH_CONFIDENCE) === true;
   if (
     answered &&
     answered !== NO_QUESTION &&
@@ -402,7 +424,7 @@ export async function classifyRequest(
   userQuery: string,
   context: RoutingContext,
 ): Promise<RequestClassification> {
-  const { answers } = await classifier.evaluate({
+  const { answers } = await classifier.decide({
     state: userQuery,
     questions: { ...sourceQuestions(context), ...routingQuestions(context) },
     // A failed call falls back to the planner, which is only asked once this has answered. Retrying

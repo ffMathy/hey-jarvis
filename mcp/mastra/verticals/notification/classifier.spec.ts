@@ -15,8 +15,11 @@ import {
   urgencyQuestions,
 } from './classifier.js';
 
-/** A classifier on a fake Jev that answers with `probability`, or fails with it. */
-function fakeClassifier(probability: number | Error) {
+/** How a decision model answers a question it declines. */
+const REFUSAL = { type: 'refusal' } as const;
+
+/** A classifier on a fake Jev that answers with `probability`, refuses, or fails with it. */
+function fakeClassifier(probability: number | typeof REFUSAL | Error) {
   const evaluatedStates: unknown[] = [];
   const classifier = new Classifier({
     id: 'notificationUrgencyClassifier',
@@ -25,12 +28,13 @@ function fakeClassifier(probability: number | Error) {
       provider: 'fake',
       modelId: 'jev-fake',
       supportedQuestionTypes: ['boolean'],
-      doEvaluate: async ({ state }) => {
+      doDecide: async ({ state }) => {
         evaluatedStates.push(state);
         if (probability instanceof Error) {
           throw probability;
         }
-        return { answers: { urgent: { type: 'boolean', probability } }, warnings: [] };
+        const answer = typeof probability === 'number' ? { type: 'boolean' as const, probability } : probability;
+        return { answers: { urgent: answer }, warnings: [] };
       },
     },
   });
@@ -70,6 +74,11 @@ describe('urgencyOverrideFrom', () => {
     expect(urgencyOverrideFrom(urgent(0.99), true)).toBeUndefined();
     expect(urgencyOverrideFrom(urgent(0.01), false)).toBeUndefined();
   });
+
+  it('never overrides the agent when Jev refused to say', () => {
+    expect(urgencyOverrideFrom({ urgent: REFUSAL }, true)).toBeUndefined();
+    expect(urgencyOverrideFrom({ urgent: REFUSAL }, false)).toBeUndefined();
+  });
 });
 
 describe('reviewAgentUrgency', () => {
@@ -83,7 +92,7 @@ describe('reviewAgentUrgency', () => {
         isUrgent: false,
       }),
     ).toBe(true);
-    expect(evaluatedStates).toEqual(["Leak\n\nThere's water on the utility room floor."]);
+    expect(evaluatedStates).toEqual([[{ type: 'text', text: "Leak\n\nThere's water on the utility room floor." }]]);
   });
 
   it('turns an urgent laundry reminder routine', async () => {
@@ -97,6 +106,14 @@ describe('reviewAgentUrgency', () => {
 
     expect(await reviewAgentUrgency(classifier, { message: 'The package is delayed.', isUrgent: true })).toBe(true);
     expect(await reviewAgentUrgency(classifier, { message: 'The package is delayed.', isUrgent: false })).toBe(false);
+  });
+
+  it("keeps the agent's urgency when Jev refuses to say", async () => {
+    const { classifier, evaluatedStates } = fakeClassifier(REFUSAL);
+
+    expect(await reviewAgentUrgency(classifier, { message: 'Smoke in the kitchen.', isUrgent: false })).toBe(false);
+    expect(await reviewAgentUrgency(classifier, { message: 'The laundry is done.', isUrgent: true })).toBe(true);
+    expect(evaluatedStates).toHaveLength(2);
   });
 
   it("keeps the agent's urgency without a classifier, or when it fails", async () => {

@@ -110,6 +110,27 @@ describe('readClassification', () => {
     expect(readClassification(answers('endCall'), NOTHING_ELSE)).toEqual({ responseStyle: 'command', endsCall: true });
   });
 
+  it('leaves the route to the planner when Jev refused to choose one', () => {
+    expect(readClassification(answers('weather', { route: { type: 'refusal' } }), NOTHING_ELSE)).toEqual({
+      responseStyle: 'command',
+    });
+  });
+
+  it('settles nothing about the request itself when Jev refused to say how the answer should sound', () => {
+    const noStyle = { responseStyle: { type: 'refusal' as const } };
+    const relation = {
+      type: 'choice' as const,
+      choice: 'adds' as const,
+      probabilities: { adds: 0.97, replaces: 0.02, cancels: 0.01 },
+    };
+
+    expect(readClassification(answers('weather', noStyle), NOTHING_ELSE)).toEqual({});
+    expect(readClassification(answers('endCall', noStyle), NOTHING_ELSE)).toEqual({});
+    expect(
+      readClassification(answers('weather', { ...noStyle, relationToRunningRequest: relation }), NOTHING_ELSE),
+    ).toEqual({ relationToRunningRequest: 'adds' });
+  });
+
   describe('with a question waiting', () => {
     const withQuestion = { ...NOTHING_ELSE, openQuestions: [WAITING_QUESTION] };
 
@@ -138,6 +159,20 @@ describe('readClassification', () => {
       expect(
         readClassification(answers('weather', { answeredQuestion: sure('none', 0.6) }), withQuestion),
       ).not.toHaveProperty('fastRoute');
+    });
+
+    it('leaves a possible answer to the planner when Jev refused either of its questions', () => {
+      const refusedOnlyAnAnswer = readClassification(
+        answers('weather', { answeredQuestion: sure('q1'), onlyAnAnswer: { type: 'refusal' } }),
+        withQuestion,
+      );
+      const refusedWhichQuestion = readClassification(
+        answers('weather', { answeredQuestion: { type: 'refusal' } }),
+        withQuestion,
+      );
+
+      expect(refusedOnlyAnAnswer).toEqual({ responseStyle: 'command' });
+      expect(refusedWhichQuestion).toEqual({ responseStyle: 'command' });
     });
 
     it('never answers a question that is not open', () => {
@@ -200,8 +235,12 @@ describe('readClassification', () => {
         withLookups,
       );
       const command = readClassification(answers('weather', { directLookup: sure('weather.now') }), withLookups);
+      const refused = readClassification(
+        answers('weather', { directLookup: { type: 'refusal' } }, 'lookup'),
+        withLookups,
+      );
 
-      for (const classification of [wrongAgent, unsure, command]) {
+      for (const classification of [wrongAgent, unsure, command, refused]) {
         expect(classification.fastRoute).not.toHaveProperty('direct');
       }
     });
@@ -320,7 +359,7 @@ describe('classifyRequest', () => {
         provider: 'fake',
         modelId: 'jev-fake',
         supportedQuestionTypes: ['choice', 'boolean'],
-        doEvaluate: async ({ state, questions }) => {
+        doDecide: async ({ state, questions }) => {
           evaluated.push({ state, questionIds: Object.keys(questions) });
           return {
             answers: {
@@ -344,6 +383,35 @@ describe('classifyRequest', () => {
     const classification = await classifyRequest(classifier, 'Turn off the living room lights', NOTHING_ELSE);
 
     expect(classification.fastRoute).toEqual({ agentId: 'internetOfThings', responseStyle: 'command' });
-    expect(evaluated).toEqual([{ state: 'Turn off the living room lights', questionIds: ['route', 'responseStyle'] }]);
+    expect(evaluated).toEqual([
+      { state: [{ type: 'text', text: 'Turn off the living room lights' }], questionIds: ['route', 'responseStyle'] },
+    ]);
+  });
+
+  it('settles nothing on a fast route when Jev, sure of the agent, declines to say how to answer', async () => {
+    const classifier = new Classifier({
+      id: 'routingClassifier',
+      model: {
+        specificationVersion: 'v4',
+        provider: 'fake',
+        modelId: 'jev-fake',
+        supportedQuestionTypes: ['choice', 'boolean'],
+        doDecide: async () => ({
+          answers: {
+            route: {
+              type: 'choice',
+              choice: 'internetOfThings',
+              probabilities: { internetOfThings: 0.94, weather: 0.02, several: 0.02, none: 0.01, endCall: 0.01 },
+            },
+            responseStyle: { type: 'refusal' },
+          },
+          warnings: [],
+        }),
+      },
+    });
+
+    const classification = await classifyRequest(classifier, 'Turn off the living room lights', NOTHING_ELSE);
+
+    expect(classification).toEqual({});
   });
 });

@@ -1,5 +1,5 @@
 import type { Classifier, ClassifierAnswers } from '@mastra/core/classifier';
-import { createLazyClassifier } from '../../utils/index.js';
+import { confidentBoolean, createLazyClassifier } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -10,7 +10,7 @@ import { logger } from '../../utils/logger.js';
  * it, on a small local Qwen model chosen for cost, and it gets it wrong often enough to matter --
  * a water leak left as a push notification, or a laundry reminder spoken over dinner.
  *
- * Whether a message is urgent is a yes-or-no question about it, which is what an evaluation model
+ * Whether a message is urgent is a yes-or-no question about it, which is what a decision model
  * (Jev, see `utils/providers/typesafe-provider.ts`) answers in one short call. So every message the
  * agent sends is also put to it, and when it is all but certain the agent got it the wrong way
  * round, its answer is the one that is used. Anything short of that keeps the agent's decision,
@@ -56,17 +56,12 @@ export type UrgencyAnswers = ClassifierAnswers<ReturnType<typeof urgencyQuestion
  * Reads the classifier's answer into the urgency to use instead of the agent's, or into nothing
  * when the agent's stands.
  *
- * Pure, so the bar can be tested without a model.
+ * Pure, so the bar can be tested without a model. A question the model declined keeps the agent's
+ * urgency, like one it is unsure of.
  */
 export function urgencyOverrideFrom(answers: UrgencyAnswers, agentIsUrgent: boolean): boolean | undefined {
-  const { probability } = answers.urgent;
-  if (!agentIsUrgent && probability >= URGENCY_OVERRIDE_CONFIDENCE) {
-    return true;
-  }
-  if (agentIsUrgent && probability <= 1 - URGENCY_OVERRIDE_CONFIDENCE) {
-    return false;
-  }
-  return undefined;
+  const isUrgent = confidentBoolean(answers.urgent, URGENCY_OVERRIDE_CONFIDENCE);
+  return isUrgent === undefined || isUrgent === agentIsUrgent ? undefined : isUrgent;
 }
 
 /**
@@ -91,7 +86,7 @@ export async function reviewAgentUrgency(
   }
 
   try {
-    const { answers } = await classifier.evaluate({
+    const { answers } = await classifier.decide({
       state: title ? `${title}\n\n${message}` : message,
       questions: urgencyQuestions(),
     });

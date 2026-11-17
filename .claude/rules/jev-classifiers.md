@@ -5,7 +5,7 @@ paths:
 
 # Prefer Jev Classifiers
 
-**ALWAYS prefer a Jev classifier over a language model** when a decision can be asked as a question with its answers known in advance. Jev is TypeSafe AI's evaluation model, run through Mastra's `Classifier`. One short call returns a probability per answer and writes no text, so it is faster, cheaper and more predictable than a generation or an agent's tool loop.
+**ALWAYS prefer a Jev classifier over a language model** when a decision can be asked as a question with its answers known in advance. Jev is TypeSafe AI's decision model, run through Mastra's `Classifier`. One short call returns a probability per answer and writes no text, so it is faster, cheaper and more predictable than a generation or an agent's tool loop.
 
 ## When to use one
 
@@ -48,7 +48,8 @@ every result anyway, so the server only has to hand back facts.
 
 - Build it with `createClassifier(id)` from `mcp/mastra/utils/classifier-factory.ts`. It returns `undefined` when `HEY_JARVIS_TYPESAFE_AI_API_KEY` is not set.
 - Pass the questions per call when the options depend on current data (agents, Home Assistant services, open questions, subscriptions).
-- Act on an answer only above a confidence bar (see `FAST_PATH_CONFIDENCE` in `routing/classifier.ts`). A missing probability distribution counts as unsure.
+- Act on an answer only above a confidence bar (see `FAST_PATH_CONFIDENCE` in `routing/classifier.ts`). A missing probability distribution counts as unsure, and so does a refusal (Jev declining the question). Read answers through the helpers in `mcp/mastra/utils/classifier-answers.ts` (`confidentChoice`, `confidentScoreLevel`, `confidentBoolean`), which turn both into nothing, rather than checking for a refusal at the call site.
+- Call `classifier.decide(...)`; `evaluate` is deprecated. A fake model in a spec implements `doDecide`, and is handed the state as provider parts (`[{ type: 'text', text }]` for a string, `[{ type: 'json', value }]` for an object).
 - **ALWAYS keep the fallback.** No key, a thrown error, or an unsure answer takes the path that existed before the classifier. A classifier must be able to make things faster or quieter, never make them wrong.
 - Keep the policy (reading answers into a decision) in a pure function, so it can be tested without a model.
 - Register the classifier on the Mastra instance in `mcp/mastra/index.ts`, so Studio traces its calls.

@@ -68,6 +68,13 @@ describe('emailTriageFrom', () => {
     expect(emailTriageFrom(answers('personal', 0.95, 1, unsure))).toEqual({ kind: 'personal' });
   });
 
+  it('is sure of nothing it refused to answer', () => {
+    const refusal = { type: 'refusal' } as const;
+
+    expect(emailTriageFrom({ ...answers('personal', 0.95, 1, 0.95), kind: refusal })).toEqual({ urgency: 'fyi' });
+    expect(emailTriageFrom({ ...answers('personal', 0.95, 1, 0.95), urgency: refusal })).toEqual({ kind: 'personal' });
+  });
+
   it('is sure of nothing when it gives no distribution to be sure by', () => {
     expect(
       emailTriageFrom({
@@ -125,7 +132,7 @@ describe('emailFilingFrom', () => {
   });
 });
 
-/** A classifier on a fake evaluation model that answers every email with `answersFor(state)`. */
+/** A classifier on a fake decision model that answers every email with `answersFor(state)`. */
 function fakeClassifier(answersFor: (state: unknown) => EmailTriageAnswers | Error) {
   const evaluatedStates: unknown[] = [];
   const classifier = new Classifier({
@@ -135,7 +142,7 @@ function fakeClassifier(answersFor: (state: unknown) => EmailTriageAnswers | Err
       provider: 'fake',
       modelId: 'jev-fake',
       supportedQuestionTypes: ['choice', 'score'],
-      doEvaluate: async ({ state }) => {
+      doDecide: async ({ state }) => {
         evaluatedStates.push(state);
         const result = answersFor(state);
         if (result instanceof Error) {
@@ -151,11 +158,13 @@ function fakeClassifier(answersFor: (state: unknown) => EmailTriageAnswers | Err
 const OFFER = { from: 'news@shop.example', subject: '50% off everything', bodyPreview: 'This weekend only' };
 const CODE = { from: 'no-reply@bank.example', subject: 'Your sign-in code', bodyPreview: 'Your code is 123456' };
 
-const evaluatedEmailSchema = z.object({ subject: z.string() });
+/** The state the model is handed for one email: the email as a single JSON part. */
+const evaluatedEmailSchema = z.tuple([z.object({ type: z.literal('json'), value: z.object({ subject: z.string() }) })]);
 
 /** Whether the classifier was shown the `CODE` fixture, told apart from the others by its subject. */
 function isCodeEmail(state: unknown): boolean {
-  return evaluatedEmailSchema.parse(state).subject === CODE.subject;
+  const [part] = evaluatedEmailSchema.parse(state);
+  return part.value.subject === CODE.subject;
 }
 
 describe('classifyEmail', () => {
@@ -163,7 +172,7 @@ describe('classifyEmail', () => {
     const { classifier, evaluatedStates } = fakeClassifier(() => answers('newsletter_or_promotion', 0.97, 0, 0.9));
 
     expect(await classifyEmail(classifier, OFFER)).toEqual({ kind: 'newsletter_or_promotion', urgency: 'ignore' });
-    expect(evaluatedStates).toEqual([OFFER]);
+    expect(evaluatedStates).toEqual([[{ type: 'json', value: OFFER }]]);
   });
 });
 
@@ -187,6 +196,18 @@ describe('triageEmails', () => {
   it('files an email whose classification fails as it always was', async () => {
     const { classifier } = fakeClassifier((state) =>
       isCodeEmail(state) ? new Error('Jev is down') : answers('newsletter_or_promotion', 0.95, 1, 0.9),
+    );
+
+    const filing = await triageEmails([OFFER, CODE], classifier);
+
+    expect(filing).toEqual({ kept: [{ email: CODE }], droppedEmailCount: 1, priority: 'low' });
+  });
+
+  it('files an email Jev refuses to classify as it always was', async () => {
+    const { classifier } = fakeClassifier((state) =>
+      isCodeEmail(state)
+        ? { kind: { type: 'refusal' }, urgency: { type: 'refusal' } }
+        : answers('newsletter_or_promotion', 0.95, 1, 0.9),
     );
 
     const filing = await triageEmails([OFFER, CODE], classifier);

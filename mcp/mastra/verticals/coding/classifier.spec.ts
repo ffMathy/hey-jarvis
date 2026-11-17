@@ -13,8 +13,11 @@ import {
   sessionQuestionQuestions,
 } from './classifier.js';
 
-/** A classifier on a fake Jev that answers with `probability`, or fails with it. */
-function fakeClassifier(probability: number | Error) {
+/** How a decision model answers a question it declines. */
+const REFUSAL = { type: 'refusal' } as const;
+
+/** A classifier on a fake Jev that answers with `probability`, refuses, or fails with it. */
+function fakeClassifier(probability: number | typeof REFUSAL | Error) {
   const evaluated: { state: unknown; questionIds: string[] }[] = [];
   const classifier = new Classifier({
     id: 'codingSessionQuestionClassifier',
@@ -23,12 +26,13 @@ function fakeClassifier(probability: number | Error) {
       provider: 'fake',
       modelId: 'jev-fake',
       supportedQuestionTypes: ['boolean'],
-      doEvaluate: async ({ state, questions }) => {
+      doDecide: async ({ state, questions }) => {
         evaluated.push({ state, questionIds: Object.keys(questions) });
         if (probability instanceof Error) {
           throw probability;
         }
-        return { answers: { asksForDecision: { type: 'boolean', probability } }, warnings: [] };
+        const answer = typeof probability === 'number' ? { type: 'boolean' as const, probability } : probability;
+        return { answers: { asksForDecision: answer }, warnings: [] };
       },
     },
   });
@@ -54,6 +58,10 @@ describe('endsOnProseQuestion', () => {
     );
     expect(endsOnProseQuestion({ asksForDecision: { type: 'boolean', probability: 0.5 } })).toBe(false);
   });
+
+  it('reads a message Jev refused to judge as finished', () => {
+    expect(endsOnProseQuestion({ asksForDecision: REFUSAL })).toBe(false);
+  });
 });
 
 describe('classifyProseQuestion', () => {
@@ -63,13 +71,20 @@ describe('classifyProseQuestion', () => {
     expect(await classifyProseQuestion(classifier, FINAL_MESSAGE)).toBe(
       'Should the reminder go out by email, or as a push notification?',
     );
-    expect(evaluated).toEqual([{ state: FINAL_MESSAGE, questionIds: ['asksForDecision'] }]);
+    expect(evaluated).toEqual([{ state: [{ type: 'text', text: FINAL_MESSAGE }], questionIds: ['asksForDecision'] }]);
   });
 
   it('asks nothing when it is not sure', async () => {
     const { classifier } = fakeClassifier(0.6);
 
     expect(await classifyProseQuestion(classifier, FINAL_MESSAGE)).toBeUndefined();
+  });
+
+  it('asks nothing when it refuses to judge the message', async () => {
+    const { classifier, evaluated } = fakeClassifier(REFUSAL);
+
+    expect(await classifyProseQuestion(classifier, FINAL_MESSAGE)).toBeUndefined();
+    expect(evaluated).toHaveLength(1);
   });
 
   it('never asks the classifier about an empty message', async () => {

@@ -1,81 +1,18 @@
 import { z } from 'zod';
-import { getSubscriptionStorage } from '../../storage/index.js';
-import type { SubscriptionEmbeddings } from '../../storage/subscriptions.js';
 import { logger } from '../../utils/logger.js';
-import { embedTexts } from '../../utils/static-embedder.js';
 import { createTool } from '../../utils/tool-factory.js';
-import { thirdPersonVariant } from './paraphrase.js';
 import {
   DEFAULT_MAXIMUM_MATCHES,
   DEFAULT_MINIMUM_SCORE,
   findRelevantSubscriptions as findRelevantSubscriptionsForDescription,
 } from './subscription-matcher.js';
-
-const subscriptionSchema = z.object({
-  id: z.string(),
-  source: z.string(),
-  whenEvent: z.string(),
-  givenCondition: z.string().optional(),
-  thenAction: z.string(),
-  oneShot: z.boolean(),
-  enabled: z.boolean(),
-  createdAt: z.string(),
-  lastTriggeredAt: z.string().nullable(),
-  triggerCount: z.number(),
-  maxTriggerCount: z.number().nullable(),
-  expiresAt: z.string().nullable(),
-});
+import { getSubscriptionStore, subscriptionSchema } from './subscription-store.js';
 
 /**
  * Registers a Given/When/Then subscription — a "point of interest" the user has
- * expressed.
- *
- * All three components are embedded with Model2Vec (potion) at registration
- * time. The `whenEvent` and `givenCondition` embeddings are what incoming state changes are
- * matched against; the `thenAction` is embedded too so the action text can be searched
- * and deduplicated later.
+ * expressed. It is matched against every state change by the embeddings of its `whenEvent`
+ * and `givenCondition` (see `subscription-matcher.ts`).
  */
-/**
- * Embeds everything a subscription needs stored, in a single pass.
- *
- * A first-person clause is also stored in the third person. Users say "when I get home
- * from work"; devices report "person is Mathias, state is arrived home", and the static
- * embedder cannot connect the two on its own. Matching takes the better of the two
- * phrasings, so the rewrite can only add reach.
- *
- * The alternates are optional, which is why the texts are gathered into one array with
- * their positions remembered rather than embedded separately: the embedder is called
- * once however many phrasings there turned out to be.
- */
-async function embedSubscriptionComponents(input: {
-  whenEvent: string;
-  givenCondition?: string;
-  thenAction: string;
-}): Promise<SubscriptionEmbeddings> {
-  const whenAlternate = thirdPersonVariant(input.whenEvent);
-  const givenAlternate = input.givenCondition ? thirdPersonVariant(input.givenCondition) : null;
-
-  const texts = [input.whenEvent, input.thenAction];
-  const givenIndex = input.givenCondition ? texts.push(input.givenCondition) - 1 : -1;
-  const whenAlternateIndex = whenAlternate ? texts.push(whenAlternate) - 1 : -1;
-  const givenAlternateIndex = givenAlternate ? texts.push(givenAlternate) - 1 : -1;
-
-  const embeddings = await embedTexts(texts);
-  const [whenEmbedding, thenEmbedding] = embeddings;
-
-  if (!whenEmbedding || !thenEmbedding) {
-    throw new Error('Failed to embed the subscription components');
-  }
-
-  return {
-    whenEvent: whenEmbedding,
-    thenAction: thenEmbedding,
-    givenCondition: givenIndex === -1 ? null : (embeddings[givenIndex] ?? null),
-    whenEventAlternate: whenAlternateIndex === -1 ? null : (embeddings[whenAlternateIndex] ?? null),
-    givenConditionAlternate: givenAlternateIndex === -1 ? null : (embeddings[givenAlternateIndex] ?? null),
-  };
-}
-
 export const registerSubscription = createTool({
   id: 'registerSubscription',
   description:
@@ -146,21 +83,16 @@ export const registerSubscription = createTool({
       expiresAt: inputData.expiresAt ?? null,
     });
 
-    const embeddings = await embedSubscriptionComponents(inputData);
-
-    const storage = await getSubscriptionStorage();
-    const subscription = await storage.add(
-      {
-        source: inputData.source,
-        whenEvent: inputData.whenEvent,
-        givenCondition: inputData.givenCondition,
-        thenAction: inputData.thenAction,
-        oneShot,
-        maxTriggerCount,
-        expiresAt: inputData.expiresAt ?? null,
-      },
-      embeddings,
-    );
+    const store = await getSubscriptionStore();
+    const subscription = await store.add({
+      source: inputData.source,
+      whenEvent: inputData.whenEvent,
+      givenCondition: inputData.givenCondition,
+      thenAction: inputData.thenAction,
+      oneShot,
+      maxTriggerCount,
+      expiresAt: inputData.expiresAt ?? null,
+    });
 
     return { registered: true, subscription };
   },
@@ -184,8 +116,8 @@ export const listSubscriptions = createTool({
     count: z.number(),
   }),
   execute: async (inputData) => {
-    const storage = await getSubscriptionStorage();
-    const subscriptions = await storage.list({ includeDisabled: inputData.includeDisabled });
+    const store = await getSubscriptionStore();
+    const subscriptions = await store.list({ includeDisabled: inputData.includeDisabled });
 
     return { subscriptions, count: subscriptions.length };
   },
@@ -246,8 +178,8 @@ export const markSubscriptionTriggered = createTool({
     message: z.string(),
   }),
   execute: async (inputData) => {
-    const storage = await getSubscriptionStorage();
-    const subscription = await storage.markTriggered(inputData.subscriptionId);
+    const store = await getSubscriptionStore();
+    const subscription = await store.markTriggered(inputData.subscriptionId);
 
     if (!subscription) {
       return {
@@ -288,8 +220,8 @@ export const removeSubscription = createTool({
     message: z.string(),
   }),
   execute: async (inputData) => {
-    const storage = await getSubscriptionStorage();
-    const removed = await storage.remove(inputData.subscriptionId);
+    const store = await getSubscriptionStore();
+    const removed = await store.remove(inputData.subscriptionId);
 
     return {
       removed,
@@ -316,8 +248,8 @@ export const setSubscriptionEnabled = createTool({
     message: z.string(),
   }),
   execute: async (inputData) => {
-    const storage = await getSubscriptionStorage();
-    const updated = await storage.setEnabled(inputData.subscriptionId, inputData.enabled);
+    const store = await getSubscriptionStore();
+    const updated = await store.setEnabled(inputData.subscriptionId, inputData.enabled);
 
     return {
       updated,
@@ -342,8 +274,8 @@ export const pruneExpiredSubscriptions = createTool({
     message: z.string(),
   }),
   execute: async () => {
-    const storage = await getSubscriptionStorage();
-    const removed = await storage.pruneExpired();
+    const store = await getSubscriptionStore();
+    const removed = await store.pruneExpired();
 
     if (removed.length > 0) {
       logger.info('Pruned expired subscriptions', {

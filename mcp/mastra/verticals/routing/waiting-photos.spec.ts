@@ -873,7 +873,7 @@ function classifierRelating(relation: RelationToRunningRequest): Classifier {
       provider: 'fake',
       modelId: 'jev-fake',
       supportedQuestionTypes: ['choice', 'boolean'],
-      doEvaluate: async ({ questions }) => ({
+      doDecide: async ({ questions }) => ({
         answers: Object.fromEntries(
           Object.entries(questions).map(([questionId, question]) => [
             questionId,

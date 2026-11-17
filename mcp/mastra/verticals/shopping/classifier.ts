@@ -1,9 +1,9 @@
 import type { Classifier, ClassifierAnswers } from '@mastra/core/classifier';
-import { createLazyClassifier } from '../../utils/index.js';
+import { confidentBoolean, confidentChoice, createLazyClassifier } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
 
 /**
- * The shopping vertical's decisions that are a choice from a list, asked of an evaluation model
+ * The shopping vertical's decisions that are a choice from a list, asked of a decision model
  * (Jev, see `utils/providers/typesafe-provider.ts`) instead of a language model.
  *
  * Two of them. Which catalogue product a shopping list item is, which the mutator agent used to
@@ -138,17 +138,8 @@ export function productChoiceFrom(
   answers: ProductChoiceAnswers,
   candidateObjectIds: ReadonlySet<string>,
 ): string | undefined {
-  const { choice, probabilities } = answers.product;
-  if (!candidateObjectIds.has(choice)) {
-    return undefined;
-  }
-
-  // No distribution means no way of knowing how sure it is, which is the same as not being sure.
-  if ((probabilities?.[choice] ?? 0) < PRODUCT_CHOICE_CONFIDENCE) {
-    return undefined;
-  }
-
-  return choice;
+  const choice = confidentChoice(answers.product, PRODUCT_CHOICE_CONFIDENCE);
+  return choice !== undefined && candidateObjectIds.has(choice) ? choice : undefined;
 }
 
 /** An item and the product the classifier is sure it is. */
@@ -180,7 +171,7 @@ export async function chooseProduct(
   userRequest: string,
   candidates: ProductCandidate[],
 ): Promise<ProductCandidate | undefined> {
-  const { answers } = await classifier.evaluate({
+  const { answers } = await classifier.decide({
     state: {
       requestedProduct: { name: product.name, quantity: product.quantity, unit: product.unitType },
       userRequest,
@@ -245,9 +236,12 @@ const ORDER_CHANGE_QUESTIONS = {
 
 export type OrderChangeAnswers = ClassifierAnswers<typeof ORDER_CHANGE_QUESTIONS>;
 
-/** Reads the classifier's answer into whether the email reports an order change. Pure. */
+/**
+ * Reads the classifier's answer into whether the email reports an order change. Pure. Only a sure
+ * yes counts: an unsure or declined answer is no, which is what the subject match alone said.
+ */
 export function orderChangeFrom(answers: OrderChangeAnswers): boolean {
-  return answers.reportsOrderChange.probability >= ORDER_CHANGE_CONFIDENCE;
+  return confidentBoolean(answers.reportsOrderChange, ORDER_CHANGE_CONFIDENCE) === true;
 }
 
 /** The classifier the order change trigger runs on, or nothing when there is no key to run it with. */
@@ -273,7 +267,7 @@ export async function reportsOrderChange(
     return false;
   }
 
-  const { answers } = await classifier.evaluate({
+  const { answers } = await classifier.decide({
     state: { subject: email.subject, bodyPreview: email.bodyPreview },
     questions: ORDER_CHANGE_QUESTIONS,
   });

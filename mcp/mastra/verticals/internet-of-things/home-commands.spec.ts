@@ -205,6 +205,12 @@ describe('entitiesFrom', () => {
     ).toBeUndefined();
     expect(entitiesFrom({ entity0: { type: 'boolean', probability: 0.97 } }, ENTITIES, SURE)).toBeUndefined();
   });
+
+  it('leaves the command to the agent when Jev refused to judge an entity', () => {
+    expect(
+      entitiesFrom({ entity0: { type: 'boolean', probability: 0.97 }, entity1: { type: 'refusal' } }, ENTITIES, SURE),
+    ).toBeUndefined();
+  });
 });
 
 describe('entityQuestions', () => {
@@ -339,16 +345,28 @@ describe('runHomeCommand', () => {
     }
   });
 
+  /** How a decision model answers a question it declines. */
+  const REFUSAL = { type: 'refusal' } as const;
+
   /**
    * A classifier whose model answers every entity question with the given probabilities, in order,
-   * and the service question, when one is asked, with `service` at `serviceConfidence`.
+   * and the service question, when one is asked, with `service` at `serviceConfidence`. Either can
+   * be a refusal instead.
    */
-  function classifierAnswering(probabilities: number[], service = 'light.turn_off', serviceConfidence = 0.97) {
+  function classifierAnswering(
+    probabilities: (number | typeof REFUSAL)[],
+    service: string | typeof REFUSAL = 'light.turn_off',
+    serviceConfidence = 0.97,
+  ) {
     return classifierRecording(probabilities, service, serviceConfidence).classifier;
   }
 
   /** {@link classifierAnswering}, also keeping the services each call offered Jev. */
-  function classifierRecording(probabilities: number[], service = 'light.turn_off', serviceConfidence = 0.97) {
+  function classifierRecording(
+    probabilities: (number | typeof REFUSAL)[],
+    service: string | typeof REFUSAL = 'light.turn_off',
+    serviceConfidence = 0.97,
+  ) {
     const offeredServices: string[][] = [];
     const classifier = new Classifier({
       id: 'homeCommandClassifier',
@@ -357,14 +375,14 @@ describe('runHomeCommand', () => {
         provider: 'fake',
         modelId: 'jev-fake',
         supportedQuestionTypes: ['choice', 'boolean'],
-        doEvaluate: async ({ questions }) => {
+        doDecide: async ({ questions }) => {
           const entityKeys = Object.keys(questions).filter((key) => questions[key]?.type === 'boolean');
           return {
             answers: Object.fromEntries(
               Object.entries(questions).map(([key, question]) =>
                 question.type === 'choice'
                   ? [key, choiceAnswer(Object.keys(question.criteria))]
-                  : [key, { type: 'boolean' as const, probability: probabilities[entityKeys.indexOf(key)] ?? 0 }],
+                  : [key, booleanAnswer(probabilities[entityKeys.indexOf(key)] ?? 0)],
               ),
             ),
             warnings: [],
@@ -373,9 +391,16 @@ describe('runHomeCommand', () => {
       },
     });
 
+    function booleanAnswer(probability: number | typeof REFUSAL) {
+      return typeof probability === 'number' ? { type: 'boolean' as const, probability } : probability;
+    }
+
     /** The complete distribution Mastra requires, with what is left over spread across the rest. */
     function choiceAnswer(options: string[]) {
       offeredServices.push(options);
+      if (typeof service !== 'string') {
+        return service;
+      }
       const others = options.filter((option) => option !== service);
       return {
         type: 'choice' as const,
@@ -445,6 +470,30 @@ describe('runHomeCommand', () => {
 
     expect(
       await runHomeCommand('turn off some lights', 'light', HOUSE_SERVICES, SURE, classifierAnswering([0.97, 0.5])),
+    ).toBeUndefined();
+    expect(serviceCalls).toEqual([]);
+  });
+
+  it('declines without calling anything when Jev refuses to choose the service, or to judge an entity', async () => {
+    serviceResponse = () => new Response('[]');
+
+    expect(
+      await runHomeCommand(
+        'turn off the kitchen lights',
+        'light',
+        HOUSE_SERVICES,
+        SURE,
+        classifierAnswering([0.97, 0.02], REFUSAL),
+      ),
+    ).toBeUndefined();
+    expect(
+      await runHomeCommand(
+        'turn off the kitchen lights',
+        'light',
+        HOUSE_SERVICES,
+        SURE,
+        classifierAnswering([0.97, REFUSAL]),
+      ),
     ).toBeUndefined();
     expect(serviceCalls).toEqual([]);
   });

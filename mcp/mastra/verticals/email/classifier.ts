@@ -1,5 +1,5 @@
 import type { Classifier, ClassifierAnswers } from '@mastra/core/classifier';
-import { createLazyClassifier } from '../../utils/index.js';
+import { confidentChoice, confidentScoreLevel, createLazyClassifier } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -8,7 +8,7 @@ import { logger } from '../../utils/logger.js';
  * Every new email used to be filed, subject and sender, as one low-priority state change, and the
  * reactor -- a language model reading its whole prompt -- had to work out on its own that most of
  * them were newsletters. What kind of email something is, and how soon it needs the user, are
- * both answers known in advance, which is what an evaluation model (Jev, see
+ * both answers known in advance, which is what a decision model (Jev, see
  * `utils/providers/typesafe-provider.ts`) answers in one short call per email.
  *
  * So each email is asked two questions in parallel with the others, and the answers only ever
@@ -97,17 +97,12 @@ export type EmailFilingPriority = 'low' | 'high';
  * "ignore" and half "today", which is not being sure of anything.
  */
 export function emailTriageFrom(answers: EmailTriageAnswers): EmailTriage {
-  const { kind, urgency } = answers;
-
-  // No distribution means no way of knowing how sure it is, which is the same as not being sure.
-  const kindConfidence = kind.probabilities?.[kind.choice] ?? 0;
-  const sureUrgency = EMAIL_URGENCIES.find(
-    (_, level) => (urgency.probabilities?.[String(level)] ?? 0) >= EMAIL_TRIAGE_CONFIDENCE,
-  );
+  const kind = confidentChoice(answers.kind, EMAIL_TRIAGE_CONFIDENCE);
+  const urgency = confidentScoreLevel(answers.urgency, EMAIL_URGENCIES, EMAIL_TRIAGE_CONFIDENCE);
 
   return {
-    ...(kindConfidence >= EMAIL_TRIAGE_CONFIDENCE && { kind: kind.choice }),
-    ...(sureUrgency && { urgency: sureUrgency }),
+    ...(kind && { kind }),
+    ...(urgency && { urgency }),
   };
 }
 
@@ -150,7 +145,7 @@ export const getEmailTriageClassifier = createLazyClassifier(EMAIL_TRIAGE_CLASSI
 
 /** Asks the classifier what kind of email one is, and how soon it needs the user. */
 export async function classifyEmail(classifier: Classifier, email: TriageableEmail): Promise<EmailTriage> {
-  const { answers } = await classifier.evaluate({
+  const { answers } = await classifier.decide({
     state: { from: email.from, subject: email.subject, bodyPreview: email.bodyPreview },
     questions: EMAIL_TRIAGE_QUESTIONS,
   });

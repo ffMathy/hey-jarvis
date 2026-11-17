@@ -490,23 +490,24 @@ export async function planFromFastRoute(route: FastRoute, userQuery: string): Pr
  * The decision the classifier settles a request with on its own, or nothing when the planner should.
  *
  * An answer to a waiting question is the user's own words, which is what the planner is told to
- * copy anyway, and a goodbye has nothing to run at all.
+ * copy anyway, and a goodbye has nothing to run at all. A cancel is spoken as a command, so it is
+ * settled even when Jev declined to say how the answer should sound.
  */
 export async function decisionFromClassification(
   classification: RequestClassification,
   userQuery: string,
 ): Promise<RoutingDecision | undefined> {
-  const { responseStyle, relationToRunningRequest } = classification;
+  const { relationToRunningRequest } = classification;
   const relation = relationToRunningRequest && { relationToRunningRequest };
 
   if (classification.endsCall) {
-    return { chains: [], answers: [], responseStyle, endsCall: true, ...relation };
+    return { chains: [], answers: [], responseStyle: classification.responseStyle, endsCall: true, ...relation };
   }
   if (classification.answeredQuestionId) {
     return {
       chains: [],
       answers: [{ questionId: classification.answeredQuestionId, answer: userQuery }],
-      responseStyle,
+      responseStyle: classification.responseStyle,
       ...relation,
     };
   }

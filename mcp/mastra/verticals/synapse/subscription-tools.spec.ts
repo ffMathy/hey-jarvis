@@ -1,33 +1,31 @@
 /**
  * Subscription tool tests.
  *
- * These exercise the real Model2Vec embedder and a real (temporary) SQLite
- * database. No LLM is involved anywhere: the tools themselves never call one —
- * embedding and ranking are the whole mechanism — so the only thing that has to
- * be substituted is the storage singleton, which would otherwise write into the
- * process-wide database.
+ * These exercise the real Model2Vec embedder and a real subscription store, on Jarvis's
+ * Knowledge over an in-memory store. No LLM is involved anywhere: the tools themselves never
+ * call one — embedding and ranking are the whole mechanism — so the only thing that has to be
+ * substituted is the store singleton, which would otherwise write into the process-wide
+ * database.
  */
 
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
-import { mkdtemp } from 'fs/promises';
-import { tmpdir } from 'os';
-import path from 'path';
-import * as realStorage from '../../storage/index.js';
-import { SubscriptionStorage } from '../../storage/subscriptions.js';
+import { InMemoryStore } from '@mastra/core/storage';
+import { createJarvisKnowledge } from '../../knowledge/index.js';
 import { executeTool } from '../../utils/tool-factory.js';
+import * as realSubscriptionStore from './subscription-store.js';
+import { SubscriptionStore } from './subscription-store.js';
 
-const databaseDirectory = await mkdtemp(path.join(tmpdir(), 'synapse-subscription-tools-'));
-const storage = new SubscriptionStorage(path.join(databaseDirectory, 'subscriptions.db'));
+const store = new SubscriptionStore(createJarvisKnowledge(new InMemoryStore()));
 
-// Both subscription-tools.ts and subscription-matcher.ts reach for the storage
-// singleton through this specifier, so one substitution covers the pair.
-// `mock.module` is process-global in Bun and replaces the whole module, so the real
-// exports are spread back in: other specs sharing this process reach for the rest of
-// the storage surface (`getVectorStorageProvider` among them), and a mock carrying only
-// the one function turns that into a module-resolution error somewhere unrelated.
-mock.module('../../storage/index.js', () => ({
-  ...realStorage,
-  getSubscriptionStorage: async () => storage,
+// Both subscription-tools.ts and subscription-matcher.ts reach for the store singleton
+// through this module, so one substitution covers the pair. `mock.module` is
+// process-global in Bun and replaces the whole module, so the real exports are spread
+// back in: other specs sharing this process reach for the rest of it, and a mock
+// carrying only the one function turns that into a module-resolution error somewhere
+// unrelated.
+mock.module('./subscription-store.js', () => ({
+  ...realSubscriptionStore,
+  getSubscriptionStore: async () => store,
 }));
 
 const {
@@ -79,18 +77,9 @@ async function register(
 const FAR_FUTURE = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
 
 beforeEach(async () => {
-  await storage.clear();
+  await store.clear();
 });
 
-/**
- * The temporary directory is deliberately not removed afterwards.
- *
- * `mock.module` is process-global in Bun, and test files share one process, so the
- * substitution above stays in force for every file that runs after this one. Deleting
- * the directory at the end of this file pulls the database out from under those files
- * mid-run, which SQLite reports as SQLITE_READONLY_DBMOVED rather than anything that
- * points back here. The directory lives under the OS temp dir and is cleaned up there.
- */
 describe('registerSubscription', () => {
   it('stores all three Given/When/Then components', async () => {
     const subscription = await register('the sun goes down', 'close the blinds', {
