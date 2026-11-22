@@ -35,18 +35,27 @@ function before(moment: Date, milliseconds: number): string {
 const MINUTE = 60_000;
 
 describe('isGlanceQuietHour', () => {
-  it('counts 23:00 to 06:00 on the household clock as quiet, whatever the server clock says', () => {
+  it('counts 23:00 to 05:00 on the household clock as quiet, whatever the server clock says', () => {
     expect(isGlanceQuietHour(new Date('2026-11-01T21:59:00.000Z'))).toBe(false); // 22:59
     expect(isGlanceQuietHour(new Date('2026-11-01T22:00:00.000Z'))).toBe(true); // 23:00
     expect(isGlanceQuietHour(night)).toBe(true);
-    expect(isGlanceQuietHour(new Date('2026-11-01T04:59:00.000Z'))).toBe(true); // 05:59
-    expect(isGlanceQuietHour(new Date('2026-11-01T05:00:00.000Z'))).toBe(false); // 06:00
+    expect(isGlanceQuietHour(new Date('2026-11-01T03:59:00.000Z'))).toBe(true); // 04:59
+    expect(isGlanceQuietHour(new Date('2026-11-01T04:00:00.000Z'))).toBe(false); // 05:00
   });
 });
 
 describe('decideGlanceRebuild', () => {
-  it('builds one when there is none, even at night', () => {
-    expect(decideGlanceRebuild({ now: night, current: undefined, latestChangeNotedAt: undefined }).rebuild).toBe(true);
+  it('builds one when there is none in the daytime', () => {
+    expect(decideGlanceRebuild({ now: afternoon, current: undefined, latestChangeNotedAt: undefined }).rebuild).toBe(
+      true,
+    );
+  });
+
+  it('builds none at night, not even a first one', () => {
+    expect(decideGlanceRebuild({ now: night, current: undefined, latestChangeNotedAt: undefined })).toEqual({
+      rebuild: false,
+      reason: 'it is the quiet hours',
+    });
   });
 
   it('builds again when an important change was noted after the glance', () => {

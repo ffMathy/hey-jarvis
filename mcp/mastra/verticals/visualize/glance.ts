@@ -26,10 +26,12 @@ import type { StoredGlance } from './glance-store.js';
 export const GLANCE_MAX_AGE_MS = 3 * 60 * 60 * 1000;
 
 /**
- * The household hours in which a glance is not rebuilt, unless there is none: from 23:00 until
- * 06:00 nobody is looking, and whatever happens overnight is still news in the morning.
+ * The household hours in which no glance is built at all, not even a first one: from 23:00 until
+ * 05:00 nobody is looking, and whatever happens overnight is still news in the morning. The
+ * schedule (`HOURLY_FROM_5AM_TO_10PM`) already keeps to the day; this also stops the run on
+ * startup from building one at night.
  */
-export const GLANCE_QUIET_HOURS = { fromHour: 23, untilHour: 6 } as const;
+export const GLANCE_QUIET_HOURS = { fromHour: 23, untilHour: 5 } as const;
 
 /** The most buttons a glance offers: more than a thumb's worth is a menu, not a glance. */
 export const MAX_GLANCE_ACTIONS = 4;
@@ -48,7 +50,7 @@ export function isGlanceQuietHour(now: Date): boolean {
 /**
  * Whether the current glance should be built again: when there is none, when an important change
  * was noted after it was built, or when it is older than {@link GLANCE_MAX_AGE_MS} — and never in
- * the quiet hours unless there is none at all.
+ * the quiet hours.
  */
 export function decideGlanceRebuild({
   now,
@@ -60,11 +62,11 @@ export function decideGlanceRebuild({
   /** When the newest important change of the last day was noted, if there is one. */
   latestChangeNotedAt: string | undefined;
 }): GlanceRebuildDecision {
+  if (isGlanceQuietHour(now)) {
+    return { rebuild: false, reason: 'it is the quiet hours' };
+  }
   if (!current) {
     return { rebuild: true, reason: 'there is no current glance' };
-  }
-  if (isGlanceQuietHour(now)) {
-    return { rebuild: false, reason: 'it is the quiet hours, and there is a glance already' };
   }
 
   const generatedAt = Date.parse(current.generatedAt);
