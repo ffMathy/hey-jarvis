@@ -72,12 +72,13 @@ an email said a parcel comes this afternoon, so the page shows the delivery and 
 the front door. It is a page like any other here, built by a Claude Code session and hosted for a
 day, with three differences: what it is built from, its buttons, and how a device hears of it.
 
-**When it is built** (`glanceWorkflow`, `visualize/workflows.ts`, scheduled every 15 minutes and on
-startup). A build costs minutes of a Claude Code session, so the first step decides
+**When it is built** (`glanceWorkflow`, `visualize/workflows.ts`, scheduled on the hour from 05:00 to
+22:00 household time, and on startup). A build costs minutes of a Claude Code session, so the first step decides
 (`decideGlanceRebuild` in `visualize/glance.ts`) and ends the run with `bail` when nothing is to be
 done: it rebuilds when there is no current glance, when an important change was noted after the
 current one was built, or when it is three hours old (`GLANCE_MAX_AGE_MS`) — and never between 23:00
-and 06:00 household time (`GLANCE_QUIET_HOURS`) unless there is none at all. The changes come from
+and 05:00 household time (`GLANCE_QUIET_HOURS`), not even a first one, so a restart at night
+builds nothing until the morning. The changes come from
 `ImportantChangeStorage.listRecent`, which reads the last day's changes *without* marking them told,
 so the voice asides still come (see [Synapse Important Changes](mcp-synapse-important-changes-news-for-the-next.md#synapse-important-changes-news-for-the-next-request)). It is a
 schedule rather than a call from `noteImportantChange` because the reactor and the MCP server are

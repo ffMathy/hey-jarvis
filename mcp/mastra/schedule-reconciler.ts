@@ -121,12 +121,13 @@ export const SCHEDULED_WORKFLOWS: ScheduledWorkflowDeclaration[] = [
     cron: CronPatterns.EVERY_3_HOURS,
     runOnStartup: true,
   },
-  // Glance - every 15 minutes, and on startup
+  // Glance - on the hour from 05:00 to 22:00, and on startup
   // Decides whether sir's glance needs building again, and ends at once when it does not: a build
-  // costs minutes of a Claude Code session (verticals/visualize/glance.ts)
+  // costs minutes of a Claude Code session, so it is never built more than hourly, nor at night
+  // (verticals/visualize/glance.ts, which also refuses a startup run in the quiet hours)
   {
     workflowId: glanceWorkflow.id,
-    cron: CronPatterns.EVERY_15_MINUTES,
+    cron: CronPatterns.HOURLY_FROM_5AM_TO_10PM,
     runOnStartup: true,
   },
   // Storage retention - nightly
