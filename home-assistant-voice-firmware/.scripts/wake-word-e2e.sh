@@ -31,7 +31,8 @@ set -uo pipefail
 #   COMMAND_TEXT       run a single turn with this sentence instead of the conversation
 #   TURNS_FILE         file with one user turn per line (default: a six-turn conversation)
 #   TURN_MAX           longest wait for one reply      (default 75)
-#   REPLY_SETTLE_MS    speaker quiet time that ends a reply (default 800)
+#   REPLY_SETTLE_MS    how long Jarvis must be silent, with no audio arriving,
+#                      before the next turn plays (default 2500)
 #   READY_TIMEOUT      wait for the device to open its mic (default 15)
 #   VOICE_ID           ElevenLabs voice to speak with  (default: Mathias, see below)
 #   ATTEMPTS           wake attempts before giving up  (default 3)
@@ -89,7 +90,7 @@ READY_TIMEOUT="${READY_TIMEOUT:-15}"
 # reply counts as finished. The settle has to stay well under the agent's 3 s
 # turnTimeout, or Jarvis hangs up before the next turn is spoken.
 TURN_MAX="${TURN_MAX:-75}"
-REPLY_SETTLE_MS="${REPLY_SETTLE_MS:-800}"
+REPLY_SETTLE_MS="${REPLY_SETTLE_MS:-2500}"
 ATTEMPTS="${ATTEMPTS:-3}"
 LISTEN_SECONDS="${LISTEN_SECONDS:-15}"
 CONVERSATION_MAX="${CONVERSATION_MAX:-90}"
@@ -496,34 +497,44 @@ fi
 conv_start_mark="$(wc -c < "$SERIAL_LOG")"
 
 # speaker_is_active_ flips true on a reply's first audio and false 250 ms after the
-# speaker runs dry, so one reply is one true/false pair. The reply is over once the
-# counts balance and stay balanced for REPLY_SETTLE_MS -- a false followed quickly by
-# another true is the speaker running dry mid-reply, which is counted as an underrun.
+# speaker runs dry, so one reply is one true/false pair, and a false followed by
+# another true is the speaker running dry mid-reply, counted as an underrun.
+#
+# The next turn must not play until Jarvis is done, or it lands on a closed mic (the
+# device shuts it while the speaker plays) and the agent answers half a sentence. A
+# balanced pair is not enough on its own: the agent can pause between sentences, or
+# answer twice, and the device may still be receiving audio it has not played yet. So
+# a reply ends only when the speaker is off AND no audio has arrived for
+# REPLY_SETTLE_MS. Any new audio, or the speaker turning on again, restarts that clock.
 SPEAKER_ON_RE="Setting speaker_is_active_ = true"
 SPEAKER_OFF_RE="Setting speaker_is_active_ = false"
+ACTIVITY_RE="speaker_is_active_ = |Decoded [0-9]+ bytes of audio"
 
 # Waits for the reply to the turn that started at serial offset $1.
-# Returns 0 when the reply finished, 1 when the call ended, 2 on timeout.
+# Returns 0 when Jarvis finished and went quiet, 1 when the call ended, 2 on timeout.
 wait_for_reply() {
-  local mark="$1" last="$2" on off since balanced_at=0 deadline=$((SECONDS + TURN_MAX))
+  local mark="$1" last="$2" on off since activity seen=-1 quiet_since=0 now
+  local deadline=$((SECONDS + TURN_MAX))
   while [ "$SECONDS" -lt "$deadline" ]; do
     since="$(tail -c "+$((mark + 1))" "$SERIAL_LOG" 2> /dev/null)"
-    if printf '%s' "$since" | grep -q -E "$END_RE"; then
+    if printf '%s' "$since" | grep -a -q -E "$END_RE"; then
       return 1
     fi
     # The last turn is a goodbye, so wait for the hang-up rather than for silence:
     # that captures the whole farewell and proves end_call still closes the call.
     if [ "$last" != "1" ]; then
-      on="$(printf '%s' "$since" | grep -c -- "$SPEAKER_ON_RE")"
-      off="$(printf '%s' "$since" | grep -c -- "$SPEAKER_OFF_RE")"
-      if [ "$on" -gt 0 ] && [ "$off" -ge "$on" ]; then
-        [ "$balanced_at" -gt 0 ] || balanced_at="$(date +%s%3N)"
-        if [ $(($(date +%s%3N) - balanced_at)) -ge "$REPLY_SETTLE_MS" ]; then
-          REPLY_UNDERRUNS=$((on - 1))
-          return 0
-        fi
-      else
-        balanced_at=0
+      on="$(printf '%s' "$since" | grep -a -c -- "$SPEAKER_ON_RE")"
+      off="$(printf '%s' "$since" | grep -a -c -- "$SPEAKER_OFF_RE")"
+      activity="$(printf '%s' "$since" | grep -a -c -E "$ACTIVITY_RE")"
+      now="$(date +%s%3N)"
+      if [ "$activity" != "$seen" ]; then
+        seen="$activity"
+        quiet_since="$now"
+      fi
+      if [ "$on" -gt 0 ] && [ "$off" -ge "$on" ] \
+        && [ $((now - quiet_since)) -ge "$REPLY_SETTLE_MS" ]; then
+        REPLY_UNDERRUNS=$((on - 1))
+        return 0
       fi
     fi
     sleep 0.1
