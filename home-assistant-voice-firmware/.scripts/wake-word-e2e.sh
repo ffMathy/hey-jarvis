@@ -44,6 +44,9 @@ set -uo pipefail
 #   ESPHOME_DEVICE     serial port                     (default: first /dev/ttyACM*|ttyUSB*)
 #   SKIP_AUDIO_CHECK   1 = wake word only, no recording or comparison
 #   LISTEN_ONLY        1 = play nothing, just watch for a detection from live speech
+#   WAKE_VIA           speaker (default) plays the wake phrase; api starts the
+#                      conversation through the device's start_conversation action
+#   DEVICE_HOST        the device's IP or hostname, for WAKE_VIA=api
 #   KEEP_AUDIO         1 = reuse synthesised phrases between runs (default 1)
 #
 # Exit codes:
@@ -348,6 +351,48 @@ started_at="$(date +%s)"
 # --- wake the device ---------------------------------------------------------
 detected_line=""
 woke=0
+
+# WAKE_VIA=api starts the conversation through the device's start_conversation action
+# instead of playing the wake phrase. A synthesised "Hey Jarvis" from laptop speakers
+# scores well below the hey_jarvis cutoff even where a real voice in the same room
+# wakes the device, so this keeps the conversation under test independent of how
+# well the host can imitate a person.
+if [ "${WAKE_VIA:-speaker}" = "api" ]; then
+  [ -n "${DEVICE_HOST:-}" ] || fail "WAKE_VIA=api needs DEVICE_HOST, the device's IP address or hostname."
+  # aioesphomeapi ships with ESPHome; run it on the interpreter ESPHome itself uses.
+  esphome_python="$(head -1 "$(command -v esphome)" | sed 's/^#!//')"
+  [ -x "$esphome_python" ] || fail "Could not find ESPHome's Python to reach the device API."
+  echo "▶️  Starting the conversation over the API at $DEVICE_HOST..."
+  mark="$(wc -c < "$SERIAL_LOG")"
+  "$esphome_python" - "$DEVICE_HOST" <<'PY' || fail "Could not call start_conversation on the device."
+import asyncio, sys
+from aioesphomeapi import APIClient
+
+async def main(host):
+    client = APIClient(host, 6053, None)
+    await client.connect(login=True)
+    _, services = await client.list_entities_services()
+    service = next((s for s in services if s.name == "start_conversation"), None)
+    if service is None:
+        sys.exit("the device has no start_conversation action; flash a current build")
+    await client.execute_service(service, {})
+    await asyncio.sleep(0.5)
+    await client.disconnect()
+
+asyncio.run(main(sys.argv[1]))
+PY
+  deadline=$((SECONDS + LISTEN_SECONDS))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if tail -c "+$((mark + 1))" "$SERIAL_LOG" 2> /dev/null | grep -q "START_STREAM CALLED"; then
+      echo "✅ Conversation started."
+      woke=1
+      break
+    fi
+    sleep 0.5
+  done
+  ATTEMPTS=0
+fi
+
 for attempt in $(seq 1 "$ATTEMPTS"); do
   echo "▶️  Attempt $attempt/$ATTEMPTS — playing the wake phrase..."
   mark="$(wc -c < "$SERIAL_LOG")"

@@ -181,6 +181,28 @@ api:
             else:
               - logger.log: "Announcement suppressed: the device is muted"
 
+    # Starts a conversation exactly as the wake word does: same stream, same chime.
+    #
+    #   service: esphome.<device>_start_conversation
+    #
+    # The acoustic e2e uses it (WAKE_VIA=api) so a long conversation can be tested
+    # without depending on a synthesised "Hey Jarvis" from the host's speakers, which
+    # the hey_jarvis model scores well below its cutoff even when a real voice in the
+    # same room wakes the device.
+    - service: start_conversation
+      then:
+        - if:
+            condition:
+              switch.is_off: master_mute_switch
+            then:
+              - elevenlabs_stream.start: {}
+              - script.execute:
+                  id: play_sound
+                  priority: false
+                  sound_file: center_button_press_sound
+            else:
+              - logger.log: "Conversation suppressed: the device is muted"
+
 
 json:
 
