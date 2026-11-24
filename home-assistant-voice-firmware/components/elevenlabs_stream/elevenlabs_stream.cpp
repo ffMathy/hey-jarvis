@@ -73,6 +73,11 @@ static const char *const DEVICE_NOTE = "This conversation is on the Home Assista
 // be swallowed. Comfortably under the point where a listener notices a delayed reply.
 static const uint32_t REPLY_PREBUFFER_MAX_MS = 400;
 
+// Capacity reserved for the prebuffer once, at setup, so a reply never allocates. The
+// threshold can be overshot by up to one frame before it is released, and frames have
+// been seen at ~15 KB decoded; 32 KB of headroom covers that with margin.
+static const size_t REPLY_PREBUFFER_CAPACITY = REPLY_PREBUFFER_BYTES + 32 * 1024;
+
 // How long to let a short reply finish playing before the speaker is stopped.
 static const uint32_t SPEAKER_DRAIN_TIMEOUT_MS = 3000;
 
@@ -227,8 +232,8 @@ bool ElevenLabsStream::decode_and_play_base64_audio(const char* base64_data) {
       return false;
     }
     memcpy(decoded, this->reply_prebuffer_.data(), decoded_len);
+    // clear(), not shrink_to_fit(): the PSRAM capacity is kept for the next reply.
     this->reply_prebuffer_.clear();
-    this->reply_prebuffer_.shrink_to_fit();
   }
 
   // Make sure the speaker is actually running before handing it the first chunk.
@@ -349,6 +354,11 @@ void ElevenLabsStream::setup() {
     this->client_ = new ElevenLabsClient(this->agent_id_, this->api_key_);
   }
 
+  this->reply_prebuffer_.reserve(REPLY_PREBUFFER_CAPACITY);
+  if (this->reply_prebuffer_.capacity() < REPLY_PREBUFFER_CAPACITY) {
+    ESP_LOGE(TAG, "SETUP: Could not reserve %zu bytes for the reply prebuffer", REPLY_PREBUFFER_CAPACITY);
+  }
+
   elevenlabs_speaker_->add_audio_output_callback([this](uint32_t _a, int64_t _b) {
     this->cancel_timeout("audio_output_callback");
     this->set_timeout("audio_output_callback", 250, [this]() {
@@ -418,8 +428,12 @@ void ElevenLabsStream::loop() {
     size_t psram_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
     size_t psram_used = this->psram_baseline_ - psram_free;
     int percent_remaining = (psram_free * 100) / this->psram_baseline_;
-    ESP_LOGI(TAG, "LOOP: PSRAM Free=%zuKB, Used=%zuKB (%d%% of baseline remaining)", 
-             psram_free / 1024, psram_used / 1024, percent_remaining);
+    // Internal RAM too: it is the scarcer of the two, and the one a reply ran out of.
+    size_t internal_free = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    size_t internal_largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    ESP_LOGI(TAG, "LOOP: PSRAM Free=%zuKB, Used=%zuKB (%d%% of baseline remaining), Internal Free=%zuKB, Largest=%zuKB",
+             psram_free / 1024, psram_used / 1024, percent_remaining, internal_free / 1024,
+             internal_largest / 1024);
     
     if (psram_free < 1024 * 1024) {
       ESP_LOGW(TAG, "LOOP: LOW MEMORY WARNING: PSRAM Free=%zuKB", psram_free / 1024);
@@ -668,7 +682,6 @@ void ElevenLabsStream::stop_stream() {
   // hold its opening audio behind a threshold that has already been met and never
   // release it.
   this->reply_prebuffer_.clear();
-  this->reply_prebuffer_.shrink_to_fit();
   this->reply_prebuffering_ = true;
 
   // Reset speaker state completely

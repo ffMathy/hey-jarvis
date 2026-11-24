@@ -547,9 +547,18 @@ conv_log="$WORK_DIR/conversation-serial.log"
 tail -c "+$((conv_start_mark + 1))" "$SERIAL_LOG" > "$conv_log" 2> /dev/null
 INSTABILITY_RE="Guru Meditation|abort\(\)|Backtrace:|rst:0x|Speaker stalled|Could not allocate|Failed to decode|ERROR HANDLER CALLED|LOW MEMORY|Task watchdog"
 instability="$(grep -a -E "$INSTABILITY_RE" "$conv_log" | head -10)"
-psram_trend="$(grep -a -oE 'PSRAM Free=[0-9]+KB, Used' "$conv_log" | grep -oE '[0-9]+' | awk 'NR==1{f=$1} {l=$1} END{if (NR) printf "%s KB -> %s KB", f, l}')"
+# First and last reading, plus the low point. Internal RAM is the one to watch: it is
+# much scarcer than PSRAM, and running out of it is what rebooted the device mid-reply.
+mem_trend() {
+  grep -a -oE "$1=[0-9]+KB" "$conv_log" | grep -oE '[0-9]+' \
+    | awk 'NR==1{f=$1; m=$1} {l=$1; if ($1 < m) m=$1} END{if (NR) printf "%s -> %s KB (low %s)", f, l, m}'
+}
+psram_trend="$(mem_trend 'PSRAM Free')"
+internal_trend="$(mem_trend 'Internal Free')"
 echo "🩺 Device health"
-echo "   turns answered: $answered/${#TURNS[@]}, underruns: $total_underruns${psram_trend:+, PSRAM free $psram_trend}"
+echo "   turns answered: $answered/${#TURNS[@]}, underruns: $total_underruns"
+[ -z "$psram_trend" ] || echo "   PSRAM free:    $psram_trend"
+[ -z "$internal_trend" ] || echo "   internal free: $internal_trend"
 if [ -n "$instability" ]; then
   echo "   ❌ instability in the serial log:"
   printf '%s\n' "$instability" | sed 's/^/      /'
