@@ -147,7 +147,7 @@ photo1)." in both orders sir can go about it. Told first — "I'll send you a re
 total?" — the agent must route nothing until the photo's message is in, then route the question
 naming "(photo photo1)". Sent first, with nothing said, the message alone must be routed at once by
 that name. A camera opened straight after a finished request must be waited on: the request is
-answered in full, the camera's note follows at once, and several three-second turn timeouts later
+answered in full, the camera's note follows at once, and several seven-second turn timeouts later
 the agent must have answered them with `skip_turn` and never called `end_call`, and must still route
 the photo when its message comes. The same request with no camera opened after it is the control:
 it must be hung up on within ten seconds. Without it, a harness whose text-only conversation is

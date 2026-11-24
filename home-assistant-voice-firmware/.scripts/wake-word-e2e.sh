@@ -87,8 +87,8 @@ fi
 [ "${#TURNS[@]}" -gt 0 ] || { echo "❌ No conversation turns given." >&2; exit 1; }
 READY_TIMEOUT="${READY_TIMEOUT:-15}"
 # Longest single reply to wait for, and how long the speaker must stay quiet before a
-# reply counts as finished. The settle has to stay well under the agent's 3 s
-# turnTimeout, or Jarvis hangs up before the next turn is spoken.
+# reply counts as finished. The settle has to stay well under the agent's 7 s
+# turnTimeout, or Jarvis speaks again, onto a closed mic, as the next turn starts.
 TURN_MAX="${TURN_MAX:-75}"
 REPLY_SETTLE_MS="${REPLY_SETTLE_MS:-2500}"
 ATTEMPTS="${ATTEMPTS:-3}"

@@ -109,7 +109,7 @@ describe('the test agent overrides', () => {
 /**
  * The one silence after a finished request that is not the end of the call: sir busy with a photo.
  *
- * ElevenLabs asks Jarvis to speak again three seconds into any silence (`turnTimeout`), and after a
+ * ElevenLabs asks Jarvis to speak again seven seconds into any silence (`turnTimeout`), and after a
  * finished request the answer is to hang up without a word. That rule is stated in four places the
  * agent reads at once: the prompt's **When Sir Is Silent**, the `end_call` and `skip_turn`
  * descriptions here, and routing's `FINISHED_REQUEST_INSTRUCTIONS`, which closes every finished

@@ -9,10 +9,10 @@
       "keywords": []
     },
     "turn": {
-      "turnTimeout": 3,
+      "turnTimeout": 7,
       "silenceEndCallTimeout": 30,
       "mode": "turn",
-      "turnEagerness": "normal",
+      "turnEagerness": "patient",
       "spellingPatience": "auto",
       "speculativeTurn": true,
       "retranscribeOnTurnTimeout": true,
