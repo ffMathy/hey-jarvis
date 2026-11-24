@@ -48,7 +48,7 @@ describe('the committed agent config', () => {
   });
 
   it('transcribes what sir has said before the turn timeout asks Jarvis to speak again', () => {
-    // Three seconds of quiet inside a long reply — sir drawing breath, or thinking of the next
+    // Seven seconds of quiet inside a long reply — sir drawing breath, or thinking of the next
     // clause — fires `turnTimeout` before his words are a transcript. Without retranscription Jarvis
     // is asked to speak again with nothing from sir since his last reply, which after a finished
     // request is the cue to `end_call` without a word: so the longer the reply, the likelier he hung

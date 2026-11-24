@@ -15,6 +15,8 @@ Each topic is a rule of its own, under the same paths:
 - [Wake Word Configuration](home-assistant-voice-firmware-wake-word-configuration.md)
 - [Troubleshooting Wake Word Issues](home-assistant-voice-firmware-troubleshooting-wake-word-issues.md)
 - [Development](home-assistant-voice-firmware-development.md)
+- [Usage](home-assistant-voice-firmware-usage.md) — building, flashing, and USB under WSL
+- [Acoustic End-to-End Test](home-assistant-voice-firmware-acoustic-e2e.md)
 
 ## Overview
 ESPHome firmware for dedicated voice hardware devices with local processing capabilities.
@@ -48,13 +50,8 @@ can carry an email summary or a calendar entry, and the unknown-type fallback wo
 have logged all of it at WARN.
 
 ## Usage
-```bash
-# Build the firmware
-bunx turbo build --filter=home-assistant-voice-firmware
-
-# Flash and monitor (OTA or USB)
-bunx turbo serve --filter=home-assistant-voice-firmware
-```
+See [Usage](home-assistant-voice-firmware-usage.md). Flash with `upload` or `serve`; there is
+deliberately no firmware `deploy` target.
 
 ## Testing
 
@@ -66,7 +63,8 @@ bunx turbo serve --filter=home-assistant-voice-firmware
 5. Test voice assistant integration
 
 ### Automated Testing
-Currently no automated tests exist for wake word detection. Manual testing on physical hardware is required.
+`wake-word-test` holds a six-turn conversation with the real device over real air; see
+[Acoustic End-to-End Test](home-assistant-voice-firmware-acoustic-e2e.md).
 
 ## Future Capabilities
 - Additional wake word models

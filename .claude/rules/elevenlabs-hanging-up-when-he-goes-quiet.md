@@ -8,7 +8,7 @@ paths:
 > Part of [ElevenLabs Integration](elevenlabs.md). Paths in it are relative to `elevenlabs/` unless they say otherwise.
 
 A finished request should not leave the line open until the 30-second `silenceEndCallTimeout`
-gives up on it. So the agent has **`turnTimeout: 3`**: after three seconds of silence, ElevenLabs asks
+gives up on it. So the agent has **`turnTimeout: 7`**: after seven seconds of silence, ElevenLabs asks
 Jarvis to speak again. The prompt's **When Sir Is Silent** section and the `end_call`/`skip_turn`
 descriptions tell him what that means — after a finished request, `end_call` without a word; while
 the conversation waits on sir, `skip_turn`. Every finished request — answered, failed, or handed off
@@ -25,13 +25,28 @@ those silences with "are you still there?", `turnTimeout: -1` switches it off ag
 every hang-up after a finished request, so that is a trade, not a fix.
 
 **`retranscribeOnTurnTimeout: true`** is what keeps that from hanging up on sir mid-sentence. A long
-reply has pauses in it, and three seconds of one fires the timeout before ElevenLabs has turned the
+reply has pauses in it, and seven seconds of one fires the timeout before ElevenLabs has turned the
 words before it into a transcript. With retranscription off, Jarvis was then asked to speak again
 with nothing from sir since his last reply, and after a finished request that means `end_call` — so
 the longer sir talked, the likelier the line went dead under him. With it on, the audio gathered so
 far is transcribed when the timeout fires, and Jarvis hears what sir said instead of a silence. It
 costs the silence discount on those turns, which is cheap beside a dropped call.
 `tests/specs/agent-config.spec.ts` holds the setting on.
+
+It was three seconds, and that was too short to think in. A reply landed on sir as he drew breath to
+answer, and on the Voice speaker, which shuts its mic while it plays, his answer was lost whole. Seven
+seconds still closes a finished request well inside the 30-second `silenceEndCallTimeout`.
+
+**`turnEagerness: patient`** is the other half. On `normal`, the turn model ended sir's turn at a
+0.3-second pause, after the first clause of a longer sentence, and answered half a sentence. Patient
+waits out a pause between clauses; the cost is a slightly later reply when he has really finished.
+
+**`speculativeTurn: false`** goes with it. A speculative turn starts the reply during a pause before
+the turn model is sure sir has finished, and on the Voice e2e it still split "…learns to cook. Make it
+about six sentences long." at the full stop with patient eagerness on. Switched off, the same turn
+arrived whole. What it costs is the head start on a reply, a fraction of a second after sir stops.
+A one-word sentence followed by a short pause ("Interesting.") can still end a turn; that is the turn
+model judging a complete sentence, and no setting here changes it.
 
 There used to be a second mechanism, the `hangUpWhenQuiet` client tool, that armed a three-second
 clock on the device itself. It was removed: the agent asked for it, the phone, watch and firmware

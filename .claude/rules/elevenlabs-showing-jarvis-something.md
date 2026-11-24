@@ -47,7 +47,7 @@ agent. The prompt states each of these rules once, in its **Photos** section, an
 the tool names and argument lists sir must never hear.
 
 **A photo on its way is sir busy, not sir gone.** Nothing holds the agent's turn while he frames a
-shot, so the three-second turn timeout asks Jarvis to speak again, and after a finished request the
+shot, so the seven-second turn timeout asks Jarvis to speak again, and after a finished request the
 answer to that is to hang up. So Jarvis waits instead — `skip_turn`, never `end_call` — while he is
 waiting for a photo from sir on a device that has told him it has a camera button: sir said he would
 send one, or a note says he has opened the camera on his phone, and since then nothing has settled
@@ -73,9 +73,8 @@ it: routing's above all, since it arrives last and the prompt says to follow it 
 exception stated in fewer places than the rule it breaks is outweighed the same way.
 
 The phone also sends `user_activity` once in the tap, beside the note that the camera is open, and then
-every five seconds while the camera is open or the photo is on its way. The first may land before the
-three-second turn timeout; the rest are too seldom to hold one off, and ElevenLabs does not document them
-as holding off the 30-second `silenceEndCallTimeout`; the phone's timers stop while the app is behind
+every five seconds while the camera is open or the photo is on its way. ElevenLabs does not document
+`user_activity` as holding off the seven-second turn timeout, nor the 30-second `silenceEndCallTimeout`; the phone's timers stop while the app is behind
 the camera besides. So a long enough shot can still end the call — and the slot, opened at the tap,
 outlives it.
 
