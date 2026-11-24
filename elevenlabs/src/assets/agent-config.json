@@ -14,7 +14,7 @@
       "mode": "turn",
       "turnEagerness": "patient",
       "spellingPatience": "auto",
-      "speculativeTurn": true,
+      "speculativeTurn": false,
       "retranscribeOnTurnTimeout": true,
       "turnModel": "turn_v3",
       "interruptionIgnoreTerms": [
