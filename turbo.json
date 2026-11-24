@@ -83,6 +83,14 @@
     "deploy:test": {
       "cache": false
     },
+    "upload": {
+      "cache": false,
+      "outputs": []
+    },
+    "wake-word-test": {
+      "cache": false,
+      "outputs": []
+    },
     // Never cached: the phone's contract specs read other packages' source as text — the Jarvis
     // server's photo routes and routing planner (`photo-upload.contract.spec.ts`,
     // `photo-messages.contract.spec.ts`), the agent's prompt, and the watch's half of the link
