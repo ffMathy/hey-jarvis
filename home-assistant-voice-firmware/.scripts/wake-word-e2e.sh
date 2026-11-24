@@ -55,6 +55,7 @@ set -uo pipefail
 #   2  woke, but the comparison found playback DEFECTS, or the device logged instability
 #   3  woke, but the comparison could not run (silent capture, API or processing failure)
 #   4  the call ended, or a reply never came, before the last turn was answered
+#   5  playback was fine, but the agent replied before a turn had finished playing
 
 WAKE_WORD_TEXT="${WAKE_WORD_TEXT:-Hey Jarvis}"
 # The conversation, one user turn per entry. A single reply cannot show what goes wrong
@@ -531,6 +532,7 @@ wait_for_reply() {
 }
 
 SEGMENTS=()
+EARLY_TURNS=()
 answered=0
 premature=""
 total_underruns=0
@@ -542,6 +544,15 @@ for i in "${!TURNS[@]}"; do
 
   echo "🗨️  Turn $n/${#TURNS[@]}: \"${TURNS[$i]}\""
   play_file "${TURN_WAVS[$i]}"
+
+  # A reply that is already playing when the turn ends means the agent took its turn
+  # at a pause mid-sentence. The mic is shut while the speaker plays, so the rest of the
+  # turn never reached it, and the reply's opening words were spoken before the
+  # recorder below could start. That is the agent cutting in, not the speaker.
+  if tail -c "+$((turn_mark + 1))" "$SERIAL_LOG" 2> /dev/null | grep -a -q -- "$SPEAKER_ON_RE"; then
+    EARLY_TURNS+=("$n")
+    echo "   ⚠️  the agent started replying before the turn finished playing"
+  fi
 
   # Playback is done; only now is it safe to open a capture stream.
   segment="$WORK_DIR/room-turn-$n.wav"
@@ -775,6 +786,13 @@ echo "🧠 Comparing with ${GEMINI_MODEL}..."
 # device fault.
 # `read -d ''` always exits non-zero at EOF even though PROMPT is fully populated;
 # `|| true` keeps that harmless if this script ever gains `set -e`.
+early_note=""
+if [ "${#EARLY_TURNS[@]}" -gt 0 ]; then
+  early_note="Replies number ${EARLY_TURNS[*]} (counting from 1) began playing while the human
+was still speaking, before their recording window opened, so AUDIO 2 starts each of them
+part-way through. A missing BEGINNING of exactly those replies is EXPECTED and is not a
+defect. Everything after the point where AUDIO 2 picks them up must still match."
+fi
 read -r -d '' PROMPT <<PROMPT_EOF || true
 You are given two audio recordings of the SAME conversation, plus its transcript.
 
@@ -787,6 +805,7 @@ AUDIO 2 contains the agent's replies and little or nothing of the user's turns. 
 turn present in AUDIO 1 but absent from AUDIO 2 is therefore EXPECTED and is not a
 defect, and neither is the silence that joins two replies. Check EVERY reply, including
 the later ones: defects that appear only late in a long conversation matter most.
+${early_note}
 
 Compare AUDIO 2 against AUDIO 1 and report only defects in how the SPEAKER reproduced
 the agent's speech.
@@ -932,6 +951,15 @@ if [ "$(printf '%s' "$verdict" | jq -r '.defects_found')" = "true" ]; then
   exit 2
 fi
 
+# After the playback checks, because a speaker defect is the firmware's to fix and this
+# is the agent's: its turn detection ended a turn at a pause, and the user was cut off.
+if [ "${#EARLY_TURNS[@]}" -gt 0 ]; then
+  echo
+  echo "❌ AGENT CUT IN — it replied before the human finished, on turn(s) ${EARLY_TURNS[*]}."
+  echo "   Playback itself matched. The agent's turn detection ended the turn at a pause;"
+  echo "   see turnEagerness in elevenlabs/src/assets/agent-config.json."
+  exit 5
+fi
 
 # The gap count is model-independent, so a clean verdict alongside a lot of extra
 # silence is a signal the comparison may have missed something rather than a pass.

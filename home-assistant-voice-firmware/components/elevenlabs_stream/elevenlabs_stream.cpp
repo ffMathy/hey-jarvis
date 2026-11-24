@@ -1145,6 +1145,14 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
     return;
   }
 
+  // The reply's text, streamed a few words at a time alongside its audio. The speaker
+  // only plays the audio, and agent_response carries the finished text anyway. The
+  // unknown-type fallback below logged every part in full at WARN, dozens per reply,
+  // and the logger stalled for 100 ms at a time writing them out mid-playback.
+  if (strcmp(type, "agent_chat_response_part") == 0) {
+    return;
+  }
+
   std::string json_str = JsonDeserializer::to_string(root);
   if (strcmp(type, "mcp_connection_status") == 0) {
     ESP_LOGD(TAG, "PARSE_JSON_BUF: Processing MCP connection status: '%s'", json_str.c_str());
