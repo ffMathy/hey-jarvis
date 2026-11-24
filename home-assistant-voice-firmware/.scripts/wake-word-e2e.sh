@@ -799,10 +799,19 @@ echo "🧠 Comparing with ${GEMINI_MODEL}..."
 # `|| true` keeps that harmless if this script ever gains `set -e`.
 early_note=""
 if [ "${#EARLY_TURNS[@]}" -gt 0 ]; then
-  early_note="Replies number ${EARLY_TURNS[*]} (counting from 1) began playing while the human
-was still speaking, before their recording window opened, so AUDIO 2 starts each of them
-part-way through. A missing BEGINNING of exactly those replies is EXPECTED and is not a
-defect. Everything after the point where AUDIO 2 picks them up must still match."
+  # Named by what the human said, not by number: the agent can split one turn into two
+  # replies, so a reply's position in the reference need not match the turn's.
+  early_turn_texts=""
+  for t in "${EARLY_TURNS[@]}"; do
+    early_turn_texts+="  - \"${TURNS[$((t - 1))]}\""$'\n'
+  done
+  early_note="The agent began replying to the human turns below while the human was still
+speaking them, before the recording window opened. So in AUDIO 2 the replies that answer
+these turns (including any reply to just their first words) start part-way through, or
+are missing entirely if they ended before the human finished. A missing BEGINNING, or a
+missing whole reply, at exactly those points is EXPECTED and is not a defect. Everything
+AUDIO 2 does contain must still match the reference.
+${early_turn_texts}"
 fi
 read -r -d '' PROMPT <<PROMPT_EOF || true
 You are given two audio recordings of the SAME conversation, plus its transcript.
