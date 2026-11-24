@@ -19,7 +19,7 @@ std::string JsonDeserializer::to_string(const JsonObject& obj) {
 std::unique_ptr<BasicJsonDocument<PSRAMAllocator>> JsonDeserializer::parse(uint8_t* buffer, size_t length) {
     // Log PSRAM before parsing
     size_t psram_free_before = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-    size_t heap_free_before = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    size_t heap_free_before = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
 
     // Zero-copy parsing (see the header): strings stay in `buffer` and the document
     // holds pointers, so the pool only has to fit the object structure -- a handful of
@@ -76,9 +76,12 @@ std::unique_ptr<BasicJsonDocument<PSRAMAllocator>> JsonDeserializer::parse(uint8
     
     // Log PSRAM after parsing with delta
     size_t psram_free_after = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-    size_t heap_free_after = heap_caps_get_free_size(MALLOC_CAP_8BIT);
-    size_t psram_delta = psram_free_before - psram_free_after;
-    size_t heap_delta = heap_free_before - heap_free_after;
+    size_t heap_free_after = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    // Clamped at zero: other tasks allocate and free concurrently, and an unsigned
+    // difference that went negative used to wrap into a huge "allocation" and fire the
+    // warning below on parses that never touched internal RAM.
+    size_t psram_delta = psram_free_before > psram_free_after ? psram_free_before - psram_free_after : 0;
+    size_t heap_delta = heap_free_before > heap_free_after ? heap_free_before - heap_free_after : 0;
     
     // Determine which heap was primarily used
     if (heap_delta > psram_delta && heap_delta > 1024) {
