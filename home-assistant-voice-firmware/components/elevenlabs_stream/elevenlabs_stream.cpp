@@ -96,6 +96,37 @@ static const uint32_t END_CALL_SPEECH_GRACE_MS = 1500;
 // Hard ceiling on that wait, in case the farewell never stops or never comes.
 static const uint32_t END_CALL_MAX_WAIT_MS = 20000;
 
+// Finds a quoted JSON key in [begin, end) by scanning, without parsing (see the audio
+// fast path in parse_json_message_from_buffer). Hand-rolled rather than memmem(), which
+// is a GNU extension and not dependable on ESP-IDF.
+static const char *find_json_key(const char *begin, const char *end, const char *key, size_t key_len) {
+  for (const char *p = begin; p + key_len <= end; p++) {
+    if (*p == '"' && memcmp(p, key, key_len) == 0) {
+      return p;
+    }
+  }
+  return nullptr;
+}
+
+// Reads the unsigned integer value of `key` in [begin, end), or -1 if it is absent.
+static int64_t find_json_integer(const char *begin, const char *end, const char *key, size_t key_len) {
+  const char *p = find_json_key(begin, end, key, key_len);
+  if (p == nullptr) {
+    return -1;
+  }
+  p += key_len;
+  while (p < end && (*p == ':' || *p == ' ')) p++;
+  if (p >= end || *p < '0' || *p > '9') {
+    return -1;
+  }
+  int64_t value = 0;
+  while (p < end && *p >= '0' && *p <= '9') {
+    value = value * 10 + (*p - '0');
+    p++;
+  }
+  return value;
+}
+
 // Helper to convert StreamState enum to string
 static const char* stream_state_to_string(StreamState state) {
   switch (state) {
@@ -145,8 +176,7 @@ bool ElevenLabsStream::decode_and_play_base64_audio(const char* base64_data) {
   // never set the flag. Since essentially every frame takes the fast path, the flag
   // stayed false for entire replies, and four things quietly depended on it:
   //
-  //   - the microphone echo gate, so the device streamed its own speech back to the
-  //     agent while talking
+  //   - the microphone echo gate (since removed; see handle_microphone_data)
   //   - the vad_score echo guard, so the agent's own voice scored as the user speaking
   //   - the announcement window's "is the agent still talking" test, which is why an
   //     announcement hung up around the time it started speaking instead of after
@@ -566,6 +596,8 @@ bool ElevenLabsStream::start_stream(const std::string &initial_message, uint32_t
   this->agent_has_spoken_ = false;
   this->silence_started_ms_ = 0;
   this->end_call_requested_ = false;
+  // Event ids count up from the start of each conversation.
+  this->interrupted_event_id_ = -1;
   this->starting_ = true;
 
   this->connection_start_time_ = millis();
@@ -632,6 +664,35 @@ bool ElevenLabsStream::start_stream(const std::string &initial_message, uint32_t
   }
   ESP_LOGD(TAG, "=== START_STREAM COMPLETE ===");
   return true;
+}
+
+// The user talked over the agent, and it abandoned the reply it was giving.
+//
+// The reply's audio is already on its way -- part of it queued in the speaker's 60 s
+// buffer, the rest still arriving -- and nothing is ever sent to take it back. The
+// device has to drop it itself, or Jarvis talks on over the user and the abandoned
+// reply plays in full before the one that answers them.
+void ElevenLabsStream::stop_interrupted_reply_(int64_t event_id) {
+  if (event_id > this->interrupted_event_id_) {
+    this->interrupted_event_id_ = event_id;
+  }
+
+  // Stopping is the speaker's only way to discard what it has queued. It restarts on the
+  // next reply's first write (see decode_and_play_base64_audio), and that reply gets a
+  // fresh prebuffer, because it starts into an empty pipeline just as the first one does.
+  this->reply_prebuffer_.clear();
+  this->reply_prebuffering_ = true;
+  if (this->elevenlabs_speaker_ != nullptr && this->elevenlabs_speaker_->is_running()) {
+    this->elevenlabs_speaker_->stop();
+  }
+
+  if (this->speaker_is_active_) {
+    ESP_LOGI(TAG, "INTERRUPTED: Setting speaker_is_active_ = false");
+    this->speaker_is_active_ = false;
+    for (auto *trigger : this->on_listening_triggers_) {
+      trigger->trigger();
+    }
+  }
 }
 
 void ElevenLabsStream::stop_stream() {
@@ -781,21 +842,14 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
   // parser below, where correctness matters more than bytes.
   static const char AUDIO_KEY[] = "\"audio_base_64\"";
   const size_t AUDIO_KEY_LEN = sizeof(AUDIO_KEY) - 1;
+  static const char EVENT_ID_KEY[] = "\"event_id\"";
+  const size_t EVENT_ID_KEY_LEN = sizeof(EVENT_ID_KEY) - 1;
   const char* haystack = reinterpret_cast<const char*>(buffer);
-  // Hand-rolled rather than memmem(), which is a GNU extension and not dependable on
-  // ESP-IDF. The key appears early in the frame, so this scans a few bytes in practice.
-  const char* key_pos = nullptr;
-  if (length >= AUDIO_KEY_LEN) {
-    for (size_t i = 0; i + AUDIO_KEY_LEN <= length; i++) {
-      if (haystack[i] == '"' && memcmp(haystack + i, AUDIO_KEY, AUDIO_KEY_LEN) == 0) {
-        key_pos = haystack + i;
-        break;
-      }
-    }
-  }
+  const char* end = haystack + length;
+  // The key appears early in the frame, so this scans a few bytes in practice.
+  const char* key_pos = find_json_key(haystack, end, AUDIO_KEY, AUDIO_KEY_LEN);
   if (key_pos != nullptr) {
-    const char* end = haystack + length;
-    const char* p = key_pos + sizeof(AUDIO_KEY) - 1;
+    const char* p = key_pos + AUDIO_KEY_LEN;
     while (p < end && *p != ':') p++;          // key -> colon
     while (p < end && *p != '"') p++;          // colon -> opening quote
     if (p < end) {
@@ -805,8 +859,18 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
         // decode_and_play_base64_audio takes a C string; terminate in place. The
         // buffer belongs to the websocket assembler and is reset after this returns.
         size_t payload_len = value_end - value_start;
+        // The event_id sits on either side of the payload; skip the payload itself.
+        int64_t event_id = find_json_integer(value_end, end, EVENT_ID_KEY, EVENT_ID_KEY_LEN);
+        if (event_id < 0) {
+          event_id = find_json_integer(haystack, key_pos, EVENT_ID_KEY, EVENT_ID_KEY_LEN);
+        }
+        if (this->is_from_interrupted_reply_(event_id)) {
+          ESP_LOGD(TAG, "PARSE_JSON_BUF: Dropping audio of interrupted reply (event %" PRId64 ")", event_id);
+          return;
+        }
         *const_cast<char*>(value_end) = '\0';
-        ESP_LOGD(TAG, "PARSE_JSON_BUF: Audio fast path, payload=%zu bytes (frame %zu)", payload_len, length);
+        ESP_LOGD(TAG, "PARSE_JSON_BUF: Audio fast path, payload=%zu bytes, event %" PRId64 " (frame %zu)",
+                 payload_len, event_id, length);
         this->last_audio_time_ = millis();
         this->decode_and_play_base64_audio(value_start);
         return;
@@ -976,8 +1040,12 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
     JsonObject audio = root["audio_event"];
     if (audio) {
       const char* audio_base64 = audio["audio_base_64"];
-      uint32_t event_id = audio["event_id"] | 0;
-      
+      int64_t event_id = audio["event_id"] | static_cast<int64_t>(-1);
+      if (this->is_from_interrupted_reply_(event_id)) {
+        ESP_LOGD(TAG, "AUDIO_EVENT: Dropping audio of interrupted reply (event %" PRId64 ")", event_id);
+        return;
+      }
+
       if (audio_base64) {
         size_t base64_len = strlen(audio_base64);
         size_t psram_before_audio = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
@@ -1105,7 +1173,9 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
     ESP_LOGD(TAG, "PARSE_JSON_BUF: Processing interruption event");
     JsonObject interruption = root["interruption_event"];
     if (interruption) {
-      ESP_LOGD(TAG, "PARSE_JSON_BUF: Interruption event received");
+      int64_t event_id = interruption["event_id"] | static_cast<int64_t>(-1);
+      ESP_LOGI(TAG, "PARSE_JSON_BUF: Agent was interrupted (event %" PRId64 ")", event_id);
+      this->stop_interrupted_reply_(event_id);
     } else {
       ESP_LOGW(TAG, "PARSE_JSON_BUF: No interruption_event found");
     }
@@ -1300,19 +1370,24 @@ void ElevenLabsStream::handle_microphone_data(const std::vector<uint8_t> &data) 
     return;
   }
 
-  // Block microphone input if speaker is active or agent audio is playing
-  if (this->speaker_is_active_) {
-    ESP_LOGV(TAG, "HANDLE_MIC: Microphone blocked - speaker is active (speaker_is_active_=%s)", 
-             this->speaker_is_active_ ? "true" : "false");
-    return;
-  }
-
-  // Block microphone input if media player is announcing (wake sounds, etc.)
-  // This prevents audio interference during sound playback
-  if (this->activation_speaker_ && this->activation_speaker_->has_buffered_data()) {
-    ESP_LOGV(TAG, "HANDLE_MIC: Microphone blocked - activation speaker is running");
-    return;
-  }
+  // The microphone stays open while the agent speaks.
+  //
+  // It used to be shut for as long as the speaker played. The agent's turn detection
+  // can start a reply at a pause between two of the user's sentences, and the user
+  // carries on talking -- but with the microphone shut, whatever they said while the
+  // reply played never reached the agent. Its next answer was to half a sentence
+  // ("Make it about six sentences long" arrived as "make sentences longer"), and a
+  // reply that started after "Interesting." swallowed the actual question.
+  //
+  // With the microphone open, the agent hears the user carry on, abandons its reply
+  // and sends an interruption (see stop_interrupted_reply_), exactly as on the phone.
+  // Jarvis's own voice does not come back in: the XMOS front end cancels the speaker's
+  // echo, using the audio this device sends it as the reference.
+  //
+  // That goes for the activation chime too. A second gate shut the microphone while
+  // the chime's speaker had buffered data, but a resampler speaker reports its output
+  // speaker's buffer as its own, and both resamplers feed the same i2s speaker -- so it
+  // was shut whenever Jarvis spoke as well, and the user's words were still lost.
 
   // Validate input data size (must be multiple of 4 for 32-bit samples)
   if (data.size() % 4 != 0) {

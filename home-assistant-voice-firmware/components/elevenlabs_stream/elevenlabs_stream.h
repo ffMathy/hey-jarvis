@@ -190,8 +190,17 @@ public:
   // Accumulated playback duration for all segments
   uint32_t accumulated_duration_ms_{0};
   
-  // Speaker activity tracking to prevent microphone echo/feedback
-  bool speaker_is_active_{false};  // Track if agent is currently speaking
+  // Whether the agent's voice is coming out of the speaker. Drives the LED, the VAD echo
+  // guard, the announcement window and end_call; it does not shut the microphone.
+  bool speaker_is_active_{false};
+
+  // The event_id of the last reply the agent abandoned because the user kept talking.
+  // Audio carrying that id or an earlier one belongs to an abandoned reply and is dropped.
+  int64_t interrupted_event_id_{-1};
+  void stop_interrupted_reply_(int64_t event_id);
+  bool is_from_interrupted_reply_(int64_t event_id) const {
+    return event_id >= 0 && event_id <= this->interrupted_event_id_;
+  }
   uint32_t speaker_start_time_{0};  // When current audio playback started
   uint32_t speaker_end_time_{0};   // When current audio playback should end
   uint32_t speaker_silence_buffer_ms_{500};  // Wait time after speaker stops before enabling mic
