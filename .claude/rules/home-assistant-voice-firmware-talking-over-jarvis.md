@@ -41,7 +41,7 @@ ElevenLabs sends `interruption` with an `event_id` and nothing else. The reply's
 already queued in the speaker's 60 s buffer, or still arriving. `stop_interrupted_reply_`:
 
 - stops the speaker, its only way to discard what is queued. The next reply restarts it
-  and gets a fresh prebuffer;
+  and gets a fresh prebuffer (see [Playing a Reply](home-assistant-voice-firmware-reply-playback.md));
 - records the `event_id`. Audio carrying that id or an earlier one is dropped as it
   arrives. The fast path reads `event_id` by scanning, like the payload;
 - turns `speaker_is_active_` off, so the LED and the VAD guard see Jarvis as quiet.

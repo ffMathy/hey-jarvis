@@ -506,7 +506,9 @@ conv_start_mark="$(wc -c < "$SERIAL_LOG")"
 
 # speaker_is_active_ flips true on a reply's first audio and false 250 ms after the
 # speaker runs dry, so one reply is one true/false pair, and a false followed by
-# another true is the speaker running dry mid-reply, counted as an underrun.
+# another true is the speaker running dry mid-reply, counted as an underrun. A false
+# that an interruption caused is the agent giving up a reply, not a dry speaker, so it
+# is not counted.
 #
 # The next turn must not play until Jarvis is done, or it talks over him and he abandons
 # a reply that was not wrong. A balanced pair is not enough on its own: the agent can pause between sentences, or
@@ -516,6 +518,7 @@ conv_start_mark="$(wc -c < "$SERIAL_LOG")"
 SPEAKER_ON_RE="Setting speaker_is_active_ = true"
 SPEAKER_OFF_RE="Setting speaker_is_active_ = false"
 INTERRUPTED_RE="Agent was interrupted"
+INTERRUPTED_OFF_RE="INTERRUPTED: Setting speaker_is_active_ = false"
 
 # Whether the agent heard sir's whole turn is judged by what it transcribed, not by
 # timing. Timing cannot tell: the host's audio path adds an unknown delay between the
@@ -558,7 +561,7 @@ ACTIVITY_RE="speaker_is_active_ = |Decoded [0-9]+ bytes of audio"
 # Waits for the reply to the turn that started at serial offset $1.
 # Returns 0 when Jarvis finished and went quiet, 1 when the call ended, 2 on timeout.
 wait_for_reply() {
-  local mark="$1" last="$2" on off since activity seen=-1 quiet_since=0 now
+  local mark="$1" last="$2" on off interrupted since activity seen=-1 quiet_since=0 now
   local deadline=$((SECONDS + TURN_MAX))
   while [ "$SECONDS" -lt "$deadline" ]; do
     since="$(tail -c "+$((mark + 1))" "$SERIAL_LOG" 2> /dev/null)"
@@ -578,7 +581,8 @@ wait_for_reply() {
       fi
       if [ "$on" -gt 0 ] && [ "$off" -ge "$on" ] \
         && [ $((now - quiet_since)) -ge "$REPLY_SETTLE_MS" ]; then
-        REPLY_UNDERRUNS=$((on - 1))
+        interrupted="$(printf '%s' "$since" | grep -a -c -- "$INTERRUPTED_OFF_RE")"
+        REPLY_UNDERRUNS=$((on - 1 - interrupted))
         return 0
       fi
     fi

@@ -12,6 +12,8 @@
 #include <esp_timer.h>
 #include <mbedtls/base64.h>
 
+#include <atomic>
+
 namespace esphome {
 
 // Forward declarations for optional components
@@ -177,9 +179,25 @@ public:
   // RAM runs low once the microphone, the TLS socket and the speaker are all busy, so a
   // grow step failed in the middle of a reply, operator new aborted (exceptions are off)
   // and the device rebooted mid-conversation.
+  //
+  // Every reply is cushioned, not only a conversation's first: audio is held whenever it
+  // would start into an empty speaker. ElevenLabs opens each reply with a few 47 ms
+  // frames spaced further apart than they last, so a reply written straight through ran
+  // dry between them and its first syllables stuttered.
+  //
+  // Audio arrives on the websocket task, but a held reply whose last frame has come must
+  // still be released on time with nothing more arriving to push it out, so loop() on
+  // the main task releases it too. reply_prebuffer_lock_ guards the buffer and every
+  // write to the speaker made while it holds audio; reply_held_ says it holds any, for
+  // readers that must not wait on the lock.
+  Mutex reply_prebuffer_lock_;
   std::vector<uint8_t, RAMAllocator<uint8_t>> reply_prebuffer_;
-  bool reply_prebuffering_{true};
   uint32_t reply_prebuffer_started_ms_{0};
+  std::atomic<bool> reply_held_{false};
+  bool write_to_speaker_(const uint8_t *data, size_t length);
+  bool release_reply_prebuffer_();
+  void release_overdue_reply_prebuffer_();
+  void discard_reply_prebuffer_();
   uint32_t last_audio_response_time_{0};  // Track when we last received audio from agent
   uint32_t connection_timeout_{10000};  // Reduced to 10 seconds
   uint32_t connection_start_time_{0};
