@@ -133,8 +133,8 @@ DETECT_RE="Detected '[^']*[Jj]arvis'"
 STREAM_RE="elevenlabs_stream|Voice assistant|wake_word_triggered"
 # elevenlabs_stream.on_end restarts the engine, which is the cleanest end-of-call marker.
 END_RE="Starting wake word detection"
-# HANDLE_MIC reports the activation chime finishing, i.e. the device is really listening.
-READY_RE="HANDLE_MIC.*activation_speaker_running=false"
+# The greeting finishing, which is when the device opens its mic.
+READY_RE="Setting speaker_is_active_ = false"
 
 reader_pid=""
 recorder_pid=""
@@ -242,7 +242,13 @@ synthesise() {
     fail "Could not synthesise $label."
   fi
 
-  ffmpeg -loglevel error -y -i "$mp3" -ac 1 -ar 48000 -sample_fmt s16 "$wav" \
+  # Trim the trailing silence, so playback ends when the words do. A reply that starts
+  # while the file is still playing then really did start before sir finished; with a
+  # third of a second of silence left on the file, one that started promptly after the
+  # last word was reported as Jarvis talking over him.
+  ffmpeg -loglevel error -y -i "$mp3" \
+    -af "areverse,silenceremove=start_periods=1:start_threshold=-50dB,areverse" \
+    -ac 1 -ar 48000 -sample_fmt s16 "$wav" \
     || fail "ffmpeg could not convert $label."
 
   # Peak-normalise to -1 dB in two passes. Raw output peaks near -13 dB, quiet enough
@@ -264,12 +270,14 @@ synthesise() {
 
 synthesise "$WAKE_WORD_TEXT" "$AUDIO_MP3" "$AUDIO_WAV" "wake phrase"
 
-# Each turn is cached under a hash of its text and voice, so editing a turn re-synthesises
-# it instead of silently replaying whatever an older run left behind.
+# Each turn is cached under a hash of its text, its voice and how it is prepared, so
+# editing a turn, or how turns are trimmed, re-synthesises it instead of silently
+# replaying whatever an older run left behind.
+TURN_PREPARATION="trailing-silence-trimmed"
 TURN_WAVS=()
 if [ -z "${SKIP_AUDIO_CHECK:-}" ]; then
   for i in "${!TURNS[@]}"; do
-    key="$(printf '%s|%s' "$VOICE_ID" "${TURNS[$i]}" | sha1sum | cut -c1-12)"
+    key="$(printf '%s|%s|%s' "$VOICE_ID" "${TURNS[$i]}" "$TURN_PREPARATION" | sha1sum | cut -c1-12)"
     synthesise "${TURNS[$i]}" "$WORK_DIR/turn-$key.mp3" "$WORK_DIR/turn-$key.wav" "turn $((i + 1))"
     TURN_WAVS+=("$WORK_DIR/turn-$key.wav")
   done
@@ -467,16 +475,16 @@ fi
 
 # Wait for the device to actually be listening before speaking.
 #
-# Waking is not the same as being ready. The device opens the stream, then plays its
-# activation chime, and deliberately holds its microphone back until that finishes --
-# it logs "Starting microphone enable timeout: 817 ms, 1750 ms grace period" for
-# exactly this reason. Speaking into that window means the command is simply never
-# heard, which from the room sounds like the wake phrase and the command running into
-# each other with nothing in between.
+# Waking is not the same as being ready. The device opens the stream and Jarvis greets
+# sir, and the microphone stays shut until that opening line has played (see
+# opening_line_done_ in the component). Its speaker going quiet is the real "you may
+# speak now" signal.
 #
-# HANDLE_MIC logs activation_speaker_running=true while the chime plays and false once
-# it stops, so that transition is the real "you may speak now" signal.
-echo "⏳ Waiting for the device to finish its chime and open the mic..."
+# This used to wait for HANDLE_MIC to log activation_speaker_running=false, but that
+# speaker is started once and kept running for the whole conversation, so the marker
+# never came. Every run sat out READY_TIMEOUT, longer than the agent's 7 s turnTimeout,
+# and Jarvis spoke into the silence ("Sir?") before the first turn.
+echo "⏳ Waiting for Jarvis to finish greeting and open the mic..."
 ready_mark="$(wc -c < "$SERIAL_LOG")"
 deadline=$((SECONDS + READY_TIMEOUT))
 ready=0
