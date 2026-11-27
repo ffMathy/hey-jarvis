@@ -41,7 +41,11 @@ bunx turbo build
 - `mobile` — Expo app that registers as the phone's default assistant
 - `watch` — Expo app that is the Wear OS watch's assistant
 - `vr` — WebXR app for Meta Horizon OS (Quest) that stands Jarvis in your room
-- `home-assistant-voice-firmware` — ESPHome firmware
+- `home-assistant-voice-firmware` — ESPHome firmware. Flash a device with `upload`
+  (one-shot) or `serve` (flash, then follow logs), never `deploy`, which the firmware
+  deliberately lacks because CI runs it workspace-wide. Its `wake-word-test` target is
+  the acoustic e2e. See
+  [`home-assistant-voice-firmware-usage`](home-assistant-voice-firmware-usage.md) for USB under WSL.
 
 ## Timeouts
 

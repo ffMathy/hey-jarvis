@@ -73,6 +73,11 @@ static const char *const DEVICE_NOTE = "This conversation is on the Home Assista
 // be swallowed. Comfortably under the point where a listener notices a delayed reply.
 static const uint32_t REPLY_PREBUFFER_MAX_MS = 400;
 
+// Capacity reserved for the prebuffer once, at setup, so a reply never allocates. The
+// threshold can be overshot by up to one frame before it is released, and frames have
+// been seen at ~15 KB decoded; 32 KB of headroom covers that with margin.
+static const size_t REPLY_PREBUFFER_CAPACITY = REPLY_PREBUFFER_BYTES + 32 * 1024;
+
 // How long to let a short reply finish playing before the speaker is stopped.
 static const uint32_t SPEAKER_DRAIN_TIMEOUT_MS = 3000;
 
@@ -90,6 +95,37 @@ static const uint32_t END_CALL_SPEECH_GRACE_MS = 1500;
 
 // Hard ceiling on that wait, in case the farewell never stops or never comes.
 static const uint32_t END_CALL_MAX_WAIT_MS = 20000;
+
+// Finds a quoted JSON key in [begin, end) by scanning, without parsing (see the audio
+// fast path in parse_json_message_from_buffer). Hand-rolled rather than memmem(), which
+// is a GNU extension and not dependable on ESP-IDF.
+static const char *find_json_key(const char *begin, const char *end, const char *key, size_t key_len) {
+  for (const char *p = begin; p + key_len <= end; p++) {
+    if (*p == '"' && memcmp(p, key, key_len) == 0) {
+      return p;
+    }
+  }
+  return nullptr;
+}
+
+// Reads the unsigned integer value of `key` in [begin, end), or -1 if it is absent.
+static int64_t find_json_integer(const char *begin, const char *end, const char *key, size_t key_len) {
+  const char *p = find_json_key(begin, end, key, key_len);
+  if (p == nullptr) {
+    return -1;
+  }
+  p += key_len;
+  while (p < end && (*p == ':' || *p == ' ')) p++;
+  if (p >= end || *p < '0' || *p > '9') {
+    return -1;
+  }
+  int64_t value = 0;
+  while (p < end && *p >= '0' && *p <= '9') {
+    value = value * 10 + (*p - '0');
+    p++;
+  }
+  return value;
+}
 
 // Helper to convert StreamState enum to string
 static const char* stream_state_to_string(StreamState state) {
@@ -140,8 +176,7 @@ bool ElevenLabsStream::decode_and_play_base64_audio(const char* base64_data) {
   // never set the flag. Since essentially every frame takes the fast path, the flag
   // stayed false for entire replies, and four things quietly depended on it:
   //
-  //   - the microphone echo gate, so the device streamed its own speech back to the
-  //     agent while talking
+  //   - the microphone echo gate (since removed; see handle_microphone_data)
   //   - the vad_score echo guard, so the agent's own voice scored as the user speaking
   //   - the announcement window's "is the agent still talking" test, which is why an
   //     announcement hung up around the time it started speaking instead of after
@@ -185,52 +220,81 @@ bool ElevenLabsStream::decode_and_play_base64_audio(const char* base64_data) {
   // reapplying the stream info each conversation all reduced it without removing it.
   //
   // The cause is not the ordering, it is that the first fragment plays into a pipeline
-  // with nothing behind it, so any scheduling jitter in the resampler or i2s is
-  // immediately audible. Later audio never suffers because ElevenLabs sends faster
-  // than real time and the buffer stays full.
+  // with nothing behind it, so any gap before the next one is immediately audible.
+  // ElevenLabs opens every reply with a few 1516-byte frames, 47 ms of audio each, sent
+  // more than 250 ms apart, and only then streams faster than real time.
   //
-  // So hold the first REPLY_PREBUFFER_BYTES back and release them together. Playback
-  // starts a fraction of a second later with a cushion already in hand.
-  if (this->reply_prebuffering_) {
-    if (this->reply_prebuffer_.empty()) {
-      this->reply_prebuffer_started_ms_ = millis();
-    }
-    this->reply_prebuffer_.insert(this->reply_prebuffer_.end(), decoded, decoded + decoded_len);
-    heap_caps_free(decoded);
+  // So whenever audio would start into an empty speaker -- every reply, not only the
+  // first, and a reply that ran dry part way -- hold it back and release it together.
+  // Arming this only for a conversation's first reply left every later one to stutter
+  // through its opening frames, three times in one reply of a ten-turn run.
+  {
+    LockGuard lock(this->reply_prebuffer_lock_);
+    const bool speaker_is_empty =
+        !this->elevenlabs_speaker_->is_running() || !this->elevenlabs_speaker_->has_buffered_data();
+    if (this->reply_held_ || speaker_is_empty) {
+      if (!this->reply_held_) {
+        this->reply_prebuffer_started_ms_ = millis();
+        this->reply_held_ = true;
+      }
+      this->reply_prebuffer_.insert(this->reply_prebuffer_.end(), decoded, decoded + decoded_len);
+      heap_caps_free(decoded);
 
-    // Release on size OR on age, whichever comes first.
-    //
-    // Size alone is not safe: a turn whose audio totals less than the threshold would
-    // be held and never played. That is not hypothetical -- a 48000-byte threshold did
-    // exactly this, holding 31836 bytes to the end of the turn, and the device fell
-    // silent for whole replies. The deadline guarantees audio always reaches the
-    // speaker, so the threshold only decides how much cushion a big reply gets.
-    uint32_t held_ms = millis() - this->reply_prebuffer_started_ms_;
-    if (this->reply_prebuffer_.size() < REPLY_PREBUFFER_BYTES && held_ms < REPLY_PREBUFFER_MAX_MS) {
-      ESP_LOGD(TAG, "DECODE_B64: Prebuffering, %zu/%u bytes held for %ums", this->reply_prebuffer_.size(),
-               REPLY_PREBUFFER_BYTES, held_ms);
-      return true;
+      // Release on size OR on age, whichever comes first. Size alone once held a
+      // 31836-byte turn to its end and the device fell silent for whole replies; the
+      // age limit, which loop() also enforces when no further audio arrives, makes sure
+      // every reply reaches the speaker.
+      uint32_t held_ms = millis() - this->reply_prebuffer_started_ms_;
+      if (this->reply_prebuffer_.size() < REPLY_PREBUFFER_BYTES && held_ms < REPLY_PREBUFFER_MAX_MS) {
+        ESP_LOGD(TAG, "DECODE_B64: Prebuffering, %zu/%" PRIu32 " bytes held for %" PRIu32 "ms", this->reply_prebuffer_.size(),
+                 REPLY_PREBUFFER_BYTES, held_ms);
+        return true;
+      }
+      return this->release_reply_prebuffer_();
     }
-
-    // Cushion reached: swap the accumulated audio in and fall through to write it.
-    ESP_LOGD(TAG, "DECODE_B64: Prebuffer full at %zu bytes; starting playback",
-             this->reply_prebuffer_.size());
-    this->reply_prebuffering_ = false;
-    decoded_len = this->reply_prebuffer_.size();
-    decoded = static_cast<uint8_t*>(heap_caps_malloc(decoded_len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-    if (decoded == nullptr) {
-      decoded = static_cast<uint8_t*>(heap_caps_malloc(decoded_len, MALLOC_CAP_8BIT));
-    }
-    if (decoded == nullptr) {
-      ESP_LOGE(TAG, "DECODE_B64: Could not allocate %zu bytes to flush the prebuffer", decoded_len);
-      this->reply_prebuffer_.clear();
-      return false;
-    }
-    memcpy(decoded, this->reply_prebuffer_.data(), decoded_len);
-    this->reply_prebuffer_.clear();
-    this->reply_prebuffer_.shrink_to_fit();
   }
 
+  bool written = this->write_to_speaker_(decoded, decoded_len);
+  heap_caps_free(decoded);
+  return written;
+}
+
+// Plays what the prebuffer holds and empties it. The caller holds reply_prebuffer_lock_.
+bool ElevenLabsStream::release_reply_prebuffer_() {
+  ESP_LOGD(TAG, "PREBUFFER: Starting playback with %zu bytes held for %" PRIu32 "ms", this->reply_prebuffer_.size(),
+           millis() - this->reply_prebuffer_started_ms_);
+  bool written = this->write_to_speaker_(this->reply_prebuffer_.data(), this->reply_prebuffer_.size());
+  // clear(), not shrink_to_fit(): the PSRAM capacity is kept for the next reply.
+  this->reply_prebuffer_.clear();
+  this->reply_held_ = false;
+  return written;
+}
+
+// Releases a held reply once it has waited REPLY_PREBUFFER_MAX_MS. Only arriving audio
+// checked the age, so a reply whose last frame had come stayed held until the next one
+// spoke or the call ended: a short answer would have gone unheard.
+void ElevenLabsStream::release_overdue_reply_prebuffer_() {
+  if (!this->reply_held_ || millis() - this->reply_prebuffer_started_ms_ < REPLY_PREBUFFER_MAX_MS) {
+    return;
+  }
+  // try_lock: while the websocket task holds the lock it is handling audio itself, and
+  // the main loop must not wait on a speaker write.
+  if (!this->reply_prebuffer_lock_.try_lock()) {
+    return;
+  }
+  if (this->reply_held_) {
+    this->release_reply_prebuffer_();
+  }
+  this->reply_prebuffer_lock_.unlock();
+}
+
+void ElevenLabsStream::discard_reply_prebuffer_() {
+  LockGuard lock(this->reply_prebuffer_lock_);
+  this->reply_prebuffer_.clear();
+  this->reply_held_ = false;
+}
+
+bool ElevenLabsStream::write_to_speaker_(const uint8_t *data, size_t length) {
   // Make sure the speaker is actually running before handing it the first chunk.
   //
   // Speaker::play() does start the speaker implicitly, but asynchronously, and the
@@ -241,16 +305,16 @@ bool ElevenLabsStream::decode_and_play_base64_audio(const char* base64_data) {
   //
   // Starting it explicitly and waiting for STATE_RUNNING costs a few milliseconds once
   // per reply and keeps the opening syllable. The wait is bounded so a speaker that
-  // never comes up cannot wedge the websocket task.
+  // never comes up cannot wedge the calling task.
   if (!elevenlabs_speaker_->is_running()) {
-    ESP_LOGD(TAG, "DECODE_B64: Speaker not running; starting it before the first write");
+    ESP_LOGD(TAG, "SPEAKER_WRITE: Speaker not running; starting it before the first write");
     elevenlabs_speaker_->start();
     uint32_t start_deadline = millis() + SPEAKER_START_TIMEOUT_MS;
     while (!elevenlabs_speaker_->is_running() && millis() < start_deadline) {
       delay(2);
     }
     if (!elevenlabs_speaker_->is_running()) {
-      ESP_LOGW(TAG, "DECODE_B64: Speaker did not reach running state within %ums; writing anyway",
+      ESP_LOGW(TAG, "SPEAKER_WRITE: Speaker did not reach running state within %" PRIu32 "ms; writing anyway",
                SPEAKER_START_TIMEOUT_MS);
     }
   }
@@ -269,10 +333,9 @@ bool ElevenLabsStream::decode_and_play_base64_audio(const char* base64_data) {
   // progress is made, so a slow-but-moving speaker is never treated as stuck.
   size_t total_written = 0;
   uint32_t last_progress = millis();
-  bool stalled = false;
 
-  while (total_written < decoded_len) {
-    size_t written = elevenlabs_speaker_->play(decoded + total_written, decoded_len - total_written,
+  while (total_written < length) {
+    size_t written = elevenlabs_speaker_->play(data + total_written, length - total_written,
                                                pdMS_TO_TICKS(SPEAKER_WRITE_WAIT_MS));
     if (written > 0) {
       total_written += written;
@@ -281,31 +344,15 @@ bool ElevenLabsStream::decode_and_play_base64_audio(const char* base64_data) {
     }
 
     if (millis() - last_progress >= SPEAKER_WRITE_STALL_TIMEOUT_MS) {
-      // Give up rather than block the websocket task forever; losing the tail of one
+      // Give up rather than block the calling task forever; losing the tail of one
       // chunk beats wedging the connection.
-      ESP_LOGE(TAG, "DECODE_B64: Speaker stalled for %ums, dropping %zu of %zu bytes",
-               SPEAKER_WRITE_STALL_TIMEOUT_MS, decoded_len - total_written, decoded_len);
-      stalled = true;
-      break;
+      ESP_LOGE(TAG, "DECODE_B64: Speaker stalled for %" PRIu32 "ms, dropping %zu of %zu bytes",
+               SPEAKER_WRITE_STALL_TIMEOUT_MS, length - total_written, length);
+      return false;
     }
   }
 
-  ESP_LOGD(TAG, "DECODE_B64: Played %zu bytes from decoded buffer (expected %zu)", total_written, decoded_len);
-
-  if (decoded) {
-    heap_caps_free(decoded);
-
-    // Log PSRAM after freeing
-    size_t psram_after_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-    int64_t psram_freed = (int64_t)psram_after_free - (int64_t)psram_after_decode;
-    ESP_LOGD(TAG, "DECODE_B64: Buffer freed, PSRAM Free=%zuKB (%+" PRId64 "KB)",
-             psram_after_free / 1024, psram_freed / 1024);
-  }
-
-  if (stalled) {
-    return false;
-  }
-
+  ESP_LOGD(TAG, "DECODE_B64: Played %zu bytes from decoded buffer (expected %zu)", total_written, length);
   return true;
 }
 
@@ -349,10 +396,18 @@ void ElevenLabsStream::setup() {
     this->client_ = new ElevenLabsClient(this->agent_id_, this->api_key_);
   }
 
+  this->reply_prebuffer_.reserve(REPLY_PREBUFFER_CAPACITY);
+  if (this->reply_prebuffer_.capacity() < REPLY_PREBUFFER_CAPACITY) {
+    ESP_LOGE(TAG, "SETUP: Could not reserve %zu bytes for the reply prebuffer", REPLY_PREBUFFER_CAPACITY);
+  }
+
   elevenlabs_speaker_->add_audio_output_callback([this](uint32_t _a, int64_t _b) {
     this->cancel_timeout("audio_output_callback");
     this->set_timeout("audio_output_callback", 250, [this]() {
-      if(!this->speaker_is_active_) {
+      // A reply being held has not played yet, so the speaker that went quiet was the
+      // previous reply's, or an interrupted one's. Ending this one here turned the LED
+      // back to listening while Jarvis was about to speak, and read as a stutter.
+      if (!this->speaker_is_active_ || this->reply_held_) {
         return;
       }
 
@@ -361,6 +416,7 @@ void ElevenLabsStream::setup() {
 
       ESP_LOGI(TAG, "SPEAKER_CALLBACK: Setting speaker_is_active_ = false");
       this->speaker_is_active_ = false;
+      this->opening_line_done_ = true;
 
 
       for (auto *trigger : this->on_listening_triggers_) {
@@ -391,6 +447,8 @@ void ElevenLabsStream::loop() {
   static uint32_t loop_count = 0;
   loop_count++;
 
+  this->release_overdue_reply_prebuffer_();
+
   if(this->speaker_is_active_) {
     if (!this->activation_speaker_->is_running()) {
       ESP_LOGD(TAG, "LOOP: Activation speaker not running, starting it now");
@@ -418,8 +476,12 @@ void ElevenLabsStream::loop() {
     size_t psram_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
     size_t psram_used = this->psram_baseline_ - psram_free;
     int percent_remaining = (psram_free * 100) / this->psram_baseline_;
-    ESP_LOGI(TAG, "LOOP: PSRAM Free=%zuKB, Used=%zuKB (%d%% of baseline remaining)", 
-             psram_free / 1024, psram_used / 1024, percent_remaining);
+    // Internal RAM too: it is the scarcer of the two, and the one a reply ran out of.
+    size_t internal_free = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    size_t internal_largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    ESP_LOGI(TAG, "LOOP: PSRAM Free=%zuKB, Used=%zuKB (%d%% of baseline remaining), Internal Free=%zuKB, Largest=%zuKB",
+             psram_free / 1024, psram_used / 1024, percent_remaining, internal_free / 1024,
+             internal_largest / 1024);
     
     if (psram_free < 1024 * 1024) {
       ESP_LOGW(TAG, "LOOP: LOW MEMORY WARNING: PSRAM Free=%zuKB", psram_free / 1024);
@@ -472,7 +534,7 @@ void ElevenLabsStream::loop() {
     // sentence of speech, and it only exists to catch outright failure.
     if (!this->agent_has_spoken_ &&
         millis() - this->connection_start_time_ >= ANNOUNCEMENT_FIRST_AUDIO_TIMEOUT_MS) {
-      ESP_LOGW(TAG, "LOOP: Announcement produced no audio within %ums, ending conversation",
+      ESP_LOGW(TAG, "LOOP: Announcement produced no audio within %" PRIu32 "ms, ending conversation",
                ANNOUNCEMENT_FIRST_AUDIO_TIMEOUT_MS);
       this->awaiting_response_ = false;
       this->silence_started_ms_ = 0;
@@ -485,10 +547,10 @@ void ElevenLabsStream::loop() {
       this->silence_started_ms_ = 0;
     } else if (this->silence_started_ms_ == 0) {
       this->silence_started_ms_ = millis();
-      ESP_LOGD(TAG, "LOOP: Room is quiet, giving a reply %ums before hanging up",
+      ESP_LOGD(TAG, "LOOP: Room is quiet, giving a reply %" PRIu32 "ms before hanging up",
                this->response_window_ms_);
     } else if (millis() - this->silence_started_ms_ >= this->response_window_ms_) {
-      ESP_LOGI(TAG, "LOOP: No reply within %ums of the announcement, ending conversation",
+      ESP_LOGI(TAG, "LOOP: No reply within %" PRIu32 "ms of the announcement, ending conversation",
                this->response_window_ms_);
       this->awaiting_response_ = false;
       this->silence_started_ms_ = 0;
@@ -501,7 +563,7 @@ void ElevenLabsStream::loop() {
   if (this->client_ && this->state_ == StreamState::ON && !this->speaker_is_active_) {
     uint32_t heartbeat_elapsed = millis() - this->last_heartbeat_;
     if (heartbeat_elapsed > 10000) {  // 10 seconds instead of 20
-      ESP_LOGD(TAG, "LOOP: Sending heartbeat ping after %dms", heartbeat_elapsed);
+      ESP_LOGD(TAG, "LOOP: Sending heartbeat ping after %" PRIu32 "ms", heartbeat_elapsed);
       this->send_ping();
       this->last_heartbeat_ = millis();
     }
@@ -523,7 +585,7 @@ bool ElevenLabsStream::start_stream(const std::string &initial_message, uint32_t
   ESP_LOGI(TAG, "=== START_STREAM CALLED ===");
   ESP_LOGD(TAG, "START_STREAM: Current state=%s", stream_state_to_string(this->state_));
   ESP_LOGD(TAG, "START_STREAM: Agent ID='%s'", this->agent_id_.c_str());
-  ESP_LOGD(TAG, "START_STREAM: Initial message='%s', timeout=%u ms", initial_message.c_str(), timeout_ms);
+  ESP_LOGD(TAG, "START_STREAM: Initial message='%s', timeout=%" PRIu32 " ms", initial_message.c_str(), timeout_ms);
 
   // Refuse before touching any state.
   //
@@ -552,10 +614,13 @@ bool ElevenLabsStream::start_stream(const std::string &initial_message, uint32_t
   this->agent_has_spoken_ = false;
   this->silence_started_ms_ = 0;
   this->end_call_requested_ = false;
+  // Event ids count up from the start of each conversation.
+  this->interrupted_event_id_ = -1;
+  this->opening_line_done_ = false;
   this->starting_ = true;
 
   this->connection_start_time_ = millis();
-  ESP_LOGD(TAG, "START_STREAM: Connection start time set to %d", this->connection_start_time_);
+  ESP_LOGD(TAG, "START_STREAM: Connection start time set to %" PRIu32, this->connection_start_time_);
 
   ESP_LOGD(TAG, "SET_STATE: Triggering replying events (%zu triggers)", this->on_replying_triggers_.size());
   for (auto *trigger : this->on_replying_triggers_) {
@@ -607,8 +672,14 @@ bool ElevenLabsStream::start_stream(const std::string &initial_message, uint32_t
     [this]() { 
       this->handle_websocket_disconnected(); 
     },
-    [this](const std::string& err) { 
-      this->handle_error(err); 
+    // A websocket error is reported on the websocket's own task, and handle_error
+    // disconnects, which destroys the client. Done from that task, it freed the event
+    // loop while the client was still dispatching the event: ESP-IDF refused the stop
+    // ("Client cannot be stopped from websocket task") but the destroy went ahead, and
+    // the next event-loop call asserted on freed memory and rebooted the device. That
+    // is what a dropped connection did mid-reply. So handle it on the main loop.
+    [this](const std::string& err) {
+      this->defer([this, err]() { this->handle_error(err); });
     }
   );
   if (!connected) {
@@ -618,6 +689,35 @@ bool ElevenLabsStream::start_stream(const std::string &initial_message, uint32_t
   }
   ESP_LOGD(TAG, "=== START_STREAM COMPLETE ===");
   return true;
+}
+
+// The user talked over the agent, and it abandoned the reply it was giving.
+//
+// The reply's audio is already on its way -- part of it queued in the speaker's 60 s
+// buffer, the rest still arriving -- and nothing is ever sent to take it back. The
+// device has to drop it itself, or Jarvis talks on over the user and the abandoned
+// reply plays in full before the one that answers them.
+void ElevenLabsStream::stop_interrupted_reply_(int64_t event_id) {
+  if (event_id > this->interrupted_event_id_) {
+    this->interrupted_event_id_ = event_id;
+  }
+
+  // Stopping is the speaker's only way to discard what it has queued. It restarts on the
+  // next reply's first write (see decode_and_play_base64_audio), and that reply gets a
+  // fresh prebuffer, because it starts into an empty pipeline just as the first one does.
+  this->discard_reply_prebuffer_();
+  if (this->elevenlabs_speaker_ != nullptr && this->elevenlabs_speaker_->is_running()) {
+    this->elevenlabs_speaker_->stop();
+  }
+
+  if (this->speaker_is_active_) {
+    ESP_LOGI(TAG, "INTERRUPTED: Setting speaker_is_active_ = false");
+    this->speaker_is_active_ = false;
+    this->opening_line_done_ = true;
+    for (auto *trigger : this->on_listening_triggers_) {
+      trigger->trigger();
+    }
+  }
 }
 
 void ElevenLabsStream::stop_stream() {
@@ -648,11 +748,17 @@ void ElevenLabsStream::stop_stream() {
   // Release anything still held in the prebuffer first. A reply shorter than the
   // prebuffer threshold would otherwise never be played at all -- held back waiting
   // for a cushion that never arrives, then discarded here.
-  if (this->elevenlabs_speaker_ != nullptr && !this->reply_prebuffer_.empty()) {
-    ESP_LOGD(TAG, "STOP_STREAM: Flushing %zu prebuffered bytes before stopping",
-             this->reply_prebuffer_.size());
-    this->elevenlabs_speaker_->play(this->reply_prebuffer_.data(), this->reply_prebuffer_.size(),
-                                    pdMS_TO_TICKS(SPEAKER_WRITE_WAIT_MS));
+  bool flushed = false;
+  if (this->elevenlabs_speaker_ != nullptr) {
+    LockGuard lock(this->reply_prebuffer_lock_);
+    if (this->reply_held_) {
+      ESP_LOGD(TAG, "STOP_STREAM: Flushing %zu prebuffered bytes before stopping",
+               this->reply_prebuffer_.size());
+      this->release_reply_prebuffer_();
+      flushed = true;
+    }
+  }
+  if (flushed) {
     uint32_t drain_deadline = millis() + SPEAKER_DRAIN_TIMEOUT_MS;
     while (this->elevenlabs_speaker_->has_buffered_data() && millis() < drain_deadline) {
       delay(10);
@@ -664,12 +770,7 @@ void ElevenLabsStream::stop_stream() {
     this->elevenlabs_speaker_->stop();
   }
 
-  // Arm the prebuffer for the next reply. Without this the next conversation would
-  // hold its opening audio behind a threshold that has already been met and never
-  // release it.
-  this->reply_prebuffer_.clear();
-  this->reply_prebuffer_.shrink_to_fit();
-  this->reply_prebuffering_ = true;
+  this->discard_reply_prebuffer_();
 
   // Reset speaker state completely
   this->speaker_is_active_ = false;
@@ -718,7 +819,7 @@ void ElevenLabsStream::renew_signed_url_if_needed() {
     should_renew = true;
   } else if (current_time - this->last_signed_url_renewal_ >= this->signed_url_renewal_interval_) {
     uint32_t elapsed_minutes = (current_time - this->last_signed_url_renewal_) / 60000;
-    ESP_LOGI(TAG, "RENEW: Signed URL renewal interval reached (%d minutes elapsed)", elapsed_minutes);
+    ESP_LOGI(TAG, "RENEW: Signed URL renewal interval reached (%" PRIu32 " minutes elapsed)", elapsed_minutes);
     should_renew = true;
   }
   if (should_renew) {
@@ -768,21 +869,14 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
   // parser below, where correctness matters more than bytes.
   static const char AUDIO_KEY[] = "\"audio_base_64\"";
   const size_t AUDIO_KEY_LEN = sizeof(AUDIO_KEY) - 1;
+  static const char EVENT_ID_KEY[] = "\"event_id\"";
+  const size_t EVENT_ID_KEY_LEN = sizeof(EVENT_ID_KEY) - 1;
   const char* haystack = reinterpret_cast<const char*>(buffer);
-  // Hand-rolled rather than memmem(), which is a GNU extension and not dependable on
-  // ESP-IDF. The key appears early in the frame, so this scans a few bytes in practice.
-  const char* key_pos = nullptr;
-  if (length >= AUDIO_KEY_LEN) {
-    for (size_t i = 0; i + AUDIO_KEY_LEN <= length; i++) {
-      if (haystack[i] == '"' && memcmp(haystack + i, AUDIO_KEY, AUDIO_KEY_LEN) == 0) {
-        key_pos = haystack + i;
-        break;
-      }
-    }
-  }
+  const char* end = haystack + length;
+  // The key appears early in the frame, so this scans a few bytes in practice.
+  const char* key_pos = find_json_key(haystack, end, AUDIO_KEY, AUDIO_KEY_LEN);
   if (key_pos != nullptr) {
-    const char* end = haystack + length;
-    const char* p = key_pos + sizeof(AUDIO_KEY) - 1;
+    const char* p = key_pos + AUDIO_KEY_LEN;
     while (p < end && *p != ':') p++;          // key -> colon
     while (p < end && *p != '"') p++;          // colon -> opening quote
     if (p < end) {
@@ -792,8 +886,18 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
         // decode_and_play_base64_audio takes a C string; terminate in place. The
         // buffer belongs to the websocket assembler and is reset after this returns.
         size_t payload_len = value_end - value_start;
+        // The event_id sits on either side of the payload; skip the payload itself.
+        int64_t event_id = find_json_integer(value_end, end, EVENT_ID_KEY, EVENT_ID_KEY_LEN);
+        if (event_id < 0) {
+          event_id = find_json_integer(haystack, key_pos, EVENT_ID_KEY, EVENT_ID_KEY_LEN);
+        }
+        if (this->is_from_interrupted_reply_(event_id)) {
+          ESP_LOGD(TAG, "PARSE_JSON_BUF: Dropping audio of interrupted reply (event %" PRId64 ")", event_id);
+          return;
+        }
         *const_cast<char*>(value_end) = '\0';
-        ESP_LOGD(TAG, "PARSE_JSON_BUF: Audio fast path, payload=%zu bytes (frame %zu)", payload_len, length);
+        ESP_LOGD(TAG, "PARSE_JSON_BUF: Audio fast path, payload=%zu bytes, event %" PRId64 " (frame %zu)",
+                 payload_len, event_id, length);
         this->last_audio_time_ = millis();
         this->decode_and_play_base64_audio(value_start);
         return;
@@ -862,7 +966,7 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
           this->activation_speaker_audio_stream_infoset_ = true;
 
           ESP_LOGI(TAG, 
-            "PARSE_JSON_BUF: Initial audio stream info set: %d Hz, %d channels, %d bits per sample", 
+            "PARSE_JSON_BUF: Initial audio stream info set: %" PRIu32 " Hz, %d channels, %d bits per sample", 
             this->activation_speaker_audio_stream_info.get_sample_rate(),
             this->activation_speaker_audio_stream_info.get_channels(),
             this->activation_speaker_audio_stream_info.get_bits_per_sample());
@@ -963,8 +1067,12 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
     JsonObject audio = root["audio_event"];
     if (audio) {
       const char* audio_base64 = audio["audio_base_64"];
-      uint32_t event_id = audio["event_id"] | 0;
-      
+      int64_t event_id = audio["event_id"] | static_cast<int64_t>(-1);
+      if (this->is_from_interrupted_reply_(event_id)) {
+        ESP_LOGD(TAG, "AUDIO_EVENT: Dropping audio of interrupted reply (event %" PRId64 ")", event_id);
+        return;
+      }
+
       if (audio_base64) {
         size_t base64_len = strlen(audio_base64);
         size_t psram_before_audio = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
@@ -1092,7 +1200,9 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
     ESP_LOGD(TAG, "PARSE_JSON_BUF: Processing interruption event");
     JsonObject interruption = root["interruption_event"];
     if (interruption) {
-      ESP_LOGD(TAG, "PARSE_JSON_BUF: Interruption event received");
+      int64_t event_id = interruption["event_id"] | static_cast<int64_t>(-1);
+      ESP_LOGI(TAG, "PARSE_JSON_BUF: Agent was interrupted (event %" PRId64 ")", event_id);
+      this->stop_interrupted_reply_(event_id);
     } else {
       ESP_LOGW(TAG, "PARSE_JSON_BUF: No interruption_event found");
     }
@@ -1129,6 +1239,14 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
     const char* state = mcp_tool_call ? mcp_tool_call["state"].as<const char*>() : nullptr;
     ESP_LOGD(TAG, "PARSE_JSON_BUF: Ignoring mcp_tool_call (%s, %s)", tool_name ? tool_name : "NULL",
              state ? state : "NULL");
+    return;
+  }
+
+  // The reply's text, streamed a few words at a time alongside its audio. The speaker
+  // only plays the audio, and agent_response carries the finished text anyway. The
+  // unknown-type fallback below logged every part in full at WARN, dozens per reply,
+  // and the logger stalled for 100 ms at a time writing them out mid-playback.
+  if (strcmp(type, "agent_chat_response_part") == 0) {
     return;
   }
 
@@ -1279,17 +1397,32 @@ void ElevenLabsStream::handle_microphone_data(const std::vector<uint8_t> &data) 
     return;
   }
 
-  // Block microphone input if speaker is active or agent audio is playing
-  if (this->speaker_is_active_) {
-    ESP_LOGV(TAG, "HANDLE_MIC: Microphone blocked - speaker is active (speaker_is_active_=%s)", 
-             this->speaker_is_active_ ? "true" : "false");
-    return;
-  }
-
-  // Block microphone input if media player is announcing (wake sounds, etc.)
-  // This prevents audio interference during sound playback
-  if (this->activation_speaker_ && this->activation_speaker_->has_buffered_data()) {
-    ESP_LOGV(TAG, "HANDLE_MIC: Microphone blocked - activation speaker is running");
+  // The microphone stays open while the agent speaks.
+  //
+  // It used to be shut for as long as the speaker played. The agent's turn detection
+  // can start a reply at a pause between two of the user's sentences, and the user
+  // carries on talking -- but with the microphone shut, whatever they said while the
+  // reply played never reached the agent. Its next answer was to half a sentence
+  // ("Make it about six sentences long" arrived as "make sentences longer"), and a
+  // reply that started after "Interesting." swallowed the actual question.
+  //
+  // With the microphone open, the agent hears the user carry on, abandons its reply
+  // and sends an interruption (see stop_interrupted_reply_), exactly as on the phone.
+  // Jarvis's own voice does not come back in: the XMOS front end cancels the speaker's
+  // echo, using the audio this device sends it as the reference.
+  //
+  // That goes for the activation chime too. A second gate shut the microphone while
+  // the chime's speaker had buffered data, but a resampler speaker reports its output
+  // speaker's buffer as its own, and both resamplers feed the same i2s speaker -- so it
+  // was shut whenever Jarvis spoke as well, and the user's words were still lost.
+  //
+  // The one exception is the conversation's first line. The front end does not cancel
+  // it: in three runs out of three the greeting came back as the user's turn ("Hello,
+  // Sam. How can I help?") and Jarvis answered himself, while not one later reply
+  // leaked. Whatever state the XMOS is in as a call begins is beyond this firmware, but
+  // the opening line is spoken before the user has had a turn, so shutting the
+  // microphone for it alone loses nothing a reply could cut off.
+  if (this->speaker_is_active_ && !this->opening_line_done_) {
     return;
   }
 
@@ -1312,20 +1445,17 @@ void ElevenLabsStream::handle_microphone_data(const std::vector<uint8_t> &data) 
     audio_samples.push_back(sample16);
   }
 
-  // Convert stereo to mono by averaging each left/right sample pair
-  // Handle odd number of samples safely
+  // Keep channel 0 of the XMOS front end's two, the one voice_assistant sends for
+  // speech-to-text. It is the cleaned-up stream, with the speaker's echo cancelled.
+  // Averaging it with channel 1, which feeds the wake word, let Jarvis's voice back in
+  // once the microphone stayed open while he spoke: his greeting was transcribed as
+  // the user's turn, and the tails of his replies interrupted him.
   std::vector<int16_t> mono_samples;
   size_t stereo_pairs = audio_samples.size() / 2;
   mono_samples.reserve(stereo_pairs);
-  
+
   for (size_t i = 0; i < stereo_pairs; i++) {
-    int16_t left = audio_samples[i * 2];
-    int16_t right = audio_samples[i * 2 + 1];
-    
-    // Prevent overflow in addition by using int32_t for intermediate calculation
-    int32_t sum = static_cast<int32_t>(left) + static_cast<int32_t>(right);
-    int16_t mono = static_cast<int16_t>(sum / 2);
-    mono_samples.push_back(mono);
+    mono_samples.push_back(audio_samples[i * 2]);
   }
 
   // Log warning if we had odd number of samples (data loss)

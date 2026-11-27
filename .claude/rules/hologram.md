@@ -36,6 +36,6 @@ Each topic is a rule of its own, under the same paths:
 ## Hanging up after a finished request
 
 The apps do not decide this. A finished request that is followed by quiet is ended by the agent
-itself — its `turnTimeout` of 3 s and its `end_call` tool — so no device registers a client tool
+itself — its `turnTimeout` of 7 s and its `end_call` tool — so no device registers a client tool
 for it, and each sees it as the agent hanging up. No device registers a client tool of any kind (see
 "What he is working on, and what sir points at").

@@ -48,7 +48,7 @@ describe('the committed agent config', () => {
   });
 
   it('transcribes what sir has said before the turn timeout asks Jarvis to speak again', () => {
-    // Three seconds of quiet inside a long reply — sir drawing breath, or thinking of the next
+    // Seven seconds of quiet inside a long reply — sir drawing breath, or thinking of the next
     // clause — fires `turnTimeout` before his words are a transcript. Without retranscription Jarvis
     // is asked to speak again with nothing from sir since his last reply, which after a finished
     // request is the cue to `end_call` without a word: so the longer the reply, the likelier he hung
@@ -109,7 +109,7 @@ describe('the test agent overrides', () => {
 /**
  * The one silence after a finished request that is not the end of the call: sir busy with a photo.
  *
- * ElevenLabs asks Jarvis to speak again three seconds into any silence (`turnTimeout`), and after a
+ * ElevenLabs asks Jarvis to speak again seven seconds into any silence (`turnTimeout`), and after a
  * finished request the answer is to hang up without a word. That rule is stated in four places the
  * agent reads at once: the prompt's **When Sir Is Silent**, the `end_call` and `skip_turn`
  * descriptions here, and routing's `FINISHED_REQUEST_INSTRUCTIONS`, which closes every finished

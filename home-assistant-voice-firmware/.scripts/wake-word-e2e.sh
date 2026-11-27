@@ -28,7 +28,11 @@ set -uo pipefail
 #
 # Options (environment):
 #   WAKE_WORD_TEXT     wake phrase                     (default "Hey Jarvis")
-#   COMMAND_TEXT       full sentence asked after waking (default: an introduction request)
+#   COMMAND_TEXT       run a single turn with this sentence instead of the conversation
+#   TURNS_FILE         file with one user turn per line (default: a six-turn conversation)
+#   TURN_MAX           longest wait for one reply      (default 75)
+#   REPLY_SETTLE_MS    how long Jarvis must be silent, with no audio arriving,
+#                      before the next turn plays (default 2500)
 #   READY_TIMEOUT      wait for the device to open its mic (default 15)
 #   VOICE_ID           ElevenLabs voice to speak with  (default: Mathias, see below)
 #   ATTEMPTS           wake attempts before giving up  (default 3)
@@ -41,20 +45,52 @@ set -uo pipefail
 #   ESPHOME_DEVICE     serial port                     (default: first /dev/ttyACM*|ttyUSB*)
 #   SKIP_AUDIO_CHECK   1 = wake word only, no recording or comparison
 #   LISTEN_ONLY        1 = play nothing, just watch for a detection from live speech
+#   WAKE_VIA           speaker (default) plays the wake phrase; api starts the
+#                      conversation through the device's start_conversation action
+#   DEVICE_HOST        the device's IP or hostname, for WAKE_VIA=api
 #   KEEP_AUDIO         1 = reuse synthesised phrases between runs (default 1)
 #
 # Exit codes:
 #   0  woke, and the playback matched the reference
 #   1  never woke
-#   2  woke, but the comparison found playback DEFECTS
+#   2  woke, but the comparison found playback DEFECTS, or the device logged instability
 #   3  woke, but the comparison could not run (silent capture, API or processing failure)
+#   4  the call ended, or a reply never came, before the last turn was answered
+#   5  playback was fine, but the agent replied before a turn had finished playing
 
 WAKE_WORD_TEXT="${WAKE_WORD_TEXT:-Hey Jarvis}"
-# A full sentence, not a two-word query. The point of the reply is to give the
-# comparison enough continuous speech to judge, and "introduce yourself" is answerable
-# from the prompt alone, so the test does not depend on a working tool call.
-COMMAND_TEXT="${COMMAND_TEXT:-Please introduce yourself, and tell me what you can help me with today.}"
+# The conversation, one user turn per entry. A single reply cannot show what goes wrong
+# only later in a call -- a buffer that drifts, memory that leaks per turn, a reply that
+# starts clean and is cut short the third time round -- so the default is several turns
+# that each ask for continuous speech, ending with a goodbye that should make the agent
+# call end_call. Every turn is answerable from the prompt alone, so the test does not
+# depend on a working tool call.
+#
+# COMMAND_TEXT runs a single turn instead; TURNS_FILE reads one turn per line.
+TURNS=()
+if [ -n "${TURNS_FILE:-}" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -n "$line" ] && TURNS+=("$line")
+  done < "$TURNS_FILE"
+elif [ -n "${COMMAND_TEXT:-}" ]; then
+  TURNS=("$COMMAND_TEXT")
+else
+  TURNS=(
+    "Please introduce yourself, and tell me what you can help me with today."
+    "Tell me a short story about a robot who learns to cook. Make it about six sentences long."
+    "What was your favourite moment in that story, and why?"
+    "Explain in a few sentences how a rainbow forms."
+    "Interesting. And why is the sky blue during the day but red at sunset?"
+    "Thank you, that is all for now. Goodbye."
+  )
+fi
+[ "${#TURNS[@]}" -gt 0 ] || { echo "❌ No conversation turns given." >&2; exit 1; }
 READY_TIMEOUT="${READY_TIMEOUT:-15}"
+# Longest single reply to wait for, and how long the speaker must stay quiet before a
+# reply counts as finished. The settle has to stay well under the agent's 7 s
+# turnTimeout, or Jarvis speaks again, onto a closed mic, as the next turn starts.
+TURN_MAX="${TURN_MAX:-75}"
+REPLY_SETTLE_MS="${REPLY_SETTLE_MS:-2500}"
 ATTEMPTS="${ATTEMPTS:-3}"
 LISTEN_SECONDS="${LISTEN_SECONDS:-15}"
 CONVERSATION_MAX="${CONVERSATION_MAX:-90}"
@@ -80,8 +116,6 @@ WORK_DIR="${TMPDIR:-/tmp}/hey-jarvis-wake-word-test"
 mkdir -p "$WORK_DIR"
 AUDIO_MP3="$WORK_DIR/wake-word.mp3"
 AUDIO_WAV="$WORK_DIR/wake-word.wav"
-COMMAND_MP3="$WORK_DIR/command.mp3"
-COMMAND_WAV="$WORK_DIR/command.wav"
 ROOM_RAW="$WORK_DIR/room-recording.wav"
 ROOM_WAV="$WORK_DIR/room-16k.wav"
 CHIME_WAV="$WORK_DIR/activation-chime.wav"
@@ -99,15 +133,15 @@ DETECT_RE="Detected '[^']*[Jj]arvis'"
 STREAM_RE="elevenlabs_stream|Voice assistant|wake_word_triggered"
 # elevenlabs_stream.on_end restarts the engine, which is the cleanest end-of-call marker.
 END_RE="Starting wake word detection"
-# HANDLE_MIC reports the activation chime finishing, i.e. the device is really listening.
-READY_RE="HANDLE_MIC.*activation_speaker_running=false"
+# The greeting finishing, which is when the device opens its mic.
+READY_RE="Setting speaker_is_active_ = false"
 
 reader_pid=""
 recorder_pid=""
 cleanup() {
   [ -n "$reader_pid" ] && kill "$reader_pid" 2> /dev/null
   [ -n "$recorder_pid" ] && kill "$recorder_pid" 2> /dev/null
-  [ "$KEEP_AUDIO" = "1" ] || rm -f "$AUDIO_MP3" "$AUDIO_WAV" "$COMMAND_MP3" "$COMMAND_WAV"
+  [ "$KEEP_AUDIO" = "1" ] || rm -f "$AUDIO_MP3" "$AUDIO_WAV" "$WORK_DIR"/turn-*.mp3 "$WORK_DIR"/turn-*.wav
 }
 trap cleanup EXIT
 
@@ -183,7 +217,7 @@ echo "   device:  $ESPHOME_DEVICE"
    Run through: bash ../.scripts/run-with-env.sh mcp/op.env bash ./.scripts/wake-word-e2e.sh"
 [ -n "${HEY_JARVIS_ELEVENLABS_AGENT_ID:-}" ] || fail "HEY_JARVIS_ELEVENLABS_AGENT_ID is not set."
 echo "   voice:   $VOICE_ID"
-echo "   phrase:  \"$WAKE_WORD_TEXT\" then \"$COMMAND_TEXT\""
+echo "   phrase:  \"$WAKE_WORD_TEXT\", then ${#TURNS[@]} turn(s)"
 
 # --- synthesise --------------------------------------------------------------
 synthesise() {
@@ -208,7 +242,13 @@ synthesise() {
     fail "Could not synthesise $label."
   fi
 
-  ffmpeg -loglevel error -y -i "$mp3" -ac 1 -ar 48000 -sample_fmt s16 "$wav" \
+  # Trim the trailing silence, so playback ends when the words do. A reply that starts
+  # while the file is still playing then really did start before sir finished; with a
+  # third of a second of silence left on the file, one that started promptly after the
+  # last word was reported as Jarvis talking over him.
+  ffmpeg -loglevel error -y -i "$mp3" \
+    -af "areverse,silenceremove=start_periods=1:start_threshold=-50dB,areverse" \
+    -ac 1 -ar 48000 -sample_fmt s16 "$wav" \
     || fail "ffmpeg could not convert $label."
 
   # Peak-normalise to -1 dB in two passes. Raw output peaks near -13 dB, quiet enough
@@ -229,7 +269,19 @@ synthesise() {
 }
 
 synthesise "$WAKE_WORD_TEXT" "$AUDIO_MP3" "$AUDIO_WAV" "wake phrase"
-[ -n "${SKIP_AUDIO_CHECK:-}" ] || synthesise "$COMMAND_TEXT" "$COMMAND_MP3" "$COMMAND_WAV" "command"
+
+# Each turn is cached under a hash of its text, its voice and how it is prepared, so
+# editing a turn, or how turns are trimmed, re-synthesises it instead of silently
+# replaying whatever an older run left behind.
+TURN_PREPARATION="trailing-silence-trimmed"
+TURN_WAVS=()
+if [ -z "${SKIP_AUDIO_CHECK:-}" ]; then
+  for i in "${!TURNS[@]}"; do
+    key="$(printf '%s|%s|%s' "$VOICE_ID" "${TURNS[$i]}" "$TURN_PREPARATION" | sha1sum | cut -c1-12)"
+    synthesise "${TURNS[$i]}" "$WORK_DIR/turn-$key.mp3" "$WORK_DIR/turn-$key.wav" "turn $((i + 1))"
+    TURN_WAVS+=("$WORK_DIR/turn-$key.wav")
+  done
+fi
 
 # --- capture serial ----------------------------------------------------------
 echo "📡 Capturing serial from $ESPHOME_DEVICE"
@@ -309,6 +361,48 @@ started_at="$(date +%s)"
 # --- wake the device ---------------------------------------------------------
 detected_line=""
 woke=0
+
+# WAKE_VIA=api starts the conversation through the device's start_conversation action
+# instead of playing the wake phrase. A synthesised "Hey Jarvis" from laptop speakers
+# scores well below the hey_jarvis cutoff even where a real voice in the same room
+# wakes the device, so this keeps the conversation under test independent of how
+# well the host can imitate a person.
+if [ "${WAKE_VIA:-speaker}" = "api" ]; then
+  [ -n "${DEVICE_HOST:-}" ] || fail "WAKE_VIA=api needs DEVICE_HOST, the device's IP address or hostname."
+  # aioesphomeapi ships with ESPHome; run it on the interpreter ESPHome itself uses.
+  esphome_python="$(head -1 "$(command -v esphome)" | sed 's/^#!//')"
+  [ -x "$esphome_python" ] || fail "Could not find ESPHome's Python to reach the device API."
+  echo "▶️  Starting the conversation over the API at $DEVICE_HOST..."
+  mark="$(wc -c < "$SERIAL_LOG")"
+  "$esphome_python" - "$DEVICE_HOST" <<'PY' || fail "Could not call start_conversation on the device."
+import asyncio, sys
+from aioesphomeapi import APIClient
+
+async def main(host):
+    client = APIClient(host, 6053, None)
+    await client.connect(login=True)
+    _, services = await client.list_entities_services()
+    service = next((s for s in services if s.name == "start_conversation"), None)
+    if service is None:
+        sys.exit("the device has no start_conversation action; flash a current build")
+    await client.execute_service(service, {})
+    await asyncio.sleep(0.5)
+    await client.disconnect()
+
+asyncio.run(main(sys.argv[1]))
+PY
+  deadline=$((SECONDS + LISTEN_SECONDS))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if tail -c "+$((mark + 1))" "$SERIAL_LOG" 2> /dev/null | grep -q "START_STREAM CALLED"; then
+      echo "✅ Conversation started."
+      woke=1
+      break
+    fi
+    sleep 0.5
+  done
+  ATTEMPTS=0
+fi
+
 for attempt in $(seq 1 "$ATTEMPTS"); do
   echo "▶️  Attempt $attempt/$ATTEMPTS — playing the wake phrase..."
   mark="$(wc -c < "$SERIAL_LOG")"
@@ -381,16 +475,16 @@ fi
 
 # Wait for the device to actually be listening before speaking.
 #
-# Waking is not the same as being ready. The device opens the stream, then plays its
-# activation chime, and deliberately holds its microphone back until that finishes --
-# it logs "Starting microphone enable timeout: 817 ms, 1750 ms grace period" for
-# exactly this reason. Speaking into that window means the command is simply never
-# heard, which from the room sounds like the wake phrase and the command running into
-# each other with nothing in between.
+# Waking is not the same as being ready. The device opens the stream and Jarvis greets
+# sir, and the microphone stays shut until that opening line has played (see
+# opening_line_done_ in the component). Its speaker going quiet is the real "you may
+# speak now" signal.
 #
-# HANDLE_MIC logs activation_speaker_running=true while the chime plays and false once
-# it stops, so that transition is the real "you may speak now" signal.
-echo "⏳ Waiting for the device to finish its chime and open the mic..."
+# This used to wait for HANDLE_MIC to log activation_speaker_running=false, but that
+# speaker is started once and kept running for the whole conversation, so the marker
+# never came. Every run sat out READY_TIMEOUT, longer than the agent's 7 s turnTimeout,
+# and Jarvis spoke into the silence ("Sir?") before the first turn.
+echo "⏳ Waiting for Jarvis to finish greeting and open the mic..."
 ready_mark="$(wc -c < "$SERIAL_LOG")"
 deadline=$((SECONDS + READY_TIMEOUT))
 ready=0
@@ -408,37 +502,210 @@ if [ "$ready" != "1" ]; then
   sleep 2
 fi
 
-echo "🗨️  Asking: \"$COMMAND_TEXT\""
-play_file "$COMMAND_WAV"
+conv_start_mark="$(wc -c < "$SERIAL_LOG")"
 
-# Playback is done; only now is it safe to open a capture stream.
-echo "🎙️  Recording the reply (max ${CONVERSATION_MAX}s)"
-ffmpeg -hide_banner -loglevel error -y -f pulse -i "$RECORD_SOURCE" \
-  -t "$CONVERSATION_MAX" -ac 1 -ar 16000 -sample_fmt s16 "$ROOM_RAW" > /dev/null 2>&1 &
-recorder_pid=$!
+# speaker_is_active_ flips true on a reply's first audio and false 250 ms after the
+# speaker runs dry, so one reply is one true/false pair, and a false followed by
+# another true is the speaker running dry mid-reply, counted as an underrun. A false
+# that an interruption caused is the agent giving up a reply, not a dry speaker, so it
+# is not counted.
+#
+# The next turn must not play until Jarvis is done, or it talks over him and he abandons
+# a reply that was not wrong. A balanced pair is not enough on its own: the agent can pause between sentences, or
+# answer twice, and the device may still be receiving audio it has not played yet. So
+# a reply ends only when the speaker is off AND no audio has arrived for
+# REPLY_SETTLE_MS. Any new audio, or the speaker turning on again, restarts that clock.
+SPEAKER_ON_RE="Setting speaker_is_active_ = true"
+SPEAKER_OFF_RE="Setting speaker_is_active_ = false"
+INTERRUPTED_RE="Agent was interrupted"
+INTERRUPTED_OFF_RE="INTERRUPTED: Setting speaker_is_active_ = false"
 
-echo "⏳ Waiting for the conversation to end (max ${CONVERSATION_MAX}s)..."
-conv_mark="$(wc -c < "$SERIAL_LOG")"
-deadline=$((SECONDS + CONVERSATION_MAX))
-ended=0
-while [ "$SECONDS" -lt "$deadline" ]; do
-  # on_end restarts the wake word engine, so its start line marks the call finishing.
-  if tail -c "+$((conv_mark + 1))" "$SERIAL_LOG" 2> /dev/null | grep -q -E "$END_RE"; then
-    ended=1
-    echo "   conversation ended after $((SECONDS - (deadline - CONVERSATION_MAX)))s"
-    break
+# Whether the agent heard sir's whole turn is judged by what it transcribed, not by
+# timing. Timing cannot tell: the host's audio path adds an unknown delay between the
+# player finishing and the room falling quiet, so a reply that began promptly after the
+# last word looked like Jarvis talking over it. What a cut-in costs is words, so count
+# them, in ElevenLabs' own transcript: the device's log of it cuts long lines short.
+# Speech-to-text gets a word wrong now and then ("favourite" comes back "favorite"),
+# so a turn passes at HEARD_MIN_PERCENT of its words. A real cut-in loses more:
+# "Interesting." alone is 7% of its turn, and "make sentences longer" for "Make it
+# about six sentences long" leaves that story request at 77%.
+HEARD_MIN_PERCENT="${HEARD_MIN_PERCENT:-85}"
+
+# Prints the percentage of the words in $1 found in $2, each heard word matching once.
+heard_fraction() {
+  awk -v said="$1" -v heard="$2" 'BEGIN {
+    said = tolower(said); heard = tolower(heard)
+    gsub(/[^a-z0-9 ]/, " ", said); gsub(/[^a-z0-9 ]/, " ", heard)
+    n = split(heard, words, " "); for (i = 1; i <= n; i++) count[words[i]]++
+    total = split(said, words, " "); found = 0
+    for (i = 1; i <= total; i++) if (count[words[i]] > 0) { found++; count[words[i]]-- }
+    printf "%d", total ? 100 * found / total : 100
+  }'
+}
+
+# Prints what the agent heard of turn $1 (0-based): every user message that began
+# between that turn starting and the next one. A cut-in splits a turn into several.
+# Both clocks are whole seconds, so each bound allows 2 s; turns start at least
+# REPLY_SETTLE_MS after the previous reply, so that cannot reach the turn before.
+heard_during_turn() {
+  local from=$((TURN_STARTED_AT[$1] - 2)) to=9999999999
+  [ $(($1 + 1)) -lt "${#TURN_STARTED_AT[@]}" ] && to=$((TURN_STARTED_AT[$1 + 1] - 2))
+  jq -r --argjson from "$from" --argjson to "$to" '
+    (.metadata.start_time_unix_secs) as $start
+    | [ .transcript[]? | select(.role == "user")
+        | select(($start + .time_in_call_secs) >= $from and ($start + .time_in_call_secs) < $to)
+        | .message // "" ] | join(" ")' "$CONV_JSON"
+}
+ACTIVITY_RE="speaker_is_active_ = |Decoded [0-9]+ bytes of audio"
+
+# Waits for the reply to the turn that started at serial offset $1.
+# Returns 0 when Jarvis finished and went quiet, 1 when the call ended, 2 on timeout.
+wait_for_reply() {
+  local mark="$1" last="$2" on off interrupted since activity seen=-1 quiet_since=0 now
+  local deadline=$((SECONDS + TURN_MAX))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    since="$(tail -c "+$((mark + 1))" "$SERIAL_LOG" 2> /dev/null)"
+    if printf '%s' "$since" | grep -a -q -E "$END_RE"; then
+      return 1
+    fi
+    # The last turn is a goodbye, so wait for the hang-up rather than for silence:
+    # that captures the whole farewell and proves end_call still closes the call.
+    if [ "$last" != "1" ]; then
+      on="$(printf '%s' "$since" | grep -a -c -- "$SPEAKER_ON_RE")"
+      off="$(printf '%s' "$since" | grep -a -c -- "$SPEAKER_OFF_RE")"
+      activity="$(printf '%s' "$since" | grep -a -c -E "$ACTIVITY_RE")"
+      now="$(date +%s%3N)"
+      if [ "$activity" != "$seen" ]; then
+        seen="$activity"
+        quiet_since="$now"
+      fi
+      if [ "$on" -gt 0 ] && [ "$off" -ge "$on" ] \
+        && [ $((now - quiet_since)) -ge "$REPLY_SETTLE_MS" ]; then
+        interrupted="$(printf '%s' "$since" | grep -a -c -- "$INTERRUPTED_OFF_RE")"
+        REPLY_UNDERRUNS=$((on - 1 - interrupted))
+        return 0
+      fi
+    fi
+    sleep 0.1
+  done
+  return 2
+}
+
+SEGMENTS=()
+EARLY_TURNS=()
+CUT_OFF_TURNS=()
+TURN_STARTED_AT=()
+answered=0
+premature=""
+total_underruns=0
+for i in "${!TURNS[@]}"; do
+  n=$((i + 1))
+  is_last=0
+  [ "$n" -eq "${#TURNS[@]}" ] && is_last=1
+  turn_mark="$(wc -c < "$SERIAL_LOG")"
+
+  echo "🗨️  Turn $n/${#TURNS[@]}: \"${TURNS[$i]}\""
+  TURN_STARTED_AT+=("$(date +%s)")
+  play_file "${TURN_WAVS[$i]}"
+
+  # A reply that started while the turn was still playing means the agent took its turn
+  # at a pause mid-sentence, and its opening words were spoken before the recorder below
+  # could start. The mic stays open, so the agent should hear the rest of the turn and
+  # abandon that reply: the device logs the interruption and cuts it off. Whether the
+  # turn reached the agent whole is checked against its transcript after the call (see
+  # heard_fraction); these lines only say how the reply began.
+  turn_log="$(tail -c "+$((turn_mark + 1))" "$SERIAL_LOG" 2> /dev/null)"
+  if printf '%s' "$turn_log" | grep -a -q -- "$SPEAKER_ON_RE"; then
+    EARLY_TURNS+=("$n")
+    if printf '%s' "$turn_log" | awk -v on="$SPEAKER_ON_RE" -v cut="$INTERRUPTED_RE" \
+      'index($0, on) { stopped = 0 } index($0, cut) { stopped = 1 } END { exit !stopped }'; then
+      echo "   ↩️  the agent started replying at a pause, and stopped when the turn went on"
+    else
+      echo "   ⏩ the agent's reply began as the turn was ending"
+    fi
   fi
-  sleep 1
+
+  # Playback is done; only now is it safe to open a capture stream.
+  segment="$WORK_DIR/room-turn-$n.wav"
+  ffmpeg -hide_banner -loglevel error -y -f pulse -i "$RECORD_SOURCE" \
+    -t "$TURN_MAX" -ac 1 -ar 16000 -sample_fmt s16 "$segment" > /dev/null 2>&1 &
+  recorder_pid=$!
+
+  turn_started=$SECONDS
+  REPLY_UNDERRUNS=0
+  wait_for_reply "$turn_mark" "$is_last"
+  outcome=$?
+
+  # After a hang-up the speaker may still be draining the farewell.
+  [ "$outcome" = "1" ] && sleep 2
+  kill "$recorder_pid" 2> /dev/null
+  wait "$recorder_pid" 2> /dev/null
+  recorder_pid=""
+  [ -s "$segment" ] && SEGMENTS+=("$segment")
+
+  case "$outcome" in
+    0)
+      answered=$n
+      total_underruns=$((total_underruns + REPLY_UNDERRUNS))
+      echo "   replied in $((SECONDS - turn_started))s, ${REPLY_UNDERRUNS} underrun(s)"
+      ;;
+    1)
+      if [ "$is_last" = "1" ]; then
+        answered=$n
+        echo "   farewell played and the call ended after $((SECONDS - turn_started))s"
+      else
+        premature="the call ended during turn $n of ${#TURNS[@]}"
+        echo "   ❌ $premature"
+      fi
+      ;;
+    2)
+      premature="no end to the reply within ${TURN_MAX}s on turn $n of ${#TURNS[@]}"
+      echo "   ❌ $premature"
+      ;;
+  esac
+  [ -z "$premature" ] || break
 done
-[ "$ended" = "1" ] || echo "   ⚠️  No end-of-call marker; recording the full ${CONVERSATION_MAX}s window."
 
-# Give the speaker a moment to finish, then stop recording.
-sleep 2
-kill "$recorder_pid" 2> /dev/null
-wait "$recorder_pid" 2> /dev/null
-recorder_pid=""
+# --- device health -----------------------------------------------------------
+# Deterministic signs of instability in the serial log, independent of any model:
+# a crash or reboot, the speaker stalling (audio is dropped), allocation failures,
+# and the error handler. None of them belongs in a healthy conversation.
+conv_log="$WORK_DIR/conversation-serial.log"
+tail -c "+$((conv_start_mark + 1))" "$SERIAL_LOG" > "$conv_log" 2> /dev/null
+INSTABILITY_RE="Guru Meditation|abort\(\)|Backtrace:|rst:0x|Speaker stalled|Could not allocate|Failed to decode|ERROR HANDLER CALLED|LOW MEMORY|Task watchdog"
+instability="$(grep -a -E "$INSTABILITY_RE" "$conv_log" | head -10)"
+# First and last reading, plus the low point. Internal RAM is the one to watch: it is
+# much scarcer than PSRAM, and running out of it is what rebooted the device mid-reply.
+mem_trend() {
+  grep -a -oE "$1=[0-9]+KB" "$conv_log" | grep -oE '[0-9]+' \
+    | awk 'NR==1{f=$1; m=$1} {l=$1; if ($1 < m) m=$1} END{if (NR) printf "%s -> %s KB (low %s)", f, l, m}'
+}
+psram_trend="$(mem_trend 'PSRAM Free')"
+internal_trend="$(mem_trend 'Internal Free')"
+echo "🩺 Device health"
+echo "   turns answered: $answered/${#TURNS[@]}, underruns: $total_underruns"
+[ -z "$psram_trend" ] || echo "   PSRAM free:    $psram_trend"
+[ -z "$internal_trend" ] || echo "   internal free: $internal_trend"
+if [ -n "$instability" ]; then
+  echo "   ❌ instability in the serial log:"
+  printf '%s\n' "$instability" | sed 's/^/      /'
+fi
 
-[ -s "$ROOM_RAW" ] || fail "Nothing was recorded from '$RECORD_SOURCE'."
+[ "${#SEGMENTS[@]}" -gt 0 ] || fail "Nothing was recorded from '$RECORD_SOURCE'."
+
+# One clip for the comparison: each reply in order, joined by a second of silence where
+# the user's turn was (and was deliberately not recorded).
+concat_inputs=()
+concat_filter=""
+for s in "${!SEGMENTS[@]}"; do
+  concat_inputs+=(-i "${SEGMENTS[$s]}")
+  concat_filter+="[$s:a]apad=pad_dur=1[s$s];"
+done
+for s in "${!SEGMENTS[@]}"; do concat_filter+="[s$s]"; done
+concat_filter+="concat=n=${#SEGMENTS[@]}:v=0:a=1[out]"
+ffmpeg -hide_banner -loglevel error -y "${concat_inputs[@]}" -filter_complex "$concat_filter" \
+  -map '[out]' -ac 1 -ar 16000 -sample_fmt s16 "$ROOM_RAW" \
+  || fail "Could not join the recorded replies."
 
 room_peak="$(ffmpeg -i "$ROOM_RAW" -af volumedetect -f null /dev/null 2>&1 \
   | grep -a -oE 'max_volume: -?[0-9.]+' | head -1 | grep -oE '\-?[0-9.]+')"
@@ -512,6 +779,15 @@ http="$(el_get "https://api.elevenlabs.io/v1/convai/conversations/${conv_id}" "$
 [ "$http" = "200" ] || { echo "   ⚠️  conversation detail returned HTTP $http"; exit 3; }
 
 transcript="$(jq -r '[ .transcript[]? | "\(.role): \(.message // "")" ] | join("\n")' "$CONV_JSON" 2> /dev/null)"
+
+for i in "${!TURN_STARTED_AT[@]}"; do
+  heard="$(heard_during_turn "$i")"
+  fraction="$(heard_fraction "${TURNS[$i]}" "$heard")"
+  if [ "$fraction" -lt "$HEARD_MIN_PERCENT" ]; then
+    CUT_OFF_TURNS+=("$((i + 1))")
+    echo "   ⚠️  turn $((i + 1)): the agent heard ${fraction}% of it: \"$heard\""
+  fi
+done
 has_audio="$(jq -r '.has_audio // false' "$CONV_JSON" 2> /dev/null)"
 
 if [ "$has_audio" != "true" ]; then
@@ -590,15 +866,35 @@ echo "🧠 Comparing with ${GEMINI_MODEL}..."
 # device fault.
 # `read -d ''` always exits non-zero at EOF even though PROMPT is fully populated;
 # `|| true` keeps that harmless if this script ever gains `set -e`.
+early_note=""
+if [ "${#EARLY_TURNS[@]}" -gt 0 ]; then
+  # Named by what the human said, not by number: the agent can split one turn into two
+  # replies, so a reply's position in the reference need not match the turn's.
+  early_turn_texts=""
+  for t in "${EARLY_TURNS[@]}"; do
+    early_turn_texts+="  - \"${TURNS[$((t - 1))]}\""$'\n'
+  done
+  early_note="The agent began replying to the human turns below while the human was still
+speaking them, before the recording window opened. So in AUDIO 2 the replies that answer
+these turns (including any reply to just their first words) start part-way through, or
+are missing entirely if they ended before the human finished. A missing BEGINNING, or a
+missing whole reply, at exactly those points is EXPECTED and is not a defect. Everything
+AUDIO 2 does contain must still match the reference.
+${early_turn_texts}"
+fi
 read -r -d '' PROMPT <<PROMPT_EOF || true
 You are given two audio recordings of the SAME conversation, plus its transcript.
 
 AUDIO 1 is the REFERENCE: what the voice service generated, captured server-side.
 AUDIO 2 is a ROOM RECORDING made with a microphone, of a smart speaker playing back
-the AGENT's side of that conversation out loud. Recording only starts after the human
-side finished being spoken, so AUDIO 2 contains the agent's reply and little or
-nothing of the user's turn. A user turn present in AUDIO 1 but absent from AUDIO 2 is
-therefore EXPECTED and is not a defect.
+the AGENT's side of that conversation out loud. The conversation has several turns.
+Each reply was recorded separately, starting only after the human finished speaking,
+and the replies are joined in order with about one second of silence between them. So
+AUDIO 2 contains the agent's replies and little or nothing of the user's turns. A user
+turn present in AUDIO 1 but absent from AUDIO 2 is therefore EXPECTED and is not a
+defect, and neither is the silence that joins two replies. Check EVERY reply, including
+the later ones: defects that appear only late in a long conversation matter most.
+${early_note}
 
 Compare AUDIO 2 against AUDIO 1 and report only defects in how the SPEAKER reproduced
 the agent's speech.
@@ -644,8 +940,14 @@ PROMPT_EOF
 # base64 to FILES and read them with --rawfile. Passing them via --arg puts megabytes
 # of audio into argv and fails outright with "Argument list too long" once two clips
 # are involved. rtrimstr drops the trailing newline base64 may leave behind.
-base64 -w0 < "$REF_WAV" > "$WORK_DIR/ref.b64"
-base64 -w0 < "$ROOM_WAV" > "$WORK_DIR/room.b64"
+#
+# FLAC, not WAV: a multi-turn conversation runs to minutes, and two minutes-long WAVs
+# in base64 approach the 20 MB inline request limit. FLAC is lossless, so it cannot
+# add or hide an artefact the way a lossy codec could.
+ffmpeg -loglevel error -y -i "$REF_WAV" -c:a flac "$WORK_DIR/ref.flac" || fail "Could not encode the reference."
+ffmpeg -loglevel error -y -i "$ROOM_WAV" -c:a flac "$WORK_DIR/room.flac" || fail "Could not encode the room recording."
+base64 -w0 < "$WORK_DIR/ref.flac" > "$WORK_DIR/ref.b64"
+base64 -w0 < "$WORK_DIR/room.flac" > "$WORK_DIR/room.b64"
 
 jq -n \
   --arg prompt "$PROMPT" \
@@ -657,9 +959,9 @@ jq -n \
   contents: [ { parts: [
     { text: $prompt },
     { text: "AUDIO 1 — REFERENCE (server-side):" },
-    { inline_data: { mime_type: "audio/wav", data: $ref } },
+    { inline_data: { mime_type: "audio/flac", data: $ref } },
     { text: "AUDIO 2 — ROOM RECORDING (device speaker):" },
-    { inline_data: { mime_type: "audio/wav", data: $room } }
+    { inline_data: { mime_type: "audio/flac", data: $room } }
   ] } ],
   generationConfig: {
     responseMimeType: "application/json",
@@ -699,6 +1001,24 @@ echo "   room:      $(printf '%s' "$verdict" | jq -r '.room_summary // "-"')"
 echo "   confidence: $(printf '%s' "$verdict" | jq -r '.confidence')"
 echo "   differences: $(printf '%s' "$verdict" | jq -r '.differences')"
 
+# The conversation-level checks come before the verdict's own exits, so a dropped call
+# or a crash is never reported as a mere playback defect. The verdict above is printed
+# either way, because it is what says WHERE in the conversation things went wrong.
+if [ -n "$premature" ]; then
+  echo
+  echo "❌ CONVERSATION CUT SHORT — $premature."
+  echo "   serial:    $conv_log"
+  echo "   room:      $ROOM_WAV"
+  exit 4
+fi
+
+if [ -n "$instability" ]; then
+  echo
+  echo "❌ INSTABILITY — the device logged errors during the conversation (see above)."
+  echo "   serial:    $conv_log"
+  exit 2
+fi
+
 # Treat inaudible agent speech as a hard failure regardless of defects_found. A run
 # where nothing played is the worst outcome, not a clean one, and an earlier version of
 # this prompt scored exactly that as a pass three times in a row.
@@ -720,6 +1040,15 @@ if [ "$(printf '%s' "$verdict" | jq -r '.defects_found')" = "true" ]; then
   exit 2
 fi
 
+# After the playback checks, because a speaker defect is the firmware's to fix and this
+# is the agent's hearing: part of the turn never reached it.
+if [ "${#CUT_OFF_TURNS[@]}" -gt 0 ]; then
+  echo
+  echo "❌ AGENT CUT IN — it missed part of what the human said, on turn(s) ${CUT_OFF_TURNS[*]}."
+  echo "   Playback itself matched. Something kept the rest of the turn from reaching the"
+  echo "   agent once it started replying: a microphone gate is the usual cause."
+  exit 5
+fi
 
 # The gap count is model-independent, so a clean verdict alongside a lot of extra
 # silence is a signal the comparison may have missed something rather than a pass.
@@ -733,5 +1062,5 @@ if [ "$gap_delta" -ge 5 ]; then
 fi
 
 echo
-echo "✅ PASS — woke on the wake word, and playback matched the reference."
+echo "✅ PASS — woke, held all ${#TURNS[@]} turns, and playback matched the reference."
 exit 0

@@ -65,7 +65,8 @@ bool ElevenLabsClient::get_signed_url(std::string &signed_url_out) {
   }
   if (!response.empty()) {
     ESP_LOGD(TAG, "GET_SIGNED_URL: Parsing JSON response...");
-    ESP_LOGD(TAG, "GET_SIGNED_URL: Full response: %s", response.c_str());
+    // Length only: the response carries the conversation signature, a credential.
+    ESP_LOGD(TAG, "GET_SIGNED_URL: Response is %zu bytes", response.size());
     auto json_doc = JsonDeserializer::parse(response.c_str());
     if (!json_doc) {
       ESP_LOGE(TAG, "GET_SIGNED_URL: Failed to parse JSON response");
@@ -75,15 +76,15 @@ bool ElevenLabsClient::get_signed_url(std::string &signed_url_out) {
     JsonObject root = json_doc->as<JsonObject>();
     ESP_LOGD(TAG, "GET_SIGNED_URL: root.isNull() = %d", root.isNull());
     ESP_LOGD(TAG, "GET_SIGNED_URL: root.size() = %d", root.size());
-    ESP_LOGD(TAG, "GET_SIGNED_URL: Available fields and values in root:");
+    ESP_LOGD(TAG, "GET_SIGNED_URL: Available fields in root:");
     for (JsonPair kv : root) {
-      ESP_LOGD(TAG, "GET_SIGNED_URL:   - %s: %s", kv.key().c_str(), kv.value().as<const char*>() ? kv.value().as<const char*>() : "<non-string>");
+      ESP_LOGD(TAG, "GET_SIGNED_URL:   - %s", kv.key().c_str());
     }
     if (root.containsKey("signed_url")) {
       const char *signed_url = root["signed_url"];
       if (signed_url) {
         signed_url_out = std::string(signed_url);
-        ESP_LOGI(TAG, "GET_SIGNED_URL: Extracted signed URL: %s", signed_url_out.c_str());
+        ESP_LOGI(TAG, "GET_SIGNED_URL: Extracted signed URL (%zu chars)", signed_url_out.size());
         ESP_LOGI(TAG, "GET_SIGNED_URL: Got signed URL successfully");
         ESP_LOGD(TAG, "=== GET_SIGNED_URL SUCCESS ===");
         return true;

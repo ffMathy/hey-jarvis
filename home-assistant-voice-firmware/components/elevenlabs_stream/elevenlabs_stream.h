@@ -12,6 +12,8 @@
 #include <esp_timer.h>
 #include <mbedtls/base64.h>
 
+#include <atomic>
+
 namespace esphome {
 
 // Forward declarations for optional components
@@ -171,9 +173,31 @@ public:
   // there is enough of a cushion to start playback, then written in one go. Without it
   // the first fragment plays into a pipeline that has not settled, and the opening word
   // arrives chopped, gapped or doubled depending on the timing.
-  std::vector<uint8_t> reply_prebuffer_;
-  bool reply_prebuffering_{true};
+  //
+  // Backed by PSRAM, never the default allocator. ESP-IDF serves allocations under 16 KB
+  // from internal RAM, and the prebuffer's growth steps are exactly that size. Internal
+  // RAM runs low once the microphone, the TLS socket and the speaker are all busy, so a
+  // grow step failed in the middle of a reply, operator new aborted (exceptions are off)
+  // and the device rebooted mid-conversation.
+  //
+  // Every reply is cushioned, not only a conversation's first: audio is held whenever it
+  // would start into an empty speaker. ElevenLabs opens each reply with a few 47 ms
+  // frames spaced further apart than they last, so a reply written straight through ran
+  // dry between them and its first syllables stuttered.
+  //
+  // Audio arrives on the websocket task, but a held reply whose last frame has come must
+  // still be released on time with nothing more arriving to push it out, so loop() on
+  // the main task releases it too. reply_prebuffer_lock_ guards the buffer and every
+  // write to the speaker made while it holds audio; reply_held_ says it holds any, for
+  // readers that must not wait on the lock.
+  Mutex reply_prebuffer_lock_;
+  std::vector<uint8_t, RAMAllocator<uint8_t>> reply_prebuffer_;
   uint32_t reply_prebuffer_started_ms_{0};
+  std::atomic<bool> reply_held_{false};
+  bool write_to_speaker_(const uint8_t *data, size_t length);
+  bool release_reply_prebuffer_();
+  void release_overdue_reply_prebuffer_();
+  void discard_reply_prebuffer_();
   uint32_t last_audio_response_time_{0};  // Track when we last received audio from agent
   uint32_t connection_timeout_{10000};  // Reduced to 10 seconds
   uint32_t connection_start_time_{0};
@@ -184,8 +208,21 @@ public:
   // Accumulated playback duration for all segments
   uint32_t accumulated_duration_ms_{0};
   
-  // Speaker activity tracking to prevent microphone echo/feedback
-  bool speaker_is_active_{false};  // Track if agent is currently speaking
+  // Whether the agent's voice is coming out of the speaker. Drives the LED, the VAD echo
+  // guard, the announcement window and end_call; it does not shut the microphone.
+  bool speaker_is_active_{false};
+
+  // Whether the conversation's first line has finished playing. Until it has, the
+  // microphone is shut while the speaker plays (see handle_microphone_data).
+  bool opening_line_done_{false};
+
+  // The event_id of the last reply the agent abandoned because the user kept talking.
+  // Audio carrying that id or an earlier one belongs to an abandoned reply and is dropped.
+  int64_t interrupted_event_id_{-1};
+  void stop_interrupted_reply_(int64_t event_id);
+  bool is_from_interrupted_reply_(int64_t event_id) const {
+    return event_id >= 0 && event_id <= this->interrupted_event_id_;
+  }
   uint32_t speaker_start_time_{0};  // When current audio playback started
   uint32_t speaker_end_time_{0};   // When current audio playback should end
   uint32_t speaker_silence_buffer_ms_{500};  // Wait time after speaker stops before enabling mic

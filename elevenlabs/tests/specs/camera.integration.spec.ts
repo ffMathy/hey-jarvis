@@ -30,7 +30,7 @@ import {
  * On a device that has said nothing of a camera button — the watch, the Voice speaker, a telephone
  * call — the same announcement is not routed either: sir is told to send the photo from his phone.
  *
- * And a camera opened straight after a finished request is waited on. Three seconds into a silence
+ * And a camera opened straight after a finished request is waited on. Seven seconds into a silence
  * ElevenLabs asks Jarvis to speak again, and after a finished request he hangs up without a word —
  * unless he is waiting for a photo, which every statement of that rule makes the exception to. The
  * same request with no camera opened after it is the control: it has to be hung up on, or the harness
@@ -97,16 +97,16 @@ const FINISHED_REQUEST = "What's the weather like right now?";
 const FINISHED_REQUEST_TIMEOUT_MS = 90000;
 
 /**
- * How long sir frames the shot before the photo arrives: several of the agent's three-second turn
+ * How long sir frames the shot before the photo arrives: several of the agent's seven-second turn
  * timeouts, each of which asks Jarvis to speak again.
  */
-const FRAMING_THE_SHOT_MS = 15000;
+const FRAMING_THE_SHOT_MS = 25000;
 
 /**
- * How long a finished request with nothing after it may take to be hung up on: the three-second turn
+ * How long a finished request with nothing after it may take to be hung up on: the seven-second turn
  * timeout, and room for the agent to answer it.
  */
-const HANG_UP_WINDOW_MS = 10000;
+const HANG_UP_WINDOW_MS = 15000;
 
 /** `end_call`, the system tool that hangs up. */
 function isEndCallToolName(toolName: string): boolean {
@@ -306,7 +306,7 @@ describe('Photos From His Phone', () => {
           await conversation.sendContextualUpdate(CAMERA_BUTTON_HERE);
 
           // Not awaited yet: a reply is waited on until the socket has been quiet for a while, and
-          // three seconds into that quiet a finished request is hung up on. Sir taps the camera as
+          // seven seconds into that quiet a finished request is hung up on. Sir taps the camera as
           // soon as the answer is in, which is when the phone shows the button again.
           const answered = conversation.sendMessage(FINISHED_REQUEST);
           await waitForConversation(conversation, answeredInFull, FINISHED_REQUEST_TIMEOUT_MS);
