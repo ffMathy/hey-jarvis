@@ -12,6 +12,7 @@ paths:
 Each topic is a rule of its own, under the same paths:
 
 - [Ending a Conversation](home-assistant-voice-firmware-ending-a-conversation.md)
+- [Talking over Jarvis](home-assistant-voice-firmware-talking-over-jarvis.md) — the open mic, echo cancellation and interruptions
 - [Wake Word Configuration](home-assistant-voice-firmware-wake-word-configuration.md)
 - [Troubleshooting Wake Word Issues](home-assistant-voice-firmware-troubleshooting-wake-word-issues.md)
 - [Development](home-assistant-voice-firmware-development.md)
