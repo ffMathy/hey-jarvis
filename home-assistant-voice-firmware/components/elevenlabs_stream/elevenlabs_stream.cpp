@@ -401,6 +401,7 @@ void ElevenLabsStream::setup() {
 
       ESP_LOGI(TAG, "SPEAKER_CALLBACK: Setting speaker_is_active_ = false");
       this->speaker_is_active_ = false;
+      this->opening_line_done_ = true;
 
 
       for (auto *trigger : this->on_listening_triggers_) {
@@ -598,6 +599,7 @@ bool ElevenLabsStream::start_stream(const std::string &initial_message, uint32_t
   this->end_call_requested_ = false;
   // Event ids count up from the start of each conversation.
   this->interrupted_event_id_ = -1;
+  this->opening_line_done_ = false;
   this->starting_ = true;
 
   this->connection_start_time_ = millis();
@@ -689,6 +691,7 @@ void ElevenLabsStream::stop_interrupted_reply_(int64_t event_id) {
   if (this->speaker_is_active_) {
     ESP_LOGI(TAG, "INTERRUPTED: Setting speaker_is_active_ = false");
     this->speaker_is_active_ = false;
+    this->opening_line_done_ = true;
     for (auto *trigger : this->on_listening_triggers_) {
       trigger->trigger();
     }
@@ -1388,6 +1391,16 @@ void ElevenLabsStream::handle_microphone_data(const std::vector<uint8_t> &data) 
   // the chime's speaker had buffered data, but a resampler speaker reports its output
   // speaker's buffer as its own, and both resamplers feed the same i2s speaker -- so it
   // was shut whenever Jarvis spoke as well, and the user's words were still lost.
+  //
+  // The one exception is the conversation's first line. The front end does not cancel
+  // it: in three runs out of three the greeting came back as the user's turn ("Hello,
+  // Sam. How can I help?") and Jarvis answered himself, while not one later reply
+  // leaked. Whatever state the XMOS is in as a call begins is beyond this firmware, but
+  // the opening line is spoken before the user has had a turn, so shutting the
+  // microphone for it alone loses nothing a reply could cut off.
+  if (this->speaker_is_active_ && !this->opening_line_done_) {
+    return;
+  }
 
   // Validate input data size (must be multiple of 4 for 32-bit samples)
   if (data.size() % 4 != 0) {
@@ -1408,20 +1421,17 @@ void ElevenLabsStream::handle_microphone_data(const std::vector<uint8_t> &data) 
     audio_samples.push_back(sample16);
   }
 
-  // Convert stereo to mono by averaging each left/right sample pair
-  // Handle odd number of samples safely
+  // Keep channel 0 of the XMOS front end's two, the one voice_assistant sends for
+  // speech-to-text. It is the cleaned-up stream, with the speaker's echo cancelled.
+  // Averaging it with channel 1, which feeds the wake word, let Jarvis's voice back in
+  // once the microphone stayed open while he spoke: his greeting was transcribed as
+  // the user's turn, and the tails of his replies interrupted him.
   std::vector<int16_t> mono_samples;
   size_t stereo_pairs = audio_samples.size() / 2;
   mono_samples.reserve(stereo_pairs);
-  
+
   for (size_t i = 0; i < stereo_pairs; i++) {
-    int16_t left = audio_samples[i * 2];
-    int16_t right = audio_samples[i * 2 + 1];
-    
-    // Prevent overflow in addition by using int32_t for intermediate calculation
-    int32_t sum = static_cast<int32_t>(left) + static_cast<int32_t>(right);
-    int16_t mono = static_cast<int16_t>(sum / 2);
-    mono_samples.push_back(mono);
+    mono_samples.push_back(audio_samples[i * 2]);
   }
 
   // Log warning if we had odd number of samples (data loss)

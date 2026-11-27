@@ -194,6 +194,10 @@ public:
   // guard, the announcement window and end_call; it does not shut the microphone.
   bool speaker_is_active_{false};
 
+  // Whether the conversation's first line has finished playing. Until it has, the
+  // microphone is shut while the speaker plays (see handle_microphone_data).
+  bool opening_line_done_{false};
+
   // The event_id of the last reply the agent abandoned because the user kept talking.
   // Audio carrying that id or an earlier one belongs to an abandoned reply and is dropped.
   int64_t interrupted_event_id_{-1};
