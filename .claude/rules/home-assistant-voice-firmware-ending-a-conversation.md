@@ -28,3 +28,13 @@ restarts and the LEDs go idle:
 
 The announcement window is timed on the device because ElevenLabs'
 `silence_end_call_timeout` is not an overridable setting.
+
+## A dropped connection
+
+A connection that drops mid-call ("Connection reset by peer", which ElevenLabs logs as
+`Client disconnected: 1006`) is reported as a websocket error on the websocket's own task.
+`handle_error` is deferred to the main loop, because it disconnects, and disconnecting
+destroys the client. **Never stop or destroy the websocket client from a callback it
+raised.** Done from that task, ESP-IDF refused the stop but the destroy went ahead, and
+the next event-loop call asserted (`spinlock_acquire ... lock->count == 0`), so a network
+blip rebooted the device.
