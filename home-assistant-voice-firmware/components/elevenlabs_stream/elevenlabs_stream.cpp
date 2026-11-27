@@ -672,8 +672,14 @@ bool ElevenLabsStream::start_stream(const std::string &initial_message, uint32_t
     [this]() { 
       this->handle_websocket_disconnected(); 
     },
-    [this](const std::string& err) { 
-      this->handle_error(err); 
+    // A websocket error is reported on the websocket's own task, and handle_error
+    // disconnects, which destroys the client. Done from that task, it freed the event
+    // loop while the client was still dispatching the event: ESP-IDF refused the stop
+    // ("Client cannot be stopped from websocket task") but the destroy went ahead, and
+    // the next event-loop call asserted on freed memory and rebooted the device. That
+    // is what a dropped connection did mid-reply. So handle it on the main loop.
+    [this](const std::string& err) {
+      this->defer([this, err]() { this->handle_error(err); });
     }
   );
   if (!connected) {
