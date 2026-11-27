@@ -500,14 +500,14 @@ conv_start_mark="$(wc -c < "$SERIAL_LOG")"
 # speaker runs dry, so one reply is one true/false pair, and a false followed by
 # another true is the speaker running dry mid-reply, counted as an underrun.
 #
-# The next turn must not play until Jarvis is done, or it lands on a closed mic (the
-# device shuts it while the speaker plays) and the agent answers half a sentence. A
-# balanced pair is not enough on its own: the agent can pause between sentences, or
+# The next turn must not play until Jarvis is done, or it talks over him and he abandons
+# a reply that was not wrong. A balanced pair is not enough on its own: the agent can pause between sentences, or
 # answer twice, and the device may still be receiving audio it has not played yet. So
 # a reply ends only when the speaker is off AND no audio has arrived for
 # REPLY_SETTLE_MS. Any new audio, or the speaker turning on again, restarts that clock.
 SPEAKER_ON_RE="Setting speaker_is_active_ = true"
 SPEAKER_OFF_RE="Setting speaker_is_active_ = false"
+INTERRUPTED_RE="Agent was interrupted"
 ACTIVITY_RE="speaker_is_active_ = |Decoded [0-9]+ bytes of audio"
 
 # Waits for the reply to the turn that started at serial offset $1.
@@ -544,6 +544,7 @@ wait_for_reply() {
 
 SEGMENTS=()
 EARLY_TURNS=()
+TALKED_OVER_TURNS=()
 answered=0
 premature=""
 total_underruns=0
@@ -556,13 +557,22 @@ for i in "${!TURNS[@]}"; do
   echo "🗨️  Turn $n/${#TURNS[@]}: \"${TURNS[$i]}\""
   play_file "${TURN_WAVS[$i]}"
 
-  # A reply that is already playing when the turn ends means the agent took its turn
-  # at a pause mid-sentence. The mic is shut while the speaker plays, so the rest of the
-  # turn never reached it, and the reply's opening words were spoken before the
-  # recorder below could start. That is the agent cutting in, not the speaker.
-  if tail -c "+$((turn_mark + 1))" "$SERIAL_LOG" 2> /dev/null | grep -a -q -- "$SPEAKER_ON_RE"; then
+  # A reply that started while the turn was still playing means the agent took its turn
+  # at a pause mid-sentence, and its opening words were spoken before the recorder below
+  # could start. The mic stays open, so the agent should hear the rest of the turn and
+  # abandon that reply: the device logs the interruption and cuts it off. If no
+  # interruption follows the reply's start, Jarvis talked over the user instead -- the
+  # agent cutting in, not the speaker.
+  turn_log="$(tail -c "+$((turn_mark + 1))" "$SERIAL_LOG" 2> /dev/null)"
+  if printf '%s' "$turn_log" | grep -a -q -- "$SPEAKER_ON_RE"; then
     EARLY_TURNS+=("$n")
-    echo "   ⚠️  the agent started replying before the turn finished playing"
+    if printf '%s' "$turn_log" | awk -v on="$SPEAKER_ON_RE" -v cut="$INTERRUPTED_RE" \
+      'index($0, on) { stopped = 0 } index($0, cut) { stopped = 1 } END { exit !stopped }'; then
+      echo "   ↩️  the agent started replying at a pause, and stopped when the turn went on"
+    else
+      TALKED_OVER_TURNS+=("$n")
+      echo "   ⚠️  the agent started replying before the turn finished playing"
+    fi
   fi
 
   # Playback is done; only now is it safe to open a capture stream.
@@ -972,12 +982,12 @@ if [ "$(printf '%s' "$verdict" | jq -r '.defects_found')" = "true" ]; then
 fi
 
 # After the playback checks, because a speaker defect is the firmware's to fix and this
-# is the agent's: its turn detection ended a turn at a pause, and the user was cut off.
-if [ "${#EARLY_TURNS[@]}" -gt 0 ]; then
+# is the agent's: its turn detection ended a turn at a pause, and it talked over the user.
+if [ "${#TALKED_OVER_TURNS[@]}" -gt 0 ]; then
   echo
-  echo "❌ AGENT CUT IN — it replied before the human finished, on turn(s) ${EARLY_TURNS[*]}."
-  echo "   Playback itself matched. The agent's turn detection ended the turn at a pause;"
-  echo "   see turnEagerness in elevenlabs/src/assets/agent-config.json."
+  echo "❌ AGENT CUT IN — it talked over the human, on turn(s) ${TALKED_OVER_TURNS[*]}."
+  echo "   Playback itself matched. The agent's turn detection ended the turn at a pause,"
+  echo "   and it never abandoned that reply: did the rest of the turn reach it?"
   exit 5
 fi
 
