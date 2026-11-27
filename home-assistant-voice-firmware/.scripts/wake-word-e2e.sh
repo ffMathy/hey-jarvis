@@ -516,6 +516,43 @@ conv_start_mark="$(wc -c < "$SERIAL_LOG")"
 SPEAKER_ON_RE="Setting speaker_is_active_ = true"
 SPEAKER_OFF_RE="Setting speaker_is_active_ = false"
 INTERRUPTED_RE="Agent was interrupted"
+
+# Whether the agent heard sir's whole turn is judged by what it transcribed, not by
+# timing. Timing cannot tell: the host's audio path adds an unknown delay between the
+# player finishing and the room falling quiet, so a reply that began promptly after the
+# last word looked like Jarvis talking over it. What a cut-in costs is words, so count
+# them, in ElevenLabs' own transcript: the device's log of it cuts long lines short.
+# Speech-to-text gets a word wrong now and then ("favourite" comes back "favorite"),
+# so a turn passes at HEARD_MIN_PERCENT of its words. A real cut-in loses more:
+# "Interesting." alone is 7% of its turn, and "make sentences longer" for "Make it
+# about six sentences long" leaves that story request at 77%.
+HEARD_MIN_PERCENT="${HEARD_MIN_PERCENT:-85}"
+
+# Prints the percentage of the words in $1 found in $2, each heard word matching once.
+heard_fraction() {
+  awk -v said="$1" -v heard="$2" 'BEGIN {
+    said = tolower(said); heard = tolower(heard)
+    gsub(/[^a-z0-9 ]/, " ", said); gsub(/[^a-z0-9 ]/, " ", heard)
+    n = split(heard, words, " "); for (i = 1; i <= n; i++) count[words[i]]++
+    total = split(said, words, " "); found = 0
+    for (i = 1; i <= total; i++) if (count[words[i]] > 0) { found++; count[words[i]]-- }
+    printf "%d", total ? 100 * found / total : 100
+  }'
+}
+
+# Prints what the agent heard of turn $1 (0-based): every user message that began
+# between that turn starting and the next one. A cut-in splits a turn into several.
+# Both clocks are whole seconds, so each bound allows 2 s; turns start at least
+# REPLY_SETTLE_MS after the previous reply, so that cannot reach the turn before.
+heard_during_turn() {
+  local from=$((TURN_STARTED_AT[$1] - 2)) to=9999999999
+  [ $(($1 + 1)) -lt "${#TURN_STARTED_AT[@]}" ] && to=$((TURN_STARTED_AT[$1 + 1] - 2))
+  jq -r --argjson from "$from" --argjson to "$to" '
+    (.metadata.start_time_unix_secs) as $start
+    | [ .transcript[]? | select(.role == "user")
+        | select(($start + .time_in_call_secs) >= $from and ($start + .time_in_call_secs) < $to)
+        | .message // "" ] | join(" ")' "$CONV_JSON"
+}
 ACTIVITY_RE="speaker_is_active_ = |Decoded [0-9]+ bytes of audio"
 
 # Waits for the reply to the turn that started at serial offset $1.
@@ -552,7 +589,8 @@ wait_for_reply() {
 
 SEGMENTS=()
 EARLY_TURNS=()
-TALKED_OVER_TURNS=()
+CUT_OFF_TURNS=()
+TURN_STARTED_AT=()
 answered=0
 premature=""
 total_underruns=0
@@ -563,14 +601,15 @@ for i in "${!TURNS[@]}"; do
   turn_mark="$(wc -c < "$SERIAL_LOG")"
 
   echo "🗨️  Turn $n/${#TURNS[@]}: \"${TURNS[$i]}\""
+  TURN_STARTED_AT+=("$(date +%s)")
   play_file "${TURN_WAVS[$i]}"
 
   # A reply that started while the turn was still playing means the agent took its turn
   # at a pause mid-sentence, and its opening words were spoken before the recorder below
   # could start. The mic stays open, so the agent should hear the rest of the turn and
-  # abandon that reply: the device logs the interruption and cuts it off. If no
-  # interruption follows the reply's start, Jarvis talked over the user instead -- the
-  # agent cutting in, not the speaker.
+  # abandon that reply: the device logs the interruption and cuts it off. Whether the
+  # turn reached the agent whole is checked against its transcript after the call (see
+  # heard_fraction); these lines only say how the reply began.
   turn_log="$(tail -c "+$((turn_mark + 1))" "$SERIAL_LOG" 2> /dev/null)"
   if printf '%s' "$turn_log" | grep -a -q -- "$SPEAKER_ON_RE"; then
     EARLY_TURNS+=("$n")
@@ -578,8 +617,7 @@ for i in "${!TURNS[@]}"; do
       'index($0, on) { stopped = 0 } index($0, cut) { stopped = 1 } END { exit !stopped }'; then
       echo "   ↩️  the agent started replying at a pause, and stopped when the turn went on"
     else
-      TALKED_OVER_TURNS+=("$n")
-      echo "   ⚠️  the agent started replying before the turn finished playing"
+      echo "   ⏩ the agent's reply began as the turn was ending"
     fi
   fi
 
@@ -737,6 +775,15 @@ http="$(el_get "https://api.elevenlabs.io/v1/convai/conversations/${conv_id}" "$
 [ "$http" = "200" ] || { echo "   ⚠️  conversation detail returned HTTP $http"; exit 3; }
 
 transcript="$(jq -r '[ .transcript[]? | "\(.role): \(.message // "")" ] | join("\n")' "$CONV_JSON" 2> /dev/null)"
+
+for i in "${!TURN_STARTED_AT[@]}"; do
+  heard="$(heard_during_turn "$i")"
+  fraction="$(heard_fraction "${TURNS[$i]}" "$heard")"
+  if [ "$fraction" -lt "$HEARD_MIN_PERCENT" ]; then
+    CUT_OFF_TURNS+=("$((i + 1))")
+    echo "   ⚠️  turn $((i + 1)): the agent heard ${fraction}% of it: \"$heard\""
+  fi
+done
 has_audio="$(jq -r '.has_audio // false' "$CONV_JSON" 2> /dev/null)"
 
 if [ "$has_audio" != "true" ]; then
@@ -990,12 +1037,12 @@ if [ "$(printf '%s' "$verdict" | jq -r '.defects_found')" = "true" ]; then
 fi
 
 # After the playback checks, because a speaker defect is the firmware's to fix and this
-# is the agent's: its turn detection ended a turn at a pause, and it talked over the user.
-if [ "${#TALKED_OVER_TURNS[@]}" -gt 0 ]; then
+# is the agent's hearing: part of the turn never reached it.
+if [ "${#CUT_OFF_TURNS[@]}" -gt 0 ]; then
   echo
-  echo "❌ AGENT CUT IN — it talked over the human, on turn(s) ${TALKED_OVER_TURNS[*]}."
-  echo "   Playback itself matched. The agent's turn detection ended the turn at a pause,"
-  echo "   and it never abandoned that reply: did the rest of the turn reach it?"
+  echo "❌ AGENT CUT IN — it missed part of what the human said, on turn(s) ${CUT_OFF_TURNS[*]}."
+  echo "   Playback itself matched. Something kept the rest of the turn from reaching the"
+  echo "   agent once it started replying: a microphone gate is the usual cause."
   exit 5
 fi
 

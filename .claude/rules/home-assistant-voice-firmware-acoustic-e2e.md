@@ -28,8 +28,10 @@ The agent often starts a reply at a pause after a complete sentence ("Please int
 yourself.", "Interesting."), and the test logs it as `↩️`. That is not a failure: the mic
 stays open, the rest of the turn interrupts that reply, and the device cuts it off (see
 [Talking over Jarvis](home-assistant-voice-firmware-talking-over-jarvis.md)). Exit `5`
-is a reply that started during the turn with no interruption after it, so Jarvis talked
-over the user. Look first for whatever kept the rest of the turn from reaching the
+is a turn the agent did not hear whole: less than `HEARD_MIN_PERCENT` (85%) of its words
+are in ElevenLabs' transcript of it. That is counted in words, not timed, because the
+host's audio path adds an unknown delay to when the room falls quiet, and in
+ElevenLabs' transcript rather than the device's log, which cuts long lines short. Look first for whatever kept the rest of the turn from reaching the
 agent: a mic gate is the usual cause. After that, check the agent's turn settings (see
 [Hanging up when he goes quiet](elevenlabs-hanging-up-when-he-goes-quiet.md)).
 
